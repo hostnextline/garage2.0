@@ -316,7 +316,7 @@ function BookForm({ query }: ScreenProps) {
           </aside>
         )}
       </div>
-      {!isWide && <div class="book-bar glass-strong">{step}</div>}
+      {!isWide && <div class="book-bar glass-strong glass-thin">{step}</div>}
     </Page>
   );
 }

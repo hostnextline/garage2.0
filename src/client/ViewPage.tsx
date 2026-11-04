@@ -259,7 +259,7 @@ function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: (
       )}
       {s.declined.length > 0 && (
         <div style={{ marginTop: 'var(--sp-5)' }}>
-          <h3 class="cl-small cl-muted" style={{ margin: '0 0 var(--sp-2)', fontWeight: 650 }}>{ct(l, 'extras.declinedTitle')}</h3>
+          <h3 class="cl-small cl-muted" style={{ margin: '0 0 var(--sp-2)', fontWeight: 560 }}>{ct(l, 'extras.declinedTitle')}</h3>
           <ul class="cl-lines">
             {s.declined.map((x) => <Line key={x.id} desc={x.description} l={l} cents={lineCents(x)} off meta={<span class="cl-tag cl-tag-off">{ct(l, 'extras.declined')}</span>} />)}
           </ul>

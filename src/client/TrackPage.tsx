@@ -116,7 +116,7 @@ function Active(p: { view: TrackView; l: CLang; lost: boolean; garage: Garage | 
       </p>
       {p.lost && <Note kind="warn">{ct(l, 'track.lost')}</Note>}
       <section class="cl-panel glass cl-stack">
-        {view.mechanic && <p style={{ margin: 0, fontWeight: 600 }}>{ct(l, 'track.mechanic', { name: view.mechanic })}</p>}
+        {view.mechanic && <p style={{ margin: 0, fontWeight: 520 }}>{ct(l, 'track.mechanic', { name: view.mechanic })}</p>}
         <CallUs garage={p.garage} l={l} primary={false} />
         {p.jobToken && <Button variant="ghost" icon={<CalendarDays />} href={`#t=${p.jobToken}${l === 'en' ? '&l=en' : ''}`} data-testid="track-see-job">{ct(l, 'track.seeAppointment')}</Button>}
       </section>

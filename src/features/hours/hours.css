@@ -9,20 +9,20 @@
 .hours-trucks .chip { min-height: var(--tap); padding: 0 var(--sp-4); }
 .hours-chip { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .hours-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 1px var(--glass-edge); }
-.hours-chip-off { font-size: var(--t-xs); font-weight: 520; color: var(--ink-3); }
+.hours-chip-off { font-size: var(--t-xs); font-weight: 470; color: var(--ink-3); }
 .hours-layout { display: flex; flex-direction: column; gap: var(--sp-4); }
 .hours-layout.is-wide { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--sp-5); align-items: start; }
 .hours-layout.is-wide .hours-side { position: sticky; top: var(--sp-5); }
 .hours-side { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 .hours-note { margin: var(--sp-3) 0 0; }
 .hours-reset.is-hidden { visibility: hidden; }
-.hours-dirty { color: var(--accent-ink); font-weight: 650; }
+.hours-dirty { color: var(--accent-ink); font-weight: 560; }
 .hours-gridpanel .panel-sub { min-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* the day to draw (phone) */
 .hours-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-bottom: var(--sp-4); }
 .hours-daychip { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: var(--tap); padding: 4px 0;
-  border-radius: 12px; border: 1px solid var(--line); background: var(--solid); color: var(--ink-2); font-size: var(--t-xs); font-weight: 650; text-transform: lowercase; }
+  border-radius: 12px; border: 1px solid var(--line); background: var(--solid); color: var(--ink-2); font-size: var(--t-xs); font-weight: 560; text-transform: lowercase; }
 .hours-daychip.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
 .hours-daychip-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--ink-3); }
 .hours-daychip-dot.is-lit { border-color: transparent; background: var(--ok); }
@@ -36,8 +36,8 @@
 .hours-head { height: 62px; align-items: start; padding-bottom: 6px; }
 .hours-corner { display: block; }
 .hours-colhd { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0 2px; text-align: center; min-width: 0; }
-.hours-colhd b { font-size: var(--t-sm); font-weight: 650; text-transform: lowercase; }
-.hours-colhd-sum { font-size: 11px; line-height: 1.2; color: var(--ink-2); font-stretch: 92%; font-weight: 560; overflow-wrap: anywhere;
+.hours-colhd b { font-size: var(--t-sm); font-weight: 560; text-transform: lowercase; }
+.hours-colhd-sum { font-size: 11px; line-height: 1.2; color: var(--ink-2); font-stretch: 92%; font-weight: 500; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .hours-colhd.is-dim { opacity: 0.4; }
 .hours-colhd.is-changed b { color: var(--accent-ink); }
@@ -45,7 +45,7 @@
 .hours-body { position: relative; }
 .hours-row.is-hour::before, .hours-row.is-edge::before { content: ''; position: absolute; left: var(--time); right: var(--rail); top: 0; height: 1px; background: var(--line); pointer-events: none; z-index: 1; }
 .hours-row.is-edge::before { top: -1px; height: 3px; border-radius: 2px; background: linear-gradient(180deg, var(--chrome-2), var(--chrome-3)); right: 0; }
-.hours-time { position: relative; top: -0.65em; padding-right: 8px; text-align: right; font-size: 11.5px; font-weight: 600; font-stretch: var(--w-num); color: var(--ink-2); white-space: nowrap; }
+.hours-time { position: relative; top: -0.65em; padding-right: 8px; text-align: right; font-size: 11.5px; font-weight: 520; font-stretch: var(--w-num); color: var(--ink-2); white-space: nowrap; }
 .hours-pane { display: block; margin: 1px; border-radius: 3px; background: var(--sunken); box-shadow: inset 0 0 0 1px var(--glass-line); transition: background 90ms linear, opacity var(--dur) var(--ease); }
 .hours-grid.is-day .hours-pane { margin: 2px; border-radius: 7px; }
 .hours-pane.is-on {
@@ -57,7 +57,7 @@
 .hours-pane:focus-visible { outline: 3px solid var(--focus); outline-offset: 0; position: relative; z-index: 2; }
 .hours-rail { position: absolute; top: 0; right: 0; width: var(--rail); height: calc(var(--hrow) * var(--rows)); pointer-events: none; }
 .hours-rail-block { position: absolute; left: 10px; right: 0; display: flex; align-items: center; padding-left: 8px; border-left: 2px solid var(--chrome-3);
-  font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); line-height: 1.15; }
+  font-size: var(--t-xs); font-weight: 560; color: var(--ink-2); line-height: 1.15; }
 .hours-rail-block span { overflow-wrap: break-word; hyphens: auto; min-width: 0; }
 
 /* ---------- apply ---------- */
@@ -66,16 +66,16 @@
 .hours-modes button[aria-pressed='true'] { background: var(--solid); color: var(--ink); box-shadow: inset 4px 0 0 var(--accent), 0 1px 3px rgba(0, 0, 0, 0.12); }
 .hours-effect { display: flex; flex-direction: column; gap: 6px; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); border: 1px solid var(--glass-line); font-size: var(--t-sm); color: var(--ink-2); }
 .hours-effect p { margin: 0; }
-.hours-effect-what { color: var(--ink); font-weight: 650; }
-.hours-effect-jobs { color: var(--warn); font-weight: 600; }
+.hours-effect-what { color: var(--ink); font-weight: 560; }
+.hours-effect-jobs { color: var(--warn); font-weight: 520; }
 
 /* ---------- the changed days ---------- */
 .hours-exc { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .hours-exc li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); padding: var(--sp-3) 0; border-top: 1px solid var(--glass-line); }
 .hours-exc li:first-child { border-top: 0; padding-top: 0; }
 .hours-exc-main { flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.hours-exc-main b { font-weight: 650; }
-.hours-exc-closed { color: var(--bad); font-weight: 600; }
+.hours-exc-main b { font-weight: 560; }
+.hours-exc-closed { color: var(--bad); font-weight: 520; }
 
 /* ---------- the trucks ---------- */
 .hours-swatch { flex: none; width: 18px; height: 18px; border-radius: 50%; box-shadow: 0 0 0 1px var(--glass-edge); }

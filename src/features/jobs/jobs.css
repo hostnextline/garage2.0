@@ -22,7 +22,7 @@
 .jobs-step .bigstep { min-height: 84px; }
 /* the kit's BigStep as a link keeps the look of the button (no underline) */
 a.bigstep, a.bigstep:hover { text-decoration: none; }
-.jobs-h { font-size: var(--t-md); font-weight: 650; font-stretch: 104%; margin: 0; line-height: 1.25; }
+.jobs-h { font-size: var(--t-md); font-weight: 560; font-stretch: 104%; margin: 0; line-height: 1.25; }
 .jobs-h .help { margin-left: 4px; vertical-align: -4px; }
 
 /* who, what, where */
@@ -31,16 +31,16 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-line { display: flex; align-items: flex-start; gap: var(--sp-3); font-size: var(--t-md); line-height: 1.35; min-width: 0; }
 .jobs-line > svg { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--ink-3); }
 .jobs-line > span, .jobs-line > a { min-width: 0; overflow-wrap: anywhere; }
-.jobs-link { color: inherit; font-weight: 600; text-decoration-color: var(--line); }
+.jobs-link { color: inherit; font-weight: 520; text-decoration-color: var(--line); }
 .jobs-link:hover { text-decoration-color: var(--accent); }
-.jobs-plate { flex: none; margin-left: auto; padding: 2px 8px; border-radius: var(--r-sm); border: 1px solid var(--line); font-size: var(--t-xs); font-weight: 650; font-stretch: 92%; letter-spacing: 0.06em; color: var(--ink-2); background: var(--sunken); }
+.jobs-plate { flex: none; margin-left: auto; padding: 2px 8px; border-radius: var(--r-sm); border: 1px solid var(--line); font-size: var(--t-xs); font-weight: 560; font-stretch: 92%; letter-spacing: 0.06em; color: var(--ink-2); background: var(--sunken); }
 .jobs-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--solid) 60%, transparent); }
 .jobs-contacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
 .jobs-contact.btn { flex-direction: column; gap: 4px; min-height: 66px; padding: var(--sp-2); font-size: var(--t-xs); white-space: normal; text-align: center; }
 .jobs-contact.btn svg { width: 22px; height: 22px; }
 .jobs-note { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); }
 .jobs-note p { margin: 0; font-size: var(--t-sm); }
-.jobs-note-label { display: block; font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); margin-bottom: 2px; }
+.jobs-note-label { display: block; font-size: var(--t-xs); font-weight: 560; color: var(--ink-2); margin-bottom: 2px; }
 .jobs-problem { border-top: 1px solid var(--glass-line); padding-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
 .jobs-problem .iconbtn { margin: -10px -10px -10px 0; }
 .jobs-problem p { margin: 0; }
@@ -66,7 +66,7 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-state-icon { width: 28px; height: 28px; color: var(--ink-3); flex: none; }
 .jobs-state.is-paid .jobs-state-icon, [data-testid='job-done'] .jobs-state-icon { color: var(--st-done); }
 .jobs-stamp { flex: none; font-size: 1.25rem; margin: 2px 6px 2px 2px; }
-.jobs-due { margin: 6px 0 0; font-weight: 650; font-stretch: var(--w-num); color: var(--warn); }
+.jobs-due { margin: 6px 0 0; font-weight: 560; font-stretch: var(--w-num); color: var(--warn); }
 .jobs-next { gap: var(--sp-2); }
 .jobs-none { margin: 0; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); }
 
@@ -86,7 +86,7 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-item-icon.is-proposed { color: var(--st-route); }
 .jobs-item.is-off .row-title { text-decoration: line-through; color: var(--ink-3); }
 .jobs-totals { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--glass-line); }
-.jobs-pending { margin: var(--sp-2) 0 0; color: var(--st-route); font-weight: 600; }
+.jobs-pending { margin: var(--sp-2) 0 0; color: var(--st-route); font-weight: 520; }
 .jobs-work-actions { display: grid; grid-template-columns: 1fr; gap: var(--sp-2); margin-top: var(--sp-4); }
 @media (min-width: 420px) { .jobs-work-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .jobs-work-actions .btn { white-space: normal; text-align: center; line-height: 1.2; }
@@ -95,8 +95,8 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-extra { padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); outline: none; display: flex; flex-direction: column; gap: var(--sp-2); }
 .jobs-extra h3 { font-size: var(--t-lg); overflow-wrap: anywhere; }
 .jobs-extra p { margin: 0; font-size: var(--t-sm); }
-.jobs-extra-label { display: block; font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); }
-.jobs-extra-price { font-weight: 650; font-stretch: var(--w-num); font-size: var(--t-md) !important; }
+.jobs-extra-label { display: block; font-size: var(--t-xs); font-weight: 560; color: var(--ink-2); }
+.jobs-extra-price { font-weight: 560; font-stretch: var(--w-num); font-size: var(--t-md) !important; }
 .jobs-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-2); }
 
 /* the signature box: a sheet of paper in the theme's light */
@@ -105,7 +105,7 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-sign-canvas { display: block; width: 100%; height: 100%; touch-action: none; color: var(--ink); cursor: crosshair; position: relative; z-index: 1; }
 .jobs-sign-line { position: absolute; left: 24px; right: 24px; bottom: 44px; border-bottom: 1.5px solid var(--line); pointer-events: none; }
 .jobs-sign-line span { position: absolute; left: 0; bottom: 2px; font-size: var(--t-lg); color: var(--ink-3); line-height: 1; }
-.jobs-sign-hint { position: absolute; inset: 0 0 44px; display: grid; place-items: center; color: var(--ink-3); font-size: var(--t-md); font-weight: 520; pointer-events: none; padding: 0 var(--sp-6); text-align: center; }
+.jobs-sign-hint { position: absolute; inset: 0 0 44px; display: grid; place-items: center; color: var(--ink-3); font-size: var(--t-md); font-weight: 470; pointer-events: none; padding: 0 var(--sp-6); text-align: center; }
 .jobs-sign-clear.btn { position: absolute; z-index: 2; top: 4px; right: 4px; min-height: var(--tap); }
 @media (max-height: 700px) { .jobs-sign { height: min(var(--sign-h, 210px), 180px); } }
 .jobs-sign-view { display: grid; place-items: center; padding: var(--sp-4); border-radius: var(--r-md); background: var(--chrome-1); }

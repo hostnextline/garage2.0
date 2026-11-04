@@ -16,7 +16,7 @@
 /* the person's sheet */
 .team-head { display: flex; align-items: center; gap: var(--sp-3); }
 .team-head .avatar { width: 48px; height: 48px; font-size: 16px; }
-.team-head-roles { margin: 0; font-weight: 600; }
+.team-head-roles { margin: 0; font-weight: 520; }
 .team-sheet-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); align-items: start; }
 .team-sheet-grid > * { min-width: 0; }
 @media (min-width: 900px) { .team-sheet-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); } }
@@ -27,7 +27,7 @@
 .team-choice { align-self: flex-start; }
 .team-choice button { min-height: 44px; }
 .team-fixed { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: var(--r-pill);
-  font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); background: var(--sunken); }
+  font-size: var(--t-xs); font-weight: 560; color: var(--ink-2); background: var(--sunken); }
 .team-fixed.is-on { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .team-colors { display: grid; grid-template-columns: repeat(4, 48px); gap: var(--sp-3) var(--sp-4); }
 .team-color { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--c); color: #fff;
@@ -41,12 +41,12 @@
 .team-table-wrap { overflow-x: auto; padding: 0 var(--sp-2) var(--sp-3); }
 .team-table { width: 100%; border-collapse: collapse; }
 .team-table th, .team-table td { padding: var(--sp-3); text-align: center; vertical-align: middle; border-top: 1px solid var(--glass-line); }
-.team-table thead th { border-top: 0; font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); }
+.team-table thead th { border-top: 0; font-size: var(--t-xs); font-weight: 560; color: var(--ink-2); }
 .team-table .team-th-right { text-align: left; font-weight: 400; }
 .team-table tbody .team-th-right { min-width: 220px; }
 .team-th-in { display: flex; flex-direction: column; gap: 2px; }
 .team-table td .switch { margin: 0 auto; display: block; }
-.team-cell-fixed { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-xs); font-weight: 600; color: var(--ink-3); }
+.team-cell-fixed { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-xs); font-weight: 520; color: var(--ink-3); }
 .team-cell-fixed svg, .team-fixed svg { flex: none; width: 16px; height: 16px; max-width: none; }
 .team-cell-fixed.is-on { color: var(--ok); }
 .team-table-tabs { padding: 0 var(--sp-5); }

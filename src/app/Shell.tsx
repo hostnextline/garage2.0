@@ -205,7 +205,7 @@ function Sidebar() {
 }
 function TopBar() {
   return (
-    <header class="topbar glass">
+    <header class="topbar glass glass-thin">
       <Logo />
       <span class="grow" />
       <SyncChip compact />
@@ -224,7 +224,7 @@ function TabBar() {
     <button key="add" type="button" class="tab tab-add" onClick={openQuick} aria-label={t('shell.quick.title')} data-tour="quick-add" data-testid="quick-add"><span class="tab-add-ring"><Plus size={28} /></span></button>
   ));
   list.push(tab('more', t('shell.nav.more'), Menu, '#/more'));
-  return <nav class="tabbar glass-strong" aria-label={t('shell.menu')}>{list}</nav>;
+  return <nav class="tabbar glass-strong glass-thin" aria-label={t('shell.menu')}>{list}</nav>;
 }
 
 export function Shell() {

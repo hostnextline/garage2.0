@@ -6,6 +6,17 @@ export const shell: typeof fr = {
     guide: 'Where to start', account: 'My account', more: 'More'
   },
   groups: { day: 'The day', office: 'The office', garage: 'The garage' },
+  more: {
+    today: 'Today', booked: 'Booked', live: 'Under way', done: 'Done', due: 'To collect',
+    filters: 'Show', groups: { all: 'All', day: 'Day', office: 'Office', garage: 'Garage' },
+    help: 'Help and first steps',
+    setup: 'Getting started: {done} of {total}', setupNext: 'Next step: {step}',
+    badges: {
+      today: { one: '{n} job to do today', other: '{n} jobs to do today' },
+      invoices: { one: '{n} invoice to collect', other: '{n} invoices to collect' },
+      inventory: { one: '{n} part to order', other: '{n} parts to order' }
+    }
+  },
   book: 'Book',
   quick: {
     title: 'Add',

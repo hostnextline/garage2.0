@@ -6,7 +6,7 @@ body {
   font-family: var(--font);
   font-size: var(--t-md);
   font-stretch: var(--w-text);
-  font-weight: 430;
+  font-weight: 400;
   line-height: var(--lh);
   color: var(--ink);
   background: var(--bg);
@@ -16,33 +16,54 @@ body {
   font-variant-numeric: tabular-nums;
   overscroll-behavior-y: none;
 }
-/* the showroom light: a fixed backdrop the glass panels float over */
+/* What the glass lets through: a fixed backdrop the panes float over. The tail-light glows red in a corner, the lacquer
+   catches two chrome reflections and a wide soft shine, and the gear of the logo is pressed into the wall. The panes blur
+   it all, so the glass is seen everywhere without any motion (nothing behind the glass moves: no battery spent). */
 body::before {
   content: '';
   position: fixed;
-  inset: -20vmax;
-  z-index: -1;
+  inset: 0;
+  z-index: -2;
   pointer-events: none;
   background:
-    radial-gradient(42vmax 34vmax at 86% 6%, var(--bg-glow-1), transparent 62%),
-    radial-gradient(48vmax 40vmax at 6% 96%, var(--bg-glow-2), transparent 64%),
-    radial-gradient(30vmax 26vmax at 30% 40%, var(--bg-glow-3), transparent 70%),
+    linear-gradient(112deg, transparent 0 40.6%, var(--bg-streak) 40.8%, transparent 41.4% 100%),
+    linear-gradient(112deg, transparent 0 56.4%, var(--bg-streak) 56.5%, transparent 56.8% 100%),
+    linear-gradient(112deg, transparent 18%, color-mix(in srgb, var(--bg-streak) 45%, transparent) 32%, transparent 47%),
+    radial-gradient(64vmax 46vmax at 92% 2%, var(--bg-glow-1), transparent 66%),
+    radial-gradient(40vmax 34vmax at 4% 92%, var(--bg-glow-3), transparent 70%),
+    radial-gradient(46vmax 40vmax at 22% 40%, var(--bg-glow-2), transparent 68%),
     var(--bg);
+}
+body::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  width: 118vmin;
+  height: 118vmin;
+  right: -38vmin;
+  bottom: -30vmin;
+  background: var(--bg-mark);
+  -webkit-mask: url('./gear.svg') center / contain no-repeat;
+  mask: url('./gear.svg') center / contain no-repeat;
 }
 @media (min-width: 640px) { body { font-size: var(--t-sm); } }
 
 h1, h2, h3, h4 { margin: 0; line-height: var(--lh-tight); color: var(--ink); }
 h1 { font-size: var(--t-2xl); font-stretch: var(--w-title); font-weight: 340; letter-spacing: -0.005em; }
 h2 { font-size: var(--t-xl); font-stretch: var(--w-title); font-weight: 360; }
-h3 { font-size: var(--t-lg); font-stretch: 110%; font-weight: 560; }
-h4 { font-size: var(--t-md); font-weight: 620; }
+h3 { font-size: var(--t-lg); font-stretch: 110%; font-weight: 500; }
+h4 { font-size: var(--t-md); font-weight: 540; }
+/* no heavy type: weight only where it says something */
+b, strong { font-weight: 560; }
+th { font-weight: 520; }
 p { margin: 0 0 var(--sp-3); }
 a { color: inherit; text-underline-offset: 3px; }
 small, .small { font-size: var(--t-xs); }
 .muted { color: var(--ink-2); }
 .faint { color: var(--ink-3); }
-.num { font-stretch: var(--w-num); font-weight: 640; font-variant-numeric: tabular-nums; }
-.data { font-stretch: var(--w-data); font-weight: 560; }
+.num { font-stretch: var(--w-num); font-weight: 550; font-variant-numeric: tabular-nums; }
+.data { font-stretch: var(--w-data); font-weight: 500; }
 .right { text-align: right; }
 .nowrap { white-space: nowrap; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -55,22 +76,27 @@ button { cursor: pointer; }
 img, svg { display: block; max-width: 100%; }
 ::selection { background: var(--accent-soft); }
 
-/* glass: only on large surfaces (bars, sheets, sections) */
-.glass {
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  backdrop-filter: blur(22px) saturate(150%);
+/* glass: on large surfaces (bars, sheets, sections). The pane blurs and brightens what is behind it, the light catches
+   its top edge and slides across it (the sheen); the bottom edge is in the shade. */
+.glass, .glass-strong {
+  background: linear-gradient(158deg, var(--glass-sheen), transparent 42%), var(--glass);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
   border: 1px solid var(--glass-edge);
   box-shadow: var(--glass-shadow);
 }
 .glass-strong {
-  background: var(--glass-strong);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
-  backdrop-filter: blur(28px) saturate(160%);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--glass-shadow);
+  background: linear-gradient(158deg, var(--glass-sheen), transparent 42%), var(--glass-strong);
+  -webkit-backdrop-filter: blur(24px) saturate(185%);
+  backdrop-filter: blur(24px) saturate(185%);
 }
+/* A thin pane (a bar, a pill) blurs less: in Chrome (Android), a blur wider than about a fifth of the pane's height
+   lets what passes behind it show sharp again (the blur folds back at the edges). Measured on the bars of the app. */
+.glass-thin { -webkit-backdrop-filter: blur(12px) saturate(180%); backdrop-filter: blur(12px) saturate(180%); }
 [data-glass='off'] .glass, [data-glass='off'] .glass-strong { -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-glass='on']) .glass, :root:not([data-glass='on']) .glass-strong { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 
 .stack { display: flex; flex-direction: column; gap: var(--sp-3); }
 .stack-lg { display: flex; flex-direction: column; gap: var(--sp-6); }
@@ -85,6 +111,6 @@ img, svg { display: block; max-width: 100%; }
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
 }
 @media print {
-  body::before { display: none; }
+  body::before, body::after { display: none; }
   body { background: #fff; color: #000; }
 }

@@ -16,6 +16,17 @@ l'éclairage de l'app : des panneaux de verre posés sur un fond profond éclair
 anneau chrome, comme le bouton de démarrage d'une auto. Tout le reste reste calme.
 Un deuxième clin d'œil, réservé à la fin d'une job : le tampon « PAYÉ » qui se pose sur la facture.
 
+### Le verre (nov. 2026 : « glassy, transparent, keeping H.I.S »)
+Le soir, du **verre fumé** devant un feu arrière qui luit rouge ; le jour, du **verre givré** dans la
+lumière de la salle d'exposition (perle, filets chrome, une touche de rouge). Le fond fixe derrière
+les panneaux porte la lumière : la lueur rouge dans un coin, deux reflets chrome sur la laque, un
+large reflet doux, et l'engrenage du logo pressé dans le mur (très pâle). Les panneaux le floutent
+(flou 26 px, saturation 185 %) : le verre se voit partout, **sans rien qui bouge derrière** (pas de
+batterie dépensée). Chaque vitre a un bord haut éclairé, un bord bas dans l'ombre et un reflet en
+biais. Les champs à remplir, les billets et les puces sont des vitres plus petites posées sur la
+grande. Les feuilles (formulaires) sont plus épaisses : on lit au travers, les couleurs ne font que
+teinter. « Effet verre : Non » (ou « Réduire la transparence » du téléphone) remet du plein partout.
+
 ## Couleurs (thème H.I.S)
 | Nom | Foncé | Clair | Rôle |
 |---|---|---|---|
@@ -36,8 +47,11 @@ le téléphone), Platine (clair argent), Noir et or, Émeraude, Saphir, Bordeaux
 Une seule famille : **Archivo** (variable, axes largeur 62–125 % et graisse 100–900), intégrée à
 l'app (marche hors ligne). Le logo est écrit en lettres larges ; l'app reprend cette largeur :
 - Titres : largeur 125 %, graisse 340, élégants et calmes (le « titre élégant » de la vitrine).
-- Montants et heures : largeur 108 %, graisse 640, chiffres tabulaires.
-- Texte : largeur 100 %, graisse 430. Petites données : largeur 88 %, graisse 560.
+- Montants et heures : largeur 108 %, graisse 550–560, chiffres tabulaires.
+- Texte : largeur 100 %, graisse 400. Petites données : largeur 88 %, graisse 500.
+- Pas de gras partout (demande de Hassan, nov. 2026) : 520 pour un titre de ligne ou un bouton,
+  560 au plus pour ce qui doit ressortir (montant, statut) ; la hiérarchie vient de la taille et
+  de la largeur, pas du gras. Seul le tampon PAYÉ reste lourd, parce que c'est un tampon.
 Échelle : 13 / 15 / 17 / 20 / 26 / 34 / 44 px (téléphone : texte de base 16 px, jamais moins de 13 px).
 
 ## Mise en page
@@ -48,6 +62,13 @@ l'app (marche hors ligne). Le logo est écrit en lettres larges ; l'app reprend 
 - Alignement à gauche partout ; les montants alignés à droite dans les listes.
 - Les listes sont des lignes avec séparateurs dans un panneau, pas des piles de cartes.
   Les jobs sont des billets (bon de travail) avec un talon : le bloc et le numéro d'arrêt.
+- **Plus** (téléphone) : un écran d'accueil de tuiles de verre, comme celui d'un téléphone.
+  En haut : moi (anneau chrome autour de l'avatar), l'aide, les réglages ; la journée en trois
+  chiffres (réservées, en cours, terminées) et ce qui reste à recevoir ; les filtres Tout ·
+  Journée · Bureau · Garage sur une piste de verre fumé (le choix en chrome). Chaque partie de l'app
+  a sa couleur (son petit carré d'icône) ; un chiffre rouge dit ce qui attend (jobs du jour,
+  factures à encaisser, pièces à commander). Une pression fait passer un reflet sur la vitre.
+  Sous les tuiles : l'anneau « Démarrage » tant qu'il reste des premiers pas, puis Me déconnecter.
 
 ## Principes
 1. Une seule action évidente par écran ; le reste se tait.

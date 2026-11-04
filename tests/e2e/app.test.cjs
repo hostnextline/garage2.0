@@ -173,7 +173,8 @@ step('no signal: the office books anyway; the booking leaves when the signal is 
   await page.getByTestId(`svc-${SVC_OIL}`).click();
   await ctx.setOffline(true);
   // no suggestions without signal: pick a day in the calendar (tomorrow's afternoon on Camion Complet's next working day)
-  const cell = page.locator('[data-testid^="bp-cell-"]:not([disabled])').first();
+  // (a block already started, full or closed says so with aria-disabled: the first one still open, whatever the hour)
+  const cell = page.locator('[data-testid^="bp-cell-"]:not([disabled]):not([aria-disabled="true"])').first();
   await cell.click();
   await page.getByTestId('book-confirm').click();
   await page.getByTestId('sync-chip').waitFor();
@@ -437,4 +438,63 @@ step('a car without typing: Année → Marque → Modèle from the lists; the VI
   } finally {
     await browser.close();
   }
+});
+
+/* ---------- « Plus »: the glass tiles, the filters, today in numbers ---------- */
+step('Plus: a tile for each part the person may open, the filters, today in numbers, the first steps', async () => {
+  const { page } = await h.openW({ kind: 'phone', scheme: 'dark' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.getByTestId('tab-more').click();
+  await page.getByTestId('more-screen').waitFor();
+  // the owner opens everything: one tile per part of the app, my account in the header
+  for (const k of ['today', 'agenda', 'map', 'customers', 'quotes', 'invoices', 'treasury', 'dashboard', 'hours', 'inventory', 'team', 'settings', 'guide']) {
+    await page.getByTestId(`more-${k}`).waitFor();
+  }
+  await page.getByTestId('more-account').waitFor();
+  await page.getByTestId('more-gear').waitFor();
+  await page.getByTestId('more-help').waitFor();
+  // today's numbers are the database's
+  const day = h.sql(`select public.local_today()::text`);
+  const count = (where) => h.sql(`select count(*) from public.jobs where day = '${day}' and deleted_at is null and ${where}`);
+  assert.equal((await page.getByTestId('more-stat-booked').locator('.more-stat-n').innerText()).trim(), count(`status = 'booked'`));
+  assert.equal((await page.getByTestId('more-stat-live').locator('.more-stat-n').innerText()).trim(), count(`status in ('en_route', 'on_site')`));
+  assert.equal((await page.getByTestId('more-stat-done').locator('.more-stat-n').innerText()).trim(), count(`status = 'done'`));
+  const owed = Number(h.sql(`select coalesce(sum(total_cents - paid_cents), 0) from public.invoices where status = 'issued' and deleted_at is null and total_cents > paid_cents`));
+  const shown = (await page.getByTestId('more-stat-due').locator('.more-due-n').innerText()).replace(/[^\d,]/g, '').replace(',', '.');
+  assert.equal(Math.round(Number(shown) * 100), owed, 'what customers still owe');
+  // « Bureau »: only the office's parts, in the order of the menu
+  await page.getByTestId('more-filter-office').click();
+  const keys = await page.getByTestId('more-grid').locator('a').evaluateAll((l) => l.map((a) => a.dataset.testid));
+  assert.deepEqual(keys, ['more-customers', 'more-quotes', 'more-invoices', 'more-treasury', 'more-dashboard']);
+  await h.shot(page, 'e2e-10-plus-office');
+  await page.getByTestId('more-filter-all').click();
+  // the first steps still to do: the ring leads to « Par où commencer »
+  await page.getByTestId('more-setup').click();
+  await page.waitForFunction(() => location.hash === '#/guide');
+  // a tile opens its part; back on « Plus », the filter chosen is kept
+  await page.goto(h.APP + '#/more');
+  await page.getByTestId('more-filter-office').click();
+  await page.getByTestId('more-invoices').click();
+  await page.waitForFunction(() => location.hash.startsWith('#/invoices'));
+  await page.goBack();
+  await page.getByTestId('more-filter-office').waitFor();
+  assert.equal(await page.getByTestId('more-filter-office').getAttribute('aria-pressed'), 'true');
+  noErrors(page);
+  await page.context().close();
+  // Saleh (mechanic): no team, no settings, no money he may not see; signing out still works from here
+  const m = await h.openW({ kind: 'phone', scheme: 'light' });
+  await h.signIn(m.page, who.saleh.email, PW);
+  await m.page.goto(h.APP + '#/more');
+  await m.page.getByTestId('more-screen').waitFor();
+  await m.page.getByTestId('more-today').waitFor();
+  assert.equal(await m.page.getByTestId('more-team').count(), 0);
+  assert.equal(await m.page.getByTestId('more-settings').count(), 0);
+  assert.equal(await m.page.getByTestId('more-gear').count(), 0);
+  const canInvoices = await m.page.getByTestId('more-invoices').count();
+  assert.equal(await m.page.getByTestId('more-stat-due').count(), canInvoices, 'the money owed only with the invoices');
+  await h.shot(m.page, 'e2e-10-plus-mechanic');
+  await m.page.getByTestId('sign-out').click();
+  await m.page.getByTestId('login-email').waitFor({ timeout: 15000 });
+  noErrors(m.page);
+  await m.page.context().close();
 });

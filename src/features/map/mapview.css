@@ -9,7 +9,7 @@
 .mv.leaflet-container .leaflet-control-attribution { background: color-mix(in srgb, var(--solid) 82%, transparent); color: var(--ink-2); font-size: 13px; line-height: 1.4; padding: 1px 8px; border-radius: 8px 0 0 0; }
 .mv.leaflet-container .leaflet-control-attribution a { color: var(--ink-2); text-decoration: underline; }
 .mv.leaflet-container .leaflet-bar { border: 1px solid var(--glass-edge); border-radius: var(--r-md); box-shadow: var(--glass-shadow); overflow: hidden; background: var(--glass-strong); }
-.mv.leaflet-container .leaflet-bar a { width: 48px; height: 48px; line-height: 48px; font-size: 22px; font-weight: 500; background: var(--glass-strong); color: var(--ink); border-bottom: 1px solid var(--line); }
+.mv.leaflet-container .leaflet-bar a { width: 48px; height: 48px; line-height: 48px; font-size: 22px; font-weight: 460; background: var(--glass-strong); color: var(--ink); border-bottom: 1px solid var(--line); }
 .mv.leaflet-container .leaflet-bar a:last-child { border-bottom: 0; }
 .mv.leaflet-container .leaflet-bar a:hover { background: var(--solid); }
 .mv.leaflet-container .leaflet-bar a.leaflet-disabled { color: var(--ink-3); background: var(--glass-strong); }
@@ -23,7 +23,7 @@
 
 /* a stop: a numbered disc in its truck's colour; a check when done */
 .mv-num { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--c); color: #fff;
-  font-weight: 760; font-stretch: 108%; font-size: 15px; line-height: 1; font-variant-numeric: tabular-nums;
+  font-weight: 620; font-stretch: 108%; font-size: 15px; line-height: 1; font-variant-numeric: tabular-nums;
   box-shadow: 0 0 0 3px var(--solid), 0 5px 12px -5px rgba(0, 0, 0, 0.6); transition: transform var(--dur) var(--ease); }
 .mv-num.is-long { font-size: 13px; }
 .mv-num svg { width: 17px; height: 17px; }
@@ -51,8 +51,8 @@
   border-radius: 9px; white-space: nowrap; pointer-events: none; color: var(--ink); line-height: 1.25; font-size: 13px;
   background: var(--glass-strong); border: 1px solid var(--glass-edge); box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.55);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
-.mv-label b { font-weight: 700; }
-.mv-label small { font-size: 13px; color: var(--ink-2); font-weight: 520; }
+.mv-label b { font-weight: 600; }
+.mv-label small { font-size: 13px; color: var(--ink-2); font-weight: 470; }
 .mv-home .mv-label { left: 50%; top: calc(100% + 6px); transform: translateX(-50%); }
 .mv-mk.is-dim .mv-label { display: none; }
 
