@@ -6,7 +6,7 @@ import { signal } from '@preact/signals';
 import { Banknote, CreditCard, Landmark, Send, FileText, Ellipsis, Smartphone } from 'lucide-preact';
 import type { PayMethod } from '../../data/types';
 import { addPayment, team } from '../../data/api';
-import { isOwner } from '../../data/auth';
+import { isOwner, access } from '../../data/auth';
 import { customerName } from '../../data/select';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
@@ -20,10 +20,13 @@ export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: 
 
 const ICONS: Record<string, typeof Banknote> = { cash: Banknote, debit: Landmark, credit: CreditCard, interac: Send, cheque: FileText, other: Ellipsis };
 
-/* card payments online: only the owner can ask whether they are connected (team « secrets ») */
+/* card payments online: everyone's access says whether they are switched on (my_access → card_online);
+   an older copy of the access without that answer asks the server (owner only) */
 type StripeState = 'unknown' | 'on' | 'off';
 const stripe = signal<StripeState | null>(null);
 async function checkStripe() {
+  const known = access.value?.card_online;
+  if (typeof known === 'boolean') { stripe.value = known ? 'on' : 'off'; return; }
   if (!isOwner()) { stripe.value = 'unknown'; return; }
   try {
     const r = await team<{ stripe?: { on?: boolean } }>('secrets');
@@ -149,7 +152,7 @@ function PayOpen(p: PaySheetProps) {
           <div class="pay-link">
             <h3 class="pay-link-title"><Smartphone aria-hidden="true" />{t('invoices.pay.link.title')}</h3>
             {stripe.value === 'off'
-              ? <p class="muted small" style={{ margin: 0 }}>{t('invoices.pay.link.off')} <a href="#/settings/connect" onClick={close}>{t('invoices.pay.link.settings')}</a></p>
+              ? <p class="muted small" style={{ margin: 0 }}>{t('invoices.pay.link.off')}{isOwner() && <> <a href="#/settings/connect" onClick={close}>{t('invoices.pay.link.settings')}</a></>}</p>
               : <>
                 <p class="muted small" style={{ margin: 0 }}>{stripe.value === 'on' ? t('invoices.pay.link.on') : t('invoices.pay.link.unknown')}</p>
                 <Button icon={<Send />} onClick={async () => { const r = await sendText('invoice', inv.job_id!, t('invoices.pay.link.sent')); if (r) setManual(r); }} data-testid="pay-link">

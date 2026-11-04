@@ -23,7 +23,8 @@ export function accessOf(staffId: string): Access {
     if (s.rights?.[r] != null && !owner) rights[r] = !!s.rights[r];
   }
   const trucks = (db.trucks || []).filter((t) => t.driver_id === staffId && !t.deleted_at).map((t) => t.id);
-  return { id: s.id, full_name: s.full_name, short_name: s.short_name, email: s.email, phone: s.phone, roles: s.roles, owner, lang: s.lang, prefs: s.prefs || {}, color: s.color, rights, trucks };
+  const pretend = (globalThis as { __demoServices?: { card?: boolean; texts?: boolean } }).__demoServices || {};
+  return { id: s.id, full_name: s.full_name, short_name: s.short_name, email: s.email, phone: s.phone, roles: s.roles, owner, lang: s.lang, prefs: s.prefs || {}, color: s.color, rights, trucks, card_online: pretend.card ?? false, texts_online: pretend.texts ?? false };
 }
 
 export async function startDemo() {

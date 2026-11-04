@@ -141,9 +141,9 @@ export function InvoicePill(p: { status: 'draft' | 'issued' | 'paid' | 'void'; p
 }
 
 /** the rubber stamp: PAYÉ on a paid invoice, ANNULÉ / ABSENT on a closed job */
-export function Stamp(p: { kind?: 'paid' | 'cancelled' | 'no_show'; animate?: boolean; class?: string }) {
+export function Stamp(p: { kind?: 'paid' | 'cancelled' | 'no_show'; animate?: boolean; class?: string; word?: string }) {
   const kind = p.kind || 'paid';
-  const word = kind === 'paid' ? (lang.value === 'en' ? 'Paid' : 'Payé') : kind === 'cancelled' ? (lang.value === 'en' ? 'Cancelled' : 'Annulé') : (lang.value === 'en' ? 'No-show' : 'Absent');
+  const word = p.word ? p.word : kind === 'paid' ? (lang.value === 'en' ? 'Paid' : 'Payé') : kind === 'cancelled' ? (lang.value === 'en' ? 'Cancelled' : 'Annulé') : (lang.value === 'en' ? 'No-show' : 'Absent');
   const cls = ['stamp', kind === 'cancelled' && 'stamp-muted', kind === 'no_show' && 'stamp-bad', p.animate && 'stamp-land', p.class].filter(Boolean).join(' ');
   return <span class={cls} role="img" aria-label={word} data-testid={`stamp-${kind}`}>{word}</span>;
 }

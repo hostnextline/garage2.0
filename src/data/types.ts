@@ -20,7 +20,7 @@ export interface Settings extends Row {
   taxes: { enabled: boolean; tps: number; tvq: number };
   booking: { blocks: { key: BlockKey; start: number; end: number }[]; horizon_days: number; speed_kmh: number; detour: number; stop_min: number;
     unknown_min: number; min_block_min: number; near_km: number; home: { label: string; address: string; lat: number; lng: number } };
-  billing: { invoice_prefix: string; pad: number; due_days: number; hourly_cents: number | null; travel: { cents: number; free_over_cents: number | null }; goal_cents?: number | null; terms_fr?: string; terms_en?: string };
+  billing: { invoice_prefix: string; quote_prefix?: string; pad: number; due_days: number; hourly_cents: number | null; travel: { cents: number; free_over_cents: number | null }; goal_cents?: number | null; terms_fr?: string; terms_en?: string };
   messages: { on: Record<string, boolean>; fr: Record<string, string>; en: Record<string, string> };
   role_rights: Partial<Record<Exclude<Role, 'owner'>, Partial<Record<Right, boolean>>>>;
   waiver: { version: string; fr: string; en: string };
@@ -101,4 +101,6 @@ export interface Message extends Base { job_id: string | null; customer_id: stri
 export interface Access {
   id: string; full_name: string; short_name: string | null; email: string | null; phone: string | null; roles: Role[]; owner: boolean; lang: Lang;
   prefs: Record<string, unknown>; color: string | null; rights: Record<Right, boolean>; trucks: string[];
+  /** the card payment link (Stripe) and the automatic texts (GoHighLevel) are switched on */
+  card_online?: boolean; texts_online?: boolean;
 }
