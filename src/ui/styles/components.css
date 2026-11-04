@@ -18,7 +18,7 @@
 .btn-ghost { --b-bg: transparent; --b-edge: transparent; padding: 0 var(--sp-3); }
 .btn-ghost:hover { --b-bg: var(--sunken); }
 .btn-danger { --b-bg: transparent; --b-ink: var(--bad); --b-edge: color-mix(in srgb, var(--bad) 40%, transparent); }
-.btn-sm { min-height: 38px; padding: 0 var(--sp-3); font-size: var(--t-xs); }
+.btn-sm { min-height: 40px; padding: 0 var(--sp-3); font-size: var(--t-xs); }
 .btn-block { width: 100%; }
 .btn .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 700ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -206,7 +206,7 @@ html.is-locked .toasts { bottom: auto; top: calc(env(safe-area-inset-top) + 12px
 .page-head { display: flex; align-items: flex-start; gap: var(--sp-2); min-height: 48px; }
 .page-head h1 { font-size: var(--t-xl); overflow-wrap: anywhere; }
 @media (min-width: 640px) { .page-head h1 { font-size: var(--t-2xl); } }
-.page-back { margin-left: -8px; margin-top: -2px; }
+.page-back { flex: none; margin-left: -8px; margin-top: -2px; }
 .page-titles { padding-top: 4px; }
 .page-sub { margin: 4px 0 0; color: var(--ink-2); font-size: var(--t-sm); }
 .page-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
@@ -240,4 +240,4 @@ html.is-locked, html.is-locked body { overflow: hidden; }
 
 /* the « ? » stays small to the eye but gets a finger-sized target */
 .help { position: relative; }
-.help::after { content: ''; position: absolute; inset: -11px; }
+.help::after { content: ''; position: absolute; inset: -13px; }

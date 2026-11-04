@@ -96,10 +96,8 @@ export function matches(query: string, ...fields: (string | null | undefined)[])
   if (!words.length) return true;
   const hay = fold(fields.filter(Boolean).join(' '));
   const qd = query.replace(/\D/g, '');
-  if (qd.length >= 3) {
-    const hd = fields.filter(Boolean).join(' ').replace(/\D/g, '');
-    if (hd.includes(qd)) return true;
-  }
+  // digits are matched inside one field (a phone number), never across two fields joined together
+  if (qd.length >= 3 && fields.some((f) => String(f || '').replace(/\D/g, '').includes(qd))) return true;
   return words.every((w) => hay.includes(w));
 }
 export function initials(name: string | null | undefined): string {

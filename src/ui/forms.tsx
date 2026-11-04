@@ -46,9 +46,17 @@ export interface InputProps extends InputBase {
   invalid?: boolean;
   onEnter?: () => void;
 }
+/** autoFocus only works on the first page load of an app like this one: focus the field when it appears */
+function useAutoFocus<T extends HTMLElement>(on: boolean | undefined) {
+  const ref = useRef<T>(null);
+  useEffect(() => { if (on) { const el = ref.current; if (el) requestAnimationFrame(() => el.focus({ preventScroll: true })); } }, []);
+  return ref;
+}
 export function Input({ value, onValue, invalid, onEnter, class: cls, ...rest }: InputProps) {
+  const ref = useAutoFocus<HTMLInputElement>(!!rest.autoFocus);
   return (
     <input
+      ref={ref}
       {...rest}
       class={`input ${cls || ''}`}
       value={value == null ? '' : String(value)}
@@ -67,7 +75,8 @@ export function InputWithButton(p: InputProps & { button: ComponentChildren }) {
 
 export interface TextareaProps extends Omit<JSX.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onInput' | 'rows'> { value: string | null | undefined; onValue: (v: string) => void; rows?: number }
 export function Textarea({ value, onValue, class: cls, rows = 3, ...rest }: TextareaProps) {
-  return <textarea {...rest} rows={rows} class={`textarea ${cls || ''}`} value={value ?? ''} onInput={(e) => onValue((e.currentTarget as HTMLTextAreaElement).value)} />;
+  const ref = useAutoFocus<HTMLTextAreaElement>(!!rest.autoFocus);
+  return <textarea ref={ref} {...rest} rows={rows} class={`textarea ${cls || ''}`} value={value ?? ''} onInput={(e) => onValue((e.currentTarget as HTMLTextAreaElement).value)} />;
 }
 
 export interface Option<V extends string = string> { value: V; label: ComponentChildren; disabled?: boolean; hint?: ComponentChildren }
@@ -118,12 +127,18 @@ export function PhoneInput(p: { value: string | null | undefined; onValue: (v: s
   );
 }
 
-export function SearchInput(p: { value: string; onValue: (v: string) => void; placeholder?: string; autoFocus?: boolean; id?: string; 'data-tour'?: string }) {
+export function SearchInput(p: {
+  value: string; onValue: (v: string) => void; placeholder?: string; autoFocus?: boolean; id?: string; 'data-tour'?: string; 'data-testid'?: string;
+  onKeyDown?: (e: KeyboardEvent) => void; 'aria-controls'?: string; 'aria-activedescendant'?: string; 'aria-expanded'?: boolean; role?: 'combobox' | 'searchbox';
+}) {
+  const ref = useAutoFocus<HTMLInputElement>(p.autoFocus);
   return (
     <span class="input-wrap search" data-tour={p['data-tour']}>
       <Search class="search-icon" aria-hidden="true" />
-      <input class="input" type="search" enterKeyHint="search" id={p.id} autoFocus={p.autoFocus} placeholder={p.placeholder ?? t('common.search')}
-        aria-label={p.placeholder ?? t('common.search')} value={p.value} onInput={(e) => p.onValue((e.currentTarget as HTMLInputElement).value)} />
+      <input ref={ref} class="input" type="search" enterKeyHint="search" id={p.id} autoFocus={p.autoFocus} placeholder={p.placeholder ?? t('common.search')}
+        aria-label={p.placeholder ?? t('common.search')} value={p.value} onInput={(e) => p.onValue((e.currentTarget as HTMLInputElement).value)}
+        onKeyDown={p.onKeyDown} role={p.role} aria-controls={p['aria-controls']} aria-activedescendant={p['aria-activedescendant']} aria-expanded={p['aria-expanded']}
+        data-testid={p['data-testid']} />
       {p.value && <button type="button" class="iconbtn" aria-label={t('common.close')} onClick={() => p.onValue('')}><X /></button>}
     </span>
   );
