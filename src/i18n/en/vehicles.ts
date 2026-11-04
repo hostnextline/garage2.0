@@ -111,6 +111,7 @@ export const vehicles: typeof fr = {
     which: 'Which engine?',
     whichText: 'Several engines are possible for this car. Look under the hood, then choose.',
     others: { one: 'Show 1 other engine', other: 'Show {n} other engines' },
+    noneOfThese: 'None of these engines: fill the sheet',
     otherEngine: 'It’s not this engine',
     oilShort: 'oil {oil}',
     toConfirm: 'To confirm',

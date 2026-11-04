@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitPasted, cityOf, oneLine, directionsUrl } from './address';
+import { splitPasted, cityOf, oneLine, directionsUrl, isCivicRange } from './address';
 import { vinFromCode, km, parseKm } from './vehicleText';
 
 describe('a pasted address', () => {
@@ -11,6 +11,12 @@ describe('a pasted address', () => {
   });
   it('joins an address pasted on two lines and finds the postal code', () => {
     expect(splitPasted('180-8255 av. Mountain Sights\nMontréal, QC  h4p 2b5\n')).toEqual({ line: '8255 av. Mountain Sights, Montréal, QC h4p 2b5', unit: '180', postal: 'H4P 2B5' });
+  });
+  it('a duplex with two door numbers is not a unit', () => {
+    expect(splitPasted('4521-4523 rue Fabre, Montréal')).toEqual({ line: '4521-4523 rue Fabre, Montréal', unit: null, postal: null });
+    expect(splitPasted('101-4521 rue Fabre')).toEqual({ line: '4521 rue Fabre', unit: '101', postal: null });
+    expect(isCivicRange('1250-1252 rue Graham')).toBe(true);
+    expect(isCivicRange('12-1250 rue Graham')).toBe(false);
   });
   it('an address without a unit stays as it is', () => {
     expect(splitPasted('1250 rue Graham, Mont-Royal')).toEqual({ line: '1250 rue Graham, Mont-Royal', unit: null, postal: null });

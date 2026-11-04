@@ -11,7 +11,7 @@ import { navigate } from '../../app/router';
 import { touch } from '../../app/media';
 import { useFocusOnMount } from './hooks';
 import { t, lang } from '../../lib/i18n';
-import { money, totals } from '../../lib/money';
+import { money } from '../../lib/money';
 import { e164 } from '../../lib/text';
 import { today, monthName } from '../../lib/dates';
 import { customer, customerName, jobsOfCustomer, invoicesList, invoiceNumber, quotesList, settings, vehicleLabel, vehicle } from '../../data/select';
@@ -21,6 +21,8 @@ import { net } from '../../data/sync';
 import type { Customer, Invoice, Quote, Vehicle } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Kv, Button, BigStep, Sheet, Switch, Banner, Empty, Skeleton, Pill, Money, InvoicePill, Form, ask, attempt, run, toast, whenHistorySettled, type Tone } from '../../ui';
 import { JobTicket } from '../jobs/JobTicket';
+import { quoteNumber } from '../invoices/select';
+import { quoteTotals } from '../quotes/logic';
 import { factsOf, owedOn, isUpcoming, jobOrder } from './facts';
 import { draftFromQuery } from './search';
 import { CustomerFields, emptyDraft, draftOf, customerPatch, checkDraft, hasErrors, changed, type Draft, type DraftErrors } from './CustomerFields';
@@ -47,6 +49,7 @@ function NewCustomer(p: { query: URLSearchParams }) {
   const [errors, setErrors] = useState<DraftErrors>({});
   const [tried, setTried] = useState(false);
   const busy = useRef(false);
+  const [saving, setSaving] = useState<'' | 'file' | 'book'>('');
   const set = (patch: Partial<Draft>) => { const n = { ...d, ...patch }; setD(n); if (tried) setErrors(checkDraft(n)); };
   useFocusOnMount(!touch.value, () => document.querySelector<HTMLInputElement>(d.first_name ? '.customers-new input[type=tel]' : '.customers-new [data-testid=cf-first]'));
   const save = async (thenBook: boolean) => {
@@ -56,24 +59,25 @@ function NewCustomer(p: { query: URLSearchParams }) {
     setErrors(e);
     if (hasErrors(e)) { document.querySelector<HTMLElement>('.customers-new [aria-invalid="true"]')?.focus(); return; }
     busy.current = true;
+    setSaving(thenBook ? 'book' : 'file');
     try {
       const id = await run(() => saveCustomer(customerPatch(d)), { ok: t('customers.file.created') });
       if (id) navigate(thenBook ? `/book?customer=${id}` : `/customer/${id}`, { replace: true });
-    } finally { busy.current = false; }
+    } finally { busy.current = false; setSaving(''); }
   };
   if (!may.newCustomer()) {
-    return <Page title={t('customers.form.newTitle')} back="/customers"><Panel><Empty title={t('customers.form.noRight')} text={t('common.notAllowed')} /></Panel></Page>;
+    return <Page class="customers-page" title={t('customers.form.newTitle')} back="/customers"><Panel><Empty title={t('customers.form.noRight')} text={t('common.notAllowed')} /></Panel></Page>;
   }
   return (
-    <Page title={t('customers.form.newTitle')} sub={t('customers.form.newSub')} back="/customers" data-testid="customer-new">
+    <Page class="customers-page" title={t('customers.form.newTitle')} sub={t('customers.form.newSub')} back="/customers" data-testid="customer-new">
       <Panel class="customers-new">
         <Form onSubmit={() => save(false)} class="stack-lg">
           {tried && hasErrors(errors) && <Banner kind="bad">{t('customers.form.fix')}</Banner>}
           <CustomerFields draft={d} set={set} errors={tried ? errors : {}}
             dupAction={(c) => <Button size="sm" href={`#/customer/${c.id}`} data-testid="dup-open">{t('customers.dup.open')}</Button>} />
           <div class="customers-actions">
-            <Button type="submit" variant="primary" icon={<UserPlus size={18} />} data-testid="customer-create">{t('customers.form.create')}</Button>
-            {may.book() && <Button icon={<CalendarPlus size={18} />} onClick={() => save(true)} data-testid="customer-create-book">{t('customers.form.createBook')}</Button>}
+            <Button type="submit" variant="primary" icon={<UserPlus size={18} />} busy={saving === 'file'} data-testid="customer-create">{t('customers.form.create')}</Button>
+            {may.book() && <Button icon={<CalendarPlus size={18} />} busy={saving === 'book'} onClick={() => save(true)} data-testid="customer-create-book">{t('customers.form.createBook')}</Button>}
           </div>
         </Form>
       </Panel>
@@ -89,7 +93,7 @@ function CustomerFile(p: { id: string }) {
   if (!c) {
     if (gone.current) return null;
     return (
-      <Page title={t('customers.title')} back="/customers">
+      <Page class="customers-page" title={t('customers.title')} back="/customers">
         {net.value.ready
           ? <Panel><Empty icon={<Users />} title={t('customers.file.notFound.title')} text={t('customers.file.notFound.text')} action={<Button variant="primary" href="#/customers">{t('customers.file.notFound.action')}</Button>} /></Panel>
           : <Panel><div aria-busy="true"><Skeleton h={22} lines={5} /></div></Panel>}
@@ -103,7 +107,7 @@ function CustomerFile(p: { id: string }) {
   const dir = directionsUrl(c);
   const upcoming = jobsOfCustomer(c.id).filter((j) => isUpcoming(j)).sort(jobOrder);
   return (
-    <Page title={name} back="/customers" data-testid="customer-file"
+    <Page class="customers-page" title={name} back="/customers" data-testid="customer-file"
       sub={<Flags c={c} owed={f.owed} noSms />}
       actions={canEdit && <Button icon={<Pencil size={18} />} onClick={() => setEditing(true)} data-testid="customer-edit">{t('common.edit')}</Button>}>
       <div class="customers-top">
@@ -278,9 +282,6 @@ function InvoicesPanel(p: { c: Customer }) {
 
 /* ---------- Estimations ---------- */
 const QUOTE_TONE: Record<Quote['status'], Tone> = { open: 'draft', sent: 'booked', accepted: 'ok', declined: 'cancelled', converted: 'paid' };
-export function quoteTotal(q: Quote): number {
-  return totals((q.items || []).map((i) => ({ qty: Number(i.qty) || 0, unitCents: (i.kind === 'discount' ? -1 : 1) * Math.abs(Number(i.unit_cents) || 0), taxable: i.taxable !== false })), settings.value.taxes).total;
-}
 function QuotesPanel(p: { c: Customer; canEdit: boolean }) {
   const list = quotesList.value.filter((q) => q.customer_id === p.c.id);
   if (!list.length && !may.quotes()) return null;
@@ -291,9 +292,9 @@ function QuotesPanel(p: { c: Customer; canEdit: boolean }) {
         ? <Rows>{list.map((q) => {
             const car = vehicle(q.vehicle_id);
             return (
-              <RowItem key={q.id} href={`#/quote/${q.id}`} chevron title={t('customers.quotes.number', { n: q.number })} data-testid="quote-row"
+              <RowItem key={q.id} href={`#/quote/${q.id}`} chevron title={quoteNumber(q) || t('customers.quotes.noNumber')} data-testid="quote-row"
                 sub={<span class="customers-line"><span>{stampDay(q.created_at)}</span>{(car || q.vehicle_text) && <Bit icon={<Car size={14} aria-hidden="true" />}>{car ? vehicleLabel(car) : q.vehicle_text}</Bit>}</span>}
-                end={<span class="customers-amount"><Money cents={quoteTotal(q)} /><Pill tone={QUOTE_TONE[q.status] || 'muted'}>{t(`customers.quotes.status.${q.status}`)}</Pill></span>} />
+                end={<span class="customers-amount"><Money cents={quoteTotals(q.items, settings.value.taxes).total} /><Pill tone={QUOTE_TONE[q.status] || 'muted'}>{t(`customers.quotes.status.${q.status}`)}</Pill></span>} />
             );
           })}</Rows>
         : <p class="customers-panel-empty muted">{t('customers.quotes.none')}</p>}

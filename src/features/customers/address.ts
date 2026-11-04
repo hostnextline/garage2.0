@@ -4,6 +4,16 @@ import { splitUnit, findPostal, postalCode } from '../../lib/text';
 
 export interface Pasted { line: string; unit: string | null; postal: string | null }
 
+/** « 4521-4523 rue Fabre » is one building with two door numbers (a duplex), not a unit and a door */
+export function isCivicRange(s: string): boolean {
+  const m = /^\s*(\d{3,6})\s*-\s*(\d{3,6})\b/.exec(s);
+  return !!m && m[1].length === m[2].length && Math.abs(Number(m[2]) - Number(m[1])) <= 20;
+}
+/** the unit kept apart (« 3-1250 rue Graham », « …, app. 3 »), but never inside a civic range */
+export function unitApart(s: string): { unit: string | null; line: string } {
+  return isCivicRange(s) ? { unit: null, line: s.trim() } : splitUnit(s);
+}
+
 /** a pasted address (often from a text or an e-mail, on two lines) → the street line, the unit, the postal code */
 export function splitPasted(input: string): Pasted {
   const one = String(input || '')
@@ -13,7 +23,7 @@ export function splitPasted(input: string): Pasted {
     .replace(/^[,\s]+|[,\s]+$/g, '')
     .trim();
   const postal = findPostal(one);
-  const { unit, line } = splitUnit(one);
+  const { unit, line } = unitApart(one);
   return { line, unit, postal };
 }
 

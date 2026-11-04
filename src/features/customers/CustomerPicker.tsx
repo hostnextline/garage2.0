@@ -7,7 +7,8 @@ import { Search, X, UserPlus, Phone, Car } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { customer, customerName } from '../../data/select';
 import { saveCustomer } from '../../data/api';
-import { Avatar, Button, Sheet, Banner, run } from '../../ui';
+import { Avatar, Button, Sheet, Banner, Skeleton, run } from '../../ui';
+import { net } from '../../data/sync';
 import { factsOf, searchIndex, recentFirst } from './facts';
 import { useSettled, useFocusOnMount } from './hooks';
 import { searchList, draftFromQuery } from './search';
@@ -39,7 +40,7 @@ function Picked(p: { id: string; onChange: () => void }) {
   if (!c) {
     return (
       <div class="customers-picked" data-testid="customer-picked">
-        <span class="grow muted">{t('customers.picker.missing')}</span>
+        {net.value.ready ? <span class="grow muted">{t('customers.picker.missing')}</span> : <span class="grow" aria-busy="true"><Skeleton h={18} lines={2} /></span>}
         <Button size="sm" onClick={p.onChange}>{t('customers.picker.change')}</Button>
       </div>
     );
@@ -81,8 +82,12 @@ function PickerSearch(p: CustomerPickerProps) {
     else if (e.key === 'ArrowUp' && shown.length) { e.preventDefault(); setActive((a) => (a - 1 + shown.length) % shown.length); }
     else if (e.key === 'Enter') {
       e.preventDefault();
-      if (shown[active]) pick(shown[active].id);
-      else if (typed && p.allowCreate) setCreating(draftFromQuery(typed));
+      // the very long list searches a moment after the keys: Entrée uses what is typed now
+      const now = q.trim();
+      const list = now === typed ? shown : searchList(all, now, (c) => index.get(c.id)).slice(0, now ? SHOWN : RECENT);
+      const choice = now === typed ? list[active] : list[0];
+      if (choice) pick(choice.id);
+      else if (now && p.allowCreate) setCreating(draftFromQuery(now));
     } else if (e.key === 'Escape' && q) { e.preventDefault(); e.stopPropagation(); setQ(''); }
   };
   const optId = (i: number) => `${base}-o${i}`;

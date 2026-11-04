@@ -42,7 +42,7 @@ export function SpecPanel(p: { v: Vehicle; canEdit: boolean }) {
   const [chosen, setChosen] = useState<EngineRow | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [others, setOthers] = useState(false);
-  const [editing, setEditing] = useState<{ engine: string; data: SpecData; row: EngineRow | null } | null>(null);
+  const [editing, setEditing] = useState<{ engine: string; data: SpecData; row: EngineRow | null; key?: string } | null>(null);
   const ref = engineRef.value;
   useEffect(() => { if (!spec) void ensureEngineRef(); }, [!!spec]);
   const known = !!(v.year && v.make && v.model);
@@ -50,8 +50,9 @@ export function SpecPanel(p: { v: Vehicle; canEdit: boolean }) {
   const pick = chosen || (!choosing && m.best.length === 1 ? m.best[0] : null);
 
   /** confirms a sheet for this engine and links the car to it */
-  const confirm = (data: SpecData, engine: string, row: EngineRow | null) => attempt(async () => {
-    const key = specKeyOf({ ...v, displacement: v.displacement || row?.displacement || null });
+  const confirm = (data: SpecData, engine: string, row: EngineRow | null, sheetKey?: string) => attempt(async () => {
+    // a sheet already confirmed keeps its key; a new one is keyed by this car's engine
+    const key = sheetKey || specKeyOf({ ...v, displacement: v.displacement || row?.displacement || null });
     if (!key) throw new Error(t('vehicles.spec.needCar'));
     const existing = specByKey(key);
     await saveSpec({ ...(existing ? { id: existing.id } : {}), key, year: v.year, make: v.make, model: v.model, engine: engine || null, data, confirmed_by: me.value?.id ?? null });
@@ -68,7 +69,7 @@ export function SpecPanel(p: { v: Vehicle; canEdit: boolean }) {
     body = (
       <div class="stack">
         <ConfirmedSpec spec={spec} shared={!linked} />
-        {p.canEdit && <Button icon={<Pencil size={18} />} class="customers-self-start" onClick={() => setEditing({ engine: spec.engine || '', data: { ...spec.data }, row: null })} data-testid="spec-edit">{t('vehicles.spec.edit')}</Button>}
+        {p.canEdit && <Button icon={<Pencil size={18} />} class="customers-self-start" onClick={() => setEditing({ engine: spec.engine || '', data: { ...spec.data }, row: null, key: spec.key })} data-testid="spec-edit">{t('vehicles.spec.edit')}</Button>}
       </div>
     );
   } else if (!known) {
@@ -93,6 +94,7 @@ export function SpecPanel(p: { v: Vehicle; canEdit: boolean }) {
         <p class="muted small" style={{ margin: 0 }}>{t('vehicles.spec.whichText')}</p>
         <EngineChoices rows={list} onPick={setChosen} />
         {!others && m.others.length > 0 && <Button variant="ghost" class="customers-self-start" onClick={() => setOthers(true)}>{t('vehicles.spec.others', { n: m.others.length })}</Button>}
+        {p.canEdit && <Button variant="ghost" icon={<Wrench size={18} />} class="customers-self-start" onClick={() => setEditing({ engine: v.engine || '', data: {}, row: null })} data-testid="spec-none-of-these">{t('vehicles.spec.noneOfThese')}</Button>}
       </div>
     );
   } else {
@@ -118,7 +120,7 @@ export function SpecPanel(p: { v: Vehicle; canEdit: boolean }) {
       {body}
       {editing && (
         <SpecSheet initial={editing} onClose={() => setEditing(null)}
-          onSave={async (engine, data) => { if (await confirm(data, engine, editing.row)) { setEditing(null); setChosen(null); setChoosing(false); } }} />
+          onSave={async (engine, data) => { if (await confirm(data, engine, editing.row, editing.key)) { setEditing(null); setChosen(null); setChoosing(false); } }} />
       )}
     </Panel>
   );

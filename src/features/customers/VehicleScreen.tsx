@@ -3,7 +3,7 @@
    the barcode with the camera where the phone can. */
 import type { ComponentChildren } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
-import { Pencil, ScanLine, Trash2, Car } from 'lucide-preact';
+import { Pencil, ScanLine, Trash2, Car, UserRound } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { isField } from '../../app/routes';
 import { navigate } from '../../app/router';
@@ -40,7 +40,7 @@ export default function VehicleScreen({ params }: ScreenProps) {
   if (!v) {
     if (gone.current) return null;
     return (
-      <Page title={t('vehicles.title')} back="/customers">
+      <Page class="customers-page" title={t('vehicles.title')} back="/customers">
         {net.value.ready
           ? <Panel><Empty icon={<Car />} title={t('vehicles.screen.notFound.title')} text={t('vehicles.screen.notFound.text')} action={<Button variant="primary" href="#/customers">{t('vehicles.screen.notFound.action')}</Button>} /></Panel>
           : <Panel><div aria-busy="true"><Skeleton h={22} lines={5} /></div></Panel>}
@@ -73,8 +73,8 @@ export default function VehicleScreen({ params }: ScreenProps) {
     await attempt(() => saveVehicle({ id: v.id, vin, ...fill }), { ok: r.ok ? t('vehicles.scan.savedFilled') : t('vehicles.scan.saved') });
   };
   return (
-    <Page title={carName(v)} back={owner ? `/customer/${owner.id}` : '/customers'} data-testid="vehicle-screen"
-      sub={<span class="customers-line">{owner && <a class="customers-link" href={`#/customer/${owner.id}`}>{customerName(owner)}</a>}<Plate plate={v.plate} /></span>}
+    <Page class="customers-page" title={carName(v)} back={owner ? `/customer/${owner.id}` : '/customers'} data-testid="vehicle-screen"
+      sub={<span class="customers-line">{owner && <a class="customers-link customers-owner" href={`#/customer/${owner.id}`}><UserRound size={16} aria-hidden="true" />{customerName(owner)}</a>}<Plate plate={v.plate} /></span>}
       actions={canEdit && <Button icon={<Pencil size={18} />} onClick={() => setEditing(true)} data-testid="vehicle-edit">{t('common.edit')}</Button>}>
       <div class="customers-file">
         <div class="customers-side">

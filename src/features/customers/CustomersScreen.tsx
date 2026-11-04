@@ -52,7 +52,11 @@ export default function CustomersScreen({ query }: ScreenProps) {
   const ready = net.value.ready;
   const shown = list.slice(0, limit);
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && typed && list[0]) { e.preventDefault(); navigate(`/customer/${list[0].id}`); }
+    if (e.key !== 'Enter') return;
+    // the very long list searches a moment after the keys: Entrée uses what is typed now
+    const now = q.trim();
+    const first = now === typed ? list[0] : searchList(ordered, now, (c) => index.get(c.id), undefined, sort === 'recent')[0];
+    if (now && first) { e.preventDefault(); navigate(`/customer/${first.id}`); }
   };
   const create = (txt: string) => {
     const d = draftFromQuery(txt);
@@ -95,7 +99,7 @@ export default function CustomersScreen({ query }: ScreenProps) {
   }
 
   return (
-    <Page title={t('customers.title')} data-testid="customers-screen"
+    <Page class="customers-page" title={t('customers.title')} data-testid="customers-screen"
       sub={all.length ? (typed ? t('customers.found', { n: list.length }) : t('customers.count', { n: all.length })) : undefined}
       actions={may.newCustomer() && all.length > 0 && <Button variant="primary" icon={<UserPlus size={18} />} href="#/customer/new" data-testid="new-customer">{t('customers.newCustomer')}</Button>}>
       {all.length > 0 && <div class="customers-tools">

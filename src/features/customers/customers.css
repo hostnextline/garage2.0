@@ -1,5 +1,12 @@
 /* Clients and vehicles (and the shared pickers / address field). Tokens only: every theme works. */
 
+/* ---------- my screens: the back button keeps its size beside a long name, the « ? » is easy to touch ---------- */
+.customers-page .page-back { flex: none; }
+.customers-page .help { position: relative; }
+.customers-page .help::after { content: ''; position: absolute; inset: -13px; }
+.customers-owner { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.customers-owner svg { flex: none; color: var(--ink-3); }
+
 /* ---------- small pieces ---------- */
 .customers-flags { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; vertical-align: middle; }
 .customers-flags .pill { height: 24px; }
@@ -24,7 +31,7 @@
 .customers-hint > svg { flex: none; }
 .customers-hint.is-ok { color: var(--ok); }
 .customers-hint.is-warn { color: var(--warn); }
-.customers-hint .btn { min-height: 40px; }
+.customers-hint .btn { min-height: 44px; }
 
 /* ---------- the list ---------- */
 .customers-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }

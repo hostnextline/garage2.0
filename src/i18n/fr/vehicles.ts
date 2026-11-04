@@ -111,6 +111,7 @@ export const vehicles = {
     which: 'Quel moteur ?',
     whichText: 'Plusieurs moteurs sont possibles pour cette auto. Regarde sous le capot, puis choisis.',
     others: { one: 'Voir 1 autre moteur', other: 'Voir {n} autres moteurs' },
+    noneOfThese: 'Aucun de ces moteurs : remplir la fiche',
     otherEngine: 'Ce n’est pas ce moteur',
     oilShort: 'huile {oil}',
     toConfirm: 'À confirmer',

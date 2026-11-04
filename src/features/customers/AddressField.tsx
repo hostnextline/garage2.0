@@ -5,10 +5,10 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { MapPin, CircleCheck, Search, X, CloudOff } from 'lucide-preact';
 import { t } from '../../lib/i18n';
-import { findPostal, postalCode, splitUnit, civicNumber } from '../../lib/text';
+import { findPostal, postalCode, civicNumber } from '../../lib/text';
 import { Spinner } from '../../ui';
 import { photonUrl, photonQuery, suggestionsOf, type Suggestion } from './photon';
-import { splitPasted, cityOf } from './address';
+import { splitPasted, cityOf, unitApart } from './address';
 import { useFocusOnMount } from './hooks';
 import './customers.css';
 
@@ -99,6 +99,14 @@ export function AddressField(p: AddressFieldProps) {
     const tm = setTimeout(() => void search(text), 300);
     return () => clearTimeout(tm);
   }, [v.address]);
+  // suggestions opened by « Chercher » close when the person taps elsewhere
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', away, true);
+    return () => document.removeEventListener('pointerdown', away, true);
+  }, [open]);
   // the signal is back while the person is in the field: search again
   useEffect(() => {
     const on = () => { if (state === 'offline' && v.address.trim() && v.lat == null) void search(v.address, focused); };
@@ -145,7 +153,7 @@ export function AddressField(p: AddressFieldProps) {
     // « 3-1250 rue Graham » typed by hand: the unit goes to its own field
     const cur = vRef.current;
     if (!cur.unit && cur.address) {
-      const s = splitUnit(cur.address);
+      const s = unitApart(cur.address);
       if (s.unit) emit({ address: s.line, unit: s.unit });
     }
   };
@@ -188,7 +196,7 @@ export function AddressField(p: AddressFieldProps) {
 
   const optId = (i: number) => `${base}-o${i}`;
   return (
-    <div class="customers-address" data-testid={p['data-testid'] || 'address-field'}>
+    <div ref={box} class="customers-address" data-testid={p['data-testid'] || 'address-field'}>
       <div class="field">
         <label class="field-label" for={id}>{p.label || t('customers.address.label')}</label>
         <span class="input-wrap">

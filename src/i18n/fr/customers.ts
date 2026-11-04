@@ -158,7 +158,7 @@ export const customers = {
     title: 'Estimations',
     none: 'Aucune estimation.',
     new: 'Nouvelle',
-    number: 'Estimation n° {n}',
+    noNumber: 'Sans numéro',
     status: { open: 'Ouverte', sent: 'Envoyée', accepted: 'Acceptée', declined: 'Refusée', converted: 'Réservée' }
   },
   notes: {

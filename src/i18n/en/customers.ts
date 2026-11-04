@@ -158,7 +158,7 @@ export const customers: typeof fr = {
     title: 'Estimates',
     none: 'No estimates.',
     new: 'New',
-    number: 'Estimate no. {n}',
+    noNumber: 'No number',
     status: { open: 'Open', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', converted: 'Booked' }
   },
   notes: {
