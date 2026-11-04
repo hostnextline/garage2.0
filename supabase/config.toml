@@ -14,3 +14,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.vin]
 verify_jwt = false
+[functions.backup]
+verify_jwt = false

@@ -2,9 +2,21 @@
 // and keep a log of every call (GET /log, POST /log/clear) so the tests can check what would have been sent.
 // GET /control?ghl=fail makes GoHighLevel refuse the next messages; ?ghl=ok puts it back.
 import http from 'node:http';
-import { createHmac } from 'node:crypto';
+import { createHmac, generateKeyPairSync, createSign } from 'node:crypto';
 
 const log = [];
+// GitHub's OIDC tickets (backups): a key pair made at start; /github/jwks gives the public key like GitHub does,
+// /github/token?repository=…&aud=… gives a ticket signed like GitHub's (the tests ask for good and bad ones)
+const gh = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const ghJwk = { ...gh.publicKey.export({ format: 'jwk' }), kid: 'test-kid', use: 'sig', alg: 'RS256' };
+const b64u = (b) => Buffer.from(b).toString('base64url');
+function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'garage2.0-backup', exp = 300, iss = 'https://token.actions.githubusercontent.com', kid = 'test-kid' } = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const head = b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid }));
+  const body = b64u(JSON.stringify({ iss, aud, repository, sub: `repo:${repository}:ref:refs/heads/main`, iat: now, nbf: now - 5, exp: now + Number(exp) }));
+  const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
+  return `${head}.${body}.${sig}`;
+}
 const state = { ghl: 'ok', sessions: new Map(), hook: null, n: 0 };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
@@ -71,6 +83,10 @@ http.createServer(async (req, res) => {
     if (u.searchParams.get('twice')) await stripeHook(s);
     return send(res, 200, { ok: true, hook: h?.status });
   }
+
+  // ---- GitHub OIDC ----
+  if (p === '/github/jwks') return send(res, 200, { keys: [ghJwk] });
+  if (p === '/github/token') return send(res, 200, { value: ghToken(Object.fromEntries(u.searchParams)) });
 
   // ---- OSRM ----
   if (p.startsWith('/osrm/route/v1/driving/')) {

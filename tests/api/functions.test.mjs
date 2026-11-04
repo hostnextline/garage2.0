@@ -194,3 +194,62 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   await q(`delete from public.positions where id = $1`, [mech]);
   await q(`delete from public.position_log where staff_id = $1`, [mech]);
 });
+
+test('« Mot de passe oublié »: same answer for everyone; a link only to the address on file; at most 3 an hour', async () => {
+  const email = `adam-${randomUUID().slice(0, 6)}@test.local`;
+  const id = await adminUser(email, 'ancien-mdp-1');
+  await q(`insert into public.staff (id, full_name, roles, email, phone) values ($1, 'Adam Mécano', '{mechanic}', $2, '514 555-0102')`, [id, email]);
+  const before = Number((await q(`select count(*) n from public.invitations where email = $1`, [email]))[0].n);
+  const unknown = await fn('team', { action: 'forgot', email: 'personne@nulle.part', base: BASE });
+  const known = await fn('team', { action: 'forgot', email, base: BASE });
+  assert.deepEqual([unknown.ok, known.ok], [true, true], 'the same answer: nobody learns who has an account');
+  assert.equal(Number((await q(`select count(*) n from public.invitations where email = $1 and kind = 'reset'`, [email]))[0].n), before + 1);
+  for (let i = 0; i < 4; i++) await fn('team', { action: 'forgot', email, base: BASE });
+  assert.equal(Number((await q(`select count(*) n from public.invitations where email = $1 and kind = 'reset'`, [email]))[0].n), 3, 'no more than 3 links an hour');
+  // the latest link works: new password, old one refused
+  await q(`update public.invitations set token_hash = encode(extensions.digest('lien-de-test-mot-de-passe-0001', 'sha256'), 'hex') where id = (select id from public.invitations where email = $1 and used_at is null order by created_at desc limit 1)`, [email]);
+  const ok = await fn('team', { action: 'invite-accept', token: 'lien-de-test-mot-de-passe-0001', password: 'nouveau-mdp-2' });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.ok((await signIn(email, 'nouveau-mdp-2')).access_token);
+  assert.ok(!(await signIn(email, 'ancien-mdp-1')).access_token);
+  await q(`delete from public.invitations where email = $1`, [email]);
+});
+
+test('backups: only with a GitHub ticket of the backup repository; every row, page by page; never the service keys', async () => {
+  const ticket = async (o = {}) => (await (await fetch(`${MOCK}/github/token?${new URLSearchParams(o)}`)).json()).value;
+  const call = async (body, t) => {
+    const r = await fetch(`${API}/functions/v1/backup`, { method: 'POST', headers: { apikey: K.anon, 'x-github-oidc': t || '', 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: r.status, ...(await r.json()) };
+  };
+  // refused: no ticket, another repository, another audience, an expired ticket, a forged signature
+  assert.equal((await call({ action: 'tables' })).status, 401);
+  assert.equal((await call({ action: 'tables' }, await ticket({ repository: 'quelquun/autre' }))).status, 403);
+  assert.equal((await call({ action: 'tables' }, await ticket({ aud: 'autre-chose' }))).status, 401);
+  assert.equal((await call({ action: 'tables' }, await ticket({ exp: -120 }))).status, 401);
+  const good = await ticket();
+  const forged = good.slice(0, good.lastIndexOf('.') + 1) + Buffer.from('faux').toString('base64url');
+  assert.equal((await call({ action: 'tables' }, forged)).status, 401);
+  // a key of an outside service is set: it must never come out
+  await q(`insert into public.secrets (key, value) values ('stripe_key', 'sk_test_ne_doit_pas_sortir') on conflict (key) do update set value = excluded.value`);
+  // 1 205 customers: more than one page
+  const ids = (await q(`insert into public.customers (first_name, last_name, phone) select 'Client', 'Sauvegarde ' || g, '514555' || lpad(g::text, 4, '0') from generate_series(1, 1205) g returning id`)).map((r) => r.id);
+  made.customers.push(...ids);
+  const list = await call({ action: 'tables' }, good);
+  assert.equal(list.ok, true, JSON.stringify(list));
+  const names = list.tables.map((t) => t.name);
+  assert.ok(names.includes('customers') && names.includes('invoices') && names.includes('attachments'));
+  assert.ok(!names.includes('secrets'), 'the service keys are not in the backup');
+  let rows = [], from = 0;
+  for (;;) {
+    const page = await call({ action: 'rows', table: 'customers', from }, good);
+    assert.equal(page.ok, true, JSON.stringify(page).slice(0, 200));
+    rows = rows.concat(page.rows);
+    if (page.next == null) break;
+    from = page.next;
+  }
+  assert.equal(rows.length, list.tables.find((t) => t.name === 'customers').count);
+  assert.ok(rows.length >= 1205);
+  assert.equal(new Set(rows.map((r) => r.id)).size, rows.length, 'no row twice');
+  assert.equal((await call({ action: 'rows', table: 'secrets' }, good)).code, 'table');
+  await q(`delete from public.secrets`);
+});
