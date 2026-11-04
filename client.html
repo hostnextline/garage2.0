@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr-CA" data-theme="his">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Mécanique Mobile H.I.S</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/png" href="./icons/favicon-64.png" />
+    <script>
+      try { document.documentElement.dataset.mode = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="client"></div>
+    <script type="module" src="/src/client/main.tsx"></script>
+  </body>
+</html>

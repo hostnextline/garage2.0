@@ -16,7 +16,7 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["vite/client", "vite-plugin-pwa/preact", "vite-plugin-pwa/info"],
+    "types": ["vite/client", "vite-plugin-pwa/client", "vite-plugin-pwa/info"],
     "baseUrl": ".",
     "paths": {
       "react": ["./node_modules/preact/compat/"],

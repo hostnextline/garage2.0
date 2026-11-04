@@ -116,6 +116,30 @@ export const handler = serve(async (req) => {
     }
   }
 
+  /* ---------- « Mot de passe oublié » (no account needed). The answer is the same whether or not the address has an
+     account; the link goes only to the e-mail (or phone) already on the person's file, at most 3 times an hour. ---------- */
+  if (action === 'forgot') {
+    const email = String(b.email || '').trim().toLowerCase();
+    if (EMAIL_RE.test(email)) {
+      const { data: s } = await db.from('staff').select('*').eq('email', email).eq('active', true).is('deleted_at', null).maybeSingle();
+      const p = s as Record<string, any> | null;
+      if (p) {
+        const { count } = await db.from('invitations').select('id', { count: 'exact', head: true }).eq('email', email).eq('kind', 'reset')
+          .gte('created_at', new Date(Date.now() - 3600 * 1000).toISOString());
+        if ((count || 0) < 3) {
+          const inv = await makeInvite(p.id, { email, full_name: p.full_name, roles: p.roles, lang: p.lang, kind: 'reset', user_id: p.id });
+          const link = inviteLink(baseOf(b.base), inv.token, p.lang);
+          const person = { name: p.full_name, email, phone: p.phone, lang: p.lang };
+          try {
+            const d = await deliver('email', person, link, true);
+            if ((d as { status?: string }).status !== 'sent' && p.phone) await deliver('sms', person, link, true);
+          } catch { /* nothing more to do: the owner can send a link from Équipe */ }
+        }
+      }
+    }
+    return json({ ok: true });
+  }
+
   /* ---------- signed in ---------- */
   const c = await caller(req);
 

@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,png,svg,woff2,webmanifest,json}'],
         globIgnores: ['**/client.html', '**/assets/client-*.js', '**/assets/client-*.css'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/client\.html/],

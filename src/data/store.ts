@@ -25,12 +25,14 @@ export function upsertLocal(t: TableName, rows: Row[], opts: { force?: boolean }
   const s = maps[t];
   const next = new Map(s.value);
   for (const r of rows) {
-    if (!r || !r.id) continue;
-    if (r.deleted_at) { next.delete(r.id); removed.push(r.id); continue; }
-    const cur = next.get(r.id);
+    if (!r || r.id == null) continue;
+    const key = String(r.id);
+    if (r.deleted_at) { next.delete(key); removed.push(key); continue; }
+    const cur = next.get(key);
     if (!opts.force && cur && cur.updated_at && r.updated_at && Date.parse(String(r.updated_at)) < Date.parse(String(cur.updated_at))) continue;
-    next.set(r.id, r);
-    put.push(r);
+    const row = { ...r, id: key } as Row;
+    next.set(key, row);
+    put.push(row);
   }
   s.value = next;
   return { put, removed };
@@ -54,7 +56,7 @@ export function removeLocal(t: TableName, ids: string[]) {
   s.value = next;
 }
 export function replaceLocal(t: TableName, rows: Row[]) {
-  maps[t].value = new Map(rows.filter((r) => r && r.id && !r.deleted_at).map((r) => [r.id, r]));
+  maps[t].value = new Map(rows.filter((r) => r && r.id != null && !r.deleted_at).map((r) => [String(r.id), { ...r, id: String(r.id) } as Row]));
 }
 export function clearAll() {
   batch(() => { for (const t of SYNCED) maps[t].value = new Map(); });

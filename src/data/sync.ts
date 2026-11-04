@@ -38,12 +38,14 @@ const pulling = new Map<string, Promise<void>>();
 const listeners = new Set<(t: TableName, rows: Row[]) => void>();
 
 export const REQUEST_TIMEOUT = 15000;
+/** realtime can be switched off (the demo has no realtime server) */
+export const syncOptions = { realtime: REALTIME };
 const PAGE = 1000;
 
 export function onRemoteChange(fn: (t: TableName, rows: Row[]) => void) { listeners.add(fn); return () => listeners.delete(fn); }
 
 export function uuid(): string {
-  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  if (typeof globalThis.crypto?.randomUUID === 'function') return crypto.randomUUID();
   const b = crypto.getRandomValues(new Uint8Array(16));
   b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
   const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -62,6 +64,8 @@ export function isNetworkError(e: unknown): boolean {
   const err = e as { code?: string; status?: number; message?: string; name?: string } | null;
   if (!err) return false;
   if (err.code === 'timeout') return true;
+  // the database asked to try again (two changes at the same instant): not a refusal
+  if (err.code === '40P01' || err.code === '40001' || err.code === '55P03') return true;
   if (typeof err.status === 'number' && (err.status === 0 || err.status === 408 || err.status === 429 || err.status >= 500)) return true;
   const m = String(err.message || err.name || '');
   return /Failed to fetch|NetworkError|Load failed|network|fetch failed|ECONN|ETIMEDOUT|aborted|AbortError/i.test(m) && !/permission|policy|violates/i.test(m);
@@ -85,7 +89,7 @@ export async function startSync(client: SupabaseClient, userId: string) {
   await refreshOutboxState();
   setNet({ storageBroken: storageBroken() });
   // 2. live changes, then what changed while away
-  if (REALTIME) subscribe();
+  if (syncOptions.realtime) subscribe();
   pullAll().finally(() => setNet({ ready: true }));
   void flush();
   timers.push(setInterval(() => { if (!net.value.realtime || Date.now() % 180000 < 45000) void pullAll(); }, 45000));
@@ -203,11 +207,11 @@ async function refreshOutboxState() {
 export interface MutateOpts { label?: string }
 
 /** new row: on screen at once, sent when possible. Returns the row as shown. */
-export async function insertRow(t: TableName, values: Record<string, unknown>, opts: MutateOpts = {}): Promise<Row> {
+const isSynced = (t: string): t is TableName => (SYNCED as readonly string[]).includes(t);
+export async function insertRow(t: TableName | 'attachments', values: Record<string, unknown>, opts: MutateOpts = {}): Promise<Row> {
   const id = String(values.id || uuid());
   const row = { ...values, id } as Row;
-  upsertLocal(t, [row], { force: true });
-  await writeRows(uid, t, [row]);
+  if (isSynced(t)) { upsertLocal(t, [row], { force: true }); await writeRows(uid, t, [row]); }
   await queue({ op: uuid(), kind: 'insert', table: t, id, values: row, label: opts.label, at: new Date().toISOString(), tries: 0, state: 'pending' });
   return row;
 }
@@ -231,14 +235,15 @@ export function deleteRow(t: TableName, id: string, opts: MutateOpts = {}) {
   return updateRow(t, id, { deleted_at: new Date().toISOString() }, opts);
 }
 /** a server operation (booking, invoice number, payment…). Waits for the answer when online; queued when not. */
-export async function callRpc<T = unknown>(name: string, args: Record<string, unknown>, opts: MutateOpts & { queue?: boolean } = {}): Promise<{ queued: boolean; data?: T }> {
+export async function callRpc<T = unknown>(name: string, args: Record<string, unknown>, opts: MutateOpts & { queue?: boolean; noOp?: boolean } = {}): Promise<{ queued: boolean; data?: T }> {
   const op = String(args.p_op || uuid());
-  const fullArgs = { ...args, p_op: op };
-  if (opts.queue === false) {
+  const fullArgs = opts.noOp ? { ...args } : { ...args, p_op: op };
+  if (opts.queue === false || opts.noOp) {
     if (!sb) throw new Error('not started');
     const { data, error } = await withTimeout(sb.rpc(name, fullArgs));
     if (error) { if (isNetworkError(error)) setNet({ online: false }); throw error; }
     setNet({ online: true });
+    applyRpcResult(data);
     return { queued: false, data: data as T };
   }
   const entry: OutboxEntry = { op, kind: 'rpc', rpc: name, args: fullArgs, label: opts.label, at: new Date().toISOString(), tries: 0, state: 'pending' };
@@ -293,17 +298,17 @@ async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
   try {
     let data: unknown;
     if (e.kind === 'insert') {
-      const r = await withTimeout(client.from(e.table!).upsert(e.values!, { onConflict: 'id', ignoreDuplicates: true }).select('*'));
+      const r = await withTimeout(client.from(e.table!).upsert(e.values!, { onConflict: 'id', ignoreDuplicates: true }).select(isSynced(e.table!) ? '*' : 'id'));
       if (r.error) throw r.error;
       let row = (r.data as Row[] | null)?.[0];
       if (!row) {
         // it was already there (an answer got lost): take the server's copy
-        const g = await withTimeout(client.from(e.table!).select('*').eq('id', e.id!).maybeSingle());
+        const g = await withTimeout(client.from(e.table!).select(isSynced(e.table!) ? '*' : 'id').eq('id', e.id!).maybeSingle());
         if (g.error) throw g.error;
         row = g.data as Row | undefined;
         if (!row) throw Object.assign(new Error('Ligne refusée par le serveur'), { code: '42501' });
       }
-      applyServerRows(e.table as TableName, [row], true);
+      if (isSynced(e.table!)) applyServerRows(e.table as TableName, [row], true);
       data = row;
     } else if (e.kind === 'update') {
       const r = await withTimeout(client.from(e.table!).update(e.values!).eq('id', e.id!).select('*'));
@@ -341,7 +346,7 @@ async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
     await outboxPut(uid, e);
     waiters.get(e.op)?.reject(err);
     waiters.delete(e.op);
-    if (e.table && e.id) await refetch(e.table as TableName, e.id);
+    if (e.table && e.id && isSynced(e.table)) await refetch(e.table, e.id);
     return 'failed';
   }
 }
@@ -376,3 +381,7 @@ export async function fresh<T extends Row>(t: TableName, id: string): Promise<T 
   return getRow<T>(t, id);
 }
 export { replaceAll };
+/** the changes waiting on this device (and the refused ones), oldest first */
+export async function outboxList(): Promise<OutboxEntry[]> { return uid ? outboxAll(uid) : []; }
+/** who this device's copy belongs to (empty before sign-in) */
+export function currentUid(): string { return uid; }
