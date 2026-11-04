@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+# local test copy of Supabase (programs, database, keys made up for the tests)
+tests/stack/gotrue/
+tests/stack/postgrest
+tests/stack/run/
+tests/stack/keys.json
+tests/stack/node_modules/
+tests/out/
+.env
+.env.*

@@ -1,0 +1,178 @@
+/* Mécanique Mobile H.I.S — design tokens.
+   <html data-theme="his|platine|or|emeraude|saphir|bordeaux" data-mode="light|dark" data-glass="on|off">
+   The H.I.S theme follows the phone (light/dark) unless the person picks one; the luxury themes have a fixed mode. */
+
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Archivo';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-italic.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --font: 'Archivo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* type scale (px): 13 15 17 20 26 34 44 */
+  --t-xs: 0.8125rem; --t-sm: 0.9375rem; --t-md: 1.0625rem; --t-lg: 1.25rem; --t-xl: 1.625rem; --t-2xl: 2.125rem; --t-3xl: 2.75rem;
+  --lh-tight: 1.15; --lh: 1.45; --lh-loose: 1.6;
+  --w-title: 125%; --w-num: 108%; --w-text: 100%; --w-data: 88%;
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 22px; --r-pill: 999px;
+  --tap: 48px;
+  --sidebar: 248px;
+  --content: 1180px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --dur: 180ms;
+
+  /* status (same names everywhere; never colour alone) */
+  --st-booked: #2F6FD0; --st-route: #B86E00; --st-site: #7347D1; --st-done: #1F8A53; --st-paid: #157347; --st-cancel: #66707B; --st-noshow: #A8231B;
+}
+
+/* ===== H.I.S — light (the shop in daylight) ===== */
+:root, [data-theme='his'][data-mode='light'] {
+  color-scheme: light;
+  --bg: #E7EAEE;
+  --bg-glow-1: rgba(230, 8, 15, 0.10);
+  --bg-glow-2: rgba(255, 255, 255, 0.95);
+  --bg-glow-3: rgba(141, 147, 154, 0.22);
+  --glass: rgba(255, 255, 255, 0.64);
+  --glass-strong: rgba(255, 255, 255, 0.84);
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass-line: rgba(16, 20, 24, 0.09);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -12px rgba(16, 20, 24, 0.22);
+  --solid: #FFFFFF;
+  --sunken: rgba(16, 20, 24, 0.05);
+  --ink: #101418;
+  --ink-2: #48515A;
+  --ink-3: #6B747D;
+  --line: rgba(16, 20, 24, 0.12);
+  --accent: #D3000E;
+  --accent-ink: #B0000B;
+  --accent-soft: rgba(211, 0, 14, 0.09);
+  --on-accent: #FFFFFF;
+  --chrome-1: #FBFCFD; --chrome-2: #C9CDD2; --chrome-3: #8D939A; --chrome-4: #E4E7EA;
+  --focus: #1F5FD1;
+  --ok: #1F8A53; --warn: #9A5B00; --bad: #B3261E;
+}
+
+/* ===== H.I.S — dark (the logo: black, chrome, signal red) ===== */
+[data-theme='his'][data-mode='dark'], [data-mode='dark'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-glow-1: rgba(230, 8, 15, 0.26);
+  --bg-glow-2: rgba(190, 192, 196, 0.10);
+  --bg-glow-3: rgba(230, 8, 15, 0.08);
+  --glass: rgba(24, 26, 30, 0.58);
+  --glass-strong: rgba(28, 31, 35, 0.86);
+  --glass-edge: rgba(255, 255, 255, 0.13);
+  --glass-line: rgba(255, 255, 255, 0.07);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+  --solid: #15181B;
+  --sunken: rgba(255, 255, 255, 0.05);
+  --ink: #F2F3F5;
+  --ink-2: #B3BAC1;
+  --ink-3: #8C939B;
+  --line: rgba(255, 255, 255, 0.11);
+  --accent: #FF2E36;
+  --accent-ink: #FF6268;
+  --accent-soft: rgba(255, 46, 54, 0.14);
+  --on-accent: #FFFFFF;
+  --chrome-1: #FAFBFC; --chrome-2: #C4C8CD; --chrome-3: #8D939A; --chrome-4: #E3E6E9;
+  --focus: #7FB0FF;
+  --ok: #4FD992; --warn: #FFB547; --bad: #FF8A80;
+  --st-booked: #7FB0FF; --st-route: #FFB547; --st-site: #B79BFF; --st-done: #4FD992; --st-paid: #4FD992; --st-cancel: #9AA3AD; --st-noshow: #FF8A80;
+}
+
+/* ===== Platine (light silver showroom) ===== */
+[data-theme='platine'] {
+  color-scheme: light;
+  --bg: #DCDFE3;
+  --bg-glow-1: rgba(255, 255, 255, 0.9); --bg-glow-2: rgba(160, 166, 174, 0.35); --bg-glow-3: rgba(211, 0, 14, 0.05);
+  --glass: rgba(250, 251, 252, 0.58); --glass-strong: rgba(252, 253, 253, 0.86); --glass-edge: rgba(255, 255, 255, 0.95);
+  --glass-line: rgba(30, 34, 40, 0.08);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 14px 34px -16px rgba(40, 46, 54, 0.35);
+  --solid: #FBFBFC; --sunken: rgba(30, 34, 40, 0.05);
+  --ink: #15181C; --ink-2: #4B525A; --ink-3: #6E767F; --line: rgba(30, 34, 40, 0.12);
+  --accent: #1E2329; --accent-ink: #1E2329; --accent-soft: rgba(30, 35, 41, 0.08); --on-accent: #FFFFFF;
+  --focus: #1F5FD1; --ok: #1F7A4C; --warn: #8E5600; --bad: #A5221A;
+}
+/* ===== Noir et or ===== */
+[data-theme='or'] {
+  color-scheme: dark;
+  --bg: #050505;
+  --bg-glow-1: rgba(201, 164, 92, 0.24); --bg-glow-2: rgba(255, 236, 196, 0.06); --bg-glow-3: rgba(201, 164, 92, 0.10);
+  --glass: rgba(20, 18, 14, 0.60); --glass-strong: rgba(26, 23, 18, 0.88); --glass-edge: rgba(232, 205, 150, 0.18);
+  --glass-line: rgba(232, 205, 150, 0.09);
+  --glass-shadow: 0 1px 0 rgba(255, 230, 180, 0.06) inset, 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+  --solid: #16140F; --sunken: rgba(232, 205, 150, 0.06);
+  --ink: #F4EEE2; --ink-2: #C9BFA9; --ink-3: #9A9078; --line: rgba(232, 205, 150, 0.14);
+  --accent: #D4AF63; --accent-ink: #E6C789; --accent-soft: rgba(212, 175, 99, 0.14); --on-accent: #1A1408;
+  --chrome-1: #FFF4DA; --chrome-2: #D9BB7C; --chrome-3: #8C6E33; --chrome-4: #F1DDAE;
+  --focus: #F1D28E; --ok: #7FD8A2; --warn: #F5C06B; --bad: #FF9A8F;
+  --st-booked: #9CC2FF; --st-route: #F5C06B; --st-site: #C7B3FF; --st-done: #7FD8A2; --st-paid: #7FD8A2; --st-cancel: #A9A08C; --st-noshow: #FF9A8F;
+}
+/* ===== Émeraude ===== */
+[data-theme='emeraude'] {
+  color-scheme: dark;
+  --bg: #03110D;
+  --bg-glow-1: rgba(32, 160, 120, 0.26); --bg-glow-2: rgba(212, 175, 99, 0.10); --bg-glow-3: rgba(32, 160, 120, 0.10);
+  --glass: rgba(10, 32, 26, 0.58); --glass-strong: rgba(12, 38, 31, 0.88); --glass-edge: rgba(180, 235, 215, 0.14);
+  --glass-line: rgba(180, 235, 215, 0.08);
+  --glass-shadow: 0 1px 0 rgba(200, 255, 230, 0.05) inset, 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+  --solid: #0B201A; --sunken: rgba(180, 235, 215, 0.06);
+  --ink: #ECF6F2; --ink-2: #B2CCC3; --ink-3: #86A398; --line: rgba(180, 235, 215, 0.13);
+  --accent: #D4AF63; --accent-ink: #E6C789; --accent-soft: rgba(212, 175, 99, 0.14); --on-accent: #10180F;
+  --chrome-1: #FFF4DA; --chrome-2: #D9BB7C; --chrome-3: #8C6E33; --chrome-4: #F1DDAE;
+  --focus: #F1D28E; --ok: #7FE0B2; --warn: #F5C06B; --bad: #FF9A8F;
+  --st-booked: #9CC2FF; --st-route: #F5C06B; --st-site: #C7B3FF; --st-done: #7FE0B2; --st-paid: #7FE0B2; --st-cancel: #9DB2AA; --st-noshow: #FF9A8F;
+}
+/* ===== Saphir ===== */
+[data-theme='saphir'] {
+  color-scheme: dark;
+  --bg: #020814;
+  --bg-glow-1: rgba(46, 110, 220, 0.30); --bg-glow-2: rgba(196, 200, 205, 0.10); --bg-glow-3: rgba(46, 110, 220, 0.12);
+  --glass: rgba(10, 20, 40, 0.58); --glass-strong: rgba(12, 24, 48, 0.88); --glass-edge: rgba(190, 210, 255, 0.15);
+  --glass-line: rgba(190, 210, 255, 0.08);
+  --glass-shadow: 0 1px 0 rgba(210, 225, 255, 0.05) inset, 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+  --solid: #0B1630; --sunken: rgba(190, 210, 255, 0.06);
+  --ink: #EEF3FC; --ink-2: #B6C4DD; --ink-3: #8797B4; --line: rgba(190, 210, 255, 0.14);
+  --accent: #C4C8CD; --accent-ink: #E3E6E9; --accent-soft: rgba(196, 200, 205, 0.14); --on-accent: #0B1630;
+  --focus: #9CC2FF; --ok: #7FE0B2; --warn: #F5C06B; --bad: #FF9A8F;
+  --st-booked: #9CC2FF; --st-route: #F5C06B; --st-site: #C7B3FF; --st-done: #7FE0B2; --st-paid: #7FE0B2; --st-cancel: #9CA8BC; --st-noshow: #FF9A8F;
+}
+/* ===== Bordeaux ===== */
+[data-theme='bordeaux'] {
+  color-scheme: dark;
+  --bg: #0E0306;
+  --bg-glow-1: rgba(160, 24, 52, 0.34); --bg-glow-2: rgba(212, 175, 99, 0.08); --bg-glow-3: rgba(160, 24, 52, 0.12);
+  --glass: rgba(34, 10, 16, 0.58); --glass-strong: rgba(40, 12, 19, 0.88); --glass-edge: rgba(255, 200, 210, 0.13);
+  --glass-line: rgba(255, 200, 210, 0.08);
+  --glass-shadow: 0 1px 0 rgba(255, 220, 228, 0.05) inset, 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+  --solid: #230A10; --sunken: rgba(255, 200, 210, 0.06);
+  --ink: #FBEEF1; --ink-2: #D9B4BD; --ink-3: #A9858E; --line: rgba(255, 200, 210, 0.13);
+  --accent: #D4AF63; --accent-ink: #E6C789; --accent-soft: rgba(212, 175, 99, 0.14); --on-accent: #1E0A0E;
+  --chrome-1: #FFF4DA; --chrome-2: #D9BB7C; --chrome-3: #8C6E33; --chrome-4: #F1DDAE;
+  --focus: #F1D28E; --ok: #7FE0B2; --warn: #F5C06B; --bad: #FFA3A3;
+  --st-booked: #9CC2FF; --st-route: #F5C06B; --st-site: #C7B3FF; --st-done: #7FE0B2; --st-paid: #7FE0B2; --st-cancel: #B5A1A6; --st-noshow: #FFA3A3;
+}
+
+/* Less transparency (setting, or the phone's own preference): glass becomes solid panels */
+[data-glass='off'] {
+  --glass: var(--solid);
+  --glass-strong: var(--solid);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-glass='on']) { --glass: var(--solid); --glass-strong: var(--solid); }
+}
