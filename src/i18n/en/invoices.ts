@@ -176,6 +176,8 @@ export const invoices: typeof fr = {
     notesHint: 'It shows on the invoice.',
     finish: 'Finish the invoice ({total})',
     finishHint: 'It gets its number and no longer changes. Then: take the payment or text it to the customer.',
+    paidAhead: 'The customer already paid {amount} online. Left to pay: {left}.',
+    paidAheadAll: 'The customer already paid everything online ({amount}). Finish the invoice: it will be marked PAID.',
     finished: 'Invoice {n} finished',
     newWork: { one: 'Work was added to the job', other: '{n} pieces of work were added to the job' },
     addNewWork: 'Add to the invoice',

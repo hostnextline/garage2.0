@@ -11,7 +11,8 @@ export const settings = {
     waiver: { title: 'Autorisation', sub: 'Le texte que le client signe' },
     look: { title: 'Apparence', sub: 'Le style de l’app pour l’équipe' },
     connect: { title: 'Branchements', sub: 'Textos automatiques, paiement par carte' },
-    expenses: { title: 'Catégories de dépenses', sub: 'Pour classer les reçus' }
+    expenses: { title: 'Catégories de dépenses', sub: 'Pour classer les reçus' },
+    app: { title: 'Mise à jour de l’app', sub: 'Vérifier les mises à jour' }
   },
   list: 'Les parties des réglages',
   unsaved: 'Changements non enregistrés',
@@ -181,6 +182,7 @@ export const settings = {
     auto: 'Envoyer tout seul',
     autoHelp: 'Allumé : le texto part tout seul (si les textos automatiques sont branchés). Éteint : il ne part pas; l’app peut te le montrer pour l’envoyer toi-même.',
     followsEnRoute: 'Suit « En route »',
+    follows: 'Suit « {name} »',
     edit: 'Modifier le texte',
     close: 'Fermer',
     words: 'Les mots remplacés',
@@ -196,6 +198,8 @@ export const settings = {
       moved: { title: 'Rendez-vous changé', when: 'Quand un rendez-vous change de jour ou de bloc.' },
       en_route: { title: 'En route', when: 'Quand le mécano part vers le client, avec l’heure d’arrivée.' },
       en_route_no_eta: { title: 'En route, sans heure', when: 'Quand l’heure d’arrivée n’est pas connue.' },
+      arrived: { title: 'Mécano arrivé (facture à payer)', when: 'Quand le mécano touche « Je suis arrivé » : la facture, à payer en ligne pendant les travaux.' },
+      arrived_no_pay: { title: 'Mécano arrivé, sans paiement en ligne', when: 'Le même texte quand le paiement par carte n’est pas branché.' },
       extras: { title: 'Travaux à approuver', when: 'Quand le mécano propose des travaux de plus.' },
       invoice: { title: 'Facture', when: 'Quand la facture est envoyée, avec le bouton « Payer ».' },
       payment_reminder: { title: 'Rappel de paiement', when: 'Quand tu relances une facture pas payée.' },
@@ -204,10 +208,11 @@ export const settings = {
     vars: {
       prenom: 'Prénom du client', garage: 'Nom du garage', jour: 'Jour du rendez-vous', debut: 'Début du bloc', fin: 'Fin du bloc',
       total: 'Total', lien: 'Lien vers sa page', mecano: 'Prénom du mécano', heure: 'Heure d’arrivée', minutes: 'Minutes de route',
-      vehicule: 'Son véhicule', montant: 'Montant', numero: 'Numéro de facture', date: 'Date de la facture', telephone: 'Téléphone du garage'
+      vehicule: 'Son véhicule', montant: 'Montant', numero: 'Numéro de facture', date: 'Date de la facture', telephone: 'Téléphone du garage',
+      bloc: 'Bloc (le matin, l’après-midi, le soir)', payer: '« et la payer maintenant » (quand le paiement par carte est branché)'
     },
     example: {
-      prenom: 'Julie', mecano: 'Saleh', vehicule: 'Honda Civic 2019'
+      prenom: 'Julie', mecano: 'Saleh', vehicule: 'Honda Civic 2019', bloc: 'le matin', payer: ' (et la payer maintenant si vous le voulez)'
     }
   },
   waiver: {
@@ -222,7 +227,8 @@ export const settings = {
   look: {
     lead: 'Le style de l’app pour toute l’équipe. Chaque personne peut garder le sien dans Mon compte.',
     theme: 'Le style',
-    themeHelp: 'H.I.S suit le téléphone : clair le jour, foncé le soir. Les styles de luxe ont toujours le même éclairage.',
+    themeHelp: 'H.I.S existe en clair, en sombre, ou en automatique (suit le téléphone : clair le jour, sombre le soir). Les styles de luxe ont toujours le même éclairage.',
+    his: { light: 'H.I.S Clair', lightSub: 'Fond blanc et argent', dark: 'H.I.S Sombre', darkSub: 'Fond noir', auto: 'H.I.S Automatique', autoSub: 'Suit le téléphone' },
     mode: 'Clair ou foncé',
     modeHelp: 'Seulement pour le style H.I.S. Auto : suit le réglage du téléphone.',
     modes: { auto: 'Auto', light: 'Clair', dark: 'Foncé' },
@@ -230,7 +236,7 @@ export const settings = {
     glassHelp: 'Le verre laisse voir la lumière derrière les panneaux. Non : des panneaux pleins, plus faciles à lire au soleil. Auto : suit le téléphone (« Réduire la transparence »).',
     glasses: { auto: 'Auto', on: 'Oui', off: 'Non' },
     alwaysLight: 'Toujours clair',
-    alwaysDark: 'Toujours foncé',
+    alwaysDark: 'Toujours sombre',
     followsPhone: 'Suit le téléphone',
     fixedMode: 'Ce style est toujours {mode}.',
     mine: 'Toi, tu as ton propre style (Mon compte) : l’équipe verra ce choix, pas toi.',

@@ -8,7 +8,7 @@ import { t, lang } from '../../lib/i18n';
 import { e164, formatPhone } from '../../lib/text';
 import { duration, stamp, clock } from '../../lib/dates';
 import { money } from '../../lib/money';
-import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn } from '../../data/select';
+import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals } from '../../data/select';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
@@ -111,17 +111,27 @@ export function WaiverPanel(p: { job: Job; rights: JobRights; onSign: () => void
   const { job: j } = p;
   if (!j.waiver_signed_at && (j.status === 'cancelled' || j.status === 'no_show')) return null;
   const signed = !!j.waiver_signed_at;
+  // the estimate the customer signed online, and whether the work changed since
+  const estimate = j.estimate_signed_at && j.estimate_cents != null ? (() => {
+    const now = jobTotals(j.id).total;
+    return { signed: money(j.estimate_cents!, lang.value), now: money(now, lang.value), changed: now !== j.estimate_cents && !['done', 'cancelled', 'no_show'].includes(j.status) };
+  })() : null;
   return (
     <Panel class={`jobs-waiver${signed ? ' is-signed' : ''}`} data-tour="job-waiver" data-testid="job-waiver">
       <div class="jobs-waiver-row">
         <span class="jobs-waiver-icon" aria-hidden="true">{signed ? <CircleCheckBig /> : <Signature />}</span>
         <div class="grow">
           <h3 class="jobs-h">{t('jobs.waiver.panel')} <Help text={t('jobs.waiver.help')} /></h3>
-          <p class="small muted" style={{ margin: 0 }}>
-            {signed ? `${t('jobs.waiver.signedBy', { name: j.waiver_signer || '' })}, ${signedWhen(j.waiver_signed_at)}`
+          <p class="small muted" style={{ margin: 0 }} data-testid="waiver-state">
+            {signed ? `${t(j.waiver_via === 'online' ? 'jobs.waiver.signedOnline' : 'jobs.waiver.signedBy', { name: j.waiver_signer || '' })}, ${signedWhen(j.waiver_signed_at)}`
               : j.status === 'on_site' ? t('jobs.waiver.notYet')
                 : j.status === 'booked' || j.status === 'en_route' ? t('jobs.waiver.atArrival') : t('jobs.waiver.missing')}
           </p>
+          {estimate && (
+            <p class={`small ${estimate.changed ? 'jobs-warn-text' : 'muted'}`} style={{ margin: '2px 0 0' }} data-testid="estimate-state">
+              {estimate.changed ? t('jobs.waiver.estimateChanged', { signed: estimate.signed, now: estimate.now }) : t('jobs.waiver.estimateSigned', { amount: estimate.signed })}
+            </p>
+          )}
         </div>
         {signed && j.waiver_attachment && <Button size="sm" variant="ghost" icon={<Eye />} onClick={p.onSee}>{t('jobs.waiver.see')}</Button>}
         {!signed && j.status === 'on_site' && p.rights.act && <Button size="sm" icon={<Signature />} onClick={p.onSign} data-testid="waiver-open">{t('jobs.waiver.sign')}</Button>}
@@ -267,6 +277,9 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
   const trip = activeTrip(j.id);
   const l = lang.value;
   const noTracking = j.status === 'en_route' && !trip && !trackingSent.value.has(j.id) && !msgs.some((m) => m.kind === 'en_route') && p.rights.act;
+  // arrived without signal (or the text could not go): the invoice to pay during the work is offered again
+  const noInvoiceText = j.status === 'on_site' && p.rights.act && !invoiceIssued(j.id) && settings.value.messages?.on?.arrived !== false
+    && !msgs.some((m) => m.kind === 'arrived');
   return (
     <Panel title={t('jobs.text.title')} class="jobs-texts" data-testid="job-texts">
       <div class="stack">
@@ -282,6 +295,11 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
         {noTracking && (
           <Banner kind="warn" action={<Button size="sm" icon={<Send />} onClick={() => sendTracking(j, { resend: true })} data-testid="send-tracking">{t('jobs.text.sendTracking')}</Button>}>
             {t('jobs.text.noTracking')}
+          </Banner>
+        )}
+        {noInvoiceText && (
+          <Banner kind="info" action={<Button size="sm" icon={<Send />} onClick={() => sendText('arrived', j, { okText: t('jobs.did.arriveInvoice', { name: jobName(j) }) })} data-testid="send-arrived">{t('jobs.text.sendArrived')}</Button>}>
+            {t('jobs.text.noArrived')}
           </Banner>
         )}
         {msgs.length ? (
@@ -304,6 +322,7 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
 }
 
 /* ---------- « … » ---------- */
+const invoiceIssued = (jobId: string) => { const v = invoiceOf(jobId); return !!v && v.status !== 'draft'; };
 export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void }) {
   const { job: j, rights } = p;
   const s = j.status;
@@ -314,6 +333,7 @@ export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
   const items = [
     s === 'booked' && rights.text && <RowItem key="b" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.resendBooking')} sub={t('jobs.menu.resendBookingSub')} onClick={then(() => sendText('booking', j, { resend: true }))} data-testid="menu-resend" />,
     s === 'en_route' && rights.act && <RowItem key="t" start={<span class="quick-icon"><Navigation size={20} /></span>} title={t('jobs.menu.sendTracking')} sub={t('jobs.menu.sendTrackingSub')} onClick={then(() => sendTracking(j, { resend: true }))} />,
+    s === 'on_site' && rights.act && !invoiceIssued(j.id) && <RowItem key="a" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.sendArrived')} sub={t('jobs.menu.sendArrivedSub')} onClick={then(() => sendText('arrived', j, { resend: true, okText: t('jobs.did.arriveInvoice', { name: jobName(j) }) }))} data-testid="menu-send-arrived" />,
     link && <RowItem key="l" start={<span class="quick-icon"><Link2 size={20} /></span>} title={t('jobs.menu.copyLink')} sub={t('jobs.menu.copyLinkSub')}
       onClick={async () => { const ok = await copyText(link); toast(ok ? t('jobs.text.linkCopied') : t('jobs.text.copyFail'), { kind: ok ? 'ok' : 'bad' }); if (ok) p.onClose(); }} data-testid="menu-link" />,
     s === 'booked' && rights.move && <RowItem key="m" start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={t('jobs.menu.move')} sub={t('jobs.menu.moveSub')} onClick={then(p.onMove)} />,

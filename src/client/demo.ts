@@ -1,7 +1,8 @@
 /* DEV ONLY — the customer page's demo. Imported only when import.meta.env.DEV and the address has ?demo, so it is never
    part of the real page. It answers the « client » function and public_track from memory (kept for the tab in
    sessionStorage, so the pretend Stripe round trip survives the reload), and adds a list of links at the bottom:
-     client.html?demo#t=demo            booked, with a prepayment possible   (= demo-booked)
+     client.html?demo#t=demo            booked: the estimate to sign, « Payer maintenant »   (= demo-booked)
+     client.html?demo#t=demo-onsite     the mechanic arrived: the invoice to pay during the work
      client.html?demo#t=demo-extras     the mechanic on site proposes extra work to accept or refuse
      client.html?demo#t=demo-route      the mechanic is on the way (with the tracking link)
      client.html?demo#t=demo-unpaid     an invoice to pay (« Payer par carte » comes back with &retour=paye)
@@ -20,6 +21,10 @@ interface Item { id: string; description: string; qty: number; unit_cents: numbe
 interface DemoJob {
   lang: 'fr' | 'en'; first: string; day: string; block: 'am' | 'pm' | 'eve'; status: string; tracking: boolean; vehicle: string; number: number;
   items: Item[]; extras: Item[]; invoiced: boolean; paid: number; prepaid: number; stripe: boolean; pending: boolean; checks?: number; paying?: boolean;
+  /** the estimate signed online (name, moment, the total signed) */
+  signed?: { name: string; at: string; cents: number } | null;
+  /** the invoice being made (from the mechanic's arrival) */
+  draft?: boolean;
 }
 const BLOCKS = { am: [480, 720], pm: [720, 960], eve: [960, 1200] } as const;
 const D = (n: number) => addDays(today(), n);
@@ -45,12 +50,15 @@ function fresh(): Record<string, DemoJob> {
     'demo-paid': { lang: 'fr', first: 'Patrick', day: D(-1), block: 'am', status: 'done', tracking: false, vehicle: '2014 Chevrolet Silverado', number: 98,
       items: [{ id: 'i-fr2', description: 'Freins avant (plaquettes et disques)', qty: 1, unit_cents: 34999, status: 'done' }],
       extras: [{ id: 'x-3', description: 'Nettoyage des étriers', qty: 1, unit_cents: 4000, status: 'declined', note: null }], invoiced: true, paid: -1, prepaid: 0, stripe: true, pending: false },
+    'demo-onsite': { lang: 'fr', first: 'Karim', day: D(0), block: 'pm', status: 'on_site', tracking: false, vehicle: '2015 Volkswagen Jetta', number: 1001,
+      items: [{ id: 'i-promo', description: 'Promo : pneus non montés + huile + inspection', qty: 1, unit_cents: 19999, status: 'planned' }],
+      extras: [], invoiced: false, paid: 0, prepaid: 0, stripe: true, pending: false, draft: true, signed: { name: 'Karim Haddad', at: new Date(Date.now() - 86400000).toISOString(), cents: 22994 } },
     'demo-cancelled': { lang: 'fr', first: 'Émilie', day: D(2), block: 'eve', status: 'cancelled', tracking: false, vehicle: '2018 Kia Soul', number: 121,
       items: [oil], extras: [], invoiced: false, paid: 0, prepaid: 0, stripe: true, pending: false }
   };
 }
 
-const KEY = 'demo.client.v1';
+const KEY = 'demo.client.v2';
 let state: Record<string, DemoJob> = fresh();
 function save() { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch { /* ignore */ } }
 function restore() { try { const s = sessionStorage.getItem(KEY); if (s) state = { ...fresh(), ...JSON.parse(s) }; } catch { state = fresh(); } }
@@ -78,9 +86,15 @@ function jobView(j: DemoJob) {
     items: planned.map((i) => ({ id: i.id, description: i.description, qty: i.qty, unit_cents: i.unit_cents, status: i.status })),
     extras: j.extras.map((x) => ({ id: x.id, description: x.description, qty: x.qty, unit_cents: x.unit_cents, total_cents: Math.round(x.qty * x.unit_cents), status: x.status, note: x.note ?? null, answered_via: x.status === 'proposed' ? null : 'link' })),
     expected, prepaid_cents: j.prepaid, invoice,
-    pay: { available: j.stripe && balance >= 50 && !['cancelled', 'no_show'].includes(j.status) && (!!invoice || j.status === 'booked'), amount_cents: balance, kind: invoice ? 'invoice' : 'prepay', pending: j.pending }
+    estimate: { signed_at: j.signed?.at ?? null, signer: j.signed?.name ?? null, cents: j.signed?.cents ?? null, changed: !!j.signed && j.signed.cents !== expected.total,
+      can_sign: ['booked', 'en_route', 'on_site'].includes(j.status) && !invoice && expected.total > 0 && (!j.signed || j.signed.cents !== expected.total) },
+    conditions: CONDITIONS,
+    bill: j.draft && !invoice ? { lines: planned.map((i) => ({ description: i.description, qty: i.qty, unit_cents: i.unit_cents, taxable: true })),
+      subtotal_cents: expected.subtotal, tps_cents: expected.tps, tvq_cents: expected.tvq, total_cents: expected.total } : null,
+    pay: { available: j.stripe && balance >= 50 && (invoice ? !['cancelled', 'no_show'].includes(j.status) : ['booked', 'en_route', 'on_site'].includes(j.status)), amount_cents: balance, kind: invoice ? 'invoice' : 'prepay', pending: j.pending }
   };
 }
+const CONDITIONS = 'J’autorise Mécanique Mobile H.I.S à faire les travaux convenus sur mon véhicule, à l’endroit que j’ai indiqué. Je confirme être le propriétaire du véhicule ou avoir son autorisation.\nJe comprends que :\n• les travaux se font sur place (entrée, stationnement ou rue) et je m’assure que l’endroit le permet;\n• si d’autres réparations sont nécessaires, elles ne seront faites qu’avec mon accord.';
 function quoteView() {
   const items = [{ description: 'Pose de pneus d’hiver (4)', qty: 1, unit_cents: 9999 }, { description: 'Balancement des roues', qty: 4, unit_cents: 1500 }, { description: 'Entreposage des pneus d’été (une saison)', qty: 1, unit_cents: 7500 }];
   const t = totals(items.map((i) => ({ qty: i.qty, unitCents: i.unit_cents })));
@@ -103,6 +117,13 @@ function clientAnswer(b: Record<string, unknown>): Answer {
     const x = j.extras.find((e) => e.id === b.item_id);
     if (!x) return refuse(404, 'gone', 'Cette proposition n’existe plus.');
     if (x.status === 'proposed') x.status = b.accept ? 'approved' : 'declined';
+    save();
+  }
+  if (action === 'sign') {
+    if (b.confirm !== true) return refuse(400, 'confirm', 'Cochez « J’accepte » pour signer.');
+    const v = jobView(j);
+    if (!v.estimate.can_sign) return refuse(400, 'signed', 'Cette estimation est déjà signée.');
+    j.signed = { name: String(b.signer || ''), at: new Date().toISOString(), cents: v.expected.total };
     save();
   }
   if (action === 'pay') {
@@ -145,7 +166,7 @@ function trackAnswer(token: string) {
 }
 
 const LINKS: [string, string][] = [
-  ['#t=demo-booked', 'Réservé'], ['#t=demo-extras', 'Travaux proposés'], ['#t=demo-route', 'En route'], ['#t=demo-unpaid', 'Facture à payer'],
+  ['#t=demo-booked', 'Réservé'], ['#t=demo-onsite', 'Mécano arrivé (facture)'], ['#t=demo-extras', 'Travaux proposés'], ['#t=demo-route', 'En route'], ['#t=demo-unpaid', 'Facture à payer'],
   ['#t=demo-unpaid&l=en', 'Invoice (English)'], ['#t=demo-paid', 'Payée'], ['#t=demo-quote', 'Estimation'], ['#t=demo-cancelled', 'Annulé'],
   ['#t=demo-expired', 'Lien expiré'], ['#t=demo-bad', 'Mauvais lien'], ['#t=demo-offline', 'Sans réseau'],
   ['#suivi=demo', 'Suivi en route'], ['#suivi=demo-nopos', 'Suivi sans position'], ['#suivi=demo-arrived', 'Arrivé'], ['#suivi=demo-cancelled', 'Suivi terminé'],

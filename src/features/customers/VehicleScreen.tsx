@@ -17,7 +17,8 @@ import { Page, Panel, Kv, Button, Sheet, Field, Input, Select, Textarea, Banner,
 import { JobTicket } from '../jobs/JobTicket';
 import { jobOrder } from './facts';
 import { SpecPanel } from './SpecPanel';
-import { VinField, VinScanSheet, MakeModelLists, canScan, readVin, vinSavable, yearOk, type CarFields } from './VehicleBits';
+import { VinField, VinScanSheet, canScan, readVin, vinSavable, yearOk, type CarFields } from './VehicleBits';
+import { CarPicker } from './CarPicker';
 import { specKeyOf } from './engineRef';
 import { km, parseKm, engineLine, sampleNumber } from './vehicleText';
 import { Plate, carName } from './bits';
@@ -138,7 +139,6 @@ function VehicleEditSheet(p: { v: Vehicle; onClose: () => void; onRemoved: () =>
   const diff: Partial<Vehicle> = {};
   for (const [k, val] of Object.entries(after)) if ((before as Record<string, unknown>)[k] !== val) (diff as Record<string, unknown>)[k] = val;
   const dirty = Object.keys(diff).length > 0;
-  const ids = { make: `vedit-make-${p.v.id}`, model: `vedit-model-${p.v.id}` };
   const decoded = (car: Partial<CarFields>) => set({
     year: car.year ? String(car.year) : d.year, make: car.make || d.make, model: car.model || d.model, trim: car.trim || d.trim, engine: car.engine || d.engine,
     displacement: car.displacement ? Number(car.displacement).toFixed(1) : d.displacement, cylinders: car.cylinders ? String(car.cylinders) : d.cylinders,
@@ -172,14 +172,7 @@ function VehicleEditSheet(p: { v: Vehicle; onClose: () => void; onRemoved: () =>
         <VinField value={d.vin} onValue={(vin) => set({ vin })} onDecoded={decoded} error={err('vin')} />
         <section class="stack">
           <h3 class="divider-title">{t('vehicles.screen.groupCar')}</h3>
-          <div class="customers-ymm">
-            <Field label={t('vehicles.fields.year')} error={err('year')}>
-              <Input value={d.year} onValue={(year) => set({ year: year.replace(/\D/g, '').slice(0, 4) })} inputMode="numeric" autoComplete="off" invalid={!!err('year')} data-testid="ve-year" />
-            </Field>
-            <Field label={t('vehicles.fields.make')}><Input value={d.make} onValue={(make) => set({ make })} list={ids.make} autoComplete="off" data-testid="ve-make" /></Field>
-            <Field label={t('vehicles.fields.model')}><Input value={d.model} onValue={(model) => set({ model })} list={ids.model} autoComplete="off" data-testid="ve-model" /></Field>
-            <MakeModelLists make={d.make} ids={ids} />
-          </div>
+          <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model })} testid="ve" errors={{ year: err('year') }} />
           <Field label={t('vehicles.fields.trim')} optional><Input value={d.trim} onValue={(trim) => set({ trim })} autoComplete="off" placeholder="LX" /></Field>
         </section>
         <section class="stack">

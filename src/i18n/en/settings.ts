@@ -11,7 +11,8 @@ export const settings: typeof fr = {
     waiver: { title: 'Authorization', sub: 'The text the customer signs' },
     look: { title: 'Look', sub: 'The app’s style for the team' },
     connect: { title: 'Connections', sub: 'Automatic texts, card payments' },
-    expenses: { title: 'Expense categories', sub: 'To file receipts' }
+    expenses: { title: 'Expense categories', sub: 'To file receipts' },
+    app: { title: 'App updates', sub: 'Check for updates' }
   },
   list: 'The parts of the settings',
   unsaved: 'Changes not saved',
@@ -181,6 +182,7 @@ export const settings: typeof fr = {
     auto: 'Send by itself',
     autoHelp: 'On: the text goes out by itself (if automatic texts are connected). Off: it doesn’t go out; the app can show it to you to send yourself.',
     followsEnRoute: 'Follows « On the way »',
+    follows: 'Follows « {name} »',
     edit: 'Change the text',
     close: 'Close',
     words: 'The words replaced',
@@ -196,6 +198,8 @@ export const settings: typeof fr = {
       moved: { title: 'Appointment changed', when: 'When an appointment changes day or block.' },
       en_route: { title: 'On the way', when: 'When the mechanic leaves for the customer, with the arrival time.' },
       en_route_no_eta: { title: 'On the way, no time', when: 'When the arrival time is not known.' },
+      arrived: { title: 'Mechanic arrived (invoice to pay)', when: 'When the mechanic taps « I have arrived »: the invoice, to pay online during the work.' },
+      arrived_no_pay: { title: 'Mechanic arrived, no online payment', when: 'The same text when card payment is not connected.' },
       extras: { title: 'Work to approve', when: 'When the mechanic suggests extra work.' },
       invoice: { title: 'Invoice', when: 'When the invoice is sent, with the « Pay » button.' },
       payment_reminder: { title: 'Payment reminder', when: 'When you follow up on an unpaid invoice.' },
@@ -204,10 +208,11 @@ export const settings: typeof fr = {
     vars: {
       prenom: 'Customer’s first name', garage: 'Garage name', jour: 'Appointment day', debut: 'Block start', fin: 'Block end',
       total: 'Total', lien: 'Link to their page', mecano: 'Mechanic’s first name', heure: 'Arrival time', minutes: 'Drive minutes',
-      vehicule: 'Their vehicle', montant: 'Amount', numero: 'Invoice number', date: 'Invoice date', telephone: 'Garage phone'
+      vehicule: 'Their vehicle', montant: 'Amount', numero: 'Invoice number', date: 'Invoice date', telephone: 'Garage phone',
+      bloc: 'Block (in the morning, afternoon, evening)', payer: '« and pay now » (when card payment is connected)'
     },
     example: {
-      prenom: 'Kevin', mecano: 'Saleh', vehicule: '2019 Honda Civic'
+      prenom: 'Kevin', mecano: 'Saleh', vehicule: '2019 Honda Civic', bloc: 'in the morning', payer: ' (and pay now if you wish)'
     }
   },
   waiver: {
@@ -222,7 +227,8 @@ export const settings: typeof fr = {
   look: {
     lead: 'The app’s style for the whole team. Each person can keep their own in My account.',
     theme: 'The style',
-    themeHelp: 'H.I.S follows the phone: light by day, dark in the evening. The luxury styles always have the same lighting.',
+    themeHelp: 'H.I.S comes in light, dark, or automatic (follows the phone: light by day, dark in the evening). The luxury styles always have the same lighting.',
+    his: { light: 'H.I.S Light', lightSub: 'White and silver', dark: 'H.I.S Dark', darkSub: 'Black background', auto: 'H.I.S Automatic', autoSub: 'Follows the phone' },
     mode: 'Light or dark',
     modeHelp: 'Only for the H.I.S style. Auto: follows the phone’s setting.',
     modes: { auto: 'Auto', light: 'Light', dark: 'Dark' },

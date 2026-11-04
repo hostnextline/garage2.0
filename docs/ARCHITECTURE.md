@@ -128,6 +128,10 @@ exclamation marks except customer thanks. Dates and money via `lib/dates` (`long
 |---|---|---|
 | `features/customers/CustomerPicker` | customers | `{ value, onPick(id), allowCreate?, autoFocus? }` |
 | `features/customers/VehiclePicker` | customers | `{ customerId, value, onPick(id) }` |
+| `features/customers/CarPicker` | customers | `{ value: { year, make, model }, onValue, errors?, testid? }` — Année → Marque → Modèle, no typing (models: NHTSA vPIC, kept on the phone) |
+| `features/customers/vinScan` | customers | `barcodeReader()` (the phone's BarcodeDetector, else ZXing WebAssembly), `readVinPhoto(file)` (OCR + check digit) |
+| `features/map/roads` | map | `routeThrough(points)` (OSRM, by the streets), `knownLeg(a, b)` |
+| `app/UpdatePanel` | frame | `()` — the version on this device, « Vérifier les mises à jour » |
 | `features/customers/AddressField` + `geocode(q)` | customers | `{ value: PlaceValue, onValue, label? }` |
 | `features/booking/BlockPicker` | booking | `{ lat, lng, duration, excludeJob?, value, onPick({ day, block, truck_id? }) }` |
 | `features/booking/ServicePicker` + `itemsDuration` | booking | `{ value: ItemDraft[], onValue, lang?, allowCustom? }` |
@@ -160,11 +164,14 @@ RPCs (`callRpc` through `api.ts`): `book_job(p_job, p_items)` · `walk_in(p_job,
 Read-only: `suggest_blocks(p_lat, p_lng, p_duration, p_from, p_days, p_exclude, p_limit)` → `[{ day, block, drive_min, near, truck, left }]` ·
 `blocks_overview(p_from, p_to)` · `team_map(p_day)` → `{ home, trucks, jobs, people, trips }` · `day_path(p_staff, p_day)` ·
 `dashboard(p_month)` · `treasury_report(p_from, p_to)` · `my_access()` · `access_of(p_staff)`.
-Server functions (`callFn` / helpers in api.ts): `notify { kind: booking|moved|extras|invoice|payment_reminder, job_id, resend? }` →
+Server functions (`callFn` / helpers in api.ts): `notify { kind: booking|moved|arrived|extras|invoice|payment_reminder, job_id, resend? }` →
 `{ status: sent|off|no_phone|error|already, message, link, phone }` (texts go through GoHighLevel; when it is not connected the
 answer gives the message and the link so the person can send it from their own phone) · `enroute { action: start|refresh|end, job_id, pos?, notify? }` ·
 `vin { vin }` · `team { action: list|invite|reset-link|invite-cancel|remove|secrets|secrets-set|sms-test|leave|forgot|invite-info|invite-accept }` ·
-`client { action: view|answer|pay|check, token }` (public page) · `public_track(p_token)` (RPC open to the public: tracking page).
+`client { action: view|sign|answer|pay|check, token }` (public page: `sign { signer, png, confirm }` = the estimate signed with the
+finger, which also signs the authorization of work, `waiver_via = 'online'`) · `public_track(p_token)` (RPC open to the public: tracking page).
+« arrived » (sent by « Je suis arrivé ») makes the invoice draft and texts it with « Payer » (prepayment on the job; a card payment
+that arrives after the invoice was finished goes on it).
 
 ## Demo mode (try and photograph your screens without the server)
 
@@ -176,6 +183,13 @@ need more demo rows or a pretend operation, add `src/dev/demo-extra/<section>.ts
 other dev files. Screenshots: `node tests/tools/shot.cjs "<url>" <out.png> phone|desktop light|dark [full]` (prints
 page errors). Save them under the scratchpad folder you are given. Look at them: a screen is done when it looks right
 on a phone and a computer, light and dark, in French.
+
+## Updates of the app
+
+A new version downloads quietly and is used the next time the app opens: nothing shows at the top of the screen.
+« Vérifier les mises à jour » (Réglages → Mise à jour de l'app, and Mon compte) installs it at once. The build writes
+`version.json` (version, when it was made, notes); a commit with `[important]` in its message makes every phone with an
+older version show a notification once (`src/app/pwa.ts`).
 
 ## Checks before you say a section is done
 

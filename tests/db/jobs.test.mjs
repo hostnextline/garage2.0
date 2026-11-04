@@ -271,3 +271,60 @@ test('the server’s own building blocks can’t be called from the app (ending 
   // what the app uses still works
   assert.ok(await h.rpc('my_access', {}));
 }));
+
+test('the estimate signed online carries the authorization (nothing to sign at the door); a signature at the door says so', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.owner);
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'am', duration_min: 60 },
+    p_items: [{ description: 'Vidange d’huile + changement de filtre', service_id: g.svc, unit_cents: 7999, duration_min: 30 }] });
+  // the customer's page (the server's own function) writes the online signature
+  await h.as(null);
+  const att = await h.val(`insert into public.attachments (kind, mime, data, job_id) values ('signature', 'image/png', 'iVBORw0KGgoAAAA', $1) returning id`, [r.job_id]);
+  await h.c.query(`update public.jobs set estimate_signed_at = now(), estimate_signer = 'Jean Tremblay', estimate_attachment = $2, estimate_cents = 9197,
+    waiver_signed_at = now(), waiver_signer = 'Jean Tremblay', waiver_version = '1', waiver_attachment = $2, waiver_via = 'online' where id = $1`, [r.job_id, att]);
+  assert.equal(await h.val(`select waiver_via from public.jobs where id = $1`, [r.job_id]), 'online');
+  // a person can't write these columns directly (only the server's operations)
+  await h.as(g.owner);
+  assert.ok(await h.fails(() => h.c.query(`update public.jobs set estimate_signer = 'x' where id = $1`, [r.job_id])));
+  // at the door: the mechanic moves on without the waiver step (already signed online)
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: r.job_id, p_action: 'leave', p_data: {} });
+  await h.rpc('job_step', { p_op: uuid(), p_job: r.job_id, p_action: 'arrive', p_data: {} });
+  assert.ok(await h.val(`select waiver_signed_at is not null from public.jobs where id = $1`, [r.job_id]));
+  // signing again on the phone (the customer prefers): the signature says « at the door »
+  await h.rpc('job_step', { p_op: uuid(), p_job: r.job_id, p_action: 'waiver', p_data: { signer: 'Jean Tremblay', version: '1' } });
+  assert.equal(await h.val(`select waiver_via from public.jobs where id = $1`, [r.job_id]), 'phone');
+}));
+
+test('the texts: the confirmation with the block and the estimate to sign, the new « mechanic arrived » text', () => tx(async (h) => {
+  const m = await h.val(`select messages from public.settings where id = 1`);
+  assert.match(m.fr.booking, /\{bloc\}/);
+  assert.match(m.fr.booking, /signer votre estimation\{payer\}/);
+  assert.match(m.en.booking, /sign your estimate\{payer\}/);
+  assert.match(m.fr.arrived, /payer en ligne pendant les travaux/);
+  assert.match(m.fr.arrived_no_pay, /\{total\}/);
+  assert.equal(m.on.arrived, true);
+}));
+
+test('a card payment that arrives after the invoice was finished goes on that invoice (paid, not lost on the side)', () => tx(async (h) => {
+  const g = await garage(h);
+  const jobId = await jobOnSite(h, g);
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'waiver', p_data: { signer: 'Jean Tremblay', version: '1' } });
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true })).rows.invoices[0];
+  // the customer opened « Payer » on the draft (paid ahead, on the job)…
+  await h.as(null);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: null, p_amount_cents: 2000, p_method: 'card_online', p_reference: 'pi_1', p_job: jobId, p_session: 'cs_1' });
+  // …the mechanic finished the invoice meanwhile: the payment ahead counts on it
+  await h.as(g.mech);
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv.id });
+  const total = await h.val(`select total_cents from public.invoices where id = $1`, [inv.id]);
+  assert.equal(await h.val(`select paid_cents from public.invoices where id = $1`, [inv.id]), 2000);
+  // …and the card page the customer opened before the invoice was finished pays the rest: on the invoice too
+  await h.as(null);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: null, p_amount_cents: total - 2000, p_method: 'card_online', p_reference: 'pi_2', p_job: jobId, p_session: 'cs_2' });
+  assert.equal(await h.val(`select status from public.invoices where id = $1`, [inv.id]), 'paid');
+  assert.equal(await h.val(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null`, [jobId]), 0);
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: {} });
+  assert.equal(await h.val(`select status from public.jobs where id = $1`, [jobId]), 'done');
+}));

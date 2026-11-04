@@ -1,10 +1,10 @@
 /* Mon compte (#/account): my name and phone, the app's language, my look (the team's, or my own with live swatches),
    installing the app, signing out (warns about changes not sent yet), deleting my account. */
+import { UpdatePanel } from '../../app/UpdatePanel';
 import { useEffect, useState } from 'preact/hooks';
 import { LogOut, Smartphone, Trash2 } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { t, lang, setLang, type Lang } from '../../lib/i18n';
-import { APP_VERSION } from '../../lib/config';
 import { access, me, preview, signOut, refreshAccess, isOwner } from '../../data/auth';
 import { updateMe, memberUpdate, errorMessage } from '../../data/api';
 import { pendingCount } from '../../data/sync';
@@ -66,6 +66,7 @@ export default function AccountScreen(_p: ScreenProps) {
         </div>
         <div class="stack-lg">
           {!pv && <LookPanel />}
+          <UpdatePanel data-testid="account-update" />
           <Panel flush>
             <Rows>
               <RowItem href="#/guide" start={<span class="quick-icon" aria-hidden="true"><Smartphone size={20} /></span>} title={t('account.install')} sub={t('account.installSub')} chevron data-testid="account-install" />
@@ -83,7 +84,6 @@ export default function AccountScreen(_p: ScreenProps) {
               </div>
             </Panel>
           )}
-          <p class="small faint" style={{ margin: 0 }}>{t('account.version', { v: APP_VERSION })}</p>
         </div>
       </div>
     </Page>
@@ -144,7 +144,7 @@ function LookPanel() {
         </Field>
         {mine && (
           <>
-            <ThemeSwatches value={shown.theme} onValue={(k) => void setMyLook({ theme: k })} label={t('account.look')} />
+            <ThemeSwatches value={shown} onLook={(l) => void setMyLook(l)} label={t('account.look')} />
             <LookChoices look={shown} onLook={(l) => void setMyLook(l)} />
           </>
         )}

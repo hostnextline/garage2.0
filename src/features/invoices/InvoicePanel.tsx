@@ -8,7 +8,7 @@ import { job as jobRow, invoiceOf, jobTotals, itemsOf, settings, invoiceNumber, 
 import { invoiceForJob, saveInvoiceDraft, finishInvoice, voidInvoice, errorMessage } from '../../data/api';
 import { net, outboxList } from '../../data/sync';
 import type { OutboxEntry } from '../../data/local';
-import { getRow } from '../../data/store';
+import { getRow, rowsOf } from '../../data/store';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { clock, stamp as stampText, dayOf, today } from '../../lib/dates';
@@ -101,6 +101,8 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
   const newWork = p.job ? itemsOf(p.job.id).filter((i) => ['planned', 'done', 'approved'].includes(i.status) && !onDraft.has(i.id)
     && Date.parse(String(i.updated_at || i.created_at || '')) > Date.parse(String(inv.created_at || ''))) : [];
   const addNewWork = () => d.change({ ...v, lines: [...v.lines, ...withKeys(newWork.map((i) => ({ description: i.description, qty: Number(i.qty), unit_cents: i.unit_cents, taxable: i.taxable, kind: i.kind, item_id: i.id })))] });
+  // paid by the customer (online, from the text) while the work goes on: it counts on the invoice once it is finished
+  const ahead = p.job ? rowsOf<Payment>('payments').filter((x) => x.job_id === p.job!.id && !x.invoice_id && !x.deleted_at).reduce((n, x) => n + x.amount_cents, 0) : 0;
 
   const finish = async () => {
     if (check.problem) { setShowErrors(true); toast(t(`invoices.draft.problem.${check.problem}`), { kind: 'bad' }); return; }
@@ -148,6 +150,11 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
         <div class="inv-totals">
           <Totals subtotal={tt.subtotal} tps={tt.tps} tvq={tt.tvq} total={tt.total} taxesOn={rates.enabled !== false && v.taxesOn} />
         </div>
+        {ahead > 0 && (
+          <Banner kind="ok" data-testid="draft-paid-ahead">
+            {t(ahead >= tt.total ? 'invoices.draft.paidAheadAll' : 'invoices.draft.paidAhead', { amount: money(ahead, lang.value), left: money(Math.max(0, tt.total - ahead), lang.value) })}
+          </Banner>
+        )}
         {showErrors && check.problem && <Banner kind="bad">{t(`invoices.draft.problem.${check.problem}`)}</Banner>}
         {waiting.length > 0 && <Banner kind="warn">{t('invoices.draft.waiting')}</Banner>}
         {editable && (

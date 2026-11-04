@@ -106,7 +106,8 @@ test('texts and card payment: keys saved, appointment text with total, the custo
     p_items: [{ description: 'Vidange d’huile + changement de filtre', unit_cents: 7999 }, { description: 'Pneus non montés · 15 à 17 po', unit_cents: 7999 }] }, ownerJwt);
   const n = await fn('notify', { kind: 'booking', job_id: b.job_id, base: BASE }, ownerJwt);
   assert.equal(n.ok, true, JSON.stringify(n));
-  assert.match(n.message, /^Bonjour Jean, votre rendez-vous avec Mécanique Mobile H\.I\.S est confirmé : .+, entre 12 h et 16 h\. Total prévu : 183,94 \$ \(taxes incluses\)\. Détails : http/);
+  // the block in words, the estimate to sign, « pay now » (card payment is on)
+  assert.match(n.message, /^Bonjour Jean, votre rendez-vous avec Mécanique Mobile H\.I\.S est confirmé : .+, l’après-midi \(entre 12 h et 16 h\)\. Estimation : 183,94 \$ taxes incluses\. Pour voir et signer votre estimation \(et la payer maintenant si vous le voulez\) : http/);
   const sms = (await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages');
   assert.equal(sms.length, 1);
   assert.equal(sms[0].body.type, 'SMS');
@@ -121,12 +122,34 @@ test('texts and card payment: keys saved, appointment text with total, the custo
   assert.equal(v.pay.available, true);
   assert.equal(v.pay.kind, 'prepay');
   assert.equal((await fn('client', { action: 'view', token: 'x'.repeat(30) })).code, 'bad_link');
+  // the estimate, signed with the finger on the page (with the conditions of the work)
+  assert.equal(v.estimate.can_sign, true);
+  assert.equal(v.estimate.signed_at, null);
+  assert.match(v.conditions, /J’autorise Mécanique Mobile H\.I\.S à faire les travaux/);
+  const ink = 'iVBORw0KGgo' + 'A'.repeat(600);
+  assert.equal((await fn('client', { action: 'sign', token: t, signer: 'Jean Tremblay', png: ink })).code, 'confirm', 'asked to accept first');
+  assert.equal((await fn('client', { action: 'sign', token: t, signer: 'Jean Tremblay', png: 'PHN2Zz4=', confirm: true })).code, 'signature', 'only a picture of a signature');
+  assert.equal((await fn('client', { action: 'sign', token: t, signer: ' ', png: ink, confirm: true })).code, 'signer');
+  const sg = await fn('client', { action: 'sign', token: t, signer: 'Jean Tremblay', png: `data:image/png;base64,${ink}`, width: 300, height: 120, confirm: true });
+  assert.equal(sg.ok, true, JSON.stringify(sg));
+  assert.ok(sg.estimate.signed_at);
+  assert.equal(sg.estimate.signer, 'Jean Tremblay');
+  assert.equal(sg.estimate.cents, 18394);
+  assert.equal(sg.estimate.can_sign, false);
+  assert.equal(sg.job.waiver_signed, true, 'nothing left to sign at the door');
+  const jw = (await q(`select waiver_via, waiver_signer, estimate_attachment = waiver_attachment same, (select kind from public.attachments where id = estimate_attachment) kind from public.jobs where id = $1`, [b.job_id]))[0];
+  assert.deepEqual([jw.waiver_via, jw.waiver_signer, jw.same, jw.kind], ['online', 'Jean Tremblay', true, 'signature']);
+  assert.equal((await fn('client', { action: 'sign', token: t, signer: 'Jean Tremblay', png: ink, confirm: true })).code, 'signed', 'signed once');
+  assert.equal((await q(`select count(*)::int n from public.messages where job_id = $1 and kind = 'estimate_signed'`, [b.job_id]))[0].n, 1);
   // extra work proposed, answered on the page (confirmation required)
   const extra = randomUUID();
   await q(`insert into public.job_items (id, job_id, description, unit_cents, status) values ($1, $2, 'Essuie-glaces', 2999, 'proposed')`, [extra, b.job_id]);
   assert.equal((await fn('client', { action: 'answer', token: t, item_id: extra, accept: true })).code, 'confirm');
   const a = await fn('client', { action: 'answer', token: t, item_id: extra, accept: true, confirm: true });
   assert.equal(a.extras.find((x) => x.id === extra).status, 'approved');
+  // the work changed since the signature: a new signature is asked (the authorization of work stays)
+  assert.equal(a.estimate.changed, true);
+  assert.equal(a.estimate.can_sign, true);
   // paying ahead by card: the same Stripe page is reused, the notice pays it once even if sent twice
   const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
   assert.ok(p1.url, JSON.stringify(p1));
@@ -276,4 +299,59 @@ test('inviting a mechanic with his truck: once he activates his access, he drive
   const jwt = (await signIn(email, 'camion-2026')).access_token;
   assert.deepEqual((await rpc('my_access', {}, jwt)).trucks, [truck]);
   await q(`update public.trucks set driver_id = null where id = $1`, [truck]);
+});
+
+test('« Je suis arrivé »: the customer gets the invoice to pay during the work; paid online, the finished invoice is PAID', async () => {
+  await clearLog();
+  const sk = await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678', stripe_key: 'sk_test_abcdefghijklmnop' }, ownerJwt);
+  assert.equal(sk.ok, true, JSON.stringify(sk));
+  const dow = (await q(`select extract(dow from $1::date)::int d`, [day]))[0].d;
+  const truck = randomUUID(); made.trucks.push(truck);
+  await q(`insert into public.trucks (id, name, active) values ($1, 'Camion Voiture', true)`, [truck]);
+  await q(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, '[[480,1200]]')`, [truck, dow]);
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lat, lng, lang) values ($1, 'Karim', 'Haddad', '514 555-7788', 45.53, -73.63, 'fr')`, [cust]);
+  const b = await rpc('book_job', { p_op: randomUUID(), p_job: { customer_id: cust, day, block: 'am', duration_min: 60, truck_id: truck },
+    p_items: [{ description: 'Promo : pneus non montés + huile + inspection', unit_cents: 19999 }] }, ownerJwt);
+  // not there yet: nothing to send
+  assert.equal((await fn('notify', { kind: 'arrived', job_id: b.job_id, base: BASE }, ownerJwt)).code, 'not_on_site');
+  await rpc('job_step', { p_op: randomUUID(), p_job: b.job_id, p_action: 'leave', p_data: {} }, ownerJwt);
+  await rpc('job_step', { p_op: randomUUID(), p_job: b.job_id, p_action: 'arrive', p_data: {} }, ownerJwt);
+  const n = await fn('notify', { kind: 'arrived', job_id: b.job_id, base: BASE }, ownerJwt);
+  assert.equal(n.ok, true, JSON.stringify(n));
+  assert.match(n.message, /^Bonjour Karim, .+ de Mécanique Mobile H\.I\.S est arrivé\. Votre facture : 229,94 \$ taxes incluses\. Vous pouvez la payer en ligne pendant les travaux : http/);
+  const sms = (await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages');
+  assert.equal(sms.length, 1);
+  assert.equal((await fn('notify', { kind: 'arrived', job_id: b.job_id, base: BASE }, ownerJwt)).status, 'already', 'once, unless asked again');
+  // the invoice is being made (a draft, no number yet)
+  const inv = (await q(`select id, status, total_cents, number from public.invoices where job_id = $1`, [b.job_id]))[0];
+  assert.deepEqual([inv.status, inv.total_cents, inv.number], ['draft', 22994, null]);
+  // the customer's page: the invoice of the work, « pay now »
+  const t = tokenOf(n.link);
+  const v = await fn('client', { action: 'view', token: t });
+  assert.equal(v.job.status, 'on_site');
+  assert.equal(v.bill.total_cents, 22994);
+  assert.equal(v.bill.lines[0].description, 'Promo : pneus non montés + huile + inspection');
+  assert.equal(v.pay.available, true);
+  assert.equal(v.pay.amount_cents, 22994);
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p1.url, JSON.stringify(p1));
+  const paid = await (await fetch(p1.url)).json();
+  assert.equal(paid.hook, 200);
+  // the mechanic finishes the invoice: the payment made during the work counts, the invoice is PAID
+  const fin = await rpc('invoice_finish', { p_op: randomUUID(), p_invoice: inv.id }, ownerJwt);
+  assert.equal(fin.rows.invoices[0].status, 'paid');
+  await rpc('job_step', { p_op: randomUUID(), p_job: b.job_id, p_action: 'finish', p_data: {} }, ownerJwt);
+  // without card payment: the text says where to see the invoice, not « pay online »
+  await q(`delete from public.secrets where key = 'stripe_key'`);
+  const cust2 = randomUUID(); made.customers.push(cust2);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lat, lng, lang) values ($1, 'Lina', 'Roy', '514 555-9911', 45.51, -73.61, 'en')`, [cust2]);
+  const b2 = await rpc('book_job', { p_op: randomUUID(), p_job: { customer_id: cust2, day, block: 'pm', duration_min: 60, truck_id: truck },
+    p_items: [{ description: 'Oil change', unit_cents: 8000 }] }, ownerJwt);
+  await rpc('job_step', { p_op: randomUUID(), p_job: b2.job_id, p_action: 'leave', p_data: {} }, ownerJwt);
+  await rpc('job_step', { p_op: randomUUID(), p_job: b2.job_id, p_action: 'arrive', p_data: {} }, ownerJwt);
+  const n2 = await fn('notify', { kind: 'arrived', job_id: b2.job_id, base: BASE }, ownerJwt);
+  assert.match(n2.message, /^Hello Lina, .+ from Mécanique Mobile H\.I\.S has arrived\. Your invoice: \$91\.98 taxes included\. Details: http/);
+  const v2 = await fn('client', { action: 'view', token: tokenOf(n2.link) });
+  assert.equal(v2.pay.available, false, 'no card payment without Stripe');
 });

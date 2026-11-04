@@ -16,7 +16,7 @@ export const shell = {
     expense: 'Dépense ou reçu', expenseSub: 'Photo du reçu, montant, catégorie'
   },
   sync: {
-    synced: 'À jour', sending: 'Envoi…', offline: 'Hors ligne',
+    synced: 'Tout est envoyé', sending: 'Envoi…', offline: 'Hors ligne',
     pending: { one: '{n} à envoyer', other: '{n} à envoyer' },
     title: 'Synchronisation',
     offlineLead: 'Pas de réseau. Tout ce que tu fais reste sur le téléphone et part tout seul quand le réseau revient.',
@@ -34,7 +34,14 @@ export const shell = {
     dismiss: 'Retirer',
     show: 'Voir'
   },
-  update: { ready: 'Une nouvelle version de l’app est prête.', apply: 'Mettre à jour', later: 'Plus tard' },
+  update: {
+    title: 'Mise à jour de l’app', help: 'L’app se met à jour toute seule la prochaine fois qu’elle s’ouvre. Ici, tu peux vérifier tout de suite et l’installer sans attendre.',
+    mine: 'Version sur cet appareil', devVersion: 'version de test',
+    check: 'Vérifier les mises à jour', checking: 'Vérification…',
+    none: 'L’app est à jour.', offline: 'Pas de réseau : réessaie quand le signal revient.', error: 'La vérification n’a pas marché. Réessaie dans un moment.',
+    ready: 'Une nouvelle version de l’app est prête.', important: 'Mise à jour importante de l’app : installe-la dès que tu peux.',
+    notes: 'Ce qui change : {notes}', apply: 'Mettre à jour maintenant', later: 'Plus tard'
+  },
   preview: { banner: 'Tu vois l’app comme {name}. Rien ne peut être changé.', stop: 'Revenir à moi' },
   queued: 'Gardé sur le téléphone : ça part dès que le réseau revient.',
   loadFail: 'Cette page ne s’ouvre pas. L’app a peut-être été mise à jour.',

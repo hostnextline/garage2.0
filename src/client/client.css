@@ -172,3 +172,21 @@
   .cl-foot { border: 0; padding: 0; }
   a { text-decoration: none; }
 }
+
+/* ---------- the estimate signed with the finger ---------- */
+.cl-sign { margin-top: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
+.cl-sign-open { padding: var(--sp-4); border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--solid); }
+.cl-sign-open h3 { margin: 0; font-size: var(--t-lg); outline: none; }
+.cl-sign-done { margin-top: var(--sp-4); }
+.cl-cond { margin: var(--sp-2) 0 0; white-space: pre-line; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.5; }
+.cl-field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: var(--t-sm); }
+.cl-field .input { font-weight: 500; font-size: var(--t-md); }
+.cl-check { display: flex; align-items: flex-start; gap: var(--sp-3); font-size: var(--t-sm); line-height: 1.45; cursor: pointer; }
+.cl-check input { width: 24px; height: 24px; margin: 0; flex: none; accent-color: var(--accent); }
+/* the signature pad (same as the mechanic's) */
+.jobs-sign { position: relative; height: var(--sign-h, 190px); border-radius: var(--r-lg); background: #fff; border: 1px solid var(--line); overflow: hidden; }
+.jobs-sign-canvas { display: block; width: 100%; height: 100%; touch-action: none; color: #111418; cursor: crosshair; position: relative; z-index: 1; }
+.jobs-sign-line { position: absolute; left: 24px; right: 24px; bottom: 44px; border-bottom: 1.5px solid rgba(16, 20, 24, 0.18); pointer-events: none; }
+.jobs-sign-line span { position: absolute; left: 0; bottom: 2px; font-size: var(--t-lg); color: #6B747D; line-height: 1; }
+.jobs-sign-hint { position: absolute; inset: 0 0 44px; display: grid; place-items: center; color: #6B747D; font-size: var(--t-md); font-weight: 520; pointer-events: none; padding: 0 var(--sp-6); text-align: center; }
+.jobs-sign-clear.btn { position: absolute; z-index: 2; top: 4px; right: 4px; min-height: 44px; }

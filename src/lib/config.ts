@@ -5,6 +5,9 @@ export const SUPABASE_KEY: string = import.meta.env.VITE_SUPABASE_KEY || 'sb_pub
 /** realtime is off in the local test copy (it has no realtime server): the app then refreshes on its own */
 export const REALTIME: boolean = import.meta.env.VITE_REALTIME !== 'off';
 export const APP_VERSION: string = import.meta.env.VITE_APP_VERSION || 'dev';
+declare const __BUILT_AT__: string | undefined;
+/** when this version was made (ISO time; the commit's time for the published app) */
+export const BUILT_AT: string = typeof __BUILT_AT__ === 'string' ? __BUILT_AT__ : '';
 /** the public address of the app (links sent to customers point here) */
 export function appBase(): string {
   const u = new URL('./', location.href);

@@ -15,8 +15,14 @@ const CORS = {
 };
 
 http.createServer((req, res) => {
-  if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
   const route = ROUTES.find(([p]) => req.url === p || req.url.startsWith(p + '/') || req.url.startsWith(p + '?'));
+  // like the real one: the database and sign-in accept the headers the browser asks for (supabase-js adds
+  // « x-retry-count » when it tries again); the functions answer their own preflight
+  if (req.method === 'OPTIONS' && !(route && route[0] === '/functions/v1')) {
+    const asked = req.headers['access-control-request-headers'];
+    res.writeHead(204, { ...CORS, ...(asked ? { 'access-control-allow-headers': asked } : {}) });
+    return res.end();
+  }
   if (!route) { res.writeHead(404, { ...CORS, 'content-type': 'application/json' }); return res.end('{"message":"no route"}'); }
   const [prefix, port] = route;
   const headers = { ...req.headers };
@@ -24,7 +30,8 @@ http.createServer((req, res) => {
   // like the real gateway: the public key alone stands for the "anon" role
   if (!headers.authorization && headers.apikey) headers.authorization = `Bearer ${headers.apikey}`;
   const up = http.request({ host: '127.0.0.1', port, method: req.method, path: req.url.slice(prefix.length) || '/', headers }, (r) => {
-    const h = { ...r.headers, ...CORS };
+    // the functions' own CORS answer is kept (it is what the browser gets from the real project)
+    const h = prefix === '/functions/v1' ? { ...r.headers } : { ...r.headers, ...CORS };
     res.writeHead(r.statusCode || 502, h);
     r.pipe(res);
   });

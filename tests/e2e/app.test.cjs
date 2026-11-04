@@ -114,6 +114,10 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await page.getByTestId('text-outcome').waitFor({ timeout: 15000 }).catch(() => undefined);
   await dismissSheets(page);
   await page.getByTestId('step-arrive').click();
+  // « Je suis arrivé » sends the invoice to pay during the work (texts not connected: the message is ready to send by hand)
+  await page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('text-outcome-message').innerText(), /Votre facture : [\d ,]+\$ taxes incluses/);
+  await dismissSheets(page);
   await page.getByTestId('step-waiver').click();
   await page.getByTestId('waiver-sheet').waitFor();
   const pad = await page.getByTestId('waiver-pad').locator('canvas').boundingBox();
@@ -274,4 +278,163 @@ step('the owner: truck hours for one day, an invitation, the company name, an es
   await h.shot(en.page, 'e2e-6-english');
   noErrors(en.page);
   await en.ctx.close();
+});
+
+/* ---------- the estimate signed online, the invoice at the door ---------- */
+const jwtOf = async (email) => (await (await fetch(`${h.API}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: h.K.anon, 'content-type': 'application/json' }, body: JSON.stringify({ email, password: PW }) })).json()).access_token;
+const callAs = async (jwt, name, body) => (await fetch(`${h.API}/functions/v1/${name}`, { method: 'POST', headers: { apikey: h.K.anon, authorization: `Bearer ${jwt}`, 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+const rpcAs = async (jwt, name, args) => {
+  const r = await fetch(`${h.API}/rest/v1/rpc/${name}`, { method: 'POST', headers: { apikey: h.K.anon, authorization: `Bearer ${jwt}`, 'content-type': 'application/json' }, body: JSON.stringify(args) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(JSON.stringify(d));
+  return d;
+};
+const draw = async (page, testid) => {
+  const box = await page.getByTestId(testid).locator('canvas').boundingBox();
+  await page.mouse.move(box.x + 30, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + 30 + i * 18, box.y + box.height / 2 + (i % 2 ? -22 : 22));
+  await page.mouse.up();
+};
+
+step('the estimate signed online from the confirmation link; at the door nothing is left to sign; « Je suis arrivé » sends the invoice', async () => {
+  const jwt = await jwtOf(who.owner.email);
+  const karim = h.sql(`insert into public.customers (first_name, last_name, phone, address, postal_code, lat, lng, lang, sms_ok)
+    values ('Karim', 'Haddad', '514 555-0199', '1000 rue Sherbrooke O, Montréal, QC', 'H3A 3G4', 45.5048, -73.5772, 'fr', true) returning id`);
+  // a coming day when Camion Complet works
+  const day = h.sql(`select d::date::text from generate_series(public.local_today() + 1, public.local_today() + 10, interval '1 day') d
+    where exists (select 1 from public.truck_week w where w.truck_id = '${T.complet}' and w.dow = extract(dow from d) and jsonb_array_length(w.ranges) > 0) limit 1`);
+  const b = await rpcAs(jwt, 'book_job', { p_op: require('node:crypto').randomUUID(), p_job: { customer_id: karim, day, block: 'pm', truck_id: T.complet, duration_min: 60 },
+    p_items: [{ description: 'Promo : pneus non montés + huile + inspection', unit_cents: 19999, duration_min: 60 }] });
+  const n = await callAs(jwt, 'notify', { kind: 'booking', job_id: b.job_id, base: h.APP });
+  assert.ok(n.link, JSON.stringify(n));
+  assert.match(n.message, /, l’après-midi \(entre 12 h et 16 h\)\. Estimation : 229,94 \$ taxes incluses\. Pour voir et signer votre estimation : http/);
+  // the customer's phone: the estimate, the conditions, the finger, « J'accepte », « Signer »
+  const { page } = await h.openW({ kind: 'phone' });
+  await page.goto(n.link);
+  await page.getByTestId('client-sign-open').click({ timeout: 15000 });
+  await page.getByTestId('client-sign-submit').click();
+  await page.getByText('Écrivez votre nom.').waitFor();
+  await page.getByTestId('client-sign-name').fill('Karim Haddad');
+  await draw(page, 'client-sign-pad');
+  await page.getByTestId('client-sign-agree').check();
+  await h.shot(page, 'e2e-7-client-sign');
+  await page.getByTestId('client-sign-submit').click();
+  await page.getByTestId('client-signed').waitFor({ timeout: 15000 });
+  await h.shot(page, 'e2e-7-client-signed');
+  assert.equal(h.sql(`select waiver_via || '|' || estimate_signer || '|' || estimate_cents from public.jobs where id = '${b.job_id}'`), 'online|Karim Haddad|22994');
+  assert.equal(h.sql(`select kind from public.attachments where id = (select estimate_attachment from public.jobs where id = '${b.job_id}')`), 'signature');
+  // the day comes: Saleh leaves, arrives; nothing to sign at the door; the invoice goes to the customer
+  h.sql(`update public.jobs set day = public.local_today(), block = 'am' where id = '${b.job_id}'`);
+  const m = await h.openW({ kind: 'phone' });
+  await h.signIn(m.page, who.saleh.email, PW);
+  await m.page.goto(h.APP + `#/job/${b.job_id}`);
+  await m.page.getByTestId('job-screen').waitFor();
+  await m.page.getByTestId('waiver-state').getByText(/Signée en ligne par Karim Haddad/).waitFor();
+  await m.page.getByTestId('step-leave').click();
+  await m.page.getByTestId('text-outcome').waitFor({ timeout: 15000 }).catch(() => undefined);
+  await dismissSheets(m.page);
+  await m.page.getByTestId('step-arrive').click();
+  await m.page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
+  assert.match(await m.page.getByTestId('text-outcome-message').innerText(), /^Bonjour Karim, Saleh de Mécanique Mobile H\.I\.S( \(test\))? est arrivé\. Votre facture : 229,94 \$ taxes incluses\. Détails : http/);
+  await dismissSheets(m.page);
+  await m.page.getByTestId('step-invoice').waitFor({ timeout: 15000 });
+  assert.equal(await m.page.getByTestId('step-waiver').count(), 0, 'already signed online: no signature at the door');
+  await h.shot(m.page, 'e2e-7-mechanic-arrived');
+  assert.equal(h.sql(`select status || '|' || total_cents from public.invoices where job_id = '${b.job_id}'`), 'draft|22994');
+  // the customer's page: the invoice of the work, while the mechanic is there
+  await page.reload();
+  await page.getByTestId('client-bill').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('client-expected').innerText(), /229,94/);
+  await h.shot(page, 'e2e-7-client-bill');
+  noErrors(page); noErrors(m.page);
+  await page.context().close(); await m.page.context().close();
+});
+
+/* ---------- the look, the updates, no green mark at the top ---------- */
+step('Mon compte: H.I.S light, dark or automatic; Réglages: « Vérifier les mises à jour »; nothing shown at the top when all is sent', async () => {
+  const { page } = await h.openW({ kind: 'phone', scheme: 'light' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.getByTestId('today-screen').waitFor();
+  await page.waitForTimeout(1500);
+  assert.equal(await page.getByTestId('sync-chip').count(), 0, 'no « À jour » mark when everything is sent');
+  await page.goto(h.APP + '#/account');
+  await page.getByTestId('account-follow').getByRole('button', { name: /mien|own/i }).click().catch(async () => { await page.getByTestId('account-follow').locator('button').nth(1).click(); });
+  await page.getByTestId('theme-his-dark').click();
+  await page.waitForFunction(() => document.documentElement.dataset.mode === 'dark');
+  await h.shot(page, 'e2e-8-his-dark');
+  await page.getByTestId('theme-his-light').click();
+  await page.waitForFunction(() => document.documentElement.dataset.mode === 'light');
+  await page.getByTestId('theme-his-auto').click();
+  await page.waitForFunction(() => document.documentElement.dataset.mode === 'light');   // the phone is light
+  assert.equal(h.sql(`select prefs->'look'->>'mode' from public.staff where id = '${who.owner.id}'`), 'auto');
+  await page.getByTestId('account-update').waitFor();
+  await page.goto(h.APP + '#/settings/app');
+  await page.getByTestId('settings-app').waitFor();
+  await page.getByTestId('update-check').click();
+  await page.getByTestId('update-none').waitFor({ timeout: 30000 });
+  await h.shot(page, 'e2e-8-update');
+  noErrors(page);
+  await page.context().close();
+});
+
+/* ---------- a car without typing: the lists, and the VIN read by the camera ---------- */
+step('a car without typing: Année → Marque → Modèle from the lists; the VIN barcode read by the camera fills the car', async () => {
+  const { chromium, devices } = require('playwright');
+  const { y4m } = require('./code39.cjs');
+  // a camera that films the VIN label of a door frame (Code 39, like on the real sticker)
+  const video = y4m(require('node:path').join(h.OUT, 'vin-door.y4m'), '1HGCM82633A004352', { module: 2 });
+  const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-video-capture=${video}`] });
+  // no service worker here: the page's own requests to NHTSA are answered by the test (like NHTSA would)
+  const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'fr-CA', timezoneId: 'America/Toronto', serviceWorkers: 'block', permissions: ['camera'] });
+  const asked = [];
+  await ctx.route('https://vpic.nhtsa.dot.gov/**', (route) => {
+    const u = route.request().url();
+    asked.push(u);
+    const type = /vehicletype\/(\w+)/.exec(u)?.[1];
+    const models = type === 'car' ? ['Jetta', 'Golf', 'Passat', 'CC', 'Beetle'] : type === 'mpv' ? ['Tiguan', 'Touareg'] : [];
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ Count: models.length, Results: models.map((m) => ({ Make_Name: 'VOLKSWAGEN', Model_Name: m })) }) });
+  });
+  const page = watch(await ctx.newPage());
+  page.errors = [];
+  page.on('pageerror', (e) => page.errors.push(e.message));
+  try {
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/customer/${julie}`);
+  await page.getByTestId('cars-panel').waitFor();
+  // 1) by the lists: 2015 → Volkswagen → Jetta
+  await page.getByTestId('car-add').click();
+  await page.getByTestId('vadd-year').click();
+  await page.getByTestId('carpick-year-2015').click();
+  await page.getByTestId('carpick-make-Volkswagen').click();
+  await page.getByTestId('carpick-model').filter({ hasText: 'Jetta' }).first().waitFor({ timeout: 15000 });
+  await h.shot(page, 'e2e-9-models');
+  assert.ok(asked.some((u) => /make\/volkswagen\/modelyear\/2015\/vehicletype\/car/.test(u)), 'the models of that year were asked');
+  await page.getByTestId('carpick-model').filter({ hasText: 'Jetta' }).first().click();
+  assert.equal(await page.getByTestId('vadd-model').innerText(), 'Jetta');
+  await page.getByTestId('vehicle-add-ok').click();
+  await page.getByTestId('car-row').filter({ hasText: 'Jetta' }).first().waitFor({ timeout: 15000 });
+  const rowOf = async (sqlText) => { for (let i = 0; i < 40; i++) { const v = h.sql(sqlText); if (v) return v; await page.waitForTimeout(250); } return ''; };
+  assert.equal(await rowOf(`select year || ' ' || make || ' ' || model from public.vehicles where customer_id = '${julie}' and model = 'Jetta'`), '2015 Volkswagen Jetta');
+  // 2) by the VIN: the camera reads the door-frame barcode, the server says what car it is
+  await page.getByTestId('car-add').click();
+  await page.getByTestId('vehicle-add-mode').getByRole('button', { name: 'NIV' }).click();
+  await page.getByTestId('vin-scan').click();
+  await page.getByTestId('vin-scan-sheet').waitFor();
+  await page.getByTestId('vin-photo').waitFor();
+  // read live (ZXing, our own WebAssembly file): the sheet closes and the VIN is in the field
+  await page.getByTestId('vin-scan-sheet').waitFor({ state: 'detached', timeout: 30000 });
+  assert.equal(await page.getByTestId('vin-input').inputValue(), '1HGCM82633A004352');
+  await page.getByTestId('vadd-make').getByText('Honda').waitFor({ timeout: 15000 });
+  assert.equal(await page.getByTestId('vadd-year').innerText(), '2003');
+  assert.equal(await page.getByTestId('vadd-model').innerText(), 'Accord');
+  await h.shot(page, 'e2e-9-vin-read');
+  await page.getByTestId('vehicle-add-ok').click();
+  await page.getByTestId('car-row').filter({ hasText: 'Accord' }).first().waitFor({ timeout: 15000 });
+  assert.equal(await rowOf(`select vin || ' ' || year || ' ' || make || ' ' || model from public.vehicles where customer_id = '${julie}' and vin is not null`), '1HGCM82633A004352 2003 Honda Accord');
+  assert.deepEqual(page.errors, [], 'no page errors');
+  } finally {
+    await browser.close();
+  }
 });

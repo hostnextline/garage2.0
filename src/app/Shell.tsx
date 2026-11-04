@@ -4,12 +4,11 @@
 import type { ComponentType } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import { type LucideIcon, Plus, Menu, CalendarPlus, CloudOff, RefreshCw, Check, ChevronRight, Eye, ArrowUpCircle } from 'lucide-preact';
+import { type LucideIcon, Plus, Menu, CalendarPlus, CloudOff, RefreshCw, Check, ChevronRight, Eye } from 'lucide-preact';
 import { route, matchPath, navigate } from './router';
 import { ROUTES, may, type RouteDef, type ScreenProps, type NavKey } from './routes';
 import { NAV, QUICK, navLabel, tabItems } from './nav';
 import { wide } from './media';
-import { updateReady, applyUpdate } from './pwa';
 import { t, lang } from '../lib/i18n';
 import { stamp } from '../lib/dates';
 import { net, flush, pullAll, dismissFailed, outboxList } from '../data/sync';
@@ -56,9 +55,11 @@ export function currentNav(): NavKey | undefined { return findRoute(route.value.
 /* ---------- sync state ---------- */
 const syncOpen = signal(false);
 export function openSync() { syncOpen.value = true; }
+/** shows only when there is something to say (no signal, changes waiting or refused): nothing when all is sent */
 function SyncChip(p: { compact?: boolean }) {
   const n = net.value;
   const state = !n.online ? 'offline' : n.pending > 0 ? (n.sending ? 'sending' : 'pending') : 'synced';
+  if (state === 'synced' && !n.failed.length) return null;
   const label = state === 'offline' ? t('shell.sync.offline') : state === 'pending' ? t('shell.sync.pending', { n: n.pending }) : state === 'sending' ? t('shell.sync.sending') : t('shell.sync.synced');
   return (
     <button type="button" class={`syncchip syncchip-${state}${n.failed.length ? ' has-failed' : ''}`} onClick={openSync} data-tour="sync-state" data-testid="sync-chip"
@@ -146,12 +147,6 @@ function ShellBanners() {
         <Banner kind="bad" title={t('shell.failed.title', { n: n.failed.length })} action={<Button size="sm" onClick={openSync}>{t('shell.failed.show')}</Button>} data-testid="failed-banner">
           <span class="small">{n.failed[0].label ? `${n.failed[0].label} : ` : ''}{n.failed[0].error}</span>
         </Banner>
-      )}
-      {updateReady.value && (
-        <Banner kind="info" title={t('shell.update.ready')} action={<>
-          <Button size="sm" variant="primary" icon={<ArrowUpCircle size={16} />} onClick={applyUpdate}>{t('shell.update.apply')}</Button>
-          <Button size="sm" variant="ghost" onClick={() => (updateReady.value = false)}>{t('shell.update.later')}</Button>
-        </>} />
       )}
     </div>
   );

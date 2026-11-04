@@ -29,7 +29,6 @@ const anyAdd = (c: TourCtx) => c.can('book') || c.can('walkIn') || c.can('quotes
 
 export const TOURS: Record<Role, TourStep[]> = {
   owner: [
-    { key: 'sync', anchors: ['sync-state'] },
     { key: 'add', anchors: ['quick-add', 'nav-book'], when: anyAdd },
     { key: 'today', path: '/', anchors: ['today-next', 'today-shift'], fallback: ['nav-today'] },
     { key: 'agenda', path: '/agenda', anchors: ['agenda-week', 'agenda-day'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
@@ -40,7 +39,6 @@ export const TOURS: Record<Role, TourStep[]> = {
     { key: 'dashboard', path: '/dashboard', anchors: ['dashboard-kpis'], when: (c) => c.can('dashboard') }
   ],
   office: [
-    { key: 'sync', anchors: ['sync-state'] },
     { key: 'add', anchors: ['quick-add', 'nav-book'], when: anyAdd },
     { key: 'agenda', path: '/agenda', anchors: ['agenda-day', 'agenda-week'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
     { key: 'agendaBlock', path: '/agenda', anchors: ['agenda-block'], when: (c) => c.can('agenda') },
@@ -58,7 +56,7 @@ export const TOURS: Record<Role, TourStep[]> = {
     { key: 'work', path: NEXT_JOB, anchors: ['job-work'] },
     { key: 'extra', path: NEXT_JOB, anchors: ['job-extra'] },
     { key: 'pay', path: NEXT_JOB, anchors: ['job-pay', 'job-invoice'] },
-    { key: 'syncMechanic', anchors: ['sync-state'], teaches: 'offline' }
+    { key: 'syncMechanic', path: '/', anchors: ['today-shift', 'today-next'], teaches: 'offline' }
   ],
   treasurer: [
     { key: 'treasuryAdd', path: '/treasury', anchors: ['treasury-add'], when: (c) => c.can('treasury') },
@@ -66,8 +64,7 @@ export const TOURS: Record<Role, TourStep[]> = {
     { key: 'invoices', path: '/invoices', anchors: ['nav-invoices'], when: (c) => c.can('invoices') && c.wide },
     { key: 'dashboard', path: '/dashboard', anchors: ['dashboard-kpis'], when: (c) => c.can('dashboard') },
     { key: 'inventory', path: '/inventory', anchors: ['inventory-low'], when: (c) => c.can('inventory') },
-    { key: 'addTreasurer', anchors: ['quick-add'], when: anyAdd },
-    { key: 'sync', anchors: ['sync-state'] }
+    { key: 'addTreasurer', anchors: ['quick-add'], when: anyAdd }
   ]
 };
 

@@ -20,6 +20,7 @@ export const client: typeof fr = {
     title: 'Your appointment',
     lead: 'Here is your appointment with {garage}.',
     leadInvoice: 'Here is your invoice from {garage}.',
+    leadOnSite: 'Your mechanic from {garage} is on site.',
     vehicle: 'Vehicle',
     number: 'File number',
     status: {
@@ -43,7 +44,10 @@ export const client: typeof fr = {
   },
 
   work: {
-    title: 'Planned work',
+    title: 'Your estimate',
+    billTitle: 'Your invoice',
+    billLead: 'Your mechanic is on site. You can pay during the work: the final invoice with its number will follow.',
+    billTotal: 'Total to pay, taxes included',
     expected: 'Expected total, taxes included',
     expectedNoTax: 'Expected total',
     prepaid: 'Already paid',
@@ -53,6 +57,27 @@ export const client: typeof fr = {
     qty: '{qty} × {price}',
     none: 'Your mechanic will confirm the work on site.',
     taxDetail: 'See the tax details'
+  },
+
+  sign: {
+    open: 'Sign the estimate',
+    title: 'Sign the estimate',
+    lead: 'You accept the work and the estimated price ({total}). The final price can only change with your consent.',
+    changed: 'Your estimate changed since you signed it: please sign the new one.',
+    conditions: 'The conditions of the work',
+    name: 'Your name',
+    pad: 'Sign here with your finger',
+    padLabel: 'Signature box',
+    clear: 'Clear',
+    agree: 'I accept the estimate of {total} and the conditions of the work.',
+    submit: 'Sign',
+    cancel: 'Cancel',
+    needName: 'Write your name.',
+    needInk: 'Sign in the box with your finger.',
+    needAgree: 'Tick « I accept » to sign.',
+    fail: 'The signature did not go. Try again in a moment or call us.',
+    done: 'Estimate signed by {name} on {date}. Thank you!',
+    doneShort: 'Estimate signed'
   },
 
   extras: {
@@ -96,6 +121,7 @@ export const client: typeof fr = {
     button: 'Pay {amount} by card',
     prepay: 'Pay {amount} ahead by card',
     prepayLead: 'You can also pay on site when the work is done.',
+    now: 'Pay {amount} now',
     secure: 'Secure payment by Stripe. You will come back here afterwards.',
     opening: 'Opening the payment page…',
     pending: 'A card payment was started. If it is finished, it will show here in a moment.',

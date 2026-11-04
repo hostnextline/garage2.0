@@ -24,6 +24,7 @@ export const map = {
     progress: { zero: 'aucun arrêt fait sur {total}', one: '{n} arrêt fait sur {total}', other: '{n} arrêts faits sur {total}' },
     noStops: 'aucun arrêt ce jour-là',
     withDriver: '{driver}, {progress}',
+    road: '{km} km de route, {time}',
     next: 'prochain arrêt',
     dayDone: 'Journée finie',
     unplaced: 'À placer',

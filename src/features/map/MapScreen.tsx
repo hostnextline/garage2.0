@@ -1,5 +1,5 @@
 /* La carte de l'équipe (#/map, ?day=YYYY-MM-DD): la Centrale, chaque camion dans sa couleur avec ses arrêts numérotés
-   et sa route, les mécanos en direct, les trajets en cours. Mise à jour toutes les 30 s (team_map); sans réseau, la
+   et sa route par les rues (pas à vol d'oiseau: roads.ts), les mécanos en direct, les trajets en cours. Mise à jour toutes les 30 s (team_map); sans réseau, la
    dernière réponse reste (avec son heure), sinon la copie du téléphone.
    Téléphone: la carte prend tout l'écran, la liste monte du bas. Ordinateur: la carte et la liste côte à côte. */
 import type { ComponentChildren } from 'preact';
@@ -20,6 +20,7 @@ import { MapView, type MapMarker, type MapLine } from './MapView';
 import { assemble, normalize, minuteOf, UNPLACED_COLOR, type TeamMapAnswer, type Stop, type TruckRoute, type Assembled } from './assemble';
 import type { JobStatus } from '../../data/types';
 import { fromDevice } from './device';
+import { routeThrough, knownLeg, knownTotal, allKnown, type LatLng } from './roads';
 import { ago, minutesSince } from './ago';
 import './map.css';
 
@@ -85,6 +86,26 @@ export default function MapScreen({ query }: ScreenProps) {
     return live ? a : { ...a, people: [], trips: [], trucks: a.trucks.filter((tr) => tr.total > 0).map((tr) => ({ ...tr, trip: null, legs: tr.legs.map((l) => (l.kind === 'trip' ? { ...l, kind: 'todo' as const } : l)) })) };
   }, [loaded, live]);
 
+  /* the road route of each truck (Centrale → stops, in order): asked once per truck, then kept */
+  const [, setRoadsIn] = useState(0);
+  const waypoints = (tr: TruckRoute): LatLng[] => [...(m.home ? [[m.home.lat, m.home.lng] as LatLng] : []), ...tr.stops.filter((s) => s.hasPos).map((s) => [s.lat!, s.lng!] as LatLng)];
+  const routeSig = m.trucks.map((tr) => `${tr.id}:${waypoints(tr).map((p) => p.join(',')).join(';')}`).join('|');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      for (const tr of m.trucks) {
+        const pts = waypoints(tr);
+        if (pts.length < 2 || (allKnown(pts) && knownTotal(pts))) continue;
+        const r = await routeThrough(pts);
+        if (!alive) return;
+        if (r) setRoadsIn((n) => n + 1);
+        await new Promise((res) => setTimeout(res, 350));   // gentle with the free route planner
+      }
+    })();
+    return () => { alive = false; };
+  }, [routeSig]);
+  const roadOf = (tr: TruckRoute) => { const pts = waypoints(tr); return pts.length >= 2 ? knownTotal(pts) : null; };
+
   const truckOf = (id: string | null) => m.trucks.find((tr) => tr.id === id) || null;
   const allStops: (Stop & { color: string; truckName: string })[] = [
     ...m.trucks.flatMap((tr) => tr.stops.map((s) => ({ ...s, color: tr.color, truckName: tr.name }))),
@@ -125,7 +146,9 @@ export default function MapScreen({ query }: ScreenProps) {
   for (const tr of m.trucks) {
     const dim = dimTruck(tr.id);
     for (const leg of tr.legs) {
-      lines.push({ points: leg.points, color: tr.color, dashed: leg.kind === 'trip', weight: leg.kind === 'trip' ? 5 : 4,
+      // by the streets once the route planner answered (the live trip already follows them)
+      const road = leg.kind !== 'trip' && leg.points.length === 2 ? knownLeg(leg.points[0], leg.points[1]) : null;
+      lines.push({ points: road || leg.points, color: tr.color, dashed: leg.kind === 'trip', weight: leg.kind === 'trip' ? 5 : 4,
         opacity: dim ? 0.14 : leg.kind === 'done' ? 0.32 : leg.kind === 'trip' ? 0.95 : 0.8 });
     }
   }
@@ -192,14 +215,14 @@ export default function MapScreen({ query }: ScreenProps) {
             <p class={`small map-line ${warnLine ? 'map-warn' : 'muted'}`} aria-live="polite" data-testid="map-status">{line}</p>
             {notices}
             {sel && <StopCard stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} />}
-            <Legend m={m} focus={focus} onFocus={toggleFocus} />
+            <Legend m={m} focus={focus} onFocus={toggleFocus} roadOf={roadOf} />
             {m.count === 0 ? <div class="panel glass map-empty">{empty}</div> : <StopList m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
           </aside>
         ) : (
           <PullUp open={open} onOpen={setOpen} summary={summary} status={line} warn={warnLine}
             card={sel ? <StopCard plain stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} /> : null}>
             {notices}
-            <Legend plain m={m} focus={focus} onFocus={toggleFocus} />
+            <Legend plain m={m} focus={focus} onFocus={toggleFocus} roadOf={roadOf} />
             {m.count === 0 ? empty : <StopList plain m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
             <div class="map-status small muted">
               <span>{updated}</span>
@@ -211,6 +234,9 @@ export default function MapScreen({ query }: ScreenProps) {
     </Page>
   );
 }
+
+const kmText = (km: number) => (lang.value === 'en' ? km.toFixed(km < 10 ? 1 : 0) : km.toFixed(km < 10 ? 1 : 0).replace('.', ','));
+const durText = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`);
 
 function first(day: string): Loaded {
   const c = memory.get(memKey(day));
@@ -269,7 +295,7 @@ function PullUp(p: { open: boolean; onOpen: (v: boolean) => void; summary: strin
   );
 }
 
-function Legend(p: { m: Assembled; focus: Focus; onFocus: (id: string) => void; plain?: boolean }) {
+function Legend(p: { m: Assembled; focus: Focus; onFocus: (id: string) => void; plain?: boolean; roadOf: (tr: TruckRoute) => { km: number; minutes: number } | null }) {
   const { m } = p;
   if (!m.trucks.length && !m.unplaced.length) return null;
   return (
@@ -278,7 +304,7 @@ function Legend(p: { m: Assembled; focus: Focus; onFocus: (id: string) => void; 
         <h2 class="panel-title">{t('map.legend.title')} <Help text={t('map.legend.help')} /></h2>
       </div>
       <div class="rows" role="list">
-        {m.trucks.map((tr) => <LegendRow key={tr.id} tr={tr} on={p.focus === tr.id} onClick={() => p.onFocus(tr.id)} />)}
+        {m.trucks.map((tr) => <LegendRow key={tr.id} tr={tr} road={p.roadOf(tr)} on={p.focus === tr.id} onClick={() => p.onFocus(tr.id)} />)}
         {m.unplaced.length > 0 && (
           <button type="button" class="row-item map-legend-row" aria-pressed={p.focus === 'unplaced'} onClick={() => p.onFocus('unplaced')} data-testid="legend-unplaced"
             aria-label={p.focus === 'unplaced' ? t('map.legend.focusOff') : t('map.legend.focusOn', { name: t('map.legend.unplaced') })}>
@@ -293,18 +319,20 @@ function Legend(p: { m: Assembled; focus: Focus; onFocus: (id: string) => void; 
     </section>
   );
 }
-function LegendRow(p: { tr: TruckRoute; on: boolean; onClick: () => void }) {
+function LegendRow(p: { tr: TruckRoute; road: { km: number; minutes: number } | null; on: boolean; onClick: () => void }) {
   const { tr } = p;
   const progress = tr.total ? t('map.legend.progress', { n: tr.done, total: tr.total }) : t('map.legend.noStops');
   const sub = tr.driverName ? t('map.legend.withDriver', { driver: tr.driverName, progress }) : cap(progress);
+  const road = p.road ? t('map.legend.road', { km: kmText(p.road.km), time: durText(p.road.minutes) }) : null;
   const finished = tr.total > 0 && tr.done === tr.total;
   return (
     <button type="button" class="row-item map-legend-row" aria-pressed={p.on} onClick={p.onClick} data-testid={`legend-${tr.id}`}
-      aria-label={`${tr.name}. ${sub}. ${p.on ? t('map.legend.focusOff') : t('map.legend.focusOn', { name: tr.name })}`}>
+      aria-label={`${tr.name}. ${sub}.${road ? ` ${road}.` : ''} ${p.on ? t('map.legend.focusOff') : t('map.legend.focusOn', { name: tr.name })}`}>
       <span class="map-swatch" style={{ '--c': tr.color }} aria-hidden="true"><Truck size={18} /></span>
       <span class="row-main">
         <span class="row-title">{tr.name}</span>
         <span class="row-sub">{sub}</span>
+        {road && <span class="row-sub map-road" data-testid={`road-${tr.id}`}>{road}</span>}
       </span>
       <span class="row-end">
         {finished ? <Pill tone="done">{t('map.legend.dayDone')}</Pill>

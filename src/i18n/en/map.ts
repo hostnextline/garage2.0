@@ -24,6 +24,7 @@ export const map: typeof fr = {
     progress: { zero: 'none of {total} stops done', one: '{n} of {total} stops done', other: '{n} of {total} stops done' },
     noStops: 'no stop that day',
     withDriver: '{driver}, {progress}',
+    road: '{km} km by road, {time}',
     next: 'next stop',
     dayDone: 'Day done',
     unplaced: 'To place',

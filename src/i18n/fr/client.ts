@@ -21,6 +21,7 @@ export const client = {
     title: 'Votre rendez-vous',
     lead: 'Voici votre rendez-vous avec {garage}.',
     leadInvoice: 'Voici votre facture de {garage}.',
+    leadOnSite: 'Votre mécano de {garage} est sur place.',
     vehicle: 'Véhicule',
     number: 'Numéro de dossier',
     status: {
@@ -44,7 +45,10 @@ export const client = {
   },
 
   work: {
-    title: 'Travaux prévus',
+    title: 'Votre estimation',
+    billTitle: 'Votre facture',
+    billLead: 'Votre mécano est sur place. Vous pouvez payer pendant les travaux : la facture finale avec son numéro suivra.',
+    billTotal: 'Total à payer, taxes incluses',
     expected: 'Total prévu, taxes incluses',
     expectedNoTax: 'Total prévu',
     prepaid: 'Déjà payé',
@@ -54,6 +58,27 @@ export const client = {
     qty: '{qty} × {price}',
     none: 'Votre mécano confirmera les travaux sur place.',
     taxDetail: 'Voir le détail des taxes'
+  },
+
+  sign: {
+    open: 'Signer l’estimation',
+    title: 'Signer l’estimation',
+    lead: 'Vous acceptez les travaux et le prix estimé ({total}). Le prix final peut changer seulement avec votre accord.',
+    changed: 'Votre estimation a changé depuis votre signature : signez la nouvelle.',
+    conditions: 'Les conditions des travaux',
+    name: 'Votre nom',
+    pad: 'Signez ici avec le doigt',
+    padLabel: 'Case de signature',
+    clear: 'Effacer',
+    agree: 'J’accepte l’estimation de {total} et les conditions des travaux.',
+    submit: 'Signer',
+    cancel: 'Annuler',
+    needName: 'Écrivez votre nom.',
+    needInk: 'Signez dans la case, avec le doigt.',
+    needAgree: 'Cochez « J’accepte » pour signer.',
+    fail: 'La signature n’est pas partie. Réessayez dans un instant ou appelez-nous.',
+    done: 'Estimation signée par {name}, le {date}. Merci !',
+    doneShort: 'Estimation signée'
   },
 
   extras: {
@@ -97,6 +122,7 @@ export const client = {
     button: 'Payer {amount} par carte',
     prepay: 'Payer d’avance {amount} par carte',
     prepayLead: 'Vous pouvez aussi payer sur place, à la fin des travaux.',
+    now: 'Payer maintenant {amount}',
     secure: 'Paiement sécurisé par Stripe. Vous reviendrez ici ensuite.',
     opening: 'Ouverture de la page de paiement…',
     pending: 'Un paiement par carte a été commencé. S’il est terminé, il s’affichera ici dans un instant.',

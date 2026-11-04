@@ -1,8 +1,9 @@
-/* client.html#t=<token>: the customer's appointment (or estimate). The extra work to accept or refuse, the invoice,
-   card payment through Stripe and, back from Stripe (&retour=paye), the check that the payment arrived. */
+/* client.html#t=<token>: the customer's appointment (or estimate). The estimate to sign with the finger (it carries the
+   conditions of the work), « Payer maintenant », the invoice being made while the mechanic is there, the extra work to
+   accept or refuse, the invoice, card payment through Stripe and, back from Stripe (&retour=paye), the payment check. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Check, CreditCard, Lock, MapPin, Printer, RefreshCw, Link2Off, Clock, FileX, WifiOff, OctagonAlert } from 'lucide-preact';
+import { Check, CreditCard, Lock, MapPin, Printer, RefreshCw, Link2Off, Clock, FileX, WifiOff, OctagonAlert, PenLine } from 'lucide-preact';
 import { Button } from '../ui/Button';
 import { callClient, ClientError, type View, type JobView, type QuoteView, type ExtraV, type Garage, type InvoiceLineV } from './api';
 import { ct, pickLang, type CLang } from './i18n';
@@ -11,6 +12,8 @@ import { invoicePaid, invoiceBalance, chargesTaxes, sections, afterCheck, type P
 import { linkHash, replaceHash, remember, recall, rememberGarage, recallGarage } from './link';
 import { Header, Footer, Note, Stamp, CallUs, Sums, Skeleton, PrintIdentity, garageName } from './ui';
 import { shortDate, today } from '../lib/dates';
+import { SignaturePad } from '../features/jobs/SignaturePad';
+import { hasEnoughInk, exportSignature, type Stroke } from '../features/jobs/signature';
 
 type Phase = { k: 'loading' } | { k: 'error'; code: string; garage: Garage | null } | { k: 'ready'; v: View };
 const CHECK_TRIES = 5;
@@ -81,6 +84,12 @@ export function ViewPage(p: { token: string; linkLang: CLang | null; retour: str
     show(nv);
     setThanks(true);
   };
+  const sign = async (signer: string, strokes: Stroke[]) => {
+    const png = exportSignature(strokes);
+    if (!png) throw new ClientError('signature', 'no ink');
+    const nv = await callClient<View>('sign', p.token, { signer, png: png.dataUrl, width: png.width, height: png.height, confirm: true });
+    if (alive.current) show(nv);
+  };
   const pay = async () => {
     setPayErr(null);
     try {
@@ -112,7 +121,7 @@ export function ViewPage(p: { token: string; linkLang: CLang | null; retour: str
         {v?.kind === 'quote' && <QuotePage v={v} l={l} />}
         {v?.kind === 'job' && (
           <JobPage v={v} l={l} token={p.token} check={check} justPaid={justPaid} thanks={thanks} payErr={payErr}
-            onAnswer={answer} onPay={pay} onCheckAgain={() => { tries.current = 0; void runCheck(); }} />
+            onAnswer={answer} onPay={pay} onSign={sign} onCheckAgain={() => { tries.current = 0; void runCheck(); }} />
         )}
       </main>
       <Footer garage={garage} l={l} onLang={switchLang} />
@@ -122,17 +131,18 @@ export function ViewPage(p: { token: string; linkLang: CLang | null; retour: str
 
 /* ---------- an appointment ---------- */
 function JobPage(p: { v: JobView; l: CLang; token: string; check: PayCheck; justPaid: boolean; thanks: boolean; payErr: string | null;
-  onAnswer: (x: ExtraV, accept: boolean) => Promise<void>; onPay: () => Promise<void>; onCheckAgain: () => void }) {
+  onAnswer: (x: ExtraV, accept: boolean) => Promise<void>; onPay: () => Promise<void>; onSign: (signer: string, strokes: Stroke[]) => Promise<void>; onCheckAgain: () => void }) {
   const { v, l } = p;
   const s = sections(v);
   const inv = v.invoice;
   const first = v.customer?.first;
+  const onSite = !inv && !!v.bill && v.job.status === 'on_site';
   return (
     <>
       <section class="cl-hero">
         <p class="cl-hello">{first ? ct(l, 'hello', { name: first }) : ct(l, 'helloAlone')}</p>
-        <h1>{inv ? ct(l, 'invoice.heroTitle') : ct(l, 'job.title')}</h1>
-        <p class="cl-lead">{ct(l, inv ? 'job.leadInvoice' : 'job.lead', { garage: garageName(v.garage, l) })}</p>
+        <h1>{inv ? ct(l, 'invoice.heroTitle') : onSite ? ct(l, 'work.billTitle') : ct(l, 'job.title')}</h1>
+        <p class="cl-lead">{ct(l, inv ? 'job.leadInvoice' : onSite ? 'job.leadOnSite' : 'job.lead', { garage: garageName(v.garage, l) })}</p>
       </section>
       <PrintIdentity garage={v.garage} l={l} />
       {p.check === 'checking' && <Note icon={<span class="cl-spin" aria-hidden="true" />} title={ct(l, 'pay.checking')} data-testid="client-checking">{ct(l, 'pay.checkingLead')}</Note>}
@@ -145,8 +155,10 @@ function JobPage(p: { v: JobView; l: CLang; token: string; check: PayCheck; just
       )}
       {(s.proposed.length > 0 || p.thanks) && <ExtrasPanel v={v} l={l} thanks={p.thanks} onAnswer={p.onAnswer} />}
       {inv && <InvoicePanel v={v} l={l} justPaid={p.justPaid} payErr={p.payErr} onPay={p.onPay} />}
+      {/* the mechanic is there: the invoice to pay comes first */}
+      {onSite && <PlannedPanel v={v} l={l} payErr={p.payErr} onPay={p.onPay} onSign={p.onSign} />}
       <AppointmentPanel v={v} l={l} printable={!inv} token={p.token} />
-      {!inv && <PlannedPanel v={v} l={l} payErr={p.payErr} onPay={p.onPay} />}
+      {!inv && !onSite && <PlannedPanel v={v} l={l} payErr={p.payErr} onPay={p.onPay} onSign={p.onSign} />}
     </>
   );
 }
@@ -201,16 +213,26 @@ function Line(p: { desc: string; meta?: ComponentChildren; cents: number; l: CLa
   );
 }
 
-function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: () => Promise<void> }) {
+function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: () => Promise<void>; onSign: (signer: string, strokes: Stroke[]) => Promise<void> }) {
   const { v, l } = p;
   const s = sections(v);
   const taxed = chargesTaxes(v);
   const e = v.expected;
   const prepay = v.pay.available && v.pay.kind === 'prepay';
+  // the mechanic is there: the invoice being made (its own lines, rebates and taxes) is what is due
+  const bill = v.job.status === 'on_site' && v.bill ? v.bill : null;
   return (
     <section class="cl-panel glass" aria-labelledby="cl-work" data-testid="client-work">
-      <h2 id="cl-work">{ct(l, 'work.title')}</h2>
-      {s.planned.length ? (
+      <h2 id="cl-work">{ct(l, bill ? 'work.billTitle' : 'work.title')}</h2>
+      {bill && <p class="cl-sub" data-testid="client-bill-lead">{ct(l, 'work.billLead')}</p>}
+      {bill ? (
+        <ul class="cl-lines" data-testid="client-bill">
+          {bill.lines.map((x, i) => {
+            const q = qtyText(x, l);
+            return <Line key={i} desc={x.description} l={l} cents={lineCents(x)} meta={q ? <span>{q}</span> : undefined} />;
+          })}
+        </ul>
+      ) : s.planned.length ? (
         <ul class="cl-lines">
           {s.planned.map((i) => {
             const q = qtyText(i, l);
@@ -223,7 +245,7 @@ function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: (
       {e.total > 0 && (
         <>
           <div class="cl-total">
-            <span class="cl-total-label">{ct(l, taxed ? 'work.expected' : 'work.expectedNoTax')}</span>
+            <span class="cl-total-label">{ct(l, bill ? 'work.billTotal' : taxed ? 'work.expected' : 'work.expectedNoTax')}</span>
             <b class="cl-total-amt" data-testid="client-expected">{cad(e.total, l)}</b>
           </div>
           {taxed && (
@@ -243,8 +265,77 @@ function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: (
           </ul>
         </div>
       )}
-      {prepay && <PayBox v={v} l={l} prepay err={p.payErr} onPay={p.onPay} />}
+      <EstimateSign v={v} l={l} onSign={p.onSign} />
+      {prepay && <PayBox v={v} l={l} prepay={!bill} now err={p.payErr} onPay={p.onPay} />}
     </section>
+  );
+}
+
+/* ---------- the estimate, signed with the finger (with the conditions of the work) ---------- */
+function EstimateSign(p: { v: JobView; l: CLang; onSign: (signer: string, strokes: Stroke[]) => Promise<void> }) {
+  const { v, l } = p;
+  const e = v.estimate;
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [agree, setAgree] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { if (open) titleRef.current?.focus(); }, [open]);
+  if (!e) return null;
+  const total = cad(v.expected.total, l);
+  if (!e.can_sign) {
+    if (!e.signed_at) return null;
+    return (
+      <div class="cl-sign-done" data-testid="client-signed">
+        <Note kind="ok">{(() => { const d = localDayOf(e.signed_at); return d ? ct(l, 'sign.done', { name: e.signer || '', date: shortDate(d, l) }) : ct(l, 'sign.doneShort'); })()}</Note>
+      </div>
+    );
+  }
+  if (!open) {
+    return (
+      <div class="cl-sign cl-noprint" data-testid="client-sign">
+        {e.changed && <Note kind="warn">{ct(l, 'sign.changed')}</Note>}
+        <Button variant="primary" block icon={<PenLine />} onClick={() => { setOpen(true); setErr(null); }} data-testid="client-sign-open">{ct(l, 'sign.open')}</Button>
+      </div>
+    );
+  }
+  const submit = async () => {
+    setErr(null);
+    if (name.trim().length < 2) { setErr(ct(l, 'sign.needName')); return; }
+    if (!hasEnoughInk(strokes)) { setErr(ct(l, 'sign.needInk')); return; }
+    if (!agree) { setErr(ct(l, 'sign.needAgree')); return; }
+    setBusy(true);
+    try { await p.onSign(name.trim(), strokes); setOpen(false); }
+    catch (x) { setErr(x instanceof ClientError && x.code === 'signed' ? x.message : ct(l, 'sign.fail')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div class="cl-sign cl-sign-open cl-noprint" data-testid="client-sign-form">
+      <h3 ref={titleRef} tabIndex={-1}>{ct(l, 'sign.title')}</h3>
+      <p class="cl-sub">{ct(l, 'sign.lead', { total })}</p>
+      {v.conditions && (
+        <details class="cl-details">
+          <summary>{ct(l, 'sign.conditions')}</summary>
+          <p class="cl-cond">{v.conditions}</p>
+        </details>
+      )}
+      <label class="cl-field">
+        <span>{ct(l, 'sign.name')}</span>
+        <input class="input" value={name} onInput={(x) => { setName((x.currentTarget as HTMLInputElement).value); setErr(null); }} autoComplete="name" autoCapitalize="words" data-testid="client-sign-name" />
+      </label>
+      <SignaturePad strokes={strokes} onStrokes={(x) => { setStrokes(x); setErr(null); }} label={ct(l, 'sign.padLabel')} hint={ct(l, 'sign.pad')} clearLabel={ct(l, 'sign.clear')} height={190} data-testid="client-sign-pad" />
+      <label class="cl-check">
+        <input type="checkbox" checked={agree} onChange={(x) => { setAgree((x.currentTarget as HTMLInputElement).checked); setErr(null); }} data-testid="client-sign-agree" />
+        <span>{ct(l, 'sign.agree', { total })}</span>
+      </label>
+      {err && <Note kind="bad">{err}</Note>}
+      <div class="cl-choice">
+        <Button onClick={() => setOpen(false)} data-testid="client-sign-cancel">{ct(l, 'sign.cancel')}</Button>
+        <Button variant="primary" busy={busy} onClick={submit} data-testid="client-sign-submit">{ct(l, 'sign.submit')}</Button>
+      </div>
+    </div>
   );
 }
 
@@ -372,14 +463,14 @@ function InvoicePanel(p: { v: JobView; l: CLang; justPaid: boolean; payErr: stri
   );
 }
 
-function PayBox(p: { v: JobView; l: CLang; prepay?: boolean; err: string | null; onPay: () => Promise<void> }) {
+function PayBox(p: { v: JobView; l: CLang; prepay?: boolean; now?: boolean; err: string | null; onPay: () => Promise<void> }) {
   const { v, l } = p;
   const amount = cad(v.pay.amount_cents, l);
   return (
     <div class="cl-pay cl-noprint" data-testid="client-pay">
       {v.pay.pending && <Note>{ct(l, 'pay.pending')}</Note>}
       <Button variant={p.prepay ? 'secondary' : 'primary'} block icon={<CreditCard />} onClick={p.onPay} data-testid="client-pay-button">
-        {ct(l, p.prepay ? 'pay.prepay' : 'pay.button', { amount })}
+        {ct(l, p.now ? 'pay.now' : p.prepay ? 'pay.prepay' : 'pay.button', { amount })}
       </Button>
       <p class="cl-pay-note"><Lock aria-hidden="true" />{ct(l, 'pay.secure')}</p>
       {p.prepay && <p class="cl-pay-note">{ct(l, 'pay.prepayLead')}</p>}

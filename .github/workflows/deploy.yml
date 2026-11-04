@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the whole history: the date of the last important version
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -25,7 +27,13 @@ jobs:
       - name: Tests
         run: npm test
       - name: Construire
-        run: npm run build
+        # the version file says when this version was made, what changes, and since when an important version exists
+        # (a commit with « [important] » in its message): the phones with an older version then get a notification
+        run: |
+          export VITE_BUILT_AT="$(git log -1 --format=%cI)"
+          export APP_NOTES="$(git log -1 --format=%s | sed 's/\[important\]//g' | sed 's/^ *//;s/ *$//')"
+          export APP_IMPORTANT_SINCE="$(git log --grep='\[important\]' -1 --format=%cI || true)"
+          npm run build
         env:
           VITE_APP_VERSION: ${{ github.sha }}
       - name: Publier (branche gh-pages)

@@ -49,7 +49,17 @@ export interface InputProps extends InputBase {
 /** autoFocus only works on the first page load of an app like this one: focus the field when it appears */
 function useAutoFocus<T extends HTMLElement>(on: boolean | undefined) {
   const ref = useRef<T>(null);
-  useEffect(() => { if (on) { const el = ref.current; if (el) requestAnimationFrame(() => el.focus({ preventScroll: true })); } }, []);
+  // the next frame, unless the person is already typing in another field (it would jump back under their fingers)
+  useEffect(() => {
+    if (!on) return;
+    const el = ref.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const a = document.activeElement as HTMLElement | null;
+      const typing = !!a && a !== el && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+      if (!typing) el.focus({ preventScroll: true });
+    });
+  }, []);
   return ref;
 }
 export function Input({ value, onValue, invalid, onEnter, class: cls, ...rest }: InputProps) {

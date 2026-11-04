@@ -17,9 +17,9 @@ describe('the tours', () => {
   });
   it('leaves out what the person can’t open', () => {
     const owner = tourFor('owner', { ...all(), can: (k) => k !== 'team' && k !== 'dashboard' });
-    expect(owner.map((s) => s.key)).toEqual(['sync', 'add', 'today', 'agenda', 'book', 'hours', 'settings']);
+    expect(owner.map((s) => s.key)).toEqual(['add', 'today', 'agenda', 'book', 'hours', 'settings']);
     const treasurer = tourFor('treasurer', { ...all(), can: (k) => ['treasury', 'invoices'].includes(k) });
-    expect(treasurer.map((s) => s.key)).toEqual(['treasuryAdd', 'treasuryReport', 'addTreasurer', 'sync']);
+    expect(treasurer.map((s) => s.key)).toEqual(['treasuryAdd', 'treasuryReport', 'addTreasurer']);
     expect(tourFor('treasurer', { ...all(), wide: true }).map((s) => s.key)).toContain('invoices');   // the side menu only exists on a computer
   });
   it('shows the job steps on the mechanic’s next job, or skips them without one', () => {

@@ -17,6 +17,16 @@ export function longDay(day: string, lang: Lang): string {
 export function fill(tpl: string, vars: Record<string, string | number | null | undefined>): string {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => (vars[k] == null ? '' : String(vars[k]))).replace(/\s{2,}/g, ' ').trim();
 }
+/** the block in a sentence: « le matin » / « in the morning » */
+export function blockWords(key: string, lang: Lang): string {
+  const fr: Record<string, string> = { am: 'le matin', pm: 'l’après-midi', eve: 'le soir' };
+  const en: Record<string, string> = { am: 'in the morning', pm: 'in the afternoon', eve: 'in the evening' };
+  return (lang === 'en' ? en : fr)[key] || '';
+}
+/** « pay now » in the confirmation, only when card payment is on */
+export function payNowWords(on: boolean, lang: Lang): string {
+  return on ? (lang === 'en' ? ' (and pay now if you wish)' : ' (et la payer maintenant si vous le voulez)') : '';
+}
 export function first(name?: string | null): string { return String(name || '').trim().split(/\s+/)[0] || ''; }
 /** minutes after midnight, Montréal time, of a moment */
 export function localMinute(d: Date): number {

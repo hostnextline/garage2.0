@@ -6,13 +6,14 @@ import type { Job, JobItem, JobStatus } from '../../data/types';
 import { jobStep, enroute, notify, errorMessage, shiftStart, invoiceForJob, saveSignature, answerExtra, Refused, type StepAction } from '../../data/api';
 import { pull, refetch, insertRow, uuid, isNetworkError } from '../../data/sync';
 import { me, preview } from '../../data/auth';
-import { openShift, truck, invoiceOf, settings } from '../../data/select';
+import { openShift, truck, invoiceOf, settings, customer as customerRow } from '../../data/select';
 import { toast, ask, askText, attempt, run } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../today/position';
 import { jobFirstName, rememberLink, clockOf, keepAhead, type JobRights } from './select';
 import { exportSignature, type Stroke } from './signature';
 
+const customerOf = (j: Job) => customerRow(j.customer_id);
 const isQueued = (r: unknown) => !!r && typeof r === 'object' && (r as { queued?: boolean }).queued === true;
 
 /** a step: on screen at once when it waits for signal; the result toast says what happened */
@@ -37,15 +38,16 @@ function textResult(status: string, r: TextOutcome, name: string, okText?: strin
   else outcome.value = { ...r, status };
 }
 
-/** a text to the customer through the server (confirmation, moved, extra work to approve) */
-export async function sendText(kind: 'booking' | 'moved' | 'extras', j: Job, opts: { resend?: boolean } = {}): Promise<boolean> {
+/** a text to the customer through the server (confirmation, moved, the mechanic arrived with the invoice, extra work to approve) */
+export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived', j: Job, opts: { resend?: boolean; okText?: string } = {}): Promise<boolean> {
   try {
     const r = await notify(kind, j.id, opts);
     rememberLink(j.id, r.link);
     // no status: the server refused (not booked any more, no template…)
     if (!r.status) { toast(errorMessage(r), { kind: 'bad' }); return false; }
-    textResult(r.status, { status: r.status, message: r.message, link: r.link, phone: r.phone, error: r.error }, jobFirstName(j));
+    textResult(r.status, { status: r.status, message: r.message, link: r.link, phone: r.phone, error: r.error }, jobFirstName(j), opts.okText);
     void refetch('jobs', j.id);
+    if (kind === 'arrived') { void pull('invoices'); void pull('payments'); }
     void pull('messages');
     return true;
   } catch (e) {
@@ -107,13 +109,24 @@ export async function doLeave(j: Job): Promise<void> {
   void where.then((pos) => sendTracking(j, { pos, afterLeave: true }));
 }
 
-/** « Je suis arrivé »: on site; the customer's tracking stops */
+/** should the customer get the invoice when the mechanic arrives? (the switch is on, a number that takes texts) */
+export function wantsArrivalText(j: Job): boolean {
+  if (settings.value.messages?.on?.arrived === false) return false;
+  const c = customerOf(j);
+  return !!c && !!c.phone && c.sms_ok !== false;
+}
+/** « Je suis arrivé »: on site; the customer's tracking stops; the customer gets the invoice to pay during the work */
 export async function doArrive(j: Job): Promise<void> {
   try {
     const r = await jobStep(j.id, 'arrive');
     if (isQueued(r)) { keepAhead(j, { status: 'on_site' }); toast(t('shell.queued')); return; }
-    toast(t('jobs.did.arrive', { name: jobFirstName(j) }), { kind: 'ok' });
     void enroute('end', j.id).then(() => pull('trips'), () => undefined);
+    if (wantsArrivalText(j)) {
+      const okText = t('jobs.did.arriveInvoice', { name: jobFirstName(j) });
+      if (!(await sendText('arrived', j, { okText }))) toast(t('jobs.did.arrive', { name: jobFirstName(j) }), { kind: 'ok' });
+    } else {
+      toast(t('jobs.did.arrive', { name: jobFirstName(j) }), { kind: 'ok' });
+    }
   } catch (e) {
     toast(errorMessage(e), { kind: 'bad' });
   }

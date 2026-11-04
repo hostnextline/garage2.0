@@ -20,6 +20,7 @@ export function exampleVars(l: Lang): Record<string, string> {
   const am = blockOfKey('am');
   return {
     prenom: t('settings.texts.example.prenom', undefined, l), garage: garageName.value, jour: longDay(addDays(today(), 1), l),
+    bloc: t('settings.texts.example.bloc', undefined, l), payer: t('settings.texts.example.payer', undefined, l),
     debut: clock(am.start, l), fin: clock(am.end, l), total: money(17245, l), lien: `${appBase()}client.html#t=Ab3dE9xQ`,
     mecano: t('settings.texts.example.mecano', undefined, l), heure: clock(Math.min(1435, Math.ceil((nowMinute() + 25) / 5) * 5), l), minutes: '25',
     vehicule: t('settings.texts.example.vehicule', undefined, l), montant: money(8000, l),
@@ -68,7 +69,7 @@ export function TextsSection() {
                     ? <span class="settings-msg-switch">
                         <button type="button" role="switch" class="switch" aria-checked={on} aria-label={`${t('settings.texts.auto')}, ${t(`settings.texts.kinds.${k}.title`)}`}
                           data-testid={`msg-on-${k}`} onClick={() => set((x) => ({ ...x, on: { ...x.on, [sw]: !on } }))} /></span>
-                    : <span class="small faint settings-msg-follow">{t('settings.texts.followsEnRoute')}</span>}
+                    : <span class="small faint settings-msg-follow">{t('settings.texts.follows', { name: t(`settings.texts.kinds.${sw}.title`) })}</span>}
                 </div>
                 <div class="settings-msg-row">
                   <p class="settings-msg-sample small">{flat(d[lang.value === 'en' ? 'en' : 'fr'][k])}</p>

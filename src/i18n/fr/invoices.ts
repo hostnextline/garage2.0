@@ -176,6 +176,8 @@ export const invoices = {
     notesHint: 'Elle paraît sur la facture.',
     finish: 'Terminer la facture ({total})',
     finishHint: 'Elle reçoit son numéro et ne change plus. Ensuite : encaisser ou texter au client.',
+    paidAhead: 'Le client a déjà payé {amount} en ligne. Reste à payer\u00a0: {left}.',
+    paidAheadAll: 'Le client a déjà tout payé en ligne ({amount}). Termine la facture\u00a0: elle sera marquée PAYÉ.',
     finished: 'Facture {n} terminée',
     newWork: { one: 'Du travail a été ajouté à la job', other: '{n} travaux ont été ajoutés à la job' },
     addNewWork: 'Ajouter à la facture',

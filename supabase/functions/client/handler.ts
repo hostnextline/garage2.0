@@ -1,5 +1,6 @@
 // The customer's own page (no account: the secret link in the text is the key).
-//   view    the appointment, the expected price, the extra work to answer, the invoice
+//   view    the appointment, the estimate (to sign), the extra work to answer, the invoice (being made, or finished)
+//   sign    the customer signs the estimate with the finger (with the authorization of work: nothing to sign at the door)
 //   answer  accept or decline an extra work (asked to confirm on the page first)
 //   pay     opens Stripe's card page for what is due (the same page is reused while it is open)
 //   check   back from Stripe: asks Stripe whether it is paid
@@ -9,7 +10,7 @@ import { sha256hex } from '../_shared/tokens.ts';
 import { baseOf } from '../_shared/links.ts';
 import { stripeCall } from '../_shared/stripe.ts';
 import { applyCheckout } from '../_shared/payments.ts';
-import { longDay, first } from '../_shared/texts.ts';
+import { longDay, first, money } from '../_shared/texts.ts';
 
 type Row = Record<string, any>;
 
@@ -59,10 +60,18 @@ async function view(l: Row) {
   const block = (s.booking?.blocks || []).find((b: Row) => b.key === j.block) || {};
   const v = inv as Row | null;
   const issued = v && v.status !== 'draft';
+  // the invoice being made (from the mechanic's arrival): its own lines, rebates and taxes are what is due
+  const draft = v && v.status === 'draft' ? v : null;
   const prepaid = ((pays || []) as Row[]).filter((p) => !p.invoice_id).reduce((t, p) => t + p.amount_cents, 0);
   const planned = its.filter((i) => ['planned', 'done', 'approved'].includes(i.status));
-  const expected = taxesOf(s, planned);
+  const expected = draft ? { subtotal: draft.subtotal_cents, tps: draft.tps_cents, tvq: draft.tvq_cents, total: draft.total_cents } : taxesOf(s, planned);
   const balance = issued ? Math.max(0, v!.total_cents - v!.paid_cents) : Math.max(0, expected.total - prepaid);
+  const open = ['booked', 'en_route', 'on_site'].includes(j.status);
+  // to sign: not signed yet, or the work changed since (a new total)
+  const signed = !!j.estimate_signed_at;
+  const changed = signed && Number(j.estimate_cents) !== expected.total;
+  const lang = (cust as Row | null)?.lang === 'en' ? 'en' : 'fr';
+  const conditions = String(s.waiver?.[lang] || s.waiver?.fr || '').replaceAll('{garage}', garage.name);
   const prefix = s.billing?.invoice_prefix ?? 'F-', pad = Number(s.billing?.pad ?? 4);
   await db.from('public_links').update({ views: (l.views || 0) + 1, last_seen_at: new Date().toISOString() }).eq('id', l.id);
   return {
@@ -71,6 +80,10 @@ async function view(l: Row) {
     job: { number: j.number, day: j.day, day_label_fr: longDay(j.day, 'fr'), day_label_en: longDay(j.day, 'en'), block: j.block,
       start: block.start ?? null, end: block.end ?? null, status: j.status, tracking: !!trip,
       vehicle: veh ? [(veh as Row).year, (veh as Row).make, (veh as Row).model].filter(Boolean).join(' ') : null, waiver_signed: !!j.waiver_signed_at },
+    estimate: { signed_at: j.estimate_signed_at || null, signer: j.estimate_signer || null, cents: j.estimate_cents ?? null,
+      changed, can_sign: open && !issued && planned.length > 0 && expected.total > 0 && (!signed || changed) },
+    conditions: conditions || null,
+    bill: draft ? { lines: (draft.lines || []) as Row[], subtotal_cents: draft.subtotal_cents, tps_cents: draft.tps_cents, tvq_cents: draft.tvq_cents, total_cents: draft.total_cents } : null,
     items: planned.map((i) => ({ id: i.id, description: i.description, qty: Number(i.qty), unit_cents: i.unit_cents, status: i.status })),
     extras: its.filter((i) => ['proposed', 'approved', 'declined'].includes(i.status)).map((i) => ({ id: i.id, description: i.description, qty: Number(i.qty),
       unit_cents: i.unit_cents, total_cents: Math.round(Number(i.qty) * i.unit_cents), status: i.status, note: i.note, answered_via: i.answered_via })),
@@ -79,7 +92,7 @@ async function view(l: Row) {
     invoice: issued ? { number: `${prefix}${String(v!.number).padStart(pad, '0')}`, issued_at: v!.issued_at, due_on: v!.due_on, status: v!.status,
       lines: v!.lines, subtotal_cents: v!.subtotal_cents, tps_cents: v!.tps_cents, tvq_cents: v!.tvq_cents, total_cents: v!.total_cents, paid_cents: v!.paid_cents,
       notes: v!.notes } : null,
-    pay: { available: stripeOn && balance >= 50 && !['cancelled', 'no_show'].includes(j.status) && (issued || j.status === 'booked'),
+    pay: { available: stripeOn && balance >= 50 && (issued ? !['cancelled', 'no_show'].includes(j.status) : open),
       amount_cents: balance, kind: issued ? 'invoice' : 'prepay', pending: !!l.last_session && !!l.last_session_expires && Date.parse(l.last_session_expires) > Date.now() }
   };
 }
@@ -105,6 +118,34 @@ async function answer(req: Request): Promise<Response> {
     return json(await view(l));
   }
 
+  if (action === 'sign') {
+    if (!l.job_id) fail('bad_link', 'Rien à signer ici.');
+    if (b.confirm !== true) fail('confirm', 'Cochez « J’accepte » pour signer.');
+    const signer = String(b.signer || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (signer.length < 2) fail('signer', 'Écrivez votre nom.');
+    const png = String(b.png || '');
+    const data = png.startsWith('data:image/png;base64,') ? png.slice(22) : png;
+    // a real picture of a signature (a PNG of a reasonable size), never anything else
+    if (!/^iVBORw0KGgo[A-Za-z0-9+/]+=*$/.test(data) || data.length < 300 || data.length > 400000) fail('signature', 'La signature n’est pas arrivée. Signez encore.');
+    const v = await view(l) as Row;
+    if (!v.estimate?.can_sign) fail('signed', v.estimate?.signed_at ? 'Cette estimation est déjà signée.' : 'Il n’y a plus rien à signer ici.');
+    const s = await settings();
+    const num = (x: unknown) => { const n = Math.round(Number(x)); return Number.isFinite(n) && n > 0 && n < 5000 ? n : null; };
+    const { data: att, error } = await db.from('attachments').insert({ kind: 'signature', mime: 'image/png', data, bytes: Math.round(data.length * 0.75),
+      width: num(b.width), height: num(b.height), job_id: l.job_id, created_by: null }).select('id').single();
+    if (error) throw error;
+    const now = new Date().toISOString();
+    const { data: jr } = await db.from('jobs').select('waiver_signed_at').eq('id', l.job_id).single();
+    const patch: Row = { estimate_signed_at: now, estimate_signer: signer, estimate_attachment: (att as Row).id, estimate_cents: v.expected.total };
+    // the estimate's page carries the authorization of work: signed here, nothing is left to sign at the door
+    if (!(jr as Row | null)?.waiver_signed_at) Object.assign(patch, { waiver_signed_at: now, waiver_signer: signer, waiver_version: String(s.waiver?.version || '1'), waiver_attachment: (att as Row).id, waiver_via: 'online' });
+    const { error: e2 } = await db.from('jobs').update(patch).eq('id', l.job_id);
+    if (e2) throw e2;
+    await db.from('messages').insert({ job_id: l.job_id, kind: 'estimate_signed', channel: 'web', status: 'skipped', error: 'answer',
+      body: `${signer} : ${money(v.expected.total, v.lang === 'en' ? 'en' : 'fr')}` });
+    return json(await view(l));
+  }
+
   if (action === 'pay') {
     const key = await secret('stripe_key');
     if (!key) fail('no_stripe', 'Le paiement par carte n’est pas offert pour l’instant. Payez sur place ou appelez le garage.');
@@ -122,6 +163,7 @@ async function answer(req: Request): Promise<Response> {
     const back = `${base}client.html#t=${String(b.token)}${lang === 'en' ? '&l=en' : ''}`;
     const { data: inv } = await db.from('invoices').select('id').eq('job_id', l.job_id).neq('status', 'void').neq('status', 'draft').is('deleted_at', null).maybeSingle();
     const label = v.invoice ? (lang === 'en' ? `Invoice ${v.invoice.number}` : `Facture ${v.invoice.number}`)
+      : v.job.status === 'on_site' ? (lang === 'en' ? `Work of ${v.job.day_label_en}` : `Travaux du ${v.job.day_label_fr}`)
       : (lang === 'en' ? `Appointment of ${v.job.day_label_en}` : `Rendez-vous du ${v.job.day_label_fr}`);
     const expires = Math.floor(Date.now() / 1000) + 3600;
     const sess = await stripeCall(key, 'POST', '/checkout/sessions', [

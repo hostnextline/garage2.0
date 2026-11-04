@@ -1,17 +1,17 @@
 /* The VIN (typed, scanned with the camera, read by the server), and « Ajouter un véhicule ».
-   The camera scan uses the browser's own barcode reader (BarcodeDetector): the button is hidden where there is none. */
+   « Scanner le NIV » works on every phone: the barcode of the door-jamb sticker live in the camera (the phone's own reader,
+   or ZXing), or a photo of the printed VIN (windshield, registration) read on the phone (see vinScan.ts). */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { signal } from '@preact/signals';
-import { ScanLine, Flashlight, FlashlightOff, CarFront, Check } from 'lucide-preact';
+import { ScanLine, Flashlight, FlashlightOff, CarFront, Check, Camera } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { cleanVin, vinCheck, vinYear } from '../../lib/text';
 import { decodeVin, errorMessage, saveVehicle } from '../../data/api';
 import { isNetworkError } from '../../data/sync';
 import type { Vehicle } from '../../data/types';
-import { Button, Field, Input, InputWithButton, IconButton, Sheet, Seg, Banner, Spinner, run } from '../../ui';
-import { engineRef, ensureEngineRef, makeModel } from './engineRef';
+import { Button, Field, InputWithButton, IconButton, Sheet, Seg, Banner, Spinner, run } from '../../ui';
 import { engineLine, vinFromCode } from './vehicleText';
-import { squash } from './search';
+import { barcodeReader, hasCamera, readVinPhoto, type VinReading } from './vinScan';
+import { CarPicker } from './CarPicker';
 import './customers.css';
 
 /* ---------- reading a VIN on the server ---------- */
@@ -46,22 +46,8 @@ export async function readVin(vin: string): Promise<VinResult> {
 }
 export const engineWords = () => ({ turbo: t('vehicles.engine.turbo'), hybrid: t('vehicles.engine.hybrid'), diesel: t('vehicles.engine.diesel') });
 
-/* ---------- can this phone scan? ---------- */
-const FORMATS = ['code_39', 'code_128', 'data_matrix', 'qr_code'];
-interface Detected { rawValue: string }
-interface Detector { detect(src: CanvasImageSource): Promise<Detected[]> }
-interface DetectorClass { new (o: { formats: string[] }): Detector; getSupportedFormats(): Promise<string[]> }
-const BD = (): DetectorClass | null => (typeof globalThis !== 'undefined' && (globalThis as { BarcodeDetector?: DetectorClass }).BarcodeDetector) || null;
-export const scanSupport = signal<string[] | null>(null);
-function detectScan() {
-  if (scanSupport.value !== null) return;
-  scanSupport.value = [];
-  const cls = BD();
-  if (!cls || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
-  cls.getSupportedFormats().then((f) => { scanSupport.value = FORMATS.filter((x) => f.includes(x)); }, () => { scanSupport.value = []; });
-}
-if (typeof window !== 'undefined') detectScan();
-export const canScan = () => (scanSupport.value?.length || 0) > 0;
+/* ---------- can this phone scan? (always: the camera, or a photo) ---------- */
+export const canScan = () => true;
 
 /* ---------- the VIN field ---------- */
 export function vinState(vin: string): 'empty' | 'short' | 'ok' | 'bad' | 'old' {
@@ -101,7 +87,7 @@ export function VinField(p: { value: string; onValue: (v: string) => void; onDec
       <Field label={t('vehicles.fields.vin')} error={p.error} hint={<span class={st === 'bad' ? 'customers-warn-text' : st === 'ok' ? 'customers-ok-text' : ''} data-testid="vin-status">{status}{st === 'ok' && year ? ` ${t('vehicles.vin.year', { year })}` : ''}</span>}>
         <InputWithButton class="input-vin" value={v} onValue={set} autoComplete="off" autoCapitalize="characters" spellcheck={false} autoFocus={p.autoFocus}
           inputMode="text" maxLength={24} placeholder="2HGFC2F59KH512345" invalid={!!p.error} data-testid="vin-input"
-          button={canScan() ? <IconButton icon={<ScanLine />} label={t('vehicles.scan.button')} onClick={() => setScan(true)} data-testid="vin-scan" /> : null} />
+          button={<IconButton icon={<ScanLine />} label={t('vehicles.scan.button')} onClick={() => setScan(true)} data-testid="vin-scan" />} />
       </Field>
       {p.onDecoded && (
         <Button icon={<CarFront size={18} />} disabled={v.length !== 17} busy={busy} onClick={() => decode()} data-testid="vin-decode">{t('vehicles.vin.read')}</Button>
@@ -113,23 +99,30 @@ export function VinField(p: { value: string; onValue: (v: string) => void; onDec
 }
 
 /* ---------- the camera ---------- */
+type ScanState = 'starting' | 'loading' | 'live' | 'denied' | 'nocam' | 'error' | 'reading' | 'notfound';
 export function VinScanSheet(p: { onClose: () => void; onVin: (vin: string) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
+  const photo = useRef<HTMLInputElement>(null);
+  const reading = useRef<VinReading | null>(null);
   const onVin = useRef(p.onVin);
   onVin.current = p.onVin;
-  const [state, setState] = useState<'starting' | 'live' | 'denied' | 'nocam' | 'error'>('starting');
+  const [state, setState] = useState<ScanState>('starting');
   const [torch, setTorch] = useState<boolean | null>(null);
   const [doubtful, setDoubtful] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const alive = useRef(true);
+  const stopCamera = () => { stream.current?.getTracks().forEach((x) => x.stop()); stream.current = null; setTorch(null); };
+  const found = (vin: string) => { try { navigator.vibrate?.(60); } catch { /* ignore */ } onVin.current(vin); };
+
   useEffect(() => {
-    let alive = true;
+    alive.current = true;
     let timer = 0;
-    const cls = BD();
     (async () => {
       try {
-        if (!cls) throw Object.assign(new Error('none'), { name: 'NotSupportedError' });
+        if (!hasCamera()) throw Object.assign(new Error('none'), { name: 'NotFoundError' });
         const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-        if (!alive) { s.getTracks().forEach((x) => x.stop()); return; }
+        if (!alive.current) { s.getTracks().forEach((x) => x.stop()); return; }
         stream.current = s;
         const el = video.current!;
         el.srcObject = s;
@@ -137,84 +130,120 @@ export function VinScanSheet(p: { onClose: () => void; onVin: (vin: string) => v
         const track = s.getVideoTracks()[0];
         const caps = (track?.getCapabilities?.() || {}) as { torch?: boolean };
         if (caps.torch) setTorch(false);
+        setState('loading');
+        const { detector, native } = await barcodeReader();
+        if (!alive.current) return;
         setState('live');
-        const det = new cls({ formats: scanSupport.value?.length ? scanSupport.value : FORMATS });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         let last = '', seen = 0;
         const tick = async () => {
-          if (!alive) return;
+          if (!alive.current || !stream.current) return;
           try {
-            if (el.readyState >= 2) {
-              for (const code of await det.detect(el)) {
+            if (el.readyState >= 2 && el.videoWidth) {
+              let src: ImageBitmapSource | ImageData = el;
+              if (!native && ctx) {
+                // ZXing reads a still picture: the middle of the frame (where the code is aimed), at most 1280 px wide
+                const w = el.videoWidth, h = el.videoHeight;
+                const cw = Math.round(w * 0.9), ch = Math.round(h * 0.6);
+                const k = Math.min(1, 1280 / cw);
+                canvas.width = Math.round(cw * k); canvas.height = Math.round(ch * k);
+                ctx.drawImage(el, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, canvas.width, canvas.height);
+                src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              }
+              for (const code of await detector.detect(src)) {
                 const r = vinFromCode(code.rawValue);
                 if (!r) continue;
-                if (r.ok) { try { navigator.vibrate?.(60); } catch { /* ignore */ } onVin.current(r.vin); return; }
+                if (r.ok) { found(r.vin); return; }
                 // a check digit that does not match (a car from outside North America, or a bad read): the same twice, then ask
                 if (r.vin === last) { if (++seen >= 2) setDoubtful(r.vin); } else { last = r.vin; seen = 1; }
               }
             }
           } catch { /* a frame that could not be read */ }
-          timer = window.setTimeout(tick, 180);
+          timer = window.setTimeout(tick, native ? 180 : 120);
         };
         void tick();
       } catch (e) {
         const n = (e as { name?: string })?.name;
-        if (alive) setState(n === 'NotAllowedError' || n === 'SecurityError' ? 'denied' : n === 'NotFoundError' || n === 'OverconstrainedError' ? 'nocam' : 'error');
+        if (alive.current) setState(n === 'NotAllowedError' || n === 'SecurityError' ? 'denied' : n === 'NotFoundError' || n === 'OverconstrainedError' ? 'nocam' : 'error');
       }
     })();
-    return () => { alive = false; clearTimeout(timer); stream.current?.getTracks().forEach((x) => x.stop()); stream.current = null; };
+    return () => { alive.current = false; clearTimeout(timer); stopCamera(); reading.current?.cancel(); };
   }, []);
+
   const flip = async () => {
     const track = stream.current?.getVideoTracks()[0];
     if (!track || torch == null) return;
     try { await track.applyConstraints({ advanced: [{ torch: !torch } as MediaTrackConstraintSet] }); setTorch(!torch); } catch { setTorch(null); }
   };
+  // a photo of the printed VIN, read on the phone
+  const takePhoto = () => { photo.current?.click(); };
+  const onPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    stopCamera();
+    setDoubtful(null);
+    setState('reading');
+    setProgress(0);
+    const r = readVinPhoto(file, (x) => { if (alive.current) setProgress(x); });
+    reading.current = r;
+    try {
+      const out = await r.result;
+      if (!alive.current) return;
+      if (!out) { setState('notfound'); return; }
+      if (out.ok) { found(out.vin); return; }
+      setDoubtful(out.vin);
+      setState('notfound');
+    } catch {
+      if (alive.current) setState('notfound');
+    } finally {
+      reading.current = null;
+      if (photo.current) photo.current.value = '';
+    }
+  };
+  const camera = state === 'starting' || state === 'loading' || state === 'live';
   return (
     <Sheet open onClose={p.onClose} title={t('vehicles.scan.title')} data-testid="vin-scan-sheet"
       footer={<>
         <Button onClick={p.onClose}>{t('common.cancel')}</Button>
-        {torch != null && <Button icon={torch ? <FlashlightOff size={18} /> : <Flashlight size={18} />} onClick={flip}>{torch ? t('vehicles.scan.torchOff') : t('vehicles.scan.torchOn')}</Button>}
+        {torch != null && camera && <Button icon={torch ? <FlashlightOff size={18} /> : <Flashlight size={18} />} onClick={flip}>{torch ? t('vehicles.scan.torchOff') : t('vehicles.scan.torchOn')}</Button>}
       </>}>
       <div class="stack">
-        <div class={`customers-scan${state === 'live' ? ' is-live' : ''}`}>
-          <video ref={video} playsInline muted autoPlay aria-hidden="true" />
-          <span class="customers-scan-frame" aria-hidden="true"><span class="customers-scan-line" /></span>
-          {state === 'starting' && <span class="customers-scan-msg"><Spinner label={t('vehicles.scan.starting')} /></span>}
-        </div>
+        {camera && (
+          <div class={`customers-scan${state === 'live' ? ' is-live' : ''}`}>
+            <video ref={video} playsInline muted autoPlay aria-hidden="true" />
+            <span class="customers-scan-frame" aria-hidden="true"><span class="customers-scan-line" /></span>
+            {state !== 'live' && <span class="customers-scan-msg"><Spinner label={state === 'loading' ? t('vehicles.scan.loading') : t('vehicles.scan.starting')} /></span>}
+          </div>
+        )}
         {state === 'live' && <p class="muted" style={{ margin: 0 }}>{t('vehicles.scan.aim')}</p>}
         {state === 'denied' && <Banner kind="warn">{t('vehicles.scan.denied')}</Banner>}
-        {state === 'nocam' && <Banner kind="warn">{t('vehicles.scan.noCamera')}</Banner>}
+        {state === 'nocam' && <Banner kind="info">{t('vehicles.scan.noCamera')}</Banner>}
         {state === 'error' && <Banner kind="warn">{t('vehicles.scan.failed')}</Banner>}
+        {state === 'reading' && (
+          <div class="stack" data-testid="vin-photo-reading">
+            <p class="muted" style={{ margin: 0 }}>{t('vehicles.scan.reading')}</p>
+            <div class="customers-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
+              <span style={{ width: `${Math.round(progress * 100)}%` }} />
+            </div>
+          </div>
+        )}
+        {state === 'notfound' && !doubtful && <Banner kind="warn" data-testid="vin-photo-none">{t('vehicles.scan.notFound')}</Banner>}
         {doubtful && (
           <Banner kind="warn" title={t('vehicles.scan.doubt', { vin: doubtful })} action={<Button size="sm" variant="primary" icon={<Check size={16} />} onClick={() => p.onVin(doubtful)}>{t('vehicles.scan.keep')}</Button>}>
             {t('vehicles.vin.bad')}
           </Banner>
         )}
+        <div class="customers-scan-photo">
+          <p class="small muted" style={{ margin: 0 }}>{t('vehicles.scan.photoLead')}</p>
+          <Button icon={<Camera size={18} />} onClick={takePhoto} disabled={state === 'reading'} data-testid="vin-photo">{t('vehicles.scan.photo')}</Button>
+          <input ref={photo} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto((e.currentTarget as HTMLInputElement).files?.[0])} data-testid="vin-photo-input" />
+        </div>
       </div>
     </Sheet>
   );
 }
 
-/* ---------- makes and models (suggestions while typing) ---------- */
-export const MAKES = ['Acura', 'Alfa Romeo', 'Audi', 'BMW', 'Buick', 'Cadillac', 'Chevrolet', 'Chrysler', 'Dodge', 'Fiat', 'Ford', 'Genesis', 'GMC', 'Honda', 'Hyundai',
-  'Infiniti', 'Jaguar', 'Jeep', 'Kia', 'Land Rover', 'Lexus', 'Lincoln', 'Mazda', 'Mercedes-Benz', 'Mini', 'Mitsubishi', 'Nissan', 'Polestar', 'Porsche', 'RAM',
-  'Subaru', 'Tesla', 'Toyota', 'Volkswagen', 'Volvo'];
-export function modelsOf(make: string): string[] {
-  const mk = makeModel(make, '').make;
-  if (!mk) return [];
-  const set = new Set<string>();
-  for (const r of engineRef.value.rows) if (squash(r.make) === mk) set.add(r.model);
-  return [...set].sort((a, b) => a.localeCompare(b, 'fr'));
-}
-export function MakeModelLists(p: { make: string; ids: { make: string; model: string } }) {
-  useEffect(() => { void ensureEngineRef(); }, []);
-  const models = modelsOf(p.make);
-  return (
-    <>
-      <datalist id={p.ids.make}>{MAKES.map((m) => <option key={m} value={m} />)}</datalist>
-      <datalist id={p.ids.model}>{models.map((m) => <option key={m} value={m} />)}</datalist>
-    </>
-  );
-}
+/* ---------- a year the database takes ---------- */
 export function yearOk(s: string): boolean {
   const y = Number(s);
   return /^\d{4}$/.test(s) && y >= 1950 && y <= new Date().getFullYear() + 2;
@@ -227,7 +256,6 @@ export function VehicleAddSheet(p: { customerId: string; onClose: () => void; on
   const [d, setD] = useState<AddDraft>({ year: '', make: '', model: '', vin: '', extra: {} });
   const [tried, setTried] = useState(false);
   const set = (patch: Partial<AddDraft>) => setD((x) => ({ ...x, ...patch }));
-  const ids = { make: `vadd-make-${p.customerId}`, model: `vadd-model-${p.customerId}` };
   const errYear = d.year.trim() && !yearOk(d.year.trim()) ? t('vehicles.errors.year') : null;
   const errModel = mode === 'ymm' && (!d.make.trim() || !d.model.trim()) ? t('vehicles.errors.model') : null;
   const errVin = mode === 'vin' && !vinSavable(d.vin) ? t('vehicles.errors.vin') : mode === 'vin' && !d.vin && !d.make.trim() ? t('vehicles.errors.vinOrModel') : null;
@@ -254,18 +282,8 @@ export function VehicleAddSheet(p: { customerId: string; onClose: () => void; on
             onDecoded={(car) => set({ year: car.year ? String(car.year) : d.year, make: car.make || d.make, model: car.model || d.model, extra: car })} />
         )}
         {(mode === 'ymm' || d.make || d.model) && (
-          <div class="customers-ymm">
-            <Field label={t('vehicles.fields.year')} error={tried ? errYear : null}>
-              <Input value={d.year} onValue={(year) => set({ year: year.replace(/\D/g, '').slice(0, 4) })} inputMode="numeric" autoComplete="off" placeholder={String(new Date().getFullYear() - 5)} autoFocus={mode === 'ymm'} invalid={tried && !!errYear} data-testid="vadd-year" />
-            </Field>
-            <Field label={t('vehicles.fields.make')} error={tried && errModel && !d.make.trim() ? errModel : null}>
-              <Input value={d.make} onValue={(make) => set({ make })} list={ids.make} autoComplete="off" autoCapitalize="words" placeholder="Honda" invalid={tried && !!errModel && !d.make.trim()} data-testid="vadd-make" />
-            </Field>
-            <Field label={t('vehicles.fields.model')} error={tried && errModel && d.make.trim() && !d.model.trim() ? errModel : null}>
-              <Input value={d.model} onValue={(model) => set({ model })} list={ids.model} autoComplete="off" autoCapitalize="words" placeholder="Civic" invalid={tried && !!errModel && !d.model.trim()} data-testid="vadd-model" />
-            </Field>
-            <MakeModelLists make={d.make} ids={ids} />
-          </div>
+          <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model })} testid="vadd"
+            errors={{ year: tried ? errYear : null, make: tried && errModel && !d.make.trim() ? errModel : null, model: tried && errModel && d.make.trim() && !d.model.trim() ? errModel : null }} />
         )}
         {mode === 'ymm' && <p class="small muted" style={{ margin: 0 }}>{t('vehicles.add.later')}</p>}
       </div>

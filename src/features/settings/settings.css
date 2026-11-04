@@ -100,6 +100,10 @@
 .settings-theme-line.is-short { width: 55%; }
 .settings-theme-name { font-weight: 650; padding: 0 var(--sp-2); }
 .settings-theme-mode { font-size: var(--t-xs); color: var(--ink-2); padding: 0 var(--sp-2); }
+/* automatic: the light showroom on the left, the dark one on the right, cut on the diagonal */
+.settings-theme-split { position: relative; display: block; height: 92px; margin-bottom: 6px; }
+.settings-theme-split > .settings-theme-art { position: absolute; inset: 0; margin: 0; }
+.settings-theme-split > .settings-theme-art + .settings-theme-art { clip-path: polygon(62% 0, 100% 0, 100% 100%, 38% 100%); }
 
 /* connections */
 .settings-test { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); align-items: end; padding-top: var(--sp-3); border-top: 1px solid var(--glass-line); }

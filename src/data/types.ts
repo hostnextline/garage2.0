@@ -68,6 +68,9 @@ export interface Job extends Base {
   address: string | null; unit: string | null; postal_code: string | null; lat: number | null; lng: number | null; card_on_file: boolean;
   lost_cents: number | null; lost_reason: string | null; started_at: string | null; arrived_at: string | null; finished_at: string | null; cancelled_at: string | null;
   pay_later: boolean; pay_later_reason: string | null; waiver_signed_at: string | null; waiver_signer: string | null; waiver_version: string | null; waiver_attachment: string | null;
+  /** signed by the customer online (from the confirmation text) or at the door */
+  waiver_via?: 'phone' | 'online' | null;
+  estimate_signed_at?: string | null; estimate_signer?: string | null; estimate_attachment?: string | null; estimate_cents?: number | null;
   confirm_sent_at: string | null; source: 'phone' | 'walk_in' | 'quote' | 'web'; quote_id: string | null;
 }
 export interface JobItem extends Base {

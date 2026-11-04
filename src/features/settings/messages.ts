@@ -1,25 +1,28 @@
 /* The texts sent to customers (supabase/functions/notify and enroute fill them): their kinds, the words replaced
    in each one, the starting texts, and the preview shown while editing. Pure functions (messages.test.ts). */
 
-export type MsgKind = 'booking' | 'moved' | 'en_route' | 'en_route_no_eta' | 'invoice' | 'extras' | 'reminder' | 'payment_reminder';
-export const MSG_KINDS: MsgKind[] = ['booking', 'moved', 'en_route', 'en_route_no_eta', 'extras', 'invoice', 'payment_reminder', 'reminder'];
-/** the on/off switch a kind follows (the text « en route » without an arrival time follows « en route ») */
+export type MsgKind = 'booking' | 'moved' | 'en_route' | 'en_route_no_eta' | 'arrived' | 'arrived_no_pay' | 'invoice' | 'extras' | 'reminder' | 'payment_reminder';
+export const MSG_KINDS: MsgKind[] = ['booking', 'moved', 'en_route', 'en_route_no_eta', 'arrived', 'arrived_no_pay', 'extras', 'invoice', 'payment_reminder', 'reminder'];
+/** the on/off switch a kind follows (the text « en route » without an arrival time follows « en route »; the same for « arrivé ») */
 export const SWITCH_OF: Record<MsgKind, string> = {
-  booking: 'booking', moved: 'moved', en_route: 'en_route', en_route_no_eta: 'en_route', invoice: 'invoice', extras: 'extras', reminder: 'reminder', payment_reminder: 'payment_reminder'
+  booking: 'booking', moved: 'moved', en_route: 'en_route', en_route_no_eta: 'en_route', arrived: 'arrived', arrived_no_pay: 'arrived',
+  invoice: 'invoice', extras: 'extras', reminder: 'reminder', payment_reminder: 'payment_reminder'
 };
-export const SWITCHES = ['booking', 'moved', 'en_route', 'extras', 'invoice', 'payment_reminder', 'reminder'] as const;
+export const SWITCHES = ['booking', 'moved', 'en_route', 'arrived', 'extras', 'invoice', 'payment_reminder', 'reminder'] as const;
 /** what the server does when a switch was never set (messages.on[kind] missing) */
-export const DEFAULT_ON: Record<string, boolean> = { booking: true, moved: true, en_route: true, extras: true, invoice: true, payment_reminder: true, reminder: false };
+export const DEFAULT_ON: Record<string, boolean> = { booking: true, moved: true, en_route: true, arrived: true, extras: true, invoice: true, payment_reminder: true, reminder: false };
 
-export const ALL_VARS = ['prenom', 'garage', 'jour', 'debut', 'fin', 'total', 'lien', 'mecano', 'heure', 'minutes', 'vehicule', 'montant', 'numero', 'date', 'telephone'] as const;
+export const ALL_VARS = ['prenom', 'garage', 'jour', 'bloc', 'debut', 'fin', 'total', 'payer', 'lien', 'mecano', 'heure', 'minutes', 'vehicule', 'montant', 'numero', 'date', 'telephone'] as const;
 export type VarName = (typeof ALL_VARS)[number];
 const BASE: VarName[] = ['prenom', 'garage', 'jour', 'debut', 'fin', 'lien', 'telephone'];
 /** the words each text really gets from the server (others would come out empty) */
 export const VARS_OF: Record<MsgKind, VarName[]> = {
-  booking: [...BASE, 'total'],
-  moved: [...BASE, 'total'],
+  booking: [...BASE, 'bloc', 'total', 'payer'],
+  moved: [...BASE, 'bloc', 'total'],
   en_route: ['prenom', 'mecano', 'garage', 'heure', 'minutes', 'lien'],
   en_route_no_eta: ['prenom', 'mecano', 'garage', 'lien'],
+  arrived: ['prenom', 'mecano', 'garage', 'total', 'montant', 'lien', 'telephone'],
+  arrived_no_pay: ['prenom', 'mecano', 'garage', 'total', 'montant', 'lien', 'telephone'],
   extras: [...BASE, 'mecano', 'vehicule', 'montant'],
   invoice: [...BASE, 'numero', 'total', 'montant', 'date'],
   payment_reminder: [...BASE, 'numero', 'total', 'montant', 'date'],
@@ -29,20 +32,24 @@ export const VARS_OF: Record<MsgKind, VarName[]> = {
 /* the starting texts (supabase/migrations/…_defaults.sql), for « Remettre le texte d'origine » */
 export const DEFAULT_TEXTS: Record<'fr' | 'en', Record<MsgKind, string>> = {
   fr: {
-    booking: 'Bonjour {prenom}, votre rendez-vous avec {garage} est confirmé : {jour}, entre {debut} et {fin}. Total prévu : {total} (taxes incluses). Détails : {lien}',
+    booking: 'Bonjour {prenom}, votre rendez-vous avec {garage} est confirmé : {jour}, {bloc} (entre {debut} et {fin}). Estimation : {total} taxes incluses. Pour voir et signer votre estimation{payer} : {lien}',
     moved: 'Bonjour {prenom}, votre rendez-vous avec {garage} a changé : {jour}, entre {debut} et {fin}. Détails : {lien}',
     en_route: 'Bonjour {prenom}, {mecano} de {garage} est en route vers chez vous : arrivée prévue vers {heure} (environ {minutes} min). Suivez son trajet en direct : {lien}',
     en_route_no_eta: 'Bonjour {prenom}, {mecano} de {garage} est en route vers chez vous. Suivez son trajet en direct : {lien}',
+    arrived: 'Bonjour {prenom}, {mecano} de {garage} est arrivé. Votre facture : {total} taxes incluses. Vous pouvez la payer en ligne pendant les travaux : {lien}',
+    arrived_no_pay: 'Bonjour {prenom}, {mecano} de {garage} est arrivé. Votre facture : {total} taxes incluses. Détails : {lien}',
     invoice: 'Bonjour {prenom}, voici votre facture {numero} de {garage} ({total}) : {lien}',
     extras: 'Bonjour {prenom}, {mecano} de {garage} propose des travaux supplémentaires sur votre {vehicule} ({montant} avant taxes). Pour voir et accepter ou refuser : {lien}',
     reminder: 'Rappel : {garage} vient demain, {jour}, entre {debut} et {fin}. Pour changer : {telephone}',
     payment_reminder: 'Bonjour {prenom}, petit rappel de {garage} : la facture {numero} du {date} ({montant}) est toujours à payer. {lien}'
   },
   en: {
-    booking: 'Hello {prenom}, your appointment with {garage} is confirmed: {jour}, between {debut} and {fin}. Expected total: {total} (taxes included). Details: {lien}',
+    booking: 'Hello {prenom}, your appointment with {garage} is confirmed: {jour}, {bloc} (between {debut} and {fin}). Estimate: {total} taxes included. To see and sign your estimate{payer}: {lien}',
     moved: 'Hello {prenom}, your appointment with {garage} has changed: {jour}, between {debut} and {fin}. Details: {lien}',
     en_route: 'Hello {prenom}, {mecano} from {garage} is on the way to you: arriving around {heure} (about {minutes} min). Follow the trip live: {lien}',
     en_route_no_eta: 'Hello {prenom}, {mecano} from {garage} is on the way to you. Follow the trip live: {lien}',
+    arrived: 'Hello {prenom}, {mecano} from {garage} has arrived. Your invoice: {total} taxes included. You can pay it online while the work is being done: {lien}',
+    arrived_no_pay: 'Hello {prenom}, {mecano} from {garage} has arrived. Your invoice: {total} taxes included. Details: {lien}',
     invoice: 'Hello {prenom}, here is your invoice {numero} from {garage} ({total}): {lien}',
     extras: 'Hello {prenom}, {mecano} from {garage} suggests extra work on your {vehicule} ({montant} before taxes). To see it and accept or decline: {lien}',
     reminder: 'Reminder: {garage} comes tomorrow, {jour}, between {debut} and {fin}. To change: {telephone}',

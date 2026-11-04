@@ -68,10 +68,12 @@ function fns() {
     const kind = String(b.kind || '');
     if (kind === 'booking' && j.confirm_sent_at && !b.resend) return { ok: true, status: 'already' };
     if (['booking', 'moved', 'reminder'].includes(kind) && j.status !== 'booked') return { ok: false, code: 'not_booked', error: 'Ce rendez-vous n’est plus à venir.' };
+    if (kind === 'arrived' && j.status !== 'on_site') return { ok: false, code: 'not_on_site', error: 'Le mécano n’est pas encore arrivé chez ce client.' };
     const c = find('customers', j.customer_id);
     const link = `${LINK}#t=demo-${String(j.id)}${c?.lang === 'en' ? '&l=en' : ''}`;
     const words: Record<string, string> = {
-      booking: `votre rendez-vous avec Mécanique Mobile H.I.S est confirmé. Détails : ${link}`,
+      booking: `votre rendez-vous avec Mécanique Mobile H.I.S est confirmé. Pour voir et signer votre estimation : ${link}`,
+      arrived: `votre mécano de Mécanique Mobile H.I.S est arrivé. Votre facture, à payer pendant les travaux : ${link}`,
       moved: `votre rendez-vous avec Mécanique Mobile H.I.S a été déplacé. Détails : ${link}`,
       extras: `votre mécano propose un travail sur votre véhicule. Acceptez ou refusez ici : ${link}`,
       invoice: `voici votre facture de Mécanique Mobile H.I.S. Pour payer : ${link}`,

@@ -21,6 +21,11 @@ export interface JobView {
   job: { number: number; day: string; day_label_fr?: string; day_label_en?: string; block: 'am' | 'pm' | 'eve' | string; start: number | null; end: number | null;
     status: JobStatus; tracking: boolean; vehicle: string | null; waiver_signed: boolean };
   items: JobItemV[]; extras: ExtraV[]; expected: Sums; prepaid_cents: number; invoice: InvoiceV | null;
+  /** the estimate the customer signs (with the conditions of the work) */
+  estimate?: { signed_at: string | null; signer: string | null; cents: number | null; changed: boolean; can_sign: boolean };
+  conditions?: string | null;
+  /** the invoice being made while the mechanic is there (to pay during the work) */
+  bill?: { lines: InvoiceLineV[]; subtotal_cents: number; tps_cents: number; tvq_cents: number; total_cents: number } | null;
   pay: { available: boolean; amount_cents: number; kind: 'invoice' | 'prepay'; pending: boolean };
 }
 export interface QuoteView {
@@ -64,9 +69,9 @@ async function post(url: string, body: unknown): Promise<{ status: number; data:
   }
 }
 
-const KNOWN = new Set(['bad_link', 'expired', 'gone', 'network', 'confirm', 'nothing', 'no_stripe', 'action', 'timeout']);
-/** the « client » server function: view | answer | pay | check */
-export async function callClient<T = View>(action: 'view' | 'answer' | 'pay' | 'check', token: string, extra: Record<string, unknown> = {}): Promise<T> {
+const KNOWN = new Set(['bad_link', 'expired', 'gone', 'network', 'confirm', 'nothing', 'no_stripe', 'action', 'timeout', 'signed', 'signer', 'signature']);
+/** the « client » server function: view | sign | answer | pay | check */
+export async function callClient<T = View>(action: 'view' | 'sign' | 'answer' | 'pay' | 'check', token: string, extra: Record<string, unknown> = {}): Promise<T> {
   const { status, data } = await post(`${SUPABASE_URL}/functions/v1/client`, { action, token, base: appBase(), ...extra });
   if (!data || data.ok === false || status >= 400) {
     const code = String(data?.code || '');

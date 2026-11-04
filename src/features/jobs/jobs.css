@@ -145,3 +145,4 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 /* text links stay text, but the finger gets 48 px around them */
 .jobs-link, .jobs-title-link { position: relative; }
 .jobs-link::after, .jobs-title-link::after { content: ''; position: absolute; inset: -12px -6px; }
+.jobs-warn-text { color: var(--warn); }

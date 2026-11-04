@@ -7,19 +7,52 @@ import { THEMES, teamLook, myLook, type Look, type ThemeKey, type Mode, type Gla
 import { Panel, Seg, Field, Banner, Button, attempt } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
-export function ThemeSwatches(p: { value: ThemeKey; onValue: (k: ThemeKey) => void; label: string; 'data-tour'?: string }) {
+/* the looks as small showrooms: H.I.S three times (light, dark, automatic: follows the phone), then the luxury themes */
+interface LookCard { key: string; theme: ThemeKey; mode?: Mode; swatch: [string, string, string]; split?: [string, string, string] }
+const HIS_LIGHT: [string, string, string] = ['#E7EAEE', '#FFFFFF', '#D3000E'];
+const HIS_DARK: [string, string, string] = ['#000000', '#15181B', '#FF2E36'];
+export const LOOK_CARDS: LookCard[] = [
+  { key: 'his-light', theme: 'his', mode: 'light', swatch: HIS_LIGHT },
+  { key: 'his-dark', theme: 'his', mode: 'dark', swatch: HIS_DARK },
+  { key: 'his-auto', theme: 'his', mode: 'auto', swatch: HIS_LIGHT, split: HIS_DARK },
+  ...THEMES.filter((th) => th.key !== 'his').map((th) => ({ key: th.key, theme: th.key, swatch: th.swatch }))
+];
+/** which card is the look */
+export function cardOf(l: Pick<Look, 'theme' | 'mode'>): string {
+  return l.theme === 'his' ? `his-${l.mode}` : l.theme;
+}
+function cardName(c: LookCard): string {
+  if (c.theme === 'his') return t(`settings.look.his.${c.mode}`);
+  const th = THEMES.find((x) => x.key === c.theme)!;
+  return lang.value === 'en' ? th.en : th.fr;
+}
+function cardSub(c: LookCard): string {
+  if (c.theme === 'his') return t(`settings.look.his.${c.mode}Sub`);
+  const th = THEMES.find((x) => x.key === c.theme)!;
+  return th.fixed === 'light' ? t('settings.look.alwaysLight') : t('settings.look.alwaysDark');
+}
+function Art(p: { s: [string, string, string] }) {
+  return (
+    <span class="settings-theme-art" style={{ '--s0': p.s[0], '--s1': p.s[1], '--s2': p.s[2] }} aria-hidden="true">
+      <span class="settings-theme-glow" />
+      <span class="settings-theme-panel"><span class="settings-theme-dot" /><span class="settings-theme-line" /><span class="settings-theme-line is-short" /></span>
+    </span>
+  );
+}
+export function ThemeSwatches(p: { value: Pick<Look, 'theme' | 'mode'>; onLook: (l: Partial<Look>) => void; label: string; 'data-tour'?: string }) {
+  const cur = cardOf(p.value);
   return (
     <div class="settings-themes" role="radiogroup" aria-label={p.label} data-tour={p['data-tour']}>
-      {THEMES.map((th) => {
-        const on = p.value === th.key;
+      {LOOK_CARDS.map((c) => {
+        const on = cur === c.key;
         return (
-          <button key={th.key} type="button" role="radio" aria-checked={on} class="settings-theme" onClick={() => p.onValue(th.key)} data-testid={`theme-${th.key}`}>
-            <span class="settings-theme-art" style={{ '--s0': th.swatch[0], '--s1': th.swatch[1], '--s2': th.swatch[2] }} aria-hidden="true">
-              <span class="settings-theme-glow" />
-              <span class="settings-theme-panel"><span class="settings-theme-dot" /><span class="settings-theme-line" /><span class="settings-theme-line is-short" /></span>
-            </span>
-            <span class="settings-theme-name">{lang.value === 'en' ? th.en : th.fr}</span>
-            <span class="settings-theme-mode">{th.fixed === 'light' ? t('settings.look.alwaysLight') : th.fixed === 'dark' ? t('settings.look.alwaysDark') : t('settings.look.followsPhone')}</span>
+          <button key={c.key} type="button" role="radio" aria-checked={on} class="settings-theme" data-testid={`theme-${c.key}`}
+            onClick={() => p.onLook(c.mode ? { theme: c.theme, mode: c.mode } : { theme: c.theme })}>
+            {c.split
+              ? <span class="settings-theme-split"><Art s={c.swatch} /><Art s={c.split} /></span>
+              : <Art s={c.swatch} />}
+            <span class="settings-theme-name">{cardName(c)}</span>
+            <span class="settings-theme-mode">{cardSub(c)}</span>
           </button>
         );
       })}
@@ -27,21 +60,13 @@ export function ThemeSwatches(p: { value: ThemeKey; onValue: (k: ThemeKey) => vo
   );
 }
 
-/** the light/dark choice (H.I.S only) and the glass */
+/** the glass (light and dark are chosen with the cards above) */
 export function LookChoices(p: { look: Look; onLook: (l: Partial<Look>) => void }) {
-  const th = THEMES.find((x) => x.key === p.look.theme);
   return (
-    <div class="grid-2">
-      <Field label={t('settings.look.mode')} help={t('settings.look.modeHelp')} group
-        hint={th?.fixed ? t('settings.look.fixedMode', { mode: th.fixed === 'light' ? t('settings.look.modes.light').toLowerCase() : t('settings.look.modes.dark').toLowerCase() }) : undefined}>
-        <Seg value={th?.fixed ? th.fixed : p.look.mode} onValue={(v) => p.onLook({ mode: v as Mode })} label={t('settings.look.mode')} data-testid="look-mode"
-          options={(['auto', 'light', 'dark'] as Mode[]).map((m) => ({ value: m, label: t(`settings.look.modes.${m}`), disabled: !!th?.fixed }))} />
-      </Field>
-      <Field label={t('settings.look.glass')} help={t('settings.look.glassHelp')} group>
-        <Seg value={p.look.glass} onValue={(v) => p.onLook({ glass: v as Glass })} label={t('settings.look.glass')} data-testid="look-glass"
-          options={(['auto', 'on', 'off'] as Glass[]).map((g) => ({ value: g, label: t(`settings.look.glasses.${g}`) }))} />
-      </Field>
-    </div>
+    <Field label={t('settings.look.glass')} help={t('settings.look.glassHelp')} group>
+      <Seg value={p.look.glass} onValue={(v) => p.onLook({ glass: v as Glass })} label={t('settings.look.glass')} data-testid="look-glass"
+        options={(['auto', 'on', 'off'] as Glass[]).map((g) => ({ value: g, label: t(`settings.look.glasses.${g}`) }))} />
+    </Field>
   );
 }
 
@@ -56,7 +81,7 @@ export function LookSection() {
       <p class="muted" style={{ margin: 0 }}>{t('settings.look.lead')}</p>
       {myLook.value && <Banner kind="info" action={<Button size="sm" href="#/account">{t('settings.look.mineLink')}</Button>}>{t('settings.look.mine')}</Banner>}
       <Panel title={t('settings.look.theme')} help={t('settings.look.themeHelp')}>
-        <ThemeSwatches value={d.theme} onValue={(k) => set((x) => ({ ...x, theme: k }))} label={t('settings.look.theme')} />
+        <ThemeSwatches value={d} onLook={(l) => set((x) => ({ ...x, ...l }))} label={t('settings.look.theme')} />
       </Panel>
       <Panel>
         <LookChoices look={d} onLook={(l) => set((x) => ({ ...x, ...l }))} />

@@ -2,7 +2,7 @@
    Phone: the list, then the part with « Retour ». A part with changes not saved keeps them (and shows a dot) until
    they are saved or undone. Apparence and Branchements are the owner's. */
 import type { ComponentType } from 'preact';
-import { type LucideIcon, Building2, Receipt, Wrench, CalendarClock, MessageSquareText, FileSignature, Palette, PlugZap, Tags, ChevronRight } from 'lucide-preact';
+import { type LucideIcon, Building2, Receipt, Wrench, CalendarClock, MessageSquareText, FileSignature, Palette, PlugZap, Tags, ChevronRight, RefreshCw } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { navigate } from '../../app/router';
 import { wide } from '../../app/media';
@@ -19,9 +19,10 @@ import { WaiverSection } from './WaiverSection';
 import { LookSection } from './LookSection';
 import { ConnectSection } from './ConnectSection';
 import { ExpensesSection } from './ExpensesSection';
+import { UpdatePanel } from '../../app/UpdatePanel';
 import './settings.css';
 
-export type SectionKey = 'company' | 'billing' | 'services' | 'booking' | 'texts' | 'waiver' | 'look' | 'connect' | 'expenses';
+export type SectionKey = 'company' | 'billing' | 'services' | 'booking' | 'texts' | 'waiver' | 'look' | 'connect' | 'expenses' | 'app';
 interface SectionDef { key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; tour?: string }
 const SECTIONS: SectionDef[] = [
   { key: 'company', icon: Building2, view: CompanySection, tour: 'settings-company' },
@@ -32,8 +33,14 @@ const SECTIONS: SectionDef[] = [
   { key: 'waiver', icon: FileSignature, view: WaiverSection },
   { key: 'look', icon: Palette, view: LookSection, owner: true, tour: 'settings-look' },
   { key: 'connect', icon: PlugZap, view: ConnectSection, owner: true, tour: 'settings-connect' },
-  { key: 'expenses', icon: Tags, view: ExpensesSection }
+  { key: 'expenses', icon: Tags, view: ExpensesSection },
+  { key: 'app', icon: RefreshCw, view: AppSection }
 ];
+
+/** Mise à jour de l'app: the version on this device and « Vérifier les mises à jour » */
+function AppSection() {
+  return <div class="settings-section stack-lg" data-testid="settings-app"><UpdatePanel titled={false} /></div>;
+}
 
 export default function SettingsScreen({ params }: ScreenProps) {
   const list = SECTIONS.filter((s) => !s.owner || isOwner());
