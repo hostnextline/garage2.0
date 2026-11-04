@@ -60,5 +60,6 @@ export const errors = {
   kind: 'Type inconnu.',
   confirm: 'Confirme d’abord.',
   action: 'Action inconnue.',
+  truck: 'Ce camion n’existe plus. Choisis-en un autre.',
   server: 'Le serveur ne répond pas comme prévu. Réessaie dans un moment.'
 };

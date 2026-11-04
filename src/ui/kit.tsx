@@ -19,11 +19,12 @@ export interface PageProps {
   wide?: boolean;
   children?: ComponentChildren;
   help?: string;
+  class?: string;
   'data-testid'?: string;
 }
 export function Page(p: PageProps) {
   return (
-    <div class={`page${p.wide ? ' page-wide' : ''}`} data-testid={p['data-testid']}>
+    <div class={`page${p.wide ? ' page-wide' : ''}${p.class ? ' ' + p.class : ''}`} data-testid={p['data-testid']}>
       <header class="page-head">
         {p.back != null && <IconButton class="page-back" icon={<ChevronLeft />} label={t('common.back')} onClick={() => goBack(p.back!)} />}
         <div class="grow page-titles">

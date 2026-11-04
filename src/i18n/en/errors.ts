@@ -59,5 +59,6 @@ export const errors: typeof fr = {
   kind: 'Unknown type.',
   confirm: 'Confirm first.',
   action: 'Unknown action.',
+  truck: 'This truck no longer exists. Choose another one.',
   server: 'The server isn’t answering as expected. Try again in a moment.'
 };

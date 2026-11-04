@@ -147,7 +147,7 @@ registerRpc('report_position', (a) => { put('positions', { id: me(), lat: a.p_la
 registerRpc('update_me', (a) => {
   const s = find('staff', me())!;
   const p = (a.p_patch || {}) as Record<string, unknown>;
-  return { ok: true, rows: rows({ staff: put('staff', { id: s.id, ...(p.phone ? { phone: p.phone } : {}), ...(p.lang ? { lang: p.lang } : {}), prefs: { ...(s.prefs as object), ...((p.prefs as object) || {}) } }) }) };
+  return { ok: true, rows: rows({ staff: put('staff', { id: s.id, ...(p.phone !== undefined ? { phone: p.phone || null } : {}), ...(p.lang ? { lang: p.lang } : {}), prefs: { ...(s.prefs as object), ...((p.prefs as object) || {}) } }) }) };
 });
 registerRpc('member_update', (a) => ({ ok: true, rows: rows({ staff: put('staff', { id: String(a.p_staff), ...(a.p_patch as object) }) }) }));
 registerRpc('set_role_rights', (a) => {
