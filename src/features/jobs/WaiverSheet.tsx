@@ -28,9 +28,12 @@ export function WaiverSheet(p: { job: Job; open: boolean; onClose: () => void })
   const [signer, setSigner] = useState('');
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const customerNow = customerName(jobCustomer(p.job));
   useEffect(() => {
-    if (p.open) { setSigner(customerName(jobCustomer(p.job))); setStrokes([]); setError(null); }
+    if (p.open) { setSigner(customerNow); setStrokes([]); setError(null); }
   }, [p.open]);
+  // the customer's file may arrive a moment later (a phone just signed in): fill the name if nothing was typed
+  useEffect(() => { if (p.open && customerNow) setSigner((cur) => cur || customerNow); }, [customerNow]);
   const text = waiverText(l);
   const version = settings.value.waiver?.version || '1';
   const save = async () => {

@@ -81,6 +81,8 @@ export function errorText(e: unknown): string {
 
 /* ---------- start / stop ---------- */
 export async function startSync(client: SupabaseClient, userId: string) {
+  // already running for this person (a second sign-in answer, a retry): just bring what is new
+  if (sb === client && uid === userId && timers.length) { void pullAll(); void flush(); return; }
   stopSync();
   sb = client; uid = userId;
   setNet({ storageBroken: false, ready: false });
@@ -369,7 +371,7 @@ function applyRpcResult(data: unknown) {
   for (const [t, rows] of Object.entries(d.rows)) if ((SYNCED as readonly string[]).includes(t) && Array.isArray(rows)) applyServerRows(t as TableName, rows, true);
 }
 export async function refetch(t: TableName, id: string) {
-  if (!sb) return;
+  if (!sb || !id || id === 'undefined' || id === 'null') return;
   try {
     const { data } = await withTimeout(sb.from(t).select('*').eq('id', id).maybeSingle());
     if (data) applyServerRows(t, [data as Row], true);

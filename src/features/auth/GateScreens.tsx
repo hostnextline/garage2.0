@@ -56,7 +56,7 @@ export function LoginScreen() {
         <p class="gate-lead">{t('auth.lead')}</p>
       </div>
       {offline && <Banner kind="warn">{t('auth.offlineNote')}</Banner>}
-      <Form onSubmit={submit} class="stack">
+      <Form onSubmit={() => undefined} class="stack">
         <Field label={t('auth.email')}>
           <Input type="email" inputMode="email" autoComplete="username" value={email} onValue={setEmail} autoFocus={!email} data-testid="login-email" />
         </Field>
@@ -155,7 +155,7 @@ export function InviteScreen() {
         <p class="gate-lead">{t(info.kind === 'reset' ? 'auth.resetLead' : 'auth.inviteLead', { name: info.name, garage: info.garage })}</p>
         {info.kind !== 'reset' && roles && <p class="muted small" style={{ margin: 0 }}>{t('auth.yourRoles', { roles })}</p>}
       </div>
-      <Form onSubmit={activate} class="stack">
+      <Form onSubmit={() => undefined} class="stack">
         <Field label={t('auth.email')}><Input value={info.email} onValue={() => undefined} readOnly autoComplete="username" /></Field>
         <Field label={t('auth.newPassword')} hint={t('auth.newPasswordHint')}>
           <PasswordInput value={pw} onValue={setPw} autoComplete="new-password" autoFocus />

@@ -41,8 +41,8 @@ export default function TreasuryScreen({ query }: ScreenProps) {
   useEffect(() => {
     if (add !== '1') return;
     setQuery({ add: null });
-    const tm = setTimeout(() => setSheet({ open: true, expense: null }), 0);
-    return () => clearTimeout(tm);
+    // not cancelled when the address changes (cleaning it changes it): the sheet must open
+    setTimeout(() => setSheet({ open: true, expense: null }), 0);
   }, [add]);
 
   const choose = (k: PeriodKey) => setQuery({ p: k === 'month' ? null : k, from: k === 'custom' ? range.from : null, to: k === 'custom' ? range.to : null });
@@ -101,7 +101,7 @@ function ReportPanel(p: { r: ReturnType<typeof useReport<TreasuryReport>>; l: st
           </div>
           <dl class="tre-lines">
             <div><dt>{t('treasury.report.revenue')} <span class="faint">{t('treasury.report.invoices', { n: d.revenue.count })}</span></dt><dd class="money">{money(d.revenue.subtotal, l)}</dd></div>
-            <div><dt>{t('treasury.report.expenses')} <span class="faint">{t('treasury.report.expensesCount', { n: d.expenses.count })}</span></dt><dd class="money">−{money(d.expenses.subtotal, l)}</dd></div>
+            <div><dt>{t('treasury.report.expenses')} <span class="faint">{t('treasury.report.expensesCount', { n: d.expenses.count })}</span></dt><dd class="money">{d.expenses.subtotal ? '−' : ''}{money(d.expenses.subtotal, l)}</dd></div>
             <div class="tre-lines-remit"><dt>{remit < 0 ? t('treasury.report.refund') : t('treasury.report.remit')} <span class="faint">{t('treasury.report.remitSub')}</span></dt><dd class="money" data-testid="treasury-remit">{money(Math.abs(remit), l)}</dd></div>
           </dl>
         </div>

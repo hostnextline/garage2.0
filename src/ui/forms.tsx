@@ -210,7 +210,9 @@ export function DateInput(p: { value: string | null | undefined; onValue: (v: st
   return <input class="input" type="date" id={p.id} aria-label={p['aria-label']} min={p.min} max={p.max} value={p.value ?? ''} onInput={(e) => p.onValue((e.currentTarget as HTMLInputElement).value)} />;
 }
 
-/** a form that never reloads the page; Enter in a field submits */
+/** a form that never reloads the page. Enter in a field « clicks » the form's submit button: put the action on that
+    button's onClick (one submission only) and give the form onSubmit={() => undefined}, or put it here and use a
+    submit button without onClick — never both (it would run twice). */
 export function Form(p: { onSubmit: () => unknown; children: ComponentChildren; class?: string; id?: string }) {
   return <form class={p.class} id={p.id} noValidate onSubmit={(e) => { e.preventDefault(); void p.onSubmit(); }}>{p.children}</form>;
 }

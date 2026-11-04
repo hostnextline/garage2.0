@@ -35,6 +35,7 @@ export const handler = serve(async (req) => {
   const c = await caller(req);
   const db = adminDb();
   // the person must see the job through the normal rules
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(b.job_id || ''))) fail('not_found', 'Cette job n’existe plus.', 404);
   const { data: job, error } = await c.db.from('jobs').select('*').eq('id', String(b.job_id || '')).maybeSingle();
   if (error) throw error;
   if (!job) fail('not_found', 'Cette job n’existe plus (ou tu n’y as pas accès).');

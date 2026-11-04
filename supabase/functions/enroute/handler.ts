@@ -36,6 +36,7 @@ export const handler = serve(async (req) => {
   const action = String(b.action || 'start');
   const c = await caller(req);
   const db = adminDb();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(b.job_id || ''))) fail('not_found', 'Cette job n’existe plus.', 404);
   const { data: job } = await c.db.from('jobs').select('*').eq('id', String(b.job_id || '')).maybeSingle();
   if (!job) fail('not_found', 'Cette job n’existe plus (ou tu n’y as pas accès).');
   const j = job as Record<string, any>;
