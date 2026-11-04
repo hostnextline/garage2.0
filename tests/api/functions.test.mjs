@@ -253,3 +253,22 @@ test('backups: only with a GitHub ticket of the backup repository; every row, pa
   assert.equal((await call({ action: 'rows', table: 'secrets' }, good)).code, 'table');
   await q(`delete from public.secrets`);
 });
+
+test('inviting a mechanic with his truck: once he activates his access, he drives it (« Ma journée » shows his jobs)', async () => {
+  const truck = (await q(`insert into public.trucks (name, active) values ('Camion test invitation', true) returning id`))[0].id;
+  made.trucks.push(truck);
+  const email = `meca-${randomUUID().slice(0, 6)}@test.local`;
+  assert.equal((await fn('team', { action: 'invite', email, full_name: 'Nouveau Mécano', roles: ['mechanic'], truck_id: randomUUID(), base: BASE, send: 'none' }, ownerJwt)).code, 'truck');
+  const r = await fn('team', { action: 'invite', email, full_name: 'Nouveau Mécano', roles: ['mechanic'], truck_id: truck, base: BASE, send: 'none' }, ownerJwt);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const list = await fn('team', { action: 'list' }, ownerJwt);
+  assert.equal(list.invitations.find((i) => i.email === email).truck_id, truck);
+  const ok = await fn('team', { action: 'invite-accept', token: tokenOf(r.link), password: 'camion-2026' });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  const uid = (await q(`select id from auth.users where email = $1`, [email]))[0].id;
+  made.users.push(uid);
+  assert.equal((await q(`select driver_id from public.trucks where id = $1`, [truck]))[0].driver_id, uid);
+  const jwt = (await signIn(email, 'camion-2026')).access_token;
+  assert.deepEqual((await rpc('my_access', {}, jwt)).trucks, [truck]);
+  await q(`update public.trucks set driver_id = null where id = $1`, [truck]);
+});

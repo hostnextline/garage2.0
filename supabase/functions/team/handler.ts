@@ -44,14 +44,14 @@ function inviteText(lang: string, name: string, garage: string, link: string, re
   return { subject: t.subject, text, html, sms: `${t.intro} ${link}` };
 }
 
-async function makeInvite(by: string, v: { email: string; full_name: string; short_name?: string | null; roles: string[]; rights?: Record<string, boolean>; lang: string; kind: 'invite' | 'reset'; user_id?: string | null }) {
+async function makeInvite(by: string, v: { email: string; full_name: string; short_name?: string | null; roles: string[]; rights?: Record<string, boolean>; lang: string; kind: 'invite' | 'reset'; user_id?: string | null; truck_id?: string | null }) {
   const db = adminDb();
   // a new link replaces the unused ones for the same person
   await db.from('invitations').update({ used_at: new Date().toISOString() }).eq('email', v.email.toLowerCase()).is('used_at', null);
   const token = newToken(24);
   const { data, error } = await db.from('invitations').insert({
     email: v.email.toLowerCase(), full_name: v.full_name, short_name: v.short_name || null, roles: v.roles, rights: v.rights || {}, lang: v.lang,
-    token_hash: await sha256hex(token), kind: v.kind, user_id: v.user_id || null, expires_at: new Date(Date.now() + DAYS7).toISOString(), created_by: by
+    token_hash: await sha256hex(token), kind: v.kind, user_id: v.user_id || null, truck_id: v.truck_id || null, expires_at: new Date(Date.now() + DAYS7).toISOString(), created_by: by
   }).select('id').single();
   if (error) throw error;
   return { token, id: (data as { id: string }).id };
@@ -108,6 +108,8 @@ export const handler = serve(async (req) => {
         const { error: e2 } = await db.from('staff').upsert({ id: uid, full_name: i.full_name, short_name: i.short_name, email: i.email, roles: i.roles,
           rights: i.rights || {}, lang: i.lang || 'fr', active: true, deleted_at: null, created_by: i.created_by });
         if (e2) throw e2;
+        // invited with his truck: he drives it from now on
+        if (i.truck_id) await db.from('trucks').update({ driver_id: uid }).eq('id', i.truck_id).is('deleted_at', null);
       }
       return json({ ok: true, email: i.email });
     } catch (e) {
@@ -156,7 +158,7 @@ export const handler = serve(async (req) => {
   owner(c);
   switch (action) {
     case 'list': {
-      const { data } = await db.from('invitations').select('id, email, full_name, roles, kind, expires_at, used_at, created_at').is('used_at', null).order('created_at', { ascending: false }).limit(50);
+      const { data } = await db.from('invitations').select('id, email, full_name, roles, kind, truck_id, expires_at, used_at, created_at').is('used_at', null).order('created_at', { ascending: false }).limit(50);
       const { data: users } = await db.auth.admin.listUsers({ page: 1, perPage: 200 });
       const seen = Object.fromEntries((users?.users || []).map((u) => [u.id, { last_sign_in_at: u.last_sign_in_at, banned: !!(u as { banned_until?: string }).banned_until }]));
       return json({ ok: true, invitations: data || [], sign_ins: seen });
@@ -171,7 +173,13 @@ export const handler = serve(async (req) => {
       const { data: already } = await db.from('staff').select('id, active, deleted_at').eq('email', email).maybeSingle();
       if (already && (already as any).active && !(already as any).deleted_at) fail('exists', 'Cette personne a déjà un compte.');
       const lang = b.lang === 'en' ? 'en' : 'fr';
-      const inv = await makeInvite(c.id, { email, full_name, short_name: (b.short_name as string) || null, roles, rights: (b.rights as Record<string, boolean>) || {}, lang, kind: 'invite' });
+      let truck_id: string | null = null;
+      if (b.truck_id) {
+        const { data: tr } = await db.from('trucks').select('id').eq('id', String(b.truck_id)).is('deleted_at', null).maybeSingle();
+        if (!tr) fail('truck', 'Ce camion n’existe plus.');
+        truck_id = (tr as { id: string }).id;
+      }
+      const inv = await makeInvite(c.id, { email, full_name, short_name: (b.short_name as string) || null, roles, rights: (b.rights as Record<string, boolean>) || {}, lang, kind: 'invite', truck_id });
       const link = inviteLink(baseOf(b.base), inv.token, lang);
       const d = await deliver(String(b.send || 'none'), { name: full_name, email, phone: (b.phone as string) || null, lang }, link, false);
       return json({ ok: true, id: inv.id, link, sent: d.status, channel: d.channel, error: (d as { error?: string }).error, message: d.message });
