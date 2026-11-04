@@ -65,7 +65,13 @@ function SheetOpen(p: SheetProps) {
     try { history.pushState({ ...(history.state || {}), sheets: [...stackOf(history.state), id] }, '', location.href); } catch { /* ignore */ }
     const onPop = () => { if (!stackOf(history.state).includes(id) && !popped) { popped = true; closeRef.current(); } };
     window.addEventListener('popstate', onPop);
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && dismissable) { e.stopPropagation(); closeRef.current(); } };
+    // Escape closes the sheet on top only (a question asked over a sheet closes alone)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !dismissable) return;
+      const st = stackOf(history.state);
+      if (st.length && st[st.length - 1] !== id) return;
+      e.stopPropagation(); closeRef.current();
+    };
     document.addEventListener('keydown', onKey);
     const first = box.current?.querySelector<HTMLElement>('[autofocus], input:not([type=hidden]), select, textarea, button:not(.sheet-x)');
     (first || box.current)?.focus({ preventScroll: true });

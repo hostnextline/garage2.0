@@ -136,6 +136,7 @@ export async function updateMe(patch: { phone?: string; lang?: string; prefs?: R
 }
 
 /* ---------- treasury and inventory ---------- */
+export async function deleteExpense(id: string) { guard(); await deleteRow('expenses', id, { label: t('log.expense') }); }
 export async function saveExpense(e: Partial<Expense>): Promise<string> { guard(); return upsert('expenses', e, { category: 'Autre', subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0 }, t('log.expense')); }
 export async function saveReceipt(dataUrl: string, w: number, h: number): Promise<string> {
   guard();
@@ -174,13 +175,19 @@ export async function reportPosition(lat: number, lng: number, accuracy: number 
 }
 
 /* ---------- needs the network ---------- */
+function inTime<T>(p: PromiseLike<T>, ms = 15000): Promise<T> {
+  return new Promise<T>((res, rej) => {
+    const tm = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), ms);
+    Promise.resolve(p).then((v) => { clearTimeout(tm); res(v); }, (e) => { clearTimeout(tm); rej(e); });
+  });
+}
 export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null) {
-  const { data, error } = await sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 6 });
+  const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 6 }));
   if (error) throw error;
   return (data || []) as { day: string; block: BlockKey; drive_min: number; near: number; truck: string | null; left: number }[];
 }
-export async function rpcNow<T>(name: string, args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await sb.rpc(name, args);
+export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
+  const { data, error } = await inTime(sb.rpc(name, args), ms);
   if (error) throw error;
   return data as T;
 }

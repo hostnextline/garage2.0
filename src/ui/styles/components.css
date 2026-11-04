@@ -72,10 +72,10 @@
 
 /* segmented + chips + switch */
 .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: var(--r-md); background: var(--sunken); border: 1px solid var(--line); flex-wrap: wrap; }
-.seg button { min-height: 40px; padding: 0 var(--sp-4); border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font-weight: 600; font-size: var(--t-sm); }
+.seg button { min-height: 42px; padding: 0 var(--sp-4); border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font-weight: 600; font-size: var(--t-sm); }
 .seg button[aria-pressed='true'] { background: var(--solid); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 .chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 var(--sp-4); border-radius: var(--r-pill);
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--sp-4); border-radius: var(--r-pill);
   border: 1px solid var(--line); background: var(--solid); color: var(--ink); font-size: var(--t-sm); font-weight: 520; }
 .chip[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-weight: 650; }
 .chip svg { width: 16px; height: 16px; }
@@ -233,3 +233,7 @@ button.row-item:hover, a.row-item:hover { background: var(--sunken); }
 html.is-locked, html.is-locked body { overflow: hidden; }
 .help-pop p { margin: 0; }
 .btn-txt:empty { display: none; }
+
+/* the « ? » stays small to the eye but gets a finger-sized target */
+.help { position: relative; }
+.help::after { content: ''; position: absolute; inset: -11px; }

@@ -51,7 +51,7 @@ export default defineConfig(({ mode }) => ({
           { /* the heavy tools loaded only when used (receipt reader, barcode reader) */
             urlPattern: ({ url }) => url.hostname === 'cdn.jsdelivr.net',
             handler: 'CacheFirst',
-            options: { cacheName: 'outils', expiration: { maxEntries: 40, maxAgeSeconds: 60 * 24 * 3600 } }
+            options: { cacheName: 'outils', expiration: { maxEntries: 40, maxAgeSeconds: 60 * 24 * 3600 }, cacheableResponse: { statuses: [0, 200] } }
           }
         ]
       },

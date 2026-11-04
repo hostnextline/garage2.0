@@ -133,7 +133,15 @@ test('extra work: proposed, answered by the customer on the spot, billed only wh
   const yes = uuid(), no = uuid();
   await h.c.query(`insert into public.job_items (id, job_id, description, unit_cents, status) values ($1, $3, 'Plaquettes avant', 12999, 'proposed'), ($2, $3, 'Essuie-glaces', 2999, 'proposed')`, [yes, no, jobId]);
   await h.rpc('extra_answer', { p_op: uuid(), p_item: yes, p_accept: true, p_via: 'verbal' });
-  await h.rpc('extra_answer', { p_op: uuid(), p_item: no, p_accept: false, p_via: 'signature' });
+  // a signature of another job can't be used; the customer's own signature stays with the answer
+  const sigOther = uuid(), sig = uuid();
+  await h.as(null);
+  const other = await h.val(`insert into public.jobs (customer_id, day, block, status, duration_min) values ($1, public.local_today() + 30, 'am', 'booked', 30) returning id`, [g.customer]);
+  await h.c.query(`insert into public.attachments (id, kind, mime, data, job_id) values ($1, 'signature', 'image/png', 'iVBOR', $2), ($3, 'signature', 'image/png', 'iVBOR', $4)`, [sigOther, other, sig, jobId]);
+  await h.as(g.mech);
+  assert.equal((await h.fails(() => h.rpc('extra_answer', { p_op: uuid(), p_item: no, p_accept: false, p_via: 'signature', p_attachment: sigOther })))?.hint, 'signature');
+  await h.rpc('extra_answer', { p_op: uuid(), p_item: no, p_accept: false, p_via: 'signature', p_attachment: sig });
+  assert.equal(await h.val(`select answer_attachment::text from public.job_items where id = $1`, [no]), sig);
   const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true })).rows.invoices[0];
   assert.equal(inv.subtotal_cents, 7999 + 12999);
   assert.deepEqual(inv.lines.map((l) => l.description).sort(), ['Plaquettes avant', 'Vidange d’huile + changement de filtre']);

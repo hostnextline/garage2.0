@@ -166,6 +166,10 @@ export async function checkIds() {
   if (!sb) return;
   for (const t of SCOPED) {
     try {
+      // a change sent while the list is being read must not be taken for a row that left: what is waiting before
+      // AND after the listing is kept, and so is any row changed since the check started
+      const started = Date.now();
+      const pendingBefore = new Set((await outboxAll(uid)).filter((e) => e.table === t).map((e) => e.id));
       const ids = new Set<string>();
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await withTimeout(sb.from(t).select('id').is('deleted_at', null).range(from, from + PAGE - 1));
@@ -174,8 +178,9 @@ export async function checkIds() {
         if (!data || data.length < PAGE) break;
       }
       const local = await readAll<Row>(uid, t);
-      const pendingIds = new Set((await outboxAll(uid)).filter((e) => e.table === t).map((e) => e.id));
-      const gone = local.filter((r) => !ids.has(r.id) && !pendingIds.has(r.id)).map((r) => r.id);
+      const pendingAfter = new Set((await outboxAll(uid)).filter((e) => e.table === t).map((e) => e.id));
+      const recent = (r: Row) => { const u = Date.parse(String(r.updated_at || r.created_at || '')); return Number.isFinite(u) && u > started - 120000; };
+      const gone = local.filter((r) => !ids.has(r.id) && !pendingBefore.has(r.id) && !pendingAfter.has(r.id) && !recent(r)).map((r) => r.id);
       if (gone.length) { removeLocal(t, gone); await writeRows(uid, t, [], gone); }
     } catch (e) { if (isNetworkError(e)) { setNet({ online: false }); return; } }
   }
