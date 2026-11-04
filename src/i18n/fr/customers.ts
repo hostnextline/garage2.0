@@ -1,4 +1,205 @@
-/* Clients */
+/* Clients : la liste, la fiche, la recherche de client (réservation, estimation), l'adresse, les notes. */
 export const customers = {
-  title: 'Clients'
+  title: 'Clients',
+  count: { zero: 'Aucun client', one: '{n} client', other: '{n} clients' },
+  found: { zero: 'Aucun client trouvé', one: '{n} client trouvé', other: '{n} clients trouvés' },
+  loading: 'Chargement des clients…',
+  searchPlaceholder: 'Nom, téléphone, adresse, plaque, NIV…',
+  newCustomer: 'Nouveau client',
+  noPhone: 'Pas de téléphone',
+  carMore: { one: 'et 1 autre', other: 'et {n} autres' },
+  more: { one: 'Voir le dernier client', other: 'Voir plus ({n} autres)' },
+  sort: { label: 'Ordre de la liste', recent: 'Récents', az: 'A à Z' },
+  columns: { name: 'Client', phone: 'Téléphone', car: 'Véhicule', when: 'Rendez-vous' },
+  empty: {
+    title: 'Aucun client pour l’instant',
+    text: 'Crée la fiche d’un client, ou réserve un rendez-vous : la fiche se crée en même temps.',
+    mineTitle: 'Pas encore de clients',
+    mineText: 'Les clients de tes jobs apparaissent ici dès qu’une job t’est donnée.'
+  },
+  noMatch: {
+    title: 'Personne ne correspond à « {q} »',
+    text: 'Vérifie l’orthographe, ou cherche par téléphone, plaque, NIV ou rue.',
+    create: 'Créer « {q} »'
+  },
+  when: {
+    next: 'Rendez-vous',
+    last: 'Dernière visite',
+    today: { am: 'Ce matin', pm: 'Cet après-midi', eve: 'Ce soir' },
+    tomorrow: { am: 'Demain matin', pm: 'Demain après-midi', eve: 'Demain soir' },
+    other: { am: '{day}, matin', pm: '{day}, après-midi', eve: '{day}, soir' }
+  },
+  whenLine: {
+    today: { am: 'Rendez-vous ce matin', pm: 'Rendez-vous cet après-midi', eve: 'Rendez-vous ce soir' },
+    tomorrow: { am: 'Rendez-vous demain matin', pm: 'Rendez-vous demain après-midi', eve: 'Rendez-vous demain soir' },
+    other: { am: 'Rendez-vous le {day}, matin', pm: 'Rendez-vous le {day}, après-midi', eve: 'Rendez-vous le {day}, soir' },
+    last: 'Dernière visite : {day}'
+  },
+  flags: {
+    noShow: { one: 'Client absent 1 fois', other: 'Client absent {n} fois' },
+    card: 'Carte au dossier',
+    english: 'English',
+    owes: 'Doit {amount}',
+    noSms: 'Pas de textos'
+  },
+  dup: {
+    title: { zero: 'Ce numéro est déjà à {name}.', one: 'Ce numéro est déjà à {name} et à 1 autre client.', other: 'Ce numéro est déjà à {name} et à {n} autres clients.' },
+    hint: 'Deux personnes peuvent avoir le même numéro (un couple, une entreprise) : vérifie avant de créer une deuxième fiche.',
+    open: 'Ouvrir sa fiche',
+    pick: 'Choisir {name}'
+  },
+  form: {
+    newTitle: 'Nouveau client',
+    newSub: 'La fiche seulement. Pour un rendez-vous tout de suite, touche « Créer et réserver ».',
+    noRight: 'Tu ne peux pas créer de fiche client.',
+    first: 'Prénom',
+    last: 'Nom',
+    company: 'Entreprise',
+    companyHint: 'Pour un client d’affaires ou une flotte.',
+    phone: 'Téléphone',
+    phoneHint: 'Sans téléphone, pas de texto de confirmation.',
+    email: 'Courriel',
+    lang: 'Langue des textos et des factures',
+    langHint: 'Ses textos, sa page et ses factures sont écrits dans cette langue.',
+    langFr: 'Français',
+    langEn: 'English',
+    notes: 'À savoir',
+    notesHint: 'Ex. : stationnement derrière la bâtisse, chien dans la cour.',
+    sms: 'Accepte les textos',
+    smsHint: 'Confirmation, « en route », facture.',
+    card: 'Carte au dossier',
+    cardHint: 'Le client a laissé une carte de crédit.',
+    create: 'Créer la fiche',
+    createBook: 'Créer et réserver',
+    fix: 'Corrige ce qui est en rouge.',
+    errors: {
+      name: 'Écris un prénom, un nom ou une entreprise.',
+      phone: 'Ce numéro n’a pas 10 chiffres. Vérifie-le.',
+      email: 'Ce courriel n’a pas l’air bon. Vérifie-le.'
+    }
+  },
+  file: {
+    book: 'Réserver',
+    bookSub: 'Un rendez-vous pour {name}',
+    bookSubNext: 'Un autre rendez-vous pour {name}',
+    editTitle: 'Modifier la fiche',
+    noPhone: 'Pas de téléphone au dossier',
+    noSms: 'Ce client n’accepte pas les textos',
+    noAddress: 'Pas d’adresse au dossier',
+    saved: 'Fiche enregistrée',
+    created: 'Client créé',
+    delete: 'Supprimer ce client',
+    deleted: 'Client supprimé',
+    deleteHint: 'La fiche disparaît des listes. Les factures déjà faites restent.',
+    deleteBlockedJobs: 'Ce client a un rendez-vous à venir : annule-le avant de supprimer la fiche.',
+    deleteBlockedOwed: 'Ce client doit encore {amount} : encaisse ou annule la facture avant de supprimer la fiche.',
+    leave: { title: 'Quitter sans enregistrer ?', text: 'Les changements faits ici seront perdus.', ok: 'Quitter' },
+    notFound: {
+      title: 'Cette fiche n’est pas sur ce téléphone',
+      text: 'Le client a peut-être été supprimé, ou il ne fait pas partie de tes jobs.',
+      action: 'Retour aux clients'
+    }
+  },
+  contact: {
+    title: 'Coordonnées',
+    address: 'Adresse',
+    lang: 'Langue',
+    none: 'Pas encore de coordonnées. Touche « Modifier » pour les ajouter.',
+    noPosition: 'Position pas encore trouvée sur la carte.',
+    pickPosition: 'Quelle adresse est la bonne ?',
+    positionSaved: 'Position enregistrée',
+    positionNone: 'Adresse pas trouvée sur la carte. Corrige-la avec « Modifier ».',
+    positionOffline: 'Pas de réseau pour chercher l’adresse. Réessaie plus tard.',
+    streetOnly: 'Rue seulement',
+    since: 'Client depuis {month}'
+  },
+  address: {
+    label: 'Adresse',
+    placeholder: 'Ex. : 1250 rue Graham, Mont-Royal',
+    suggestions: 'Adresses proposées',
+    clear: 'Effacer l’adresse',
+    unit: 'App., unité',
+    unitPlaceholder: 'Ex. : 3',
+    unitWord: 'app.',
+    postal: 'Code postal',
+    postalPlaceholder: 'Ex. : H4P 2B5',
+    postalError: 'Un code postal ressemble à H4P 2B5.',
+    searching: 'Recherche de l’adresse…',
+    found: 'Position trouvée',
+    street: 'Rue trouvée, pas la porte : la position est approximative.',
+    streetNoPos: 'Rue trouvée, pas la porte : la position sera trouvée plus tard.',
+    none: 'Aucune adresse trouvée. Vérifie le numéro et la rue, ou garde-la telle quelle : la position sera trouvée plus tard.',
+    offline: 'Pas de réseau : l’adresse est gardée telle quelle, la position sera trouvée plus tard.',
+    toFind: 'Position pas encore trouvée : choisis une adresse proposée.',
+    noCivic: 'Ajoute le numéro de la porte.',
+    find: 'Chercher'
+  },
+  cars: {
+    title: 'Véhicules',
+    none: 'Aucun véhicule au dossier.'
+  },
+  jobs: {
+    title: 'Rendez-vous',
+    count: { one: '{n} rendez-vous', other: '{n} rendez-vous' },
+    none: 'Aucun rendez-vous pour l’instant.',
+    upcoming: 'À venir',
+    past: 'Historique',
+    showAll: { one: 'Voir l’autre rendez-vous', other: 'Voir les {n} autres' }
+  },
+  invoices: {
+    title: 'Factures',
+    none: 'Aucune facture.',
+    draft: 'Brouillon',
+    owed: 'Reste à payer : {amount}',
+    owedText: { one: 'Une facture n’est pas payée au complet.', other: '{n} factures ne sont pas payées au complet.' },
+    left: 'Reste {amount}'
+  },
+  quotes: {
+    title: 'Estimations',
+    none: 'Aucune estimation.',
+    new: 'Nouvelle',
+    number: 'Estimation n° {n}',
+    status: { open: 'Ouverte', sent: 'Envoyée', accepted: 'Acceptée', declined: 'Refusée', converted: 'Réservée' }
+  },
+  notes: {
+    title: 'Notes',
+    new: 'Nouvelle note',
+    placeholder: 'Ex. : plaquettes arrière à 4 mm, rappeler au printemps',
+    empty: 'Écris la note avant de l’ajouter.',
+    remind: 'Rappeler le',
+    remindDate: 'Date du rappel',
+    in1: 'Dans 1 mois',
+    in3: 'Dans 3 mois',
+    spring: 'Au printemps',
+    fall: 'À l’automne',
+    add: 'Ajouter la note',
+    addWith: 'Ajouter, rappeler le {date}',
+    added: 'Note ajoutée',
+    none: 'Aucune note.',
+    dueCount: { one: '1 rappel à faire', other: '{n} rappels à faire' },
+    by: 'Par {name}, {date}',
+    on: '{date}',
+    due: 'À rappeler depuis le {date}',
+    dueToday: 'À rappeler aujourd’hui',
+    later: 'Rappeler le {date}',
+    done: 'Fait',
+    doneOn: 'Fait le {date}',
+    reopen: 'Rouvrir',
+    delete: 'Supprimer la note',
+    deleteConfirm: 'Toucher encore pour supprimer'
+  },
+  picker: {
+    label: 'Chercher le client',
+    placeholder: 'Nom, téléphone, adresse…',
+    clear: 'Effacer la recherche',
+    recent: 'Clients récents',
+    none: 'Personne ne correspond à « {q} ».',
+    create: 'Créer « {q} »',
+    more: { one: 'Encore 1 client : précise la recherche.', other: 'Encore {n} clients : précise la recherche.' },
+    noCustomers: 'Aucun client encore : crée le premier.',
+    change: 'Changer',
+    missing: 'Ce client n’est pas (ou plus) sur ce téléphone.',
+    createTitle: 'Nouveau client',
+    createOk: 'Créer'
+  }
 };

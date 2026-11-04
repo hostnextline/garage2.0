@@ -1,0 +1,17 @@
+/* Estimates: the work first, the total beside it on a computer; who it is for and the details below. */
+.quote-layout { display: flex; flex-direction: column; gap: var(--sp-4); }
+.quote-main, .quote-side { display: contents; }
+.quote-items { order: 1; } .quote-total { order: 2; } .quote-who { order: 3; } .quote-details { order: 4; } .quote-delete { order: 5; }
+@media (min-width: 1024px) {
+  .quote-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: var(--sp-5); align-items: start; }
+  .quote-main, .quote-side { display: flex; flex-direction: column; gap: var(--sp-5); min-width: 0; }
+}
+.quote-detail-row { display: grid; gap: var(--sp-4); }
+@media (min-width: 640px) and (max-width: 1023px) { .quote-detail-row { grid-template-columns: 1fr 1fr; } }
+.quote-customer { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); border: 1px solid var(--glass-line); }
+.quote-customer > svg { width: 22px; height: 22px; color: var(--ink-2); flex: none; }
+.quote-customer b { display: block; font-weight: 640; }
+.quote-customer span { display: block; }
+.quote-delete .btn { width: auto; }
+.quote-new-head { display: none; }
+@media (min-width: 640px) { .quote-new-head { display: inline-flex; } .quote-new-body { display: none; } }

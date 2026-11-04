@@ -1,0 +1,67 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "geometry": { "coordinates": [-73.6489153, 45.5205372], "type": "Point" },
+      "type": "Feature",
+      "properties": {
+        "osm_type": "N", "osm_id": 4718213650, "osm_key": "place", "osm_value": "house", "type": "house",
+        "housenumber": "1250", "street": "Rue Graham", "postcode": "H3P 2C9", "city": "Mont-Royal",
+        "county": "Agglomération de Montréal", "state": "Québec", "country": "Canada", "countrycode": "CA"
+      }
+    },
+    {
+      "geometry": { "coordinates": [-73.6475, 45.5219], "type": "Point" },
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W", "osm_id": 25890613, "osm_key": "highway", "osm_value": "residential", "type": "street",
+        "name": "Rue Graham", "extent": [-73.6532, 45.5243, -73.6431, 45.5191], "city": "Mont-Royal",
+        "county": "Agglomération de Montréal", "state": "Québec", "country": "Canada", "countrycode": "CA"
+      }
+    },
+    {
+      "geometry": { "coordinates": [-73.6212, 45.4772], "type": "Point" },
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W", "osm_id": 5634511, "osm_key": "highway", "osm_value": "trunk", "type": "street",
+        "name": "Boulevard Décarie", "extent": [-73.6856, 45.5301, -73.6005, 45.4689], "city": "Montréal",
+        "district": "Côte-des-Neiges–Notre-Dame-de-Grâce", "state": "Québec", "country": "Canada", "countrycode": "CA"
+      }
+    },
+    {
+      "geometry": { "coordinates": [-73.6588, 45.4972], "type": "Point" },
+      "type": "Feature",
+      "properties": {
+        "osm_type": "N", "osm_id": 9812345, "osm_key": "shop", "osm_value": "car_repair", "type": "house",
+        "name": "Garage Royalmount", "housenumber": "5600", "street": "Avenue Royalmount", "postcode": "h4p2t1",
+        "city": "Mont-Royal", "state": "Québec", "country": "Canada", "countrycode": "CA"
+      }
+    },
+    {
+      "geometry": { "coordinates": [2.3488, 48.8534], "type": "Point" },
+      "type": "Feature",
+      "properties": {
+        "osm_type": "N", "osm_id": 111, "osm_key": "place", "osm_value": "house", "type": "house",
+        "housenumber": "12", "street": "Rue Graham", "postcode": "75004", "city": "Paris", "state": "Île-de-France",
+        "country": "France", "countrycode": "FR"
+      }
+    },
+    {
+      "geometry": { "coordinates": [-73.6334, 45.5168], "type": "Point" },
+      "type": "Feature",
+      "properties": {
+        "osm_type": "R", "osm_id": 1571328, "osm_key": "place", "osm_value": "town", "type": "city",
+        "name": "Mont-Royal", "county": "Agglomération de Montréal", "state": "Québec", "country": "Canada", "countrycode": "CA"
+      }
+    },
+    {
+      "geometry": { "coordinates": [-73.6489100, 45.5205300], "type": "Point" },
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W", "osm_id": 4718213651, "osm_key": "building", "osm_value": "house", "type": "house",
+        "housenumber": "1250", "street": "Rue Graham", "postcode": "H3P 2C9", "city": "Mont-Royal",
+        "state": "Québec", "country": "Canada", "countrycode": "CA"
+      }
+    }
+  ]
+}

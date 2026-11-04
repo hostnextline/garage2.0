@@ -1,0 +1,84 @@
+/* « Par où commencer », the card on Today, and the guided tour's overlay. */
+
+/* ---------- progress ---------- */
+.guide-progress { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-2); }
+.guide-progress b { font-stretch: var(--w-num); font-weight: 650; font-size: var(--t-sm); white-space: nowrap; }
+.guide-bar { flex: none; width: 88px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.guide-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--ok); transition: width 400ms var(--ease); }
+
+/* ---------- the checklist ---------- */
+.guide-steps { display: flex; flex-direction: column; }
+.guide-step { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--sp-2); padding: 0 var(--sp-3) 0 0; }
+.guide-step + .guide-step { border-top: 1px solid var(--glass-line); }
+.guide-step-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-3); min-height: 68px; padding: var(--sp-3) var(--sp-2) var(--sp-3) var(--sp-5);
+  border: 0; background: transparent; color: inherit; text-align: left; font: inherit; }
+.guide-step-main:hover { background: var(--sunken); }
+.guide-step-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.guide-step-title { font-weight: 620; }
+.guide-step-sub { font-size: var(--t-xs); color: var(--ink-2); }
+.guide-step.is-done .guide-step-title { color: var(--ink-2); }
+.guide-step.is-next { background: var(--sunken); box-shadow: inset 3px 0 0 var(--accent); }
+.guide-step-end { flex: 1 0 100%; display: flex; align-items: center; gap: var(--sp-2); padding: 0 0 var(--sp-4) calc(var(--sp-5) + 30px + var(--sp-3)); margin-top: calc(-1 * var(--sp-2)); }
+.guide-step-go { align-self: flex-start; margin-top: var(--sp-2); }
+.guide-mark { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); color: var(--ink-3);
+  font-size: 13px; font-weight: 720; font-stretch: var(--w-num); }
+.guide-mark svg { width: 18px; height: 18px; }
+.guide-mark.is-done { border-color: transparent; background: var(--ok); color: var(--solid); }
+.guide-mark.is-unknown { border-style: dashed; }
+.guide-step.is-next .guide-mark { border-color: var(--accent); color: var(--accent-ink); }
+
+/* ---------- the job's six steps (mechanic) ---------- */
+.guide-job { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: var(--sp-2); counter-reset: jobstep; }
+@media (min-width: 640px) { .guide-job { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1100px) { .guide-job { grid-template-columns: repeat(3, 1fr); } }
+.guide-job li { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3); border-radius: var(--r-md); background: var(--solid); border: 1px solid var(--line); }
+.guide-job-n { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--on-accent); font-weight: 750; font-stretch: var(--w-num);
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 78%, #000)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--chrome-2) 80%, transparent); }
+.guide-job b { display: block; font-weight: 680; }
+.guide-job-t { display: block; font-size: var(--t-xs); line-height: 1.4; color: var(--ink-2); margin-top: 2px; }
+.guide-inline-icon { display: inline-block; vertical-align: -3px; margin-left: 4px; width: 16px; height: 16px; }
+
+/* ---------- install ---------- */
+.guide-how { display: grid; grid-template-columns: 1fr; gap: var(--sp-4); }
+@media (min-width: 760px) { .guide-how { grid-template-columns: 1fr 1fr; } }
+.guide-how h3 { font-size: var(--t-md); margin: 0 0 var(--sp-2); }
+.guide-how ol { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 6px; font-size: var(--t-sm); }
+.guide-url { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.guide-url code { padding: 6px 10px; border-radius: var(--r-sm); background: var(--sunken); font-size: var(--t-sm); overflow-wrap: anywhere; }
+
+/* ---------- questions ---------- */
+.guide-faq { display: flex; flex-direction: column; margin-top: var(--sp-3); }
+.guide-faq details { border-top: 1px solid var(--glass-line); }
+.guide-faq details:first-child { border-top: 0; }
+.guide-faq summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding: var(--sp-3) 0; font-weight: 600; }
+.guide-faq summary::-webkit-details-marker { display: none; }
+.guide-faq summary::after { content: '+'; margin-left: auto; color: var(--ink-3); font-weight: 700; font-size: var(--t-lg); line-height: 1; }
+.guide-faq details[open] summary::after { content: '−'; }
+.guide-faq details p { margin: 0 0 var(--sp-4); color: var(--ink-2); font-size: var(--t-sm); max-width: 70ch; }
+
+/* ---------- the card on Today ---------- */
+.guide-card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); }
+.guide-card-row { display: flex; align-items: center; gap: var(--sp-3); }
+.guide-card-icon { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); }
+.guide-card-icon svg { width: 22px; height: 22px; }
+.guide-card-kicker { margin: 0; font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); display: flex; gap: var(--sp-2); }
+.guide-card-title { margin: 0; font-weight: 650; color: var(--ink); text-decoration: none; display: block; }
+.guide-card-title:hover { text-decoration: underline; }
+.guide-card-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+
+/* ---------- the guided tour ---------- */
+.tour-block { position: fixed; inset: 0; z-index: 90; background: transparent; touch-action: none; }
+.tour-block.is-dim { background: rgba(6, 8, 10, 0.55); }
+.tour-spot { position: fixed; z-index: 91; border-radius: 14px; pointer-events: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chrome-2) 90%, transparent), 0 0 0 200vmax rgba(6, 8, 10, 0.58);
+  transition: top 240ms var(--ease), left 240ms var(--ease), width 240ms var(--ease), height 240ms var(--ease); }
+.tour-bubble { position: fixed; z-index: 92; width: min(380px, calc(100vw - 32px)); padding: var(--sp-4) var(--sp-5) var(--sp-4); border-radius: var(--r-lg);
+  display: flex; flex-direction: column; gap: var(--sp-2); color: var(--ink); background: var(--solid); border: 1px solid var(--glass-edge);
+  box-shadow: 0 0 0 1px var(--line), 0 24px 48px -16px rgba(0, 0, 0, 0.55); transition: top 240ms var(--ease), left 240ms var(--ease); }
+.tour-bubble h2 { font-size: var(--t-lg); font-stretch: 112%; font-weight: 560; outline: none; }
+.tour-bubble p { margin: 0; color: var(--ink-2); font-size: var(--t-sm); line-height: var(--lh); }
+.tour-count { font-size: var(--t-xs); font-weight: 650; color: var(--ink-3); }
+.tour-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.tour-wait { display: flex; align-items: center; gap: var(--sp-3); }
+.tour-wait .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 700ms linear infinite; flex: none; }
+@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-bubble, .guide-bar > span { transition: none; } }

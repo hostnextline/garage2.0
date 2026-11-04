@@ -1,4 +1,161 @@
-/* Mécanique Mobile H.I.S */
+/* La page du client (client.html) : son rendez-vous, les travaux proposés, la facture, le paiement par carte,
+   l'estimation et le suivi du camion. Le client est vouvoyé; les remerciements peuvent finir par « ! ». */
 export const client = {
-  title: 'Mécanique Mobile H.I.S'
+  title: 'Mécanique Mobile H.I.S',
+  loading: 'Chargement de votre dossier…',
+  call: 'Appeler',
+  callLabel: 'Appeler {garage} au {phone}',
+  callUs: 'Appelez-nous au {phone}.',
+  callUsNoPhone: 'Appelez le garage au numéro qui vous a envoyé ce lien.',
+  otherLang: 'English',
+  otherLangLabel: 'Read this page in English',
+  hello: 'Bonjour {name},',
+  helloAlone: 'Bonjour,',
+  today: 'Aujourd’hui',
+  tomorrow: 'Demain',
+  between: 'Entre {from} et {to}',
+  blocks: { am: 'Matin', pm: 'Après-midi', eve: 'Soir' },
+  printedOn: 'Imprimé le {date}',
+
+  job: {
+    title: 'Votre rendez-vous',
+    lead: 'Voici votre rendez-vous avec {garage}.',
+    leadInvoice: 'Voici votre facture de {garage}.',
+    vehicle: 'Véhicule',
+    number: 'Numéro de dossier',
+    status: {
+      booked: 'Rendez-vous confirmé',
+      en_route: 'Votre mécano est en route',
+      on_site: 'Votre mécano est sur place',
+      done: 'Travaux terminés',
+      cancelled: 'Rendez-vous annulé',
+      no_show: 'Rendez-vous manqué'
+    },
+    explain: {
+      booked: 'Votre mécano arrive pendant ce bloc. Vous recevrez un texto quand il sera en route.',
+      en_route: 'Il s’en vient chez vous.',
+      en_routeNoLink: 'Il s’en vient chez vous. Le lien pour suivre le camion en direct vous a été envoyé par texto.',
+      on_site: 'Votre mécano est arrivé et s’occupe de votre véhicule.',
+      done: 'Les travaux sont terminés.',
+      cancelled: 'Ce rendez-vous est annulé. Pour en prendre un autre, appelez-nous.',
+      no_show: 'Nous ne vous avons pas trouvé au rendez-vous. Appelez-nous pour en fixer un autre.'
+    },
+    track: 'Suivre le camion en direct'
+  },
+
+  work: {
+    title: 'Travaux prévus',
+    expected: 'Total prévu, taxes incluses',
+    expectedNoTax: 'Total prévu',
+    prepaid: 'Déjà payé',
+    left: 'Reste à payer',
+    done: 'Fait',
+    accepted: 'Accepté',
+    qty: '{qty} × {price}',
+    none: 'Votre mécano confirmera les travaux sur place.',
+    taxDetail: 'Voir le détail des taxes'
+  },
+
+  extras: {
+    title: 'Travaux proposés par votre mécano',
+    lead: 'Votre mécano a trouvé autre chose à faire. Rien ne sera fait sans votre accord.',
+    why: 'Pourquoi\u00a0:',
+    plusTax: 'plus taxes',
+    accept: 'Accepter',
+    decline: 'Refuser',
+    confirmAccept: 'Vous acceptez ce travail pour {price} plus taxes. Votre mécano le fera pendant sa visite.',
+    confirmAcceptNoTax: 'Vous acceptez ce travail pour {price}. Votre mécano le fera pendant sa visite.',
+    confirmDecline: 'Vous refusez ce travail. Votre mécano ne le fera pas.',
+    yesAccept: 'Oui, j’accepte',
+    yesDecline: 'Oui, je refuse',
+    back: 'Retour',
+    thanks: 'Merci\u00a0! Votre réponse est envoyée à votre mécano.',
+    newTotal: 'Nouveau total prévu\u00a0: {total}, taxes incluses.',
+    declinedTitle: 'Travaux refusés',
+    declined: 'Refusé'
+  },
+
+  invoice: {
+    heroTitle: 'Votre facture',
+    title: 'Facture {number}',
+    issued: 'Émise le {date}',
+    subtotal: 'Sous-total',
+    tps: 'TPS (5 %)',
+    tvq: 'TVQ (9,975 %)',
+    total: 'Total',
+    paid: 'Payé',
+    balance: 'Reste à payer',
+    tpsNo: 'No de TPS\u00a0: {no}',
+    tvqNo: 'No de TVQ\u00a0: {no}',
+    print: 'Imprimer',
+    stamp: 'Payé',
+    paidThanks: 'Facture payée. Merci\u00a0!',
+    payOnSite: 'Pour payer, appelez-nous ou payez votre mécano sur place.'
+  },
+
+  pay: {
+    button: 'Payer {amount} par carte',
+    prepay: 'Payer d’avance {amount} par carte',
+    prepayLead: 'Vous pouvez aussi payer sur place, à la fin des travaux.',
+    secure: 'Paiement sécurisé par Stripe. Vous reviendrez ici ensuite.',
+    opening: 'Ouverture de la page de paiement…',
+    pending: 'Un paiement par carte a été commencé. S’il est terminé, il s’affichera ici dans un instant.',
+    checking: 'Paiement en vérification…',
+    checkingLead: 'Nous confirmons votre paiement. Gardez cette page ouverte.',
+    done: 'Merci\u00a0! Votre paiement est reçu.',
+    late: 'Le paiement n’apparaît pas encore. S’il a été accepté, il s’affichera ici dans quelques minutes.',
+    checkAgain: 'Vérifier encore',
+    fail: 'La page de paiement n’a pas pu s’ouvrir. Réessayez dans un instant ou appelez-nous.'
+  },
+
+  quote: {
+    title: 'Votre estimation',
+    lead: 'Voici l’estimation de {garage}.',
+    number: 'Estimation no {number}',
+    vehicle: 'Véhicule',
+    validUntil: 'Valable jusqu’au {date}',
+    expired: 'Cette estimation n’est plus valable depuis le {date}. Appelez-nous pour la mettre à jour.',
+    note: 'Prix estimé. Si votre mécano trouve autre chose, rien ne sera fait sans votre accord.',
+    total: 'Total estimé, taxes incluses',
+    totalNoTax: 'Total estimé',
+    book: 'Appeler pour réserver'
+  },
+
+  errors: {
+    bad_link: { title: 'Ce lien ne marche pas', text: 'Il est peut-être incomplet. Nous pouvons vous en envoyer un nouveau.' },
+    expired: { title: 'Ce lien a expiré', text: 'Nous pouvons vous en envoyer un nouveau.' },
+    gone: { title: 'Ce dossier n’existe plus', text: 'Si vous avez une question, nous sommes là pour vous répondre.' },
+    network: { title: 'Pas de connexion', text: 'Vérifiez votre connexion Internet, puis réessayez.' },
+    server: { title: 'Un problème est survenu', text: 'Réessayez dans un instant. Si ça continue, appelez-nous.' },
+    retry: 'Réessayer',
+    answer: 'Votre réponse n’a pas été envoyée. Réessayez dans un instant ou appelez-nous.'
+  },
+
+  track: {
+    title: 'Suivi du camion',
+    onTheWay: '{name} est en route',
+    onTheWayAnon: 'Votre mécano est en route',
+    eta: 'Arrivée prévue vers {time} (environ {min} min)',
+    etaSoon: 'Arrivée d’un instant à l’autre',
+    etaNone: 'Il s’en vient chez vous.',
+    mechanic: 'Votre mécano\u00a0: {name}',
+    updated: 'Position mise à jour à {time}.',
+    noPos: 'La position du camion n’est pas encore disponible. Cette page se met à jour toute seule.',
+    arrived: '{name} est arrivé',
+    arrivedAnon: 'Votre mécano est arrivé',
+    arrivedAt: 'Arrivé à {time}.',
+    arrivedText: 'Il s’occupe maintenant de votre véhicule.',
+    cancelled: 'Le suivi est terminé',
+    cancelledText: 'Ce trajet n’est plus suivi. Pour savoir où en est votre rendez-vous, appelez-nous.',
+    expired: 'Ce lien de suivi a expiré',
+    expiredText: 'Le suivi dure seulement le temps du trajet. Pour savoir où en est votre rendez-vous, appelez-nous.',
+    notFound: 'Ce lien de suivi ne marche pas',
+    notFoundText: 'Il est peut-être incomplet. Appelez-nous et nous vous dirons où est votre mécano.',
+    lost: 'Connexion perdue. Nouvel essai dans un instant.',
+    home: 'Chez vous',
+    truck: 'Le camion de votre mécano',
+    map: 'Carte\u00a0: le trajet du camion jusque chez vous',
+    seeAppointment: 'Voir mon rendez-vous',
+    recenter: 'Recentrer la carte'
+  }
 };

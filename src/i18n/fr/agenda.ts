@@ -1,4 +1,70 @@
-/* Agenda */
+/* Agenda : la journée par bloc et par camion (téléphone), la semaine en grille (ordinateur). */
 export const agenda = {
-  title: 'Agenda'
+  title: 'Agenda',
+  titleMine: 'Mon horaire',
+  help: 'Les rendez-vous par bloc (matin, après-midi, soir) et par camion. La barre montre le temps pris par les jobs et la route; le reste est libre.\nSur l’ordinateur, glisse une job réservée vers un autre bloc pour la déplacer.',
+  helpMine: 'Tes jobs par bloc, dans l’ordre des arrêts. La barre montre le temps pris par les jobs et la route; le reste est libre.',
+  day: {
+    prev: 'Jour d’avant',
+    next: 'Jour d’après',
+    today: 'Aujourd’hui',
+    pick: 'Choisir une date',
+    count: { zero: 'Aucune job', one: '{n} job', other: '{n} jobs' },
+    trucks: { zero: 'aucun camion au travail', one: '{n} camion au travail', other: '{n} camions au travail' },
+    summary: '{jobs}, {trucks}',
+    nobody: 'Personne ne travaille ce jour-là',
+    nobodyText: 'Aucun camion n’a d’heures ce jour-là. Change les horaires pour ouvrir des blocs.',
+    hours: 'Changer les horaires',
+    strip: 'Les jours de la semaine'
+  },
+  week: {
+    title: 'Semaine du {from} au {to}',
+    prev: 'Semaine d’avant',
+    next: 'Semaine d’après',
+    thisWeek: 'Cette semaine',
+    view: 'Affichage',
+    dayView: 'Jour',
+    weekView: 'Semaine',
+    openDay: 'Voir la journée du {day}',
+    grid: 'Semaine, les blocs de chaque jour',
+    dragHint: 'Glisse une job réservée vers un autre bloc pour la déplacer, ou ouvre-la et touche « Déplacer ».',
+    book: 'Réserver : {when}',
+    drop: 'Déposer ici',
+    jobs: { zero: 'aucune job', one: '{n} job', other: '{n} jobs' }
+  },
+  block: {
+    title: '{block}, {hours}',
+    closed: 'Fermé',
+    closedText: 'Aucun camion ne travaille dans ce bloc.',
+    started: 'Commencé',
+    past: 'Passé',
+    book: 'Réserver dans ce bloc',
+    bookShort: 'Réserver',
+    empty: 'Aucune job dans ce bloc.'
+  },
+  lane: {
+    free: '{d} de libre',
+    full: 'Complet',
+    over: 'Complet, {d} de trop',
+    closed: 'Ne travaille pas',
+    offShift: 'Ne travaille plus dans ce bloc',
+    meter: '{used} prises sur {cap}',
+    unplaced: 'À placer',
+    unplacedText: 'Ne rentre dans aucun camion. Déplace la job ou change les horaires.',
+    stop: 'Arrêt {n}'
+  },
+  off: 'Annulées et absents ({n})',
+  offline: 'Hors ligne : tu vois la copie du téléphone. Les changements des autres arriveront avec le réseau.',
+  loading: 'Chargement de l’agenda…',
+  move: {
+    question: 'Déplacer la job de {name} de {from} à {to} ?',
+    someone: 'ce client',
+    text: 'L’app choisit de nouveau le camion et l’ordre des arrêts.',
+    textSms: 'Un texto avertira {name} du changement.',
+    ok: 'Déplacer',
+    done: 'Job déplacée',
+    started: 'Ce bloc est déjà commencé : choisis un bloc à venir.',
+    closed: 'Ce bloc est fermé : aucun camion ne travaille.',
+    notBooked: 'Seule une job réservée, pas encore partie, se déplace.'
+  }
 };

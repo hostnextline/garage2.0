@@ -1,4 +1,205 @@
 import type { customers as fr } from '../fr/customers';
 export const customers: typeof fr = {
-  title: 'Customers'
+  title: 'Customers',
+  count: { zero: 'No customers', one: '{n} customer', other: '{n} customers' },
+  found: { zero: 'No customer found', one: '{n} customer found', other: '{n} customers found' },
+  loading: 'Loading customers…',
+  searchPlaceholder: 'Name, phone, address, plate, VIN…',
+  newCustomer: 'New customer',
+  noPhone: 'No phone',
+  carMore: { one: 'and 1 more', other: 'and {n} more' },
+  more: { one: 'Show the last customer', other: 'Show more ({n} left)' },
+  sort: { label: 'List order', recent: 'Recent', az: 'A–Z' },
+  columns: { name: 'Customer', phone: 'Phone', car: 'Vehicle', when: 'Appointment' },
+  empty: {
+    title: 'No customers yet',
+    text: 'Create a customer’s file, or book an appointment: the file is created at the same time.',
+    mineTitle: 'No customers yet',
+    mineText: 'The customers of your jobs show up here as soon as a job is given to you.'
+  },
+  noMatch: {
+    title: 'Nobody matches “{q}”',
+    text: 'Check the spelling, or search by phone, plate, VIN or street.',
+    create: 'Create “{q}”'
+  },
+  when: {
+    next: 'Appointment',
+    last: 'Last visit',
+    today: { am: 'This morning', pm: 'This afternoon', eve: 'This evening' },
+    tomorrow: { am: 'Tomorrow morning', pm: 'Tomorrow afternoon', eve: 'Tomorrow evening' },
+    other: { am: '{day}, morning', pm: '{day}, afternoon', eve: '{day}, evening' }
+  },
+  whenLine: {
+    today: { am: 'Appointment this morning', pm: 'Appointment this afternoon', eve: 'Appointment this evening' },
+    tomorrow: { am: 'Appointment tomorrow morning', pm: 'Appointment tomorrow afternoon', eve: 'Appointment tomorrow evening' },
+    other: { am: 'Appointment {day}, morning', pm: 'Appointment {day}, afternoon', eve: 'Appointment {day}, evening' },
+    last: 'Last visit: {day}'
+  },
+  flags: {
+    noShow: { one: 'Missed 1 appointment', other: 'Missed {n} appointments' },
+    card: 'Card on file',
+    english: 'English',
+    owes: 'Owes {amount}',
+    noSms: 'No texts'
+  },
+  dup: {
+    title: { zero: 'This number is already on {name}’s file.', one: 'This number is already on {name}’s file and 1 other.', other: 'This number is already on {name}’s file and {n} others.' },
+    hint: 'Two people can share a number (a couple, a business): check before creating a second file.',
+    open: 'Open their file',
+    pick: 'Choose {name}'
+  },
+  form: {
+    newTitle: 'New customer',
+    newSub: 'Only the file. To book right away, tap “Create and book”.',
+    noRight: 'You can’t create customer files.',
+    first: 'First name',
+    last: 'Last name',
+    company: 'Company',
+    companyHint: 'For a business customer or a fleet.',
+    phone: 'Phone',
+    phoneHint: 'Without a phone, no confirmation text.',
+    email: 'Email',
+    lang: 'Language of texts and invoices',
+    langHint: 'Their texts, page and invoices are written in this language.',
+    langFr: 'Français',
+    langEn: 'English',
+    notes: 'Good to know',
+    notesHint: 'E.g. parking behind the building, dog in the yard.',
+    sms: 'Accepts texts',
+    smsHint: 'Confirmation, “on the way”, invoice.',
+    card: 'Card on file',
+    cardHint: 'The customer left a credit card.',
+    create: 'Create the file',
+    createBook: 'Create and book',
+    fix: 'Fix what is in red.',
+    errors: {
+      name: 'Write a first name, a last name or a company.',
+      phone: 'This number doesn’t have 10 digits. Check it.',
+      email: 'This email doesn’t look right. Check it.'
+    }
+  },
+  file: {
+    book: 'Book',
+    bookSub: 'An appointment for {name}',
+    bookSubNext: 'Another appointment for {name}',
+    editTitle: 'Edit the file',
+    noPhone: 'No phone on file',
+    noSms: 'This customer doesn’t accept texts',
+    noAddress: 'No address on file',
+    saved: 'File saved',
+    created: 'Customer created',
+    delete: 'Delete this customer',
+    deleted: 'Customer deleted',
+    deleteHint: 'The file leaves the lists. Invoices already made stay.',
+    deleteBlockedJobs: 'This customer has an upcoming appointment: cancel it before deleting the file.',
+    deleteBlockedOwed: 'This customer still owes {amount}: collect or cancel the invoice before deleting the file.',
+    leave: { title: 'Leave without saving?', text: 'The changes made here will be lost.', ok: 'Leave' },
+    notFound: {
+      title: 'This file isn’t on this phone',
+      text: 'The customer may have been deleted, or isn’t part of your jobs.',
+      action: 'Back to customers'
+    }
+  },
+  contact: {
+    title: 'Contact',
+    address: 'Address',
+    lang: 'Language',
+    none: 'No contact details yet. Tap “Edit” to add them.',
+    noPosition: 'Position not found on the map yet.',
+    pickPosition: 'Which address is right?',
+    positionSaved: 'Position saved',
+    positionNone: 'Address not found on the map. Fix it with “Edit”.',
+    positionOffline: 'No network to look up the address. Try again later.',
+    streetOnly: 'Street only',
+    since: 'Customer since {month}'
+  },
+  address: {
+    label: 'Address',
+    placeholder: 'E.g. 1250 rue Graham, Mont-Royal',
+    suggestions: 'Suggested addresses',
+    clear: 'Clear the address',
+    unit: 'Apt., unit',
+    unitPlaceholder: 'E.g. 3',
+    unitWord: 'unit',
+    postal: 'Postal code',
+    postalPlaceholder: 'E.g. H4P 2B5',
+    postalError: 'A postal code looks like H4P 2B5.',
+    searching: 'Looking up the address…',
+    found: 'Position found',
+    street: 'Street found, not the door: the position is approximate.',
+    streetNoPos: 'Street found, not the door: the position will be found later.',
+    none: 'No address found. Check the number and the street, or keep it as is: the position will be found later.',
+    offline: 'No network: the address is kept as typed, the position will be found later.',
+    toFind: 'Position not found yet: choose a suggested address.',
+    noCivic: 'Add the door number.',
+    find: 'Look up'
+  },
+  cars: {
+    title: 'Vehicles',
+    none: 'No vehicle on file.'
+  },
+  jobs: {
+    title: 'Appointments',
+    count: { one: '{n} appointment', other: '{n} appointments' },
+    none: 'No appointments yet.',
+    upcoming: 'Upcoming',
+    past: 'History',
+    showAll: { one: 'Show the other appointment', other: 'Show the {n} others' }
+  },
+  invoices: {
+    title: 'Invoices',
+    none: 'No invoices.',
+    draft: 'Draft',
+    owed: 'Balance owing: {amount}',
+    owedText: { one: 'One invoice isn’t fully paid.', other: '{n} invoices aren’t fully paid.' },
+    left: '{amount} left'
+  },
+  quotes: {
+    title: 'Estimates',
+    none: 'No estimates.',
+    new: 'New',
+    number: 'Estimate no. {n}',
+    status: { open: 'Open', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', converted: 'Booked' }
+  },
+  notes: {
+    title: 'Notes',
+    new: 'New note',
+    placeholder: 'E.g. rear pads at 4 mm, call back in the spring',
+    empty: 'Write the note before adding it.',
+    remind: 'Call back on',
+    remindDate: 'Reminder date',
+    in1: 'In 1 month',
+    in3: 'In 3 months',
+    spring: 'In the spring',
+    fall: 'In the fall',
+    add: 'Add the note',
+    addWith: 'Add, call back on {date}',
+    added: 'Note added',
+    none: 'No notes.',
+    dueCount: { one: '1 call back to do', other: '{n} call backs to do' },
+    by: 'By {name}, {date}',
+    on: '{date}',
+    due: 'Call back since {date}',
+    dueToday: 'Call back today',
+    later: 'Call back on {date}',
+    done: 'Done',
+    doneOn: 'Done on {date}',
+    reopen: 'Reopen',
+    delete: 'Delete the note',
+    deleteConfirm: 'Tap again to delete'
+  },
+  picker: {
+    label: 'Find the customer',
+    placeholder: 'Name, phone, address…',
+    clear: 'Clear the search',
+    recent: 'Recent customers',
+    none: 'Nobody matches “{q}”.',
+    create: 'Create “{q}”',
+    more: { one: '1 more customer: narrow the search.', other: '{n} more customers: narrow the search.' },
+    noCustomers: 'No customers yet: create the first one.',
+    change: 'Change',
+    missing: 'This customer isn’t (or is no longer) on this phone.',
+    createTitle: 'New customer',
+    createOk: 'Create'
+  }
 };
