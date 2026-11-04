@@ -259,3 +259,15 @@ test('the dashboard and the treasury report add up', () => tx(async (h) => {
   await h.as(g.mech);
   assert.equal((await h.fails(() => h.val(`select public.dashboard($1::date)`, [today])))?.hint, 'not_allowed', 'a mechanic does not see the numbers by default');
 }));
+
+test('the server’s own building blocks can’t be called from the app (ending someone’s day, reading any job, re-planning)', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.mech);
+  for (const [fn, args] of [['close_day', { p_staff: g.owner }], ['job_payload', { p_job: uuid() }], ['block_rows', { p_day: g.day, p_block: 'am' }],
+    ['replan_block', { p_day: g.day, p_block: 'am' }], ['use_parts', { p_job: uuid() }], ['housekeeping', {}], ['op_save', { p_op: uuid(), p_name: 'x', p_result: {} }]]) {
+    const e = await h.fails(() => h.rpc(fn, args));
+    assert.equal(e?.code, '42501', `${fn} is refused`);
+  }
+  // what the app uses still works
+  assert.ok(await h.rpc('my_access', {}));
+}));
