@@ -67,7 +67,21 @@ function BookForm({ query }: ScreenProps) {
   // one id for this booking: tapped twice after a lost answer, the server books it once
   const [jobId] = useState(() => uuid());
   const blockPanel = useRef<HTMLDivElement>(null);
+  const side = useRef<HTMLElement>(null);
   const isWide = wide.value;
+  // computer: the right column stays in view; its height follows where it starts on the screen, so « Réserver » is
+  // always visible (before the page scrolls, the column starts lower)
+  useEffect(() => {
+    const el = side.current;
+    if (!isWide || !el) return;
+    let raf = 0;
+    const update = () => { raf = 0; el.style.setProperty('--side-top', `${Math.max(0, Math.round(el.getBoundingClientRect().top))}px`); };
+    const later = () => { if (!raf) raf = requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', later, { passive: true });
+    window.addEventListener('resize', later);
+    return () => { window.removeEventListener('scroll', later); window.removeEventListener('resize', later); if (raf) cancelAnimationFrame(raf); };
+  }, [isWide]);
 
   /* ---------- an estimate becomes a job (once its row is on the device) ---------- */
   const fromQuote = useRef(false);
@@ -145,6 +159,8 @@ function BookForm({ query }: ScreenProps) {
       toast(t('booking.done', { when: choiceWords(c, l) }), { kind: 'ok' });
       navigate(`/job/${r.id}`, { replace: true });
       if (wantsText('booking', r.id)) void notifyCustomer('booking', r.id, { customerId });
+      // the texts are on, but this customer has no cell number: the office can ask for one
+      else if (settings.value.messages?.on?.booking && cust && !cust.phone) toast(t('booking.sms.noPhone'));
     } catch (e) {
       const msg = errorMessage(e);
       toast(msg, { kind: 'bad' });
@@ -294,7 +310,7 @@ function BookForm({ query }: ScreenProps) {
           {!isWide && blockSection}
         </div>
         {isWide && (
-          <aside class="book-side" aria-label={t('booking.summary.title')}>
+          <aside ref={side} class="book-side" aria-label={t('booking.summary.title')}>
             {blockSection}
             {summaryPanel}
           </aside>

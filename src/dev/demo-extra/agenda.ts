@@ -71,94 +71,94 @@ function pointOf(j: DemoRow): { lat: number; lng: number } | null {
 
 /* ---------- operations (registered from load(): the demo's own ones are registered after this file is read) ---------- */
 function registerOps() {
-registerRpc('book_job', (a) => {
-  const j = a.p_job as DemoRow & { day: string; block: string; customer_id: string; truck_id?: string; duration_min?: number };
-  if (!j.customer_id) refuse('no_customer', 'Choisis le client avant de réserver.');
-  if (!BLOCKS[j.block] || !j.day) refuse('bad_block', 'Choisis la date et le bloc : matin, après-midi ou soir.');
-  if (started(j.day, j.block)) refuse('block_started', WHY.block_started);
-  if (find('jobs', j.id)) refuse('exists', 'Ce rendez-vous existe déjà.');
-  const items = ((a.p_items as DemoRow[]) || []);
-  const dur = Number(j.duration_min) || items.reduce((m, i) => m + (Number(i.duration_min) || 0), 0) || 60;
-  const p = placeIn(j.day, j.block, dur, j.truck_id || null, null);
-  if ('refusal' in p) refuse(p.refusal, WHY[p.refusal]);
-  const number = Math.max(200, ...table('jobs').map((x) => Number(x.number) || 0)) + 1;
-  const job = put('jobs', {
-    vehicle_id: null, stop_order: 99, eta_min: null, travel_min: 18, problem: null, notes: null, address: null, unit: null, postal_code: null, lat: null, lng: null,
-    card_on_file: false, lost_cents: null, lost_reason: null, started_at: null, arrived_at: null, finished_at: null, cancelled_at: null, pay_later: false, pay_later_reason: null,
-    waiver_signed_at: null, waiver_signer: null, waiver_version: null, waiver_attachment: null, confirm_sent_at: null, source: 'phone', quote_id: null,
-    status: 'booked', number, created_by: (globalThis as { __demoUser?: string }).__demoUser || 'u-hassan',
-    ...j, truck_id: p.truck, truck_pinned: !!j.truck_id, duration_min: dur
+  registerRpc('book_job', (a) => {
+    const j = a.p_job as DemoRow & { day: string; block: string; customer_id: string; truck_id?: string; duration_min?: number };
+    if (!j.customer_id) refuse('no_customer', 'Choisis le client avant de réserver.');
+    if (!BLOCKS[j.block] || !j.day) refuse('bad_block', 'Choisis la date et le bloc : matin, après-midi ou soir.');
+    if (started(j.day, j.block)) refuse('block_started', WHY.block_started);
+    if (find('jobs', j.id)) refuse('exists', 'Ce rendez-vous existe déjà.');
+    const items = ((a.p_items as DemoRow[]) || []);
+    const dur = Number(j.duration_min) || items.reduce((m, i) => m + (Number(i.duration_min) || 0), 0) || 60;
+    const p = placeIn(j.day, j.block, dur, j.truck_id || null, null);
+    if ('refusal' in p) refuse(p.refusal, WHY[p.refusal]);
+    const number = Math.max(200, ...table('jobs').map((x) => Number(x.number) || 0)) + 1;
+    const job = put('jobs', {
+      vehicle_id: null, stop_order: 99, eta_min: null, travel_min: 18, problem: null, notes: null, address: null, unit: null, postal_code: null, lat: null, lng: null,
+      card_on_file: false, lost_cents: null, lost_reason: null, started_at: null, arrived_at: null, finished_at: null, cancelled_at: null, pay_later: false, pay_later_reason: null,
+      waiver_signed_at: null, waiver_signer: null, waiver_version: null, waiver_attachment: null, confirm_sent_at: null, source: 'phone', quote_id: null,
+      status: 'booked', number, created_by: (globalThis as { __demoUser?: string }).__demoUser || 'u-hassan',
+      ...j, truck_id: p.truck, truck_pinned: !!j.truck_id, duration_min: dur
+    });
+    const its = items.map((it, i) => put('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', answered_at: null, answered_via: null, note: null, item_id: null, service_id: null, duration_min: null, sort: i + 1, ...it, id: String(it.id || crypto.randomUUID()), job_id: job.id }));
+    if (j.quote_id) { const q = find('quotes', j.quote_id); if (q) put('quotes', { id: q.id, status: 'converted', job_id: job.id }); }
+    const moved = renumber(j.day, j.block);
+    return { ok: true, job_id: job.id, truck_id: p.truck, rows: rows({ jobs: moved.length ? moved : [job], job_items: its, quotes: j.quote_id ? find('quotes', j.quote_id) : undefined }) };
   });
-  const its = items.map((it, i) => put('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', answered_at: null, answered_via: null, note: null, item_id: null, service_id: null, duration_min: null, sort: i + 1, ...it, id: String(it.id || crypto.randomUUID()), job_id: job.id }));
-  if (j.quote_id) { const q = find('quotes', j.quote_id); if (q) put('quotes', { id: q.id, status: 'converted', job_id: job.id }); }
-  const moved = renumber(j.day, j.block);
-  return { ok: true, job_id: job.id, truck_id: p.truck, rows: rows({ jobs: moved.length ? moved : [job], job_items: its, quotes: j.quote_id ? find('quotes', j.quote_id) : undefined }) };
-});
 
-registerRpc('move_job', (a) => {
-  const j = find('jobs', a.p_job);
-  if (!j) refuse('not_found', 'Ce rendez-vous n’existe plus.');
-  if (j.status !== 'booked') refuse('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.');
-  const day = String(a.p_day), block = String(a.p_block), wanted = (a.p_truck as string) || null;
-  if (!BLOCKS[block]) refuse('bad_block', 'Bloc inconnu.');
-  if (started(day, block)) refuse('block_started', 'Ce bloc est déjà commencé.');
-  if (j.day === day && j.block === block && !wanted) return { ok: true, unchanged: true, rows: rows({ jobs: j }) };
-  const p = placeIn(day, block, Number(j.duration_min) || 60, wanted, j.id);
-  if ('refusal' in p) refuse(p.refusal, WHY[p.refusal].replace(' Choisis un autre bloc.', ''));
-  const from = { day: String(j.day), block: String(j.block) };
-  put('jobs', { id: j.id, day, block, truck_id: p.truck, truck_pinned: !!wanted, stop_order: 99, confirm_sent_at: null });
-  const changed = [...renumber(day, block), ...renumber(from.day, from.block)];
-  return { ok: true, job_id: j.id, changed: true, rows: rows({ jobs: changed.length ? changed : [find('jobs', j.id)!] }) };
-});
+  registerRpc('move_job', (a) => {
+    const j = find('jobs', a.p_job);
+    if (!j) refuse('not_found', 'Ce rendez-vous n’existe plus.');
+    if (j.status !== 'booked') refuse('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.');
+    const day = String(a.p_day), block = String(a.p_block), wanted = (a.p_truck as string) || null;
+    if (!BLOCKS[block]) refuse('bad_block', 'Bloc inconnu.');
+    if (started(day, block)) refuse('block_started', 'Ce bloc est déjà commencé.');
+    if (j.day === day && j.block === block && !wanted) return { ok: true, unchanged: true, rows: rows({ jobs: j }) };
+    const p = placeIn(day, block, Number(j.duration_min) || 60, wanted, j.id);
+    if ('refusal' in p) refuse(p.refusal, WHY[p.refusal].replace(' Choisis un autre bloc.', ''));
+    const from = { day: String(j.day), block: String(j.block) };
+    put('jobs', { id: j.id, day, block, truck_id: p.truck, truck_pinned: !!wanted, stop_order: 99, confirm_sent_at: null });
+    const changed = [...renumber(day, block), ...renumber(from.day, from.block)];
+    return { ok: true, job_id: j.id, changed: true, rows: rows({ jobs: changed.length ? changed : [find('jobs', j.id)!] }) };
+  });
 
-registerRpc('suggest_blocks', (a) => {
-  const from = String(a.p_from || today()) < today() ? today() : String(a.p_from || today());
-  const days = Math.max(1, Math.min(60, Number(a.p_days || 14)));
-  const dur = Number(a.p_duration) || 60, exclude = (a.p_exclude as string) || null, limit = Math.max(1, Number(a.p_limit || 6));
-  const here = a.p_lat != null && a.p_lng != null ? { lat: Number(a.p_lat), lng: Number(a.p_lng) } : null;
-  const out: { day: string; block: string; pos: number; drive_min: number; near: number; truck: string; left: number }[] = [];
-  for (let i = 0; i < days; i++) {
-    const day = addDays(from, i);
-    for (const block of ['am', 'pm', 'eve']) {
-      if (started(day, block)) continue;
-      const p = placeIn(day, block, dur, null, exclude);
-      if ('refusal' in p) continue;
-      const others = table('jobs').filter((j) => j.day === day && j.block === block && j.id !== exclude && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status)));
-      const pts = others.map(pointOf).filter(Boolean) as { lat: number; lng: number }[];
-      const nearest = here ? Math.min(km(HOME, here), ...pts.map((q) => km(q, here))) : 0;
-      const drive = here ? Math.ceil((nearest * 1.3) / 35 * 60) : 20;
-      const near = here ? pts.filter((q) => km(q, here) <= 5).length : 0;
-      out.push({ day, block, pos: POS[block], drive_min: drive, near, truck: p.truck, left: Math.max(0, p.left) });
-    }
-  }
-  out.sort((x, y) => x.drive_min - y.drive_min || y.near - x.near || x.day.localeCompare(y.day) || x.pos - y.pos);
-  return out.slice(0, limit);
-});
-
-registerRpc('apply_hours', (a) => {
-  const truck = String(a.p_truck), mode = String(a.p_mode), week = (a.p_week || {}) as Record<string, R[]>;
-  if (!['day', 'weeks', 'always'].includes(mode)) refuse('bad_mode', 'Choisis : aujourd’hui seulement, pendant quelques semaines ou en permanence.');
-  const from = String(a.p_from || today()) < today() ? today() : String(a.p_from || today());
-  const changedWeek: DemoRow[] = [], changedDays: DemoRow[] = [];
-  if (mode === 'always') {
-    for (const [k, ranges] of Object.entries(week)) {
-      const d = Number(k);
-      const cur = table('truck_week').find((x) => x.truck_id === truck && Number(x.dow) === d);
-      changedWeek.push(put('truck_week', { id: cur?.id || `w-${truck}-${d}`, truck_id: truck, dow: d, ranges, deleted_at: null }));
-      for (const x of table('truck_days')) if (x.truck_id === truck && String(x.day) >= from && dow(String(x.day)) === d && !x.deleted_at) changedDays.push(put('truck_days', { id: x.id, deleted_at: new Date().toISOString() }));
-    }
-  } else {
-    const n = mode === 'day' ? 1 : Math.max(1, Math.min(52, Number(a.p_weeks || 1))) * 7;
-    for (let i = 0; i < n; i++) {
+  registerRpc('suggest_blocks', (a) => {
+    const from = String(a.p_from || today()) < today() ? today() : String(a.p_from || today());
+    const days = Math.max(1, Math.min(60, Number(a.p_days || 14)));
+    const dur = Number(a.p_duration) || 60, exclude = (a.p_exclude as string) || null, limit = Math.max(1, Number(a.p_limit || 6));
+    const here = a.p_lat != null && a.p_lng != null ? { lat: Number(a.p_lat), lng: Number(a.p_lng) } : null;
+    const out: { day: string; block: string; pos: number; drive_min: number; near: number; truck: string; left: number }[] = [];
+    for (let i = 0; i < days; i++) {
       const day = addDays(from, i);
-      const ranges = week[String(dow(day))];
-      if (!ranges) continue;
-      const cur = table('truck_days').find((x) => x.truck_id === truck && x.day === day);
-      changedDays.push(put('truck_days', { id: cur?.id || `d-${truck}-${day}`, truck_id: truck, day, ranges, note: null, deleted_at: null }));
+      for (const block of ['am', 'pm', 'eve']) {
+        if (started(day, block)) continue;
+        const p = placeIn(day, block, dur, null, exclude);
+        if ('refusal' in p) continue;
+        const others = table('jobs').filter((j) => j.day === day && j.block === block && j.id !== exclude && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status)));
+        const pts = others.map(pointOf).filter(Boolean) as { lat: number; lng: number }[];
+        const nearest = here ? Math.min(km(HOME, here), ...pts.map((q) => km(q, here))) : 0;
+        const drive = here ? Math.ceil((nearest * 1.3) / 35 * 60) : 20;
+        const near = here ? pts.filter((q) => km(q, here) <= 5).length : 0;
+        out.push({ day, block, pos: POS[block], drive_min: drive, near, truck: p.truck, left: Math.max(0, p.left) });
+      }
     }
-  }
-  return { ok: true, changed: changedWeek.length + changedDays.length, rows: rows({ truck_week: changedWeek, truck_days: changedDays }) };
-});
+    out.sort((x, y) => x.drive_min - y.drive_min || y.near - x.near || x.day.localeCompare(y.day) || x.pos - y.pos);
+    return out.slice(0, limit);
+  });
+
+  registerRpc('apply_hours', (a) => {
+    const truck = String(a.p_truck), mode = String(a.p_mode), week = (a.p_week || {}) as Record<string, R[]>;
+    if (!['day', 'weeks', 'always'].includes(mode)) refuse('bad_mode', 'Choisis : aujourd’hui seulement, pendant quelques semaines ou en permanence.');
+    const from = String(a.p_from || today()) < today() ? today() : String(a.p_from || today());
+    const changedWeek: DemoRow[] = [], changedDays: DemoRow[] = [];
+    if (mode === 'always') {
+      for (const [k, ranges] of Object.entries(week)) {
+        const d = Number(k);
+        const cur = table('truck_week').find((x) => x.truck_id === truck && Number(x.dow) === d);
+        changedWeek.push(put('truck_week', { id: cur?.id || `w-${truck}-${d}`, truck_id: truck, dow: d, ranges, deleted_at: null }));
+        for (const x of table('truck_days')) if (x.truck_id === truck && String(x.day) >= from && dow(String(x.day)) === d && !x.deleted_at) changedDays.push(put('truck_days', { id: x.id, deleted_at: new Date().toISOString() }));
+      }
+    } else {
+      const n = mode === 'day' ? 1 : Math.max(1, Math.min(52, Number(a.p_weeks || 1))) * 7;
+      for (let i = 0; i < n; i++) {
+        const day = addDays(from, i);
+        const ranges = week[String(dow(day))];
+        if (!ranges) continue;
+        const cur = table('truck_days').find((x) => x.truck_id === truck && x.day === day);
+        changedDays.push(put('truck_days', { id: cur?.id || `d-${truck}-${day}`, truck_id: truck, day, ranges, note: null, deleted_at: null }));
+      }
+    }
+    return { ok: true, changed: changedWeek.length + changedDays.length, rows: rows({ truck_week: changedWeek, truck_days: changedDays }) };
+  });
 
 }
 

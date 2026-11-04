@@ -1,8 +1,8 @@
 /* What this person sees in the agenda. A mechanic without the « agenda » right only receives his truck's jobs (the
    database decides); the screen also keeps to his truck's lanes, so other trucks never look empty when they are not. */
 import { can, me, myTrucks } from '../../data/auth';
-import { jobsOn, blockLoad, type TruckBlock } from '../../data/select';
-import type { Job } from '../../data/types';
+import { jobsOn, blockLoad, activeTrucks, type TruckBlock } from '../../data/select';
+import type { Job, Truck } from '../../data/types';
 import type { BlockKey, Day } from '../../lib/dates';
 
 export function seesAll(): boolean { return can('agenda'); }
@@ -16,6 +16,8 @@ export const isOff = (j: Pick<Job, 'status'>) => j.status === 'cancelled' || j.s
 export interface BlockView {
   key: BlockKey; start: number; end: number;
   lanes: TruckBlock[]; unplaced: Job[];
+  /** the trucks in service that do not work in this block (said, so nobody looks for them) */
+  idle: Truck[];
   open: boolean; started: boolean; past: boolean;
   /** some truck still has room for a short job */
   room: boolean;
@@ -26,8 +28,9 @@ export function blockView(day: Day, b: { key: BlockKey; start: number; end: numb
   const lanes = load.trucks.filter((x) => laneShown(x.truck.id));
   const unplaced = load.unplaced.filter(jobShown);
   const jobs = lanes.reduce((n, x) => n + x.jobs.length, 0) + unplaced.length;
+  const idle = activeTrucks.value.filter((tr) => laneShown(tr.id) && !lanes.some((x) => x.truck.id === tr.id));
   return {
-    key: b.key, start: b.start, end: b.end, lanes, unplaced, open: load.open, started: load.started, past: day < todayDay,
+    key: b.key, start: b.start, end: b.end, lanes, unplaced, idle, open: load.open, started: load.started, past: day < todayDay,
     room: lanes.some((x) => x.cap >= 45 && x.left >= 45), jobs
   };
 }

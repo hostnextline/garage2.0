@@ -49,6 +49,8 @@
 .agenda-meter-fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--tc, var(--ink-2)); }
 .agenda-meter.is-over .agenda-meter-fill { background: repeating-linear-gradient(135deg, var(--bad) 0 6px, color-mix(in srgb, var(--bad) 70%, transparent) 6px 12px); }
 .agenda-tickets { display: flex; flex-direction: column; gap: var(--sp-2); }
+.agenda-lane.is-idle { border-left-style: dashed; opacity: 0.75; }
+.agenda-idle { flex: none; font-size: var(--t-xs); font-weight: 600; color: var(--ink-3); }
 .agenda-lane.is-unplaced { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 0 var(--r-md) var(--r-md) 0; padding: var(--sp-3); }
 .agenda-warn-icon { color: var(--warn); flex: none; }
 .agenda-unplaced-text { margin: 0; font-size: var(--t-xs); color: var(--ink-2); }

@@ -117,6 +117,15 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
       <div class="agenda-lanes">
         {closed && !v.lanes.length && !v.unplaced.length && <p class="muted small agenda-closed-text">{t('agenda.block.closedText')}</p>}
         {v.lanes.map((lane) => <Lane key={lane.truck.id} lane={lane} started={v.started} />)}
+        {!v.started && !closed && v.idle.map((tr) => (
+          <div key={tr.id} class="agenda-lane is-idle" style={{ '--tc': truckColor(tr.id) }} data-testid={`lane-idle-${tr.id}`}>
+            <div class="agenda-lane-head">
+              <span class="agenda-dot" aria-hidden="true" />
+              <span class="agenda-lane-name">{truckLabel(tr.id)}</span>
+              <span class="agenda-idle">{t('agenda.lane.closed')}</span>
+            </div>
+          </div>
+        ))}
         {v.unplaced.length > 0 && (
           <div class="agenda-lane is-unplaced" data-testid="lane-unplaced">
             <div class="agenda-lane-head">
