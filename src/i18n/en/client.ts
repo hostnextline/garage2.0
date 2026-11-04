@@ -134,7 +134,7 @@ export const client: typeof fr = {
     title: 'Truck tracking',
     onTheWay: '{name} is on the way',
     onTheWayAnon: 'Your mechanic is on the way',
-    eta: 'Expected around {time} (about {min} min)',
+    eta: 'Expected around {time} (about {min}\u00a0min)',
     etaSoon: 'Arriving any minute now',
     etaNone: 'He is coming to you.',
     mechanic: 'Your mechanic: {name}',

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { computeChecklist, nextStep, progress, rolesOf, mainRole, type GuideInput, type Role } from './checklist';
+import { guide as fr } from '../../i18n/fr/guide';
+import { guide as en } from '../../i18n/en/guide';
+import { TOURS } from './tour-steps';
 
 function input(o: Partial<GuideInput> & { roles?: Role[]; owner?: boolean } = {}): GuideInput {
   const { roles = ['owner'], owner = roles.includes('owner'), ...rest } = o;
@@ -124,5 +127,32 @@ describe('the other roles', () => {
     const s = computeChecklist(input({ roles: ['owner', 'office', 'treasurer'] }));
     expect(s.map((x) => x.id)).toEqual(['company', 'services', 'trucks', 'team', 'texts', 'cards', 'booking', 'customers', 'agenda', 'expense', 'report', 'tour']);
     expect(s[s.length - 1].role).toBe('owner');
+  });
+});
+
+
+describe('the guide’s words', () => {
+  const get = (d: unknown, path: string) => path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), d);
+  const leaves = (d: unknown, p = ''): string[] => Object.entries(d as Record<string, unknown>).flatMap(([k, v]) => (v && typeof v === 'object' && !('other' in (v as object)) ? leaves(v, p ? `${p}.${k}` : k) : [p ? `${p}.${k}` : k]));
+  const ph = (s: unknown) => (JSON.stringify(s).match(/\{\w+\}/g) || []).sort().join(',');
+  it('has every French word in English, with the same {placeholders}', () => {
+    expect(leaves(en)).toEqual(leaves(fr));
+    for (const k of leaves(fr)) expect(ph(get(en, k)), k).toBe(ph(get(fr, k)));
+  });
+  it('has words for every step, every tour step, every detail and every topic', () => {
+    const roles: Role[] = ['owner', 'office', 'mechanic', 'treasurer'];
+    const steps = computeChecklist(input({ roles, me: { id: 'me', roles, owner: true, trucks: [] } }));
+    for (const s of steps) for (const d of [fr, en]) { expect(get(d, `steps.${s.id}.title`), s.id).toBeTruthy(); expect(get(d, `steps.${s.id}.text`), s.id).toBeTruthy(); }
+    for (const list of Object.values(TOURS)) for (const s of list) for (const d of [fr, en]) { expect(get(d, `tour.steps.${s.key}.title`), s.key).toBeTruthy(); expect(get(d, `tour.steps.${s.key}.text`), s.key).toBeTruthy(); }
+    for (const key of ['missing', 'noServices', 'unpriced', 'confirmPrices', 'noTruck', 'noDriver', 'noHours', 'alone', 'offline', 'noTruckMine']) expect(get(fr, `detail.${key}`), key).toBeTruthy();
+    for (const f of ['name', 'phone', 'address', 'tps', 'tvq']) expect(get(en, `fields.${f}`)).toBeTruthy();
+    for (const topic of ['book', 'blocks', 'offline', 'texts', 'payments', 'rights']) expect(Object.keys(get(fr, `faq.qa.${topic}`) as object).length, topic).toBeGreaterThanOrEqual(3);
+  });
+  it('writes like the house style: no exclamation marks, no capitals labels, no arrows', () => {
+    for (const k of leaves(fr)) {
+      const v = String(get(fr, k));
+      expect(v, k).not.toMatch(/!|→|←|·/);
+      expect(v, k).not.toMatch(/\b[A-ZÉÈÀ]{4,}\b/);
+    }
   });
 });
