@@ -6,7 +6,7 @@ import { signal, computed } from '@preact/signals';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY } from '../lib/config';
 import type { Access, Right } from './types';
-import { startSync, stopSync, resetScreen, pendingCount, isNetworkError } from './sync';
+import { startSync, stopSync, resetScreen, pendingCount, isNetworkError, onRemoteChange } from './sync';
 import { closeLocal } from './local';
 
 export const sb: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -71,19 +71,40 @@ export async function startAuth() {
   const inv = readInvite();
   if (inv) { inviteToken.value = inv; authState.value = 'invite'; }
   let s: Session | null = null;
-  try { s = (await timeout(sb.auth.getSession(), 6000)).data.session; } catch { s = null; }
+  let unreachable = false;
+  try {
+    const r = await timeout(sb.auth.getSession(), 6000);
+    s = r.data.session;
+    if (!s && r.error && isNetworkError(r.error)) unreachable = true;
+  } catch { s = null; unreachable = true; }
   session.value = s;
   if (!s) {
-    // offline with an earlier sign-in on this device: the copy on the phone opens anyway
+    // no signal (or the server can't be reached) with an earlier sign-in on this device: the copy on the phone opens
     const uid = (() => { try { return localStorage.getItem('his.lastuid'); } catch { return null; } })();
     const stored = (() => { try { return JSON.parse(localStorage.getItem('his.auth') || 'null'); } catch { return null; } })();
     const cached = uid ? cachedAccess(uid) : null;
-    if (cached && stored?.user?.id === uid && !navigator.onLine) { access.value = cached; await startSync(sb, uid!); if (!inv) authState.value = 'ready'; return; }
+    if (cached && stored?.user?.id === uid && (unreachable || !navigator.onLine)) {
+      access.value = cached; await startSync(sb, uid!); if (!inv) authState.value = 'ready';
+      // when the signal comes back, the session is checked again
+      window.addEventListener('online', () => { void sb.auth.getSession().then(({ data }) => { if (data.session) { session.value = data.session; void refreshAccess(); } }); }, { once: true });
+      return;
+    }
     if (!inv) authState.value = 'signed_out';
     return;
   }
   await enter(s.user.id);
 }
+
+/* the owner changed my roles, my rights, the role table or my truck while my app is open: my rights follow */
+let rightsTimer: ReturnType<typeof setTimeout> | null = null;
+onRemoteChange((t, rows) => {
+  const a = access.value;
+  if (!a || viewAs.value) return;
+  const mine = t === 'settings' || (t === 'staff' && rows.some((r) => r.id === a.id)) || (t === 'trucks' && rows.some((r) => r.driver_id === a.id || a.trucks.includes(String(r.id))));
+  if (!mine) return;
+  if (rightsTimer) clearTimeout(rightsTimer);
+  rightsTimer = setTimeout(() => { void refreshAccess(); }, 800);
+});
 
 /** after sign-in: what this person may do, then their copy of the data */
 async function enter(uid: string) {
