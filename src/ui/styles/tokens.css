@@ -36,6 +36,10 @@
   --ease: cubic-bezier(.2, .7, .2, 1);
   --dur: 180ms;
 
+  /* what is behind the glass: a picture (H.I.S, or my own photo), and a veil over it that keeps the words readable */
+  --bg-photo: none;
+  --bg-scrim: linear-gradient(transparent, transparent);
+
   /* status (same names everywhere; never colour alone) */
   --st-booked: #2F6FD0; --st-route: #B86E00; --st-site: #7347D1; --st-done: #1F8A53; --st-paid: #157347; --st-cancel: #66707B; --st-noshow: #A8231B;
 }
@@ -186,6 +190,45 @@
   --focus: #F1D28E; --ok: #7FE0B2; --warn: #F5C06B; --bad: #FFA3A3;
   --st-booked: #9CC2FF; --st-route: #F5C06B; --st-site: #C7B3FF; --st-done: #7FE0B2; --st-paid: #7FE0B2; --st-cancel: #B5A1A6; --st-noshow: #FFA3A3;
 }
+
+/* ===== H.I.S: a real scene behind almost clear glass (like looking through a window) =====
+   Night: a highway in long exposure, the tail lights red. Day: a showroom, daylight through tall windows.
+   The glass only tints a little and blurs a lot; the scene does the colour. The painted light above is switched off. */
+[data-theme='his'][data-mode='light'] {
+  --bg-photo: url('./backdrops/his-day.webp');
+  --bg-scrim: linear-gradient(180deg, rgba(242, 244, 247, 0.32), rgba(242, 244, 247, 0) 42%);
+  --bg-glow-1: transparent; --bg-glow-2: transparent; --bg-glow-3: transparent; --bg-streak: transparent; --bg-mark: transparent;
+  --glass: rgba(255, 255, 255, 0.3);
+  --glass-strong: rgba(255, 255, 255, 0.55);
+  --glass-edge: rgba(255, 255, 255, 0.72);
+  --glass-hi: rgba(255, 255, 255, 0.95);
+  --glass-lo: rgba(16, 20, 24, 0.06);
+  --glass-sheen: rgba(255, 255, 255, 0.42);
+  --glass-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 var(--glass-lo), 0 24px 50px -26px rgba(16, 20, 24, 0.4);
+  --card: rgba(255, 255, 255, 0.4);
+  --card-edge: rgba(255, 255, 255, 0.85);
+  --field: rgba(255, 255, 255, 0.7);
+}
+[data-theme='his'][data-mode='dark'] {
+  --bg-photo: url('./backdrops/his-night.webp');
+  --bg-scrim: linear-gradient(180deg, rgba(3, 4, 6, 0.3), rgba(3, 4, 6, 0.06) 36%, rgba(3, 4, 6, 0.34));
+  --bg-glow-1: transparent; --bg-glow-2: transparent; --bg-glow-3: transparent; --bg-streak: transparent; --bg-mark: transparent;
+  --glass: rgba(12, 13, 17, 0.24);
+  --glass-strong: rgba(14, 15, 19, 0.5);
+  --glass-edge: rgba(255, 255, 255, 0.14);
+  --glass-hi: rgba(255, 255, 255, 0.24);
+  --glass-lo: rgba(0, 0, 0, 0.3);
+  --glass-sheen: rgba(255, 255, 255, 0.08);
+  --glass-line: rgba(255, 255, 255, 0.09);
+  --glass-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 var(--glass-lo), 0 24px 48px -24px rgba(0, 0, 0, 0.7);
+  --card: rgba(255, 255, 255, 0.07);
+  --card-edge: rgba(255, 255, 255, 0.12);
+  --field: rgba(0, 0, 0, 0.3);
+}
+/* my own photo (Mon compte, this device only): any theme; a stronger veil, since the photo was not made for the app */
+[data-photo='mine'] { --bg-glow-1: transparent; --bg-glow-2: transparent; --bg-glow-3: transparent; --bg-streak: transparent; --bg-mark: transparent; }
+[data-photo='mine'][data-mode='light'] { --bg-scrim: linear-gradient(rgba(242, 244, 247, 0.42), rgba(242, 244, 247, 0.3)); }
+[data-photo='mine'][data-mode='dark'] { --bg-scrim: linear-gradient(rgba(3, 4, 6, 0.48), rgba(3, 4, 6, 0.38)); }
 
 /* Less transparency (setting, or the phone's own preference): glass becomes solid panels
    (:root makes it win over the H.I.S light and dark blocks above, which name two attributes) */

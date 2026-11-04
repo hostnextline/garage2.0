@@ -16,9 +16,10 @@ body {
   font-variant-numeric: tabular-nums;
   overscroll-behavior-y: none;
 }
-/* What the glass lets through: a fixed backdrop the panes float over. The tail-light glows red in a corner, the lacquer
-   catches two chrome reflections and a wide soft shine, and the gear of the logo is pressed into the wall. The panes blur
-   it all, so the glass is seen everywhere without any motion (nothing behind the glass moves: no battery spent). */
+/* What the glass lets through: a fixed backdrop the panes float over. With H.I.S, a real scene (the road at night, the
+   showroom by day) or my own photo, under a veil that keeps the words readable. The luxury themes paint their light:
+   a glow in a corner, two chrome reflections, a wide soft shine, the gear of the logo pressed into the wall. The panes
+   blur it all; nothing behind the glass moves (no battery spent). */
 body::before {
   content: '';
   position: fixed;
@@ -26,12 +27,14 @@ body::before {
   z-index: -2;
   pointer-events: none;
   background:
+    var(--bg-scrim),
     linear-gradient(112deg, transparent 0 40.6%, var(--bg-streak) 40.8%, transparent 41.4% 100%),
     linear-gradient(112deg, transparent 0 56.4%, var(--bg-streak) 56.5%, transparent 56.8% 100%),
     linear-gradient(112deg, transparent 18%, color-mix(in srgb, var(--bg-streak) 45%, transparent) 32%, transparent 47%),
     radial-gradient(64vmax 46vmax at 92% 2%, var(--bg-glow-1), transparent 66%),
     radial-gradient(40vmax 34vmax at 4% 92%, var(--bg-glow-3), transparent 70%),
     radial-gradient(46vmax 40vmax at 22% 40%, var(--bg-glow-2), transparent 68%),
+    var(--bg-photo) center / cover no-repeat,
     var(--bg);
 }
 body::after {
@@ -80,15 +83,15 @@ img, svg { display: block; max-width: 100%; }
    its top edge and slides across it (the sheen); the bottom edge is in the shade. */
 .glass, .glass-strong {
   background: linear-gradient(158deg, var(--glass-sheen), transparent 42%), var(--glass);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(165%);
+  backdrop-filter: blur(30px) saturate(165%);
   border: 1px solid var(--glass-edge);
   box-shadow: var(--glass-shadow);
 }
 .glass-strong {
   background: linear-gradient(158deg, var(--glass-sheen), transparent 42%), var(--glass-strong);
-  -webkit-backdrop-filter: blur(24px) saturate(185%);
-  backdrop-filter: blur(24px) saturate(185%);
+  -webkit-backdrop-filter: blur(32px) saturate(170%);
+  backdrop-filter: blur(32px) saturate(170%);
 }
 /* A thin pane (a bar, a pill) blurs less: in Chrome (Android), a blur wider than about a fifth of the pane's height
    lets what passes behind it show sharp again (the blur folds back at the edges). Measured on the bars of the app. */

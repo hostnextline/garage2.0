@@ -20,6 +20,16 @@ export const account: typeof fr = {
   langSaved: 'Language changed.',
   look: 'My look',
   lookHelp: 'The app’s style for you only. It changes right away, with no button to tap.',
+  backdrop: {
+    title: 'Behind the glass',
+    help: 'What you see through the app’s glass. Your photo stays on this phone only: nobody else sees it.',
+    his: 'The H.I.S picture: the road at night in dark, the showroom in light.',
+    mine: 'Your photo, on this phone only.',
+    choose: 'Use my photo', change: 'Change photo', reset: 'Back to the H.I.S picture',
+    saved: 'Your photo is behind the glass.', removed: 'The H.I.S picture is back.',
+    full: 'This phone has no room left for this photo. Try another photo.',
+    failed: 'This photo does not open. Try another photo.'
+  },
   follow: { team: 'The team’s', mine: 'My own' },
   followLabel: 'Which style',
   followHint: 'The style chosen by the owner in Settings, Look.',

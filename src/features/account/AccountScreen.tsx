@@ -1,8 +1,8 @@
 /* Mon compte (#/account): my name and phone, the app's language, my look (the team's, or my own with live swatches),
    installing the app, signing out (warns about changes not sent yet), deleting my account. */
 import { UpdatePanel } from '../../app/UpdatePanel';
-import { useEffect, useState } from 'preact/hooks';
-import { LogOut, Smartphone, Trash2 } from 'lucide-preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { LogOut, Smartphone, Trash2, ImageUp, RotateCcw } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { t, lang, setLang, type Lang } from '../../lib/i18n';
 import { access, me, preview, signOut, refreshAccess, isOwner } from '../../data/auth';
@@ -10,6 +10,7 @@ import { updateMe, memberUpdate, errorMessage } from '../../data/api';
 import { pendingCount } from '../../data/sync';
 import { trucks } from '../../data/select';
 import { myLook, teamLook, setMyLook, type Look } from '../../app/theme';
+import { myPhoto, setMyPhoto, shrinkPhoto, HIS_NIGHT, HIS_DAY } from '../../app/backdrop';
 import { Page, Panel, Rows, RowItem, Field, Input, PhoneInput, Seg, Button, Banner, Avatar, ask, run, toast } from '../../ui';
 import { ThemeSwatches, LookChoices } from '../settings/LookSection';
 import { rolesWords, teamDo } from '../team/teamApi';
@@ -66,6 +67,7 @@ export default function AccountScreen(_p: ScreenProps) {
         </div>
         <div class="stack-lg">
           {!pv && <LookPanel />}
+          {!pv && <BackdropPanel />}
           <UpdatePanel data-testid="account-update" />
           <Panel flush>
             <Rows>
@@ -148,6 +150,49 @@ function LookPanel() {
             <LookChoices look={shown} onLook={(l) => void setMyLook(l)} />
           </>
         )}
+      </div>
+    </Panel>
+  );
+}
+
+/* what is behind the glass: the H.I.S picture (the road at night, the showroom by day), or my own photo (this device) */
+function BackdropPanel() {
+  const photo = myPhoto.value;
+  const file = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    setBusy(true);
+    try {
+      const url = await shrinkPhoto(f);
+      if (setMyPhoto(url)) toast(t('account.backdrop.saved'), { kind: 'ok' });
+      else toast(t('account.backdrop.full'), { kind: 'bad' });
+    } catch {
+      toast(t('account.backdrop.failed'), { kind: 'bad' });
+    } finally {
+      setBusy(false);
+      if (file.current) file.current.value = '';
+    }
+  };
+  return (
+    <Panel title={t('account.backdrop.title')} help={t('account.backdrop.help')} data-testid="account-backdrop">
+      <div class="stack">
+        <div class={`account-backdrop${photo ? ' is-mine' : ''}`} aria-hidden="true" data-testid="backdrop-preview"
+          style={photo ? { backgroundImage: `url("${photo}")` } : { '--day': `url("${HIS_DAY}")`, '--night': `url("${HIS_NIGHT}")` }}>
+          {!photo && <><span class="account-backdrop-day" /><span class="account-backdrop-night" /></>}
+        </div>
+        <p class="small muted" style={{ margin: 0 }}>{photo ? t('account.backdrop.mine') : t('account.backdrop.his')}</p>
+        <input ref={file} type="file" accept="image/*" hidden onChange={(e) => void pick((e.currentTarget as HTMLInputElement).files?.[0])} data-testid="backdrop-file" />
+        <div class="row-wrap">
+          <Button icon={<ImageUp size={18} />} busy={busy} onClick={() => file.current?.click()} data-testid="backdrop-choose">
+            {photo ? t('account.backdrop.change') : t('account.backdrop.choose')}
+          </Button>
+          {photo && (
+            <Button variant="ghost" icon={<RotateCcw size={18} />} onClick={() => { setMyPhoto(null); toast(t('account.backdrop.removed')); }} data-testid="backdrop-reset">
+              {t('account.backdrop.reset')}
+            </Button>
+          )}
+        </div>
       </div>
     </Panel>
   );

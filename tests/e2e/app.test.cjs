@@ -498,3 +498,49 @@ step('Plus: a tile for each part the person may open, the filters, today in numb
   noErrors(m.page);
   await m.page.context().close();
 });
+
+/* ---------- behind the glass: the road at night, my own photo on this phone ---------- */
+step('Behind the glass: the road at night through almost clear glass; my own photo on this phone, kept, then back to H.I.S', async () => {
+  const { page } = await h.openW({ kind: 'phone', scheme: 'dark' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.getByTestId('today-screen').waitFor();
+  const backdrop = () => page.evaluate(() => getComputedStyle(document.body, '::before').backgroundImage);
+  assert.match(await backdrop(), /his-night[^)]*\.webp/, 'the road at night behind the glass');
+  // a pane lets the picture through: it only tints a little
+  const alpha = await page.evaluate(() => {
+    const m = getComputedStyle(document.querySelector('.panel.glass')).backgroundColor.match(/rgba\(([^)]+)\)/);
+    return m ? Number(m[1].split(',')[3]) : 1;
+  });
+  assert.ok(alpha < 0.4, `the pane is almost clear (${alpha})`);
+  // my photo (made here: a warm room), on this phone only
+  const b64 = await page.evaluate(() => {
+    const c = document.createElement('canvas'); c.width = 2400; c.height = 1800; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 1800); g.addColorStop(0, '#6b4a33'); g.addColorStop(1, '#2a1c14'); x.fillStyle = g; x.fillRect(0, 0, 2400, 1800);
+    x.fillStyle = '#c9a27a'; x.fillRect(240, 600, 840, 520); x.fillStyle = '#f2e3c9'; x.fillRect(1500, 500, 400, 280);
+    return c.toDataURL('image/jpeg', 0.92).split(',')[1];
+  });
+  const file = require('node:path').join(h.OUT, 'my-photo.jpg');
+  require('node:fs').writeFileSync(file, Buffer.from(b64, 'base64'));
+  await page.goto(h.APP + '#/account');
+  await page.getByTestId('account-backdrop').waitFor();
+  await page.getByTestId('backdrop-file').setInputFiles(file);
+  await page.waitForFunction(() => document.documentElement.dataset.photo === 'mine', null, { timeout: 15000 });
+  assert.match(await backdrop(), /data:image\/jpeg/, 'my photo is behind the glass');
+  const kept = await page.evaluate(() => { const s = localStorage.getItem('his.backdrop.photo') || ''; const i = new Image(); i.src = s; return i.decode().then(() => ({ kb: Math.round(s.length / 1024), w: i.naturalWidth, h: i.naturalHeight })); });
+  assert.deepEqual([kept.w, kept.h], [1600, 1200], 'made smaller before it is kept');
+  assert.ok(kept.kb < 600, `small enough for the phone (${kept.kb} KB)`);
+  await h.shot(page, 'e2e-11-my-photo');
+  // still there when the app opens again; nothing sent to the server
+  await page.reload();
+  await page.getByTestId('app').waitFor();
+  await page.waitForFunction(() => document.documentElement.dataset.photo === 'mine');
+  assert.equal(h.sql(`select count(*) from public.staff where id = '${who.owner.id}' and prefs::text like '%data:image%'`), '0', 'the photo stays on the phone');
+  // back to the H.I.S picture
+  await page.goto(h.APP + '#/account');
+  await page.getByTestId('backdrop-reset').click();
+  await page.waitForFunction(() => !document.documentElement.dataset.photo);
+  assert.match(await backdrop(), /his-night/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('his.backdrop.photo')), null);
+  noErrors(page);
+  await page.context().close();
+});

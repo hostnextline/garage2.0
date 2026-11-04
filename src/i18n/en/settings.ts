@@ -228,7 +228,7 @@ export const settings: typeof fr = {
     lead: 'The app’s style for the whole team. Each person can keep their own in My account.',
     theme: 'The style',
     themeHelp: 'H.I.S comes in light, dark, or automatic (follows the phone: light by day, dark in the evening). The luxury styles always have the same lighting.',
-    his: { light: 'H.I.S Light', lightSub: 'White and silver', dark: 'H.I.S Dark', darkSub: 'Black background', auto: 'H.I.S Automatic', autoSub: 'Follows the phone' },
+    his: { light: 'H.I.S Light', lightSub: 'Frosted glass, the showroom', dark: 'H.I.S Dark', darkSub: 'Smoked glass, the road at night', auto: 'H.I.S Automatic', autoSub: 'Follows the phone' },
     mode: 'Light or dark',
     modeHelp: 'Only for the H.I.S style. Auto: follows the phone’s setting.',
     modes: { auto: 'Auto', light: 'Light', dark: 'Dark' },

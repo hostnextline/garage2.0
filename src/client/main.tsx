@@ -17,6 +17,8 @@ import { Header, Footer } from './ui';
 function followScheme() {
   try {
     const mq = matchMedia('(prefers-color-scheme: dark)');
+    // the customer sees the garage's own look: H.I.S, its picture behind the glass
+    document.documentElement.dataset.theme = 'his';
     const set = () => {
       document.documentElement.dataset.mode = mq.matches ? 'dark' : 'light';
       const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');

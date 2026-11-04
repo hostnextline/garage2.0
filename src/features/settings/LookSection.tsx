@@ -5,16 +5,17 @@ import { saveSettings } from '../../data/api';
 import { settings } from '../../data/select';
 import { THEMES, teamLook, myLook, type Look, type ThemeKey, type Mode, type Glass } from '../../app/theme';
 import { Panel, Seg, Field, Banner, Button, attempt } from '../../ui';
+import { HIS_NIGHT, HIS_DAY } from '../../app/backdrop';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
 /* the looks as small showrooms: H.I.S three times (light, dark, automatic: follows the phone), then the luxury themes */
-interface LookCard { key: string; theme: ThemeKey; mode?: Mode; swatch: [string, string, string]; split?: [string, string, string] }
+interface LookCard { key: string; theme: ThemeKey; mode?: Mode; swatch: [string, string, string]; split?: [string, string, string]; photo?: string; splitPhoto?: string }
 const HIS_LIGHT: [string, string, string] = ['#E7EAEE', '#FFFFFF', '#D3000E'];
 const HIS_DARK: [string, string, string] = ['#000000', '#15181B', '#FF2E36'];
 export const LOOK_CARDS: LookCard[] = [
-  { key: 'his-light', theme: 'his', mode: 'light', swatch: HIS_LIGHT },
-  { key: 'his-dark', theme: 'his', mode: 'dark', swatch: HIS_DARK },
-  { key: 'his-auto', theme: 'his', mode: 'auto', swatch: HIS_LIGHT, split: HIS_DARK },
+  { key: 'his-light', theme: 'his', mode: 'light', swatch: HIS_LIGHT, photo: HIS_DAY },
+  { key: 'his-dark', theme: 'his', mode: 'dark', swatch: HIS_DARK, photo: HIS_NIGHT },
+  { key: 'his-auto', theme: 'his', mode: 'auto', swatch: HIS_LIGHT, split: HIS_DARK, photo: HIS_DAY, splitPhoto: HIS_NIGHT },
   ...THEMES.filter((th) => th.key !== 'his').map((th) => ({ key: th.key, theme: th.key, swatch: th.swatch }))
 ];
 /** which card is the look */
@@ -31,9 +32,9 @@ function cardSub(c: LookCard): string {
   const th = THEMES.find((x) => x.key === c.theme)!;
   return th.fixed === 'light' ? t('settings.look.alwaysLight') : t('settings.look.alwaysDark');
 }
-function Art(p: { s: [string, string, string] }) {
+function Art(p: { s: [string, string, string]; photo?: string }) {
   return (
-    <span class="settings-theme-art" style={{ '--s0': p.s[0], '--s1': p.s[1], '--s2': p.s[2] }} aria-hidden="true">
+    <span class={`settings-theme-art${p.photo ? ' has-photo' : ''}`} style={{ '--s0': p.s[0], '--s1': p.s[1], '--s2': p.s[2], ...(p.photo ? { backgroundImage: `url("${p.photo}")` } : {}) }} aria-hidden="true">
       <span class="settings-theme-glow" />
       <span class="settings-theme-panel"><span class="settings-theme-dot" /><span class="settings-theme-line" /><span class="settings-theme-line is-short" /></span>
     </span>
@@ -49,8 +50,8 @@ export function ThemeSwatches(p: { value: Pick<Look, 'theme' | 'mode'>; onLook: 
           <button key={c.key} type="button" role="radio" aria-checked={on} class="settings-theme" data-testid={`theme-${c.key}`}
             onClick={() => p.onLook(c.mode ? { theme: c.theme, mode: c.mode } : { theme: c.theme })}>
             {c.split
-              ? <span class="settings-theme-split"><Art s={c.swatch} /><Art s={c.split} /></span>
-              : <Art s={c.swatch} />}
+              ? <span class="settings-theme-split"><Art s={c.swatch} photo={c.photo} /><Art s={c.split} photo={c.splitPhoto} /></span>
+              : <Art s={c.swatch} photo={c.photo} />}
             <span class="settings-theme-name">{cardName(c)}</span>
             <span class="settings-theme-mode">{cardSub(c)}</span>
           </button>

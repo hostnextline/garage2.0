@@ -20,6 +20,16 @@ export const account = {
   langSaved: 'Langue changée.',
   look: 'Mon style',
   lookHelp: 'Le style de l’app pour toi seulement. Ça change tout de suite, sans bouton à toucher.',
+  backdrop: {
+    title: 'Derrière le verre',
+    help: 'Ce qu’on voit à travers le verre de l’app. Ta photo reste sur ce téléphone seulement : les autres ne la voient pas.',
+    his: 'L’image H.I.S : la route de nuit en sombre, la salle d’exposition en clair.',
+    mine: 'Ta photo, sur ce téléphone seulement.',
+    choose: 'Mettre ma photo', change: 'Changer de photo', reset: 'Remettre l’image H.I.S',
+    saved: 'Ta photo est derrière le verre.', removed: 'L’image H.I.S est revenue.',
+    full: 'Ce téléphone n’a plus de place pour cette photo. Essaie une autre photo.',
+    failed: 'Cette photo ne s’ouvre pas. Essaie une autre photo.'
+  },
   follow: { team: 'Celui de l’équipe', mine: 'Le mien' },
   followLabel: 'Quel style',
   followHint: 'Le style choisi par le propriétaire dans Réglages, Apparence.',

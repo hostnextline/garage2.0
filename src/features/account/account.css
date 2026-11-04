@@ -5,3 +5,10 @@
 .account-me .avatar { width: 56px; height: 56px; font-size: 18px; }
 .account-name { font-size: var(--t-xl); overflow-wrap: anywhere; }
 .account-leave { border-color: color-mix(in srgb, var(--bad) 25%, transparent); }
+
+/* what is behind the glass: the two H.I.S pictures side by side (day | night), or my photo */
+.account-backdrop { position: relative; height: 120px; border-radius: var(--r-md); overflow: hidden; background: center / cover no-repeat;
+  box-shadow: inset 0 0 0 1px var(--line); }
+.account-backdrop-day, .account-backdrop-night { position: absolute; inset: 0; background: center / cover no-repeat; }
+.account-backdrop-day { background-image: var(--day); }
+.account-backdrop-night { background-image: var(--night); clip-path: polygon(56% 0, 100% 0, 100% 100%, 44% 100%); }

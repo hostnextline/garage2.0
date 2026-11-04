@@ -228,7 +228,7 @@ export const settings = {
     lead: 'Le style de l’app pour toute l’équipe. Chaque personne peut garder le sien dans Mon compte.',
     theme: 'Le style',
     themeHelp: 'H.I.S existe en clair, en sombre, ou en automatique (suit le téléphone : clair le jour, sombre le soir). Les styles de luxe ont toujours le même éclairage.',
-    his: { light: 'H.I.S Clair', lightSub: 'Fond blanc et argent', dark: 'H.I.S Sombre', darkSub: 'Fond noir', auto: 'H.I.S Automatique', autoSub: 'Suit le téléphone' },
+    his: { light: 'H.I.S Clair', lightSub: 'Verre givré, la salle d’exposition', dark: 'H.I.S Sombre', darkSub: 'Verre fumé, la route de nuit', auto: 'H.I.S Automatique', autoSub: 'Suit le téléphone' },
     mode: 'Clair ou foncé',
     modeHelp: 'Seulement pour le style H.I.S. Auto : suit le réglage du téléphone.',
     modes: { auto: 'Auto', light: 'Clair', dark: 'Foncé' },

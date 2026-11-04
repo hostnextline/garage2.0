@@ -16,16 +16,23 @@ l'éclairage de l'app : des panneaux de verre posés sur un fond profond éclair
 anneau chrome, comme le bouton de démarrage d'une auto. Tout le reste reste calme.
 Un deuxième clin d'œil, réservé à la fin d'une job : le tampon « PAYÉ » qui se pose sur la facture.
 
-### Le verre (nov. 2026 : « glassy, transparent, keeping H.I.S »)
-Le soir, du **verre fumé** devant un feu arrière qui luit rouge ; le jour, du **verre givré** dans la
-lumière de la salle d'exposition (perle, filets chrome, une touche de rouge). Le fond fixe derrière
-les panneaux porte la lumière : la lueur rouge dans un coin, deux reflets chrome sur la laque, un
-large reflet doux, et l'engrenage du logo pressé dans le mur (très pâle). Les panneaux le floutent
-(flou 26 px, saturation 185 %) : le verre se voit partout, **sans rien qui bouge derrière** (pas de
-batterie dépensée). Chaque vitre a un bord haut éclairé, un bord bas dans l'ombre et un reflet en
-biais. Les champs à remplir, les billets et les puces sont des vitres plus petites posées sur la
-grande. Les feuilles (formulaires) sont plus épaisses : on lit au travers, les couleurs ne font que
-teinter. « Effet verre : Non » (ou « Réduire la transparence » du téléphone) remet du plein partout.
+### Le verre (nov. 2026) : presque transparent, une vraie scène derrière
+Hassan a montré un « glassy dashboard » : des panneaux presque clairs, très floutés, devant une
+vraie photo. Avec H.I.S, la scène derrière le verre est une image faite pour l'app (même graine,
+toujours la même : tests/tools/render-backdrops.cjs) :
+- **Sombre** : une autoroute la nuit en pose longue — feux arrière rouges, phares, la ville au loin,
+  les lampadaires. Le verre est **fumé** (teinte 24 %), flou 30 px : les traînées rouges passent au
+  travers des panneaux.
+- **Clair** : une salle d'exposition de jour — grandes fenêtres, plancher poli, le rouge du logo en
+  haut à droite. Le verre est **givré** (blanc 30 %).
+- Un voile léger sur l'image garde les mots lisibles ; la lumière peinte (lueurs, reflets, engrenage)
+  reste pour les thèmes de luxe.
+- **Ma photo** (Mon compte, « Derrière le verre ») : chaque personne peut mettre sa photo (son camion,
+  son garage), réduite à 1600 px et gardée sur son téléphone seulement, sous un voile plus fort.
+Chaque vitre a un bord haut éclairé et un reflet en biais. Les barres minces (haut, bas, pilules)
+floutent moins (12 px) : dans Chrome, un flou plus large qu'environ un cinquième de la hauteur
+laisse revoir le texte qui passe dessous. Les feuilles (formulaires) restent épaisses pour bien lire.
+« Effet verre : Non » (ou « Réduire la transparence ») remet du plein partout.
 
 ## Couleurs (thème H.I.S)
 | Nom | Foncé | Clair | Rôle |

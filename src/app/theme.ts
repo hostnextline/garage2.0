@@ -1,10 +1,12 @@
-/* The look: a theme (H.I.S or a luxury one), light/dark for H.I.S, and the glass (transparency).
+/* The look: a theme (H.I.S or a luxury one), light/dark for H.I.S, the glass (transparency), and what is behind the
+   glass (the H.I.S picture, or my own photo on this device: backdrop.ts).
    The owner picks the team's look in Réglages; each person can keep their own in « Mon compte ».
    Kept on the device so the app opens in the right colours before anything loads. */
 import { signal, computed, effect } from '@preact/signals';
 import { access } from '../data/auth';
 import { settings } from '../data/select';
 import { updateMe } from '../data/api';
+import { myPhoto, applyBackdrop } from './backdrop';
 
 export type ThemeKey = 'his' | 'platine' | 'or' | 'emeraude' | 'saphir' | 'bordeaux';
 export type Mode = 'auto' | 'light' | 'dark';
@@ -59,6 +61,7 @@ export function startTheme() {
     root.dataset.theme = l.theme;
     root.dataset.mode = resolvedMode(l);
     if (l.glass === 'auto') delete root.dataset.glass; else root.dataset.glass = l.glass;
+    applyBackdrop(root, myPhoto.value);
     try { localStorage.setItem(KEY, JSON.stringify(l)); } catch { /* ignore */ }
     const bg = getComputedStyle(root).getPropertyValue('--bg').trim() || '#000000';
     let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');

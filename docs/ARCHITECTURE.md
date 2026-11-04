@@ -132,6 +132,7 @@ exclamation marks except customer thanks. Dates and money via `lib/dates` (`long
 | `features/customers/vinScan` | customers | `barcodeReader()` (the phone's BarcodeDetector, else ZXing WebAssembly), `readVinPhoto(file)` (OCR + check digit) |
 | `features/map/roads` | map | `routeThrough(points)` (OSRM, by the streets), `knownLeg(a, b)` |
 | `app/UpdatePanel` | frame | `()` — the version on this device, « Vérifier les mises à jour » |
+| `app/backdrop` | frame | `myPhoto`, `setMyPhoto(dataUrl)`, `shrinkPhoto(file)`, `fitSize(w, h)`, `HIS_NIGHT`, `HIS_DAY` — what is behind the glass (the H.I.S pictures, or my photo on this device) |
 | `app/more` | frame | pure: `filtersFor`, `tilesFor`, `dayCounts`, `dueCents`, `unpaidCount`, `TILE_HUE` — what « Plus » shows (tested in more.test.ts) |
 | `features/customers/AddressField` + `geocode(q)` | customers | `{ value: PlaceValue, onValue, label? }` |
 | `features/booking/BlockPicker` | booking | `{ lat, lng, duration, excludeJob?, value, onPick({ day, block, truck_id? }) }` |
