@@ -45,6 +45,7 @@ export const jobs: typeof fr = {
   step: {
     leave: 'I’m leaving',
     leaveSub: 'The customer gets a text with your arrival time',
+    leaveSubManual: 'You will send the text yourself: it will be ready, with your arrival time',
     leaveSubQuiet: 'The office sees that you are on the way',
     arrive: 'I’ve arrived',
     arriveSub: 'At {name}’s',

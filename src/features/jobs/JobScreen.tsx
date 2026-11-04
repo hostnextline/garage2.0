@@ -69,13 +69,6 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [answerFor, setAnswerFor] = useState<string | null>(null);
   const [itemFor, setItemFor] = useState<string | null>(null);
-  // the PAYÉ stamp lands only when the job ends in front of the person
-  const lastStatus = useRef(j.status);
-  const [justDone, setJustDone] = useState(false);
-  useEffect(() => {
-    if (lastStatus.current !== j.status) { if (j.status === 'done') setJustDone(true); lastStatus.current = j.status; }
-  }, [j.status]);
-
   // paid far down the page (the invoice): bring « Terminer la job » into view, it is the last step
   const stepBox = useRef<HTMLDivElement>(null);
   const lastKind = useRef(step.kind);
@@ -139,7 +132,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
                 <Button variant="ghost" block onClick={() => letGo(j)} data-testid="job-pay-later">{t('jobs.step.payLater')}</Button>
               )}
             </div>
-          ) : <StepState job={j} step={step} rights={rights} justDone={justDone} onCollect={() => setSheet('pay')} />}
+          ) : <StepState job={j} step={step} rights={rights} onCollect={() => setSheet('pay')} />}
           <HeadPanel job={j} rights={rights} onEditNotes={() => setSheet('notes')} />
           <WaiverPanel job={j} rights={rights} onSign={() => setSheet('waiver')} onSee={() => setSheet('signature')} />
           <WorkPanel job={j} rights={rights} onItem={setItemFor} onAnswer={setAnswerFor} onAdd={() => setSheet('add')} onPropose={() => setSheet('propose')} />

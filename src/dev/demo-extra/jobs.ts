@@ -1,7 +1,8 @@
 /* DEV ONLY — demo rows and pretend server functions for the job sheet and « Ma journée » (section jobs).
    - Saleh's day gets the texts it would have (confirmation, « en route ») and the trip to Marc-André.
    - enroute / notify answer like the real ones and leave the same traces (trip, text in the list, confirmation date).
-     Add &texts=off to the address to see what happens when automatic texts are not set up.
+     The « en route » text goes by itself only when the demo says texts are switched on (&texts=on); &texts=off also
+     makes the other texts come back « to send by hand ».
    Small on purpose; nothing here can stop the demo (every part is guarded). */
 import { registerFn, put, find, table, nowIso, type DemoRow } from '../fake-server';
 import { addDays, today, longDay } from '../../lib/dates';
@@ -10,7 +11,10 @@ const D = (n: number) => addDays(today(), n);
 const at = (day: string, min: number) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, Math.floor(min / 60), min % 60).toISOString(); };
 const me = () => (globalThis as { __demoUser?: string }).__demoUser || 'u-hassan';
 const LINK = 'https://hostnextline.github.io/garage2.0/client.html';
-const textsOff = () => { try { return /[?&]texts=off\b/.test(location.search); } catch { return false; } };
+const textsParam = (): 'on' | 'off' | null => { try { return (/[?&]texts=(on|off)\b/.exec(location.search)?.[1] as 'on' | 'off') || null; } catch { return null; } };
+const textsOff = () => textsParam() === 'off';
+/** automatic texts as the app is told (Access.texts_online, set by the demo): the « en route » text follows it */
+const textsOnline = () => !!(globalThis as { __demoServices?: { texts?: boolean } }).__demoServices?.texts;
 
 function rows() {
   if (find('jobs', 'j-2')) put('jobs', { id: 'j-2', confirm_sent_at: at(D(-2), 640), notes: 'Clé du F-150 sous le tapis, côté conducteur.' });
@@ -45,7 +49,7 @@ function fns() {
     const truck = find('trucks', j.truck_id);
     const trip = put('trips', { ...(active ? { id: active.id } : {}), job_id: j.id, staff_id: truck?.driver_id || me(), status: 'active', started_at: active?.started_at || nowIso(), ended_at: null,
       eta_at: eta.toISOString(), km: 6.2, minutes, route: null, dest_lat: j.lat ?? find('customers', j.customer_id)?.lat ?? null, dest_lng: j.lng ?? find('customers', j.customer_id)?.lng ?? null,
-      sms_status: textsOff() ? 'off' : 'sent', expires_at: new Date(Date.now() + 4 * 3600_000).toISOString() });
+      sms_status: textsOnline() ? 'sent' : 'off', expires_at: new Date(Date.now() + 4 * 3600_000).toISOString() });
     if (active && !b.resend) return { ok: true, sms: 'already', link: null, message: null, phone: null, eta_at: trip.eta_at, minutes, km: 6.2 };
     const c = find('customers', j.customer_id);
     const mech = String(find('staff', truck?.driver_id)?.short_name || 'Votre mécano');
@@ -54,7 +58,7 @@ function fns() {
     const message = c?.lang === 'en'
       ? `Hello ${first(c)}, ${mech} from Mécanique Mobile H.I.S is on the way: arriving around ${time}. Follow the truck: ${link}&l=en`
       : `Bonjour ${first(c)}, ${mech} de Mécanique Mobile H.I.S est en route : arrivée vers ${time}. Suivez le camion : ${link}`;
-    const sms = textsOff() ? 'off' : b.notify === false ? 'quiet' : 'sent';
+    const sms = !textsOnline() ? 'off' : b.notify === false ? 'quiet' : 'sent';
     textRow(j, 'en_route', message, sms);
     return { ok: true, sms, link, message, phone: c?.phone ?? null, eta_at: trip.eta_at, minutes, km: 6.2 };
   });
@@ -83,6 +87,12 @@ function fns() {
 }
 
 export function load() {
+  // &texts=on / &texts=off: the demo says the automatic texts are (not) switched on (Access.texts_online)
+  try {
+    const p = textsParam();
+    const g = globalThis as { __demoServices?: { card?: boolean; texts?: boolean } };
+    if (p) g.__demoServices = { ...(g.__demoServices || {}), texts: p === 'on' };
+  } catch { /* the default stays */ }
   try { rows(); } catch { /* the demo goes on without them */ }
   try { fns(); } catch { /* the core's pretend functions stay */ }
 }

@@ -64,6 +64,7 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-state { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; min-height: 84px; }
 .jobs-state-title { font-size: var(--t-xl); margin: 0 0 2px; }
 .jobs-state-icon { width: 28px; height: 28px; color: var(--ink-3); flex: none; }
+.jobs-state.is-paid .jobs-state-icon, [data-testid='job-done'] .jobs-state-icon { color: var(--st-done); }
 .jobs-stamp { flex: none; font-size: 1.25rem; margin: 2px 6px 2px 2px; }
 .jobs-due { margin: 6px 0 0; font-weight: 650; font-stretch: var(--w-num); color: var(--warn); }
 .jobs-next { gap: var(--sp-2); }
@@ -140,3 +141,7 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-moment .stepper .btn { min-width: var(--tap); }
 .jobs-seg { display: flex; }
 .jobs-seg button { flex: 1 1 0; min-height: 44px; }
+
+/* text links stay text, but the finger gets 48 px around them */
+.jobs-link, .jobs-title-link { position: relative; }
+.jobs-link::after, .jobs-title-link::after { content: ''; position: absolute; inset: -12px -6px; }

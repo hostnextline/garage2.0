@@ -131,15 +131,16 @@ export function WaiverPanel(p: { job: Job; rights: JobRights; onSign: () => void
 }
 
 /* ---------- when there is no button: done, closed, later, nothing for this person ---------- */
-export function StepState(p: { job: Job; step: NextStep; rights: JobRights; justDone: boolean; onCollect: () => void }) {
+export function StepState(p: { job: Job; step: NextStep; rights: JobRights; onCollect: () => void }) {
   const { job: j, step: s } = p;
   if (s.kind === 'done') {
     const inv = invoiceOf(j.id);
     const next = p.rights.mine ? jobsOn(j.day).find((o) => o.id !== j.id && o.truck_id === j.truck_id && ['on_site', 'en_route', 'booked'].includes(o.status)) : undefined;
     return (
       <div class="stack">
-        <section class="panel glass jobs-state" data-testid="job-done">
-          {s.paid && <Stamp kind="paid" animate={p.justDone} class="jobs-stamp" />}
+        {/* the PAYÉ stamp is on the invoice (one stamp per screen): here, the words */}
+        <section class={`panel glass jobs-state${s.paid ? ' is-paid' : ''}`} data-testid="job-done">
+          <CircleCheckBig class="jobs-state-icon" aria-hidden="true" />
           <div class="grow">
             <h2 class="jobs-state-title">{t('jobs.done.title')}</h2>
             {j.finished_at && <p class="muted" style={{ margin: 0 }}>{t('jobs.done.at', { time: clockOf(j.finished_at) })}</p>}

@@ -8,6 +8,7 @@ import { t, lang } from '../../lib/i18n';
 import { money, lineTotal } from '../../lib/money';
 import { getRow } from '../../data/store';
 import { net } from '../../data/sync';
+import { me } from '../../data/auth';
 import { job as jobById } from '../../data/select';
 import type { NextStep, StepKind } from './nextStep';
 import { jobFirstName, customerGetsTexts, type JobRights } from './select';
@@ -24,7 +25,11 @@ export const ON_SHEET: StepKind[] = ['waiver', 'answer', 'work', 'invoice', 'pay
 export function stepWords(j: Job, s: NextStep): { label: string; sub: string } {
   const l = lang.value;
   switch (s.kind) {
-    case 'leave': return { label: t('jobs.step.leave'), sub: customerGetsTexts(j) ? t('jobs.step.leaveSub') : t('jobs.step.leaveSubQuiet') };
+    case 'leave': {
+      // said before pressing: does the text go by itself (texts switched on), or will the mechanic send it?
+      const sub = !customerGetsTexts(j) ? t('jobs.step.leaveSubQuiet') : me.value?.texts_online === false ? t('jobs.step.leaveSubManual') : t('jobs.step.leaveSub');
+      return { label: t('jobs.step.leave'), sub };
+    }
     case 'arrive': return { label: t('jobs.step.arrive'), sub: t('jobs.step.arriveSub', { name: jobFirstName(j) }) };
     case 'waiver': return { label: t('jobs.step.waiver'), sub: t('jobs.step.waiverSub') };
     case 'answer': {

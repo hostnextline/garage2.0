@@ -90,3 +90,5 @@ a.today-truck:hover { border-color: color-mix(in srgb, var(--ink) 22%, transpare
 
 /* 48 px finger targets (the kit's small buttons are 38 px) */
 .today-lists .row-end .btn, .today-shift .btn, .today-pos-off .btn { min-height: var(--tap); }
+.today-rowlink { position: relative; }
+.today-rowlink::after { content: ''; position: absolute; inset: -14px -6px; }

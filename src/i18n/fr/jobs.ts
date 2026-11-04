@@ -49,6 +49,7 @@ export const jobs = {
   step: {
     leave: 'Je pars',
     leaveSub: 'Le client reçoit un texto avec ton heure d’arrivée',
+    leaveSubManual: 'Tu enverras le texto toi-même : il sera prêt, avec ton heure d’arrivée',
     leaveSubQuiet: 'Le bureau voit que tu es en route',
     arrive: 'Je suis arrivé',
     arriveSub: 'Chez {name}',
