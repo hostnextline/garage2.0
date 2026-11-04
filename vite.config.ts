@@ -12,6 +12,16 @@ export default defineConfig(({ mode }) => ({
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
   plugins: [
     preact(),
+    {
+      /* the customer's page is not the team app: no « Installer l'app » offer there */
+      name: 'client-page-without-manifest',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html: string, ctx: { path: string }) {
+          return ctx.path.endsWith('client.html') ? html.replace(/\s*<link rel="manifest"[^>]*>/g, '') : html;
+        }
+      }
+    },
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,

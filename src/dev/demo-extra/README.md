@@ -7,3 +7,6 @@ export function load() { put('quotes', { id: 'q-9', ... }); }      // optional: 
 registerRpc('my_rpc', (args) => ({ ok: true, rows: rows({ jobs: [ ... ] }) }));
 registerFn('notify', (body) => ({ ok: true, status: 'sent', message: '…' }));
 ```
+
+Register your pretend operations inside `load()` or at the top of the file: either way they win over the core's
+(`src/dev/demo-rpc.ts` registers its own only when no section did).

@@ -33,7 +33,7 @@ let flushing = false;
 let flushAgain = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let backoff = 0;
-const waiters = new Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
+const waiters = new Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void; watching?: boolean }>();
 const pulling = new Map<string, Promise<void>>();
 const listeners = new Set<(t: TableName, rows: Row[]) => void>();
 
@@ -252,12 +252,17 @@ export async function callRpc<T = unknown>(name: string, args: Record<string, un
     return { queued: false, data: data as T };
   }
   const entry: OutboxEntry = { op, kind: 'rpc', rpc: name, args: fullArgs, label: opts.label, at: new Date().toISOString(), tries: 0, state: 'pending' };
-  const result = new Promise<unknown>((resolve, reject) => waiters.set(op, { resolve, reject }));
+  // « watching »: the screen is still waiting for the answer and will show a refusal itself
+  const result = new Promise<unknown>((resolve, reject) => waiters.set(op, { resolve, reject, watching: true }));
   await queue(entry);
-  // wait a little for the answer; past that, the caller treats it as "will be sent"
-  const quick = await Promise.race([result.then((d) => ({ done: true, d }), (e) => ({ done: true, e })), new Promise((r) => setTimeout(() => r({ done: false }), 8000))]) as { done: boolean; d?: unknown; e?: unknown };
+  // wait a little for the answer (not long when the phone already knows there is no signal); past that, the
+  // caller treats it as « will be sent », and a later refusal goes to the « refusé » banner of the frame
+  const wait = net.value.online ? 8000 : 1500;
+  const quick = await Promise.race([result.then((d) => ({ done: true, d }), (e) => ({ done: true, e })), new Promise((r) => setTimeout(() => r({ done: false }), wait))]) as { done: boolean; d?: unknown; e?: unknown };
   if (quick.done && 'e' in quick && quick.e) throw quick.e;
   if (quick.done) return { queued: false, data: quick.d as T };
+  const w = waiters.get(op);
+  if (w) w.watching = false;
   return { queued: true };
 }
 /** resolves when a queued operation is confirmed (or refused) */
@@ -345,17 +350,19 @@ async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
       await outboxPut(uid, e);
       return 'wait';
     }
-    // refused: keep it, with the reason, and bring back the server's version of that row
-    e.state = 'failed';
-    e.error = errorText(err);
-    await outboxPut(uid, e);
-    waiters.get(e.op)?.reject(err);
+    // refused: keep it, with the reason, and bring back the server's version of that row — unless the screen that
+    // asked is still waiting: it shows the reason itself, so the refusal isn't listed twice
+    const w = waiters.get(e.op);
+    if (w?.watching) await outboxDelete(uid, e.seq!);
+    else { e.state = 'failed'; e.error = errorText(err); await outboxPut(uid, e); }
+    w?.reject(err);
     waiters.delete(e.op);
     if (e.table && e.id && isSynced(e.table)) await refetch(e.table, e.id);
     return 'failed';
   }
 }
-/** RPCs return the rows they changed as { rows: { table: [...] } }: put them on screen */
+/** RPCs (and server functions) return the rows they changed as { rows: { table: [...] } }: put them on screen */
+export function applyRows(data: unknown) { applyRpcResult(data); }
 function applyRpcResult(data: unknown) {
   const d = data as { rows?: Record<string, Row[]> } | null;
   if (!d || typeof d !== 'object' || !d.rows) return;

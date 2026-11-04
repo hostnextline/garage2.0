@@ -72,7 +72,7 @@ export interface Job extends Base {
 }
 export interface JobItem extends Base {
   job_id: string; kind: ItemKind; service_id: string | null; item_id: string | null; description: string; qty: number; unit_cents: number; taxable: boolean;
-  duration_min: number | null; status: ItemStatus; answered_at: string | null; answered_via: 'signature' | 'link' | 'verbal' | null; note: string | null; sort: number;
+  duration_min: number | null; status: ItemStatus; answered_at: string | null; answered_via: 'signature' | 'link' | 'verbal' | null; answer_attachment?: string | null; note: string | null; sort: number;
 }
 export interface QuoteItem { description: string; qty: number; unit_cents: number; taxable: boolean; service_id?: string | null; duration_min?: number | null; kind?: ItemKind }
 export interface Quote extends Base {

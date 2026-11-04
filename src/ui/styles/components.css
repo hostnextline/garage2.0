@@ -28,7 +28,7 @@
 
 /* ---------- the next-step button: signal red in a chrome ring, like an engine start button ---------- */
 .bigstep {
-  position: relative; display: flex; align-items: center; gap: var(--sp-4); width: 100%; min-height: 76px;
+  position: relative; text-decoration: none; display: flex; align-items: center; gap: var(--sp-4); width: 100%; min-height: 76px;
   padding: var(--sp-3) var(--sp-5) var(--sp-3) var(--sp-3); border: 0; border-radius: 20px; text-align: left; color: var(--on-accent);
   background:
     radial-gradient(120% 140% at 30% 0%, rgba(255,255,255,0.22), transparent 55%),
@@ -73,7 +73,9 @@
 /* segmented + chips + switch */
 .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: var(--r-md); background: var(--sunken); border: 1px solid var(--line); flex-wrap: wrap; }
 .seg button { min-height: 42px; padding: 0 var(--sp-4); border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font-weight: 600; font-size: var(--t-sm); }
-.seg button[aria-pressed='true'] { background: var(--solid); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+.seg button[aria-pressed='true'] { background: var(--solid); color: var(--ink); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 18%, transparent), 0 1px 3px rgba(0,0,0,0.16); }
+[data-mode='dark'] .seg button[aria-pressed='true'], [data-theme='or'] .seg button[aria-pressed='true'], [data-theme='emeraude'] .seg button[aria-pressed='true'],
+[data-theme='saphir'] .seg button[aria-pressed='true'], [data-theme='bordeaux'] .seg button[aria-pressed='true'] { background: color-mix(in srgb, var(--ink) 16%, var(--solid)); }
 .chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--sp-4); border-radius: var(--r-pill);
   border: 1px solid var(--line); background: var(--solid); color: var(--ink); font-size: var(--t-sm); font-weight: 520; }
@@ -166,6 +168,8 @@ button.row-item:hover, a.row-item:hover { background: var(--sunken); }
 /* ---------- toast ---------- */
 .toasts { position: fixed; z-index: 80; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--sp-2); width: min(560px, calc(100% - 32px)); pointer-events: none; }
 @media (min-width: 960px) { .toasts { bottom: var(--sp-6); } }
+/* a sheet is open: its buttons are at the bottom, the messages go to the top */
+html.is-locked .toasts { bottom: auto; top: calc(env(safe-area-inset-top) + 12px); }
 .toast { pointer-events: auto; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); font-size: var(--t-sm); font-weight: 550;
   background: var(--ink); color: var(--solid); box-shadow: 0 12px 30px -12px rgba(0,0,0,0.5); animation: rise 200ms var(--ease); }
 .toast-bad { background: var(--bad); color: #fff; }

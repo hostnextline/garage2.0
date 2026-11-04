@@ -87,9 +87,9 @@ export async function addItem(jobId: string, item: ItemInput) {
 }
 export async function updateItem(id: string, patch: Partial<JobItem>) { guard(); await updateRow('job_items', id, patch); }
 export async function removeItem(id: string) { guard(); await deleteRow('job_items', id); }
-export async function answerExtra(itemId: string, accept: boolean, via: 'signature' | 'verbal') {
+export async function answerExtra(itemId: string, accept: boolean, via: 'signature' | 'verbal', attachmentId: string | null = null) {
   guard();
-  return callRpc('extra_answer', { p_item: itemId, p_accept: accept, p_via: via });
+  return callRpc('extra_answer', { p_item: itemId, p_accept: accept, p_via: via, p_attachment: attachmentId });
 }
 export async function saveSignature(jobId: string, dataUrl: string, signer: string, version: string) {
   guard();

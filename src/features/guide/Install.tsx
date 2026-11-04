@@ -1,20 +1,15 @@
 /* « Installer l'app sur ton téléphone »: the browser's own install button when it offers one (Android, computer),
    else the two or three taps to do (iPhone: Partager, Sur l'écran d'accueil; Android: ⋮, Installer l'app). */
-import { signal } from '@preact/signals';
+import { computed } from '@preact/signals';
+import { installEvent, appInstalled } from '../../app/pwa';
 import { Download, Share, EllipsisVertical, Copy } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { appBase } from '../../lib/config';
 import { Panel, Button, Banner, toast } from '../../ui';
 
-interface InstallEvent extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
-let deferred: InstallEvent | null = null;
-const canPrompt = signal(false);
-const installed = signal(false);
-// the browser offers the install once, early: kept for the button
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e as InstallEvent; canPrompt.value = true; });
-  window.addEventListener('appinstalled', () => { deferred = null; canPrompt.value = false; installed.value = true; });
-}
+// the browser's offer is caught at the app's start (src/app/pwa.ts): this screen may open much later
+const canPrompt = computed(() => !!installEvent.value);
+const installed = appInstalled;
 
 export function isStandalone(): boolean {
   try { return matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true; } catch { return false; }
@@ -30,11 +25,12 @@ export function InstallPanel() {
   const done = installed.value || isStandalone();
   const where = platform(navigator.userAgent, isTouchMac());
   const install = async () => {
-    const e = deferred;
+    const e = installEvent.value;
     if (!e) return;
     await e.prompt();
     const r = await e.userChoice.catch(() => null);
-    if (r?.outcome === 'accepted') { installed.value = true; deferred = null; canPrompt.value = false; }
+    installEvent.value = null;   // an offer is used only once
+    if (r?.outcome === 'accepted') installed.value = true;
   };
   const url = appBase();
   const copy = async () => {

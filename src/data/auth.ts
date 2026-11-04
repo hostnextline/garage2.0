@@ -6,7 +6,7 @@ import { signal, computed } from '@preact/signals';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY } from '../lib/config';
 import type { Access, Right } from './types';
-import { startSync, stopSync, resetScreen, pendingCount, isNetworkError, onRemoteChange } from './sync';
+import { startSync, stopSync, resetScreen, pendingCount, isNetworkError, onRemoteChange, applyRows } from './sync';
 import { closeLocal } from './local';
 
 export const sb: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -192,6 +192,7 @@ export async function callFn<T = Record<string, unknown>>(name: string, body: Re
   let d: Record<string, unknown> = {};
   try { d = await r.json(); } catch { d = { ok: false, code: 'server', error: `HTTP ${r.status}` }; }
   if (!r.ok && d.ok === undefined) d.ok = false;
+  if (d.rows) { try { applyRows(d); } catch { /* the next refresh brings them */ } }
   return d as T & { ok: boolean; code?: string; error?: string };
 }
 

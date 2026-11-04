@@ -1,6 +1,9 @@
 /* DEV ONLY — pretend versions of the server's main operations, close enough to try the screens.
    The real rules (rights, planner, taxes, numbering) live in supabase/migrations and are tested there. */
-import { registerRpc, registerFn, put, find, table, rows, refuse, nowIso, type DemoRow } from './fake-server';
+import { registerRpc as strongRpc, registerFn as strongFn, put, find, table, rows, refuse, nowIso, type DemoRow } from './fake-server';
+// the core's pretend operations give way to a section's own (registered in src/dev/demo-extra)
+const registerRpc = (name: string, fn: Parameters<typeof strongRpc>[1]) => strongRpc(name, fn, { weak: true });
+const registerFn = (name: string, fn: Parameters<typeof strongFn>[1]) => strongFn(name, fn, { weak: true });
 import { addDays, today, nowMinute } from '../lib/dates';
 
 const me = () => (globalThis as { __demoUser?: string }).__demoUser || 'u-hassan';
@@ -66,7 +69,7 @@ registerRpc('job_step', (a) => {
   }
   else if (step === 'cancel') Object.assign(patch, { status: 'cancelled', cancelled_at: now, lost_reason: d.reason || null });
   else if (step === 'no_show') Object.assign(patch, { status: 'no_show', cancelled_at: now, lost_reason: d.reason || null });
-  else if (step === 'reopen') Object.assign(patch, { status: 'on_site', finished_at: null });
+  else if (step === 'reopen') Object.assign(patch, { status: 'booked', cancelled_at: null, lost_cents: null, lost_reason: null });
   else if (step === 'back') Object.assign(patch, j.status === 'on_site' ? { status: 'en_route', arrived_at: null } : { status: 'booked', started_at: null });
   else refuse('bad_step', 'Étape inconnue.');
   return { ok: true, rows: rows({ jobs: put('jobs', patch), job_items: itemsOf(j.id) }) };
@@ -74,7 +77,7 @@ registerRpc('job_step', (a) => {
 registerRpc('extra_answer', (a) => {
   const i = find('job_items', a.p_item);
   if (!i || i.status !== 'proposed') refuse('not_extra', 'Ce n’est pas un travail proposé.');
-  return { ok: true, rows: rows({ job_items: put('job_items', { id: i.id, status: a.p_accept ? 'approved' : 'declined', answered_at: nowIso(), answered_via: a.p_via }) }) };
+  return { ok: true, rows: rows({ job_items: put('job_items', { id: i.id, status: a.p_accept ? 'approved' : 'declined', answered_at: nowIso(), answered_via: a.p_via, answer_attachment: a.p_attachment || null }) }) };
 });
 registerRpc('invoice_for_job', (a) => {
   const j = find('jobs', a.p_job);

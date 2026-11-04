@@ -111,7 +111,7 @@ export function ViewPage(p: { token: string; linkLang: CLang | null; retour: str
         {phase.k === 'error' && <ErrorState code={phase.code} l={l} garage={garage} onRetry={() => { setPhase({ k: 'loading' }); void load(); }} />}
         {v?.kind === 'quote' && <QuotePage v={v} l={l} />}
         {v?.kind === 'job' && (
-          <JobPage v={v} l={l} check={check} justPaid={justPaid} thanks={thanks} payErr={payErr}
+          <JobPage v={v} l={l} token={p.token} check={check} justPaid={justPaid} thanks={thanks} payErr={payErr}
             onAnswer={answer} onPay={pay} onCheckAgain={() => { tries.current = 0; void runCheck(); }} />
         )}
       </main>
@@ -121,7 +121,7 @@ export function ViewPage(p: { token: string; linkLang: CLang | null; retour: str
 }
 
 /* ---------- an appointment ---------- */
-function JobPage(p: { v: JobView; l: CLang; check: PayCheck; justPaid: boolean; thanks: boolean; payErr: string | null;
+function JobPage(p: { v: JobView; l: CLang; token: string; check: PayCheck; justPaid: boolean; thanks: boolean; payErr: string | null;
   onAnswer: (x: ExtraV, accept: boolean) => Promise<void>; onPay: () => Promise<void>; onCheckAgain: () => void }) {
   const { v, l } = p;
   const s = sections(v);
@@ -145,21 +145,22 @@ function JobPage(p: { v: JobView; l: CLang; check: PayCheck; justPaid: boolean; 
       )}
       {(s.proposed.length > 0 || p.thanks) && <ExtrasPanel v={v} l={l} thanks={p.thanks} onAnswer={p.onAnswer} />}
       {inv && <InvoicePanel v={v} l={l} justPaid={p.justPaid} payErr={p.payErr} onPay={p.onPay} />}
-      <AppointmentPanel v={v} l={l} printable={!inv} />
+      <AppointmentPanel v={v} l={l} printable={!inv} token={p.token} />
       {!inv && <PlannedPanel v={v} l={l} payErr={p.payErr} onPay={p.onPay} />}
     </>
   );
 }
 
 const TONES: Record<string, string> = { booked: 'booked', en_route: 'en_route', on_site: 'on_site', done: 'done', cancelled: 'cancelled', no_show: 'no_show' };
-function AppointmentPanel(p: { v: JobView; l: CLang; printable: boolean }) {
+function AppointmentPanel(p: { v: JobView; l: CLang; printable: boolean; token: string }) {
   const { v, l } = p;
   const j = v.job;
   const rel = relDay(j.day);
   const slot = slotText(j.start, j.end, l);
   const block = ['am', 'pm', 'eve'].includes(j.block) ? ct(l, `blocks.${j.block}`) : null;
   const closed = j.status === 'cancelled' || j.status === 'no_show';
-  const trackToken = j.status === 'en_route' && j.tracking ? recall('suivi') : null;
+  // the appointment's own link also opens the live trip (same secret), so the link is always there
+  const trackToken = j.status === 'en_route' && j.tracking ? (recall('suivi') || p.token) : null;
   const explain = j.status === 'en_route' && !trackToken ? ct(l, 'job.explain.en_routeNoLink') : ct(l, `job.explain.${j.status}`);
   return (
     <section class={`cl-panel glass${p.printable ? '' : ' cl-noprint'}`} aria-labelledby="cl-appt" data-testid="client-appointment">

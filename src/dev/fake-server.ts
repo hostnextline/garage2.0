@@ -9,8 +9,9 @@ export const db: Record<string, DemoRow[]> = {};
 type Handler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
 const rpcs = new Map<string, Handler>();
 const fns = new Map<string, Handler>();
-export function registerRpc(name: string, fn: Handler) { rpcs.set(name, fn); }
-export function registerFn(name: string, fn: Handler) { fns.set(name, fn); }
+/** a section's own pretend operation wins over the core's (core ones are registered with weak: true) */
+export function registerRpc(name: string, fn: Handler, o: { weak?: boolean } = {}) { if (o.weak && rpcs.has(name)) return; rpcs.set(name, fn); }
+export function registerFn(name: string, fn: Handler, o: { weak?: boolean } = {}) { if (o.weak && fns.has(name)) return; fns.set(name, fn); }
 
 export const nowIso = () => new Date().toISOString();
 export function uuid(): string { return crypto.randomUUID(); }

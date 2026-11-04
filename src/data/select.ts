@@ -64,12 +64,12 @@ export function weekOf(truckId: string): Record<number, Range[]> {
 }
 export interface TruckBlock { truck: Truck; cap: number; used: number; left: number; jobs: Job[] }
 /** how full a block is, per truck: the hours the truck works in it, and what its jobs take (durations + driving) */
-export function blockLoad(day: Day, block: BlockKey): { trucks: TruckBlock[]; unplaced: Job[]; open: boolean; left: number; started: boolean } {
+export function blockLoad(day: Day, block: BlockKey, opts: { exclude?: string | null } = {}): { trucks: TruckBlock[]; unplaced: Job[]; open: boolean; left: number; started: boolean } {
   const b = blockOfKey(block);
   const isToday = day === today();
   const started = day < today() || (isToday && nowMinute() >= b.start);
   const from = isToday ? Math.ceil(nowMinute() / 5) * 5 : 0;
-  const js = jobsOn(day).filter((j) => j.block === block && !['cancelled', 'no_show'].includes(j.status));
+  const js = jobsOn(day).filter((j) => j.block === block && !['cancelled', 'no_show'].includes(j.status) && j.id !== opts.exclude);
   const out: TruckBlock[] = [];
   for (const tr of activeTrucks.value) {
     const rs = truckRanges(tr.id, day).map(([a, z]) => [Math.max(a, from), z] as Range).filter(([a, z]) => z > a);

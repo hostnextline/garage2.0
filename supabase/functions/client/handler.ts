@@ -3,7 +3,7 @@
 //   answer  accept or decline an extra work (asked to confirm on the page first)
 //   pay     opens Stripe's card page for what is due (the same page is reused while it is open)
 //   check   back from Stripe: asks Stripe whether it is paid
-import { serve, json, body, fail } from '../_shared/http.ts';
+import { serve, json, body, fail, Fail } from '../_shared/http.ts';
 import { adminDb, secret, settings } from '../_shared/db.ts';
 import { sha256hex } from '../_shared/tokens.ts';
 import { baseOf } from '../_shared/links.ts';
@@ -84,7 +84,7 @@ async function view(l: Row) {
   };
 }
 
-export const handler = serve(async (req) => {
+async function answer(req: Request): Promise<Response> {
   const b = await body(req);
   const action = String(b.action || 'view');
   const l = await linkOf(b.token);
@@ -145,4 +145,15 @@ export const handler = serve(async (req) => {
     return json(await view(l));
   }
   fail('action', 'Action inconnue.');
+}
+
+/* a refusal (link expired, gone…) still says who to call: the garage's name and phone come with it */
+export const handler = serve(async (req) => {
+  try { return await answer(req); }
+  catch (e) {
+    if (!(e instanceof Fail)) throw e;
+    let garage: { name: string; phone: string | null } | null = null;
+    try { const s = await settings(); garage = { name: s.company?.name || 'Mécanique Mobile H.I.S', phone: s.company?.phone || null }; } catch { /* without it */ }
+    return json({ ok: false, code: e.code, error: e.message, garage }, e.status);
+  }
 });

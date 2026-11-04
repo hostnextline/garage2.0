@@ -16,6 +16,7 @@ import { net, flush, pullAll, dismissFailed, outboxList } from '../data/sync';
 import type { OutboxEntry } from '../data/local';
 import { me, preview, viewAs, stopPreview } from '../data/auth';
 import { garageName } from '../data/select';
+import { startPositionSharing } from '../features/today/position';
 import { Button, IconButton, Sheet, Banner, Avatar, Rows, RowItem, Empty, Skeleton } from '../ui';
 
 /* ---------- the screen for the current address ---------- */
@@ -232,6 +233,8 @@ function TabBar() {
 }
 
 export function Shell() {
+  // the mechanic's position is shared only between « Commencer ma journée » and the end of the day, app on screen
+  useEffect(() => { startPositionSharing(); }, []);
   // internal links count as steps of the app's history (so « Retour » goes back to them)
   useEffect(() => {
     const onClick = (e: MouseEvent) => {

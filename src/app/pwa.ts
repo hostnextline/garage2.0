@@ -2,6 +2,15 @@
 import { signal } from '@preact/signals';
 
 export const updateReady = signal(false);
+
+/* the browser offers « Installer l'app » once, early (before any screen loads): kept here for the guide's button */
+export interface InstallEvent extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
+export const installEvent = signal<InstallEvent | null>(null);
+export const appInstalled = signal(false);
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent.value = e as InstallEvent; });
+  window.addEventListener('appinstalled', () => { installEvent.value = null; appInstalled.value = true; });
+}
 let doUpdate: ((reload?: boolean) => Promise<void>) | null = null;
 
 export async function startPwa() {

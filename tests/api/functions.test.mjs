@@ -177,6 +177,11 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   assert.equal((await q(`select status from public.jobs where id = $1`, [job]))[0].status, 'en_route');
   // the customer's tracking page (no account)
   const t = await rpc('public_track', { p_token: tokenOf(r.link) }, K.anon);
+  // the appointment's own link (#t=) opens the same trip (#suivi=<same secret>); a revoked one doesn't
+  await q(`insert into public.public_links (token_hash, job_id, expires_at) values (encode(extensions.digest('lien-du-rendez-vous-00001', 'sha256'), 'hex'), $1, now() + interval '30 days')`, [job]);
+  assert.equal((await rpc('public_track', { p_token: 'lien-du-rendez-vous-00001' }, K.anon)).status, 'active');
+  await q(`update public.public_links set revoked_at = now() where job_id = $1`, [job]);
+  assert.equal((await rpc('public_track', { p_token: 'lien-du-rendez-vous-00001' }, K.anon)).status, 'not_found');
   assert.equal(t.status, 'active');
   assert.equal(t.mechanic, 'Adam');
   assert.ok(t.pos, 'the truck is on the map');

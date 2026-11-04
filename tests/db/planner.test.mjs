@@ -196,7 +196,8 @@ test('schedule drawn on the grid: today only, N weeks, or from now on', () => tx
   const day = await futureDay(h, 2);
   const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
   await h.as(mech);
-  await h.rpc('apply_hours', { p_op: uuid(), p_truck: t, p_mode: 'weeks', p_week: { [dow]: [[600, 660], [480, 540], [540, 600]] }, p_from: day, p_weeks: 2 });
+  const applied = await h.rpc('apply_hours', { p_op: uuid(), p_truck: t, p_mode: 'weeks', p_week: { [dow]: [[600, 660], [480, 540], [540, 600]] }, p_from: day, p_weeks: 2 });
+  assert.equal(applied.rows.truck_days.length, 2, 'the changed days come back for the screen');
   const days = await h.q(`select day::text, ranges from public.truck_days where truck_id = $1 order by day`, [t]);
   assert.equal(days.length, 2, 'two weeks → that weekday twice');
   assert.deepEqual(days[0].ranges, [[480, 660]], 'touching hours are merged');

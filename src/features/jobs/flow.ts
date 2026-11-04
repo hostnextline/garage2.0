@@ -187,11 +187,13 @@ export async function answerBySignature(item: JobItem, accept: boolean, strokes:
   return attempt(async () => {
     if (preview.value) throw new Refused('preview', t('errors.preview'));
     const png = accept ? exportSignature(strokes) : null;
+    let attachment: string | null = null;
     if (png) {
       const data = png.dataUrl.split(',')[1] || '';
-      await insertRow('attachments', { id: uuid(), kind: 'signature', mime: 'image/png', data, bytes: Math.round(data.length * 0.75), width: png.width, height: png.height, job_id: item.job_id, created_at: new Date().toISOString() });
+      attachment = uuid();
+      await insertRow('attachments', { id: attachment, kind: 'signature', mime: 'image/png', data, bytes: Math.round(data.length * 0.75), width: png.width, height: png.height, job_id: item.job_id, created_at: new Date().toISOString() });
     }
-    return answerExtra(item.id, accept, 'signature');
+    return answerExtra(item.id, accept, 'signature', attachment);
   }, { ok: accept ? t('jobs.work.accepted') : t('jobs.work.declined') });
 }
 /** the customer answered the office on the phone */
