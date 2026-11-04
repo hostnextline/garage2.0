@@ -73,7 +73,7 @@ if [ ! -f "$D/PG_VERSION" ]; then
   say "empty database, then the garage's migrations"
   mkdir -p "$D"; [ "$(id -u)" = 0 ] && chown -R postgres "$RUN"
   as_pg "$PGBIN/initdb -D $D -U postgres --auth=trust -E UTF8 --locale=C.UTF-8" >/dev/null
-  as_pg "$PGBIN/pg_ctl -D $D -l $RUN/pg.log -o '-p $PGPORT -k /tmp -c listen_addresses=127.0.0.1 -c wal_level=logical' start" >/dev/null
+  as_pg "$PGBIN/pg_ctl -D $D -l $RUN/pg.log -o '-p $PGPORT -k /tmp -c listen_addresses=127.0.0.1 -c wal_level=logical' start" >/dev/null 2>&1 </dev/null
   for i in $(seq 1 50); do pg_isready -h 127.0.0.1 -p $PGPORT -q && break; sleep 0.2; done
   psql -h 127.0.0.1 -p $PGPORT -U postgres -q -v ON_ERROR_STOP=1 -f base.sql
   say "Auth makes its own tables"

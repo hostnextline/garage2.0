@@ -46,6 +46,7 @@ declare v_done jsonb := public.op_done(p_op); s public.staff; v_roles text[]; v_
 begin
   if v_done is not null then return v_done; end if;
   if not public.is_owner() then perform public.fail('not_allowed', 'Seul le propriétaire gère l’équipe.'); end if;
+  perform 1 from public.staff where 'owner' = any(roles) and deleted_at is null for update;
   select * into s from public.staff where id = p_staff and deleted_at is null for update;
   if not found then perform public.fail('not_found', 'Cette personne n’existe plus.'); end if;
   v_roles := coalesce((select array_agg(x) from jsonb_array_elements_text(p_patch->'roles') x), s.roles);
@@ -90,12 +91,22 @@ begin
   update public.positions set deleted_at = now() where id = p_staff and deleted_at is null;
   update public.trips set status = 'cancelled', ended_at = now() where staff_id = p_staff and status = 'active';
 end $$;
+create or replace function public.housekeeping() returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in select staff_id from public.shifts where ended_at is null and deleted_at is null and started_at < now() - interval '16 hours' loop
+    perform public.close_day(r.staff_id);
+  end loop;
+  update public.trips set status = 'cancelled', ended_at = now() where status = 'active' and expires_at < now();
+  delete from public.position_log where at < now() - interval '30 days';
+  delete from public.op_log where at < now() - interval '60 days';
+end $$;
 create or replace function public.shift_start() returns jsonb language plpgsql security definer set search_path = public as $$
 begin
+  perform public.housekeeping();
   if not public.is_staff() then perform public.fail('not_allowed', 'Connecte-toi.'); end if;
   insert into public.shifts (staff_id, created_by) select auth.uid(), auth.uid()
   where not exists (select 1 from public.shifts where staff_id = auth.uid() and ended_at is null and deleted_at is null);
-  delete from public.position_log where at < now() - interval '30 days';
   return jsonb_build_object('ok', true, 'rows', jsonb_build_object('shifts', (select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) from public.shifts s where s.staff_id = auth.uid() and s.ended_at is null)));
 end $$;
 create or replace function public.shift_end() returns jsonb language plpgsql security definer set search_path = public as $$
@@ -134,6 +145,8 @@ create or replace function public.team_map(p_day date) returns jsonb language pl
 declare h record;
 begin
   if not public.can('map') then perform public.fail('not_allowed', 'Tu n’as pas accès à la carte. Parle au propriétaire.'); end if;
+  -- the map shows the day around now; other days are the agenda's business
+  if not public.can('agenda') and abs(p_day - public.local_today()) > 1 then perform public.fail('not_allowed', 'La carte montre seulement hier, aujourd’hui et demain.'); end if;
   select * into h from public.home_point();
   return jsonb_build_object(
     'home', jsonb_build_object('lat', h.lat, 'lng', h.lng,
@@ -293,5 +306,15 @@ begin
 end $$;
 
 revoke execute on all functions in schema public from public, anon;
-grant execute on all functions in schema public to authenticated;
+grant execute on all functions in schema public to authenticated, service_role;
 grant execute on function public.public_track(text) to anon;
+
+-- every night (when the database offers scheduled jobs): days left open, old positions, expired links
+do $$
+begin
+  if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
+    create extension if not exists pg_cron;
+    perform cron.schedule('garage-housekeeping', '17 8 * * *', 'select public.housekeeping()');
+  end if;
+exception when others then raise notice 'pg_cron not available: %', sqlerrm;
+end $$;

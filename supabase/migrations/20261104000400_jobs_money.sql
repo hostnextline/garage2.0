@@ -352,3 +352,4 @@ end $$;
 
 revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
+grant execute on all functions in schema public to service_role;

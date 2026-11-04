@@ -1,0 +1,16 @@
+# Mécanique Mobile H.I.S — server functions. Each one checks who is asking itself (the signed-in person's token,
+# the customer's secret link, or Stripe's signature), so the platform's own JWT check is off for all of them.
+project_id = "wyxvizxabqgvsiiemvfw"
+
+[functions.team]
+verify_jwt = false
+[functions.notify]
+verify_jwt = false
+[functions.enroute]
+verify_jwt = false
+[functions.client]
+verify_jwt = false
+[functions.stripe]
+verify_jwt = false
+[functions.vin]
+verify_jwt = false

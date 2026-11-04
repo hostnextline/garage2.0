@@ -59,12 +59,16 @@ grant update (problem, notes, vehicle_id, address, unit, postal_code, lat, lng, 
 create policy settings_read on public.settings for select to authenticated using (public.is_staff());
 create policy settings_write on public.settings for update to authenticated using (public.can('settings')) with check (public.can('settings'));
 -- the role matrix and the team colours: owner only
-create or replace function public.settings_guard() returns trigger language plpgsql security definer set search_path = public as $$
+-- the guards below run with the rights of whoever changes the row: a person (authenticated) is checked;
+-- the server's own operations (security definer functions, service role) are trusted
+create or replace function public.by_person() returns boolean language sql stable as $$
+  select current_user in ('authenticated', 'anon') and coalesce(current_setting('garage.rpc', true), '') <> 'on'
+$$;
+create or replace function public.settings_guard() returns trigger language plpgsql set search_path = public as $$
 begin
   -- people on the team: only the owner (server functions and migrations, which have no signed-in person, may)
   if (new.role_rights is distinct from old.role_rights or new.appearance is distinct from old.appearance)
-     and auth.uid() is not null and not public.is_owner()
-     and coalesce(current_setting('garage.rpc', true), '') <> 'on' then
+     and public.by_person() and not public.is_owner() then
     raise exception 'Seul le propriétaire change les droits et les couleurs de l''équipe.' using errcode = '42501';
   end if;
   return new;
@@ -137,9 +141,9 @@ create policy invoices_read on public.invoices for select to authenticated using
 create policy invoices_ins on public.invoices for insert to authenticated with check (public.invoice_editable(job_id) and status = 'draft' and number is null);
 create policy invoices_upd on public.invoices for update to authenticated using (public.invoice_editable(job_id)) with check (public.invoice_editable(job_id));
 -- a finished invoice is locked: only the server operations (payment, cancel) change it
-create or replace function public.invoices_guard() returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function public.invoices_guard() returns trigger language plpgsql set search_path = public as $$
 begin
-  if coalesce(current_setting('garage.rpc', true), '') = 'on' then return new; end if;
+  if not public.by_person() then return new; end if;
   if old.status <> 'draft' then
     raise exception 'Cette facture est terminée : elle ne se modifie plus. Annule-la pour en faire une nouvelle.' using errcode = '42501';
   end if;
@@ -177,9 +181,9 @@ create policy inventory_moves_read on public.inventory_moves for select to authe
 create policy inventory_moves_ins on public.inventory_moves for insert to authenticated with check (public.can('inventory'));
 create policy inventory_moves_upd on public.inventory_moves for update to authenticated using (public.can('inventory')) with check (public.can('inventory'));
 -- the quantity follows the moves only
-create or replace function public.inventory_guard() returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function public.inventory_guard() returns trigger language plpgsql set search_path = public as $$
 begin
-  if new.qty is distinct from old.qty and coalesce(current_setting('garage.rpc', true), '') <> 'on' and pg_trigger_depth() <= 1 then
+  if new.qty is distinct from old.qty and public.by_person() and pg_trigger_depth() <= 1 then
     raise exception 'La quantité change par une entrée ou une sortie de stock.' using errcode = '42501';
   end if;
   return new;
@@ -212,3 +216,10 @@ end $$;
 revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
 alter default privileges in schema public revoke execute on functions from public, anon;
+-- the server functions (service role) reach everything
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+alter default privileges in schema public grant execute on functions to service_role;

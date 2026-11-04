@@ -11,7 +11,7 @@ wait_up(){ for i in $(seq 1 100); do up $1 && return 0; sleep 0.2; done; echo "p
 cd "$S"
 
 if ! pg_isready -h 127.0.0.1 -p 54332 -q; then
-  as_pg "$PGBIN/pg_ctl -D $RUN/pgdata -l $RUN/pg.log -o '-p 54332 -k /tmp -c listen_addresses=127.0.0.1 -c wal_level=logical' start" >/dev/null
+  as_pg "$PGBIN/pg_ctl -D $RUN/pgdata -l $RUN/pg.log -o '-p 54332 -k /tmp -c listen_addresses=127.0.0.1 -c wal_level=logical' start" >/dev/null 2>&1 </dev/null
   for i in $(seq 1 50); do pg_isready -h 127.0.0.1 -p 54332 -q && break; sleep 0.2; done
 fi
 bash "$S/migrate.sh" >/dev/null

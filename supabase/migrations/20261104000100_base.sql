@@ -648,6 +648,10 @@ create table public.public_links (
   revoked_at timestamptz,
   last_seen_at timestamptz,
   views int not null default 0,
+  last_session text,               -- the card payment page made for this link (reused while it is open)
+  last_session_url text,
+  last_session_amount int,
+  last_session_expires timestamptz,
   created_at timestamptz not null default now(),
   created_by uuid default auth.uid(),
   check (job_id is not null or quote_id is not null)
@@ -660,7 +664,7 @@ create table public.messages (
   customer_id uuid references public.customers(id) on delete set null,
   staff_id uuid references public.staff(id) on delete set null,
   kind text not null,
-  channel text not null default 'sms' check (channel in ('sms','email')),
+  channel text not null default 'sms' check (channel in ('sms','email','web')),
   to_addr text,
   body text,
   status text not null default 'queued' check (status in ('queued','sent','failed','skipped')),
