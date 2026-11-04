@@ -168,15 +168,16 @@ function ExpenseForm(p: { open: boolean; onClose: () => void; expense?: Expense 
     saving.current = true;
     try {
       let receipt_id = cur.receipt_id;
+      let told = false;
       if (photo) {
         try {
           const up = await uploadReceipt(photo);
           receipt_id = up.id;
           rememberReceipt(up.id, photo.dataUrl);
-          if (up.queued) toast(t('treasury.form.receiptQueued'));
+          if (up.queued) { toast(t('treasury.form.receiptQueued')); told = true; }
         } catch (e) { toast(errorMessage(e), { kind: 'bad' }); return; }
       }
-      const offline = !net.value.online;
+      const offline = told || !net.value.online;
       const id = await run(() => saveExpense({
         ...(p.expense ? { id: p.expense.id } : {}),
         day: cur.day, vendor: cur.vendor.trim() || null, category: cur.category.trim(), description: cur.description.trim() || null,
@@ -185,7 +186,7 @@ function ExpenseForm(p: { open: boolean; onClose: () => void; expense?: Expense 
       }), { ok: offline ? undefined : t('treasury.form.saved') });
       if (!id) return;
       keepAfterSave('expenses', id);
-      if (offline) toast(t('shell.queued'));
+      if (offline && !told) toast(t('shell.queued'));
       p.onClose();
     } finally { saving.current = false; }
   }
