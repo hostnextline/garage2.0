@@ -113,7 +113,6 @@ export const jobs = {
   waiver: {
     panel: 'Autorisation',
     signedBy: 'Signée par {name}',
-    signedAt: 'le {when}',
     notYet: 'Pas encore signée. Le client signe sur ton téléphone avant le travail.',
     atArrival: 'Le client la signera à ton arrivée.',
     missing: 'Pas signée.',
@@ -152,15 +151,12 @@ export const jobs = {
     markDone: 'Fait',
     markDoneLabel: 'Marquer « {what} » comme fait',
     answer: 'Réponse',
-    waiting: 'En attente du client',
-    totals: 'Total prévu',
     pendingTotal: 'En attente de réponse : {amount} plus taxes',
     status: { planned: 'Prévu', done: 'Fait', proposed: 'Proposé, en attente du client', approved: 'Accepté', declined: 'Refusé', removed: 'Pas fait' },
     via: { signature: 'signé sur place', link: 'par le lien texto', verbal: 'de vive voix' },
     statusVia: '{status}, {via}',
     qty: '{qty} × {price}',
     /* one line, tapped */
-    itemTitle: 'Ce travail',
     setDone: 'Marquer fait',
     setPlanned: 'Remettre à faire',
     setRemoved: 'Pas fait : ne pas le facturer',
@@ -195,7 +191,6 @@ export const jobs = {
     whyHint: 'Le client lira cette phrase.',
     proposeOk: 'Proposer',
     /* the answer */
-    answerTitle: 'Réponse du client',
     how: 'Comment le client répond',
     howSign: 'Il signe ici',
     howText: 'Par texto',
@@ -304,11 +299,9 @@ export const jobs = {
     copied: 'Message copié.',
     linkCopied: 'Lien copié.',
     copyFail: 'Le téléphone n’a pas permis de copier. Garde le doigt sur le texte pour le copier.',
-    sent: 'Texto envoyé.',
     sentTo: 'Texto envoyé à {name}.',
     already: 'Ce texto a déjà été envoyé.',
     quiet: 'Pas de texto : ce client ou ce type de texto est désactivé.',
-    noLink: 'Le lien du client n’est pas encore connu : envoie d’abord un texto.',
     offline: 'Pas de réseau : le texto ne peut pas partir. Réessaie quand le réseau revient.'
   }
 };

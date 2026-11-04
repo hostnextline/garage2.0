@@ -114,11 +114,9 @@ export const today = {
   payments: {
     title: 'Paiements d’aujourd’hui',
     none: 'Aucun paiement reçu aujourd’hui pour l’instant.',
-    total: 'Total du jour',
     totalLine: 'Total du jour : {amount}',
     treasury: 'Ouvrir la trésorerie',
     unknown: 'Paiement',
     methods: { cash: 'Comptant', debit: 'Débit', credit: 'Crédit', interac: 'Virement Interac', card_online: 'Carte en ligne', cheque: 'Chèque', other: 'Autre' }
-  },
-  loading: 'Chargement de la journée…'
+  }
 };

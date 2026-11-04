@@ -41,12 +41,10 @@ export const booking: typeof fr = {
     title: 'Summary',
     work: '{d} of work',
     workLabel: 'of work',
-    withTaxes: '{amount} with taxes',
     taxesLabel: 'with taxes',
     toConfirm: 'plus prices to confirm',
     noBlock: 'No block picked',
     noWork: 'Nothing picked',
-    truck: 'Truck: {name}',
     truckLabel: 'Truck',
     when: 'When',
     customer: 'Customer',
@@ -81,8 +79,8 @@ export const booking: typeof fr = {
   },
   picker: {
     title: 'The best blocks',
-    sub: 'Near a truck that already goes there, as soon as possible.',
     best: 'Best choice',
+    current: 'Current block',
     drive: '{d} of driving',
     noDrive: 'almost no driving',
     near: { zero: 'no appointment nearby', one: '{n} appointment nearby', other: '{n} appointments nearby' },
@@ -103,7 +101,6 @@ export const booking: typeof fr = {
     state: { ok: '{d}', tight: '{d}', full: 'Full', closed: 'Closed', started: 'Past' },
     stateLong: { ok: '{d} free', tight: 'almost full, {d} free', full: 'full', closed: 'closed, no truck', started: 'already started' },
     cellLabel: '{day}, {block}: {state}',
-    closedDay: 'Closed all day',
     fullWarn: 'This block looks full: the booking may be refused. Take a block with room if you can.',
     tightWarn: 'This block is almost full: it fits if the drive is short.',
     legend: { ok: 'Room', tight: 'Almost full', full: 'Full', closed: 'Closed' },
@@ -115,7 +112,6 @@ export const booking: typeof fr = {
     promos: 'Promotions',
     toConfirm: 'Price to confirm',
     chosen: 'Picked',
-    none: 'No service picked.',
     empty: 'The price list is empty',
     emptyText: 'Add the services in Settings, or write a free line.',
     noMatch: 'No service matches. Write a free line if needed.',
@@ -151,7 +147,6 @@ export const booking: typeof fr = {
     copy: 'Copy the text',
     copied: 'Text copied',
     copyFail: 'Press and hold the text to copy it.',
-    share: 'Share',
-    link: 'Link for the customer'
+    share: 'Share'
   }
 };

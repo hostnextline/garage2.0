@@ -106,7 +106,6 @@ export const jobs: typeof fr = {
   waiver: {
     panel: 'Authorization',
     signedBy: 'Signed by {name}',
-    signedAt: 'on {when}',
     notYet: 'Not signed yet. The customer signs on your phone before the work.',
     atArrival: 'The customer will sign when you arrive.',
     missing: 'Not signed.',
@@ -143,14 +142,11 @@ export const jobs: typeof fr = {
     markDone: 'Done',
     markDoneLabel: 'Mark “{what}” as done',
     answer: 'Answer',
-    waiting: 'Waiting for the customer',
-    totals: 'Planned total',
     pendingTotal: 'Waiting for an answer: {amount} plus taxes',
     status: { planned: 'Planned', done: 'Done', proposed: 'Proposed, waiting for the customer', approved: 'Accepted', declined: 'Declined', removed: 'Not done' },
     via: { signature: 'signed on site', link: 'through the text link', verbal: 'by word of mouth' },
     statusVia: '{status}, {via}',
     qty: '{qty} × {price}',
-    itemTitle: 'This work',
     setDone: 'Mark as done',
     setPlanned: 'Back to planned',
     setRemoved: 'Not done: do not bill it',
@@ -182,7 +178,6 @@ export const jobs: typeof fr = {
     why: 'Why it is needed',
     whyHint: 'The customer will read this sentence.',
     proposeOk: 'Propose',
-    answerTitle: 'Customer’s answer',
     how: 'How the customer answers',
     howSign: 'Signs here',
     howText: 'By text',
@@ -287,11 +282,9 @@ export const jobs: typeof fr = {
     copied: 'Message copied.',
     linkCopied: 'Link copied.',
     copyFail: 'The phone did not allow copying. Hold your finger on the text to copy it.',
-    sent: 'Text sent.',
     sentTo: 'Text sent to {name}.',
     already: 'This text was already sent.',
     quiet: 'No text: this customer or this kind of text is turned off.',
-    noLink: 'The customer’s link is not known yet: send a text first.',
     offline: 'No signal: the text cannot go. Try again when the signal is back.'
   }
 };

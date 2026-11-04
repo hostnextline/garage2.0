@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Phone, MessageSquareText, Navigation, Car, MapPin, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig } from 'lucide-preact';
 import type { Job } from '../../data/types';
-import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
+import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { e164, formatPhone } from '../../lib/text';
 import { duration, stamp, clock } from '../../lib/dates';
@@ -49,7 +49,7 @@ export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => v
           {v && may.customers()
             ? <a href={`#/vehicle/${v.id}`} class="jobs-link">{car || t('jobs.head.car')}</a>
             : <span class={car ? '' : 'faint'}>{car || t('jobs.head.noCar')}</span>}
-          {v?.plate && <span class="jobs-plate">{v.plate}</span>}
+          {v?.plate && <span class="jobs-plate" title={t('jobs.head.plate', { plate: v.plate })} aria-label={t('jobs.head.plate', { plate: v.plate })}>{v.plate}</span>}
         </div>
         <div class="jobs-line">
           <MapPin aria-hidden="true" />
@@ -116,7 +116,7 @@ export function WaiverPanel(p: { job: Job; rights: JobRights; onSign: () => void
       <div class="jobs-waiver-row">
         <span class="jobs-waiver-icon" aria-hidden="true">{signed ? <CircleCheckBig /> : <Signature />}</span>
         <div class="grow">
-          <h3 class="jobs-h">{t('jobs.waiver.panel')}</h3>
+          <h3 class="jobs-h">{t('jobs.waiver.panel')} <Help text={t('jobs.waiver.help')} /></h3>
           <p class="small muted" style={{ margin: 0 }}>
             {signed ? `${t('jobs.waiver.signedBy', { name: j.waiver_signer || '' })}, ${signedWhen(j.waiver_signed_at)}`
               : j.status === 'on_site' ? t('jobs.waiver.notYet')
@@ -212,7 +212,7 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
   const stop = j.stop_order != null && !['cancelled', 'no_show'].includes(j.status)
     ? (j.eta_min != null && booked ? t('jobs.moment.stopValue', { n: j.stop_order, time: clock(j.eta_min, l) }) : String(j.stop_order)) : null;
   return (
-    <Panel title={t('jobs.moment.title')} help={booked && rights.duration ? t('jobs.moment.help') : undefined} data-testid="job-moment">
+    <Panel title={t('jobs.moment.title')} help={booked && rights.duration ? t('jobs.moment.help') : undefined} class="jobs-moment" data-testid="job-moment">
       <div class="stack">
         <Kv items={[
           [t('jobs.moment.day'), dayWord(j.day)],

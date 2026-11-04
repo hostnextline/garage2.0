@@ -8,10 +8,9 @@ import { Ellipsis } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { may } from '../../app/routes';
 import { setQuery } from '../../app/router';
-import type { Job } from '../../data/types';
+import type { Job, JobItem } from '../../data/types';
 import { job as jobById, invoiceOf, itemsOf } from '../../data/select';
 import { getRow } from '../../data/store';
-import type { JobItem } from '../../data/types';
 import { net, refetch } from '../../data/sync';
 import { t } from '../../lib/i18n';
 import { Page, IconButton, Banner, Empty, Button, Skeleton, StatusPill } from '../../ui';
@@ -71,10 +70,10 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
   const [answerFor, setAnswerFor] = useState<string | null>(null);
   const [itemFor, setItemFor] = useState<string | null>(null);
   // the PAYÉ stamp lands only when the job ends in front of the person
-  const seen = useRef(j.status);
+  const lastStatus = useRef(j.status);
   const [justDone, setJustDone] = useState(false);
   useEffect(() => {
-    if (seen.current !== j.status) { if (j.status === 'done') setJustDone(true); seen.current = j.status; }
+    if (lastStatus.current !== j.status) { if (j.status === 'done') setJustDone(true); lastStatus.current = j.status; }
   }, [j.status]);
 
   // paid far down the page (the invoice): bring « Terminer la job » into view, it is the last step

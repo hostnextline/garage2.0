@@ -248,7 +248,7 @@ export function AnswerSheet(p: { job: Job; item: JobItem | undefined; rights: Jo
         </div>
         {answered ? <p class="muted" style={{ margin: 0 }}>{itemStatusText(i)}</p> : <>
           <Field label={t('jobs.work.how')} group>
-            <Seg value={how} onValue={(v) => { setHow(v); setErr(null); }} options={opts} label={t('jobs.work.how')} data-testid="answer-how" />
+            <Seg value={how} onValue={(v) => { setHow(v); setErr(null); }} options={opts} label={t('jobs.work.how')} class="jobs-seg" data-testid="answer-how" />
           </Field>
           {how === 'sign' && <>
             <SignaturePad strokes={strokes} onStrokes={(s) => { setStrokes(s); setErr(null); }} label={tl(l, 'jobs.sign.pad')} hint={tl(l, 'jobs.sign.acceptSign')} clearLabel={tl(l, 'jobs.sign.clear')} height={180} data-testid="answer-pad" />

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles } from 'lucide-preact';
 import { today as todayOf, addDays, daysBetween, tinyDay, longDay, duration, clockRange, isValidDay, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { blocks, blockLoad, settings } from '../../data/select';
+import { blocks, blockLoad, settings, job as jobRow } from '../../data/select';
 import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton } from '../../ui';
@@ -80,6 +80,9 @@ export function BlockPicker(p: BlockPickerProps) {
     })
   }));
   const isPicked = (day: string, block: string) => !!p.value && p.value.day === day && p.value.block === block;
+  // moving a job: where it is now
+  const moving = p.excludeJob ? jobRow(p.excludeJob) : undefined;
+  const isCurrent = (day: string, block: string) => !!moving && moving.day === day && moving.block === block;
   const pickedCell = p.value ? (() => {
     const load = blockLoad(p.value.day, p.value.block);
     return cellState(load, dur, drive, { truckId: p.truckId, exclude: p.excludeJob, unknownMin: drive });
@@ -164,7 +167,8 @@ export function BlockPicker(p: BlockPickerProps) {
               return (
                 <button key={keyOf(s.day, s.block)} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => pick(s.day, s.block)} data-testid="bp-sugg">
                   <span class="bp-sugg-main">
-                    {i === 0 && <span class="bp-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
+                    {isCurrent(s.day, s.block) ? <span class="bp-best"><Pill tone="muted" dot={false}>{t('booking.picker.current')}</Pill></span>
+                      : i === 0 && <span class="bp-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
                     <span class="bp-sugg-title">{phrase(s.day, s.block)}</span>
                     <span class="bp-sugg-sub">{bits.join(', ')}</span>
                   </span>
@@ -200,10 +204,11 @@ export function BlockPicker(p: BlockPickerProps) {
                     const k = keyOf(r.day, c.key);
                     const on = isPicked(r.day, c.key);
                     const off = c.state === 'closed' || c.state === 'started';
-                    const label = t('booking.picker.cellLabel', { day: longDay(r.day, l), block: t(`common.blocks.${c.key}`).toLowerCase(), state: stateWords(c.state, c.left) });
+                    const cur = isCurrent(r.day, c.key);
+                    const label = t('booking.picker.cellLabel', { day: longDay(r.day, l), block: t(`common.blocks.${c.key}`).toLowerCase(), state: stateWords(c.state, c.left) }) + (cur ? ` (${t('booking.picker.current').toLowerCase()})` : '');
                     return (
                       <td key={c.key}>
-                        <button type="button" class={`bp-cell is-${c.state}${on ? ' is-on' : ''}`} data-k={k} tabIndex={k === currentKey ? 0 : -1}
+                        <button type="button" class={`bp-cell is-${c.state}${on ? ' is-on' : ''}${cur ? ' is-current' : ''}`} data-k={k} tabIndex={k === currentKey ? 0 : -1}
                           aria-pressed={on} aria-disabled={off || undefined} aria-label={label} title={label}
                           onClick={() => { setFocusKey(k); if (!off) pick(r.day, c.key); }} data-testid={`bp-cell-${r.day}-${c.key}`}>
                           {on && <Check size={16} aria-hidden="true" />}

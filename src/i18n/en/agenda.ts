@@ -26,7 +26,6 @@ export const agenda: typeof fr = {
     dayView: 'Day',
     weekView: 'Week',
     openDay: 'Open {day}',
-    grid: 'Week, the blocks of each day',
     dragHint: 'Drag a booked job to another block to move it, or open it and tap “Move”.',
     book: 'Book: {when}',
     drop: 'Drop here',
@@ -39,7 +38,6 @@ export const agenda: typeof fr = {
     started: 'Started',
     past: 'Past',
     book: 'Book in this block',
-    bookShort: 'Book',
     empty: 'No jobs in this block.'
   },
   lane: {

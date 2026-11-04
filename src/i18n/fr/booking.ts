@@ -41,12 +41,10 @@ export const booking = {
     title: 'Résumé',
     work: '{d} de travail',
     workLabel: 'de travail',
-    withTaxes: '{amount} avec taxes',
     taxesLabel: 'avec taxes',
     toConfirm: 'plus les prix à confirmer',
     noBlock: 'Aucun bloc choisi',
     noWork: 'Rien de choisi',
-    truck: 'Camion : {name}',
     truckLabel: 'Camion',
     when: 'Quand',
     customer: 'Client',
@@ -81,8 +79,8 @@ export const booking = {
   },
   picker: {
     title: 'Les meilleurs blocs',
-    sub: 'Près d’un camion qui passe déjà dans le coin, le plus tôt possible.',
     best: 'Meilleur choix',
+    current: 'Bloc actuel',
     drive: '{d} de route',
     noDrive: 'presque pas de route',
     near: { zero: 'aucun rendez-vous proche', one: '{n} rendez-vous proche', other: '{n} rendez-vous proches' },
@@ -103,7 +101,6 @@ export const booking = {
     state: { ok: '{d}', tight: '{d}', full: 'Complet', closed: 'Fermé', started: 'Passé' },
     stateLong: { ok: '{d} de libre', tight: 'presque plein, {d} de libre', full: 'complet', closed: 'fermé, aucun camion', started: 'déjà commencé' },
     cellLabel: '{day}, {block} : {state}',
-    closedDay: 'Fermé toute la journée',
     fullWarn: 'Ce bloc semble complet : la réservation risque d’être refusée. Prends un bloc avec de la place si tu peux.',
     tightWarn: 'Ce bloc est presque plein : ça passe si la route est courte.',
     legend: { ok: 'De la place', tight: 'Presque plein', full: 'Complet', closed: 'Fermé' },
@@ -115,7 +112,6 @@ export const booking = {
     promos: 'Promotions',
     toConfirm: 'Prix à confirmer',
     chosen: 'Choisi',
-    none: 'Aucun service choisi.',
     empty: 'La liste de prix est vide',
     emptyText: 'Ajoute les services dans Réglages, ou écris une ligne libre.',
     noMatch: 'Aucun service ne correspond. Écris une ligne libre au besoin.',
@@ -151,7 +147,6 @@ export const booking = {
     copy: 'Copier le texto',
     copied: 'Texto copié',
     copyFail: 'Garde le doigt sur le texte pour le copier.',
-    share: 'Partager',
-    link: 'Lien pour le client'
+    share: 'Partager'
   }
 };

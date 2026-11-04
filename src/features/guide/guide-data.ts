@@ -60,7 +60,7 @@ export function watchScreens() {
   });
 }
 
-/* ---------- what only the server knows (owner, with signal) ---------- */
+/* ---------- what only the server knows (owner, with signal); my access also says yes/no for the two services ---------- */
 export interface Checks { ghl: boolean | null; stripe: boolean | null; invitations: number | null; at: number }
 export const checks = signal<Checks | null>(null);
 let asking = false;
@@ -102,7 +102,8 @@ export function guideInput(): GuideInput | null {
     trucksWithHours: [...withHours],
     staff: staffList.value.map((x) => ({ id: x.id, active: !!x.active })),
     invitations: c?.invitations ?? null,
-    secrets: { ghl: c?.ghl ?? null, stripe: c?.stripe ?? null },
+    // the server's fresh answer when we have one, else what my access said at sign-in (also without signal)
+    secrets: { ghl: c?.ghl ?? (typeof a.texts_online === 'boolean' ? a.texts_online : null), stripe: c?.stripe ?? (typeof a.card_online === 'boolean' ? a.card_online : null) },
     jobs: allJobs.value.map((j) => ({ created_by: j.created_by ?? null, truck_id: j.truck_id, status: j.status })),
     shifts: rowsOf<Shift>('shifts').filter((x) => !x.deleted_at).map((x) => ({ staff_id: x.staff_id })),
     expenses: expensesList.value.map((e) => ({ receipt_id: e.receipt_id })),

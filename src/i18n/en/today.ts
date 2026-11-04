@@ -110,11 +110,9 @@ export const today: typeof fr = {
   payments: {
     title: 'Today’s payments',
     none: 'No payment received today yet.',
-    total: 'Total of the day',
     totalLine: 'Total of the day: {amount}',
     treasury: 'Open the treasury',
     unknown: 'Payment',
     methods: { cash: 'Cash', debit: 'Debit', credit: 'Credit', interac: 'Interac transfer', card_online: 'Card online', cheque: 'Cheque', other: 'Other' }
-  },
-  loading: 'Loading the day…'
+  }
 };

@@ -1,7 +1,6 @@
 import type { hours as fr } from '../fr/hours';
 export const hours: typeof fr = {
   title: 'Truck hours',
-  titleMine: 'My work hours',
   sub: 'Draw the working hours: tap or drag over the panes.',
   help: 'Each pane is 30 minutes. Lit: the truck works. Drag to light up or turn off several panes at once: the first pane you touch decides.\nThe thick lines separate the blocks: morning, afternoon, evening.\nThen pick until when it counts, and tap “Apply”.',
   trucks: 'Truck',
@@ -57,7 +56,6 @@ export const hours: typeof fr = {
     title: 'Changed days',
     sub: 'These dates don’t follow the usual week.',
     none: 'No changed day: the usual week counts everywhere.',
-    closed: 'Closed',
     revert: 'Back to the usual hours',
     reverted: '{day} follows the usual hours again',
     usual: 'Usual: {hours}'

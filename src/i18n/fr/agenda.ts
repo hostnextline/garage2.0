@@ -26,7 +26,6 @@ export const agenda = {
     dayView: 'Jour',
     weekView: 'Semaine',
     openDay: 'Voir la journée du {day}',
-    grid: 'Semaine, les blocs de chaque jour',
     dragHint: 'Glisse une job réservée vers un autre bloc pour la déplacer, ou ouvre-la et touche « Déplacer ».',
     book: 'Réserver : {when}',
     drop: 'Déposer ici',
@@ -39,7 +38,6 @@ export const agenda = {
     started: 'Commencé',
     past: 'Passé',
     book: 'Réserver dans ce bloc',
-    bookShort: 'Réserver',
     empty: 'Aucune job dans ce bloc.'
   },
   lane: {

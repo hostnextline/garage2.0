@@ -59,7 +59,8 @@ export async function sendTracking(j: Job, o: { pos?: { lat: number; lng: number
   // in progress counts as sent (no « not sent » warning while it goes); a failure takes it back
   const mark = (on: boolean) => { const n = new Set(trackingSent.value); if (on) n.add(j.id); else n.delete(j.id); trackingSent.value = n; };
   mark(true);
-  const pos = o.pos ?? (await quickPosition());
+  // after « Je pars » the position was already asked (it may be unknown: the server then uses the last one it has)
+  const pos = o.pos || o.afterLeave ? o.pos : await quickPosition();
   try {
     const e = await enroute('start', j.id, { pos, notify: true, resend: o.resend });
     if (!e.ok) { mark(false); toast(errorMessage(e), { kind: 'bad' }); return false; }
@@ -92,7 +93,8 @@ export async function doLeave(j: Job): Promise<void> {
     // the first departure starts the driver's day: the office and the customer can follow the truck
     try { await shiftStart(); toast(t('jobs.did.shiftStarted')); } catch { /* « Je pars » goes on */ }
   }
-  const pos = await quickPosition();
+  // where the phone is (for the arrival time), asked while the step goes: it never holds « Je pars »
+  const where = quickPosition();
   let r: unknown;
   try {
     r = await jobStep(j.id, 'leave');
@@ -102,7 +104,7 @@ export async function doLeave(j: Job): Promise<void> {
   }
   if (isQueued(r)) { keepAhead(j, { status: 'en_route' }); toast(t('jobs.did.leaveOffline')); return; }
   // the text goes on its own (its result comes as a toast): the button is free at once for « Je suis arrivé »
-  void sendTracking(j, { pos, afterLeave: true });
+  void where.then((pos) => sendTracking(j, { pos, afterLeave: true }));
 }
 
 /** « Je suis arrivé »: on site; the customer's tracking stops */

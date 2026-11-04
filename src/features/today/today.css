@@ -87,3 +87,6 @@ a.today-truck:hover { border-color: color-mix(in srgb, var(--ink) 22%, transpare
 .today-truck-foot .num { color: var(--ink); flex: none; }
 .today-lists { display: grid; gap: var(--sp-4); grid-template-columns: 1fr; align-items: start; }
 @media (min-width: 1100px) { .today-lists { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); } }
+
+/* 48 px finger targets (the kit's small buttons are 38 px) */
+.today-lists .row-end .btn, .today-shift .btn, .today-pos-off .btn { min-height: var(--tap); }

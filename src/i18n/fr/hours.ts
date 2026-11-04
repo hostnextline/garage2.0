@@ -1,7 +1,6 @@
 /* Horaires des camions : la fenêtre vitrée (une semaine en carreaux de 30 minutes), les jours changés, les camions. */
 export const hours = {
   title: 'Horaires des camions',
-  titleMine: 'Mon horaire de travail',
   sub: 'Dessine les heures de travail : touche ou glisse sur les carreaux.',
   help: 'Chaque carreau, c’est 30 minutes. Allumé : le camion travaille. Glisse pour allumer ou éteindre plusieurs carreaux d’un coup : le premier carreau touché décide.\nLes lignes épaisses séparent les blocs : matin, après-midi, soir.\nChoisis ensuite jusqu’à quand ça compte, puis touche « Appliquer ».',
   trucks: 'Camion',
@@ -57,7 +56,6 @@ export const hours = {
     title: 'Jours changés',
     sub: 'Ces dates ne suivent pas la semaine habituelle.',
     none: 'Aucun jour changé : la semaine habituelle compte partout.',
-    closed: 'Fermé',
     revert: 'Revenir à l’horaire habituel',
     reverted: 'Le {day} suit de nouveau l’horaire habituel',
     usual: 'Habituel : {hours}'

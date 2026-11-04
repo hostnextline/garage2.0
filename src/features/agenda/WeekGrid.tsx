@@ -1,6 +1,6 @@
 /* The week on a computer: days in columns (Sunday → Saturday), blocks in rows. Each cell shows how full each truck
    is and its jobs as small tickets; a booked job dragged onto another cell is moved (after a question). */
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { Plus, TriangleAlert } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clockRange, duration, longDay, parseDay, today as todayOf, type BlockKey, type Day } from '../../lib/dates';
@@ -8,9 +8,9 @@ import { blocks, truckColor, truckLabel, itemsOf, customer as customerRow, truck
 import type { Job } from '../../data/types';
 import { may } from '../../app/routes';
 import { href } from '../../app/router';
-import { jobStatusWord } from '../../ui';
+import { jobStatusWord, toast } from '../../ui';
 import { blockPhrase } from '../booking/when';
-import { dropRefusal, freeWords, weekOfDay, weekTitle } from './layout';
+import { dropRefusal, freeWords, weekOfDay, weekTitle, type DropRefusal } from './layout';
 import { blockView, dayJobs, isOff, laneShown, type BlockView } from './select';
 import { Meter } from './DayView';
 import { moveFlow, jobPerson } from './move';
@@ -45,7 +45,7 @@ function Chip(p: { job: Job; unplaced?: boolean; draggable: boolean; dragging: b
   );
 }
 
-function Cell(p: { day: Day; v: BlockView; isToday: boolean; drag: Job | null; over: string | null; setOver: (k: string | null) => void; startDrag: (j: Job, e: DragEvent) => void; endDrag: () => void; drop: (to: { day: Day; block: BlockKey }) => void }) {
+function Cell(p: { day: Day; v: BlockView; isToday: boolean; drag: Job | null; over: string | null; setOver: (k: string | null) => void; setRefused: (r: DropRefusal) => void; startDrag: (j: Job, e: DragEvent) => void; endDrag: () => void; drop: (to: { day: Day; block: BlockKey }) => void }) {
   const l = lang.value;
   const { v, day } = p;
   const k = cellKey(day, v.key);
@@ -57,7 +57,7 @@ function Cell(p: { day: Day; v: BlockView; isToday: boolean; drag: Job | null; o
   const cls = ['agenda-cell', p.isToday && 'is-today', v.started && 'is-started', closed && 'is-closed', p.drag && (target ? 'is-target' : 'is-refused'), p.over === k && target && 'is-over'].filter(Boolean).join(' ');
   return (
     <td class={cls} data-testid={`cell-${day}-${v.key}`}
-      onDragOver={(e) => { if (!p.drag) return; if (target) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; } else if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; if (p.over !== k) p.setOver(k); }}
+      onDragOver={(e) => { if (!p.drag) return; if (target) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; } else if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; p.setRefused(refusal === 'same' ? null : refusal); if (p.over !== k) p.setOver(k); }}
       onDragLeave={(e) => { if (p.over === k && !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) p.setOver(null); }}
       onDrop={(e) => { e.preventDefault(); if (target) p.drop({ day, block: v.key }); else p.endDrag(); }}>
       <div class="agenda-cell-in">
@@ -92,6 +92,8 @@ export function WeekGrid(p: { day: Day; onOpenDay: (d: Day) => void }) {
   const bl = blocks.value;
   const [drag, setDrag] = useState<Job | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  // where the job was let go: a block that can't take it says why (instead of nothing happening)
+  const refusedAt = useRef<DropRefusal>(null);
   const startDrag = (j: Job, e: DragEvent) => {
     if (!e.dataTransfer) return;
     e.dataTransfer.effectAllowed = 'move';
@@ -99,9 +101,17 @@ export function WeekGrid(p: { day: Day; onOpenDay: (d: Day) => void }) {
     // let the browser take the picture of the ticket before the grid changes
     setTimeout(() => setDrag(j), 0);
   };
-  const endDrag = () => { setDrag(null); setOver(null); };
+  const endDrag = () => {
+    const why = refusedAt.current;
+    refusedAt.current = null;
+    setDrag(null); setOver(null);
+    if (why === 'started') toast(t('agenda.move.started'));
+    else if (why === 'closed') toast(t('agenda.move.closed'));
+    else if (why === 'not_booked') toast(t('agenda.move.notBooked'));
+  };
   const drop = (to: { day: Day; block: BlockKey }) => {
     const j = drag;
+    refusedAt.current = null;
     endDrag();
     if (j) void moveFlow(j, to);
   };
@@ -144,7 +154,7 @@ export function WeekGrid(p: { day: Day; onOpenDay: (d: Day) => void }) {
                 <span class="agenda-blockhd-hours">{clockRange(b.start, b.end, l)}</span>
               </th>
               {days.map((d, di) => (
-                <Cell key={d} day={d} v={views[di][bi]} isToday={d === todayDay} drag={drag} over={over} setOver={setOver} startDrag={startDrag} endDrag={endDrag} drop={drop} />
+                <Cell key={d} day={d} v={views[di][bi]} isToday={d === todayDay} drag={drag} over={over} setOver={setOver} setRefused={(r) => { refusedAt.current = r; }} startDrag={startDrag} endDrag={endDrag} drop={drop} />
               ))}
             </tr>
           ))}
