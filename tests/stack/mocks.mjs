@@ -86,7 +86,7 @@ http.createServer(async (req, res) => {
 
   // ---- GitHub OIDC ----
   if (p === '/github/jwks') return send(res, 200, { keys: [ghJwk] });
-  if (p === '/github/token') return send(res, 200, { value: ghToken(Object.fromEntries(u.searchParams)) });
+  if (p === '/github/token') { const o = Object.fromEntries(u.searchParams); if (o.audience) o.aud = o.audience; delete o.audience; return send(res, 200, { value: ghToken(o) }); }
 
   // ---- OSRM ----
   if (p.startsWith('/osrm/route/v1/driving/')) {

@@ -38,12 +38,15 @@ export async function verifyGithub(token: string): Promise<Record<string, unknow
     claims = JSON.parse(new TextDecoder().decode(b64url(parts[1])));
   } catch { fail('signin', 'Ticket GitHub illisible.', 401); }
   if (header!.alg !== 'RS256') fail('signin', 'Ticket GitHub refusé.', 401);
-  let jwk = (await jwks()).find((k) => (k as { kid?: string }).kid === header!.kid);
-  if (!jwk) jwk = (await jwks(true)).find((k) => (k as { kid?: string }).kid === header!.kid);
-  if (!jwk) fail('signin', 'Ticket GitHub refusé (clé inconnue).', 401);
-  const key = await crypto.subtle.importKey('jwk', { ...jwk, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
-  if (!ok) fail('signin', 'Ticket GitHub refusé (signature).', 401);
+  const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+  const check = async (keys: JsonWebKey[]) => {
+    const jwk = keys.find((k) => (k as { kid?: string }).kid === header!.kid);
+    if (!jwk) return false;
+    const key = await crypto.subtle.importKey('jwk', { ...jwk, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    return crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), signed);
+  };
+  // GitHub changes its keys from time to time: one fresh look at them before saying no
+  if (!(await check(await jwks())) && !(await check(await jwks(true)))) fail('signin', 'Ticket GitHub refusé (signature).', 401);
   const now = Math.floor(Date.now() / 1000);
   const aud = claims!.aud;
   if (claims!.iss !== ISSUER) fail('signin', 'Ticket GitHub refusé (émetteur).', 401);

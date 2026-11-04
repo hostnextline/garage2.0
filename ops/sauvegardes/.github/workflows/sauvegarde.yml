@@ -1,0 +1,28 @@
+name: Sauvegarde du garage
+on:
+  schedule:
+    - cron: '23 8 * * *'   # chaque nuit, vers 3 h 23 à Montréal
+  workflow_dispatch: {}
+permissions:
+  contents: write
+  id-token: write   # le ticket signé par GitHub : aucun mot de passe n'est gardé nulle part
+concurrency: sauvegarde
+jobs:
+  sauvegarde:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Télécharger toutes les données
+        run: node sauvegarde.mjs donnees
+      - name: Garder la copie (l'historique du dépôt garde chaque nuit)
+        run: |
+          git config user.name "Sauvegarde automatique"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A donnees
+          if git diff --cached --quiet; then echo "Rien n'a changé depuis la dernière sauvegarde."; exit 0; fi
+          git commit -q -m "Sauvegarde du $(date -u +%F)"
+          git push -q
