@@ -88,7 +88,7 @@
 .agenda-cell-free b { font-weight: 700; color: var(--ink); font-stretch: 96%; }
 .agenda-cell-free.is-full { color: var(--bad); }
 .agenda-chips { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
-.agenda-chip { display: flex; align-items: stretch; min-height: 42px; border-radius: 8px; overflow: hidden; text-decoration: none; color: inherit; background: var(--solid); border: 1px solid var(--line); }
+.agenda-chip { display: flex; align-items: stretch; min-height: 44px; border-radius: 8px; overflow: hidden; text-decoration: none; color: inherit; background: var(--solid); border: 1px solid var(--line); }
 .agenda-chip:hover { border-color: color-mix(in srgb, var(--ink) 28%, transparent); }
 .agenda-chip-stub { flex: none; display: grid; place-items: center; width: 26px; font-size: var(--t-sm); font-stretch: var(--w-num); font-weight: 720; color: var(--tc); background: color-mix(in srgb, var(--tc) 15%, var(--solid)); border-right: 1.5px dashed var(--line); }
 .agenda-chip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 3px 6px; }
