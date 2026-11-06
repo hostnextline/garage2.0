@@ -1,7 +1,7 @@
 /* The pieces of the job sheet around the red button: who and where (with call, text, directions), the problem, the
    authorization, the state once closed, the appointment (length, move), the texts and the live trip, the « … » sheet. */
 import { useEffect, useState } from 'preact/hooks';
-import { Phone, MessageSquareText, Navigation, Car, MapPin, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig } from 'lucide-preact';
+import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
 import { t, lang } from '../../lib/i18n';
@@ -11,6 +11,7 @@ import { money } from '../../lib/money';
 import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals } from '../../data/select';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
+import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
 import type { NextStep } from './nextStep';
 import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, type JobRights } from './select';
@@ -55,6 +56,7 @@ export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => v
           <MapPin aria-hidden="true" />
           <span class={addr ? '' : 'faint'}>{addr || t('jobs.head.noAddress')}{unit && <span class="muted"> ({t('jobs.head.unit', { unit })})</span>}</span>
         </div>
+        <PlaceHint job={j} />
         {truckName && (
           <div class="jobs-line">
             <Truck aria-hidden="true" />
@@ -85,6 +87,32 @@ export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => v
         {j.notes && <p class="jobs-team-notes"><span class="jobs-note-label">{t('jobs.problem.notes')}</span>{j.notes}</p>}
       </div>
     </Panel>
+  );
+}
+
+/* the address has no position yet (typed without choosing a suggestion, or saved with no network): not on the map,
+   not in the route; « Chercher » finds it now (the locator also does it by itself) */
+function PlaceHint(p: { job: Job }) {
+  const j = p.job;
+  const c = jobCustomer(j);
+  const [busy, setBusy] = useState(false);
+  const addr = (j.address || c?.address || '').trim();
+  if (!addr || (j.lat ?? c?.lat) != null || !may.book() || !['booked', 'en_route', 'on_site'].includes(j.status)) return null;
+  const find = async () => {
+    setBusy(true);
+    try {
+      const r = await locateMissing({ only: { jobs: [j.id] }, force: true });
+      if (r.offline) toast(t('customers.contact.positionOffline'), { kind: 'bad' });
+      else if (r.found) toast(t('customers.contact.positionSaved'), { kind: 'ok' });
+      else toast(t('jobs.head.positionNone'), { kind: 'bad' });
+    } finally { setBusy(false); }
+  };
+  return (
+    <div class="jobs-line jobs-nopos" data-testid="job-no-position">
+      <MapPinOff aria-hidden="true" />
+      <span class="grow">{t('jobs.head.noPosition')}</span>
+      <Button size="sm" busy={busy} onClick={() => void find()} data-testid="job-find-position">{t('customers.address.find')}</Button>
+    </div>
   );
 }
 

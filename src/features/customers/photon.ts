@@ -17,6 +17,11 @@ export interface Suggestion {
   exact: boolean;
   /** the door and the city, to see the same address twice */
   key: string;
+  /** what the answer says, to check it against what was typed (locate.ts): the door number, the street, the town
+      and its parts (city, borough, district) */
+  house: string;
+  street: string;
+  areas: string[];
 }
 
 export const PHOTON = 'https://photon.komoot.io/api/';
@@ -103,7 +108,10 @@ export function suggestionOf(f: PhotonFeature, typedCivic: string | null = null)
     label: name || line,
     sub: name ? [line, tail].filter(Boolean).join(', ') : tail,
     exact,
-    key: `${fold(line)}|${fold(city || '')}`
+    key: `${fold(line)}|${fold(city || '')}`,
+    house,
+    street,
+    areas: [str(p.city), str(p.district), str(p.locality), str(p.county)].filter(Boolean)
   };
 }
 

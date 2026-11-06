@@ -135,7 +135,10 @@ exclamation marks except customer thanks. Dates and money via `lib/dates` (`long
 | `app/backdrop` | frame | `myPhoto`, `setMyPhoto(dataUrl)`, `shrinkPhoto(file)`, `fitSize(w, h)`, `HIS_NIGHT`, `HIS_DAY` — what is behind the glass (the H.I.S pictures, or my photo on this device) |
 | `app/moved` | frame | `MovedBanner` — on the old address (GitHub Pages) only: the app's new address, a button to open it (sign-in screen and above every screen) |
 | `app/more` | frame | pure: `filtersFor`, `tilesFor`, `dayCounts`, `dueCents`, `unpaidCount`, `TILE_HUE` — what « Plus » shows (tested in more.test.ts) |
-| `features/customers/AddressField` + `geocode(q)` | customers | `{ value: PlaceValue, onValue, label? }` |
+| `features/customers/AddressField` + `geocode(q)` | customers | `{ value: PlaceValue, onValue, label? }` — leaving the field without choosing a suggestion takes the position when one place fits (`locate`) |
+| `features/customers/locate` + `places` | customers | `locate(address, { postal?, city?, fresh? })` → found / choose / none / offline: the same door, street and town (or postal code) as typed, else nothing; `searchPlaces(q)` asks Photon (empty answers not kept) |
+| `app/locator` | frame | `locateMissing({ only?, force? })`, `startLocator()`, `spreadToJobs(customerId, lat, lng)` — the positions still missing (customers, coming appointments) found in the background on the phones of the people who book; « Chercher » / « Trouver » ask at once. A job or customer position found later re-plans its block (server trigger, Part 15) |
+| `features/inventory/needs` + `needsView` | inventory | pure `weekNeeds(input)`: what the week's appointments take (oil by grade in litres, filters, new tires by size and season, fixed parts), against the stock; `needsOf(service)` (said in Réglages, or guessed from the name); `NeedsCard` (« La journée », Thursday to Sunday); screen `#/needs?week=` |
 | `features/booking/BlockPicker` | booking | `{ lat, lng, duration, excludeJob?, value, onPick({ day, block, truck_id? }) }` |
 | `features/booking/ServicePicker` + `itemsDuration` | booking | `{ value: ItemDraft[], onValue, lang?, allowCustom? }` |
 | `features/jobs/JobTicket` | jobs | `{ job, showDay?, showTruck? }` |

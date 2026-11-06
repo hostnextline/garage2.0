@@ -80,6 +80,19 @@ export const settings = {
     badDue: 'Entre 0 et 365 jours.'
   },
   services: {
+    needs: {
+      title: 'Ce que ça prend',
+      help: 'Pour « Besoins de la semaine » (Inventaire) : ce que ce service prend selon le véhicule. L’huile et les filtres viennent de la fiche moteur du véhicule, les pneus de sa grandeur de pneus. Les pièces toujours pareilles se mettent plus bas, dans « Pièces utilisées ».',
+      kinds: { oil: 'Huile moteur', oil_filter: 'Filtre à huile', air_filter: 'Filtre à air', cabin_filter: 'Filtre d’habitacle', wipers: 'Essuie-glaces', plugs: 'Bougies', battery: 'Batterie', tires: 'Pneus neufs' },
+      tiresQty: 'Pneus par rendez-vous',
+      season: 'Saison des pneus',
+      seasons: { winter: 'Hiver', summer: 'Été', all: '4 saisons', any: 'Selon le client' },
+      guessed: 'Deviné d’après le nom du service. Touche un choix pour le changer.',
+      guessedNone: 'Rien de deviné d’après le nom : ce service ne prend rien qui dépend du véhicule. Touche un choix si oui.',
+      said: 'Compté dans les besoins de la semaine, selon chaque véhicule.',
+      nothing: 'Ce service ne prend rien qui dépend du véhicule.',
+      backToGuess: 'Revenir à ce que le nom dit'
+    },
     list: 'La liste de prix',
     listHelp: 'Ce que tu proposes aux clients. Touche un service pour changer son prix, sa durée ou les pièces qu’il utilise.',
     add: 'Ajouter un service',

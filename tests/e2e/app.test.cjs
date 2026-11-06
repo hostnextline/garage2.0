@@ -108,7 +108,8 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await page.getByTestId('job-screen').waitFor();
   const day = h.sql(`select day::text from public.jobs where id = '${jobId}'`);
   const today = h.sql(`select public.local_today()::text`);
-  if (day !== today) h.sql(`update public.jobs set day = public.local_today(), block = 'am' where id = '${jobId}'`) && await page.reload();
+  // (booked late in the day, the first block offered is tomorrow's: bring it to today)
+  if (day !== today) { h.sql(`update public.jobs set day = public.local_today(), block = 'am' where id = '${jobId}'`); await page.reload(); }
   await page.getByTestId('step-leave').click();
   // texts not connected: the message with the tracking link is ready to send by hand
   await page.getByTestId('text-outcome').waitFor({ timeout: 15000 }).catch(() => undefined);
@@ -609,4 +610,165 @@ step('The old address (GitHub Pages) tells the team where the app lives now; lin
   } finally {
     await b.close();
   }
+});
+
+/* ---------- addresses on the map (Photon is answered here, like the real one) ---------- */
+const photonHouse = (hn, street, city, pc, lng, lat) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] },
+  properties: { housenumber: hn, street, city, postcode: pc, countrycode: 'CA', state: 'Québec', type: 'house', osm_key: 'place', osm_value: 'house' } });
+const until = async (get, ok, ms = 30000) => { const t0 = Date.now(); let v; while (Date.now() - t0 < ms) { v = get(); if (ok(v)) return v; await new Promise((r) => setTimeout(r, 500)); } return v; };
+const tomorrow = () => h.sql(`select (public.local_today() + 1)::text`);
+let karim, nour, jobLaval, jobKhalil;
+
+step('Addresses: the ones typed without a choice are found by themselves; the map says what is missing and « Trouver » finds it; the field finds it when leaving', async () => {
+  // tomorrow the truck works (whatever day it is)
+  h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${T.complet}', public.local_today() + 1, '[[480,1200]]', 'e2e') on conflict do nothing`);
+  // the screenshot's address, typed without choosing a suggestion (no position), and a second one Photon does not know yet
+  karim = h.sql(`insert into public.customers (first_name, last_name, phone, address, postal_code, lang) values ('Karim', 'Laval', '450 555-0144', '144 58e Avenue, Laval, QC', 'H7V 2A7', 'fr') returning id`);
+  nour = h.sql(`insert into public.customers (first_name, last_name, phone, address, lang) values ('Nour', 'Gibran', '514 555-0160', '160 khalil gibran', 'fr') returning id`);
+  jobLaval = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, address, stop_order) values ('${karim}', public.local_today() + 1, 'pm', 'booked', '${T.complet}', 45, '144 58e Avenue, Laval, QC', 1) returning id`);
+  jobKhalil = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, address, stop_order) values ('${nour}', public.local_today() + 1, 'pm', 'booked', '${T.complet}', 45, '160 khalil gibran', 2) returning id`);
+  for (const j of [jobLaval, jobKhalil]) h.sql(`insert into public.job_items (job_id, kind, service_id, description, qty, unit_cents) values ('${j}', 'service', '${SVC_OIL}', 'Changement d’huile (5 L)', 1, 8000)`);
+  // a customer with no address yet (its address is typed in the field below)
+  const other = h.sql(`insert into public.customers (first_name, last_name, phone, lang) values ('Sami', 'Adresse', '514 555-0199', 'fr') returning id`);
+  const { ctx, page } = await h.openW({ kind: 'phone' });
+  let knowsKhalil = false;
+  const asked = [];
+  const t0 = Date.now();
+  await ctx.route('https://photon.komoot.io/**', (route) => {
+    const q = new URL(route.request().url()).searchParams.get('q') || '';
+    asked.push(`${Date.now() - t0}ms ${q}${/khalil/i.test(q) ? ` (knows: ${knowsKhalil})` : ''}`);
+    const features = /58e/i.test(q) ? [photonHouse('144', '58e Avenue', 'Laval', 'H7V 4A2', -73.72509, 45.54571)]
+      : /khalil/i.test(q) && knowsKhalil ? [photonHouse('160', 'Rue Khalil-Gibran', 'Montréal', 'H4N 1C0', -73.66748, 45.52789)] : [];
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ type: 'FeatureCollection', features }) });
+  });
+  await h.signIn(page, who.owner.email, PW);
+  // 1) by itself, a few seconds after the app opens: the appointment and its customer get the position; the block is re-planned
+  //    (the second address is asked too, and Photon does not know it yet)
+  await until(() => asked.some((q) => /khalil/i.test(q)), Boolean);
+  const lat = await until(() => h.sql(`select coalesce(lat::text, '') from public.jobs where id = '${jobLaval}'`), (v) => !!v);
+  assert.match(lat, /^45\.545/, 'the Laval appointment is placed: ' + asked.join(' | '));
+  assert.match(h.sql(`select coalesce(lat::text, '') from public.customers where id = '${karim}'`), /^45\.545/);
+  assert.equal(h.sql(`select coalesce(lat::text, '') from public.jobs where id = '${jobKhalil}'`), '', 'Photon does not know the second one yet');
+  await until(() => h.sql(`select count(*) from public.jobs where id = '${jobLaval}' and travel_min <> 25`), (v) => v === '1', 10000);
+  assert.equal(h.sql(`select count(*) from public.jobs where id = '${jobLaval}' and travel_min <> 25`), '1', 're-planned from the real place (no more « unknown » drive)');
+  // 2) the appointment says it is not on the map
+  await page.goto(h.APP + `#/job/${jobKhalil}`);
+  await page.getByTestId('job-no-position').waitFor();
+  await h.shot(page, 'e2e-13-job-no-position');
+  // 3) the map of tomorrow: all the appointments; the one without a position is said, « Trouver » finds it
+  knowsKhalil = true;
+  await page.goto(h.APP + `#/map?day=${tomorrow()}`);
+  await page.getByTestId('map-lost').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('map-lost').innerText(), /^1 rendez-vous pas encore sur la carte/);
+  assert.equal(await page.locator('.map-marker, [data-testid^="marker-"]').count() >= 0, true);
+  await h.shot(page, 'e2e-13-map-lost');
+  await page.getByTestId('map-lost-find').click();
+  await page.getByText('Position trouvée : le rendez-vous est sur la carte.').waitFor({ timeout: 15000 });
+  await page.getByTestId('map-lost').waitFor({ state: 'detached', timeout: 10000 }).catch(() => { throw new Error('the note stays: ' + asked.join(' | ')); });
+  assert.match(h.sql(`select coalesce(lat::text, '') from public.jobs where id = '${jobKhalil}'`), /^45\.527/);
+  assert.match(h.sql(`select coalesce(lat::text, '') from public.customers where id = '${nour}'`), /^45\.527/);
+  await h.shot(page, 'e2e-13-map-all');
+  // 4) the address field: typed without choosing, the position is taken when leaving the field (the address stays as typed)
+  await page.goto(h.APP + `#/customer/${other}`);
+  await page.getByTestId('customer-edit').click();
+  const field = page.getByTestId('customer-edit-sheet').getByTestId('address-input');
+  await field.fill('160 khalil gibran');
+  await page.getByTestId('customer-edit-sheet').getByTestId('address-suggestions').waitFor({ timeout: 10000 }).catch(() => undefined);
+  await page.getByTestId('address-unit').focus();
+  await page.getByTestId('customer-edit-sheet').getByText('Position trouvée').waitFor({ timeout: 10000 });
+  assert.equal(await field.inputValue(), '160 khalil gibran', 'the address stays as typed');
+  await page.getByTestId('customer-save').click();
+  const saved = await until(() => h.sql(`select coalesce(address, '') || '|' || coalesce(lat::text, '') from public.customers where id = '${other}'`), (v) => /\|45\.527/.test(v));
+  assert.match(saved, /^160 khalil gibran\|45\.527/);
+  noErrors(page);
+  await page.context().close();
+});
+
+step('Needs of the week: oil by grade, filters, new tires by size, compared with the stock; what each service takes, in Settings', async () => {
+  const week = h.sql(`select (d - extract(dow from d)::int)::text from (select public.local_today() + 1 as d) x`);
+  // three appointments tomorrow, each an oil change: a Golf (the engine list says 5.7 L of 5W-40, to confirm), a Civic with
+  // its confirmed sheet and its tire size (it also gets 4 new winter tires), and one with no car
+  const person = (first, lat, lng) => h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('${first}', 'Besoins', '514 555-0100', '${first} rue Test, Montréal', ${lat}, ${lng}, 'fr') returning id`);
+  const appt = (customer, vehicle) => {
+    const j = h.sql(`insert into public.jobs (customer_id, vehicle_id, day, block, status, truck_id, duration_min, stop_order) values ('${customer}', ${vehicle ? `'${vehicle}'` : 'null'}, public.local_today() + 1, 'am', 'booked', '${T.complet}', 45, 1) returning id`);
+    h.sql(`insert into public.job_items (job_id, kind, service_id, description, qty, unit_cents) values ('${j}', 'service', '${SVC_OIL}', 'Changement d’huile (5 L)', 1, 8000)`);
+    return j;
+  };
+  const cGolf = person('Gilles', 45.51, -73.62), cCivic = person('Cindy', 45.52, -73.63), cNone = person('Noé', 45.53, -73.64);
+  const golf = h.sql(`insert into public.vehicles (customer_id, year, make, model) values ('${cGolf}', 2015, 'Volkswagen', 'Golf') returning id`);
+  h.sql(`insert into public.engine_specs (key, year, make, model, data, confirmed_at) values ('honda|civic|2019|2.0', 2019, 'Honda', 'Civic', '{"oil_l": 4.2, "oil_visc": "0W-20", "oil_filter": "PH7317"}', now()) on conflict (key) do nothing`);
+  const civic = h.sql(`insert into public.vehicles (customer_id, year, make, model, tire_size, spec_key) values ('${cCivic}', 2019, 'Honda', 'Civic', '215/55R16', 'honda|civic|2019|2.0') returning id`);
+  appt(cGolf, golf);
+  const jobCivic = appt(cCivic, civic);
+  appt(cNone, null);
+  const tires = h.sql(`insert into public.services (name_fr, name_en, category, price_cents, duration_min, needs) values ('Pneus neufs d’hiver (4)', 'New winter tires (4)', 'pneus', 79999, 75, '[{"kind":"tires","qty":4,"season":"winter"}]') returning id`);
+  h.sql(`insert into public.job_items (job_id, kind, service_id, description, qty, unit_cents, sort) values ('${jobCivic}', 'service', '${tires}', 'Pneus neufs d’hiver (4)', 1, 79999, 2)`);
+  // the stock: a 5 L jug of the Golf's oil, 10 L of 0W-20, two of the four winter tires
+  h.sql(`insert into public.inventory_items (name, category, unit, qty) values ('Huile 5W-40 VW 502 00 bidon 5 L', 'Huile', 'bidon', 1), ('Huile 0W-20 synthétique', 'Huile', 'L', 10), ('Pneu d’hiver 215/55R16', 'Pneus', 'pneu', 2)`);
+
+  const { ctx, page } = await h.openW({ kind: 'desktop' });
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/inventory');
+  await page.getByTestId('inventory-needs').click();
+  await page.getByTestId('needs-screen').waitFor();
+  await page.goto(h.APP + `#/needs?week=${week}`);
+  await page.getByTestId('needs-buy').waitFor({ timeout: 15000 });
+  const buy = await page.getByTestId('needs-buy').innerText();
+  assert.match(buy, /Huile 5W-40 \(VW 502 00\)[\s\S]*0,7 L[\s\S]*1 bidon de 5 L/, buy);
+  assert.match(buy, /Pneus d’hiver 215\/55R16[\s\S]*2 pneus/, buy);
+  assert.match(buy, /Huile, type à confirmer[\s\S]*5 L/, buy);
+  assert.match(buy, /Filtre à huile 06K 115 562/, buy);
+  assert.doesNotMatch(buy, /0W-20/, 'the Civic’s 0W-20 is in stock');
+  const all = await page.getByTestId('needs-all').innerText();
+  assert.match(all, /Huile 0W-20[\s\S]*4,2 L[\s\S]*10 L[\s\S]*✓/, all);
+  const stats = await page.getByTestId('needs-stats').innerText();
+  assert.ok(Number(/(\d+)\s*rendez-vous/.exec(stats)?.[1]) >= 3, stats);
+  // a line opens its appointments; « À compléter » lists the appointment with no car
+  await page.getByTestId('needs-row').filter({ hasText: 'Pneus d’hiver' }).locator('button').click();
+  await page.getByTestId('needs-row').filter({ hasText: 'Pneus d’hiver' }).getByText('2019 Honda Civic').waitFor();
+  assert.match(await page.getByTestId('needs-missing').innerText(), /Pas de véhicule sur le rendez-vous/);
+  await h.shot(page, 'e2e-14-needs');
+  await page.getByTestId('needs-copy').click();
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  assert.match(text, /^Achats, Semaine du/);
+  assert.match(text, /- Pneus d’hiver 215\/55R16 : 2 pneus/);
+  // the phone: what and to buy, the need and the stock under the name
+  const { page: phone } = await h.openW({ kind: 'phone' });
+  await h.signIn(phone, who.owner.email, PW);
+  await phone.goto(h.APP + `#/needs?week=${week}`);
+  await phone.getByTestId('needs-buy').waitFor({ timeout: 15000 });
+  await h.shot(phone, 'e2e-14-needs-phone');
+  // « La journée » shows the list from Thursday, for the week to prepare: checked when that week is this one
+  const shop = h.sql(`select coalesce((case when extract(dow from d) = 0 then d when extract(dow from d) >= 4 then d + (7 - extract(dow from d)::int) end)::text, '') from (select public.local_today() as d) x`);
+  if (shop === week) {
+    await phone.goto(h.APP + '#/');
+    await phone.getByTestId('today-needs').waitFor({ timeout: 15000 });
+  }
+  await phone.context().close();
+  // Settings: what « Changement d'huile » takes is guessed from its name; adding the air filter is saved and counted
+  await page.goto(h.APP + '#/settings/services');
+  await page.getByTestId(`service-${SVC_OIL}`).click();
+  await page.getByTestId('service-needs').waitFor();
+  assert.match(await page.getByTestId('service-needs-note').innerText(), /Deviné d’après le nom/);
+  const pressed = async (label) => page.getByTestId('service-needs-kinds').getByRole('button', { name: label }).getAttribute('aria-pressed');
+  assert.equal(await pressed('Huile moteur'), 'true');
+  assert.equal(await pressed('Filtre à huile'), 'true');
+  assert.equal(await pressed('Pneus neufs'), 'false');
+  await page.getByTestId('service-needs-kinds').getByRole('button', { name: 'Filtre à air' }).click();
+  await h.shot(page, 'e2e-14-service-needs');
+  await page.getByTestId('service-save').click();
+  const needs = await until(() => h.sql(`select coalesce(needs::text, '') from public.services where id = '${SVC_OIL}'`), (v) => /air_filter/.test(v));
+  assert.deepEqual(JSON.parse(needs), [{ kind: 'oil' }, { kind: 'oil_filter' }, { kind: 'air_filter' }]);
+  await page.goto(h.APP + `#/needs?week=${week}`);
+  await page.getByTestId('needs-all').getByText('Filtre à air, à confirmer').first().waitFor({ timeout: 15000 });
+  // back to what the name says
+  await page.goto(h.APP + '#/settings/services');
+  await page.getByTestId(`service-${SVC_OIL}`).click();
+  await page.getByTestId('service-needs-guess').click();
+  await page.getByTestId('service-save').click();
+  await until(() => h.sql(`select coalesce(needs::text, 'null') from public.services where id = '${SVC_OIL}'`), (v) => v === 'null');
+  assert.equal(h.sql(`select coalesce(needs::text, 'null') from public.services where id = '${SVC_OIL}'`), 'null');
+  noErrors(page);
+  await page.context().close();
 });

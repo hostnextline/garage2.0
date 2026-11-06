@@ -23,6 +23,8 @@ export const jobs = {
   },
   /* the head of the sheet */
   head: {
+    noPosition: 'Pas encore sur la carte : la position de l’adresse n’est pas trouvée.',
+    positionNone: 'Adresse pas trouvée sur la carte. Corrige-la dans la fiche du client.',
     customerFile: 'Ouvrir la fiche de {name}',
     car: 'Le véhicule',
     noCar: 'Véhicule pas indiqué',

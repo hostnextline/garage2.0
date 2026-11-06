@@ -18,6 +18,7 @@ import { garageName } from '../data/select';
 import { startPositionSharing } from '../features/today/position';
 import { Button, IconButton, Sheet, Banner, Avatar, Rows, RowItem, Empty, Skeleton } from '../ui';
 import { MovedBanner } from './moved';
+import { startLocator } from './locator';
 
 /* ---------- the screen for the current address ---------- */
 const loaded = new Map<string, ComponentType<ScreenProps>>();
@@ -231,7 +232,7 @@ function TabBar() {
 
 export function Shell() {
   // the mechanic's position is shared only between « Commencer ma journée » and the end of the day, app on screen
-  useEffect(() => { startPositionSharing(); }, []);
+  useEffect(() => { startPositionSharing(); startLocator(); }, []);
   // internal links count as steps of the app's history (so « Retour » goes back to them)
   useEffect(() => {
     const onClick = (e: MouseEvent) => {

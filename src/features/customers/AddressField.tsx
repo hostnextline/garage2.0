@@ -7,7 +7,9 @@ import { MapPin, CircleCheck, Search, X, CloudOff } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { findPostal, postalCode, civicNumber } from '../../lib/text';
 import { Spinner } from '../../ui';
-import { photonUrl, photonQuery, suggestionsOf, type Suggestion } from './photon';
+import { photonQuery, type Suggestion } from './photon';
+import { searchPlaces } from './places';
+import { locate } from './locate';
 import { splitPasted, cityOf, unitApart } from './address';
 import { useFocusOnMount } from './hooks';
 import './customers.css';
@@ -22,35 +24,8 @@ export interface AddressFieldProps {
 }
 export const EMPTY_PLACE: PlaceValue = { address: '', unit: null, postal_code: null, lat: null, lng: null, city: null };
 
-/* ---------- searching ---------- */
-interface Found { places: Suggestion[]; error: 'offline' | null }
-const cache = new Map<string, Suggestion[]>();
-/** asks Photon (6 s at most); never throws */
-export async function searchPlaces(q: string, signal?: AbortSignal): Promise<Found> {
-  const query = photonQuery(q);
-  if (query.length < 3 || !/\p{L}/u.test(query)) return { places: [], error: null };
-  const key = query.toLowerCase();
-  const hit = cache.get(key);
-  if (hit) return { places: hit, error: null };
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return { places: [], error: 'offline' };
-  const ctl = new AbortController();
-  const stop = () => ctl.abort();
-  signal?.addEventListener('abort', stop);
-  const timer = setTimeout(stop, 6000);
-  try {
-    const r = await fetch(photonUrl(query), { signal: ctl.signal, headers: { accept: 'application/json' } });
-    if (!r.ok) return { places: [], error: 'offline' };
-    const places = suggestionsOf(await r.json(), query);
-    cache.set(key, places);
-    if (cache.size > 60) cache.delete(cache.keys().next().value as string);
-    return { places, error: null };
-  } catch {
-    return { places: [], error: 'offline' };
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', stop);
-  }
-}
+/* ---------- searching (places.ts), and finding the position without a choice (locate.ts) ---------- */
+export { searchPlaces } from './places';
 /** address → possible places (empty when nothing is found or there is no signal) */
 export async function geocode(q: string): Promise<PlaceValue[]> {
   const { line, unit } = splitPasted(q);
@@ -147,6 +122,28 @@ export function AddressField(p: AddressFieldProps) {
     setPicked(null);
     emit({ address: s.line, unit: s.unit ?? vRef.current.unit, postal_code: s.postal ?? vRef.current.postal_code, lat: null, lng: null, city: null });
   };
+  // the person leaves the field without choosing a suggestion: the position is taken when one place fits what was
+  // typed (the same door, street and town); the address stays as typed. Otherwise the suggestions wait for a choice.
+  const autoLocate = async () => {
+    const cur = vRef.current;
+    const text = cur.address.trim();
+    if (!text || cur.lat != null || photonQuery(text).length < 3 || !/\p{L}/u.test(text)) return;
+    const n = ++run.current;
+    setState('busy');
+    const r = await locate(text, { postal: cur.postal_code });
+    if (n !== run.current || vRef.current.address.trim() !== text || vRef.current.lat != null) { if (n === run.current) setState('idle'); return; }
+    if (r.status === 'found') {
+      const pl = r.place.place;
+      typed.current = false;
+      setPicked({ ...r.place, exact: r.quality === 'door' });
+      setOpen(false);
+      setState('idle');
+      emit({ lat: pl.lat, lng: pl.lng, city: vRef.current.city || pl.city || null, postal_code: vRef.current.postal_code || pl.postal_code || null });
+    } else {
+      if (r.status === 'choose') setItems(r.choices);
+      setState(r.status === 'offline' ? 'offline' : r.status === 'none' && !items.length ? 'none' : 'idle');
+    }
+  };
   const onBlur = () => {
     setFocused(false);
     setTimeout(() => setOpen(false), 120);
@@ -156,6 +153,7 @@ export function AddressField(p: AddressFieldProps) {
       const s = unitApart(cur.address);
       if (s.unit) emit({ address: s.line, unit: s.unit });
     }
+    if (!picked) setTimeout(() => void autoLocate(), 60);
   };
   const onKey = (e: KeyboardEvent) => {
     if (open && items.length) {

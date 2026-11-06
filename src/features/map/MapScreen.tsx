@@ -4,7 +4,7 @@
    Téléphone: la carte prend tout l'écran, la liste monte du bas. Ordinateur: la carte et la liste côte à côte. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { RefreshCw, Navigation, ChevronUp, ChevronDown, Check, Truck, X, LocateFixed, CalendarPlus, Settings2 } from 'lucide-preact';
+import { RefreshCw, Navigation, ChevronUp, ChevronDown, Check, Truck, X, LocateFixed, CalendarPlus, Settings2, MapPinOff } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { may } from '../../app/routes';
 import { setQuery, href } from '../../app/router';
@@ -12,10 +12,11 @@ import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, longDay, clock, isValidDay, nowMinute } from '../../lib/dates';
 import { rpcNow, errorMessage } from '../../data/api';
-import { isNetworkError } from '../../data/sync';
+import { isNetworkError, flush } from '../../data/sync';
+import { locateMissing } from '../../app/locator';
 import { access, can } from '../../data/auth';
-import { staffName } from '../../data/select';
-import { Page, Seg, Banner, Empty, Button, IconButton, StatusPill, Help, Pill } from '../../ui';
+import { staffName, job as jobRow, customer as customerRow } from '../../data/select';
+import { Page, Seg, Banner, Empty, Button, IconButton, StatusPill, Help, Pill, toast } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from './MapView';
 import { assemble, normalize, minuteOf, UNPLACED_COLOR, type TeamMapAnswer, type Stop, type TruckRoute, type Assembled } from './assemble';
 import type { JobStatus } from '../../data/types';
@@ -168,6 +169,30 @@ export default function MapScreen({ query }: ScreenProps) {
   }
   const recenter = () => { setPan(null); setFocus(null); setSelected(null); setFitKey((k) => k + 1); };
 
+  /* appointments of the day whose address has no position yet: said on the map, with « Trouver » */
+  const lost = [...m.trucks.flatMap((tr) => tr.stops), ...m.unplaced].filter((s) => !s.hasPos && !s.done);
+  const [finding, setFinding] = useState(false);
+  const findLost = async () => {
+    setFinding(true);
+    try {
+      const r = await locateMissing({ only: { jobs: lost.map((s) => s.id) }, force: true });
+      if (r.offline) toast(t('map.lost.offline'), { kind: 'bad' });
+      else if (r.found) {
+        toast(t('map.lost.found', { n: r.found }), { kind: 'ok' });
+        // the positions found are on this phone already: on the map now; the server's answer follows
+        setLoaded((cur) => ({ ...cur, data: { ...cur.data, jobs: cur.data.jobs.map((j) => {
+          if (j.lat != null && j.lng != null) return j;
+          const row = jobRow(j.id);
+          const c = row?.customer_id ? customerRow(row.customer_id) : undefined;
+          const lat = row?.lat ?? c?.lat ?? null, lng = row?.lng ?? c?.lng ?? null;
+          return lat != null && lng != null ? { ...j, lat, lng } : j;
+        }) } }));
+        void flush().catch(() => undefined).finally(() => setReload((n) => n + 1));
+      }
+      else toast(t('map.lost.none'), { kind: 'bad' });
+    } finally { setFinding(false); }
+  };
+
   /* words */
   const updated = t('map.updated', { time: clock(nowMinuteOf(loaded.at), lang.value) });
   const summary = t('map.summary', { trucks: t('map.trucksCount', { n: m.trucks.length }), stops: t('map.stopsCount', { n: m.count }) });
@@ -204,11 +229,18 @@ export default function MapScreen({ query }: ScreenProps) {
       <Stage wide={isWide}>
         <div class="map-canvas">
           <MapView markers={markers} lines={lines} height="100%" full focus={fitIds} fitKey={fitKey} controls={isWide} label={t('map.label')}
-            fitPadding={isWide ? [56, 150, 56, 56] : [84, 96, 140, 32]} onBackgroundClick={() => { if (selected) closeCard(); }} data-testid="map-view" />
+            fitPadding={isWide ? [lost.length ? 110 : 56, 150, 56, 56] : [lost.length ? 170 : 84, 96, 140, 32]} onBackgroundClick={() => { if (selected) closeCard(); }} data-testid="map-view" />
           <div class="map-overlay">
             {!isWide && daySwitch}
             <IconButton class="map-fab" icon={<LocateFixed />} label={t('map.recenter')} onClick={recenter} data-testid="map-recenter" />
           </div>
+          {lost.length > 0 && (
+            <div class="map-lost glass-strong" role="status" data-testid="map-lost">
+              <MapPinOff size={18} aria-hidden="true" />
+              <span class="grow">{t('map.lost.text', { n: lost.length })}</span>
+              {may.book() && <Button size="sm" busy={finding} onClick={() => void findLost()} data-testid="map-lost-find">{t('map.lost.find')}</Button>}
+            </div>
+          )}
         </div>
         {isWide ? (
           <aside class="map-side" aria-label={t('map.legend.title')}>

@@ -32,6 +32,13 @@ export const map: typeof fr = {
     focusOn: 'See only {name}',
     focusOff: 'See the whole team again'
   },
+  lost: {
+    text: { one: '{n} appointment not on the map yet (address with no position)', other: '{n} appointments not on the map yet (addresses with no position)' },
+    find: 'Find',
+    found: { one: 'Position found: the appointment is on the map.', other: '{n} positions found: the appointments are on the map.' },
+    none: 'Address not found on the map. Fix it in the customer’s file.',
+    offline: 'No network to look up the address. Try again later.'
+  },
   stops: {
     title: 'Stops of {name}',
     all: 'All stops',

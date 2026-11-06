@@ -18,6 +18,7 @@ import { jobName, jobFirstName, jobCustomer, shortDayWord, blockRange, clockOf, 
 import { agoText } from './position';
 import { trucksNow, unplacedOn, toCollect, proposalsWaiting, toConfirm, paymentsOn, useTick, type TruckNow } from './select';
 import { ShiftCard } from './MechanicDay';
+import { NeedsCard } from '../inventory/needsView';
 
 /* ---------- each truck, now ---------- */
 function nowLine(x: TruckNow): string {
@@ -161,6 +162,7 @@ export function OfficeDay() {
         {can('invoices') || can('edit_invoices') || can('book') ? <CollectPanel /> : null}
         <ProposalsPanel />
         {can('book') && <ConfirmPanel />}
+        {may.inventory() && <NeedsCard />}
       </div>
     </div>
   );

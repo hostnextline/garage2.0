@@ -32,6 +32,13 @@ export const map = {
     focusOn: 'Voir seulement {name}',
     focusOff: 'Revoir toute l’équipe'
   },
+  lost: {
+    text: { one: '{n} rendez-vous pas encore sur la carte (adresse sans position)', other: '{n} rendez-vous pas encore sur la carte (adresses sans position)' },
+    find: 'Trouver',
+    found: { one: 'Position trouvée : le rendez-vous est sur la carte.', other: '{n} positions trouvées : les rendez-vous sont sur la carte.' },
+    none: 'Adresse pas trouvée sur la carte. Corrige-la dans la fiche du client.',
+    offline: 'Pas de réseau pour chercher l’adresse. Réessaie plus tard.'
+  },
   stops: {
     title: 'Arrêts de {name}',
     all: 'Tous les arrêts',

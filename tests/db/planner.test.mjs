@@ -207,3 +207,50 @@ test('schedule drawn on the grid: today only, N weeks, or from now on', () => tx
   const e = await h.fails(() => h.rpc('apply_hours', { p_op: uuid(), p_truck: t2, p_mode: 'day', p_week: { [dow]: [] }, p_from: day, p_weeks: 1 }));
   assert.equal(e?.hint, 'not_allowed', 'a mechanic changes only his own truck');
 }));
+
+test('a position found later re-plans the block: the stop and its times follow the real place (Part 15)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion 1', null, { [dow]: DAY });
+  const a = await h.customer('A', ...near);
+  const b = await h.customer('B', null, null, { address: '144 58e Avenue, Laval, QC' });      // typed without a suggestion
+  const c = await h.customer('C', null, null, { address: '160 khalil gibran' });
+  await h.as(owner);
+  const ja = (await h.rpc('book_job', { p_op: uuid(), p_job: job(a, day, 'am'), p_items: [] })).job_id;
+  const jb = (await h.rpc('book_job', { p_op: uuid(), p_job: job(b, day, 'am', { address: '144 58e Avenue, Laval, QC' }), p_items: [] })).job_id;
+  const jc = (await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'am'), p_items: [] })).job_id;
+  // a stop with no position: the « unknown » drive plus the stop time
+  const unknown = await h.val(`select coalesce((booking->>'unknown_min')::int, 20) + coalesce((booking->>'stop_min')::int, 5) from public.settings where id = 1`);
+  assert.equal((await h.one(`select travel_min from public.jobs where id = $1`, [jb])).travel_min, unknown, 'no position: the planner counts the « unknown » drive');
+
+  // the appointment's own position is found (the locator, as the owner): its block is planned again
+  await h.q(`update public.jobs set lat = $1, lng = $2 where id = $3`, [...laval, jb]);
+  const b1 = await h.one(`select travel_min, eta_min, stop_order from public.jobs where id = $1`, [jb]);
+  assert.notEqual(b1.travel_min, unknown, 'the drive is now counted from the real place: ' + b1.travel_min);
+  assert.ok(b1.eta_min != null && b1.stop_order != null);
+
+  // the customer's position is found: its appointment that uses it is planned again too
+  const before = await h.val(`select travel_min from public.jobs where id = $1`, [jc]);
+  assert.equal(before, unknown);
+  await h.q(`update public.customers set lat = $1, lng = $2 where id = $3`, [...near2, c]);
+  assert.notEqual(await h.val(`select travel_min from public.jobs where id = $1`, [jc]), unknown, 'the customer’s new position counts for its appointment');
+  assert.equal(await h.val(`select count(*)::int from public.jobs where id = any($1::uuid[]) and stop_order is not null`, [[ja, jb, jc]]), 3, 'all three still on the route');
+
+  // nothing re-planned for a position that did not change, or for a past or finished appointment
+  await h.as(null);
+  await h.q(`update public.jobs set status = 'done' where id = $1`, [ja]);
+  await h.as(owner);
+  assert.equal(await h.fails(() => h.q(`update public.jobs set lat = lat, lng = lng where id = $1`, [ja])), null);
+}));
+
+test('a service says what it takes that depends on the car (an array, or nothing said)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  await h.as(owner);
+  const ok = await h.fails(() => h.q(`insert into public.services (name_fr, needs) values ('Changement d’huile', '[{"kind":"oil"},{"kind":"oil_filter"}]')`));
+  assert.equal(ok, null);
+  assert.equal(await h.fails(() => h.q(`insert into public.services (name_fr) values ('Inspection')`)), null, 'nothing said: guessed by the app');
+  const bad = await h.fails(() => h.q(`insert into public.services (name_fr, needs) values ('X', '{"kind":"oil"}')`));
+  assert.match(String(bad?.message), /services_needs_array/);
+  assert.deepEqual(await h.val(`select needs from public.services where name_fr = 'Changement d’huile'`), [{ kind: 'oil' }, { kind: 'oil_filter' }]);
+}));

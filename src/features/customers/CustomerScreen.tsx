@@ -29,6 +29,8 @@ import { CustomerFields, emptyDraft, draftOf, customerPatch, checkDraft, hasErro
 import { NotesPanel } from './NotesPanel';
 import { VehicleAddSheet } from './VehicleBits';
 import { searchPlaces } from './AddressField';
+import { locate } from './locate';
+import { spreadToJobs } from '../../app/locator';
 import type { Suggestion } from './photon';
 import { oneLine, directionsUrl } from './address';
 import { Flags, Plate, Bit, carName, stampDay, dayOfIso } from './bits';
@@ -146,18 +148,22 @@ function ContactPanel(p: { c: Customer; canEdit: boolean }) {
   const [busy, setBusy] = useState(false);
   const addr = oneLine(c, t('customers.address.unitWord'));
   const since = dayOfIso(c.created_at);
+  // one place fits (the same door, street and town): saved at once; several: the person picks; none: the closest answers
   const find = async () => {
     setBusy(true);
-    const r = await searchPlaces(oneLine({ address: c.address, postal_code: c.postal_code }));
+    const r = await locate(c.address, { postal: c.postal_code, city: c.city, fresh: true });
+    if (r.status === 'found') { await usePlace(r.place); setBusy(false); return; }
+    if (r.status === 'choose') { setBusy(false); setPlaces(r.choices); return; }
+    const s = r.status === 'offline' ? null : await searchPlaces(oneLine({ address: c.address, postal_code: c.postal_code }));
     setBusy(false);
-    if (r.error) toast(t('customers.contact.positionOffline'), { kind: 'bad' });
-    else if (!r.places.length) toast(t('customers.contact.positionNone'), { kind: 'bad' });
-    else setPlaces(r.places);
+    if (r.status === 'offline' || s?.error) toast(t('customers.contact.positionOffline'), { kind: 'bad' });
+    else if (!s?.places.some((x) => x.place.lat != null)) toast(t('customers.contact.positionNone'), { kind: 'bad' });
+    else setPlaces(s.places);
   };
   const usePlace = async (s: Suggestion) => {
     if (s.place.lat == null) { toast(t('customers.contact.positionNone'), { kind: 'bad' }); return; }
     const ok = await attempt(() => saveCustomer({ id: c.id, lat: s.place.lat, lng: s.place.lng, ...(c.postal_code ? {} : { postal_code: s.place.postal_code }), ...(c.city ? {} : { city: s.place.city ?? null }) }), { ok: t('customers.contact.positionSaved') });
-    if (ok) setPlaces(null);
+    if (ok) { setPlaces(null); void spreadToJobs(c.id, s.place.lat, s.place.lng); }
   };
   const toggle = (k: 'sms_ok' | 'card_on_file', v: boolean) => attempt(() => saveCustomer({ id: c.id, [k]: v }));
   const items: [ComponentChildren, ComponentChildren][] = [

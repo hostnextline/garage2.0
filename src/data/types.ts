@@ -52,9 +52,15 @@ export interface SpecData {
   coolant?: string; trans?: string; brake?: string; tires?: string; pressure?: string; wipers?: string; battery?: string; notes?: string;
   parts?: { name: string; ref?: string; qty?: number; service?: string }[];
 }
+/** what a service uses that depends on the car (its oil, its filters, its tire size); fixed parts are service_parts */
+export type NeedKind = 'oil' | 'oil_filter' | 'air_filter' | 'cabin_filter' | 'wipers' | 'plugs' | 'battery' | 'tires';
+export type TireSeason = 'winter' | 'summer' | 'all';
+export interface Need { kind: NeedKind; qty?: number; season?: TireSeason | null }
 export interface Service extends Base {
   name_fr: string; name_en: string | null; category: string; price_cents: number | null; duration_min: number; taxable: boolean;
   is_promo: boolean; promo_until: string | null; includes: { fr: string; en?: string }[]; active: boolean; sort: number;
+  /** null: guessed from the name (inventory/needs.ts); [] uses nothing that depends on the car */
+  needs?: Need[] | null;
 }
 export interface ServicePart extends Base { service_id: string; item_id: string; qty: number }
 export interface InventoryItem extends Base {

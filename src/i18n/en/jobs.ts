@@ -20,6 +20,8 @@ export const jobs: typeof fr = {
     noTruck: 'no truck'
   },
   head: {
+    noPosition: 'Not on the map yet: the address has no position.',
+    positionNone: 'Address not found on the map. Fix it in the customer’s file.',
     customerFile: 'Open {name}’s file',
     car: 'The vehicle',
     noCar: 'Vehicle not given',

@@ -53,6 +53,7 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/account', load: () => import('../features/account/AccountScreen'), nav: 'account' },
   { pattern: '/treasury', load: () => import('../features/treasury/TreasuryScreen'), allow: may.treasury, nav: 'treasury' },
   { pattern: '/inventory', load: () => import('../features/inventory/InventoryScreen'), allow: may.inventory, nav: 'inventory' },
+  { pattern: '/needs', load: () => import('../features/inventory/NeedsScreen'), allow: may.inventory, nav: 'inventory' },
   { pattern: '/dashboard', load: () => import('../features/dashboard/DashboardScreen'), allow: may.dashboard, nav: 'dashboard' },
   { pattern: '/guide', load: () => import('../features/guide/GuideScreen'), nav: 'guide' },
   { pattern: '/more', load: () => import('./MoreScreen'), nav: 'more' }

@@ -1,16 +1,17 @@
 /* « Inventaire » (#/inventory, right « inventory »): the stock value, search and category, what to order first
    (lowStock), then everything in stock with its quantity, minimum, cost and value. An item opens its sheet. */
 import { useState } from 'preact/hooks';
-import { Plus, PackageCheck } from 'lucide-preact';
+import { Plus, PackageCheck, ClipboardList } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { inventoryList, lowStock } from '../../data/select';
 import type { InventoryItem } from '../../data/types';
-import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, Help } from '../../ui';
+import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, Help, BigStep } from '../../ui';
 import { BigMoney } from '../dashboard/charts';
 import { itemValue, stockValue, toOrder } from './stock';
 import { ItemSheet, useQty } from './ItemSheet';
+import { defaultWeek, weekWords } from './needsView';
 import '../dashboard/charts.css';
 import './inventory.css';
 
@@ -74,6 +75,7 @@ export default function InventoryScreen(_p: ScreenProps) {
   return (
     <Page title={t('inventory.title')} sub={t('inventory.sub')} help={t('inventory.help')} wide data-testid="inventory-screen"
       actions={<Button variant="primary" icon={<Plus size={20} />} onClick={() => open(null)} data-testid="inventory-add">{t('inventory.add')}</Button>}>
+      <BigStep icon={<ClipboardList size={24} />} label={t('inventory.needs.title')} sub={t('inventory.needs.openSub', { week: weekWords(defaultWeek()) })} href="#/needs" data-testid="inventory-needs" />
       {!all.length ? (
         <Panel><Empty title={t('inventory.empty')} text={t('inventory.emptyText')} action={<Button variant="primary" icon={<Plus size={18} />} onClick={() => open(null)}>{t('inventory.add')}</Button>} /></Panel>
       ) : (

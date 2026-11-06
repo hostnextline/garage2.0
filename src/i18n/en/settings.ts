@@ -80,6 +80,19 @@ export const settings: typeof fr = {
     badDue: 'Between 0 and 365 days.'
   },
   services: {
+    needs: {
+      title: 'What it takes',
+      help: 'For « Needs of the week » (Inventory): what this service takes depending on the vehicle. Oil and filters come from the vehicle’s engine sheet, tires from its tire size. Parts that are always the same go below, in « Parts used ».',
+      kinds: { oil: 'Engine oil', oil_filter: 'Oil filter', air_filter: 'Air filter', cabin_filter: 'Cabin filter', wipers: 'Wipers', plugs: 'Spark plugs', battery: 'Battery', tires: 'New tires' },
+      tiresQty: 'Tires per appointment',
+      season: 'Tire season',
+      seasons: { winter: 'Winter', summer: 'Summer', all: 'All-season', any: 'Customer’s choice' },
+      guessed: 'Guessed from the service’s name. Tap a choice to change it.',
+      guessedNone: 'Nothing guessed from the name: this service takes nothing that depends on the vehicle. Tap a choice if it does.',
+      said: 'Counted in the needs of the week, for each vehicle.',
+      nothing: 'This service takes nothing that depends on the vehicle.',
+      backToGuess: 'Go back to what the name says'
+    },
     list: 'The price list',
     listHelp: 'What you offer customers. Tap a service to change its price, its duration or the parts it uses.',
     add: 'Add a service',

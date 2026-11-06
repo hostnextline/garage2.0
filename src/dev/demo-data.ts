@@ -46,7 +46,7 @@ export function loadDemoData() {
   /* ---------- services, stock ---------- */
   const sv = (id: string, name_fr: string, name_en: string, category: string, price: number | null, duration: number, sort: number, extra: Partial<DemoRow> = {}) =>
     put('services', { id, name_fr, name_en, category, price_cents: price, duration_min: duration, taxable: true, is_promo: false, promo_until: null, includes: [], active: true, sort, ...extra });
-  sv('s-huile', 'Changement d’huile et filtre', 'Oil and filter change', 'entretien', 8999, 45, 1, { includes: [{ fr: 'Jusqu’à 5 L d’huile synthétique', en: 'Up to 5 L of synthetic oil' }, { fr: 'Filtre à huile', en: 'Oil filter' }, { fr: 'Inspection visuelle', en: 'Visual inspection' }] });
+  sv('s-huile', 'Changement d’huile et filtre', 'Oil and filter change', 'entretien', 8999, 45, 1, { includes: [{ fr: 'Jusqu’à 5 L d’huile synthétique', en: 'Up to 5 L of synthetic oil' }, { fr: 'Filtre à huile', en: 'Oil filter' }, { fr: 'Inspection visuelle', en: 'Visual inspection' }], needs: [{ kind: 'oil' }, { kind: 'oil_filter' }] });
   sv('s-freins-av', 'Freins avant (plaquettes et disques)', 'Front brakes (pads and rotors)', 'freins', 34999, 90, 2);
   sv('s-freins-ar', 'Freins arrière (plaquettes et disques)', 'Rear brakes (pads and rotors)', 'freins', 34999, 90, 3);
   sv('s-diag30', 'Diagnostic 30 min', 'Diagnostic 30 min', 'diagnostic', 6000, 30, 4);
@@ -57,6 +57,7 @@ export function loadDemoData() {
   sv('s-pneus', 'Pose de pneus (4)', 'Tire mounting (4)', 'pneus', 9999, 60, 9);
   sv('s-refroid', 'Vidange du liquide de refroidissement', 'Coolant flush', 'entretien', 14999, 60, 10);
   sv('s-promo', 'Promo hiver : huile + pneus', 'Winter promo: oil + tires', 'promo', 16999, 90, 0, { is_promo: true, promo_until: D(25) });
+  sv('s-pneus-neufs', 'Pneus neufs d’hiver (4, posés)', 'New winter tires (4, mounted)', 'pneus', 79999, 75, 11, { needs: [{ kind: 'tires', qty: 4, season: 'winter' }] });
   const inv = (id: string, name: string, category: string, unit: string, qty: number, min: number | null, cost: number, price: number) =>
     put('inventory_items', { id, name, sku: null, category, unit, qty, min_qty: min, cost_cents: cost, price_cents: price, supplier: 'Lordco', notes: null, active: true });
   inv('i-5w30', 'Huile synthétique 5W-30', 'Huile', 'L', 38, 20, 650, 1200);
@@ -64,8 +65,9 @@ export function loadDemoData() {
   inv('i-filtre', 'Filtre à huile PH7317', 'Filtres', 'unité', 6, 4, 790, 1599);
   inv('i-plaq', 'Plaquettes céramique avant', 'Freins', 'jeu', 2, 2, 4500, 8999);
   inv('i-lave', 'Lave-glace -40 °C', 'Liquides', 'L', 0, 8, 120, 400);
-  put('service_parts', { id: 'sp-1', service_id: 's-huile', item_id: 'i-5w30', qty: 5 });
-  put('service_parts', { id: 'sp-2', service_id: 's-huile', item_id: 'i-filtre', qty: 1 });
+  inv('i-pneu-h', 'Pneu d’hiver 225/65R17', 'Pneus', 'pneu', 2, null, 14500, 21999);
+  // the oil and its filter depend on the car (needs of s-huile); the washer fluid is always the same
+  put('service_parts', { id: 'sp-1', service_id: 's-topup', item_id: 'i-lave', qty: 1 });
 
   /* ---------- customers and cars ---------- */
   const cu = (id: string, first: string, last: string, phone: string, address: string, postal: string, lat: number, lng: number, extra: Partial<DemoRow> = {}) =>
@@ -83,8 +85,8 @@ export function loadDemoData() {
     put('vehicles', { id, customer_id, year, make, model, trim: null, engine: null, displacement: null, cylinders: null, fuel: 'essence', drive: null, vin: null, plate: null, odometer_km: null, color: null, tire_size: null, spec_key: null, notes: null, ...extra });
   ve('v-julie', 'c-julie', 2019, 'Honda', 'Civic', { engine: '2.0 L 4 cyl.', odometer_km: 84200, vin: '2HGFC2F59KH512345', spec_key: 'honda|civic|2019|2.0' });
   ve('v-marc', 'c-marc', 2017, 'Ford', 'F-150', { engine: '3.5 L V6 EcoBoost', odometer_km: 142300 });
-  ve('v-sophie', 'c-sophie', 2021, 'Toyota', 'RAV4', { engine: '2.5 L 4 cyl.' });
-  ve('v-kevin', 'c-kevin', 2016, 'Mazda', 'CX-5', { engine: '2.5 L 4 cyl.' });
+  ve('v-sophie', 'c-sophie', 2021, 'Toyota', 'RAV4', { engine: '2.5 L 4 cyl.', tire_size: '225/65R17' });
+  ve('v-kevin', 'c-kevin', 2016, 'Mazda', 'CX-5', { engine: '2.5 L 4 cyl.', tire_size: '225/65R17' });
   ve('v-amira', 'c-amira', 2020, 'Hyundai', 'Elantra', {});
   ve('v-patrick', 'c-patrick', 2014, 'Chevrolet', 'Silverado', { engine: '5.3 L V8' });
   ve('v-emilie', 'c-emilie', 2018, 'Kia', 'Soul', {});
@@ -136,6 +138,7 @@ export function loadDemoData() {
   item('ji-t1', 'j-t1', 's-huile', 'Changement d’huile et filtre', 8999);
   job('j-t2', { customer_id: 'c-kevin', vehicle_id: 'v-kevin', day: D(1), block: 'pm', status: 'booked', stop_order: 1, eta_min: 740, duration_min: 90, travel_min: 18 });
   item('ji-t2', 'j-t2', 's-freins-ar', 'Freins arrière (plaquettes et disques)', 34999);
+  item('ji-t2b', 'j-t2', 's-pneus-neufs', 'Pneus neufs d’hiver (4, posés)', 79999, { sort: 2 });
   job('j-t3', { customer_id: 'c-julie', vehicle_id: 'v-julie', day: D(2), block: 'am', status: 'cancelled', stop_order: null, cancelled_at: at(D(0), 420), lost_reason: 'La cliente a vendu son auto.' });
   item('ji-t3', 'j-t3', 's-pneus', 'Pose de pneus (4)', 9999);
 
