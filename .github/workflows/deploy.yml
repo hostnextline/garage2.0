@@ -1,6 +1,6 @@
-# Publie l'app sur https://hostnextline.github.io/garage2.0/ à chaque changement de la branche main.
+# Publie l'app à chaque changement de la branche main : sur Vercel (branche « vercel », voir ops/vercel) et sur
+# l'ancienne adresse https://hostnextline.github.io/garage2.0/ (branche gh-pages, GitHub Pages).
 # Les tests passent d'abord : si un test échoue, rien n'est publié et l'app en ligne reste la même.
-# L'app construite va sur la branche gh-pages (GitHub Pages la sert telle quelle).
 name: Publier l'app
 on:
   push:
@@ -36,10 +36,25 @@ jobs:
           npm run build
         env:
           VITE_APP_VERSION: ${{ github.sha }}
+      - name: Publier sur Vercel (branche vercel)
+        # the same built app in public/, with the Vercel settings next to it; Vercel publishes each new push
+        run: |
+          rm -rf ../vercel && mkdir -p ../vercel/public
+          cp -r dist/. ../vercel/public/
+          cp ops/vercel/vercel.json ../vercel/vercel.json
+          cd ../vercel
+          git init -q -b vercel
+          git config user.name "Publication automatique"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publication de ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" vercel
       - name: Publier (branche gh-pages)
         run: |
           cd dist
           touch .nojekyll
+          # Vercel never publishes this branch (it publishes the branch « vercel »)
+          printf '{ "git": { "deploymentEnabled": false } }\n' > vercel.json
           git init -q -b gh-pages
           git config user.name "Publication automatique"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
