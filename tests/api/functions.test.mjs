@@ -88,6 +88,15 @@ test('an invitation: the link, the person chooses a password, signs in, gets the
   assert.equal((await fn('team', { action: 'secrets' })).code, 'signin');
 });
 
+test('a link asked from the old address (GitHub Pages) or a stranger site goes to the app\'s home', async () => {
+  for (const asked of ['https://hostnextline.github.io/garage2.0/', 'https://pirate.example/', 'pas une adresse', undefined]) {
+    const email = `moved-${randomUUID().slice(0, 6)}@test.local`;
+    const r = await fn('team', { action: 'invite', email, full_name: 'Ali Mécano', roles: ['mechanic'], lang: 'fr', base: asked, send: 'none' }, ownerJwt);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.ok(r.link.startsWith(BASE + '#invite='), `${asked} -> ${r.link}`);
+  }
+});
+
 test('texts and card payment: keys saved, appointment text with total, the customer page, a paid card, a notice sent twice', async () => {
   await clearLog();
   const sk = await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678', stripe_key: 'sk_test_abcdefghijklmnop' }, ownerJwt);

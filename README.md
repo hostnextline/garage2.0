@@ -4,7 +4,9 @@ L'app de l'équipe : réserver par bloc (matin, après-midi, soir), la journée 
 signature, facture, paiement), les clients et leurs autos, les estimations, l'équipe et ses droits, la carte,
 la trésorerie, l'inventaire et les chiffres du garage. Elle marche sans réseau et s'installe sur le téléphone.
 
-- L'app : **https://hostnextline.github.io/garage2.0/**
+- L'app : **https://mecanique-mobile-his.vercel.app/** (hébergée sur Vercel, équipe NextLine — voir `ops/vercel/README.md`)
+- L'ancienne adresse https://hostnextline.github.io/garage2.0/ marche encore (liens déjà envoyés) et dit à l'équipe
+  d'aller à la nouvelle
 - La page des clients (lien envoyé par texto) : `client.html`
 
 ## Comment c'est fait

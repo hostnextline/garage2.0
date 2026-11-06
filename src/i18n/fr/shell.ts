@@ -53,6 +53,11 @@ export const shell = {
     ready: 'Une nouvelle version de l’app est prête.', important: 'Mise à jour importante de l’app : installe-la dès que tu peux.',
     notes: 'Ce qui change : {notes}', apply: 'Mettre à jour maintenant', later: 'Plus tard'
   },
+  moved: {
+    title: 'L’app a une nouvelle adresse : {host}',
+    lead: 'Ouvre-la, connecte-toi, puis ajoute-la à l’écran d’accueil. Celle-ci marche encore, mais les liens envoyés aux clients partent maintenant de la nouvelle.',
+    open: 'Ouvrir la nouvelle adresse', hide: 'Cacher'
+  },
   preview: { banner: 'Tu vois l’app comme {name}. Rien ne peut être changé.', stop: 'Revenir à moi' },
   queued: 'Gardé sur le téléphone : ça part dès que le réseau revient.',
   loadFail: 'Cette page ne s’ouvre pas. L’app a peut-être été mise à jour.',

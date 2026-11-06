@@ -8,7 +8,17 @@ export const APP_VERSION: string = import.meta.env.VITE_APP_VERSION || 'dev';
 declare const __BUILT_AT__: string | undefined;
 /** when this version was made (ISO time; the commit's time for the published app) */
 export const BUILT_AT: string = typeof __BUILT_AT__ === 'string' ? __BUILT_AT__ : '';
-/** the public address of the app (links sent to customers point here) */
+/** the app's home on the web (Vercel). Links sent to customers and to the team point here. */
+export const HOME_URL = 'https://mecanique-mobile-his.vercel.app/';
+/** on the app's old address (GitHub Pages, still working), the address it lives at now; null everywhere else */
+export function movedTo(href: string = location.href): string | null {
+  try {
+    return /(^|\.)github\.io$/i.test(new URL(href).hostname) ? HOME_URL : null;
+  } catch {
+    return null;
+  }
+}
+/** the address this copy of the app runs at */
 export function appBase(): string {
   const u = new URL('./', location.href);
   u.hash = ''; u.search = '';

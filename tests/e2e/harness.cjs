@@ -45,7 +45,9 @@ function buildApp() {
   });
 }
 async function startApp() {
-  preview = spawn('npx', ['vite', 'preview', '--outDir', 'tests/out/dist', '--port', '4173', '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', detached: true });
+  // the app is also opened under its old address (hostnextline.github.io, sent here by the test browser)
+  preview = spawn('npx', ['vite', 'preview', '--outDir', 'tests/out/dist', '--port', '4173', '--strictPort', '--host', '127.0.0.1'],
+    { cwd: ROOT, stdio: 'ignore', detached: true, env: { ...process.env, __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: 'hostnextline.github.io' } });
   for (let i = 0; i < 60; i++) {
     try { const r = await fetch(APP); if (r.ok) return; } catch { /* not yet */ }
     await new Promise((r) => setTimeout(r, 250));

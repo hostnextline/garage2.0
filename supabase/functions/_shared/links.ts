@@ -1,6 +1,7 @@
-// Links sent to customers and team members always point to the garage's own site (never elsewhere).
+// Links sent to customers and team members always point to the garage's own site (never elsewhere): the app's home on
+// Vercel. The old address (GitHub Pages) still works, but a page there gets links to the new one.
 import { env } from './http.ts';
-const DEFAULT_BASES = ['https://hostnextline.github.io/garage2.0/'];
+export const DEFAULT_BASES = ['https://mecanique-mobile-his.vercel.app/'];
 export function allowedBases(): string[] {
   const v = env('APP_BASE_URLS');
   return (v ? v.split(',') : DEFAULT_BASES).map((s) => s.trim()).filter(Boolean).map((s) => (s.endsWith('/') ? s : s + '/'));

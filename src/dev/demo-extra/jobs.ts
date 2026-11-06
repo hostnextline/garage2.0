@@ -10,7 +10,7 @@ import { addDays, today, longDay } from '../../lib/dates';
 const D = (n: number) => addDays(today(), n);
 const at = (day: string, min: number) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, Math.floor(min / 60), min % 60).toISOString(); };
 const me = () => (globalThis as { __demoUser?: string }).__demoUser || 'u-hassan';
-const LINK = 'https://hostnextline.github.io/garage2.0/client.html';
+const LINK = 'https://mecanique-mobile-his.vercel.app/client.html';
 const textsParam = (): 'on' | 'off' | null => { try { return (/[?&]texts=(on|off)\b/.exec(location.search)?.[1] as 'on' | 'off') || null; } catch { return null; } };
 const textsOff = () => textsParam() === 'off';
 /** automatic texts as the app is told (Access.texts_online, set by the demo): the « en route » text follows it */

@@ -53,6 +53,11 @@ export const shell: typeof fr = {
     ready: 'A new version of the app is ready.', important: 'Important app update: install it as soon as you can.',
     notes: 'What changes: {notes}', apply: 'Update now', later: 'Later'
   },
+  moved: {
+    title: 'The app has a new address: {host}',
+    lead: 'Open it, sign in, then add it to your home screen. This one still works, but links sent to customers now come from the new one.',
+    open: 'Open the new address', hide: 'Hide'
+  },
   preview: { banner: 'You are viewing the app as {name}. Nothing can be changed.', stop: 'Back to me' },
   queued: 'Kept on the phone: it goes out as soon as the signal is back.',
   loadFail: 'This page won’t open. The app may have been updated.',

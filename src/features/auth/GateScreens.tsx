@@ -8,6 +8,7 @@ import { signIn, googleEnabled, signInGoogle, session, signOut, inviteToken, cle
 import { errorMessage } from '../../data/api';
 import { appBase } from '../../lib/config';
 import { Button, Field, Input, InputWithButton, Form, Banner, Sheet, Seg } from '../../ui';
+import { MovedBanner } from '../../app/moved';
 
 function Gate(p: { children: ComponentChildren; testid: string }) {
   return (
@@ -51,6 +52,7 @@ export function LoginScreen() {
   };
   return (
     <Gate testid="login">
+      <MovedBanner />
       <div class="stack" style={{ gap: '6px' }}>
         <h1>{t('auth.title')}</h1>
         <p class="gate-lead">{t('auth.lead')}</p>

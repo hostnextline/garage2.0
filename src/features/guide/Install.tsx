@@ -2,9 +2,9 @@
    else the two or three taps to do (iPhone: Partager, Sur l'écran d'accueil; Android: ⋮, Installer l'app). */
 import { computed } from '@preact/signals';
 import { installEvent, appInstalled } from '../../app/pwa';
-import { Download, Share, EllipsisVertical, Copy } from 'lucide-preact';
+import { Download, Share, EllipsisVertical, Copy, ExternalLink } from 'lucide-preact';
 import { t } from '../../lib/i18n';
-import { appBase } from '../../lib/config';
+import { appBase, movedTo } from '../../lib/config';
 import { Panel, Button, Banner, toast } from '../../ui';
 
 // the browser's offer is caught at the app's start (src/app/pwa.ts): this screen may open much later
@@ -32,10 +32,20 @@ export function InstallPanel() {
     installEvent.value = null;   // an offer is used only once
     if (r?.outcome === 'accepted') installed.value = true;
   };
-  const url = appBase();
+  const moved = movedTo();
+  const url = moved || appBase();
   const copy = async () => {
     try { await navigator.clipboard.writeText(url); toast(t('guide.install.copied'), { kind: 'ok' }); } catch { /* the address stays shown */ }
   };
+  // on the old address, the app is installed from its new one (installing this one would keep the old address)
+  if (moved) return (
+    <Panel title={t('guide.install.title')} sub={t('guide.install.movedLead')} data-testid="guide-install">
+      <div class="stack" style={{ gap: 'var(--sp-3)' }}>
+        <div class="guide-url"><code>{url}</code><Button icon={<Copy size={18} />} onClick={copy}>{t('guide.install.copy')}</Button></div>
+        <div><Button variant="primary" href={moved} target="_blank" icon={<ExternalLink size={18} />} data-testid="guide-install-open">{t('shell.moved.open')}</Button></div>
+      </div>
+    </Panel>
+  );
   return (
     <Panel title={t('guide.install.title')} sub={done ? undefined : t('guide.install.lead')} data-testid="guide-install">
       {done ? <Banner kind="ok">{t('guide.install.installed')}</Banner> : (

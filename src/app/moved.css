@@ -1,0 +1,5 @@
+/* the note on the app's old address: the address in full, the way there under the text */
+.moved .banner .grow { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); min-width: 0; }
+.moved .banner .grow > b { overflow-wrap: anywhere; margin-bottom: 0; }
+.moved .banner-action { align-self: flex-start; }
+.moved .banner-action .iconbtn { margin: -8px -10px 0 0; }

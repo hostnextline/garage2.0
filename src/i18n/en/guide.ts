@@ -131,6 +131,7 @@ export const guide: typeof fr = {
     android1: 'Tap ⋮ at the top right.',
     android2: 'Choose “Install app” (or “Add to Home screen”).',
     android3: 'Confirm.',
+    movedLead: 'The app has a new address. Open it, sign in, then install it from there: its guide shows you how.',
     computer: 'On the phone, open this address:',
     copy: 'Copy the address',
     copied: 'Address copied'

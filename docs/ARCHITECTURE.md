@@ -133,6 +133,7 @@ exclamation marks except customer thanks. Dates and money via `lib/dates` (`long
 | `features/map/roads` | map | `routeThrough(points)` (OSRM, by the streets), `knownLeg(a, b)` |
 | `app/UpdatePanel` | frame | `()` — the version on this device, « Vérifier les mises à jour » |
 | `app/backdrop` | frame | `myPhoto`, `setMyPhoto(dataUrl)`, `shrinkPhoto(file)`, `fitSize(w, h)`, `HIS_NIGHT`, `HIS_DAY` — what is behind the glass (the H.I.S pictures, or my photo on this device) |
+| `app/moved` | frame | `MovedBanner` — on the old address (GitHub Pages) only: the app's new address, a button to open it (sign-in screen and above every screen) |
 | `app/more` | frame | pure: `filtersFor`, `tilesFor`, `dayCounts`, `dueCents`, `unpaidCount`, `TILE_HUE` — what « Plus » shows (tested in more.test.ts) |
 | `features/customers/AddressField` + `geocode(q)` | customers | `{ value: PlaceValue, onValue, label? }` |
 | `features/booking/BlockPicker` | booking | `{ lat, lng, duration, excludeJob?, value, onPick({ day, block, truck_id? }) }` |
@@ -185,6 +186,15 @@ need more demo rows or a pretend operation, add `src/dev/demo-extra/<section>.ts
 other dev files. Screenshots: `node tests/tools/shot.cjs "<url>" <out.png> phone|desktop light|dark [full]` (prints
 page errors). Save them under the scratchpad folder you are given. Look at them: a screen is done when it looks right
 on a phone and a computer, light and dark, in French.
+
+## Where the app lives
+
+**https://mecanique-mobile-his.vercel.app/** — Vercel (team NextLine, project « mecanique-mobile-his »). GitHub builds
+and tests every change of `main`, then pushes the built app to the branch `vercel` (with `ops/vercel/vercel.json`:
+headers, nothing built on Vercel); Vercel publishes that branch. The same build also goes to `gh-pages`, the old address
+https://hostnextline.github.io/garage2.0/, kept for links already sent: it shows `MovedBanner` (`movedTo()` in
+`lib/config.ts`). Links made by the server always point to `HOME_URL` (`DEFAULT_BASES` in
+`supabase/functions/_shared/links.ts`; a test checks both are the same).
 
 ## Updates of the app
 

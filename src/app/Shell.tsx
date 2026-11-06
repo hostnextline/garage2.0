@@ -17,6 +17,7 @@ import { me, preview, viewAs, stopPreview } from '../data/auth';
 import { garageName } from '../data/select';
 import { startPositionSharing } from '../features/today/position';
 import { Button, IconButton, Sheet, Banner, Avatar, Rows, RowItem, Empty, Skeleton } from '../ui';
+import { MovedBanner } from './moved';
 
 /* ---------- the screen for the current address ---------- */
 const loaded = new Map<string, ComponentType<ScreenProps>>();
@@ -139,6 +140,7 @@ function ShellBanners() {
   const n = net.value;
   return (
     <div class="shell-banners">
+      <MovedBanner />
       {preview.value && (
         <Banner kind="warn" title={t('shell.preview.banner', { name: viewAs.value?.short_name || viewAs.value?.full_name || '' })}
           action={<Button size="sm" variant="primary" icon={<Eye size={16} />} onClick={() => { stopPreview(); navigate('/team'); }}>{t('shell.preview.stop')}</Button>} data-testid="preview-banner" />

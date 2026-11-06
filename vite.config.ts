@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'node:path';
 
 /* Mécanique Mobile H.I.S — build.
-   - base './' : the site works at hostnextline.github.io/garage2.0/ and, later, at the root of its own domain.
+   - base './' : the same files work at the root of mecanique-mobile-his.vercel.app and at hostnextline.github.io/garage2.0/.
    - two pages: the team app (index.html) and the public client page (client.html: estimate, invoice, payment, tracking).
    - the service worker precaches the app shell (fast start with no signal) and never caches data or API calls. */
 /* when this version was made (the commit's time on GitHub), and the version file the running app reads to know whether a

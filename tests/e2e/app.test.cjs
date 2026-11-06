@@ -544,3 +544,69 @@ step('Behind the glass: the road at night through almost clear glass; my own pho
   noErrors(page);
   await page.context().close();
 });
+
+step('The old address (GitHub Pages) tells the team where the app lives now; links made from there go to the app\'s home', async () => {
+  const { chromium, devices } = require('playwright');
+  // a browser that finds « hostnextline.github.io » on this computer: the same app, opened under its old address
+  const b = await chromium.launch({ args: ['--host-resolver-rules=MAP hostnextline.github.io 127.0.0.1'] });
+  try {
+    const ctx = await b.newContext({ ...devices['iPhone 13'], locale: 'fr-CA', timezoneId: 'America/Toronto' });
+    const page = watch(await ctx.newPage());
+    page.errors = [];
+    page.on('pageerror', (e) => page.errors.push(e.message));
+    const OLD = 'http://hostnextline.github.io:4173/';
+    const HOME = 'https://mecanique-mobile-his.vercel.app/';
+    await page.goto(OLD);
+    await page.getByTestId('login').waitFor();
+    const note = page.getByTestId('moved-banner');
+    await note.waitFor();
+    assert.match(await note.innerText(), /nouvelle adresse : mecanique-mobile-his\.vercel\.app/);
+    const open = page.getByTestId('moved-open');
+    assert.equal(await open.getAttribute('href'), HOME, 'the button opens the new address');
+    assert.equal(await open.getAttribute('target'), '_blank');
+    const box = await note.boundingBox();
+    assert.ok(box && box.width <= 390 && box.height < 260, `the note fits a phone (${JSON.stringify(box)})`);
+    await h.shot(page, 'e2e-12-old-address-sign-in');
+    // signed in: the note above every screen
+    await page.getByTestId('login-email').fill(who.owner.email);
+    await page.locator('input[type=password]').fill(PW);
+    await page.getByTestId('login-submit').click();
+    await page.getByTestId('app').waitFor({ timeout: 15000 });
+    await page.getByTestId('moved-banner').waitFor();
+    await h.shot(page, 'e2e-12-old-address-app');
+    // the install guide gives the new address, not this one
+    await page.goto(OLD + '#/guide');
+    await page.getByTestId('guide-install').waitFor();
+    assert.equal(await page.locator('[data-testid="guide-install"] .guide-url code').innerText(), HOME);
+    assert.equal(await page.getByTestId('guide-install-open').getAttribute('href'), HOME);
+    assert.equal(await page.getByTestId('guide-install').locator('ol').count(), 0, 'no steps to install the old address');
+    // a link made from here (a team invitation) points to the app's home, never to the old address
+    const jwt = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('his.auth')).access_token; } catch { return null; } });
+    assert.ok(jwt, 'signed in on the old address');
+    const r = await page.evaluate(async ([api, key, token, base]) => {
+      const res = await fetch(api + '/functions/v1/team', { method: 'POST', headers: { 'content-type': 'application/json', apikey: key, authorization: 'Bearer ' + token },
+        body: JSON.stringify({ action: 'invite', email: 'demenage-' + Date.now() + '@test.local', full_name: 'Test Déménagement', roles: ['mechanic'], lang: 'fr', base, send: 'none' }) });
+      return res.json();
+    }, [h.API, h.K.anon, jwt, OLD]);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.ok(r.link.startsWith(h.APP + '#invite='), `the link goes to the app's home: ${r.link}`);
+    // hidden until the app is opened again
+    await page.goto(OLD + '#/today');
+    await page.getByTestId('moved-hide').click();
+    await page.getByTestId('moved-banner').waitFor({ state: 'detached' });
+    await page.reload();
+    await page.getByTestId('app').waitFor();
+    await page.waitForTimeout(500);
+    assert.equal(await page.getByTestId('moved-banner').count(), 0, 'hidden for the rest of this visit');
+    assert.deepEqual(page.errors, [], 'no page errors');
+    // on the app's own address: no note
+    const { page: home } = await h.openW({ kind: 'phone' });
+    await home.goto(h.APP);
+    await home.getByTestId('login').waitFor();
+    await home.waitForTimeout(300);
+    assert.equal(await home.getByTestId('moved-banner').count(), 0);
+    await home.context().close();
+  } finally {
+    await b.close();
+  }
+});

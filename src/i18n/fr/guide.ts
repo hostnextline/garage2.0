@@ -132,6 +132,7 @@ export const guide = {
     android1: 'Touche ⋮ en haut à droite.',
     android2: 'Choisis «\u00a0Installer l’app\u00a0» (ou «\u00a0Ajouter à l’écran d’accueil\u00a0»).',
     android3: 'Confirme.',
+    movedLead: 'L’app a une nouvelle adresse. Ouvre-la, connecte-toi, puis installe-la de là : son guide te montre comment.',
     computer: 'Sur le téléphone, ouvre cette adresse\u00a0:',
     copy: 'Copier l’adresse',
     copied: 'Adresse copiée'
