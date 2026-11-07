@@ -1,7 +1,7 @@
 import type { shell as fr } from '../fr/shell';
 export const shell: typeof fr = {
   nav: {
-    today: 'Today', agenda: 'Schedule', customers: 'Customers', invoices: 'Invoices', quotes: 'Estimates', map: 'Map',
+    today: 'Today', agenda: 'Schedule', customers: 'Customers', invoices: 'Invoices', quotes: 'Estimates', map: 'Map', overview: 'Overview',
     hours: 'Hours', treasury: 'Treasury', inventory: 'Inventory', dashboard: 'Numbers', team: 'Team', settings: 'Settings',
     guide: 'Where to start', account: 'My account', more: 'More'
   },

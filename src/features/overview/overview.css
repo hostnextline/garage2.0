@@ -1,0 +1,10 @@
+/* Vue d'ensemble: the list and the map side by side on a computer, the map on top on a phone */
+.overview-layout { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(0, 1.25fr); gap: var(--sp-4); align-items: start; }
+.overview-side { position: sticky; top: var(--sp-4); }
+.overview-map { margin: 0; border-radius: var(--r-lg); overflow: hidden; }
+.overview-map figcaption { display: flex; justify-content: flex-end; padding: var(--sp-2); }
+.overview-n { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--c); color: #fff; font-weight: 600; }
+.overview-time { margin-right: var(--sp-1); }
+.overview-what { display: block; }
+.overview-truck { display: block; color: var(--ink-2); }
+.overview-row.is-on { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-md); }

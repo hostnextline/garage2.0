@@ -1,7 +1,7 @@
 /* Le cadre de l'app : menu, barre du bas, état de la synchro, bandeaux. */
 export const shell = {
   nav: {
-    today: 'Aujourd’hui', agenda: 'Agenda', customers: 'Clients', invoices: 'Factures', quotes: 'Estimations', map: 'Carte',
+    today: 'Aujourd’hui', agenda: 'Agenda', customers: 'Clients', invoices: 'Factures', quotes: 'Estimations', map: 'Carte', overview: 'Vue d’ensemble',
     hours: 'Horaires', treasury: 'Trésorerie', inventory: 'Inventaire', dashboard: 'Chiffres', team: 'Équipe', settings: 'Réglages',
     guide: 'Par où commencer', account: 'Mon compte', more: 'Plus'
   },

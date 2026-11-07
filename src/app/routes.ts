@@ -13,7 +13,7 @@ export interface RouteDef {
   /** the menu entry it belongs to (highlighted in the menu) */
   nav?: NavKey;
 }
-export type NavKey = 'today' | 'agenda' | 'customers' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'account' | 'more';
+export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'account' | 'more';
 
 export const isField = () => hasRole('owner') || hasRole('office') || hasRole('mechanic');
 export const may = {
@@ -24,6 +24,8 @@ export const may = {
   invoices: () => can('invoices'),
   quotes: () => isField() || can('invoices'),
   map: () => can('map'),
+  // today's appointments and the map on one screen (who sees the map and the day's appointments)
+  overview: () => can('map') && (can('agenda') || isOwner()),
   // a mechanic opens Horaires for the truck he drives (the server lets him change its hours and its start)
   hours: () => can('hours') || myTrucks().length > 0,
   treasury: () => can('treasury'),
@@ -48,6 +50,7 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/invoice/:id', load: () => import('../features/invoices/InvoiceScreen'), nav: 'invoices' },
   { pattern: '/quotes', load: () => import('../features/quotes/QuotesScreen'), allow: may.quotes, nav: 'quotes' },
   { pattern: '/quote/:id', load: () => import('../features/quotes/QuoteScreen'), allow: may.quotes, nav: 'quotes' },
+  { pattern: '/overview', load: () => import('../features/overview/OverviewScreen'), allow: may.overview, nav: 'overview' },
   { pattern: '/map', load: () => import('../features/map/MapScreen'), allow: may.map, nav: 'map' },
   { pattern: '/team', load: () => import('../features/team/TeamScreen'), allow: may.team, nav: 'team' },
   { pattern: '/settings/:section?', load: () => import('../features/settings/SettingsScreen'), allow: may.settings, nav: 'settings' },

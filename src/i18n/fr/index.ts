@@ -15,6 +15,7 @@ import { invoices } from './invoices';
 import { quotes } from './quotes';
 import { team } from './team';
 import { map } from './map';
+import { overview } from './overview';
 import { settings } from './settings';
 import { account } from './account';
 import { treasury } from './treasury';
@@ -23,4 +24,4 @@ import { dashboard } from './dashboard';
 import { client } from './client';
 import { guide } from './guide';
 
-export const fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, settings, account, treasury, inventory, dashboard, client, guide };
+export const fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, settings, account, treasury, inventory, dashboard, client, guide };
