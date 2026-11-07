@@ -368,7 +368,8 @@ test('« Je suis arrivé »: the customer gets the invoice to pay during the wor
 test('the conversation with a customer: the texts both ways from GoHighLevel, an answer sent from the garage’s number; only for who sees the customer', async () => {
   await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678' }, ownerJwt);
   const cust = randomUUID(); made.customers.push(cust);
-  await q(`insert into public.customers (id, first_name, last_name, phone, lang) values ($1, 'Rima', 'Haddad', '514 555-7788', 'fr')`, [cust]);
+  const four = String(1000 + Math.floor(Math.random() * 8999));   // a number no other test uses
+  await q(`insert into public.customers (id, first_name, last_name, phone, lang) values ($1, 'Rima', 'Haddad', $2, 'fr')`, [cust, `438 555-${four}`]);
   // nothing yet: GoHighLevel does not know this number
   let c = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
   assert.equal(c.status, 'ok', JSON.stringify(c));
@@ -376,7 +377,7 @@ test('the conversation with a customer: the texts both ways from GoHighLevel, an
   // the garage writes, the customer answers
   const s = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour Rima, on passe demain matin.' }, ownerJwt);
   assert.equal(s.status, 'sent', JSON.stringify(s));
-  await fetch(`${MOCK}/ghl/_reply`, { method: 'POST', headers: { authorization: 'Bearer pit-x', 'content-type': 'application/json' }, body: JSON.stringify({ contactId: 'ct_15145557788', body: 'Parfait, merci!' }) });
+  await fetch(`${MOCK}/ghl/_reply`, { method: 'POST', headers: { authorization: 'Bearer pit-x', 'content-type': 'application/json' }, body: JSON.stringify({ contactId: `ct_1438555${four}`, body: 'Parfait, merci!' }) });
   c = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
   assert.deepEqual(c.messages.map((m) => [m.dir, m.body]), [['out', 'Bonjour Rima, on passe demain matin.'], ['in', 'Parfait, merci!']]);
   // kept in the app's own log
