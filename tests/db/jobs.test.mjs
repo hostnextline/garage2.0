@@ -344,10 +344,12 @@ test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the re
   const i2 = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j2, p_refresh: true })).rows.invoices[0].id;
   const n2 = (await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: i2 })).number;
 
-  // only the owner
+  // the owner, or the mechanic of the job's truck (Part 22); not the treasurer
   await h.as(g.mech);
-  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1]), p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
+  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), true, 'the mechanic of the truck may');
+  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([])]), false);
   await h.as(treasurer);
+  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), false);
   assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1]), p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
 
   await h.as(g.owner);

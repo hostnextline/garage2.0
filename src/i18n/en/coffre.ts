@@ -34,7 +34,7 @@ export const coffre: typeof fr = {
     amountHint: 'What they gave ($0 if nothing). Value of the checked work: {value}.',
     day: 'Received on',
     note: 'Note',
-    what: 'Only the owner puts jobs in the Coffre. The accountant sees them in the Coffre report.',
+    what: 'These jobs have no invoice and no taxes. The accountant sees them apart, in the Coffre report.',
     save: 'Put in the Coffre',
     pickOne: 'Check at least one job.',
     amountNeeded: 'Type the amount received ($0 if nothing).',

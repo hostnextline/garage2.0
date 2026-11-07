@@ -34,7 +34,7 @@ export const coffre = {
     amountHint: 'Ce qu’ils ont donné (0 $ si rien). Valeur des travaux cochés : {value}.',
     day: 'Reçu le',
     note: 'Note',
-    what: 'Seul le propriétaire met des jobs au Coffre. Le comptable les voit dans le rapport Coffre.',
+    what: 'Ces jobs n’ont ni facture ni taxes. Le comptable les voit à part, dans le rapport Coffre.',
     save: 'Mettre au Coffre',
     pickOne: 'Coche au moins une job.',
     amountNeeded: 'Écris le montant reçu (0 $ si rien).',
