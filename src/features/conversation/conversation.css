@@ -1,0 +1,10 @@
+/* the conversation: the customer on the left, the garage on the right */
+.conv-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.conv-list { display: flex; flex-direction: column; gap: var(--sp-2); max-height: 60vh; overflow-y: auto; padding: var(--sp-1); }
+.conv-msg { max-width: 82%; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-lg); background: var(--surface-2, color-mix(in srgb, var(--ink) 8%, transparent)); }
+.conv-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.conv-msg.is-in { align-self: flex-start; border-bottom-left-radius: 4px; }
+.conv-msg.is-out { align-self: flex-end; border-bottom-right-radius: 4px; background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.conv-meta { display: block; margin-top: 2px; font-size: var(--t-sm); color: var(--ink-2); }
+.conv-reply { display: flex; gap: var(--sp-2); align-items: flex-end; width: 100%; }
+.conv-reply > :first-child { flex: 1; }

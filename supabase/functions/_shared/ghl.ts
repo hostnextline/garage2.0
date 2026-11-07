@@ -55,3 +55,40 @@ export async function sendEmail(p: Person, subject: string, html: string, text: 
     return { status: 'sent', id: sent?.messageId || sent?.id };
   } catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }
 }
+
+/* ---------- reading a customer's conversation (the texts both ways) ---------- */
+async function get(path: string, version: string, token: string) {
+  const r = await withTimeout(fetch(`${base()}${path}`, {
+    headers: { Authorization: `Bearer ${token}`, Version: version, Accept: 'application/json' }
+  }), 15000, 'service de textos');
+  const text = await r.text();
+  let data: any = null; try { data = JSON.parse(text); } catch { /* not json */ }
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GoHighLevel ${r.status}: ${(data && (data.message || data.error)) || text.slice(0, 160)}`);
+  return data;
+}
+export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null }
+/** the last messages with this person (oldest first): none when GoHighLevel does not know the number yet */
+export async function readConversation(p: Person, limit = 60): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }> {
+  const cfg = await ghlReady();
+  if (!cfg) return { status: 'off' };
+  const phone = e164(p.phone);
+  if (!phone) return { status: 'no_phone' };
+  try {
+    const q = new URLSearchParams({ locationId: cfg.location, number: phone });
+    const found = await get(`/contacts/search/duplicate?${q}`, '2021-07-28', cfg.token);
+    const cid = found?.contact?.id;
+    if (!cid) return { status: 'ok', messages: [] };
+    const cv = await get(`/conversations/search?${new URLSearchParams({ locationId: cfg.location, contactId: cid })}`, '2021-04-15', cfg.token);
+    const conv = (cv?.conversations || [])[0];
+    if (!conv?.id) return { status: 'ok', messages: [] };
+    const m = await get(`/conversations/${encodeURIComponent(conv.id)}/messages?limit=${Math.min(100, Math.max(1, limit))}`, '2021-04-15', cfg.token);
+    const list: any[] = Array.isArray(m?.messages) ? m.messages : Array.isArray(m?.messages?.messages) ? m.messages.messages : [];
+    const messages = list
+      .map((x) => ({ id: String(x.id ?? ''), at: x.dateAdded ? String(x.dateAdded) : null, dir: (x.direction === 'inbound' ? 'in' : 'out') as 'in' | 'out',
+        body: String(x.body ?? x.message ?? '').slice(0, 4000), kind: String(x.messageType ?? x.type ?? 'SMS'), status: x.status ? String(x.status) : null }))
+      .filter((x) => x.body.trim())
+      .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    return { status: 'ok', messages };
+  } catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }
+}

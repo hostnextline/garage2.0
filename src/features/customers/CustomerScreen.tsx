@@ -4,7 +4,8 @@
    and the estimates. Changes are made in a sheet; the duplicate check warns when the phone is already on a file. */
 import type { ComponentChildren } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
-import { Phone, MessageSquareText, Navigation, CalendarPlus, Pencil, Plus, Car, Trash2, UserPlus, MapPin, Gauge, Users } from 'lucide-preact';
+import { Phone, MessageSquareText, MessagesSquare, Navigation, CalendarPlus, Pencil, Plus, Car, Trash2, UserPlus, MapPin, Gauge, Users } from 'lucide-preact';
+import { ConversationSheet } from '../conversation/ConversationSheet';
 import type { ScreenProps } from '../../app/routes';
 import { may, isField } from '../../app/routes';
 import { navigate } from '../../app/router';
@@ -90,6 +91,7 @@ function NewCustomer(p: { query: URLSearchParams }) {
 /* ---------- #/customer/:id ---------- */
 function CustomerFile(p: { id: string }) {
   const [editing, setEditing] = useState(false);
+  const [chat, setChat] = useState(false);
   const gone = useRef(false);
   const c = customer(p.id);
   if (!c) {
@@ -118,7 +120,9 @@ function CustomerFile(p: { id: string }) {
         <Button icon={<MessageSquareText size={18} />} href={tel && c.sms_ok !== false ? `sms:${tel}` : undefined} disabled={!tel || c.sms_ok === false}
           title={!tel ? t('customers.file.noPhone') : c.sms_ok === false ? t('customers.file.noSms') : undefined} data-testid="customer-text">{t('common.text')}</Button>
         <Button icon={<Navigation size={18} />} href={dir || undefined} target="_blank" disabled={!dir} title={dir ? undefined : t('customers.file.noAddress')} data-testid="customer-directions">{t('common.directions')}</Button>
+        <Button icon={<MessagesSquare size={18} />} onClick={() => setChat(true)} data-testid="customer-conversation">{t('conversation.open')}</Button>
       </div>
+      <ConversationSheet customerId={c.id} open={chat} onClose={() => setChat(false)} />
       {may.book() && (
         <BigStep icon={<CalendarPlus />} label={t('customers.file.book')} href={`#/book?customer=${c.id}`} data-tour="customer-book" data-testid="customer-book"
           sub={upcoming[0] ? t('customers.file.bookSubNext', { name: c.first_name || name }) : t('customers.file.bookSub', { name: c.first_name || name })} />

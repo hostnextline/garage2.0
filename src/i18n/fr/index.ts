@@ -17,6 +17,7 @@ import { team } from './team';
 import { map } from './map';
 import { overview } from './overview';
 import { coffre } from './coffre';
+import { conversation } from './conversation';
 import { settings } from './settings';
 import { account } from './account';
 import { treasury } from './treasury';
@@ -25,4 +26,4 @@ import { dashboard } from './dashboard';
 import { client } from './client';
 import { guide } from './guide';
 
-export const fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, settings, account, treasury, inventory, dashboard, client, guide };
+export const fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide };

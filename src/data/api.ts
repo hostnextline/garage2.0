@@ -125,6 +125,16 @@ export async function setTruckStart(truckId: string, start: TruckStart | null) {
   return callRpc('set_truck_start', { p_truck: truckId, p_start: start }, { label: t('log.truckStart') });
 }
 
+/* ---------- the conversation with a customer (GoHighLevel, both ways) ---------- */
+export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null }
+export async function conversation(customerId: string) {
+  return callFn<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }>('conversation', { action: 'get', customer_id: customerId }, 20000);
+}
+export async function sendChat(customerId: string, message: string) {
+  guard();
+  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', customer_id: customerId, message }, 20000);
+}
+
 /* ---------- « Coffre » (family and friends, Part 20): no invoice, no taxes, its own register (owner) ---------- */
 export async function coffreAdd(jobIds: string[], amountCents: number, note: string | null, day: string | null = null) {
   guard();

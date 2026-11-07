@@ -17,7 +17,8 @@ function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'gar
   const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
   return `${head}.${body}.${sig}`;
 }
-const state = { ghl: 'ok', sessions: new Map(), hook: null, n: 0 };
+const state = { ghl: 'ok', sessions: new Map(), hook: null, n: 0, chats: new Map() };
+const chat = (cid) => { if (!state.chats.has(cid)) state.chats.set(cid, []); return state.chats.get(cid); };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
 const formParse = (s) => { const o = {}; for (const p of s.split('&').filter(Boolean)) { const [k, v = ''] = p.split('='); o[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' ')); } return o; };
@@ -47,10 +48,28 @@ http.createServer(async (req, res) => {
     log.push({ svc: 'ghl', path: p.slice(4), version: req.headers.version, auth: req.headers.authorization, body });
     if (!/^Bearer pit-/.test(req.headers.authorization || '')) return send(res, 401, { message: 'Invalid token' });
     if (p === '/ghl/contacts/upsert') return send(res, 200, { contact: { id: 'ct_' + (body.phone || body.email || 'x').replace(/\W/g, '') } });
-    if (p === '/ghl/conversations/messages') {
+    if (p === '/ghl/conversations/messages' && req.method === 'POST') {
       if (state.ghl === 'fail') return send(res, 422, { message: 'Contact is in DND' });
-      return send(res, 200, { messageId: 'msg_' + (++state.n), conversationId: 'cv_1' });
+      const id = 'msg_' + (++state.n);
+      if (body.type === 'SMS') chat(body.contactId).push({ id, direction: 'outbound', body: body.message, messageType: 'TYPE_SMS', status: 'delivered', dateAdded: new Date(Date.now() + state.n).toISOString() });
+      return send(res, 200, { messageId: id, conversationId: 'cv_' + body.contactId });
     }
+    // reading a conversation: the contact by its number, its conversation, the messages (an answer of the customer included)
+    if (p === '/ghl/contacts/search/duplicate') {
+      const n = (u.searchParams.get('number') || '').replace(/\W/g, '');
+      return send(res, 200, { contact: state.chats.has('ct_' + n) ? { id: 'ct_' + n } : null });
+    }
+    if (p === '/ghl/conversations/search') {
+      const cid = u.searchParams.get('contactId');
+      return send(res, 200, { conversations: state.chats.has(cid) ? [{ id: 'cv_' + cid, contactId: cid }] : [], total: state.chats.has(cid) ? 1 : 0 });
+    }
+    const cm = /^\/ghl\/conversations\/cv_([^/]+)\/messages$/.exec(p);
+    if (cm && req.method === 'GET') {
+      const list = (state.chats.get(cm[1]) || []).slice().reverse();
+      return send(res, 200, { messages: { lastMessageId: list[0]?.id || null, nextPage: false, messages: list } });
+    }
+    // the customer answers (the tests): POST /ghl/_reply { contactId, body }
+    if (p === '/ghl/_reply') { chat(body.contactId).push({ id: 'msg_' + (++state.n), direction: 'inbound', body: body.body, messageType: 'TYPE_SMS', dateAdded: new Date(Date.now() + state.n).toISOString() }); return send(res, 200, { ok: true }); }
     return send(res, 404, { message: 'no route' });
   }
 

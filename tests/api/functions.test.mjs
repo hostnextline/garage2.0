@@ -364,3 +364,34 @@ test('« Je suis arrivé »: the customer gets the invoice to pay during the wor
   const v2 = await fn('client', { action: 'view', token: tokenOf(n2.link) });
   assert.equal(v2.pay.available, false, 'no card payment without Stripe');
 });
+
+test('the conversation with a customer: the texts both ways from GoHighLevel, an answer sent from the garage’s number; only for who sees the customer', async () => {
+  await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678' }, ownerJwt);
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lang) values ($1, 'Rima', 'Haddad', '514 555-7788', 'fr')`, [cust]);
+  // nothing yet: GoHighLevel does not know this number
+  let c = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
+  assert.equal(c.status, 'ok', JSON.stringify(c));
+  assert.deepEqual(c.messages, []);
+  // the garage writes, the customer answers
+  const s = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour Rima, on passe demain matin.' }, ownerJwt);
+  assert.equal(s.status, 'sent', JSON.stringify(s));
+  await fetch(`${MOCK}/ghl/_reply`, { method: 'POST', headers: { authorization: 'Bearer pit-x', 'content-type': 'application/json' }, body: JSON.stringify({ contactId: 'ct_15145557788', body: 'Parfait, merci!' }) });
+  c = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
+  assert.deepEqual(c.messages.map((m) => [m.dir, m.body]), [['out', 'Bonjour Rima, on passe demain matin.'], ['in', 'Parfait, merci!']]);
+  // kept in the app's own log
+  assert.equal((await q(`select count(*)::int n from public.messages where customer_id = $1 and kind = 'chat' and status = 'sent'`, [cust]))[0].n, 1);
+  // empty or too long: refused
+  assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: '  ' }, ownerJwt)).code, 'empty');
+  // a mechanic who has no job with this customer does not see the conversation
+  const email = `meca-${randomUUID().slice(0, 6)}@test.local`;
+  const mech = await adminUser(email, 'motdepasse-2');
+  await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Adam', 'Adam', '{mechanic}', $2)`, [mech, email]);
+  const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
+  assert.equal((await fn('conversation', { action: 'get', customer_id: cust }, mechJwt)).code, 'not_found');
+  assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'allo' }, mechJwt)).code, 'not_found');
+  // no texts for a customer who said no
+  await q(`update public.customers set sms_ok = false where id = $1`, [cust]);
+  assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'allo' }, ownerJwt)).code, 'sms_off');
+  await q(`delete from public.messages where customer_id = $1`, [cust]);
+});

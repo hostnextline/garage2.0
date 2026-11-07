@@ -1,7 +1,7 @@
 /* The pieces of the job sheet around the red button: who and where (with call, text, directions), the problem, the
    authorization, the state once closed, the appointment (length, move), the texts and the live trip, the « … » sheet. */
 import { useEffect, useState } from 'preact/hooks';
-import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault } from 'lucide-preact';
+import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault, MessagesSquare } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
 import { t, lang } from '../../lib/i18n';
@@ -12,6 +12,7 @@ import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, 
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
 import { isOwner } from '../../data/auth';
+import { ConversationSheet } from '../conversation/ConversationSheet';
 import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
 import type { NextStep } from './nextStep';
@@ -34,6 +35,7 @@ function mapsHref(j: Job): string | null {
 
 /* ---------- who, what car, where; call, text, directions; the problem ---------- */
 export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => void }) {
+  const [chat, setChat] = useState(false);
   const { job: j } = p;
   const c = jobCustomer(j);
   const v = vehicle(j.vehicle_id);
@@ -69,7 +71,9 @@ export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => v
         <Button class="jobs-contact" href={tel ? `tel:${tel}` : undefined} disabled={!tel} icon={<Phone />} title={tel ? formatPhone(c?.phone) : t('jobs.head.noPhone')} data-testid="job-call">{t('common.call')}</Button>
         <Button class="jobs-contact" href={tel ? `sms:${tel}` : undefined} disabled={!tel} icon={<MessageSquareText />} title={tel ? formatPhone(c?.phone) : t('jobs.head.noPhone')}>{t('common.text')}</Button>
         <Button class="jobs-contact" href={maps || undefined} target="_blank" disabled={!maps} icon={<Navigation />} data-testid="job-maps">{t('common.directions')}</Button>
+        <Button class="jobs-contact" onClick={() => setChat(true)} disabled={!c} icon={<MessagesSquare />} data-testid="job-conversation">{t('conversation.open')}</Button>
       </div>
+      <ConversationSheet customerId={c?.id} open={chat} onClose={() => setChat(false)} />
       {(c?.notes || c?.card_on_file || (c?.no_shows || 0) > 0) && (
         <div class="jobs-note">
           {c?.notes && <p><span class="jobs-note-label">{t('jobs.head.customerNote')}</span>{c.notes}</p>}
