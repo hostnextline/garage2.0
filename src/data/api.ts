@@ -127,6 +127,12 @@ export async function setTruckStart(truckId: string, start: TruckStart | null) {
   return callRpc('set_truck_start', { p_truck: truckId, p_start: start }, { label: t('log.truckStart') });
 }
 
+/** the order of a truck's stops in a block, by hand (an empty list: back to the planner's order) */
+export async function setStopOrder(truckId: string, day: string, block: string, jobIds: string[]) {
+  guard();
+  return callRpc('set_stop_order', { p_truck: truckId, p_day: day, p_block: block, p_jobs: jobIds }, { label: t('log.stopOrder') });
+}
+
 /* ---------- the conversation with a customer (GoHighLevel, both ways) ---------- */
 export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null }
 export async function conversation(customerId: string) {

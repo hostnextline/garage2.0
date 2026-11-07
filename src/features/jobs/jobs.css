@@ -162,3 +162,13 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-cf-confirm { display: inline-block; margin-top: var(--sp-1); font-size: var(--t-sm); color: var(--st-en-route, var(--ink-2)); }
 .jobs-cf-work ul { margin: 0; padding-left: 1.1em; display: grid; gap: 2px; font-size: var(--t-md); }
 .jobs-carfirst.is-compact .jobs-cf-name { font-size: var(--t-lg); }
+
+/* « Ordre des arrêts » */
+.jobs-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.jobs-order-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--sunken); }
+.jobs-order-row.is-this { box-shadow: inset 0 0 0 2px var(--accent); }
+.jobs-order-row.is-live { opacity: 0.7; }
+.jobs-order-n { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--solid); font-weight: 650; font-size: var(--t-sm); }
+.jobs-order-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.jobs-order-name b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.jobs-order-btns { flex: none; display: flex; gap: 2px; }

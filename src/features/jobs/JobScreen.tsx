@@ -26,11 +26,12 @@ import { startInvoice, letGo } from './flow';
 import { StepButton } from './StepButton';
 import { WaiverSheet, SignatureView } from './WaiverSheet';
 import { WorkPanel, ItemSheet, AddWorkSheet, ProposeSheet, AnswerSheet } from './WorkPanel';
+import { StopOrderSheet } from './StopOrderSheet';
 import { HeadPanel, NotesSheet, WaiverPanel, StepState, MomentPanel, MoveSheet, TextsPanel, MenuSheet, afterSheet } from './JobParts';
 import { TextOutcomeHost } from './TextOutcome';
 import './jobs.css';
 
-type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre';
+type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre' | 'order';
 
 export default function JobScreen({ params, query }: ScreenProps) {
   const id = params.id;
@@ -145,7 +146,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
         </div>
         <div class="jobs-col">
           <div id="job-invoice" class="jobs-invoice" data-tour="job-invoice"><InvoicePanel jobId={j.id} /></div>
-          <MomentPanel job={j} rights={rights} onMove={() => setSheet('move')} />
+          <MomentPanel job={j} rights={rights} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} />
           <TextsPanel job={j} rights={rights} />
         </div>
       </div>
@@ -156,7 +157,8 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       <ProposeSheet job={j} open={sheet === 'propose'} onClose={close} onProposed={(id) => afterSheet(() => setAnswerFor(id))} />
       <NotesSheet job={j} open={sheet === 'notes'} onClose={close} />
       <MoveSheet job={j} open={sheet === 'move'} onClose={close} />
-      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onCoffre={() => setSheet('coffre')} />
+      <StopOrderSheet job={j} open={sheet === 'order'} onClose={close} />
+      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} onCoffre={() => setSheet('coffre')} />
       {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} onCoffre={isOwner() ? () => { close(); afterSheet(() => setSheet('coffre')); } : undefined} />}
       <CoffreSheet job={j} open={sheet === 'coffre'} onClose={close} />
       {openItem && <ItemSheet job={j} item={openItem} rights={rights} onClose={() => setItemFor(null)}

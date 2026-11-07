@@ -11,6 +11,7 @@ export const log = {
   payment: 'Paiement',
   hours: 'Horaire d’un camion',
   truckStart: 'Départ d’un camion',
+  stopOrder: 'Ordre des arrêts',
   coffre: 'Coffre (famille et amis)',
   settings: 'Réglages',
   expense: 'Dépense',

@@ -1,7 +1,7 @@
 /* The pieces of the job sheet around the red button: who and where (with call, text, directions), the problem, the
    authorization, the state once closed, the appointment (length, move), the texts and the live trip, the « … » sheet. */
 import { useEffect, useState } from 'preact/hooks';
-import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault, MessagesSquare } from 'lucide-preact';
+import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault, MessagesSquare, ListOrdered, ChevronsUp } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
 import { t, lang } from '../../lib/i18n';
@@ -18,6 +18,7 @@ import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
 import type { NextStep } from './nextStep';
 import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, type JobRights } from './select';
+import { stopFirst } from './StopOrderSheet';
 import { sendText, sendTracking, trackingSent, doBack, doCancel, doNoShow, doReopen } from './flow';
 import { signedWhen } from './WaiverSheet';
 import { copyText } from './TextOutcome';
@@ -256,7 +257,7 @@ function DurationEditor(p: { job: Job }) {
     </Field>
   );
 }
-export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void }) {
+export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void; onOrder: () => void }) {
   const { job: j, rights } = p;
   const l = lang.value;
   const booked = j.status === 'booked';
@@ -276,7 +277,12 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
           [t('jobs.moment.finished'), clockOf(j.finished_at) || null]
         ]} />
         {booked && rights.duration && <DurationEditor job={j} />}
-        {booked && rights.move && <div><Button icon={<CalendarClock />} onClick={p.onMove} data-testid="job-move">{t('jobs.moment.move')}</Button></div>}
+        {booked && (rights.move || (rights.order && !!j.truck_id)) && (
+          <div class="row-wrap">
+            {rights.move && <Button icon={<CalendarClock />} onClick={p.onMove} data-testid="job-move">{t('jobs.moment.move')}</Button>}
+            {rights.order && !!j.truck_id && <Button icon={<ListOrdered />} onClick={p.onOrder} data-testid="job-order">{t('jobs.order.open')}</Button>}
+          </div>
+        )}
       </div>
     </Panel>
   );
@@ -363,7 +369,7 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
 
 /* ---------- « … » ---------- */
 const invoiceIssued = (jobId: string) => { const v = invoiceOf(jobId); return !!v && v.status !== 'draft'; };
-export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onCoffre?: () => void }) {
+export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onOrder: () => void; onCoffre?: () => void }) {
   const { job: j, rights } = p;
   const s = j.status;
   const link = clientLinkOf(j.id);
@@ -376,6 +382,8 @@ export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
     s === 'on_site' && rights.act && !invoiceIssued(j.id) && <RowItem key="a" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.sendArrived')} sub={t('jobs.menu.sendArrivedSub')} onClick={then(() => sendText('arrived', j, { resend: true, okText: t('jobs.did.arriveInvoice', { name: jobName(j) }) }))} data-testid="menu-send-arrived" />,
     link && <RowItem key="l" start={<span class="quick-icon"><Link2 size={20} /></span>} title={t('jobs.menu.copyLink')} sub={t('jobs.menu.copyLinkSub')}
       onClick={async () => { const ok = await copyText(link); toast(ok ? t('jobs.text.linkCopied') : t('jobs.text.copyFail'), { kind: ok ? 'ok' : 'bad' }); if (ok) p.onClose(); }} data-testid="menu-link" />,
+    s === 'booked' && rights.order && !!j.truck_id && <RowItem key="f" start={<span class="quick-icon"><ChevronsUp size={20} /></span>} title={t('jobs.order.firstMenu')} sub={t('jobs.order.firstMenuSub')} onClick={then(() => { void stopFirst(j); })} data-testid="menu-first" />,
+    s === 'booked' && rights.order && !!j.truck_id && <RowItem key="o" start={<span class="quick-icon"><ListOrdered size={20} /></span>} title={t('jobs.order.open')} sub={t('jobs.order.openSub')} onClick={then(p.onOrder)} data-testid="menu-order" />,
     s === 'booked' && rights.move && <RowItem key="m" start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={t('jobs.menu.move')} sub={t('jobs.menu.moveSub')} onClick={then(p.onMove)} />,
     canBack && backTo && <RowItem key="u" start={<span class="quick-icon"><Undo2 size={20} /></span>} title={t('jobs.menu.back')} sub={t('jobs.menu.backSub', { status: jobStatusWord(backTo as Job['status']) })} onClick={then(() => doBack(j))} data-testid="menu-back" />,
     (s === 'booked' || s === 'en_route' || s === 'on_site') && rights.act && <RowItem key="n" class="jobs-danger" start={<span class="quick-icon"><UserX size={20} /></span>} title={t('jobs.menu.noShow')} sub={t('jobs.menu.noShowSub')} onClick={then(() => doNoShow(j))} data-testid="menu-noshow" />,

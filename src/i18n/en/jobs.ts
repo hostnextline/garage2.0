@@ -235,6 +235,26 @@ export const jobs: typeof fr = {
     same: 'That is already the time.',
     help: 'The truck uses the length to fit the stops in the block. If the job no longer fits, move it.'
   },
+  order: {
+    open: 'Order of the stops',
+    openSub: 'Choose who comes before whom in this truck’s route',
+    title: 'Order of the stops',
+    lead: 'Put the customers in the order you want. Those on the way or on site stay first. Arrival times are worked out again for everyone.',
+    first: 'Put {name} first',
+    up: 'Move {name} up',
+    down: 'Move {name} down',
+    eta: 'around {time}',
+    save: 'Save the order',
+    saved: 'Order saved. Arrival times are up to date.',
+    auto: 'Let the app choose',
+    autoDone: 'The app chooses the order again (the least driving).',
+    timesAfter: 'The new arrival times show once saved.',
+    none: 'No booked appointment in this route.',
+    firstMenu: 'Put first',
+    firstMenuSub: 'This customer comes before the others of this block',
+    firstDone: '{name} comes first. Arrival times are up to date.',
+    live: { en_route: 'On the way', on_site: 'On site' }
+  },
   menu: {
     title: 'More actions',
     resendBooking: 'Send the confirmation text again',

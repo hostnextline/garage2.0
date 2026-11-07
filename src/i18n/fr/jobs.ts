@@ -251,6 +251,26 @@ export const jobs = {
     help: 'La durée sert au camion pour placer les arrêts dans le bloc. Si la job ne rentre plus, déplace-la.'
   },
   /* the « … » sheet */
+  order: {
+    open: 'Ordre des arrêts',
+    openSub: 'Choisir qui passe avant qui dans la route de ce camion',
+    title: 'Ordre des arrêts',
+    lead: 'Mets les clients dans l’ordre voulu. Ceux en route ou sur place restent en premier. Les heures d’arrivée sont recalculées pour tout le monde.',
+    first: 'Mettre {name} en premier',
+    up: 'Monter {name}',
+    down: 'Descendre {name}',
+    eta: 'vers {time}',
+    save: 'Enregistrer l’ordre',
+    saved: 'Ordre enregistré. Les heures d’arrivée sont à jour.',
+    auto: 'Laisser l’app choisir',
+    autoDone: 'L’app choisit de nouveau l’ordre (le moins de route).',
+    timesAfter: 'Les nouvelles heures d’arrivée s’affichent après l’enregistrement.',
+    none: 'Aucun rendez-vous réservé dans cette route.',
+    firstMenu: 'Mettre en premier',
+    firstMenuSub: 'Ce client passe avant les autres de ce bloc',
+    firstDone: '{name} passe en premier. Les heures d’arrivée sont à jour.',
+    live: { en_route: 'En route', on_site: 'Sur place' }
+  },
   menu: {
     title: 'Plus d’actions',
     resendBooking: 'Renvoyer le texto de confirmation',

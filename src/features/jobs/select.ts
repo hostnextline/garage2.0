@@ -14,7 +14,7 @@ export interface JobRights extends StepRights {
   mine: boolean;
   /** the owner or the office */
   office: boolean;
-  move: boolean; duration: boolean; reopen: boolean; verbal: boolean; editNotes: boolean; text: boolean; backFromDone: boolean;
+  move: boolean; order: boolean; duration: boolean; reopen: boolean; verbal: boolean; editNotes: boolean; text: boolean; backFromDone: boolean;
 }
 export function jobRights(j: Job): JobRights {
   const a = me.value;
@@ -30,6 +30,8 @@ export function jobRights(j: Job): JobRights {
     payLater: owner || can('edit_invoices'),
     mine, office,
     move: office || book,
+    // the order of the stops: the owner, the office (« book »), the truck's driver (as the server)
+    order: owner || book || mine,
     duration: office && (book || mine),
     reopen: office,
     verbal: office,

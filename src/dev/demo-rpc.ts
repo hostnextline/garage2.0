@@ -50,6 +50,15 @@ registerRpc('move_job', (a) => {
   const job = put('jobs', { id: j.id, day: a.p_day, block: a.p_block, truck_id: place(String(a.p_day), String(a.p_block), (a.p_truck as string) || null) });
   return { ok: true, changed: true, rows: rows({ jobs: job }) };
 });
+registerRpc('set_stop_order', (a) => {
+  const ids = (a.p_jobs as string[]) || [];
+  const route = table('jobs').filter((j) => j.truck_id === a.p_truck && j.day === a.p_day && j.block === a.p_block && !j.deleted_at && ['booked', 'en_route', 'on_site'].includes(String(j.status)));
+  const live = route.filter((j) => j.status !== 'booked');
+  const booked = route.filter((j) => j.status === 'booked').sort((x, y) => Number(x.stop_order ?? 99) - Number(y.stop_order ?? 99));
+  const order = ids.length ? [...ids.map((id) => booked.find((j) => j.id === id)).filter(Boolean) as DemoRow[], ...booked.filter((j) => !ids.includes(j.id))] : booked;
+  const out = order.map((j, i) => put('jobs', { id: j.id, manual_order: ids.length ? i + 1 : null, stop_order: live.length + i + 1, eta_min: BLOCKS[String(a.p_block)][0] + 20 + (live.length + i) * 70 }));
+  return { ok: true, rows: rows({ jobs: out }) };
+});
 registerRpc('set_job_duration', (a) => ({ ok: true, rows: rows({ jobs: put('jobs', { id: String(a.p_job), duration_min: Number(a.p_duration) }) }) }));
 registerRpc('job_step', (a) => {
   const j = find('jobs', a.p_job);
