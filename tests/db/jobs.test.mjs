@@ -330,6 +330,7 @@ test('a card payment that arrives after the invoice was finished goes on that in
 }));
 
 /* Part 20: « Coffre » (family and friends) */
+const pgArr = (xs) => `{${xs.join(',')}}`;   // a Postgres list (uuid[]), not JSON
 test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the revenue, in their own report (Part 20)', () => tx(async (h) => {
   const g = await garage(h);
   const treasurer = await h.person('Comptable', ['treasurer'], { rights: { treasury: true } });
@@ -345,12 +346,12 @@ test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the re
 
   // only the owner
   await h.as(g.mech);
-  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1], p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1]), p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
   await h.as(treasurer);
-  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1], p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1]), p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
 
   await h.as(g.owner);
-  const r = await h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1, j2], p_amount: 10000, p_note: 'Tante, cadeau', p_day: null });
+  const r = await h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1, j2]), p_amount: 10000, p_note: 'Tante, cadeau', p_day: null });
   assert.equal(r.ok, true);
   // the draft is gone, the finished invoice is cancelled with its number kept
   assert.ok(await h.val(`select deleted_at from public.invoices where id = $1`, [draft.id]));
@@ -364,7 +365,7 @@ test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the re
   assert.equal(await h.val(`select status from public.jobs where id = $1`, [j1]), 'done');
   // twice: refused
   await h.as(g.owner);
-  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1], p_amount: 0, p_note: null, p_day: null })))?.hint, 'already');
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1]), p_amount: 0, p_note: null, p_day: null })))?.hint, 'already');
 
   // nothing in the revenue or the taxes of the treasury
   const from = await h.val(`select (public.local_today() - 40)::text`), to = await h.val(`select (public.local_today() + 40)::text`);
@@ -400,5 +401,5 @@ test('« Coffre »: a job already paid keeps its invoice (Part 20)', () => tx(as
   await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
   await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 2000, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
   await h.as(g.owner);
-  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j], p_amount: 0, p_note: null, p_day: null })))?.hint, 'has_payment');
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j]), p_amount: 0, p_note: null, p_day: null })))?.hint, 'has_payment');
 }));
