@@ -102,7 +102,7 @@ end $do$;
   booked stops of a block in the order wanted (`set_stop_order`, empty list = back to the planner). `plan_block` keeps
   them right after the stops en route / on site; moving a job to another day, block or truck clears its place.
 - « Réserver en ligne » (Part 23, `20261107000500_web_booking.sql`, NOT yet applied on live; server function `book` NOT yet
-  deployed): one public link `client.html#reserver` (Réglages → Réservations → « Réservation en ligne »: on/off, copy). The
+  deployed): one public link `client.html#reserver` (Réglages → Réservations, second panel « Réservation en ligne »: on/off, copy). The
   customer picks services, an address (Photon, must be ≤ `booking.web.max_km` (60) from the start), one of the 6 best blocks
   over 14 days (`suggest_core`, same ranking as `suggest_blocks`; « Voir d'autres dates » = next 14), then name/phone/car.
   `web_book` finds the customer by phone (file not changed) or creates one, books with `source = 'web'`, sends the usual

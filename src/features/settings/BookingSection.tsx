@@ -78,7 +78,6 @@ export function BookingSection() {
   const hasPos = d.home.lat != null && d.home.lng != null;
   return (
     <Section testid="settings-booking" bar={<SaveBar dirty={dirty} onSave={save} onReset={() => { reset(); setErr({}); }} />}>
-      <WebBooking />
       <Panel title={t('settings.booking.start')} help={t('settings.booking.startHelp')} data-testid="booking-start">
         <div class="settings-centrale">
           <div class="stack">
@@ -101,6 +100,7 @@ export function BookingSection() {
           )}
         </div>
       </Panel>
+      <WebBooking />
       <Panel title={t('settings.booking.blocks')} help={t('settings.booking.blocksHelp')}>
         <div class="settings-blocks">
           {d.blocks.map((bl, i) => {
