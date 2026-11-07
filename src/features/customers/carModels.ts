@@ -70,8 +70,10 @@ function remember(make: string, year: number, models: string[]) {
 }
 
 export interface ModelList { models: string[]; complete: boolean }
-/** the models of a make for a year: NHTSA's list (with the common ones of the engine list), else the engine list alone */
-export async function modelsFor(make: string, year: number, fetchImpl: typeof fetch = fetch, timeoutMs = 9000): Promise<ModelList> {
+/** the models of a make for a year: NHTSA's list (with the common ones of the engine list), else the engine list alone.
+    No year (not known): every model of the make. */
+export async function modelsFor(make: string, year: number | null, fetchImpl: typeof fetch = fetch, timeoutMs = 9000): Promise<ModelList> {
+  if (!year) return modelsAnyYear(make, fetchImpl, timeoutMs);
   const k = `${squash(make)}|${year}`;
   const known = memo.get(k) || remembered(make, year);
   void ensureEngineRef();
@@ -90,4 +92,24 @@ export async function modelsFor(make: string, year: number, fetchImpl: typeof fe
   const models = parseModels(answers, make);
   if (models.length) { memo.set(k, models); remember(make, year, models); }
   return { models: mergeModels(models, refModels(make, year)), complete: true };
+}
+
+/** every model of a make, any year (the year is not known): NHTSA's list for the make, with the engine list's */
+async function modelsAnyYear(make: string, fetchImpl: typeof fetch, timeoutMs: number): Promise<ModelList> {
+  const k = `${squash(make)}|any`;
+  const known = memo.get(k) || remembered(make, 0);
+  void ensureEngineRef();
+  if (known) { memo.set(k, known); return { models: mergeModels(known, refModels(make)), complete: true }; }
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => ctl?.abort(), timeoutMs);
+  let answer: unknown = null;
+  try {
+    const r = await fetchImpl(`${VPIC}/GetModelsForMake/${encodeURIComponent(make.toLowerCase())}?format=json`, ctl ? { signal: ctl.signal } : undefined);
+    answer = r.ok ? await r.json() : null;
+  } catch { answer = null; } finally { clearTimeout(timer); }
+  await ensureEngineRef().catch(() => undefined);
+  if (answer == null) return { models: refModels(make), complete: false };
+  const models = parseModels([answer], make);
+  if (models.length) { memo.set(k, models); remember(make, 0, models); }
+  return { models: mergeModels(models, refModels(make)), complete: true };
 }

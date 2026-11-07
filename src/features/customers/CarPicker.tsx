@@ -1,6 +1,7 @@
 /* « Année → Marque → Modèle »: three taps, no typing. The three boxes show what is chosen; a tap opens the sheet at that
    step. The years as big buttons, the makes (most common first, with a search), then the models of that make for that
-   year. « Autre » lets the person type what is not in a list. */
+   year. The year is not required: « Je ne sais pas l’année » goes straight to the make, and the models are then those
+   of every year. « Autre » lets the person type what is not in a list. */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { ChevronDown, ChevronRight, PenLine } from 'lucide-preact';
 import { t } from '../../lib/i18n';
@@ -38,14 +39,15 @@ export function CarPicker(p: { value: CarChoice; onValue: (v: CarChoice) => void
 }
 
 export function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => void; onDone: (v: CarChoice) => void }) {
-  // a step needs the ones before it: the model list needs the year and the make
-  const first: Step = p.start === 'model' && (!p.value.year || !p.value.make) ? (!p.value.year ? 'year' : 'make') : p.start === 'make' && !p.value.year ? 'year' : p.start;
+  // the model list needs the make (the year is optional)
+  const first: Step = p.start === 'model' && !p.value.make ? 'make' : p.start;
   const [step, setStep] = useState<Step>(first);
   const [v, setV] = useState<CarChoice>(p.value);
   const [q, setQ] = useState('');
   const [typing, setTyping] = useState<string | null>(null);
   const go = (s: Step) => { setStep(s); setQ(''); setTyping(null); };
   const pickYear = (y: string) => { const n = { ...v, year: y }; setV(n); go(n.make ? 'model' : 'make'); };
+  const noYear = () => { const n = { ...v, year: '' }; setV(n); go(n.make ? 'model' : 'make'); };
   const pickMake = (m: string) => { const n = { ...v, make: m, model: m === v.make ? v.model : '' }; setV(n); go('model'); };
   const pickModel = (m: string) => p.onDone({ ...v, model: m });
   const crumbs: [Step, string][] = [['year', v.year || t('vehicles.fields.year')], ['make', v.make || t('vehicles.fields.make')], ['model', v.model || t('vehicles.fields.model')]];
@@ -58,13 +60,13 @@ export function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => 
             <span key={s} class="carpick-crumb-wrap">
               {i > 0 && <ChevronRight size={16} class="faint" aria-hidden="true" />}
               <button type="button" class={`carpick-crumb${step === s ? ' is-on' : ''}`} aria-current={step === s ? 'step' : undefined}
-                disabled={(s === 'make' && !v.year) || (s === 'model' && (!v.year || !v.make))} onClick={() => go(s)} data-testid={`carpick-crumb-${s}`}>{label}</button>
+                disabled={s === 'model' && !v.make} onClick={() => go(s)} data-testid={`carpick-crumb-${s}`}>{label}</button>
             </span>
           ))}
         </nav>
-        {step === 'year' && <YearStep value={v.year} onPick={pickYear} typing={typing} setTyping={setTyping} />}
+        {step === 'year' && <YearStep value={v.year} onPick={pickYear} onSkip={noYear} typing={typing} setTyping={setTyping} />}
         {step === 'make' && <MakeStep value={v.make} q={q} setQ={setQ} onPick={pickMake} typing={typing} setTyping={setTyping} />}
-        {step === 'model' && <ModelStep make={v.make} year={Number(v.year)} value={v.model} q={q} setQ={setQ} onPick={pickModel} typing={typing} setTyping={setTyping} />}
+        {step === 'model' && <ModelStep make={v.make} year={v.year ? Number(v.year) : null} value={v.model} q={q} setQ={setQ} onPick={pickModel} typing={typing} setTyping={setTyping} />}
       </div>
     </Sheet>
   );
@@ -86,10 +88,11 @@ function Other(p: { label: string; value: string | null; set: (s: string | null)
   );
 }
 
-function YearStep(p: { value: string; onPick: (y: string) => void; typing: string | null; setTyping: (s: string | null) => void }) {
+function YearStep(p: { value: string; onPick: (y: string) => void; onSkip: () => void; typing: string | null; setTyping: (s: string | null) => void }) {
   const years = useMemo(() => yearsList(), []);
   return (
     <div class="stack" data-testid="carpick-years">
+      <Button onClick={p.onSkip} data-testid="carpick-year-skip">{t('vehicles.pick.noYear')}</Button>
       <div class="carpick-grid carpick-years" role="listbox" aria-label={t('vehicles.fields.year')}>
         {years.map((y) => (
           <button key={y} type="button" role="option" aria-selected={p.value === String(y)} class={`carpick-cell${p.value === String(y) ? ' is-on' : ''}`}
@@ -125,7 +128,7 @@ function MakeStep(p: { value: string; q: string; setQ: (s: string) => void; onPi
   );
 }
 
-function ModelStep(p: { make: string; year: number; value: string; q: string; setQ: (s: string) => void; onPick: (m: string) => void; typing: string | null; setTyping: (s: string | null) => void }) {
+function ModelStep(p: { make: string; year: number | null; value: string; q: string; setQ: (s: string) => void; onPick: (m: string) => void; typing: string | null; setTyping: (s: string | null) => void }) {
   const [list, setList] = useState<ModelList | null>(null);
   useEffect(() => {
     let alive = true;
@@ -148,7 +151,7 @@ function ModelStep(p: { make: string; year: number; value: string; q: string; se
           ))}
         </div>
       )}
-      {list && !shown.length && <p class="muted" style={{ margin: 0 }}>{list.models.length ? t('vehicles.pick.noMatch') : t('vehicles.pick.noModel', { make: p.make, year: p.year })}</p>}
+      {list && !shown.length && <p class="muted" style={{ margin: 0 }}>{list.models.length ? t('vehicles.pick.noMatch') : (p.year ? t('vehicles.pick.noModel', { make: p.make, year: p.year }) : t('vehicles.pick.noModelAny', { make: p.make }))}</p>}
       <Other label={t('vehicles.pick.typeModel')} value={p.typing} set={p.setTyping} onOk={p.onPick} testid="carpick-model" />
     </div>
   );

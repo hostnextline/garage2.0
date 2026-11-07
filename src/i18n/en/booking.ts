@@ -32,7 +32,8 @@ export const booking: typeof fr = {
     truckHint: 'Only if the customer wants this mechanic: the app can no longer give the job to the other truck.',
     walkInTruck: 'Which truck does the job?',
     duration: 'Planned duration',
-    durationHint: 'Counted from the services. Make it longer if you know it will take more time.',
+    durationHint: 'Counted from the services. Tap − or + to book more or less time in the block.',
+    durationChanged: 'Changed by hand: this is the time booked in the block.',
     durationReset: 'Use the services’ duration',
     card: 'The customer leaves a card on file',
     cardHint: 'For customers who book far ahead or already missed an appointment.'

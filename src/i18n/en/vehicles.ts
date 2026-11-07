@@ -54,7 +54,8 @@ export const vehicles: typeof fr = {
     olderYear: 'Older: type the year', searchMake: 'Search a make', otherMakes: 'Other makes', noMake: 'No make matches.',
     typeMake: 'Other make: type it', searchModel: 'Search a model', loading: 'Loading the models…',
     short: 'No signal: only the common models. A missing model can be typed with « Other model ».',
-    noMatch: 'No model matches.', noModel: 'No list for {make} {year}: type the model.', typeModel: 'Other model: type it'
+    noMatch: 'No model matches.', noModel: 'No list for {make} {year}: type the model.', typeModel: 'Other model: type it',
+    noYear: 'I don’t know the year', noModelAny: 'No list for {make}: type the model.'
   },
   scan: {
     button: 'Scan the VIN',

@@ -52,4 +52,20 @@ describe('Année → Marque → Modèle', () => {
     const old = await modelsFor('Toyota', 1999, f);
     expect(old.models).toEqual(['Corolla', 'Matrix']);   // nothing that year: every model of the make
   });
+  it('without a year: every model of the make, asked once, then kept on the phone', async () => {
+    const seen: string[] = [];
+    const f = vi.fn(async (url: string) => { seen.push(url); return new Response(JSON.stringify(answer('HONDA', ['Civic', 'Accord', 'CR-V'])), { status: 200 }); }) as unknown as typeof fetch;
+    const r = await modelsFor('Honda', null, f);
+    expect(seen).toEqual([`${VPIC}/GetModelsForMake/honda?format=json`]);
+    expect(r.complete).toBe(true);
+    expect(r.models).toEqual(expect.arrayContaining(['Accord', 'CR-V', 'Civic']));
+    const again = await modelsFor('Honda', null, vi.fn() as unknown as typeof fetch);
+    expect(again.models).toContain('Civic');
+  });
+  it('without a year and without signal: the common models of the make', async () => {
+    const f = vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch;
+    const r = await modelsFor('Toyota', null, f);
+    expect(r.complete).toBe(false);
+    expect(r.models).toEqual(['Corolla', 'Matrix']);
+  });
 });
