@@ -36,7 +36,7 @@ jobs:
       - name: Playwright (Chromium)
         if: ${{ !cancelled() }}
         run: |
-          npm install --no-save --no-audit --no-fund playwright@1.49.1
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install --with-deps chromium
       - name: L'app de bout en bout
         if: ${{ !cancelled() }}
