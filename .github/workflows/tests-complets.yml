@@ -1,0 +1,53 @@
+# Tous les tests, sur une machine Linux de GitHub : la copie locale du serveur (Postgres 16, Auth, PostgREST, les
+# fonctions), les tests de la base de données et des fonctions, puis l'app entière de bout en bout (Playwright).
+# Roule sur chaque branche de travail (pas main : main publie l'app) et à la demande. Ne publie rien, ne touche
+# jamais à la base live. Les photos du test de bout en bout sont gardées 7 jours (« tests-out »).
+name: Tests complets
+on:
+  push:
+    branches-ignore: [main, vercel, gh-pages, construction-v2]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Types et tests de l'app
+        run: npx tsc --noEmit && npm test
+      - name: Postgres 16 de la machine
+        run: |
+          ls -d /usr/lib/postgresql/*/bin
+          sudo systemctl stop postgresql || true
+      - name: La copie locale du serveur
+        run: bash tests/stack/install.sh && bash tests/stack/start.sh
+      - name: Base de données et fonctions
+        run: node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs
+      - name: Playwright (Chromium)
+        if: ${{ !cancelled() }}
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.49.1
+          npx playwright install --with-deps chromium
+      - name: L'app de bout en bout
+        if: ${{ !cancelled() }}
+        run: node --test tests/e2e/app.test.cjs
+      - name: Journaux du serveur (si ça casse)
+        if: ${{ failure() }}
+        run: for f in tests/stack/run/*.log; do echo "=== $f"; tail -40 "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: tests-out
+          path: tests/out/
+          retention-days: 7
+          if-no-files-found: ignore
