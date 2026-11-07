@@ -384,10 +384,10 @@ test('the conversation with a customer: the texts both ways from GoHighLevel, an
   assert.equal((await q(`select count(*)::int n from public.messages where customer_id = $1 and kind = 'chat' and status = 'sent'`, [cust]))[0].n, 1);
   // empty or too long: refused
   assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: '  ' }, ownerJwt)).code, 'empty');
-  // a mechanic who has no job with this customer does not see the conversation
+  // a mechanic without the « Clients » right and no job with this customer does not see the conversation
   const email = `meca-${randomUUID().slice(0, 6)}@test.local`;
   const mech = await adminUser(email, 'motdepasse-2');
-  await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Adam', 'Adam', '{mechanic}', $2)`, [mech, email]);
+  await q(`insert into public.staff (id, full_name, short_name, roles, rights, email) values ($1, 'Adam', 'Adam', '{mechanic}', '{"clients": false}', $2)`, [mech, email]);
   const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
   assert.equal((await fn('conversation', { action: 'get', customer_id: cust }, mechJwt)).code, 'not_found');
   assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'allo' }, mechJwt)).code, 'not_found');
