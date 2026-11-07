@@ -123,6 +123,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       sub={<span class="jobs-sub"><StatusPill status={j.status} /><span>{whenLine(j)}</span></span>}
       actions={<IconButton icon={<Ellipsis />} label={t('jobs.more')} onClick={() => setSheet('menu')} data-testid="job-menu" />}>
       {!net.value.online && <Banner kind="warn">{t('jobs.offline')}</Banner>}
+      {j.forced && j.status === 'booked' && <Banner kind="warn" data-testid="job-forced">{t('booking.force.banner')}</Banner>}
       <div class="jobs-layout">
         <div class="jobs-col">
           {pressable ? (
