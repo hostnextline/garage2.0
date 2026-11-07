@@ -219,6 +219,14 @@ function BookForm({ query }: ScreenProps) {
   const servicesPanel = (
     <Panel title={t('booking.services.title')} sub={t('booking.services.sub')} data-tour="book-services">
       <ServicePicker value={items} onValue={setItems} lang={custLang} allowCustom hideTotal />
+      <div class="book-duration" data-testid="book-duration">
+        <Field label={t('booking.options.duration')} hint={durOverride != null ? t('booking.options.durationChanged') : t('booking.options.durationHint')} group>
+          <div class="row-wrap">
+            <Stepper value={sum.minutes} min={15} max={720} step={15} label={t('booking.options.duration')} format={(v) => duration(v, l)} onValue={(v) => setDurOverride(clampDuration(v))} />
+            {durOverride != null && <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => setDurOverride(null)} data-testid="book-duration-reset">{t('booking.options.durationReset')}</Button>}
+          </div>
+        </Field>
+      </div>
       <div class="book-sum" data-testid="book-services-sum">
         <span class="book-sum-time"><b class="num">{duration(sum.minutes, l)}</b> <span class="muted small">{items.length || durOverride ? t('booking.summary.workLabel') : t('booking.summary.problemOnly')}</span></span>
         <span class="book-sum-money">
@@ -248,12 +256,6 @@ function BookForm({ query }: ScreenProps) {
       <summary><span class="panel-title">{t('booking.options.title')}</span></summary>
       <div class="stack book-options-body">
         {showTruckChoice && truckChips(isWalkIn ? t('booking.options.walkInTruck') : t('booking.options.truck'), isWalkIn ? undefined : t('booking.options.truckHint'))}
-        <Field label={t('booking.options.duration')} hint={t('booking.options.durationHint')} group>
-          <div class="row-wrap">
-            <Stepper value={sum.minutes} min={15} max={720} step={15} label={t('booking.options.duration')} format={(v) => duration(v, l)} onValue={(v) => setDurOverride(clampDuration(v))} />
-            {durOverride != null && <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => setDurOverride(null)}>{t('booking.options.durationReset')}</Button>}
-          </div>
-        </Field>
         {!isWalkIn && <Check checked={!!card} onChange={setCard} label={t('booking.options.card')} hint={t('booking.options.cardHint')} />}
       </div>
     </details>
@@ -306,7 +308,7 @@ function BookForm({ query }: ScreenProps) {
           {vehiclePanel}
           {servicesPanel}
           {notesPanel}
-          {optionsPanel}
+          {(showTruckChoice || !isWalkIn) && optionsPanel}
           {!isWide && blockSection}
         </div>
         {isWide && (

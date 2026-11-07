@@ -32,7 +32,8 @@ export const booking = {
     truckHint: 'Seulement si le client veut ce mécano : l’app ne pourra plus donner la job à l’autre camion.',
     walkInTruck: 'Quel camion fait la job ?',
     duration: 'Durée prévue',
-    durationHint: 'Calculée avec les services. Allonge-la si tu sais que ce sera plus long.',
+    durationHint: 'Calculée avec les services. Touche − ou + pour réserver plus ou moins de temps dans le bloc.',
+    durationChanged: 'Changée à la main : c’est ce temps-là qui est réservé dans le bloc.',
     durationReset: 'Reprendre la durée des services',
     card: 'Le client laisse une carte au dossier',
     cardHint: 'Pour les clients qui réservent loin d’avance ou qui ont déjà manqué un rendez-vous.'
