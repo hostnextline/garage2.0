@@ -23,6 +23,7 @@ export const coffre: typeof fr = {
     menuSub: 'Family and friends: no invoice, no taxes',
     finish: 'Finish the job'
   },
+  pay: { method: 'Coffre' },
   sheet: {
     title: 'Paid by the Coffre',
     lead: 'Family and friends: check the jobs they pay this way. They will have no invoice and no taxes, and go in the Coffre, apart from the revenue.',

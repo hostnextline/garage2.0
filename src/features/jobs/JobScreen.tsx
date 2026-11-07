@@ -18,7 +18,6 @@ import { InvoicePanel } from '../invoices/InvoicePanel';
 import { PaySheet } from '../invoices/PaySheet';
 import { CoffreSheet } from '../coffre/CoffreSheet';
 import { CarFirst } from './CarFirst';
-import { isOwner } from '../../data/auth';
 import { startPositionSharing } from '../today/position';
 import type { NextStep } from './nextStep';
 import { jobRights, stepOf, jobName, jobCustomer, whenLine, proposedOf, seen } from './select';
@@ -159,7 +158,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       <MoveSheet job={j} open={sheet === 'move'} onClose={close} />
       <StopOrderSheet job={j} open={sheet === 'order'} onClose={close} />
       <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} onCoffre={() => setSheet('coffre')} />
-      {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} onCoffre={isOwner() || rights.mine ? () => { close(); afterSheet(() => setSheet('coffre')); } : undefined} />}
+      {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} onCoffre={() => afterSheet(() => setSheet('coffre'))} />}
       <CoffreSheet job={j} open={sheet === 'coffre'} onClose={close} />
       {openItem && <ItemSheet job={j} item={openItem} rights={rights} onClose={() => setItemFor(null)}
         onAnswer={(id) => { setItemFor(null); afterSheet(() => setAnswerFor(id)); }} />}

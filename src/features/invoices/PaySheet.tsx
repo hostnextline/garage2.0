@@ -3,11 +3,12 @@
    no pennies) and records only what is due; a card payment link can be texted when the garage has card payments. */
 import { useEffect, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import { Banknote, CreditCard, Landmark, Send, FileText, Ellipsis, Smartphone } from 'lucide-preact';
+import { Banknote, CreditCard, Landmark, Send, FileText, Ellipsis, Smartphone, Vault } from 'lucide-preact';
 import type { PayMethod } from '../../data/types';
 import { addPayment, team } from '../../data/api';
 import { isOwner, access } from '../../data/auth';
-import { customerName } from '../../data/select';
+import { customerName, job as jobRow } from '../../data/select';
+import { mayCoffre, openCoffre } from '../coffre/host';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { Sheet, Button, Field, Input, MoneyInput, Banner, Empty, run } from '../../ui';
@@ -16,7 +17,7 @@ import { invoiceById, amountsOf, invoiceCustomer, invoiceLabel, methodWord, METH
 import { sendText, SendSheet, type SendResult } from './send';
 import './invoices.css';
 
-export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void; /** the owner: « Coffre » (family and friends) instead */ onCoffre?: () => void }
+export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void; /** after the sheet closes for « Coffre » (else the shell opens the Coffre sheet itself) */ onCoffre?: () => void }
 
 const ICONS: Record<string, typeof Banknote> = { cash: Banknote, debit: Landmark, credit: CreditCard, interac: Send, cheque: FileText, other: Ellipsis };
 
@@ -88,6 +89,13 @@ function PayOpen(p: PaySheetProps) {
     if (r !== undefined) { close(); p.onPaid?.(); } else setSending(false);
   };
 
+  const theJob = inv.job_id ? jobRow(inv.job_id) : undefined;
+  const coffreOk = !!theJob && mayCoffre(theJob) && a.paid <= 0;
+  const toCoffre = () => {
+    if (!theJob) return;
+    close();
+    if (p.onCoffre) p.onCoffre(); else openCoffre(theJob.id);
+  };
   const confirmLabel = !method ? t('invoices.pay.pickMethod') : t('invoices.pay.confirm', { amount: money(record, l) });
   return (
     <Sheet open onClose={close} title={title} sub={sub} data-testid="pay-sheet"
@@ -112,8 +120,13 @@ function PayOpen(p: PaySheetProps) {
                 </button>
               );
             })}
+            {/* « Coffre » (family and friends): no invoice, no taxes; the jobs are chosen in the Coffre sheet */}
+            {coffreOk && (
+              <button type="button" class="pay-method pay-method-coffre" onClick={toCoffre} data-testid="pay-coffre">
+                <Vault aria-hidden="true" /><span>{t('coffre.pay.method')}</span>
+              </button>
+            )}
           </div>
-          {p.onCoffre && <Button variant="ghost" size="sm" onClick={p.onCoffre} data-testid="pay-coffre">{t('coffre.job.menu')}</Button>}
         </Field>
 
         <Field label={t('invoices.pay.amount')} hint={!amountError && amount != null && amount < balance ? t('invoices.pay.partial', { left: money(balance - amount, l) }) : undefined} error={touched ? amountError : null}>

@@ -18,6 +18,7 @@ import { garageName } from '../data/select';
 import { startPositionSharing } from '../features/today/position';
 import { Button, IconButton, Sheet, Banner, Avatar, Rows, RowItem, Empty, Skeleton } from '../ui';
 import { MovedBanner } from './moved';
+import { CoffreHost } from '../features/coffre/host';
 import { startLocator } from './locator';
 
 /* ---------- the screen for the current address ---------- */
@@ -257,6 +258,7 @@ export function Shell() {
       {!isWide && <TabBar />}
       <QuickSheet />
       <SyncSheet />
+      <CoffreHost />
     </div>
   );
 }

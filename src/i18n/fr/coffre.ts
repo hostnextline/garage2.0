@@ -23,6 +23,7 @@ export const coffre = {
     menuSub: 'Famille et amis : pas de facture, pas de taxes',
     finish: 'Terminer la job'
   },
+  pay: { method: 'Coffre' },
   sheet: {
     title: 'Payé par le Coffre',
     lead: 'Famille et amis : coche les jobs qu’ils paient de cette façon. Elles n’auront pas de facture ni de taxes, et iront dans le Coffre, à part des revenus.',
