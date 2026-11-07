@@ -13,7 +13,7 @@ export interface RouteDef {
   /** the menu entry it belongs to (highlighted in the menu) */
   nav?: NavKey;
 }
-export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'account' | 'more';
+export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
 
 export const isField = () => hasRole('owner') || hasRole('office') || hasRole('mechanic');
 export const may = {
@@ -63,5 +63,6 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/needs', load: () => import('../features/inventory/NeedsScreen'), allow: may.inventory, nav: 'inventory' },
   { pattern: '/dashboard', load: () => import('../features/dashboard/DashboardScreen'), allow: may.dashboard, nav: 'dashboard' },
   { pattern: '/guide', load: () => import('../features/guide/GuideScreen'), nav: 'guide' },
+  { pattern: '/info/:id?', load: () => import('../features/info/InfoScreen'), nav: 'info' },
   { pattern: '/more', load: () => import('./MoreScreen'), nav: 'more' }
 ];

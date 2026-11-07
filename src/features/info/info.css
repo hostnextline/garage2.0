@@ -1,0 +1,20 @@
+/* « Info »: the list of sheets and one sheet (steps, the example, tips) */
+.info-topic-dot { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: #3B7DD8; }
+.info-topic-dot[data-topic='day'] { background: #E5141F; }
+.info-topic-dot[data-topic='booking'] { background: #2F6FD0; }
+.info-topic-dot[data-topic='pay'] { background: #1F8A53; }
+.info-topic-dot[data-topic='customers'] { background: #7347D1; }
+.info-topic-dot[data-topic='map'] { background: #0E9F8E; }
+.info-topic-dot[data-topic='office'] { background: #C8641E; }
+.info-topic-dot[data-topic='setup'] { background: #6B7380; }
+.info-short { margin: 0; font-size: var(--t-lg); line-height: 1.45; font-weight: 480; }
+.info-steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: var(--sp-3); }
+.info-steps li { counter-increment: step; position: relative; padding-left: 40px; line-height: 1.45; min-height: 28px; }
+.info-steps li::before { content: counter(step); position: absolute; left: 0; top: -1px; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--ink); color: var(--solid); font-weight: 650; font-size: var(--t-sm); }
+.info-example { border-radius: var(--r-lg); padding: var(--sp-4); background: color-mix(in srgb, #F2B705 16%, var(--solid));
+  border: 1px solid color-mix(in srgb, #F2B705 45%, transparent); display: flex; flex-direction: column; gap: var(--sp-2); }
+.info-example-head { display: inline-flex; align-items: center; gap: var(--sp-2); font-weight: 650; }
+.info-example-head svg { width: 20px; height: 20px; color: #B98500; }
+.info-example p { margin: 0; line-height: 1.5; }
+.info-tips { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--sp-2); line-height: 1.45; }

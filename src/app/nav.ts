@@ -1,5 +1,5 @@
 /* The menu: what each person sees depends on their rights (the server checks every action again). */
-import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText } from 'lucide-preact';
+import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen } from 'lucide-preact';
 import { may, type NavKey } from './routes';
 import { t } from '../lib/i18n';
 
@@ -18,6 +18,7 @@ export const NAV: NavItem[] = [
   { key: 'inventory', href: '#/inventory', icon: Package, show: may.inventory, group: 'garage' },
   { key: 'team', href: '#/team', icon: UsersRound, show: may.team, group: 'garage' },
   { key: 'settings', href: '#/settings', icon: Settings, show: may.settings, group: 'garage' },
+  { key: 'info', href: '#/info', icon: BookOpen, show: () => true, group: 'day' },
   { key: 'guide', href: '#/guide', icon: Compass, show: () => true, group: 'garage' },
   { key: 'account', href: '#/account', icon: UserRound, show: () => true, group: 'garage' }
 ];

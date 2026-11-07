@@ -3,7 +3,7 @@ export const shell = {
   nav: {
     today: 'Aujourd’hui', agenda: 'Agenda', customers: 'Clients', invoices: 'Factures', quotes: 'Estimations', map: 'Carte', overview: 'Vue d’ensemble',
     hours: 'Horaires', treasury: 'Trésorerie', inventory: 'Inventaire', dashboard: 'Chiffres', team: 'Équipe', settings: 'Réglages',
-    guide: 'Par où commencer', account: 'Mon compte', more: 'Plus'
+    guide: 'Par où commencer', info: 'Info', account: 'Mon compte', more: 'Plus'
   },
   groups: { day: 'La journée', office: 'Le bureau', garage: 'Le garage' },
   more: {

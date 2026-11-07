@@ -25,5 +25,6 @@ import { inventory } from './inventory';
 import { dashboard } from './dashboard';
 import { client } from './client';
 import { guide } from './guide';
+import { info } from './info';
 
-export const en: typeof fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide };
+export const en: typeof fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide, info };

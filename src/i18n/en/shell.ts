@@ -3,7 +3,7 @@ export const shell: typeof fr = {
   nav: {
     today: 'Today', agenda: 'Schedule', customers: 'Customers', invoices: 'Invoices', quotes: 'Estimates', map: 'Map', overview: 'Overview',
     hours: 'Hours', treasury: 'Treasury', inventory: 'Inventory', dashboard: 'Numbers', team: 'Team', settings: 'Settings',
-    guide: 'Where to start', account: 'My account', more: 'More'
+    guide: 'Where to start', info: 'Info', account: 'My account', more: 'More'
   },
   groups: { day: 'The day', office: 'The office', garage: 'The garage' },
   more: {

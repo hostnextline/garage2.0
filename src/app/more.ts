@@ -9,7 +9,7 @@ export const FILTERS: MoreFilter[] = ['all', 'day', 'office', 'garage'];
 export const TILE_HUE: Record<string, string> = {
   today: '#E5141F', overview: '#C77A0B', agenda: '#2F6FD0', map: '#0E9F8E',
   customers: '#7347D1', quotes: '#D98A00', invoices: '#D2335F', treasury: '#1F8A53', dashboard: '#4F5BD5',
-  hours: '#5B6B7C', inventory: '#C8641E', team: '#0E8FB5', settings: '#6B7380', guide: '#B8892B'
+  hours: '#5B6B7C', inventory: '#C8641E', team: '#0E8FB5', settings: '#6B7380', guide: '#B8892B', info: '#3B7DD8'
 };
 
 export interface Tileable { key: string; group: Group }
