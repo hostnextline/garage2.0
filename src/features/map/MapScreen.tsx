@@ -184,8 +184,8 @@ export default function MapScreen({ query }: ScreenProps) {
           if (j.lat != null && j.lng != null) return j;
           const row = jobRow(j.id);
           const c = row?.customer_id ? customerRow(row.customer_id) : undefined;
-          const lat = row?.lat ?? c?.lat ?? null, lng = row?.lng ?? c?.lng ?? null;
-          return lat != null && lng != null ? { ...j, lat, lng } : j;
+          const p = r.placed[j.id] || (row?.lat != null && row?.lng != null ? { lat: row.lat, lng: row.lng } : c?.lat != null && c?.lng != null ? { lat: c.lat, lng: c.lng } : null);
+          return p ? { ...j, lat: p.lat, lng: p.lng } : j;
         }) } }));
         void flush().catch(() => undefined).finally(() => setReload((n) => n + 1));
       }

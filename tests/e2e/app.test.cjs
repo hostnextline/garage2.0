@@ -739,11 +739,23 @@ step('Needs of the week: oil by grade, filters, new tires by size, compared with
   await phone.goto(h.APP + `#/needs?week=${week}`);
   await phone.getByTestId('needs-buy').waitFor({ timeout: 15000 });
   await h.shot(phone, 'e2e-14-needs-phone');
-  // « La journée » shows the list from Thursday, for the week to prepare: checked when that week is this one
+  // « La journée » shows what to buy from Thursday to Sunday, for the week to prepare (checked on those days)
   const shop = h.sql(`select coalesce((case when extract(dow from d) = 0 then d when extract(dow from d) >= 4 then d + (7 - extract(dow from d)::int) end)::text, '') from (select public.local_today() as d) x`);
-  if (shop === week) {
+  if (shop) {
+    const later = person('Léa', 45.5, -73.6);
+    const j = h.sql(`insert into public.jobs (customer_id, vehicle_id, day, block, status, truck_id, duration_min, stop_order) values ('${later}', '${civic}', '${shop}'::date + 3, 'am', 'booked', '${T.complet}', 45, 1) returning id`);
+    h.sql(`insert into public.job_items (job_id, kind, service_id, description, qty, unit_cents) values ('${j}', 'service', '${tires}', 'Pneus neufs d’hiver (4)', 1, 79999)`);
     await phone.goto(h.APP + '#/');
-    await phone.getByTestId('today-needs').waitFor({ timeout: 15000 });
+    await phone.reload();
+    await phone.getByTestId('today-needs').waitFor({ timeout: 20000 });
+    const card = await phone.getByTestId('today-needs').innerText();
+    assert.match(card, /Achats pour (la semaine prochaine|cette semaine)/, card);
+    assert.match(card, /Pneus d’hiver 215\/55R16/, card);
+    await phone.getByTestId('today-needs').scrollIntoViewIfNeeded();
+    await h.shot(phone, 'e2e-14-today-card');
+    await phone.getByTestId('today-needs-open').click();
+    await phone.getByTestId('needs-screen').waitFor();
+    assert.match(phone.url(), new RegExp(`#/needs\\?week=${shop}`));
   }
   await phone.context().close();
   // Settings: what « Changement d'huile » takes is guessed from its name; adding the air filter is saved and counted

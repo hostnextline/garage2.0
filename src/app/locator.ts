@@ -86,7 +86,11 @@ function forget(key: string) {
 }
 
 /* ---------- finding them ---------- */
-export interface LocateRun { found: number; missing: number; offline: boolean }
+export interface LocateRun {
+  found: number; missing: number; offline: boolean;
+  /** the appointments placed by this run, with their new position (the map shows them at once) */
+  placed: Record<string, { lat: number; lng: number }>;
+}
 /** the locator now: busy, and what the last run did */
 export const locator = signal<{ busy: boolean; last: LocateRun | null }>({ busy: false, last: null });
 let running: Promise<LocateRun> | null = null;
@@ -100,7 +104,7 @@ export function locateMissing(opts: { only?: { jobs?: string[]; customers?: stri
     const seen = tried();
     const all = missingPositions(allJobs.value, customersList.value, today(), opts.only);
     const tasks = all.filter((t) => opts.force || !(seen[t.key] && Date.now() - seen[t.key] < AGAIN_MS)).slice(0, opts.max ?? 40);
-    const run: LocateRun = { found: 0, missing: all.length, offline: false };
+    const run: LocateRun = { found: 0, missing: all.length, offline: false, placed: {} };
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
       if (i) await wait(1100);                                 // gently with the free map service
@@ -116,6 +120,7 @@ export function locateMissing(opts: { only?: { jobs?: string[]; customers?: stri
         for (const id of t.jobIds) {
           const j = allJobs.value.find((x) => x.id === id);
           if (j && j.lat == null) await updateJob(id, { lat: pl.lat, lng: pl.lng });
+          if (pl.lat != null && pl.lng != null) run.placed[id] = { lat: pl.lat, lng: pl.lng };
         }
         forget(t.key);
         run.found++;
