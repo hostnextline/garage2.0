@@ -90,8 +90,11 @@ step('the office books Julie: customer, service, block, truck; the job is on the
   assert.equal(Number(h.sql(`select count(*) from public.job_items where job_id = '${jobId}' and service_id = '${SVC_OIL}'`)), 1);
   // no text service connected: the app gives the message to send by hand (never fails silently)
   await dismissSheets(page);
-  await page.goto(h.APP + '#/agenda');
+  // on the agenda of her day (the first block suggested may be next week: a Saturday afternoon run)
+  const bookedDay = h.sql(`select day::text from public.jobs where id = '${jobId}'`);
+  await page.goto(h.APP + `#/agenda/${bookedDay}`);
   await page.getByTestId('agenda-screen').waitFor();
+  await page.getByText('Julie').first().waitFor({ timeout: 10000 });
   assert.ok(await page.getByText('Julie').first().isVisible(), 'Julie is on the agenda');
   noErrors(page);
   await page.context().close();
