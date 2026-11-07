@@ -30,6 +30,7 @@ declare
   best_ti int; best_pos int; best_cost numeric; best_cand jsonb; jid text; jdur int; jtruck text; pinned boolean; placed boolean;
   t jsonb; tm int; plat double precision; plng double precision; clat double precision; clng double precision; leg int; k int;
   hl double precision; hg double precision; el double precision; eg double precision; rce int; basee int;
+  v_forced jsonb := '[]'; v_tail jsonb;
   v_prev text; v_next text; v_from_kind text;
 begin
   select * into b from public.blocks() x where x.key = p_block;
@@ -103,6 +104,7 @@ begin
                        public.km_between(v_hlat, v_hlng, clat, clng), 0)));
   end if;
 
+  v_forced := (select coalesce(jsonb_agg(e->'id'), '[]'::jsonb) from jsonb_array_elements(free) e where coalesce((e->>'forced')::boolean, false));
   -- pinned jobs first, then the farthest first; the ones booked « quand même » last (they never take the room of another)
   for r in select e from jsonb_array_elements(free) e order by coalesce((e->>'forced')::boolean, false), (e->>'truck' is not null) desc, (e->>'dist')::numeric desc, e->>'id' loop
     jid := r.e->>'id'; jtruck := r.e->>'truck'; pinned := jtruck is not null;
@@ -171,19 +173,15 @@ begin
       end loop;
     end if;
     if best_ti is null and coalesce((r.e->>'forced')::boolean, false) then
-      -- booked « quand même » in a full block: where it adds the least driving, past the truck's hours (the truck it was put on, if it works the block)
+      -- booked « quand même » in a full block: at the end of the route of the truck where it adds the least driving, past its
+      -- hours (the truck it was put on, if it works the block); the customers already booked keep their times
       for ti in 0 .. jsonb_array_length(trucks) - 1 loop
         t := trucks->ti; hl := (t->>'hlat')::double precision; hg := (t->>'hlng')::double precision; el := (t->>'elat')::double precision; eg := (t->>'elng')::double precision;
         n := jsonb_array_length(t->'stops');
-        basee := public.route_min_to(t->'stops', pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
-        for pos in (t->>'nfixed')::int .. n loop
-          cand := (select coalesce(jsonb_agg(x order by o), '[]'::jsonb) from (
-                    select x, case when o <= pos then o else o + 1 end o from jsonb_array_elements(t->'stops') with ordinality s(x, o)
-                    union all select to_jsonb(jid), pos + 1) q);
-          rce := public.route_min_to(cand, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
-          cost := (rce - basee) + case when pinned and t->>'id' <> jtruck then 100000 else 0 end;
-          if best_cost is null or cost < best_cost then best_cost := cost; best_ti := ti; best_pos := pos; end if;
-        end loop;
+        base := public.route_min(t->'stops', pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
+        rc := public.route_min((t->'stops') || to_jsonb(jid), pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
+        cost := (rc - base) + case when pinned and t->>'id' <> jtruck then 100000 else 0 end;
+        if best_cost is null or cost < best_cost then best_cost := cost; best_ti := ti; best_pos := n; end if;
       end loop;
     end if;
     if best_ti is null then
@@ -204,12 +202,17 @@ begin
   for ti in 0 .. jsonb_array_length(trucks) - 1 loop
     hl := (trucks->ti->>'hlat')::double precision; hg := (trucks->ti->>'hlng')::double precision;
     el := (trucks->ti->>'elat')::double precision; eg := (trucks->ti->>'elng')::double precision;
-    cand := public.route_improve(trucks->ti->'stops', (trucks->ti->>'nfixed')::int, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
+    -- the stops booked « quand même » (not on the way or there) stay at the end, in the order they were added
+    v_tail := (select coalesce(jsonb_agg(x order by o), '[]'::jsonb) from jsonb_array_elements(trucks->ti->'stops') with ordinality s(x, o)
+               where o > (trucks->ti->>'nfixed')::int and v_forced @> jsonb_build_array(x));
+    cand := (select coalesce(jsonb_agg(x order by o), '[]'::jsonb) from jsonb_array_elements(trucks->ti->'stops') with ordinality s(x, o)
+             where not (v_tail @> jsonb_build_array(x)));
+    t := public.route_improve(cand, (trucks->ti->>'nfixed')::int, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
     if el is not null and eg is not null
-       and (trucks->ti->>'durs')::int + public.route_min(cand, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop) > (trucks->ti->>'cap')::int then
-      cand := public.route_improve(trucks->ti->'stops', (trucks->ti->>'nfixed')::int, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
+       and (trucks->ti->>'durs')::int + public.route_min(t || v_tail, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop) > (trucks->ti->>'cap')::int then
+      t := public.route_improve(cand, (trucks->ti->>'nfixed')::int, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
     end if;
-    trucks := jsonb_set(trucks, array[ti::text, 'stops'], cand);
+    trucks := jsonb_set(trucks, array[ti::text, 'stops'], t || v_tail);
     t := trucks->ti; tm := (t->>'start')::int; plat := hl; plng := hg; k := 0;
     for jid in select jsonb_array_elements_text(t->'stops') loop
       k := k + 1;
