@@ -3,7 +3,7 @@
 
    booked    → Je pars (not before the day; not while this truck has an unpaid job on site: the server refuses it)
    en_route  → Je suis arrivé
-   on_site   → settled (paid, or the Coffre): « Terminer la job »; else the next missing piece, in order: the signed authorization, the customer's answer to proposed work,
+   on_site   → the next missing piece, in order: the signed authorization, the customer's answer to proposed work,
                some work to bill, the invoice, the payment, then « Terminer la job »
    done      → nothing to press (the PAYÉ stamp; what is left to collect)
    cancelled, no_show → closed */
@@ -88,10 +88,8 @@ export function nextStep(job: JobLike, items: ItemLike[], invoice: InvoiceLike |
       return rights.act ? { kind: 'arrive' } : { kind: 'none' };
     case 'on_site': {
       if (!rights.act) return { kind: 'none' };
-      // already settled (paid invoice, or the Coffre): « Terminer » straight away, signed or not (the server asks no
-      // signature to finish; the authorization can still be signed from its panel)
-      if (paid) return { kind: 'finish' };
       if (!job.waiver_signed_at) return { kind: 'waiver' };
+      if (paid) return { kind: 'finish' };
       // « payer plus tard » was granted (the job came back from done): an issued invoice is enough
       if (job.pay_later && inv && inv.status === 'issued') return { kind: 'finish', later: true, due };
       if (inv && inv.status === 'issued') return rights.invoice ? { kind: 'pay', payLater: rights.payLater, due } : { kind: 'none' };
