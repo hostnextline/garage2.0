@@ -356,7 +356,7 @@ test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the re
   // the draft is gone, the finished invoice is cancelled with its number kept
   assert.ok(await h.val(`select deleted_at from public.invoices where id = $1`, [draft.id]));
   const v2 = await h.one(`select status, number, void_reason from public.invoices where id = $1`, [i2]);
-  assert.deepEqual(v2, { status: 'void', number: n2, void_reason: 'Coffre (famille et amis)' });
+  assert.deepEqual({ ...v2, number: Number(v2.number) }, { status: 'void', number: Number(n2), void_reason: 'Coffre (famille et amis)' });
   // no new invoice for a job in the Coffre
   assert.equal((await h.fails(() => h.rpc('invoice_for_job', { p_op: uuid(), p_job: j1, p_refresh: true })))?.hint, 'coffre_job');
   // the job counts as settled: the mechanic finishes it without payment
