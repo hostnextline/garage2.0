@@ -30,6 +30,10 @@ export const jobs: typeof fr = {
     more: { one: 'and 1 more', other: 'and {n} more' }
   },
   head: {
+    carAdd: 'Add the vehicle',
+    carChange: 'Change',
+    carTitle: 'The vehicle of this appointment',
+    carSaved: 'Vehicle put on the appointment',
     noPosition: 'Not on the map yet: the address has no position.',
     positionNone: 'Address not found on the map. Fix it in the customer’s file.',
     customerFile: 'Open {name}’s file',

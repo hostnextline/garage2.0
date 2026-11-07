@@ -13,6 +13,7 @@ import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api
 import { may } from '../../app/routes';
 import { isOwner } from '../../data/auth';
 import { ConversationSheet } from '../conversation/ConversationSheet';
+import { VehiclePicker } from '../customers/VehiclePicker';
 import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
 import type { NextStep } from './nextStep';
@@ -36,6 +37,8 @@ function mapsHref(j: Job): string | null {
 /* ---------- who, what car, where; call, text, directions; the problem ---------- */
 export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => void }) {
   const [chat, setChat] = useState(false);
+  const [pickCar, setPickCar] = useState(false);
+  const mayCar = p.rights.act || may.book();
   const { job: j } = p;
   const c = jobCustomer(j);
   const v = vehicle(j.vehicle_id);
@@ -54,6 +57,7 @@ export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => v
             ? <a href={`#/vehicle/${v.id}`} class="jobs-link">{car || t('jobs.head.car')}</a>
             : <span class={car ? '' : 'faint'}>{car || t('jobs.head.noCar')}</span>}
           {v?.plate && <span class="jobs-plate" title={t('jobs.head.plate', { plate: v.plate })} aria-label={t('jobs.head.plate', { plate: v.plate })}>{v.plate}</span>}
+          {mayCar && c && j.status !== 'done' && j.status !== 'cancelled' && <Button size="sm" variant="ghost" onClick={() => setPickCar(true)} data-testid="job-car-pick">{v ? t('jobs.head.carChange') : t('jobs.head.carAdd')}</Button>}
         </div>
         <div class="jobs-line">
           <MapPin aria-hidden="true" />
@@ -74,6 +78,9 @@ export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => v
         <Button class="jobs-contact" onClick={() => setChat(true)} disabled={!c} icon={<MessagesSquare />} data-testid="job-conversation">{t('conversation.open')}</Button>
       </div>
       <ConversationSheet customerId={c?.id} open={chat} onClose={() => setChat(false)} />
+      {c && <Sheet open={pickCar} onClose={() => setPickCar(false)} title={t('jobs.head.carTitle')} sub={jobName(j)} data-testid="job-car-sheet">
+        <VehiclePicker customerId={c.id} value={j.vehicle_id} onPick={(id) => { if (id && id !== j.vehicle_id) { void attempt(() => updateJob(j.id, { vehicle_id: id }), { ok: t('jobs.head.carSaved') }); setPickCar(false); } }} />
+      </Sheet>}
       {(c?.notes || c?.card_on_file || (c?.no_shows || 0) > 0) && (
         <div class="jobs-note">
           {c?.notes && <p><span class="jobs-note-label">{t('jobs.head.customerNote')}</span>{c.notes}</p>}

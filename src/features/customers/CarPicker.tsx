@@ -8,10 +8,16 @@ import { t } from '../../lib/i18n';
 import { fold } from '../../lib/text';
 import { Sheet, Button, Input, SearchInput, Banner, Skeleton, Field } from '../../ui';
 import { yearsList, POPULAR_MAKES, OTHER_MAKES, makeName, modelsFor, refModels, type ModelList } from './carModels';
+import { engineRef, ensureEngineRef, enginesFor, type EngineChoice } from './engineRef';
+import { engineLine } from './vehicleText';
+import { engineWords } from './VehicleBits';
 import './customers.css';
 
-export interface CarChoice { year: string; make: string; model: string }
-type Step = 'year' | 'make' | 'model';
+/** engine: chosen at the « Moteur » step (from the engine list), when the person knows it */
+export interface CarChoice { year: string; make: string; model: string; engine?: { displacement: number | null; cylinders: number | null; fuel: string; engine: string } | null }
+type Step = 'year' | 'make' | 'model' | 'engine';
+/** the engine list's fuel → the car's (vehicles.fuel) */
+const FUEL: Record<string, string> = { gas: 'essence', hybrid: 'hybride', diesel: 'diesel', electric: 'electrique' };
 
 /** the three boxes (Année, Marque, Modèle) */
 export function CarPicker(p: { value: CarChoice; onValue: (v: CarChoice) => void; errors?: Partial<Record<Step, string | null>>; testid?: string; autoOpen?: boolean }) {
@@ -49,8 +55,12 @@ export function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => 
   const pickYear = (y: string) => { const n = { ...v, year: y }; setV(n); go(n.make ? 'model' : 'make'); };
   const noYear = () => { const n = { ...v, year: '' }; setV(n); go(n.make ? 'model' : 'make'); };
   const pickMake = (m: string) => { const n = { ...v, make: m, model: m === v.make ? v.model : '' }; setV(n); go('model'); };
-  const pickModel = (m: string) => p.onDone({ ...v, model: m });
-  const crumbs: [Step, string][] = [['year', v.year || t('vehicles.fields.year')], ['make', v.make || t('vehicles.fields.make')], ['model', v.model || t('vehicles.fields.model')]];
+  // after the model: its engines (with their oil and filter), when the engine list knows them; else done
+  const enginesOf = (x: CarChoice) => enginesFor(x.make, x.model, x.year ? Number(x.year) : null, engineRef.value.rows);
+  const pickModel = (m: string) => { const n = { ...v, model: m }; setV(n); if (enginesOf(n).length) go('engine'); else p.onDone(n); };
+  const pickEngine = (e: EngineChoice | null) => p.onDone({ ...v, engine: e ? { displacement: e.displacement, cylinders: e.cylinders, fuel: FUEL[e.fuel] || e.fuel, engine: engineLine({ displacement: e.displacement, cylinders: e.cylinders, turbo: e.turbo, fuel: e.fuel, code: e.code }, engineWords()) } : null });
+  useEffect(() => { void ensureEngineRef().catch(() => undefined); }, []);
+  const crumbs: [Step, string][] = [['year', v.year || t('vehicles.fields.year')], ['make', v.make || t('vehicles.fields.make')], ['model', v.model || t('vehicles.fields.model')], ['engine', t('vehicles.fields.engine')]];
   return (
     <Sheet open onClose={p.onClose} title={t('vehicles.pick.title')} data-testid="carpick-sheet"
       footer={<Button onClick={p.onClose}>{t('common.cancel')}</Button>}>
@@ -60,12 +70,13 @@ export function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => 
             <span key={s} class="carpick-crumb-wrap">
               {i > 0 && <ChevronRight size={16} class="faint" aria-hidden="true" />}
               <button type="button" class={`carpick-crumb${step === s ? ' is-on' : ''}`} aria-current={step === s ? 'step' : undefined}
-                disabled={s === 'model' && !v.make} onClick={() => go(s)} data-testid={`carpick-crumb-${s}`}>{label}</button>
+                disabled={(s === 'model' && !v.make) || (s === 'engine' && (!v.model || !enginesOf(v).length))} onClick={() => go(s)} data-testid={`carpick-crumb-${s}`}>{label}</button>
             </span>
           ))}
         </nav>
         {step === 'year' && <YearStep value={v.year} onPick={pickYear} onSkip={noYear} typing={typing} setTyping={setTyping} />}
         {step === 'make' && <MakeStep value={v.make} q={q} setQ={setQ} onPick={pickMake} typing={typing} setTyping={setTyping} />}
+        {step === 'engine' && <EngineStep list={enginesOf(v)} onPick={pickEngine} />}
         {step === 'model' && <ModelStep make={v.make} year={v.year ? Number(v.year) : null} value={v.model} q={q} setQ={setQ} onPick={pickModel} typing={typing} setTyping={setTyping} />}
       </div>
     </Sheet>
@@ -153,6 +164,24 @@ function ModelStep(p: { make: string; year: number | null; value: string; q: str
       )}
       {list && !shown.length && <p class="muted" style={{ margin: 0 }}>{list.models.length ? t('vehicles.pick.noMatch') : (p.year ? t('vehicles.pick.noModel', { make: p.make, year: p.year }) : t('vehicles.pick.noModelAny', { make: p.make }))}</p>}
       <Other label={t('vehicles.pick.typeModel')} value={p.typing} set={p.setTyping} onOk={p.onPick} testid="carpick-model" />
+    </div>
+  );
+}
+
+/** the engines of that model, each with its oil and oil filter (to take the right ones); « Je ne sais pas » closes */
+function EngineStep(p: { list: EngineChoice[]; onPick: (e: EngineChoice | null) => void }) {
+  return (
+    <div class="stack" data-testid="carpick-engines">
+      <p class="small muted" style={{ margin: 0 }}>{t('vehicles.pick.engineLead')}</p>
+      <div class="carpick-engines" role="listbox" aria-label={t('vehicles.fields.engine')}>
+        {p.list.map((e) => (
+          <button key={e.key} type="button" role="option" aria-selected={false} class="carpick-cell carpick-engine" onClick={() => p.onPick(e)} data-testid="carpick-engine">
+            <b>{engineLine({ displacement: e.displacement, cylinders: e.cylinders, turbo: e.turbo, fuel: e.fuel, code: e.code }, engineWords()) || e.code || '—'}</b>
+            {(e.oil_visc || e.oil_filter) && <span class="small muted">{[e.oil_visc && t('vehicles.pick.engineOil', { oil: e.oil_visc }), e.oil_filter && t('vehicles.pick.engineFilter', { ref: e.oil_filter })].filter(Boolean).join(', ')}</span>}
+          </button>
+        ))}
+      </div>
+      <Button onClick={() => p.onPick(null)} data-testid="carpick-engine-skip">{t('vehicles.pick.noEngine')}</Button>
     </div>
   );
 }

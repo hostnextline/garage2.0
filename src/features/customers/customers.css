@@ -199,3 +199,7 @@
 .carpick-cell.is-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .carpick-other { display: flex; gap: var(--sp-2); align-items: center; }
 .carpick-other > .input { flex: 1; }
+
+/* « Moteur »: one engine per line, with its oil and filter */
+.carpick-engines { display: grid; gap: var(--sp-2); }
+.carpick-engine { display: grid; gap: 2px; text-align: left; justify-items: start; padding: var(--sp-3); }

@@ -162,3 +162,16 @@ describe('the stock and the week to prepare', () => {
     expect(shoppingWeek('2026-11-09')).toBeNull();           // Monday
   });
 });
+
+import { itemsToCreate } from './needs';
+describe('« Ajouter à l’inventaire »', () => {
+  const line = (kind: string, ref: string | null, stock: number | null, qty = 4.5) => ({ key: kind + ref, kind, ref, spec: null, season: null, itemId: null, unit: 'L', qty, sure: true, jobs: [], stock, stockItems: [], toBuy: qty, jugL: null }) as never;
+  it('the lines with a known grade or part number that the stock does not have, at quantity 0 to fill', () => {
+    const out = itemsToCreate([line('oil', '5W-30', null, 9), line('oil_filter', 'PH7317', null, 2), line('oil', '0W-20', 5), line('oil', null, null), line('item', 'x', null)],
+      (l) => `Nom ${(l as { ref: string }).ref}`, (k) => k);
+    expect(out).toEqual([
+      { name: 'Nom 5W-30', sku: null, category: 'oil', unit: 'L', min_qty: 9 },
+      { name: 'Nom PH7317', sku: 'PH7317', category: 'filters', unit: 'unité', min_qty: 2 }
+    ]);
+  });
+});

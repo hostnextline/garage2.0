@@ -282,7 +282,7 @@ export function VehicleAddSheet(p: { customerId: string; onClose: () => void; on
             onDecoded={(car) => set({ year: car.year ? String(car.year) : d.year, make: car.make || d.make, model: car.model || d.model, extra: car })} />
         )}
         {(mode === 'ymm' || d.make || d.model) && (
-          <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model })} testid="vadd"
+          <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model, extra: c.engine ? { ...d.extra, ...c.engine } : d.extra })} testid="vadd"
             errors={{ year: tried ? errYear : null, make: tried && errModel && !d.make.trim() ? errModel : null, model: tried && errModel && d.make.trim() && !d.model.trim() ? errModel : null }} />
         )}
         {mode === 'ymm' && <p class="small muted" style={{ margin: 0 }}>{t('vehicles.add.later')}</p>}

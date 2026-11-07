@@ -3,15 +3,17 @@
    buy, ready to copy for the supplier. Each line opens the appointments it comes from; « À compléter » lists the
    appointments whose car does not say enough (no car, oil type unknown…). The logic is needs.ts. */
 import { useState } from 'preact/hooks';
-import { ChevronLeft, ChevronRight, ChevronDown, Copy, Droplet, Filter, Disc3, Package, TriangleAlert, PackageCheck } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, ChevronDown, Copy, PackagePlus, Droplet, Filter, Disc3, Package, TriangleAlert, PackageCheck } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import type { ScreenProps } from '../../app/routes';
 import { setQuery } from '../../app/router';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, weekStart, isValidDay, type Day } from '../../lib/dates';
 import { job as jobById, customer, customerName } from '../../data/select';
-import { Page, Panel, Button, IconButton, Pill, Empty } from '../../ui';
-import type { NeedLine, Missing } from './needs';
+import { Page, Panel, Button, IconButton, Pill, Empty, run } from '../../ui';
+import { saveInventoryItem } from '../../data/api';
+import { can } from '../../data/auth';
+import { itemsToCreate, type NeedLine, type Missing } from './needs';
 import { formatQty } from './stock';
 import { useWeekNeeds, defaultWeek, lineLabel, qtyWords, jugWords, weekWords, shoppingText, copy, dayWord, FAMILY } from './needsView';
 import './inventory.css';
@@ -29,6 +31,8 @@ export default function NeedsScreen({ query }: ScreenProps) {
   const filters = w.lines.filter((l) => FAMILY[l.kind] === 'filters').reduce((n, l) => n + l.qty, 0);
   const tires = w.lines.filter((l) => l.kind === 'tires').reduce((n, l) => n + l.qty, 0);
   const go = (d: Day) => setQuery({ week: d === defaultWeek() ? null : d });
+  const toCreate = itemsToCreate(w.lines, lineLabel, (k) => t(`inventory.needs.cat.${k}`));
+  const createAll = () => run(async () => { for (const it of toCreate) await saveInventoryItem({ ...it, qty: 0, active: true }); }, { ok: t('inventory.needs.created', { n: toCreate.length }) });
   const families = (['oil', 'filters', 'tires', 'parts'] as const).map((f) => ({ f, lines: w.lines.filter((l) => FAMILY[l.kind] === f) })).filter((x) => x.lines.length);
 
   return (
@@ -65,6 +69,12 @@ export default function NeedsScreen({ query }: ScreenProps) {
                 ))}
               </ul>
             ) : <p class="inv-none"><PackageCheck size={18} aria-hidden="true" /> {t('inventory.needs.nothingToBuy')}</p>}
+            {toCreate.length > 0 && can('inventory') && (
+              <div class="needs-create" data-testid="needs-create">
+                <p class="small muted" style={{ margin: 0 }}>{t('inventory.needs.createLead', { n: toCreate.length })}</p>
+                <Button icon={<PackagePlus size={18} />} onClick={createAll} data-testid="needs-create-all">{t('inventory.needs.createAll', { n: toCreate.length })}</Button>
+              </div>
+            )}
           </Panel>
 
           <Panel flush title={t('inventory.needs.allTitle')} help={t('inventory.needs.allHelp')} data-testid="needs-all">

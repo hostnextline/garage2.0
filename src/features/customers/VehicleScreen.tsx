@@ -172,7 +172,7 @@ function VehicleEditSheet(p: { v: Vehicle; onClose: () => void; onRemoved: () =>
         <VinField value={d.vin} onValue={(vin) => set({ vin })} onDecoded={decoded} error={err('vin')} />
         <section class="stack">
           <h3 class="divider-title">{t('vehicles.screen.groupCar')}</h3>
-          <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model })} testid="ve" errors={{ year: err('year') }} />
+          <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model, ...(c.engine ? { engine: c.engine.engine, displacement: c.engine.displacement ? c.engine.displacement.toFixed(1) : d.displacement, cylinders: c.engine.cylinders ? String(c.engine.cylinders) : d.cylinders, fuel: c.engine.fuel || d.fuel } : {}) })} testid="ve" errors={{ year: err('year') }} />
           <Field label={t('vehicles.fields.trim')} optional><Input value={d.trim} onValue={(trim) => set({ trim })} autoComplete="off" placeholder="LX" /></Field>
         </section>
         <section class="stack">

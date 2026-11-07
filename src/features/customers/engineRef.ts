@@ -195,3 +195,22 @@ export function specKeyOf(car: CarLike): string | null {
   const disp = car.displacement != null && Number(car.displacement) > 0 ? Number(car.displacement) : parseDisplacement(car.engine);
   return [make, m, String(car.year), ...(disp ? [disp.toFixed(1)] : [])].join('|');
 }
+
+/* ---------- the engines to choose from (« Choisir le véhicule », step Moteur) ---------- */
+export interface EngineChoice { key: string; displacement: number | null; cylinders: number | null; turbo: boolean; fuel: string; code: string; oil_visc: string; oil_filter: string; oil_l: number | null }
+/** the engines this make and model had (that year when known), one line each, with their oil and filter */
+export function enginesFor(make: string, model: string, year: number | null, rows: EngineRow[]): EngineChoice[] {
+  let list: EngineRow[];
+  if (year) { const m = matchEngine({ make, model, year }, rows); list = [...m.best, ...m.others]; }
+  else {
+    const mm = makeModel(make, model), vm = squash(mm.model);
+    list = rows.filter((r) => squash(makeModel(r.make, r.model).make) === mm.make && (info(r).modelKey === vm || info(r).aliasKeys.includes(vm)));
+  }
+  const seen = new Map<string, EngineChoice>();
+  for (const r of list) {
+    const key = [r.displacement, r.cylinders, r.turbo ? 't' : '', r.fuel, squash(r.engine)].join('|');
+    if (!seen.has(key)) seen.set(key, { key, displacement: r.displacement || null, cylinders: r.cylinders || null, turbo: r.turbo, fuel: r.fuel, code: r.engine,
+      oil_visc: r.oil_visc, oil_filter: r.oil_filter, oil_l: r.oil_l });
+  }
+  return [...seen.values()].sort((a, b) => (a.displacement ?? 0) - (b.displacement ?? 0) || (a.cylinders ?? 0) - (b.cylinders ?? 0) || Number(a.turbo) - Number(b.turbo));
+}

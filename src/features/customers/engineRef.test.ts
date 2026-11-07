@@ -119,3 +119,22 @@ describe('reading engine words', () => {
     expect(engineLine({ displacement: 2, cylinders: 4, code: 'In-Line' })).toBe('2.0 L 4 cyl.');
   });
 });
+
+import { enginesFor } from './engineRef';
+describe('« Moteur »: the engines to choose from', () => {
+  const rows = parseEngineRef({ columns: ['make', 'model', 'aliases', 'year_from', 'year_to', 'displacement', 'cylinders', 'turbo', 'fuel', 'engine', 'oil_l', 'oil_visc', 'oil_filter'], rows: [
+    ['Honda', 'Civic', '', 2016, 2021, 2.0, 4, 0, 'gas', 'K20C2', 4.4, '0W-20', 'H15400'],
+    ['Honda', 'Civic', '', 2016, 2021, 1.5, 4, 1, 'gas', 'L15B7', 3.7, '0W-20', 'H15400'],
+    ['Honda', 'Civic', '', 2006, 2011, 1.8, 4, 0, 'gas', 'R18A1', 4.2, '5W-20', 'H15400'],
+    ['Honda', 'Accord', '', 2018, 2022, 1.5, 4, 1, 'gas', 'L15BE', 3.7, '0W-20', 'H15400']
+  ] });
+  it('that year: its engines, the smallest first, with oil and filter', () => {
+    const e = enginesFor('Honda', 'Civic', 2018, rows);
+    expect(e.map((x) => x.code)).toEqual(['L15B7', 'K20C2']);
+    expect(e[0]).toMatchObject({ oil_visc: '0W-20', oil_filter: 'H15400', turbo: true });
+  });
+  it('no year: every engine of that model', () => {
+    expect(enginesFor('Honda', 'Civic', null, rows).map((x) => x.code)).toEqual(['L15B7', 'R18A1', 'K20C2']);
+    expect(enginesFor('Honda', 'Odyssey', null, rows)).toEqual([]);
+  });
+});

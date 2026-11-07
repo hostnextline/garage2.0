@@ -273,3 +273,19 @@ export function shoppingWeek(day: Day): Day | null {
   if (d >= 4) return addDays(day, 7 - d);
   return null;
 }
+
+/* ---------- « Ajouter à l'inventaire »: the lines the stock does not have yet, as new items (quantity 0) ---------- */
+export interface NewItem { name: string; sku: string | null; category: string; unit: string; min_qty: number }
+/** each line with a known grade, part number or size and nothing in the stock for it: an item to create (one per key) */
+export function itemsToCreate(lines: NeedLine[], name: (l: NeedLine) => string, cat: (k: 'oil' | 'filters' | 'tires' | 'parts') => string): NewItem[] {
+  const fam = (k: NeedLine['kind']): 'oil' | 'filters' | 'tires' | 'parts' => (k === 'oil' ? 'oil' : k === 'tires' ? 'tires' : /filter/.test(k) ? 'filters' : 'parts');
+  return lines
+    .filter((l) => l.kind !== 'item' && l.ref && l.stock == null)
+    .map((l) => ({
+      name: name(l).slice(0, 120),
+      sku: l.kind === 'oil' || l.kind === 'tires' ? null : l.ref,
+      category: cat(fam(l.kind)),
+      unit: l.kind === 'oil' ? 'L' : l.kind === 'tires' ? 'pneu' : 'unité',
+      min_qty: Math.max(1, Math.ceil(l.qty))
+    }));
+}

@@ -34,6 +34,10 @@ export const jobs = {
   },
   /* the head of the sheet */
   head: {
+    carAdd: 'Ajouter le véhicule',
+    carChange: 'Changer',
+    carTitle: 'Le véhicule de ce rendez-vous',
+    carSaved: 'Véhicule mis sur le rendez-vous',
     noPosition: 'Pas encore sur la carte : la position de l’adresse n’est pas trouvée.',
     positionNone: 'Adresse pas trouvée sur la carte. Corrige-la dans la fiche du client.',
     customerFile: 'Ouvrir la fiche de {name}',
