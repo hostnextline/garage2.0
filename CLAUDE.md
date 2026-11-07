@@ -101,6 +101,12 @@ end $do$;
 - « Ordre des arrêts » (Part 21, `jobs.manual_order`): owner, office (« book ») or the truck's driver put a truck's
   booked stops of a block in the order wanted (`set_stop_order`, empty list = back to the planner). `plan_block` keeps
   them right after the stops en route / on site; moving a job to another day, block or truck clears its place.
+- « Réserver en ligne » (Part 23, `20261107000500_web_booking.sql`, NOT yet applied on live; server function `book` NOT yet
+  deployed): one public link `client.html#reserver` (Réglages → Réservations → « Réservation en ligne »: on/off, copy). The
+  customer picks services, an address (Photon, must be ≤ `booking.web.max_km` (60) from the start), one of the 6 best blocks
+  over 14 days (`suggest_core`, same ranking as `suggest_blocks`; « Voir d'autres dates » = next 14), then name/phone/car.
+  `web_book` finds the customer by phone (file not changed) or creates one, books with `source = 'web'`, sends the usual
+  booking text. Brakes: 2 coming web jobs per phone, 30 web bookings an hour, a hidden field for robots.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

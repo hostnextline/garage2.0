@@ -1,5 +1,5 @@
 /* The customer's page (client.html, its own small bundle): #t=<token> (the appointment, the extra work, the invoice,
-   card payment, or an estimate) and #suivi=<token> (the mechanic on the way). No account: the link is the key.
+   card payment, or an estimate), #suivi=<token> (the mechanic on the way) and #reserver (« Réserver en ligne »). No account: the link is the key.
    Light by default, dark when the phone is dark. French or English: « &l=en » in the link, else the customer's file. */
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
@@ -11,6 +11,7 @@ import { parseLink, recallGarage, type Link } from './link';
 import { pickLang, type CLang } from './i18n';
 import { ViewPage, ErrorState } from './ViewPage';
 import { TrackPage } from './TrackPage';
+import { BookPage } from './BookPage';
 import { Header, Footer } from './ui';
 
 /** the phone's light or dark, also when it changes while the page is open */
@@ -39,6 +40,7 @@ function App() {
   // a language switch rewrites the address (no reload): read it again
   const onLang = () => setLink(parseLink(location.hash));
   if (link.kind === 't' && link.token) return <ViewPage key={`t-${link.token}`} token={link.token} linkLang={link.l} retour={link.retour} onLang={onLang} />;
+  if (link.kind === 'reserver') return <BookPage linkLang={link.l} />;
   if (link.kind === 'suivi' && link.token) return <TrackPage key={`s-${link.token}`} token={link.token} linkLang={link.l} onLang={onLang} />;
   return <NoLink l={link.l} />;
 }

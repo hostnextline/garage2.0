@@ -8,6 +8,7 @@
      client.html?demo#t=demo-unpaid     an invoice to pay (« Payer par carte » comes back with &retour=paye)
      client.html?demo#t=demo-paid       a paid invoice (PAYÉ)
      client.html?demo#t=demo-quote      an estimate        demo-cancelled, demo-expired, demo-gone, demo-bad, demo-offline: the other cases
+     client.html?demo#reserver          « Réserver en ligne » (demo-book-closed in sessionStorage: closed)
      client.html?demo#suivi=demo        the truck on the way (moves at each refresh)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
 import { SUPABASE_URL } from '../lib/config';
 import { totals } from '../lib/money';
@@ -144,6 +145,40 @@ function clientAnswer(b: Record<string, unknown>): Answer {
   return { status: 200, body: jobView(j) };
 }
 
+/* ---------- « Réserver en ligne » ---------- */
+const WEB_SERVICES = [
+  { id: '00000000-0000-4000-8000-00000000a001', name_fr: 'Promo hiver : pose de pneus + huile + inspection', name_en: 'Winter promo: tire install + oil + inspection', category: 'promo',
+    price_cents: 19999, taxable: true, duration_min: 90, promo: true, promo_until: D(30), includes: [{ fr: 'Pose de 4 pneus', en: '4 tires installed' }, { fr: 'Changement d’huile', en: 'Oil change' }, { fr: 'Inspection', en: 'Inspection' }] },
+  { id: '00000000-0000-4000-8000-00000000a002', name_fr: 'Changement d’huile et filtre', name_en: 'Oil and filter change', category: 'entretien', price_cents: 8999, taxable: true, duration_min: 45, promo: false, promo_until: null, includes: [] },
+  { id: '00000000-0000-4000-8000-00000000a003', name_fr: 'Pose de pneus (4)', name_en: 'Tire installation (4)', category: 'pneus', price_cents: 9999, taxable: true, duration_min: 60, promo: false, promo_until: null, includes: [] },
+  { id: '00000000-0000-4000-8000-00000000a004', name_fr: 'Freins avant (plaquettes et disques)', name_en: 'Front brakes (pads and rotors)', category: 'freins', price_cents: 34999, taxable: true, duration_min: 90, promo: false, promo_until: null, includes: [] },
+  { id: '00000000-0000-4000-8000-00000000a005', name_fr: 'Diagnostic (voyant moteur, bruit)', name_en: 'Diagnostic (check engine light, noise)', category: 'diagnostic', price_cents: null, taxable: true, duration_min: 60, promo: false, promo_until: null, includes: [] }
+];
+function bookAnswer(b: Record<string, unknown>): Answer {
+  let closed = false;
+  try { closed = sessionStorage.getItem('demo-book-closed') === '1'; } catch { /* ignore */ }
+  const action = String(b.action || 'info');
+  if (action === 'info') {
+    return { status: 200, body: { ok: true, garage: GARAGE, on: !closed, services: closed ? [] : WEB_SERVICES, taxes: true, horizon_days: 120,
+      blocks: [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }] } };
+  }
+  if (action === 'slots') {
+    const from = typeof b.from === 'string' ? b.from : null;
+    if (from && from > D(27)) return { status: 200, body: { ok: true, from, days: 14, slots: [] } };
+    const base = from ? 14 : 0;
+    const picks: [number, string, boolean][] = from ? [[base + 1, 'am', true], [base + 2, 'eve', false], [base + 4, 'pm', true]]
+      : [[1, 'pm', true], [2, 'am', true], [1, 'eve', false], [3, 'pm', true], [5, 'am', false], [6, 'eve', false]];
+    return { status: 200, body: { ok: true, from, days: 14, slots: picks.map(([n, block, near]) => ({ day: D(n), block, near })) } };
+  }
+  if (action === 'book') {
+    const digits = String(b.phone || '').replace(/\D/g, '');
+    if (digits.length < 10) return refuse(400, 'phone', 'Écrivez un numéro de téléphone à 10 chiffres.');
+    if (String(b.last_name || '').toLowerCase() === 'pris') return refuse(400, 'block_full', 'Ce moment vient d’être pris. Choisissez-en un autre.');
+    return { status: 200, body: { ok: true, link: `${location.pathname}?demo#t=demo-booked${b.lang === 'en' ? '&l=en' : ''}`, day: b.day, block: b.block, text: 'sent' } };
+  }
+  return refuse(400, 'action', 'Action inconnue.');
+}
+
 /* ---------- the truck on the way ---------- */
 const WAY: [number, number][] = [[45.5005, -73.6577], [45.5033, -73.6604], [45.5061, -73.6612], [45.5089, -73.6619], [45.5112, -73.6628], [45.5139, -73.6637],
   [45.5162, -73.6644], [45.5188, -73.6651], [45.5213, -73.6659], [45.5241, -73.6672], [45.5266, -73.6684], [45.5289, -73.6694], [45.5307, -73.6702]];
@@ -169,6 +204,7 @@ const LINKS: [string, string][] = [
   ['#t=demo-booked', 'Réservé'], ['#t=demo-onsite', 'Mécano arrivé (facture)'], ['#t=demo-extras', 'Travaux proposés'], ['#t=demo-route', 'En route'], ['#t=demo-unpaid', 'Facture à payer'],
   ['#t=demo-unpaid&l=en', 'Invoice (English)'], ['#t=demo-paid', 'Payée'], ['#t=demo-quote', 'Estimation'], ['#t=demo-cancelled', 'Annulé'],
   ['#t=demo-expired', 'Lien expiré'], ['#t=demo-bad', 'Mauvais lien'], ['#t=demo-offline', 'Sans réseau'],
+  ['#reserver', 'Réserver en ligne'], ['#reserver&l=en', 'Book online (English)'],
   ['#suivi=demo', 'Suivi en route'], ['#suivi=demo-nopos', 'Suivi sans position'], ['#suivi=demo-arrived', 'Arrivé'], ['#suivi=demo-cancelled', 'Suivi terminé'],
   ['#suivi=demo-expired', 'Suivi expiré'], ['#suivi=demo-bad', 'Mauvais suivi']
 ];
@@ -203,6 +239,7 @@ export function installClientDemo() {
     await new Promise((r) => setTimeout(r, 350));
     if (body.token === 'demo-offline') throw new TypeError('Failed to fetch');
     const out = url.pathname.endsWith('/functions/v1/client') ? clientAnswer(body)
+      : url.pathname.endsWith('/functions/v1/book') ? bookAnswer(body)
       : url.pathname.endsWith('/rest/v1/rpc/public_track') ? { status: 200, body: trackAnswer(String(body.p_token || '')) }
       : { status: 404, body: { message: 'demo: unknown address' } };
     return new Response(JSON.stringify(out.body), { status: out.status, headers: { 'content-type': 'application/json' } });

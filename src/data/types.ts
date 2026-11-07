@@ -19,7 +19,9 @@ export interface Settings extends Row {
   company: { name?: string; legal_name?: string; phone?: string; email?: string; address?: string; website?: string; tps_no?: string; tvq_no?: string; neq?: string; footer_fr?: string; footer_en?: string };
   taxes: { enabled: boolean; tps: number; tvq: number };
   booking: { blocks: { key: BlockKey; start: number; end: number }[]; horizon_days: number; speed_kmh: number; detour: number; stop_min: number;
-    unknown_min: number; min_block_min: number; near_km: number; home: { label: string; address: string; lat: number; lng: number } };
+    unknown_min: number; min_block_min: number; near_km: number; home: { label: string; address: string; lat: number; lng: number };
+    /** « Réserver en ligne » (Part 23): the public link client.html#reserver is open */
+    web?: { on?: boolean; max_km?: number } };
   billing: { invoice_prefix: string; quote_prefix?: string; pad: number; due_days: number; hourly_cents: number | null; travel: { cents: number; free_over_cents: number | null }; goal_cents?: number | null; terms_fr?: string; terms_en?: string };
   messages: { on: Record<string, boolean>; fr: Record<string, string>; en: Record<string, string> };
   role_rights: Partial<Record<Exclude<Role, 'owner'>, Partial<Record<Right, boolean>>>>;

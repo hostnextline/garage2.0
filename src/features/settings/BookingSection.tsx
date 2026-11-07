@@ -8,7 +8,9 @@ import { DEFAULT_BLOCKS, type BlockKey } from '../../lib/dates';
 import { settings } from '../../data/select';
 import { saveSettings } from '../../data/api';
 import { flush, pull } from '../../data/sync';
-import { Panel, Field, Input, Banner, attempt, toast } from '../../ui';
+import { Panel, Field, Input, Banner, Button, Switch, attempt, toast } from '../../ui';
+import { Copy, Share2, ExternalLink } from 'lucide-preact';
+import { appBase, movedTo } from '../../lib/config';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
 import { MapView } from '../map/MapView';
 import { useSectionDraft, SaveBar, Section, NumInput, TimeInput, rangeError } from './SectionFrame';
@@ -76,6 +78,7 @@ export function BookingSection() {
   const hasPos = d.home.lat != null && d.home.lng != null;
   return (
     <Section testid="settings-booking" bar={<SaveBar dirty={dirty} onSave={save} onReset={() => { reset(); setErr({}); }} />}>
+      <WebBooking />
       <Panel title={t('settings.booking.start')} help={t('settings.booking.startHelp')} data-testid="booking-start">
         <div class="settings-centrale">
           <div class="stack">
@@ -127,5 +130,40 @@ export function BookingSection() {
         </div>
       </Panel>
     </Section>
+  );
+}
+
+/** « Réservation en ligne »: the public link where customers book themselves (the best moments for the routes). */
+export function webLink(): string { return `${movedTo() || appBase()}client.html#reserver`; }
+function WebBooking() {
+  const on = settings.value.booking.web?.on === true;
+  const link = webLink();
+  const turn = (v: boolean) => attempt(() => saveSettings('booking', { ...settings.value.booking, web: { ...(settings.value.booking.web || {}), on: v } }),
+    { ok: t(v ? 'settings.booking.webOnDone' : 'settings.booking.webOffDone') });
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); toast(t('settings.booking.webCopied')); }
+    catch { toast(t('settings.booking.webCopyFail'), { kind: 'bad' }); }
+  };
+  const share = async () => {
+    try { await navigator.share({ title: t('settings.booking.webShareTitle'), url: link }); } catch { /* closed */ }
+  };
+  return (
+    <Panel title={t('settings.booking.web')} help={t('settings.booking.webHelp')} data-testid="booking-web">
+      <div class="stack">
+        <Switch checked={on} onChange={(v) => void turn(v)} label={t('settings.booking.webOn')} hint={t(on ? 'settings.booking.webOnHint' : 'settings.booking.webOffHint')} data-testid="booking-web-on" />
+        {on && (
+          <>
+            <Field label={t('settings.booking.webLink')} hint={t('settings.booking.webLinkHint')}>
+              <input class="input" value={link} readOnly onFocus={(e) => e.currentTarget.select()} aria-label={t('settings.booking.webLink')} data-testid="booking-web-link" />
+            </Field>
+            <div class="row-wrap">
+              <Button variant="primary" icon={<Copy />} onClick={copy} data-testid="booking-web-copy">{t('settings.booking.webCopy')}</Button>
+              {typeof navigator !== 'undefined' && 'share' in navigator && <Button icon={<Share2 />} onClick={share}>{t('settings.booking.webShare')}</Button>}
+              <Button variant="ghost" icon={<ExternalLink />} href={link} target="_blank">{t('settings.booking.webOpen')}</Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Panel>
   );
 }

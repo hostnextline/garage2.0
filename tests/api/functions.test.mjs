@@ -396,3 +396,68 @@ test('the conversation with a customer: the texts both ways from GoHighLevel, an
   assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'allo' }, ownerJwt)).code, 'sms_off');
   await q(`delete from public.messages where customer_id = $1`, [cust]);
 });
+
+test('« Réserver en ligne »: the services, the best moments near a truck, booked at once with the text; a new customer, then the same phone again', async () => {
+  const dow = (await q(`select extract(dow from $1::date)::int d`, [day]))[0].d;
+  const truck = randomUUID(); made.trucks.push(truck);
+  await q(`insert into public.trucks (id, name, active) values ($1, 'Camion web', true)`, [truck]);
+  await q(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, '[[480,1200]]')`, [truck, dow]);
+  const oil = (await q(`insert into public.services (name_fr, name_en, price_cents, duration_min) values ('Huile web', 'Oil web', 8000, 45) returning id`))[0].id;
+  const off = (await q(`insert into public.services (name_fr, price_cents, duration_min, active) values ('Hors ligne', 1000, 30, false) returning id`))[0].id;
+  const phone = `514 555-${String(Math.floor(1000 + Math.random() * 8999))}`;
+  try {
+    const info = await fn('book', { action: 'info' });
+    assert.equal(info.ok, true, JSON.stringify(info));
+    assert.equal(info.on, true, 'open by default (Part 23)');
+    assert.ok(info.services.some((s) => s.id === oil), 'an active service is offered');
+    assert.ok(!info.services.some((s) => s.id === off), 'an inactive one is not');
+    // the best moments: the day the truck works, never the trucks or the minutes
+    const sl = await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil], days: 14 });
+    assert.equal(sl.ok, true, JSON.stringify(sl));
+    const mine = sl.slots.find((s) => s.day === day && s.block === 'pm');
+    assert.ok(mine, 'the afternoon of the truck’s day is offered: ' + JSON.stringify(sl.slots));
+    assert.deepEqual(Object.keys(mine).sort(), ['block', 'day', 'near']);
+    assert.equal((await fn('book', { action: 'slots', lat: 46.81, lng: -71.21, services: [oil] })).code, 'far', 'Québec City is out of the area');
+    // the checks before anything is kept
+    const form = { action: 'book', base: BASE, lang: 'fr', services: [oil], day, block: 'pm', first_name: 'Sophie', last_name: 'Web', phone,
+      address: '1250 rue Graham, Mont-Royal', lat: 45.53, lng: -73.62, vehicle: { year: '2021', make: 'Toyota', model: 'RAV4' }, problem: 'Un bruit' };
+    assert.equal((await fn('book', { ...form, phone: '555' })).code, 'phone');
+    assert.equal((await fn('book', { ...form, services: [off] })).code, 'no_service', 'an inactive service is refused');
+    const robot = await fn('book', { ...form, website: 'http://spam' });
+    assert.equal(robot.ok, true); assert.equal(robot.link, null, 'a robot is told yes, nothing is kept');
+    assert.equal((await q(`select count(*)::int n from public.customers where phone_digits = $1`, [phone.replace(/\D/g, '')]))[0].n, 0);
+    // booked
+    await clearLog();
+    const r = await fn('book', form);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.ok(r.link.startsWith(BASE + 'client.html#t='));
+    const [c] = await q(`select * from public.customers where phone_digits = $1`, [phone.replace(/\D/g, '')]);
+    made.customers.push(c.id);
+    assert.equal(c.first_name, 'Sophie'); assert.equal(c.lang, 'fr');
+    const [j] = await q(`select * from public.jobs where customer_id = $1`, [c.id]);
+    assert.deepEqual([j.source, j.status, j.day.toISOString?.().slice(0, 10) ?? j.day, j.block, j.truck_id, j.duration_min, j.problem], ['web', 'booked', day, 'pm', truck, 45, 'Un bruit']);
+    const [v] = await q(`select * from public.vehicles where id = $1`, [j.vehicle_id]);
+    assert.deepEqual([v.year, v.make, v.model], [2021, 'Toyota', 'RAV4']);
+    const items = await q(`select description, unit_cents from public.job_items where job_id = $1`, [j.id]);
+    assert.deepEqual(items, [{ description: 'Huile web', unit_cents: 8000 }]);
+    const view = await fn('client', { action: 'view', token: tokenOf(r.link) });
+    assert.equal(view.customer.first, 'Sophie', 'the link opens the customer’s page');
+    const [m] = await q(`select * from public.messages where job_id = $1 and kind = 'booking'`, [j.id]);
+    assert.ok(m && /Sophie/.test(m.body) && m.body.includes(r.link), 'the confirmation text, with the link');
+    // the same phone: the same customer (their file is not changed), the car found again; a third coming one is refused
+    const r2 = await fn('book', { ...form, first_name: 'Autre', address: '10 rue Autre, Montréal', vehicle: { make: 'toyota', model: 'rav4' } });
+    assert.equal(r2.ok, true, JSON.stringify(r2));
+    assert.equal((await q(`select count(*)::int n from public.customers where phone_digits = $1`, [phone.replace(/\D/g, '')]))[0].n, 1);
+    assert.equal((await q(`select first_name from public.customers where id = $1`, [c.id]))[0].first_name, 'Sophie');
+    assert.equal((await q(`select count(distinct vehicle_id)::int n from public.jobs where customer_id = $1`, [c.id]))[0].n, 1);
+    assert.equal((await fn('book', form)).code, 'too_many');
+    // closed in Réglages: the page says to call
+    await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'false') where id = 1`);
+    assert.equal((await fn('book', { action: 'info' })).on, false);
+    assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code, 'web_off');
+  } finally {
+    await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
+    await q(`delete from public.job_items where service_id = any($1)`, [[oil, off]]);
+    await q(`delete from public.services where id = any($1)`, [[oil, off]]);
+  }
+});

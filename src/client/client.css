@@ -238,3 +238,52 @@
 .jobs-sign-line span { position: absolute; left: 0; bottom: 2px; font-size: var(--t-lg); color: #6B747D; line-height: 1; }
 .jobs-sign-hint { position: absolute; inset: 0 0 44px; display: grid; place-items: center; color: #6B747D; font-size: var(--t-md); font-weight: 470; pointer-events: none; padding: 0 var(--sp-6); text-align: center; }
 .jobs-sign-clear.btn { position: absolute; z-index: 2; top: 4px; right: 4px; min-height: 44px; }
+
+/* ---------- « Réserver en ligne » (client.html#reserver) ---------- */
+.bk-progress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: var(--sp-2); }
+.bk-progress span { height: 4px; border-radius: 2px; background: var(--line); }
+.bk-progress span.is-on { background: var(--accent); }
+.bk-title { font-size: var(--t-xl); font-stretch: var(--w-title); font-weight: 380; margin: 0 0 var(--sp-2); outline: none; }
+.bk-next { margin-top: var(--sp-5); min-height: 56px; font-size: var(--t-md); }
+.bk-back { align-self: flex-start; }
+.bk-hint { margin: -6px 0 0; }
+.bk-svcs, .bk-sugg, .bk-slots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.bk-svc, .bk-slot, .bk-sugg button { width: 100%; display: flex; align-items: center; gap: var(--sp-3); text-align: left; font: inherit; color: var(--ink);
+  background: var(--solid); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); min-height: 64px; cursor: pointer;
+  transition: border-color 120ms, background 120ms; }
+.bk-svc:hover, .bk-slot:hover, .bk-sugg button:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.bk-svc:focus-visible, .bk-slot:focus-visible, .bk-sugg button:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent); }
+.bk-svc.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.bk-tick { flex: none; width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--line); display: grid; place-items: center; background: var(--solid); }
+.bk-svc.is-on .bk-tick { border-color: var(--accent); background: var(--accent); color: var(--on-accent, #fff); }
+.bk-tick svg { width: 16px; height: 16px; stroke-width: 3; }
+.bk-svc-main, .bk-slot-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bk-svc-name { font-weight: 540; overflow-wrap: anywhere; }
+.bk-svc-inc, .bk-svc-meta { font-size: var(--t-xs); color: var(--ink-2); }
+.bk-svc-price { flex: none; text-align: right; font-stretch: var(--w-num); font-weight: 560; max-width: 40%; }
+.bk-promo { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: var(--r-pill); background: var(--accent); color: var(--on-accent, #fff);
+  font-size: var(--t-xs); font-weight: 600; vertical-align: 1px; }
+.bk-search { position: relative; display: flex; align-items: center; }
+.bk-search svg { position: absolute; left: 12px; width: 18px; height: 18px; color: var(--ink-3); pointer-events: none; }
+.bk-search .input { padding-left: 40px; width: 100%; }
+.bk-sugg button svg, .bk-place > svg { width: 18px; height: 18px; flex: none; color: var(--accent-ink); }
+.bk-sugg button > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bk-place { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); }
+.bk-place .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.bk-slot b { font-size: var(--t-md); font-weight: 560; }
+.bk-slot.is-best { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.bk-best, .bk-near { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-xs); font-weight: 600; }
+.bk-best { color: var(--accent-ink); }
+.bk-near { color: var(--ok); font-weight: 520; }
+.bk-best svg, .bk-near svg { width: 14px; height: 14px; }
+.bk-slot-go { flex: none; font-size: 1.6rem; color: var(--ink-3); line-height: 1; }
+.bk-slots { margin-bottom: var(--sp-4); }
+.bk-summary { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); margin-bottom: var(--sp-4); }
+.bk-two, .bk-three { display: grid; gap: var(--sp-3); grid-template-columns: 1fr; }
+@media (min-width: 520px) { .bk-two { grid-template-columns: 1fr 1fr; } .bk-three { grid-template-columns: 7rem 1fr 1fr; } }
+.bk-car { border: 0; margin: 0; padding: 0; min-width: 0; }
+.bk-car legend { font-weight: 560; padding: 0; margin-bottom: var(--sp-2); }
+.bk-car .select { width: 100%; }
+.cl-field .textarea { font-weight: 460; font-size: var(--t-md); }
+.bk-hp { position: absolute !important; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+.bk-done-when { font-size: var(--t-md); color: var(--ink) !important; font-weight: 520; }

@@ -1,14 +1,15 @@
-/* The address of the customer's page: client.html#t=<token>[&l=en][&retour=paye] or client.html#suivi=<token>[&l=en].
+/* The address of the customer's page: client.html#t=<token>[&l=en][&retour=paye], client.html#suivi=<token>[&l=en], or
+   client.html#reserver[&l=en] (« Réserver en ligne », open to everyone).
    Also remembers, on this phone only, the two links the customer opened (the appointment and the truck tracking), so
    each page can point to the other one. */
 import { isLang, type CLang } from './i18n';
 
-export interface Link { kind: 't' | 'suivi' | null; token: string; l: CLang | null; retour: string | null }
+export interface Link { kind: 't' | 'suivi' | 'reserver' | null; token: string; l: CLang | null; retour: string | null }
 
 export function parseLink(hash: string | null | undefined): Link {
   const p = new URLSearchParams(String(hash || '').replace(/^#/, ''));
   const t = p.get('t'), s = p.get('suivi');
-  const kind = t != null ? 't' : s != null ? 'suivi' : null;
+  const kind = t != null ? 't' : s != null ? 'suivi' : p.has('reserver') ? 'reserver' : null;
   // texting apps sometimes glue a period or a bracket to the end of a link: tokens never contain those
   const token = String(t ?? s ?? '').trim().replace(/[^A-Za-z0-9_-]+$/, '');
   const l = p.get('l');

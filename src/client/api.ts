@@ -88,3 +88,12 @@ export async function callTrack(token: string): Promise<TrackAnswer> {
   }
   return data as unknown as TrackAnswer;
 }
+
+/** the « book » server function (« Réserver en ligne »: open to everyone, no token) */
+export async function callBook<T>(action: 'info' | 'slots' | 'book', extra: Record<string, unknown> = {}): Promise<T> {
+  const { status, data } = await post(`${SUPABASE_URL}/functions/v1/book`, { action, base: appBase(), ...extra });
+  if (!data || data.ok === false || status >= 400) {
+    throw new ClientError(String(data?.code || 'server'), String(data?.error || `HTTP ${status}`), null);
+  }
+  return data as unknown as T;
+}
