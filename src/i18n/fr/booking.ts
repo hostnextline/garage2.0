@@ -56,6 +56,14 @@ export const booking = {
   confirmWalkIn: 'Ouvrir la job',
   walkInSub: 'Maintenant, ici',
   missing: { customer: 'Choisis le client', work: 'Ajoute un service ou décris le problème', block: 'Choisis le bloc' },
+  force: {
+    title: 'Ce bloc est plein',
+    text: 'Tu peux réserver quand même : le rendez-vous passe après les autres, et la journée du camion va dépasser ses heures. Aucun autre rendez-vous ne perd sa place.',
+    ok: 'Réserver quand même',
+    cancel: 'Choisir un autre bloc',
+    done: 'Réservé quand même : {when}. Le camion va finir plus tard que prévu.',
+    banner: 'Réservé quand même dans un bloc plein : le camion va finir plus tard que prévu.'
+  },
   done: 'Réservé : {when}',
   doneWalkIn: 'Job ouverte',
   queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si le bloc est plein, tu verras la raison).',

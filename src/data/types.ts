@@ -75,6 +75,8 @@ export interface Job extends Base {
   stop_order: number | null; eta_min: number | null; travel_min: number | null; duration_min: number; status: JobStatus; problem: string | null; notes: string | null;
   address: string | null; unit: string | null; postal_code: string | null; lat: number | null; lng: number | null; card_on_file: boolean;
   lost_cents: number | null; lost_reason: string | null; started_at: string | null; arrived_at: string | null; finished_at: string | null; cancelled_at: string | null;
+  /** booked « quand même » in a full block: the route goes past the truck's hours (Part 19) */
+  forced?: boolean;
   pay_later: boolean; pay_later_reason: string | null; waiver_signed_at: string | null; waiver_signer: string | null; waiver_version: string | null; waiver_attachment: string | null;
   /** signed by the customer online (from the confirmation text) or at the door */
   waiver_via?: 'phone' | 'online' | null;

@@ -15,7 +15,7 @@ import { bookJob, walkIn as walkInJob, errorMessage, type BookInput } from '../.
 import { uuid } from '../../data/sync';
 import { can, hasRole, isOwner, myTrucks } from '../../data/auth';
 import type { Quote } from '../../data/types';
-import { Page, Panel, Field, Input, Textarea, Check, Chips, Stepper, Button, BigStep, Banner, Kv, Money, toast } from '../../ui';
+import { Page, Panel, Field, Input, Textarea, Check, Chips, Stepper, Button, BigStep, Banner, Kv, Money, toast, ask } from '../../ui';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
@@ -26,6 +26,9 @@ import { blockPhrase } from './when';
 import { notifyCustomer, wantsText } from './notify';
 import { forgetRefusal, noLongWaitOffline } from './outbox';
 import './booking.css';
+
+/** the refusals « Réserver quand même » can go past */
+const FULL = ['block_full', 'truck_full'];
 
 const EMPTY_PLACE: PlaceValue = { address: '', unit: null, postal_code: null, lat: null, lng: null };
 function placeOf(id: string | null): PlaceValue {
@@ -130,6 +133,7 @@ function BookForm({ query }: ScreenProps) {
   const miss = missingPiece({ customerId, items, problem, choice }, isWalkIn);
 
   /* ---------- « Réserver » ---------- */
+  const mayForce = isOwner() || hasRole('office');
   const submit = async () => {
     if (miss) return;
     const base = {
@@ -152,19 +156,32 @@ function BookForm({ query }: ScreenProps) {
       return;
     }
     const c = choice!;
-    const job: BookInput = { ...base, day: c.day, block: c.block };
+    await book({ ...base, day: c.day, block: c.block }, lines, c, false);
+  };
+  /** « Réserver »; a full block: the owner and the office may book anyway, after a warning */
+  const book = async (job: BookInput, lines: ReturnType<typeof toItemInputs>, c: BlockChoice, force: boolean): Promise<void> => {
     try {
-      const r = await noLongWaitOffline(bookJob(job, lines), { id: jobId });
+      const r = await noLongWaitOffline(bookJob(force ? { ...job, force: true } : job, lines), { id: jobId });
       if (r.queued) { toast(t('booking.queued'), { ms: 10000 }); navigate(`/agenda/${c.day}`, { replace: true }); return; }
-      toast(t('booking.done', { when: choiceWords(c, l) }), { kind: 'ok' });
+      const forced = !!r.data?.forced;
+      toast(forced ? t('booking.force.done', { when: choiceWords(c, l) }) : t('booking.done', { when: choiceWords(c, l) }), { kind: forced ? 'info' : 'ok', ms: forced ? 9000 : undefined });
       navigate(`/job/${r.id}`, { replace: true });
       if (wantsText('booking', r.id)) void notifyCustomer('booking', r.id, { customerId });
       // the texts are on, but this customer has no cell number: the office can ask for one
       else if (settings.value.messages?.on?.booking && cust && !cust.phone) toast(t('booking.sms.noPhone'));
     } catch (e) {
       const msg = errorMessage(e);
+      const code = refusalCode(e);
+      if (!force && FULL.includes(code) && mayForce) {
+        await forgetRefusal('book_job', (a) => (a.p_job as { id?: string })?.id === jobId);
+        const yes = await ask({ title: t('booking.force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: t('booking.force.cancel'), danger: true });
+        if (yes) return book(job, lines, c, true);
+        setBlockError(`${msg} ${t('booking.refusedBlock')}`);
+        blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
       toast(msg, { kind: 'bad' });
-      if (BLOCK_REFUSALS.includes(refusalCode(e))) {
+      if (BLOCK_REFUSALS.includes(code)) {
         const hint = t('booking.refusedBlock');
         setBlockError(msg.toLowerCase().includes(hint.toLowerCase().replace(/\.$/, '')) ? msg : `${msg} ${hint}`);
         blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
