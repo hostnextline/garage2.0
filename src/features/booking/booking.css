@@ -133,3 +133,6 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 /* ---------- the customer's text, to send by hand ---------- */
 .sms-bubble { margin: 0; padding: var(--sp-3) var(--sp-4); border-radius: 18px 18px 18px 6px; background: var(--sunken); border: 1px solid var(--line);
   white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-size: var(--t-md); line-height: var(--lh); }
+
+/* the other cars of the customer that have work in this appointment */
+.book-cars { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }

@@ -966,3 +966,40 @@ step('Départ de ce camion: the office makes Camion Complet leave from Laval; it
   noErrors(s.page);
   await s.page.context().close();
 });
+
+step('two cars of the same customer: each car its own work; back to the first car, its work is still there; one appointment per car in the same block', async () => {
+  const SVC_TIRES = '5e7a0000-0000-4000-8000-000000000002';
+  const cust = h.sql(`insert into public.customers (first_name, last_name, phone, address, postal_code, lat, lng, lang, sms_ok)
+    values ('Samir', 'Haddad', '514 555-0177', '1250 rue Graham, Mont-Royal, QC', 'H3P 2C9', 45.5205, -73.6489, 'fr', false) returning id`);
+  const corolla = h.sql(`insert into public.vehicles (customer_id, year, make, model) values ('${cust}', 2016, 'Toyota', 'Corolla') returning id`);
+  const sienna = h.sql(`insert into public.vehicles (customer_id, year, make, model) values ('${cust}', 2019, 'Toyota', 'Sienna') returning id`);
+  const { page } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.nadia.email, PW);
+  await page.goto(h.APP + `#/book?customer=${cust}`);
+  await page.getByTestId('customer-picked').waitFor({ timeout: 15000 });
+  const chips = page.getByTestId('vehicle-chips');
+  // the Corolla: an oil change
+  await chips.getByRole('button', { name: /Corolla/ }).click();
+  await page.getByTestId(`svc-${SVC_OIL}`).click();
+  // the Sienna: the list starts empty; tires
+  await chips.getByRole('button', { name: /Sienna/ }).click();
+  assert.equal(await page.getByTestId(`svc-${SVC_OIL}`).getAttribute('aria-pressed'), 'false', 'the Sienna starts with nothing chosen');
+  await page.getByTestId(`svc-${SVC_TIRES}`).click();
+  await page.getByTestId(`book-car-${corolla}`).waitFor();
+  // back to the Corolla: its oil change is still there, the tires are not
+  await chips.getByRole('button', { name: /Corolla/ }).click();
+  assert.equal(await page.getByTestId(`svc-${SVC_OIL}`).getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.getByTestId(`svc-${SVC_TIRES}`).getAttribute('aria-pressed'), 'false');
+  await page.getByTestId(`book-car-${sienna}`).waitFor();
+  await h.shot(page, 'e2e-17-two-cars');
+  await page.getByTestId('bp-sugg').first().click();
+  await page.getByTestId('book-confirm').click();
+  await page.getByTestId('agenda-screen').waitFor({ timeout: 20000 });
+  const rows = h.sql(`select string_agg(v.model || ':' || i.service_id || ':' || j.block || ':' || j.day, ',' order by v.model) from public.jobs j join public.vehicles v on v.id = j.vehicle_id
+    join public.job_items i on i.job_id = j.id where j.customer_id = '${cust}'`).split(',');
+  assert.equal(rows.length, 2, 'one appointment per car: ' + rows.join(' '));
+  assert.ok(rows[0].startsWith(`Corolla:${SVC_OIL}:`) && rows[1].startsWith(`Sienna:${SVC_TIRES}:`), rows.join(' '));
+  assert.equal(rows[0].split(':').slice(2).join(':'), rows[1].split(':').slice(2).join(':'), 'the same block');
+  noErrors(page);
+  await page.context().close();
+});

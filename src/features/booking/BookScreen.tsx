@@ -69,6 +69,22 @@ function BookForm({ query }: ScreenProps) {
   const [blockError, setBlockError] = useState<string | null>(null);
   // one id for this booking: tapped twice after a lost answer, the server books it once
   const [jobId] = useState(() => uuid());
+  /* each car of the customer has its own work: the other cars' services, kept while another car is chosen */
+  const [carts, setCarts] = useState<Record<string, { items: ItemDraft[]; dur: number | null }>>({});
+  // one id per car (a second tap after a lost answer books each car once)
+  const ids = useRef<Record<string, string>>({});
+  const idOf = (vid: string | null) => (vid === vehicleId || vid == null ? jobId : (ids.current[vid] ||= uuid()));
+  const chooseVehicle = (id: string | null) => {
+    if (id === vehicleId) return;
+    const next = { ...carts };
+    if (vehicleId && (items.length || durOverride != null)) next[vehicleId] = { items, dur: durOverride }; else if (vehicleId) delete next[vehicleId];
+    const back = id ? next[id] : undefined;
+    if (id) delete next[id];
+    setCarts(next);
+    setItems(back?.items || []);
+    setDurOverride(back?.dur ?? null);
+    setVehicleId(id);
+  };
   const blockPanel = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLElement>(null);
   const isWide = wide.value;
@@ -119,6 +135,7 @@ function BookForm({ query }: ScreenProps) {
   const pickCustomer = (id: string | null) => {
     setCustomerId(id);
     if (!id) { setVehicleId(null); setPlace(EMPTY_PLACE); setPlaceOwner(null); setCard(null); }
+    if (id !== customerId) setCarts({});
   };
 
   /* ---------- who may choose what ---------- */
@@ -130,7 +147,13 @@ function BookForm({ query }: ScreenProps) {
   /* ---------- what it takes, what it costs, what is missing ---------- */
   const custLang = (cust?.lang === 'en' ? 'en' : 'fr') as 'fr' | 'en';
   const sum = useMemo(() => bookSummary(items, settings.value.taxes, { override: durOverride, priceless: (id) => serviceRow(id)?.price_cents == null }), [items, durOverride, settings.value.taxes]);
-  const miss = missingPiece({ customerId, items, problem, choice }, isWalkIn);
+  // the other cars with work (still the customer's), and the time of all the cars together for the block
+  const others = Object.entries(carts)
+    .filter(([vid, cart]) => cart.items.length > 0 && vid !== vehicleId && vehicleRow(vid)?.customer_id === customerId)
+    .map(([vid, cart]) => ({ vehicleId: vid, items: cart.items, sum: bookSummary(cart.items, settings.value.taxes, { override: cart.dur, priceless: (id) => serviceRow(id)?.price_cents == null }) }));
+  const allMinutes = sum.minutes + others.reduce((n, o) => n + o.sum.minutes, 0);
+  const allTotal = sum.total + others.reduce((n, o) => n + o.sum.total, 0);
+  const miss = missingPiece({ customerId, items: others.length ? [...items, ...others.flatMap((o) => o.items)] : items, problem, choice }, isWalkIn);
 
   /* ---------- « Réserver » ---------- */
   const mayForce = isOwner() || hasRole('office');
@@ -143,6 +166,7 @@ function BookForm({ query }: ScreenProps) {
       card_on_file: !!card, quote_id: quote?.id ?? null, source: quote ? 'quote' : isWalkIn ? 'walk_in' : 'phone'
     };
     const lines = toItemInputs(items);
+    if (others.length) { await bookCars(base); return; }
     if (isWalkIn) {
       try {
         const r = await noLongWaitOffline(walkInJob(base, lines), { id: jobId });
@@ -157,6 +181,58 @@ function BookForm({ query }: ScreenProps) {
     }
     const c = choice!;
     await book({ ...base, day: c.day, block: c.block }, lines, c, false);
+  };
+  /** several cars: one appointment each (the car chosen now first, then the others), in the same block */
+  const bookCars = async (base: Omit<BookInput, 'day' | 'block'>) => {
+    const cars = [
+      ...(items.length || problem.trim() ? [{ vehicleId, items, minutes: sum.minutes }] : []),
+      ...others.map((o) => ({ vehicleId: o.vehicleId as string | null, items: o.items, minutes: o.sum.minutes }))
+    ];
+    const done: string[] = [];
+    for (const [k, car] of cars.entries()) {
+      const id = idOf(car.vehicleId);
+      const job = { ...base, id, vehicle_id: car.vehicleId, duration_min: car.minutes, quote_id: k === 0 ? base.quote_id : null };
+      const lines = toItemInputs(car.items);
+      try {
+        if (isWalkIn) {
+          const r = await noLongWaitOffline(walkInJob(job, lines), { id });
+          if (!r.queued) done.push(r.id);
+        } else {
+          const c = choice!;
+          const r = await bookOne({ ...job, day: c.day, block: c.block }, lines, c, false);
+          if (!r) break;
+          if (r !== 'queued') done.push(r);
+        }
+      } catch (e) {
+        toast(errorMessage(e), { kind: 'bad' });
+        void forgetRefusal(isWalkIn ? 'walk_in' : 'book_job', (a) => (a.p_job as { id?: string })?.id === id);
+        break;
+      }
+    }
+    const left = cars.length - done.length;
+    if (!done.length && left) return;
+    toast(left ? t('booking.cars.partial', { n: done.length, total: cars.length }) : t('booking.cars.done', { n: done.length, when: isWalkIn ? '' : choiceWords(choice!, l) }), { kind: left ? 'bad' : 'ok', ms: 9000 });
+    for (const id of done) if (!isWalkIn && wantsText('booking', id)) void notifyCustomer('booking', id, { customerId });
+    if (!left) navigate(isWalkIn ? '/' : `/agenda/${choice!.day}`, { replace: true });
+    // what was booked leaves the screen: the rest can be tried again in another block
+    else { setCarts((cs) => { const n = { ...cs }; for (const car of cars) if (car.vehicleId && done.includes(idOf(car.vehicleId))) delete n[car.vehicleId]; return n; }); if (done.includes(jobId)) setItems([]); }
+  };
+  /** one car in a block; a full block: the owner and the office may book anyway (after a warning). The job id, 'queued', or null */
+  const bookOne = async (job: BookInput, lines: ReturnType<typeof toItemInputs>, c: BlockChoice, force: boolean): Promise<string | 'queued' | null> => {
+    try {
+      const r = await noLongWaitOffline(bookJob(force ? { ...job, force: true } : job, lines), { id: job.id! });
+      return r.queued ? 'queued' : r.id;
+    } catch (e) {
+      const msg = errorMessage(e);
+      const code = refusalCode(e);
+      await forgetRefusal('book_job', (a) => (a.p_job as { id?: string })?.id === job.id);
+      if (!force && FULL.includes(code) && mayForce) {
+        const yes = await ask({ title: t('booking.force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: t('booking.force.cancel'), danger: true });
+        if (yes) return bookOne(job, lines, c, true);
+      } else toast(msg, { kind: 'bad' });
+      if (BLOCK_REFUSALS.includes(code)) { setBlockError(`${msg} ${t('booking.refusedBlock')}`); blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      return null;
+    }
   };
   /** « Réserver »; a full block: the owner and the office may book anyway, after a warning */
   const book = async (job: BookInput, lines: ReturnType<typeof toItemInputs>, c: BlockChoice, force: boolean): Promise<void> => {
@@ -193,7 +269,7 @@ function BookForm({ query }: ScreenProps) {
   /* ---------- words ---------- */
   const title = isWalkIn ? t('booking.titleWalkIn') : quote ? t('booking.titleQuote', { n: quote.number }) : t('booking.title');
   const back = quote ? `/quote/${quote.id}` : qCustomer ? `/customer/${qCustomer}` : isWalkIn ? '/' : '/agenda';
-  const totalWords = sum.total > 0 ? money(sum.total, l) : '';
+  const totalWords = allTotal > 0 ? money(allTotal, l) : '';
   const stepSub = miss ? t(`booking.missing.${miss}`)
     : isWalkIn ? [t('booking.walkInSub'), totalWords].filter(Boolean).join(', ')
     : [blockPhrase(choice!.day, choice!.block, todayOf(), l), totalWords].filter(Boolean).join(', ');
@@ -217,7 +293,17 @@ function BookForm({ query }: ScreenProps) {
       {!customerId ? <p class="muted" style={{ margin: 0 }}>{t('booking.vehicle.firstCustomer')}</p> : (
         <div class="stack">
           <Field label={t('booking.vehicle.vehicle')} group>
-            <VehiclePicker customerId={customerId} value={vehicleId} onPick={setVehicleId} />
+            <VehiclePicker customerId={customerId} value={vehicleId} onPick={chooseVehicle} />
+            {others.length > 0 && (
+              <div class="book-cars" data-testid="book-cars">
+                <span class="small muted">{t('booking.cars.also')}</span>
+                {others.map((o) => (
+                  <button key={o.vehicleId} type="button" class="chip" onClick={() => chooseVehicle(o.vehicleId)} data-testid={`book-car-${o.vehicleId}`}>
+                    {t('booking.cars.chip', { car: vehicleLabel(vehicleRow(o.vehicleId)) || '—', n: o.items.length })}
+                  </button>
+                ))}
+              </div>
+            )}
           </Field>
           {quote?.vehicle_text && !vehicleId && <p class="faint small" style={{ margin: 0 }}>{t('booking.quote.vehicle', { text: quote.vehicle_text })}</p>}
           <AddressField label={t('booking.vehicle.address')} value={place} onValue={(v) => { setPlace(v); }} />
@@ -282,7 +368,7 @@ function BookForm({ query }: ScreenProps) {
     <div ref={blockPanel} class="book-block-anchor">
       <Panel title={t('booking.block.title')} sub={t('booking.block.sub')} data-tour="book-block">
         {blockError && <div style={{ marginBottom: 'var(--sp-3)' }}><Banner kind="bad">{blockError}</Banner></div>}
-        <BlockPicker lat={place.lat} lng={place.lng} duration={sum.minutes} truckId={effTruck} value={choice}
+        <BlockPicker lat={place.lat} lng={place.lng} duration={allMinutes} truckId={effTruck} value={choice}
           onPick={(c) => { setChoice(c); setBlockError(null); }} />
       </Panel>
     </div>
@@ -294,10 +380,11 @@ function BookForm({ query }: ScreenProps) {
         [t('booking.summary.customer'), cust ? [customerName(cust), vehicleLabel(vehicleRow(vehicleId))].filter(Boolean).join(', ') : null],
         [t('booking.summary.when'), isWalkIn ? t('booking.walkInSub') : choice ? choiceWords(choice, l) : t('booking.summary.noBlock')],
         [t('booking.services.title'), items.length ? `${t('booking.summary.services', { n: items.length })}, ${t('booking.summary.work', { d: duration(sum.minutes, l) })}` : problem.trim() ? t('booking.summary.problemOnly') : t('booking.summary.noWork')],
+        ...others.map((o) => [vehicleLabel(vehicleRow(o.vehicleId)) || '—', `${t('booking.summary.services', { n: o.items.length })}, ${t('booking.summary.work', { d: duration(o.sum.minutes, l) })}`] as [string, string]),
         [t('booking.summary.truckLabel'), effTruck ? truckLabel(effTruck) : null]
       ]} />
       <div class="book-total">
-        <Money cents={sum.total} large />
+        <Money cents={allTotal} large />
         <span class="muted small">{t('booking.summary.taxesLabel')}{sum.toConfirm ? `, ${t('booking.summary.toConfirm')}` : ''}</span>
       </div>
       {step}

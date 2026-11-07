@@ -56,6 +56,12 @@ export const booking: typeof fr = {
   confirmWalkIn: 'Open the job',
   walkInSub: 'Now, here',
   missing: { customer: 'Pick the customer', work: 'Add a service or describe the problem', block: 'Pick the block' },
+  cars: {
+    also: 'Also in this appointment:',
+    chip: '{car}: {n} jobs',
+    done: { one: 'Booked: {when}', other: '{n} vehicles booked: {when}' },
+    partial: 'Booked for {n} vehicle(s) out of {total}. Choose another block for the others.'
+  },
   force: {
     title: 'This block is full',
     text: 'You can book anyway: the appointment goes after the others, and the truck’s day will run past its hours. No other appointment loses its place.',

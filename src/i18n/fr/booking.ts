@@ -56,6 +56,12 @@ export const booking = {
   confirmWalkIn: 'Ouvrir la job',
   walkInSub: 'Maintenant, ici',
   missing: { customer: 'Choisis le client', work: 'Ajoute un service ou décris le problème', block: 'Choisis le bloc' },
+  cars: {
+    also: 'Aussi dans ce rendez-vous :',
+    chip: '{car} : {n} travaux',
+    done: { one: 'Réservé : {when}', other: '{n} véhicules réservés : {when}' },
+    partial: 'Réservé pour {n} véhicule(s) sur {total}. Choisis un autre bloc pour les autres.'
+  },
   force: {
     title: 'Ce bloc est plein',
     text: 'Tu peux réserver quand même : le rendez-vous passe après les autres, et la journée du camion va dépasser ses heures. Aucun autre rendez-vous ne perd sa place.',
