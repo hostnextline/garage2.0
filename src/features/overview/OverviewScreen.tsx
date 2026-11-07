@@ -66,7 +66,7 @@ export default function OverviewScreen(_p: ScreenProps) {
   for (const s of m.unplaced) {
     if (s.hasPos) markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: UNPLACED_COLOR, number: '?', active: selected === s.id, title: s.name, onClick: () => pick(s.id) });
   }
-  for (const p of m.people) markers.push({ id: `p-${p.id}`, kind: 'person', lat: p.lat, lng: p.lng, color: p.color, label: p.name });
+  for (const p of m.people) markers.push({ id: `p-${p.id}`, kind: 'person', lat: p.lat, lng: p.lng, color: p.color, label: p.name, sub: p.onSite ? t('map.people.onSite', { name: p.onSite.name }) : undefined });
 
   function pick(id: string) {
     setSelected(id);

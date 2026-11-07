@@ -146,8 +146,10 @@ export default function MapScreen({ query }: ScreenProps) {
   }
   for (const p of m.people) {
     const age = minutesSince(p.at, now);
-    const stale = age != null && age >= STALE_MIN;
-    markers.push({ id: `p:${p.id}`, kind: 'person', lat: p.lat, lng: p.lng, color: p.color, label: p.name, sub: stale ? t('map.people.stale', { ago: ago(p.at, now) }) : ago(p.at, now),
+    // working at a customer's: never « old » (his phone sleeps while he works), he is there
+    const stale = !p.onSite && age != null && age >= STALE_MIN;
+    markers.push({ id: `p:${p.id}`, kind: 'person', lat: p.lat, lng: p.lng, color: p.color, label: p.name,
+      sub: p.onSite ? t('map.people.onSite', { name: p.onSite.name }) : stale ? t('map.people.stale', { ago: ago(p.at, now) }) : ago(p.at, now),
       dim: stale || (focus != null && focus !== p.truckId), title: p.name });
   }
   const lines: MapLine[] = [];

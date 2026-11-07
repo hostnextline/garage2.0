@@ -126,3 +126,19 @@ describe('team map: a truck that leaves from its own address (Part 18)', () => {
     expect(n.trucks[2].start).toBeNull();
   });
 });
+
+describe('team map: a mechanic working at a customer stays on the map', () => {
+  it('on site: shown at the customer, with the job, whatever the age of the position', () => {
+    const a = answer();
+    // the phone slept while he works: the last position is old and a few streets away
+    a.people[0] = { ...a.people[0], lat: 45.49, lng: -73.7, at: at(7, 0), job_id: null };
+    const m = assemble(a, { nameOf: () => '' });
+    const saleh = m.people.find((p) => p.id === 'u-saleh')!;
+    expect(saleh.onSite).toEqual({ jobId: 'j-2', name: 'Marc-André' });
+    expect([saleh.lat, saleh.lng]).toEqual([45.5022, -73.7094]);
+    // on the way: where his phone says
+    const adam = m.people.find((p) => p.id === 'u-adam')!;
+    expect(adam.onSite).toBeNull();
+    expect([adam.lat, adam.lng]).toEqual([45.5201, -73.6655]);
+  });
+});

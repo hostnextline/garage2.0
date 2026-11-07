@@ -39,7 +39,11 @@ export interface TruckRoute {
   /** its own start, when it has one */
   start: { lat: number; lng: number; label: string; address: string } | null;
 }
-export interface Person { id: string; name: string; color: string; lat: number; lng: number; at: string | null; jobId: string | null; truckId: string | null }
+export interface Person {
+  id: string; name: string; color: string; lat: number; lng: number; at: string | null; jobId: string | null; truckId: string | null;
+  /** working at a customer's (on site): shown there, whatever the age of the last position (the phone sleeps while he works) */
+  onSite: { jobId: string; name: string } | null;
+}
 export interface Assembled {
   home: { lat: number; lng: number; label: string; address: string } | null;
   trucks: TruckRoute[];
@@ -184,9 +188,13 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
   const people: Person[] = a.people.map((p, i) => {
     const tr = a.trucks.find((t) => t.driver_id === p.id) || (p.job_id ? a.trucks.find((t) => a.jobs.some((j) => j.id === p.job_id && j.truck_id === t.id)) : undefined);
     const truckColor = tr ? (trucks.find((x) => x.id === tr.id)?.color || tr.color) : null;
+    // on site: the job he is working at (his position's job, else his truck's job on site), and he is shown at that address
+    const site = a.jobs.find((j) => j.status === 'on_site' && (j.id === p.job_id || (!!tr && j.truck_id === tr.id)));
+    const at = site && okLat(site.lat) && okLng(site.lng) ? { lat: site.lat as number, lng: site.lng as number } : { lat: p.lat, lng: p.lng };
     return {
       id: p.id, name: p.name || nameOf(p.id) || '', color: p.color || truckColor || PALETTE[(i + 3) % PALETTE.length],
-      lat: p.lat, lng: p.lng, at: p.at, jobId: p.job_id, truckId: tr?.id ?? null
+      lat: at.lat, lng: at.lng, at: p.at, jobId: p.job_id, truckId: tr?.id ?? null,
+      onSite: site ? { jobId: site.id, name: site.name || '' } : null
     };
   });
 

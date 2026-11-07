@@ -62,6 +62,7 @@ export const map: typeof fr = {
   },
   people: {
     title: 'On the road',
+    onSite: 'Working at {name}’s',
     stale: 'Last position {ago}'
   },
   ago: { now: 'just now', min: '{n} min ago', hours: '{n} h ago', yesterday: 'yesterday', on: 'on {date}' },

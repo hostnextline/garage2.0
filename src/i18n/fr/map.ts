@@ -62,6 +62,7 @@ export const map = {
   },
   people: {
     title: 'Sur la route',
+    onSite: 'Au travail chez {name}',
     stale: 'Dernière position {ago}'
   },
   ago: { now: 'à l’instant', min: 'il y a {n} min', hours: 'il y a {n} h', yesterday: 'hier', on: 'le {date}' },

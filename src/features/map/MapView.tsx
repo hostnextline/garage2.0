@@ -148,7 +148,7 @@ export function MapView(p: MapViewProps) {
         const tap = !!m.onClick;
         const mk = L.marker([m.lat, m.lng], {
           icon: iconOf(L, m), title: m.title || m.label || '', alt: m.title || m.label || '', keyboard: tap, interactive: tap, riseOnHover: tap,
-          zIndexOffset: m.dim ? -800 : m.active ? 900 : m.kind === 'job' || m.kind === 'customer' ? 300 : m.kind === 'person' ? 250 : 100
+          zIndexOffset: m.kind === 'person' ? (m.dim ? 400 : 950) : m.dim ? -800 : m.active ? 900 : m.kind === 'job' || m.kind === 'customer' ? 300 : 100
         });
         if (tap) {
           const id = m.id;
