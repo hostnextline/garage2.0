@@ -60,11 +60,11 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261107000400_coffre_mechanic.sql` (Parts 21 and 22, applied 2026-11-07 through the
+- Applied on live: every migration up to `20261107000500_web_booking.sql` (Part 23, see below); before it, up to `20261107000400_coffre_mechanic.sql` (Parts 21 and 22, applied 2026-11-07 through the
   connector's `apply_migration` with the files' text, commits `96431c9` and `02dd77a`; Part 20 from commit `28c51cc`). Part 22: the
   mechanic of the job's truck may also put jobs in the Coffre (`coffre_may_add`).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off),
-  currently `2610bc8`. Shared code is in `supabase/functions/_shared/`.
+  currently `2610bc8` (`book`: `7b1b86b`). Shared code is in `supabase/functions/_shared/`.
 - Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
 - Free plan: the project pauses after a week without use.
 
@@ -101,8 +101,8 @@ end $do$;
 - « Ordre des arrêts » (Part 21, `jobs.manual_order`): owner, office (« book ») or the truck's driver put a truck's
   booked stops of a block in the order wanted (`set_stop_order`, empty list = back to the planner). `plan_block` keeps
   them right after the stops en route / on site; moving a job to another day, block or truck clears its place.
-- « Réserver en ligne » (Part 23, `20261107000500_web_booking.sql`, NOT yet applied on live; server function `book` NOT yet
-  deployed): one public link `client.html#reserver` (Réglages → Réservations, second panel « Réservation en ligne »: on/off, copy). The
+- « Réserver en ligne » (Part 23, `20261107000500_web_booking.sql`, applied on live 2026-11-07 from commit `7b1b86b` with the
+  sha256 check; server function `book` deployed pinned to `7b1b86b`, link open): one public link `client.html#reserver` (Réglages → Réservations, second panel « Réservation en ligne »: on/off, copy). The
   customer picks services, an address (Photon, must be ≤ `booking.web.max_km` (60) from the start), one of the 6 best blocks
   over 14 days (`suggest_core`, same ranking as `suggest_blocks`; « Voir d'autres dates » = next 14), then name/phone/car.
   `web_book` finds the customer by phone (file not changed) or creates one, books with `source = 'web'`, sends the usual
