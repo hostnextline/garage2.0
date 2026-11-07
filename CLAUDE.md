@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261107000200_coffre.sql` (Part 20, from commit `28c51cc`).
+- Applied on live: every migration up to `20261107000300_stop_order.sql` (Part 21, applied 2026-11-07 through the
+  connector's `apply_migration` with the file's text, commit `96431c9`; Part 20 from commit `28c51cc`).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off),
   currently `2610bc8`. Shared code is in `supabase/functions/_shared/`.
 - Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
@@ -96,6 +97,9 @@ end $do$;
 - « Réserver quand même » (Part 19, `jobs.forced`): owner/office book a full block after a warning; the forced job goes
   at the end of the route, nobody loses a place. « Coffre » (Part 20): family/friends jobs, no invoice, no taxes, own
   register (`coffre`, read only through `coffre_report`: owner and « Trésorerie », exported apart in #/coffre).
+- « Ordre des arrêts » (Part 21, `jobs.manual_order`): owner, office (« book ») or the truck's driver put a truck's
+  booked stops of a block in the order wanted (`set_stop_order`, empty list = back to the planner). `plan_block` keeps
+  them right after the stops en route / on site; moving a job to another day, block or truck clears its place.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
