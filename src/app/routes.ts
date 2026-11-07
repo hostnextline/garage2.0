@@ -1,7 +1,7 @@
 /* Every screen of the team app: its address, who may open it, and the code that draws it (loaded on first use,
    kept by the service worker for offline). A screen receives { params, query }. */
 import type { ComponentType } from 'preact';
-import { can, hasRole, isOwner } from '../data/auth';
+import { can, hasRole, isOwner, myTrucks } from '../data/auth';
 
 export interface ScreenProps { params: Record<string, string>; query: URLSearchParams }
 type Loader = () => Promise<{ default: ComponentType<ScreenProps> }>;
@@ -24,7 +24,8 @@ export const may = {
   invoices: () => can('invoices'),
   quotes: () => isField() || can('invoices'),
   map: () => can('map'),
-  hours: () => can('hours'),
+  // a mechanic opens Horaires for the truck he drives (the server lets him change its hours and its start)
+  hours: () => can('hours') || myTrucks().length > 0,
   treasury: () => can('treasury'),
   inventory: () => can('inventory'),
   dashboard: () => can('money'),

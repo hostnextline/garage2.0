@@ -934,15 +934,30 @@ step('Départ de ce camion: the office makes Camion Complet leave from Laval; it
   noErrors(o.page);
   await o.page.context().close();
 
-  // back to « Départ des camions »: the morning placed again from Legendre
-  const moved = page.getByText('Départ changé : les rendez-vous à venir sont replacés');
-  await moved.first().waitFor({ state: 'hidden', timeout: 20000 });
-  await panel.getByTestId('truck-start-mode').getByRole('button', { name: 'Centrale' }).click();
-  await panel.getByTestId('truck-start-save').click();
-  await moved.first().waitFor({ timeout: 10000 });
-  assert.equal(await until(() => h.sql(`select coalesce(start::text, 'null') from public.trucks where id = '${T.complet}'`), (v) => v === 'null'), 'null');
-  assert.equal(await until(route, (v) => v === FROM_LEGENDRE, 15000), FROM_LEGENDRE, 'from Legendre again');
-  await panel.getByText('Comme les autres camions : Centrale, 1401 rue Legendre Ouest').waitFor();
   noErrors(page);
   await page.context().close();
+
+  // Saleh drives Camion Complet. Without the « Horaires » right (taken from the mechanics here), Horaires still opens on
+  // his own truck only, even asked for another one; he puts it back on « Départ des camions » himself
+  h.sql(`update public.settings set role_rights = jsonb_set(coalesce(role_rights, '{}'), '{mechanic,hours}', 'false') where id = 1`);
+  assert.equal(h.sql(`select public.right_of(s, 'hours') from public.staff s where id = '${who.saleh.id}'`), 'f');
+  const s = await h.openW({ kind: 'phone' });
+  await h.signIn(s.page, who.saleh.email, PW);
+  await s.page.goto(h.APP + `#/hours/${T.voiture}`);
+  const mine = s.page.getByTestId('truck-start-panel');
+  await mine.waitFor();
+  assert.equal(await s.page.getByTestId('hours-trucks').getByRole('button').count(), 1, 'only the truck he drives');
+  assert.match(await s.page.getByTestId('hours-trucks').innerText(), /Camion Complet/);
+  assert.equal(await s.page.getByTestId('trucks-panel').count(), 0, 'not the list of the trucks (the owner’s)');
+  await mine.scrollIntoViewIfNeeded();
+  assert.equal(await mine.getByTestId('truck-start-mode').getByRole('button', { name: 'Une autre adresse' }).getAttribute('aria-pressed'), 'true');
+  await mine.getByTestId('truck-start-mode').getByRole('button', { name: 'Centrale' }).click();
+  await h.shot(s.page, 'e2e-16-saleh-start');
+  await mine.getByTestId('truck-start-save').click();
+  await s.page.getByText('Départ changé : les rendez-vous à venir sont replacés').waitFor({ timeout: 10000 });
+  assert.equal(await until(() => h.sql(`select coalesce(start::text, 'null') from public.trucks where id = '${T.complet}'`), (v) => v === 'null'), 'null');
+  assert.equal(await until(route, (v) => v === FROM_LEGENDRE, 15000), FROM_LEGENDRE, 'from Legendre again');
+  await mine.getByText('Comme les autres camions : Centrale, 1401 rue Legendre Ouest').waitFor();
+  noErrors(s.page);
+  await s.page.context().close();
 });

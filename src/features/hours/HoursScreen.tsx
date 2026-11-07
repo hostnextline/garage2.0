@@ -33,10 +33,12 @@ export default function HoursScreen({ params }: ScreenProps) {
   const l = lang.value;
   const today = todayOf();
   const isWide = wide.value;
-  const list = trucks.value;
   const mine = myTrucks();
-  const truckId = (params.truck && truckRow(params.truck) && !truckRow(params.truck)?.deleted_at ? params.truck : null)
-    || mine.find((id) => list.some((x) => x.id === id)) || activeTrucks.value[0]?.id || list[0]?.id || null;
+  // whoever may change every truck's hours sees them all; a mechanic sees only the truck he drives (his own hours and start)
+  const all = isOwner() || can('hours');
+  const list = all ? trucks.value : trucks.value.filter((x) => mine.includes(x.id));
+  const truckId = (params.truck && list.some((x) => x.id === params.truck) && !truckRow(params.truck)?.deleted_at ? params.truck : null)
+    || mine.find((id) => list.some((x) => x.id === id)) || (all ? activeTrucks.value[0]?.id || list[0]?.id : null) || null;
   const tr = truckRow(truckId);
   const canEdit = !!truckId && (isOwner() || can('hours') || mine.includes(truckId)) && !preview.value;
   const manage = isOwner() || can('settings');
