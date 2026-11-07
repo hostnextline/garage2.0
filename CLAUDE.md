@@ -93,6 +93,13 @@ end $do$;
   Without it, a mechanic still opens Horaires on the truck he drives only (`may.hours`, Part 18 follow-up), as the
   server allows (`truck_hours_editable`).
 
+- « Réserver quand même » (Part 19, `jobs.forced`): owner/office book a full block after a warning; the forced job goes
+  at the end of the route, nobody loses a place. « Coffre » (Part 20): family/friends jobs, no invoice, no taxes, own
+  register (`coffre`, read only through `coffre_report`: owner and « Trésorerie », exported apart in #/coffre).
+- Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
+- `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
+  end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
+
 ## Ideas not done yet
 
 - A start for one day only (today the truck's start stays until changed).
