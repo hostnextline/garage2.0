@@ -16,7 +16,9 @@ and `docs/DESIGN.md` (the look and the writing rules) before changing anything. 
 ## Branches and publishing
 
 - `main` and `construction-v2` stay equal: push `main`, then `git push origin main:construction-v2`.
-- A push to `main` runs `.github/workflows/deploy.yml`: `npm test`, build, then publishes two branches:
+- A push to `main` runs `.github/workflows/deploy.yml`: `npm test`, build, then publishes two branches (the notes
+  shown in « Mise à jour de l'app » are the first line of the last commit that changes the app itself: commits of
+  only `CLAUDE.md`, `docs/`, `README.md`, `tests/`, `.github/` or `ops/` are skipped, so write that line for the team):
   - `vercel` → https://mecanique-mobile-his.vercel.app/ (Vercel team NextLine Pro, project mecanique-mobile-his;
     see `ops/vercel/README.md`). This is the app's address; links sent to customers use it.
   - `gh-pages` → https://hostnextline.github.io/garage2.0/ (old address, still works, shows « new address »).
@@ -87,9 +89,10 @@ end $do$;
   other coming blocks in block order (the block that changed again when one before it moved, so every block counts
   from where its truck really is), unless that would push a booked job to « À placer ». `replan_days` (hours, starts,
   route numbers) goes day by day in block order without that chain (twice faster; ~0.4 s for 240 coming jobs).
+- Rights: live gives « hours » to every mechanic (`settings.role_rights`), which opens every truck in Horaires.
+  Without it, a mechanic still opens Horaires on the truck he drives only (`may.hours`, Part 18 follow-up), as the
+  server allows (`truck_hours_editable`).
 
 ## Ideas not done yet
 
 - A start for one day only (today the truck's start stays until changed).
-- Horaires for a mechanic's own truck: the server lets the driver change his truck's hours and start
-  (`truck_hours_editable`), but the screen needs the « hours » right, which opens every truck.

@@ -31,7 +31,8 @@ jobs:
         # (a commit with « [important] » in its message): the phones with an older version then get a notification
         run: |
           export VITE_BUILT_AT="$(git log -1 --format=%cI)"
-          export APP_NOTES="$(git log -1 --format=%s | sed 's/\[important\]//g' | sed 's/^ *//;s/ *$//')"
+          # the notes: the last change of the app itself (a commit of notes, tests or publishing says nothing to the team)
+          export APP_NOTES="$(git log -1 --first-parent --format=%s -- . ':!CLAUDE.md' ':!docs' ':!README.md' ':!tests' ':!.github' ':!ops' | sed 's/\[important\]//g' | sed 's/^ *//;s/ *$//')"
           export APP_IMPORTANT_SINCE="$(git log --grep='\[important\]' -1 --format=%cI || true)"
           npm run build
         env:
