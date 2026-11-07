@@ -52,12 +52,14 @@ export interface BookInput {
   id?: string; customer_id: string; vehicle_id?: string | null; day: string; block: BlockKey; duration_min?: number; truck_id?: string | null;
   problem?: string | null; notes?: string | null; address?: string | null; unit?: string | null; postal_code?: string | null; lat?: number | null; lng?: number | null;
   card_on_file?: boolean; source?: string; quote_id?: string | null;
+  /** « Réserver quand même » in a full block (owner, office) */
+  force?: boolean;
 }
 export type ItemInput = Partial<JobItem> & { description: string };
 export async function bookJob(job: BookInput, items: ItemInput[]) {
   guard();
   const id = job.id || uuid();
-  return callRpc<{ ok: boolean; job_id: string; truck_id: string | null }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: t('log.booking') }).then((r) => ({ ...r, id }));
+  return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: t('log.booking') }).then((r) => ({ ...r, id }));
 }
 export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null) {
   guard();

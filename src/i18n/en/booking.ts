@@ -56,6 +56,14 @@ export const booking: typeof fr = {
   confirmWalkIn: 'Open the job',
   walkInSub: 'Now, here',
   missing: { customer: 'Pick the customer', work: 'Add a service or describe the problem', block: 'Pick the block' },
+  force: {
+    title: 'This block is full',
+    text: 'You can book anyway: the appointment goes after the others, and the truck’s day will run past its hours. No other appointment loses its place.',
+    ok: 'Book anyway',
+    cancel: 'Choose another block',
+    done: 'Booked anyway: {when}. The truck will finish later than planned.',
+    banner: 'Booked anyway in a full block: the truck will finish later than planned.'
+  },
   done: 'Booked: {when}',
   doneWalkIn: 'Job opened',
   queued: 'Booking kept on this phone: it will be placed as soon as the network is back (if the block is full, you will see why).',

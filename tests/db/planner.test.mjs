@@ -498,3 +498,73 @@ test('a truck that drives by anyway takes the appointment on its way (Part 18)',
   assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [r.job_id]), t1, 'on the truck that drives there anyway');
   void t2;
 }));
+
+/* Part 19: « Réserver quand même » in a full block */
+test('a full block can be booked anyway by the owner or the office, without anyone losing a place (Part 19)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const office = await h.person('Bureau', ['office']);
+  const mech = await h.person('Saleh', ['mechanic']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion 1', mech, { [dow]: [[480, 960]] });   // morning and afternoon
+  const cs = [];
+  for (let i = 0; i < 6; i++) cs.push(await h.customer('C' + i, near[0] + i * 0.002, near[1]));
+  await h.as(owner);
+  const ids = [];
+  for (const c of cs.slice(0, 3)) ids.push((await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'am'), p_items: [] })).job_id);
+  const before = await h.q(`select id, truck_id, stop_order from public.jobs where id = any($1::uuid[]) order by stop_order`, [ids]);
+
+  // full: refused as before
+  let e = await h.fails(() => h.rpc('book_job', { p_op: uuid(), p_job: job(cs[3], day, 'am'), p_items: [] }));
+  assert.equal(e?.hint, 'block_full');
+  // a mechanic cannot force
+  await h.as(mech);
+  e = await h.fails(() => h.rpc('book_job', { p_op: uuid(), p_job: { ...job(cs[3], day, 'am'), truck_id: t1, force: true }, p_items: [] }));
+  assert.equal(e?.hint, 'not_allowed');
+
+  // the owner books anyway: placed last, on the truck, past its hours; the others keep their place
+  await h.as(owner);
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: { ...job(cs[3], day, 'am'), force: true }, p_items: [] });
+  assert.equal(r.ok, true);
+  assert.equal(r.forced, true);
+  const f = await h.one(`select truck_id, stop_order, forced, block, eta_min from public.jobs where id = $1`, [r.job_id]);
+  assert.equal(f.truck_id, t1);
+  assert.equal(f.forced, true);
+  assert.equal(f.block, 'am', 'the customer’s block never changes');
+  assert.equal(f.stop_order, 4, 'after the others');
+  const after = await h.q(`select id, truck_id, stop_order from public.jobs where id = any($1::uuid[]) order by stop_order`, [ids]);
+  assert.deepEqual(after, before, 'nobody lost a place');
+
+  // the block stays full for a normal booking; the office can force too
+  e = await h.fails(() => h.rpc('book_job', { p_op: uuid(), p_job: job(cs[4], day, 'am'), p_items: [] }));
+  assert.equal(e?.hint, 'block_full', 'a block already past its hours takes no more');
+  await h.as(office);
+  const r2 = await h.rpc('book_job', { p_op: uuid(), p_job: { ...job(cs[4], day, 'am'), force: true }, p_items: [] });
+  assert.equal(r2.forced, true);
+
+  // force asked but it fits: a normal booking
+  const r3 = await h.rpc('book_job', { p_op: uuid(), p_job: { ...job(cs[5], day, 'pm'), force: true }, p_items: [] });
+  assert.equal(r3.forced, false);
+  assert.equal(await h.val(`select forced from public.jobs where id = $1`, [r3.job_id]), false);
+
+  // a re-plan (hours changed) keeps the forced appointments on the truck
+  await h.as(null);
+  await h.q(`update public.truck_week set ranges = '[[480, 725]]' where truck_id = $1 and dow = $2`, [t1, dow]);
+  assert.equal(await h.val(`select count(*)::int from public.jobs where day = $1 and block = 'am' and truck_id is null`, [day]), 0, 'nothing in « À placer »');
+
+  // a person cannot set « forced » by hand
+  await h.as(owner);
+  e = await h.fails(() => h.q(`update public.jobs set forced = false where id = $1`, [r.job_id]));
+  assert.ok(e, 'the column is written only by the server');
+}));
+
+test('a block closed that day still refuses, even « quand même » (Part 19)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion 1', null, { [dow]: AM });
+  const c = await h.customer('Jean', ...near);
+  await h.as(owner);
+  const e = await h.fails(() => h.rpc('book_job', { p_op: uuid(), p_job: { ...job(c, day, 'eve'), force: true }, p_items: [] }));
+  assert.equal(e?.hint, 'block_closed');
+}));
