@@ -37,7 +37,7 @@ export default function NeedsScreen({ query }: ScreenProps) {
         <IconButton icon={<ChevronLeft />} label={t('inventory.needs.prev')} onClick={() => go(addDays(from, -7))} data-testid="needs-prev" />
         <span class="grow needs-weekname">
           <b>{from === thisWeek ? t('inventory.needs.thisWeek') : from === addDays(thisWeek, 7) ? t('inventory.needs.nextWeek') : weekWords(from)}</b>
-          {(from === thisWeek || from === addDays(thisWeek, 7)) && <span class="small muted">{weekWords(from)}</span>}
+          {(from === thisWeek || from === addDays(thisWeek, 7)) && <span class="small muted">{weekWords(from)}{from === thisWeek && today() !== from ? `, ${t('inventory.needs.fromToday')}` : ''}</span>}
         </span>
         <IconButton icon={<ChevronRight />} label={t('inventory.needs.next')} onClick={() => go(addDays(from, 7))} data-testid="needs-next" />
       </div>

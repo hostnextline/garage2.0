@@ -6,6 +6,7 @@ export const inventory: typeof fr = {
     openSub: 'What the appointments will take, and what to buy: {week}',
     week: 'Week of {from} to {to}',
     thisWeek: 'This week',
+    fromToday: 'from today on',
     nextWeek: 'Next week',
     prev: 'Week before',
     next: 'Week after',

@@ -6,6 +6,7 @@ export const inventory = {
     openSub: 'Ce que les rendez-vous vont prendre, et quoi acheter : {week}',
     week: 'Semaine du {from} au {to}',
     thisWeek: 'Cette semaine',
+    fromToday: 'à partir d’aujourd’hui',
     nextWeek: 'La semaine prochaine',
     prev: 'Semaine d’avant',
     next: 'Semaine d’après',

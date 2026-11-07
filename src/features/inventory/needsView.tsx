@@ -13,16 +13,20 @@ import { weekNeeds, shoppingWeek, type NeedLine, type WeekNeeds } from './needs'
 import { formatQty } from './stock';
 import './inventory.css';
 
-/** the needs of the week starting on `from` (Sunday), from the phone's copy of the data */
+/** the needs of the week starting on `from` (Sunday): only the days from today on (what is still to come) */
 export function useWeekNeeds(from: Day): WeekNeeds {
   useEffect(() => { void ensureEngineRef(); }, []);
   const rows = engineRef.value.rows;
   const jobs = allJobs.value;
   const inv = inventoryList.value;
-  return useMemo(() => weekNeeds({
-    from, to: addDays(from, 6), jobs, itemsOf, service: (id) => service(id), partsOf: partsOfService,
-    vehicle: (id) => vehicle(id), spec: (k) => specByKey(k), refRows: rows, inventory: inv
-  }), [from, jobs, inv, rows]);
+  const start = from < today() ? today() : from;
+  return useMemo(() => ({
+    ...weekNeeds({
+      from: start, to: addDays(from, 6), jobs, itemsOf, service: (id) => service(id), partsOf: partsOfService,
+      vehicle: (id) => vehicle(id), spec: (k) => specByKey(k), refRows: rows, inventory: inv
+    }),
+    from
+  }), [from, start, jobs, inv, rows]);
 }
 /** the week to open: the one asked, else from Thursday the next one, else this one */
 export function defaultWeek(): Day {
