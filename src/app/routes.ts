@@ -29,6 +29,8 @@ export const may = {
   // a mechanic opens Horaires for the truck he drives (the server lets him change its hours and its start)
   hours: () => can('hours') || myTrucks().length > 0,
   treasury: () => can('treasury'),
+  // « Coffre » (family and friends): the owner, and the accountant (« Trésorerie ») who exports its report apart
+  coffre: () => isOwner() || can('treasury'),
   inventory: () => can('inventory'),
   dashboard: () => can('money'),
   team: () => isOwner(),
@@ -55,6 +57,7 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/team', load: () => import('../features/team/TeamScreen'), allow: may.team, nav: 'team' },
   { pattern: '/settings/:section?', load: () => import('../features/settings/SettingsScreen'), allow: may.settings, nav: 'settings' },
   { pattern: '/account', load: () => import('../features/account/AccountScreen'), nav: 'account' },
+  { pattern: '/coffre', load: () => import('../features/coffre/CoffreScreen'), allow: may.coffre, nav: 'treasury' },
   { pattern: '/treasury', load: () => import('../features/treasury/TreasuryScreen'), allow: may.treasury, nav: 'treasury' },
   { pattern: '/inventory', load: () => import('../features/inventory/InventoryScreen'), allow: may.inventory, nav: 'inventory' },
   { pattern: '/needs', load: () => import('../features/inventory/NeedsScreen'), allow: may.inventory, nav: 'inventory' },

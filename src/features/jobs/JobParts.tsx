@@ -1,7 +1,7 @@
 /* The pieces of the job sheet around the red button: who and where (with call, text, directions), the problem, the
    authorization, the state once closed, the appointment (length, move), the texts and the live trip, the « … » sheet. */
 import { useEffect, useState } from 'preact/hooks';
-import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig } from 'lucide-preact';
+import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
 import { t, lang } from '../../lib/i18n';
@@ -11,6 +11,7 @@ import { money } from '../../lib/money';
 import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals } from '../../data/select';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
+import { isOwner } from '../../data/auth';
 import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
 import type { NextStep } from './nextStep';
@@ -351,7 +352,7 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
 
 /* ---------- « … » ---------- */
 const invoiceIssued = (jobId: string) => { const v = invoiceOf(jobId); return !!v && v.status !== 'draft'; };
-export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void }) {
+export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onCoffre?: () => void }) {
   const { job: j, rights } = p;
   const s = j.status;
   const link = clientLinkOf(j.id);
@@ -368,6 +369,7 @@ export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
     canBack && backTo && <RowItem key="u" start={<span class="quick-icon"><Undo2 size={20} /></span>} title={t('jobs.menu.back')} sub={t('jobs.menu.backSub', { status: jobStatusWord(backTo as Job['status']) })} onClick={then(() => doBack(j))} data-testid="menu-back" />,
     (s === 'booked' || s === 'en_route' || s === 'on_site') && rights.act && <RowItem key="n" class="jobs-danger" start={<span class="quick-icon"><UserX size={20} /></span>} title={t('jobs.menu.noShow')} sub={t('jobs.menu.noShowSub')} onClick={then(() => doNoShow(j))} data-testid="menu-noshow" />,
     (s === 'booked' || s === 'en_route') && rights.act && <RowItem key="c" class="jobs-danger" start={<span class="quick-icon"><Ban size={20} /></span>} title={t('jobs.menu.cancel')} sub={t('jobs.menu.cancelSub')} onClick={then(() => doCancel(j))} data-testid="menu-cancel" />,
+    p.onCoffre && isOwner() && !j.coffre_id && s !== 'cancelled' && s !== 'no_show' && invoiceOf(j.id)?.status !== 'paid' && <RowItem key="k" start={<span class="quick-icon"><Vault size={20} /></span>} title={t('coffre.job.menu')} sub={t('coffre.job.menuSub')} onClick={then(p.onCoffre)} data-testid="menu-coffre" />,
     (s === 'cancelled' || s === 'no_show') && rights.reopen && <RowItem key="r" start={<span class="quick-icon"><RotateCcw size={20} /></span>} title={t('jobs.menu.reopen')} sub={t('jobs.menu.reopenSub')} onClick={then(() => doReopen(j))} data-testid="menu-reopen" />
   ].filter(Boolean);
   return (

@@ -16,6 +16,8 @@ import { t } from '../../lib/i18n';
 import { Page, IconButton, Banner, Empty, Button, Skeleton, StatusPill } from '../../ui';
 import { InvoicePanel } from '../invoices/InvoicePanel';
 import { PaySheet } from '../invoices/PaySheet';
+import { CoffreSheet } from '../coffre/CoffreSheet';
+import { isOwner } from '../../data/auth';
 import { startPositionSharing } from '../today/position';
 import type { NextStep } from './nextStep';
 import { jobRights, stepOf, jobName, jobCustomer, whenLine, proposedOf, seen } from './select';
@@ -27,7 +29,7 @@ import { HeadPanel, NotesSheet, WaiverPanel, StepState, MomentPanel, MoveSheet, 
 import { TextOutcomeHost } from './TextOutcome';
 import './jobs.css';
 
-type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes';
+type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre';
 
 export default function JobScreen({ params, query }: ScreenProps) {
   const id = params.id;
@@ -123,6 +125,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       sub={<span class="jobs-sub"><StatusPill status={j.status} /><span>{whenLine(j)}</span></span>}
       actions={<IconButton icon={<Ellipsis />} label={t('jobs.more')} onClick={() => setSheet('menu')} data-testid="job-menu" />}>
       {!net.value.online && <Banner kind="warn">{t('jobs.offline')}</Banner>}
+      {j.coffre_id && <Banner kind="info" data-testid="job-coffre">{t('coffre.job.banner')}</Banner>}
       <div class="jobs-layout">
         <div class="jobs-col">
           {pressable ? (
@@ -150,8 +153,9 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       <ProposeSheet job={j} open={sheet === 'propose'} onClose={close} onProposed={(id) => afterSheet(() => setAnswerFor(id))} />
       <NotesSheet job={j} open={sheet === 'notes'} onClose={close} />
       <MoveSheet job={j} open={sheet === 'move'} onClose={close} />
-      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} />
-      {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} />}
+      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onCoffre={() => setSheet('coffre')} />
+      {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} onCoffre={isOwner() ? () => { close(); afterSheet(() => setSheet('coffre')); } : undefined} />}
+      <CoffreSheet job={j} open={sheet === 'coffre'} onClose={close} />
       {openItem && <ItemSheet job={j} item={openItem} rights={rights} onClose={() => setItemFor(null)}
         onAnswer={(id) => { setItemFor(null); afterSheet(() => setAnswerFor(id)); }} />}
       {answerFor && <AnswerSheet job={j} item={answerItem} rights={rights} onClose={() => setAnswerFor(null)} />}

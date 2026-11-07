@@ -125,6 +125,16 @@ export async function setTruckStart(truckId: string, start: TruckStart | null) {
   return callRpc('set_truck_start', { p_truck: truckId, p_start: start }, { label: t('log.truckStart') });
 }
 
+/* ---------- « Coffre » (family and friends, Part 20): no invoice, no taxes, its own register (owner) ---------- */
+export async function coffreAdd(jobIds: string[], amountCents: number, note: string | null, day: string | null = null) {
+  guard();
+  return callRpc<{ ok: boolean; id: string }>('coffre_add', { p_jobs: jobIds, p_amount: amountCents, p_note: note, p_day: day }, { label: t('log.coffre') });
+}
+export async function coffreRemove(id: string) {
+  guard();
+  return callRpc('coffre_remove', { p_id: id }, { label: t('log.coffre') });
+}
+
 /* ---------- settings, team ---------- */
 export async function saveSettings(part: keyof Settings, value: unknown) { guard(); await updateRow('settings', '1', { [part]: value }, { label: t('log.settings') }); }
 export async function saveService(sv: Partial<Service>): Promise<string> { guard(); return upsert('services', sv, { active: true, taxable: true, is_promo: false, includes: [], category: 'autre', duration_min: 60, sort: 0 }); }

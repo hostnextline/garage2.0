@@ -42,7 +42,7 @@ export function jobRights(j: Job): JobRights {
 /** another job of this truck, today, on site and not paid: the server refuses « Je pars » until it is paid */
 export function blockingJob(j: Job): Job | undefined {
   if (!j.truck_id) return undefined;
-  return jobsOn(j.day).map(seen).find((o) => o.id !== j.id && o.truck_id === j.truck_id && o.status === 'on_site' && !o.pay_later && invoiceOf(o.id)?.status !== 'paid');
+  return jobsOn(j.day).map(seen).find((o) => o.id !== j.id && o.truck_id === j.truck_id && o.status === 'on_site' && !o.pay_later && !o.coffre_id && invoiceOf(o.id)?.status !== 'paid');
 }
 
 /** the one next step of a job, for the person on screen (with the steps still waiting on this phone) */

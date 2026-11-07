@@ -11,6 +11,7 @@ export const log: typeof fr = {
   payment: 'Payment',
   hours: 'Truck hours',
   truckStart: 'Where a truck leaves from',
+  coffre: 'Coffre (family and friends)',
   settings: 'Settings',
   expense: 'Expense',
   change: 'Change',

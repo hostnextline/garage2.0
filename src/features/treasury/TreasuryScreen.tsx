@@ -72,6 +72,9 @@ export default function TreasuryScreen({ query }: ScreenProps) {
         <div class="tre-col-b">
           <ExpensesPanel range={range} l={l} offline={report.offline} onOpen={(e) => setSheet({ open: true, expense: e })} />
           <ExportPanel range={range} report={report.data} l={l} />
+          <Panel flush>
+            <Rows><RowItem href={`#/coffre`} chevron data-testid="treasury-coffre" title={t('coffre.open')} sub={t('coffre.openSub')} /></Rows>
+          </Panel>
         </div>
       </div>
       <ExpenseSheet open={sheet.open} expense={sheet.expense} onClose={() => setSheet({ open: false, expense: null })} />

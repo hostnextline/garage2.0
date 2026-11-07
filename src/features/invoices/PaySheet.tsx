@@ -16,7 +16,7 @@ import { invoiceById, amountsOf, invoiceCustomer, invoiceLabel, methodWord, METH
 import { sendText, SendSheet, type SendResult } from './send';
 import './invoices.css';
 
-export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void }
+export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void; /** the owner: « Coffre » (family and friends) instead */ onCoffre?: () => void }
 
 const ICONS: Record<string, typeof Banknote> = { cash: Banknote, debit: Landmark, credit: CreditCard, interac: Send, cheque: FileText, other: Ellipsis };
 
@@ -113,6 +113,7 @@ function PayOpen(p: PaySheetProps) {
               );
             })}
           </div>
+          {p.onCoffre && <Button variant="ghost" size="sm" onClick={p.onCoffre} data-testid="pay-coffre">{t('coffre.job.menu')}</Button>}
         </Field>
 
         <Field label={t('invoices.pay.amount')} hint={!amountError && amount != null && amount < balance ? t('invoices.pay.partial', { left: money(balance - amount, l) }) : undefined} error={touched ? amountError : null}>

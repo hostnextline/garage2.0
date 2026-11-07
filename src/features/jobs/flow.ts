@@ -112,6 +112,8 @@ export async function doLeave(j: Job): Promise<void> {
 /** should the customer get the invoice when the mechanic arrives? (the switch is on, a number that takes texts) */
 export function wantsArrivalText(j: Job): boolean {
   if (settings.value.messages?.on?.arrived === false) return false;
+  // the « Coffre » (family and friends): no invoice to send
+  if (j.coffre_id) return false;
   const c = customerOf(j);
   return !!c && !!c.phone && c.sms_ok !== false;
 }

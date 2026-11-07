@@ -41,6 +41,7 @@ export function InvoicePanel(p: InvoicePanelProps) {
   const j = jobRow(p.jobId);
   const inv = invoiceOf(p.jobId);
   if (!j) return <Panel title={t('invoices.panel.title')}><p class="muted" style={{ margin: 0 }}>{t('invoices.panel.noJob')}</p></Panel>;
+  if (j.coffre_id) return <Panel title={t('invoices.panel.title')} data-testid="invoice-panel" class="inv-panel"><Banner kind="info">{t('coffre.job.banner')}</Banner></Panel>;
   if (!inv) return <NoInvoice job={j} />;
   if (inv.status === 'draft') return <DraftInvoice key={inv.id} job={j} inv={inv} />;
   return <FinishedInvoice job={j} inv={inv} />;

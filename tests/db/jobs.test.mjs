@@ -328,3 +328,77 @@ test('a card payment that arrives after the invoice was finished goes on that in
   await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: {} });
   assert.equal(await h.val(`select status from public.jobs where id = $1`, [jobId]), 'done');
 }));
+
+/* Part 20: « Coffre » (family and friends) */
+test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the revenue, in their own report (Part 20)', () => tx(async (h) => {
+  const g = await garage(h);
+  const treasurer = await h.person('Comptable', ['treasurer'], { rights: { treasury: true } });
+  const j1 = await jobOnSite(h, g);
+  await h.rpc('job_step', { p_op: uuid(), p_job: j1, p_action: 'waiver', p_data: { signer: 'Jean', version: '1' } });
+  const draft = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j1, p_refresh: true })).rows.invoices[0];
+  // a second job of the same customer, booked, with a finished invoice (nothing paid)
+  await h.as(g.owner);
+  const j2 = (await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'pm', duration_min: 60 },
+    p_items: [{ description: 'Pneus d’hiver', unit_cents: 12000, duration_min: 45 }] })).job_id;
+  const i2 = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j2, p_refresh: true })).rows.invoices[0].id;
+  const n2 = (await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: i2 })).number;
+
+  // only the owner
+  await h.as(g.mech);
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1], p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
+  await h.as(treasurer);
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1], p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
+
+  await h.as(g.owner);
+  const r = await h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1, j2], p_amount: 10000, p_note: 'Tante, cadeau', p_day: null });
+  assert.equal(r.ok, true);
+  // the draft is gone, the finished invoice is cancelled with its number kept
+  assert.ok(await h.val(`select deleted_at from public.invoices where id = $1`, [draft.id]));
+  const v2 = await h.one(`select status, number, void_reason from public.invoices where id = $1`, [i2]);
+  assert.deepEqual(v2, { status: 'void', number: n2, void_reason: 'Coffre (famille et amis)' });
+  // no new invoice for a job in the Coffre
+  assert.equal((await h.fails(() => h.rpc('invoice_for_job', { p_op: uuid(), p_job: j1, p_refresh: true })))?.hint, 'coffre_job');
+  // the job counts as settled: the mechanic finishes it without payment
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: j1, p_action: 'finish', p_data: {} });
+  assert.equal(await h.val(`select status from public.jobs where id = $1`, [j1]), 'done');
+  // twice: refused
+  await h.as(g.owner);
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j1], p_amount: 0, p_note: null, p_day: null })))?.hint, 'already');
+
+  // nothing in the revenue or the taxes of the treasury
+  const from = await h.val(`select (public.local_today() - 40)::text`), to = await h.val(`select (public.local_today() + 40)::text`);
+  const tr = await h.rpc('treasury_report', { p_from: from, p_to: to });
+  assert.equal(Number(tr.revenue.subtotal), 0, 'not in the revenue');
+  assert.equal(Number(tr.revenue.tps) + Number(tr.revenue.tvq), 0, 'no taxes');
+  // the report apart: the owner and the accountant; not the mechanic
+  const rep = await h.rpc('coffre_report', { p_from: from, p_to: to });
+  assert.equal(rep.count, 1);
+  assert.equal(rep.amount_cents, 10000);
+  assert.equal(rep.value_cents, 7999 + 12000, 'what the work was worth, before taxes');
+  assert.deepEqual(rep.rows[0].job_numbers.map(Number).sort(), [await h.val(`select number from public.jobs where id = $1`, [j1]), await h.val(`select number from public.jobs where id = $1`, [j2])].map(Number).sort());
+  assert.equal(rep.rows[0].note, 'Tante, cadeau');
+  await h.as(treasurer);
+  assert.equal((await h.rpc('coffre_report', { p_from: from, p_to: to })).count, 1);
+  await h.as(g.mech);
+  assert.equal((await h.fails(() => h.rpc('coffre_report', { p_from: from, p_to: to })))?.hint, 'not_allowed');
+  // nobody reads the table directly
+  assert.ok(await h.fails(() => h.q(`select * from public.coffre`)));
+
+  // a mistake: out of the Coffre, the job can be invoiced again
+  await h.as(g.owner);
+  await h.rpc('coffre_remove', { p_op: uuid(), p_id: r.id });
+  assert.equal(await h.val(`select coffre_id from public.jobs where id = $1`, [j2]), null);
+  assert.equal((await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j2, p_refresh: true })).rows.invoices.some((v) => v.status === 'draft'), true);
+  assert.equal((await h.rpc('coffre_report', { p_from: from, p_to: to })).count, 0);
+}));
+
+test('« Coffre »: a job already paid keeps its invoice (Part 20)', () => tx(async (h) => {
+  const g = await garage(h);
+  const j = await jobOnSite(h, g);
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j, p_refresh: true })).rows.invoices[0].id;
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 2000, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
+  await h.as(g.owner);
+  assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: [j], p_amount: 0, p_note: null, p_day: null })))?.hint, 'has_payment');
+}));

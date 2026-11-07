@@ -1,0 +1,5 @@
+/* Coffre: the jobs to check, the report */
+.coffre-jobs { display: grid; gap: var(--sp-2); }
+.coffre-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-3); }
+.coffre-total b { display: block; font-size: var(--t-xl); }
+.coffre-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }

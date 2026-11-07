@@ -50,7 +50,7 @@ export interface NextStep {
 /** the work that goes on the invoice */
 export const BILLABLE = ['planned', 'done', 'approved'];
 
-type JobLike = Pick<Job, 'id' | 'status' | 'day' | 'waiver_signed_at' | 'pay_later'>;
+type JobLike = Pick<Job, 'id' | 'status' | 'day' | 'waiver_signed_at' | 'pay_later'> & { coffre_id?: string | null };
 type ItemLike = Pick<JobItem, 'id' | 'status'> & { deleted_at?: string | null };
 type InvoiceLike = Pick<Invoice, 'status' | 'total_cents' | 'paid_cents' | 'lines'> & { deleted_at?: string | null };
 
@@ -70,7 +70,8 @@ export function draftIsStale(v: InvoiceLike | null | undefined, items: ItemLike[
 
 export function nextStep(job: JobLike, items: ItemLike[], invoice: InvoiceLike | null | undefined, rights: StepRights, ctx: StepContext): NextStep {
   const inv = liveInvoice(invoice);
-  const paid = !!inv && inv.status === 'paid';
+  // paid by the « Coffre » (family and friends): no invoice, settled
+  const paid = (!!inv && inv.status === 'paid') || !!job.coffre_id;
   const due = inv && inv.status === 'issued' ? Math.max(0, inv.total_cents - inv.paid_cents) : 0;
   switch (job.status) {
     case 'cancelled':
