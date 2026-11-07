@@ -29,8 +29,8 @@ and `docs/DESIGN.md` (the look and the writing rules) before changing anything. 
 | Types | `npx tsc --noEmit` | anywhere |
 | Calculations and screens (~860) | `npm test` | anywhere |
 | Local copy of the server | `bash tests/stack/start.sh` (new migrations: `bash tests/stack/migrate.sh`, rebuild: `bash tests/stack/reset.sh`) | Linux x86_64 only (Postgres 16 in `/usr/lib/postgresql`, Linux GoTrue and PostgREST binaries) |
-| Database rules and server functions (38) | `node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs` | needs the local copy |
-| The whole app (15 steps, production build, real sign-in) | `node --test tests/e2e/app.test.cjs` (one step: `--test-name-pattern="…"`) | needs the local copy; puts the database back at the end; pictures in `tests/out/` |
+| Database rules and server functions (44) | `node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs` | needs the local copy |
+| The whole app (16 steps, production build, real sign-in) | `node --test tests/e2e/app.test.cjs` (one step: `--test-name-pattern="…"`) | needs the local copy; puts the database back at the end; pictures in `tests/out/` |
 
 On a Mac only the first two rows work as-is: run the others in a Claude Code cloud session (`claude --cloud "…"`
 or claude.ai/code), which is Linux. Photon (addresses) is mocked in the end-to-end test with `ctx.route`.
@@ -82,9 +82,14 @@ end $do$;
   {label, address, lat, lng} or null (= « Départ des camions »), changed with `set_truck_start` (owner, office with
   « hours », or the truck's driver) in Horaires → « Départ de ce camion ». The morning leaves from the truck's start;
   the afternoon and evening from its last stop of the block before; each block tries to end near the truck's first
-  stop of the next block (`route_min_to`, counted in the order, not in the block's room). When a block's plan
-  changes, `apply_plan` re-plans the day's other coming blocks, unless that would push a booked job to « À placer ».
+  stop of the next block (`route_min_to`, counted in the order, not in the block's room: an order that no longer
+  fits in the truck's hours is never taken for it). When a block's plan changes, `apply_plan` re-plans the day's
+  other coming blocks in block order (the block that changed again when one before it moved, so every block counts
+  from where its truck really is), unless that would push a booked job to « À placer ». `replan_days` (hours, starts,
+  route numbers) goes day by day in block order without that chain (twice faster; ~0.4 s for 240 coming jobs).
 
 ## Ideas not done yet
 
 - A start for one day only (today the truck's start stays until changed).
+- Horaires for a mechanic's own truck: the server lets the driver change his truck's hours and start
+  (`truck_hours_editable`), but the screen needs the « hours » right, which opens every truck.

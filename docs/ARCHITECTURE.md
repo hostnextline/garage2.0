@@ -5,7 +5,7 @@ The app of a **mobile garage** in Montréal: the owner (Hassan) and the office b
 from « Départ des camions » (`settings.booking.home`, Réglages → Réservations; also reached from Horaires and the map
 legend): cheapest insertion, then each truck's route improved (`route_improve`: a piece turned around, a stop moved).
 Moving the start or a number of the route estimate re-plans every coming booked block (trigger `settings_replan`,
-Part 17). Each truck may leave from its own address (`trucks.start`, Horaires → « Départ de ce camion », Part 18); the afternoon and evening leave from the truck's last stop of the block before, and each block tries to end near the next one's first stop; the mechanics (Saleh: Camion Complet, Adam: Voiture) do the work at the customer's place, get the waiver signed, invoice
+Part 17). Each truck may leave from its own address (`trucks.start`, Horaires → « Départ de ce camion », Part 18); the afternoon and evening leave from the truck's last stop of the block before, and each block tries to end near the next one's first stop (only with an order that still fits in the truck's hours); the mechanics (Saleh: Camion Complet, Adam: Voiture) do the work at the customer's place, get the waiver signed, invoice
 and get paid before leaving; a treasurer keeps the books. People are beginners with apps: **simple words, one obvious
 action per screen, help bubbles « ? »**. Read `docs/DESIGN.md` first (the look and the writing rules).
 

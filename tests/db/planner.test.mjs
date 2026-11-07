@@ -405,3 +405,96 @@ test('the afternoon leaves from the last stop of the morning, and the morning en
   // every appointment stays in the block the customer booked
   assert.deepEqual((await h.q(`select block from public.jobs where id = any($1::uuid[]) order by block`, [[ja, jm, jp]])).map((x) => x.block), ['am', 'am', 'pm']);
 }));
+
+/* Part 18: ending near the next block is a wish, never a cost to the block's room. On one street (the latitude of
+   Legendre), by kilometres east (+) or west (−) of the start: the afternoon 2 km west, the morning around it. */
+const KM = 0.0128;   // ≈ 1 km of longitude in Montréal
+const onStreet = (km) => [LEGENDRE[0], LEGENDRE[1] + km * KM];
+const morning = async (h, day) => {
+  await h.as(null);
+  const plan = await h.val(`select public.plan_block($1::date, 'am')`, [day]);
+  const jobs = await h.q(`select id, stop_order, eta_min, duration_min from public.jobs where day = $1 and block = 'am' and deleted_at is null order by stop_order`, [day]);
+  return { left: plan.trucks.map((t) => t.left), ids: jobs.map((j) => j.id), end: Math.max(...jobs.map((j) => j.eta_min + 5 + j.duration_min)) };
+};
+
+test('a morning never runs past noon to end near the afternoon (Part 18)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion Complet', null, { [dow]: DAY });
+  await setStart(h, LEGENDRE);
+  const [w, a, b] = [await h.customer('Ouest', ...onStreet(-2)), await h.customer('Près', ...onStreet(-1)), await h.customer('Loin', ...onStreet(5))];
+  await h.as(owner);
+  await h.rpc('book_job', { p_op: uuid(), p_job: job(w, day, 'pm'), p_items: [] });
+  const ja = (await h.rpc('book_job', { p_op: uuid(), p_job: job(a, day, 'am', { duration_min: 150 }), p_items: [] })).job_id;
+  const jb = (await h.rpc('book_job', { p_op: uuid(), p_job: job(b, day, 'am', { duration_min: 60 }), p_items: [] })).job_id;
+  // 3 h 30 of work: west then east drives 27 min and fits (237 of 240); east then west would end near the afternoon
+  // but drives 36 (246 of 240): the morning keeps the order that fits
+  const m = await morning(h, day);
+  assert.deepEqual(m.ids, [ja, jb], 'the near stop, then the far one');
+  assert.ok(m.left.every((x) => x >= 0), 'the truck’s hours are never passed: ' + m.left);
+  assert.ok(m.end <= 720, 'the morning ends by noon: ' + m.end);
+}));
+
+test('a booking that fits is never refused because the block tries to end near the next one (Part 18)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion Complet', null, { [dow]: DAY });
+  await setStart(h, LEGENDRE);
+  const [w, a, b, c] = [await h.customer('Ouest', ...onStreet(-2)), await h.customer('Près', ...onStreet(-1)),
+    await h.customer('Loin', ...onStreet(5)), await h.customer('Coin', ...onStreet(0.5))];
+  await h.as(owner);
+  await h.rpc('book_job', { p_op: uuid(), p_job: job(w, day, 'pm'), p_items: [] });
+  const ja = (await h.rpc('book_job', { p_op: uuid(), p_job: job(a, day, 'am', { duration_min: 90 }), p_items: [] })).job_id;
+  const jb = (await h.rpc('book_job', { p_op: uuid(), p_job: job(b, day, 'am', { duration_min: 60 }), p_items: [] })).job_id;
+  // 3 h 20 of work: west, corner, east drives 33 min (233 of 240); every order that ends west drives 42 or more
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'am', { duration_min: 50 }), p_items: [] });
+  assert.equal(r.ok, true, 'booked: it fits in the morning');
+  const m = await morning(h, day);
+  assert.deepEqual(m.ids, [ja, r.job_id, jb], 'west, corner, east');
+  assert.ok(m.left.every((x) => x >= 0), 'the truck’s hours are never passed: ' + m.left);
+  assert.ok(m.end <= 720, 'the morning ends by noon: ' + m.end);
+}));
+
+test('planning the next block again never puts a booked appointment in « À placer » (Part 18)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion Complet', null, { [dow]: DAY });
+  await setStart(h, LEGENDRE);
+  const pm = [];
+  await h.as(owner);
+  for (const km of [0.5, 1, 1.5]) {
+    const c = await h.customer('Rue ' + km, ...onStreet(km));
+    pm.push((await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'pm', { duration_min: 70 }), p_items: [] })).job_id);
+  }
+  const before = await h.q(`select id, truck_id, stop_order, eta_min from public.jobs where id = any($1::uuid[]) order by id`, [pm]);
+  assert.ok(before.every((j) => j.truck_id === t1), 'the afternoon fits from the start (3 × 70 min, a few minutes of driving)');
+  // the morning now ends in Laval: from there the afternoon no longer fits, so it stays as it was
+  const lav = await h.customer('Bassam', ...BASSAM);
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: job(lav, day, 'am'), p_items: [] });
+  assert.equal(r.ok, true);
+  await h.as(null);
+  const plan = await h.val(`select public.plan_block($1::date, 'pm')`, [day]);
+  assert.ok(plan.over.length > 0, 'planned from Laval, an afternoon appointment would not fit');
+  assert.deepEqual(await h.q(`select id, truck_id, stop_order, eta_min from public.jobs where id = any($1::uuid[]) order by id`, [pm]), before,
+    'every afternoon appointment keeps its truck and its time');
+}));
+
+test('a truck that drives by anyway takes the appointment on its way (Part 18)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion Complet', null, { [dow]: DAY });
+  const t2 = await h.truck('Voiture', null, { [dow]: DAY });
+  await setStart(h, LEGENDRE);
+  const [m, j] = [await h.customer('Mahdi', ...MAHDI), await h.customer('Mi-chemin', (LEGENDRE[0] + MAHDI[0]) / 2, (LEGENDRE[1] + MAHDI[1]) / 2)];
+  await h.as(owner);
+  // the afternoon: Camion Complet goes to Montréal-Nord (put on it by hand); Voiture has nothing that day
+  await h.rpc('book_job', { p_op: uuid(), p_job: job(m, day, 'pm', { truck_id: t1 }), p_items: [] });
+  // a morning appointment halfway there: Camion Complet passes by on its way to the afternoon
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: job(j, day, 'am'), p_items: [] });
+  assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [r.job_id]), t1, 'on the truck that drives there anyway');
+  void t2;
+}));

@@ -685,12 +685,15 @@ step('Addresses: the ones typed without a choice are found by themselves; the ma
 });
 
 step('Needs of the week: oil by grade, filters, new tires by size, compared with the stock; what each service takes, in Settings', async () => {
-  const week = h.sql(`select (d - extract(dow from d)::int)::text from (select public.local_today() + 1 as d) x`);
-  // three appointments tomorrow, each an oil change: a Golf (the engine list says 5.7 L of 5W-40, to confirm), a Civic with
+  // in two weeks: a week of its own, never the one « La journée » prepares (checked below; on a Saturday or a Sunday,
+  // tomorrow would already be in it)
+  const day = h.sql(`select (public.local_today() + 14)::text`);
+  const week = h.sql(`select (d - extract(dow from d)::int)::text from (select '${day}'::date as d) x`);
+  // three appointments that day, each an oil change: a Golf (the engine list says 5.7 L of 5W-40, to confirm), a Civic with
   // its confirmed sheet and its tire size (it also gets 4 new winter tires), and one with no car
   const person = (first, lat, lng) => h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('${first}', 'Besoins', '514 555-0100', '${first} rue Test, Montréal', ${lat}, ${lng}, 'fr') returning id`);
   const appt = (customer, vehicle) => {
-    const j = h.sql(`insert into public.jobs (customer_id, vehicle_id, day, block, status, truck_id, duration_min, stop_order) values ('${customer}', ${vehicle ? `'${vehicle}'` : 'null'}, public.local_today() + 1, 'am', 'booked', '${T.complet}', 45, 1) returning id`);
+    const j = h.sql(`insert into public.jobs (customer_id, vehicle_id, day, block, status, truck_id, duration_min, stop_order) values ('${customer}', ${vehicle ? `'${vehicle}'` : 'null'}, '${day}', 'am', 'booked', '${T.complet}', 45, 1) returning id`);
     h.sql(`insert into public.job_items (job_id, kind, service_id, description, qty, unit_cents) values ('${j}', 'service', '${SVC_OIL}', 'Changement d’huile (5 L)', 1, 8000)`);
     return j;
   };
@@ -747,7 +750,8 @@ step('Needs of the week: oil by grade, filters, new tires by size, compared with
     h.sql(`insert into public.job_items (job_id, kind, service_id, description, qty, unit_cents) values ('${j}', 'service', '${tires}', 'Pneus neufs d’hiver (4)', 1, 79999)`);
     await phone.goto(h.APP + '#/');
     await phone.reload();
-    await phone.getByTestId('today-needs').waitFor({ timeout: 20000 });
+    // the card may already show what other appointments of that week need: wait for Léa's tires to arrive on the phone
+    await phone.getByTestId('today-needs').getByText('Pneus d’hiver 215/55R16').waitFor({ timeout: 20000 });
     const card = await phone.getByTestId('today-needs').innerText();
     assert.match(card, /Achats pour (la semaine prochaine|cette semaine)/, card);
     assert.match(card, /Pneus d’hiver 215\/55R16/, card);
@@ -857,4 +861,88 @@ step('Départ des camions: from Horaires to Réglages, a new address, and the co
   await d.page.getByTestId('booking-start').waitFor();
   noErrors(d.page);
   await d.page.context().close();
+});
+
+step('Départ de ce camion: the office makes Camion Complet leave from Laval; its coming morning is placed again from there; the map and Horaires say so; back to « Départ des camions »', async () => {
+  // « Départ des camions » at 1401 Legendre; a coming day with nothing booked yet, where only Camion Complet works
+  h.sql(`update public.settings set booking = jsonb_set(booking, '{home}', '{"label":"Centrale","address":"1401 rue Legendre Ouest, Montréal, QC H4N 1H5","lat":45.5312898,"lng":-73.6544639}') where id = 1`);
+  const day = h.sql(`select d::date::text from generate_series(public.local_today() + 2, public.local_today() + 12, interval '1 day') d
+    where not exists (select 1 from public.jobs j where j.day = d::date and j.deleted_at is null) limit 1`);
+  for (const [truck, ranges] of [[T.complet, '[[480,1200]]'], [T.voiture, '[]']]) {
+    h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${truck}', '${day}', '${ranges}', 'e2e') on conflict (truck_id, day) do update set ranges = excluded.ranges, deleted_at = null`);
+  }
+  // three morning appointments: Chabanel, Laval, Montréal-Nord
+  const people = [['Amro', '160 rue Khalil-Gibran, Montréal', 45.52789, -73.66748], ['Bassam', '144 58e Avenue, Laval, QC', 45.54571, -73.72509], ['Mahdi', '3500 rue Fleury Est, Montréal, QC', 45.58151, -73.64007]];
+  const jobs = people.map(([name, address, lat, lng]) => {
+    const c = h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('${name}', 'Camion', '514 555-0178', '${address}', ${lat}, ${lng}, 'fr') returning id`);
+    return h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min) values ('${c}', '${day}', 'am', 'booked', '${T.complet}', 45) returning id`);
+  });
+  h.sql(`select public.replan_block('${day}', 'am') is not null`);
+  const list = `array['${jobs.join("','")}']::uuid[]`;
+  const route = () => h.sql(`select string_agg(stop_order || ':' || eta_min, ',' order by array_position(${list}, id)) from public.jobs where id = any(${list})`);
+  const FROM_LEGENDRE = '1:483,2:544,3:612', FROM_LAVAL = '2:547,1:486,3:612';
+  assert.equal(route(), FROM_LEGENDRE, 'from Legendre: Amro at 8 h 03, Bassam, then Mahdi');
+
+  // the office (Horaires, phone): Camion Complet leaves from an address chosen in the suggestions, with a name for the map
+  const { ctx, page } = await h.openW({ kind: 'phone' });
+  await ctx.route('https://photon.komoot.io/**', (r) => {
+    const q = new URL(r.request().url()).searchParams.get('q') || '';
+    const features = /saint-martin/i.test(q) ? [photonHouse('3500', 'Boulevard Saint-Martin Ouest', 'Laval', 'H7T 2W4', -73.74, 45.565)] : [];
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ type: 'FeatureCollection', features }) });
+  });
+  await h.signIn(page, who.nadia.email, PW);
+  await page.goto(h.APP + `#/hours/${T.complet}`);
+  const panel = page.getByTestId('truck-start-panel');
+  await panel.waitFor();
+  await panel.scrollIntoViewIfNeeded();
+  assert.match(await panel.innerText(), /Comme les autres camions : Centrale, 1401 rue Legendre Ouest/);
+  assert.equal(await panel.getByTestId('truck-start-mode').getByRole('button', { name: 'Centrale' }).getAttribute('aria-pressed'), 'true');
+  await panel.getByTestId('truck-start-mode').getByRole('button', { name: 'Une autre adresse' }).click();
+  await panel.getByTestId('address-input').fill('3500 boulevard saint-martin ouest laval');
+  await panel.getByTestId('address-suggestions').getByRole('option').first().click();
+  await panel.getByText('Position trouvée').waitFor();
+  await panel.getByTestId('truck-start-label').fill('Chez Saleh');
+  await panel.getByTestId('truck-start-note').waitFor();
+  await h.shot(page, 'e2e-16-truck-start');
+  await panel.getByTestId('truck-start-save').click();
+  await page.getByText('Départ changé : les rendez-vous à venir sont replacés').waitFor({ timeout: 10000 });
+  assert.equal(await until(() => h.sql(`select coalesce(start->>'label', '') || '|' || coalesce(start->>'lat', '') from public.trucks where id = '${T.complet}'`), (v) => v === 'Chez Saleh|45.565'), 'Chez Saleh|45.565');
+  assert.match(h.sql(`select start->>'address' from public.trucks where id = '${T.complet}'`), /^3500 boul\. Saint-Martin Ouest, Laval, QC H7T 2W4$/);
+  // the server placed the morning again from Laval: Bassam first, at 8 h 06; the customers' block does not change
+  assert.equal(await until(route, (v) => v === FROM_LAVAL, 15000), FROM_LAVAL, 'the coming morning placed again from the truck’s start');
+  assert.equal(h.sql(`select string_agg(distinct block, ',') from public.jobs where id = any(${list})`), 'am');
+  noErrors(page);
+
+  // the owner (computer): the map draws the route of Camion Complet from its start; Horaires says where it leaves from
+  const d = await h.openW({ kind: 'desk' });
+  await h.signIn(d.page, who.owner.email, PW);
+  await d.page.goto(h.APP + `#/map?day=${day}`);
+  const from = d.page.getByTestId(`legend-from-${T.complet}`);
+  await from.waitFor({ timeout: 15000 });
+  assert.match(await from.innerText(), /Part de : Chez Saleh/);
+  assert.equal(await d.page.getByTestId(`legend-from-${T.voiture}`).count(), 0, 'Voiture leaves from « Départ des camions »');
+  await h.shot(d.page, 'e2e-16-map-from');
+  noErrors(d.page);
+  await d.page.context().close();
+  // (a page of its own: leaving the map while it still moves is not what this step checks)
+  const o = await h.openW({ kind: 'desk' });
+  await h.signIn(o.page, who.owner.email, PW);
+  await o.page.goto(h.APP + '#/hours');
+  const row = o.page.getByTestId(`truck-row-${T.complet}`);
+  await row.waitFor();
+  assert.match(await row.innerText(), /Part de : Chez Saleh, 3500 boul\. Saint-Martin Ouest/);
+  noErrors(o.page);
+  await o.page.context().close();
+
+  // back to « Départ des camions »: the morning placed again from Legendre
+  const moved = page.getByText('Départ changé : les rendez-vous à venir sont replacés');
+  await moved.first().waitFor({ state: 'hidden', timeout: 20000 });
+  await panel.getByTestId('truck-start-mode').getByRole('button', { name: 'Centrale' }).click();
+  await panel.getByTestId('truck-start-save').click();
+  await moved.first().waitFor({ timeout: 10000 });
+  assert.equal(await until(() => h.sql(`select coalesce(start::text, 'null') from public.trucks where id = '${T.complet}'`), (v) => v === 'null'), 'null');
+  assert.equal(await until(route, (v) => v === FROM_LEGENDRE, 15000), FROM_LEGENDRE, 'from Legendre again');
+  await panel.getByText('Comme les autres camions : Centrale, 1401 rue Legendre Ouest').waitFor();
+  noErrors(page);
+  await page.context().close();
 });

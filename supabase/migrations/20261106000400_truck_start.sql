@@ -2,10 +2,13 @@
 -- 1. trucks.start = {label, address, lat, lng}, or null: the truck leaves from « Départ des camions » (settings.booking.home).
 -- 2. The planner drives each truck from where it really is when the block starts: its last stop of the block before
 --    (same day), else its own start, else « Départ des camions ». It also tries to finish each block close to the
---    truck's first stop of the next block (that last leg counts in the order of the stops, not in the block's room).
+--    truck's first stop of the next block (that last leg counts in the order of the stops, not in the block's room:
+--    an order that would no longer fit in the truck's hours is never taken for it).
 --    The blocks booked by the customers never change: only the truck and the order inside the block can.
---    When a block's plan changes, the other coming blocks of that day are planned again (they start or end
---    elsewhere now), unless that would put a booked appointment in « À placer »: then that block stays as it was.
+--    When a block's plan changes, the other coming blocks of that day are planned again, in block order (they start
+--    or end elsewhere now), unless that would put a booked appointment in « À placer »: then that block stays as it was.
+--    Many days planned again at once (replan_days: hours, « Départ des camions », a truck's start) go day by day,
+--    in block order, without that chain (it would plan every block twice).
 -- 3. set_truck_start(op, truck, start): the owner, the office (« Horaires ») or the truck's own driver. Moving a truck's
 --    start re-plans every coming booked block at once (trigger trucks_replan); its name alone does not.
 -- 4. team_map gives each truck its start (the map draws each route from there).
@@ -24,19 +27,20 @@ language sql stable security definer set search_path = public as $$
   from public.home_point() h left join public.trucks t on t.id = p_truck
 $$;
 
--- drive + stop time of a route start → stops, plus the leg from the last stop to p_e (the next block), when given
+-- drive + stop time of a route start → stops, plus the leg from where it ends to p_e (the next block), when given.
+-- With no stop the route ends where it starts: the truck drives start → next block all the same, so adding a first
+-- stop costs only the detour (not the whole way to the next block).
 create or replace function public.route_min_to(p_ids jsonb, p_pts jsonb, p_hlat double precision, p_hlng double precision,
   p_elat double precision, p_elng double precision, p_speed numeric, p_detour numeric, p_unknown numeric, p_stop numeric) returns int
-language plpgsql immutable as $$
-declare plat double precision := p_hlat; plng double precision := p_hlng; clat double precision; clng double precision; tot int := 0; id text; n int := 0;
+language plpgsql immutable set search_path = public, extensions as $$
+declare plat double precision := p_hlat; plng double precision := p_hlng; clat double precision; clng double precision; tot int := 0; id text;
 begin
   for id in select jsonb_array_elements_text(coalesce(p_ids, '[]')) loop
-    n := n + 1;
     clat := (p_pts->id->>'lat')::double precision; clng := (p_pts->id->>'lng')::double precision;
     tot := tot + public.drive_min(plat, plng, clat, clng, p_speed, p_detour, p_unknown) + ceil(p_stop)::int;
     if clat is not null then plat := clat; plng := clng; end if;
   end loop;
-  if n > 0 and p_elat is not null and p_elng is not null then
+  if p_elat is not null and p_elng is not null then
     tot := tot + public.drive_min(plat, plng, p_elat, p_elng, p_speed, p_detour, p_unknown);
   end if;
   return tot;
@@ -233,13 +237,18 @@ begin
       end loop;
     end if;
     if best_ti is null then
-      -- no room as the stops go: each truck again, its stops in a better order (the truck it was put on first)
+      -- no room as the stops go: each truck again, its stops in a better order (the truck it was put on first).
+      -- The order that ends near the next block only when it fits; else the shortest order inside the block.
       for ti in 0 .. jsonb_array_length(trucks) - 1 loop
         t := trucks->ti; hl := (t->>'hlat')::double precision; hg := (t->>'hlng')::double precision; el := (t->>'elat')::double precision; eg := (t->>'elng')::double precision; durs := (t->>'durs')::int;
         base := public.route_min(t->'stops', pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
         basee := public.route_min_to(t->'stops', pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
         cand := public.route_improve((t->'stops') || to_jsonb(jid), (t->>'nfixed')::int, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
         rc := public.route_min(cand, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
+        if durs + jdur + rc > (t->>'cap')::int and el is not null and eg is not null then
+          cand := public.route_improve((t->'stops') || to_jsonb(jid), (t->>'nfixed')::int, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
+          rc := public.route_min(cand, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
+        end if;
         rce := public.route_min_to(cand, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
         used := durs + jdur + rc;
         if used <= (t->>'cap')::int then
@@ -260,12 +269,18 @@ begin
     end if;
   end loop;
 
-  -- each truck's stops in the order that drives the least (from where it is, toward its next block), then arrival times, drive of each leg, what is left
+  -- each truck's stops in the order that drives the least (from where it is, toward its next block), then arrival times, drive of each leg, what is left.
+  -- Ending near the next block never costs room in this block: when that order no longer fits in the truck's hours,
+  -- the shortest order inside the block (it never drives more than the order the stops were put in, which fits).
   for ti in 0 .. jsonb_array_length(trucks) - 1 loop
     hl := (trucks->ti->>'hlat')::double precision; hg := (trucks->ti->>'hlng')::double precision;
     el := (trucks->ti->>'elat')::double precision; eg := (trucks->ti->>'elng')::double precision;
-    trucks := jsonb_set(trucks, array[ti::text, 'stops'],
-      public.route_improve(trucks->ti->'stops', (trucks->ti->>'nfixed')::int, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop));
+    cand := public.route_improve(trucks->ti->'stops', (trucks->ti->>'nfixed')::int, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
+    if el is not null and eg is not null
+       and (trucks->ti->>'durs')::int + public.route_min(cand, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop) > (trucks->ti->>'cap')::int then
+      cand := public.route_improve(trucks->ti->'stops', (trucks->ti->>'nfixed')::int, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
+    end if;
+    trucks := jsonb_set(trucks, array[ti::text, 'stops'], cand);
     t := trucks->ti; tm := (t->>'start')::int; plat := hl; plng := hg; k := 0;
     for jid in select jsonb_array_elements_text(t->'stops') loop
       k := k + 1;
@@ -286,12 +301,14 @@ begin
 end $$;
 
 -- ---------- one block's plan changed: the other coming blocks of that day follow ----------
--- writes a plan (Part 3), then plans again the other blocks of the same day that are not started and have booked
--- appointments, in block order (each one leaves from the new end of the one before, and aims at the start of the
--- next). A block whose new plan would put a booked appointment in « À placer » stays as it was; a block being
--- booked at the same moment by someone else is left to that booking.
+-- writes a plan (Part 3), then, in block order, plans again the coming blocks of the same day that have booked
+-- appointments: a block before the one that changed may now end elsewhere (near its new first stop), the blocks
+-- after it leave from its new last stop, and the one that changed is planned again when a block before it moved
+-- (it leaves from somewhere else now). So every block's times count from where its truck really is.
+-- A block whose new plan would put a booked appointment in « À placer » stays as it was; a block being booked at
+-- the same moment by someone else is left to that booking.
 create or replace function public.apply_plan(p_plan jsonb) returns int language plpgsql security definer set search_path = public as $$
-declare k text; v jsonb; n int := 0; c int; d date; x record; p jsonb;
+declare k text; v jsonb; n int := 0; c int; d date; bk record; p jsonb; v_moved boolean := false;
 begin
   perform set_config('garage.rpc', 'on', true);
   for k, v in select * from jsonb_each(coalesce(p_plan->'jobs', '{}')) loop
@@ -313,18 +330,38 @@ begin
   d := nullif(p_plan->>'day', '')::date;
   if n > 0 and d is not null and coalesce(current_setting('garage.chain', true), '') <> 'on' then
     perform set_config('garage.chain', 'on', true);
-    for x in select b.key, b.start_min from public.blocks() b order by b.pos loop
-      continue when x.key = p_plan->>'block';
-      continue when d < public.local_today() or (d = public.local_today() and public.now_min() >= x.start_min);
-      continue when not exists (select 1 from public.jobs j where j.day = d and j.block = x.key and j.deleted_at is null and j.status = 'booked');
-      continue when not pg_try_advisory_xact_lock(hashtext('block:' || d::text || ':' || x.key));
-      p := public.plan_block(d, x.key);
+    for bk in select b.key, b.start_min from public.blocks() b order by b.pos loop
+      -- the block just written: again only when a block before it now ends elsewhere
+      continue when bk.key = p_plan->>'block' and not v_moved;
+      continue when d < public.local_today() or (d = public.local_today() and public.now_min() >= bk.start_min);
+      continue when not exists (select 1 from public.jobs j where j.day = d and j.block = bk.key and j.deleted_at is null and j.status = 'booked');
+      continue when not pg_try_advisory_xact_lock(hashtext('block:' || d::text || ':' || bk.key));
+      p := public.plan_block(d, bk.key);
       continue when exists (select 1 from jsonb_array_elements_text(coalesce(p->'over', '[]')) o join public.jobs j on j.id = o::uuid where j.truck_id is not null);
-      perform public.apply_plan(p);
+      if public.apply_plan(p) > 0 then v_moved := true; end if;
     end loop;
     perform set_config('garage.chain', '', true);
     perform set_config('garage.rpc', 'on', true);
   end if;
+  return n;
+end $$;
+
+-- ---------- many days at once (hours, « Départ des camions », a truck's start) ----------
+-- the blocks of each day are planned in block order, each one from the new end of the one before: the chain of
+-- apply_plan would only plan them all once more (twice the time for nothing), so it is off while this runs
+create or replace function public.replan_days(p_days date[]) returns int language plpgsql security definer set search_path = public as $$
+declare d date; b record; n int := 0; v_chain text := coalesce(current_setting('garage.chain', true), '');
+begin
+  perform set_config('garage.chain', 'on', true);
+  foreach d in array p_days loop
+    for b in select x.key, x.start_min from public.blocks() x order by x.pos loop
+      if d < public.local_today() or (d = public.local_today() and public.now_min() >= b.start_min) then continue; end if;
+      if exists (select 1 from public.jobs j where j.day = d and j.block = b.key and j.deleted_at is null and j.status = 'booked') then
+        perform public.replan_block(d, b.key); n := n + 1;
+      end if;
+    end loop;
+  end loop;
+  perform set_config('garage.chain', v_chain, true);
   return n;
 end $$;
 
