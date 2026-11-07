@@ -78,7 +78,13 @@ end $do$;
   `src/app/locator.ts` finds missing positions in the background; a position found later re-plans its block (Part 15).
 - « Besoins de la semaine » (`#/needs`, Part 16): oil, filters, tires and parts the week's appointments need, from
   `services.needs` and the car's facts.
+- Start per truck (Part 18, `20261106000400_truck_start.sql`, **not yet applied on live**): `trucks.start`
+  {label, address, lat, lng} or null (= « Départ des camions »), changed with `set_truck_start` (owner, office with
+  « hours », or the truck's driver) in Horaires → « Départ de ce camion ». The morning leaves from the truck's start;
+  the afternoon and evening from its last stop of the block before; each block tries to end near the truck's first
+  stop of the next block (`route_min_to`, counted in the order, not in the block's room). When a block's plan
+  changes, `apply_plan` re-plans the day's other coming blocks, unless that would push a booked job to « À placer ».
 
 ## Ideas not done yet
 
-- A starting point per truck (a mechanic who takes his truck home).
+- A start for one day only (today the truck's start stays until changed).

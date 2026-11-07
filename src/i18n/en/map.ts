@@ -33,6 +33,8 @@ export const map: typeof fr = {
     focusOff: 'See the whole team again',
     start: 'Where the trucks leave from',
     change: 'Change',
+    ownStart: '{name}’s start',
+    leaves: 'Leaves from: {place}',
     changeStart: 'Change the address the trucks leave from'
   },
   lost: {

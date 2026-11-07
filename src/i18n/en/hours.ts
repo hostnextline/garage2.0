@@ -60,6 +60,23 @@ export const hours: typeof fr = {
     reverted: '{day} follows the usual hours again',
     usual: 'Usual: {hours}'
   },
+  start: {
+    title: 'Where this truck leaves from',
+    sub: 'Where it starts in the morning. In the afternoon and evening, it leaves from its last stop.',
+    help: 'In the morning, the truck’s route starts here. The app also tries to end each block close to the first stop of the next block. Change it if the mechanic leaves from home with his truck.',
+    mode: 'It leaves from',
+    ownOption: 'Another address',
+    own: 'Its own address',
+    fromHome: 'Like the other trucks: {place}',
+    address: 'Starting address',
+    label: 'Name on the map',
+    labelHint: 'For example: “Saleh’s place”.',
+    noPos: 'This address is not found on the map. Pick it from the list.',
+    replanNote: 'Coming appointments will be placed again from this start. Customers’ blocks do not change.',
+    moved: 'Start changed: coming appointments are placed again',
+    saved: 'Start saved',
+    leaves: 'Leaves from: {place}'
+  },
   manage: {
     title: 'The trucks',
     sub: 'Where they leave from, then the name, colour and driver of each truck.',

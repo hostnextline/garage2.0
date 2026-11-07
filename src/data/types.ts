@@ -32,7 +32,9 @@ export interface Staff extends Base {
   full_name: string; short_name: string | null; email: string | null; phone: string | null; roles: Role[]; rights: Partial<Record<Right, boolean>>;
   active: boolean; color: string | null; lang: Lang; prefs: Record<string, unknown>; last_seen_at: string | null;
 }
-export interface Truck extends Base { name: string; driver_id: string | null; active: boolean; color: string | null; plate: string | null; sort: number }
+/** where one truck leaves from (Part 18); null on the truck: « Départ des camions » (settings.booking.home) */
+export interface TruckStart { label: string | null; address: string | null; lat: number; lng: number }
+export interface Truck extends Base { name: string; driver_id: string | null; active: boolean; color: string | null; plate: string | null; sort: number; start?: TruckStart | null }
 export interface TruckWeek extends Base { truck_id: string; dow: number; ranges: Range[] }
 export interface TruckDay extends Base { truck_id: string; day: string; ranges: Range[]; note: string | null }
 export interface Customer extends Base {

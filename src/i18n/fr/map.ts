@@ -33,6 +33,8 @@ export const map = {
     focusOff: 'Revoir toute l’équipe',
     start: 'Départ des camions',
     change: 'Changer',
+    ownStart: 'Départ de {name}',
+    leaves: 'Part de : {place}',
     changeStart: 'Changer l’adresse de départ des camions'
   },
   lost: {

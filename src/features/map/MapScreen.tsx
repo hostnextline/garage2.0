@@ -89,7 +89,7 @@ export default function MapScreen({ query }: ScreenProps) {
 
   /* the road route of each truck (Centrale → stops, in order): asked once per truck, then kept */
   const [, setRoadsIn] = useState(0);
-  const waypoints = (tr: TruckRoute): LatLng[] => [...(m.home ? [[m.home.lat, m.home.lng] as LatLng] : []), ...tr.stops.filter((s) => s.hasPos).map((s) => [s.lat!, s.lng!] as LatLng)];
+  const waypoints = (tr: TruckRoute): LatLng[] => [...(tr.from ? [tr.from] : []), ...tr.stops.filter((s) => s.hasPos).map((s) => [s.lat!, s.lng!] as LatLng)];
   const routeSig = m.trucks.map((tr) => `${tr.id}:${waypoints(tr).map((p) => p.join(',')).join(';')}`).join('|');
   useEffect(() => {
     let alive = true;
@@ -118,6 +118,13 @@ export default function MapScreen({ query }: ScreenProps) {
   /* what the map draws */
   const markers: MapMarker[] = [];
   if (m.home) markers.push({ id: 'home', kind: 'home', lat: m.home.lat, lng: m.home.lng, label: m.home.label, title: [m.home.label, m.home.address].filter(Boolean).join(', ') });
+  // a truck that leaves from its own address: its start, in its colour
+  for (const tr of m.trucks) {
+    if (!tr.start) continue;
+    const name = tr.start.label || t('map.legend.ownStart', { name: tr.name });
+    markers.push({ id: `start-${tr.id}`, kind: 'customer', lat: tr.start.lat, lng: tr.start.lng, color: tr.color, label: name, dim: dimTruck(tr.id),
+      title: [name, tr.start.address].filter(Boolean).join(', ') });
+  }
   for (const tr of m.trucks) {
     for (const s of tr.stops) {
       if (!s.hasPos) continue;
@@ -379,6 +386,7 @@ function LegendRow(p: { tr: TruckRoute; road: { km: number; minutes: number } | 
         <span class="row-title">{tr.name}</span>
         <span class="row-sub">{sub}</span>
         {road && <span class="row-sub map-road" data-testid={`road-${tr.id}`}>{road}</span>}
+        {tr.start && <span class="row-sub" data-testid={`legend-from-${tr.id}`}>{t('map.legend.leaves', { place: tr.start.label || tr.start.address || t('map.legend.ownStart', { name: tr.name }) })}</span>}
       </span>
       <span class="row-end">
         {finished ? <Pill tone="done">{t('map.legend.dayDone')}</Pill>

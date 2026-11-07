@@ -321,3 +321,87 @@ test('moving the starting point re-plans the coming blocks; its name alone does 
   await h.as(null);
   assert.equal(await h.val(`select (booking->'home'->>'lat')::float8 from public.settings where id = 1`), 45.5312898, 'not changed by a mechanic');
 }));
+
+/* Part 18: a starting point per truck, and the blocks of a day that follow one another */
+const LAVAL_HOME = [45.5650, -73.7400];   // a mechanic who takes his truck home, in Laval
+const NEAR_AMRO = [45.5260, -73.6700];
+
+test('a truck can leave from its own address: the planner counts from there (Part 18)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const saleh = await h.person('Saleh', ['mechanic']);
+  const adam = await h.person('Adam', ['mechanic']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await setStart(h, LEGENDRE);
+  const t1 = await h.truck('Camion Complet', saleh, { [dow]: DAY });
+  const t2 = await h.truck('Voiture', adam, { [dow]: DAY });
+  const b = await h.customer('Bassam', ...BASSAM);
+  await h.as(owner);
+  const id = (await h.rpc('book_job', { p_op: uuid(), p_job: job(b, day, 'am'), p_items: [] })).job_id;
+  const before = await h.one(`select truck_id, travel_min from public.jobs where id = $1`, [id]);
+
+  // Saleh leaves from home in Laval, next to Bassam: the appointment goes to his truck, a short drive, at once
+  await h.as(saleh);
+  const r = await h.rpc('set_truck_start', { p_op: uuid(), p_truck: t1, p_start: { label: 'Chez Saleh', address: '1 rue Test, Laval', lat: LAVAL_HOME[0], lng: LAVAL_HOME[1] } });
+  assert.equal(r.ok, true);
+  assert.equal(r.rows.trucks[0].start.label, 'Chez Saleh');
+  const after = await h.one(`select truck_id, travel_min, block, day::text from public.jobs where id = $1`, [id]);
+  assert.equal(after.truck_id, t1, 'on the truck that leaves from Laval');
+  assert.ok(after.travel_min < before.travel_min, `a shorter drive: ${before.travel_min} then ${after.travel_min}`);
+  assert.equal(after.block, 'am', 'the customer’s block never changes');
+  assert.equal(after.day, day);
+
+  // Adam cannot change Saleh's truck; an address not on the map is refused
+  await h.as(adam);
+  let e = await h.fails(() => h.rpc('set_truck_start', { p_op: uuid(), p_truck: t1, p_start: null }));
+  assert.equal(e?.hint, 'not_allowed');
+  await h.as(saleh);
+  e = await h.fails(() => h.rpc('set_truck_start', { p_op: uuid(), p_truck: t1, p_start: { address: 'quelque part' } }));
+  assert.equal(e?.hint, 'no_position');
+  // a mechanic cannot write the column by hand either
+  await h.q(`update public.trucks set start = null where id = $1`, [t1]);
+  await h.as(null);
+  assert.equal((await h.val(`select start->>'label' from public.trucks where id = $1`, [t1])), 'Chez Saleh');
+
+  // only the name: nothing is planned again
+  await h.q(`update public.jobs set eta_min = 999 where id = $1`, [id]);
+  await h.as(saleh);
+  await h.rpc('set_truck_start', { p_op: uuid(), p_truck: t1, p_start: { label: 'Maison', lat: LAVAL_HOME[0], lng: LAVAL_HOME[1] } });
+  assert.equal(await h.val(`select eta_min from public.jobs where id = $1`, [id]), 999, 'the name changed: not re-planned');
+
+  // back to « Départ des camions »: planned again from Legendre
+  await h.as(owner);
+  await h.rpc('set_truck_start', { p_op: uuid(), p_truck: t1, p_start: null });
+  assert.equal(await h.val(`select start from public.trucks where id = $1`, [t1]), null);
+  assert.equal(await h.val(`select travel_min from public.jobs where id = $1`, [id]), before.travel_min);
+
+  // the map gives each truck its start
+  await h.rpc('set_truck_start', { p_op: uuid(), p_truck: t2, p_start: { label: 'Chez Adam', lat: AMRO[0], lng: AMRO[1] } });
+  const m = await h.rpc('team_map', { p_day: day });
+  assert.equal(m.trucks.find((t) => t.id === t2).start.label, 'Chez Adam');
+  assert.equal(m.trucks.find((t) => t.id === t1).start, null);
+}));
+
+test('the afternoon leaves from the last stop of the morning, and the morning ends close to the afternoon (Part 18)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion Complet', null, { [dow]: DAY });
+  await setStart(h, LEGENDRE);
+  const [a, m, p] = [await h.customer('Amro', ...AMRO), await h.customer('Mahdi', ...MAHDI), await h.customer('Paul', ...NEAR_AMRO)];
+  await h.as(owner);
+  const ja = (await h.rpc('book_job', { p_op: uuid(), p_job: job(a, day, 'am'), p_items: [] })).job_id;
+  const jm = (await h.rpc('book_job', { p_op: uuid(), p_job: job(m, day, 'am'), p_items: [] })).job_id;
+  // alone, the morning goes Amro (next to Legendre) then Mahdi
+  assert.deepEqual((await route(h, [ja, jm])).map((x) => x.id), [ja, jm]);
+
+  // Paul, in the afternoon, next to Amro: the morning now ends at Amro (Mahdi first), and the afternoon leaves from there
+  const jp = (await h.rpc('book_job', { p_op: uuid(), p_job: job(p, day, 'pm'), p_items: [] })).job_id;
+  assert.deepEqual((await route(h, [ja, jm])).map((x) => x.id), [jm, ja], 'Mahdi, then Amro, close to Paul');
+  const pm = await h.one(`select eta_min, travel_min, block from public.jobs where id = $1`, [jp]);
+  assert.equal(pm.block, 'pm');
+  assert.ok(pm.travel_min <= 7, 'a short drive from Amro, not from Legendre: ' + pm.travel_min);
+  assert.equal(pm.eta_min, 720 + pm.travel_min - 5, 'at noon plus the drive');
+  // every appointment stays in the block the customer booked
+  assert.deepEqual((await h.q(`select block from public.jobs where id = any($1::uuid[]) order by block`, [[ja, jm, jp]])).map((x) => x.block), ['am', 'am', 'pm']);
+}));

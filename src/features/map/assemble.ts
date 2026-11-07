@@ -6,7 +6,8 @@
 export type LatLng = [number, number];
 export interface TeamMapAnswer {
   home: { lat: number | null; lng: number | null; label?: string | null; address?: string | null } | null;
-  trucks: { id: string; name: string; color: string | null; driver_id: string | null }[];
+  /** start: where this truck leaves from (Part 18); null = « Départ des camions » (home) */
+  trucks: { id: string; name: string; color: string | null; driver_id: string | null; start?: { lat: number; lng: number; label: string | null; address: string | null } | null }[];
   jobs: { id: string; number: number | null; truck_id: string | null; order: number | null; eta_min: number | null; status: string; block: string; name: string | null; address: string | null; lat: number | null; lng: number | null }[];
   people: { id: string; name: string | null; color: string | null; lat: number; lng: number; at: string | null; job_id: string | null }[];
   trips: { job_id: string; staff_id: string | null; eta_at: string | null; km: number | null; minutes: number | null; route: LatLng[] | null }[];
@@ -33,6 +34,10 @@ export interface TruckRoute {
   nextEta: number | null;
   trip: TripInfo | null;
   legs: Leg[];
+  /** where its route starts (its own start, else « Départ des camions ») */
+  from: LatLng | null;
+  /** its own start, when it has one */
+  start: { lat: number; lng: number; label: string; address: string } | null;
 }
 export interface Person { id: string; name: string; color: string; lat: number; lng: number; at: string | null; jobId: string | null; truckId: string | null }
 export interface Assembled {
@@ -69,7 +74,14 @@ export function normalize(raw: unknown): TeamMapAnswer {
   const h = (a.home && typeof a.home === 'object' ? a.home : null) as Record<string, unknown> | null;
   return {
     home: h ? { lat: num(h.lat), lng: num(h.lng), label: h.label == null ? null : String(h.label), address: h.address == null ? null : String(h.address) } : null,
-    trucks: arr<Record<string, unknown>>(a.trucks).filter((t) => t && t.id != null).map((t) => ({ id: String(t.id), name: String(t.name ?? ''), color: t.color ? String(t.color) : null, driver_id: t.driver_id ? String(t.driver_id) : null })),
+    trucks: arr<Record<string, unknown>>(a.trucks).filter((t) => t && t.id != null).map((t) => {
+      const st = (t.start && typeof t.start === 'object' ? t.start : null) as Record<string, unknown> | null;
+      const sl = st ? num(st.lat) : null, sg = st ? num(st.lng) : null;
+      return {
+        id: String(t.id), name: String(t.name ?? ''), color: t.color ? String(t.color) : null, driver_id: t.driver_id ? String(t.driver_id) : null,
+        start: st && okLat(sl) && okLng(sg) ? { lat: sl, lng: sg, label: st.label == null ? null : String(st.label), address: st.address == null ? null : String(st.address) } : null
+      };
+    }),
     jobs: arr<Record<string, unknown>>(a.jobs).filter((j) => j && j.id != null).map((j) => ({
       id: String(j.id), number: num(j.number), truck_id: j.truck_id ? String(j.truck_id) : null, order: num(j.order), eta_min: num(j.eta_min),
       status: String(j.status ?? 'booked'), block: String(j.block ?? 'am'), name: j.name == null ? null : String(j.name), address: j.address == null ? null : String(j.address),
@@ -139,7 +151,9 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
     const trip = (next && myTrips.find((tr) => tr.jobId === next.id)) || myTrips[0] || null;
     const driverPerson = t.driver_id ? a.people.find((p) => p.id === t.driver_id) : undefined;
     const legs: Leg[] = [];
-    let prev: LatLng | null = homePt;
+    const start = t.start ? { lat: t.start.lat, lng: t.start.lng, label: t.start.label || '', address: t.start.address || '' } : null;
+    const from: LatLng | null = start ? [start.lat, start.lng] : homePt;
+    let prev: LatLng | null = from;
     for (const s of stops) {
       if (!s.hasPos) continue;
       const to: LatLng = [s.lat!, s.lng!];
@@ -161,7 +175,7 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
     trucks.push({
       id: t.id, name: t.name, color, driverId: t.driver_id,
       driverName: (t.driver_id && (nameOf(t.driver_id) || driverPerson?.name)) || '',
-      stops, done: stops.filter((s) => s.done).length, total: stops.length, next, nextEta, trip, legs
+      stops, done: stops.filter((s) => s.done).length, total: stops.length, next, nextEta, trip, legs, from, start
     });
   });
 

@@ -5,7 +5,7 @@ The app of a **mobile garage** in Montréal: the owner (Hassan) and the office b
 from « Départ des camions » (`settings.booking.home`, Réglages → Réservations; also reached from Horaires and the map
 legend): cheapest insertion, then each truck's route improved (`route_improve`: a piece turned around, a stop moved).
 Moving the start or a number of the route estimate re-plans every coming booked block (trigger `settings_replan`,
-Part 17); the mechanics (Saleh: Camion Complet, Adam: Voiture) do the work at the customer's place, get the waiver signed, invoice
+Part 17). Each truck may leave from its own address (`trucks.start`, Horaires → « Départ de ce camion », Part 18); the afternoon and evening leave from the truck's last stop of the block before, and each block tries to end near the next one's first stop; the mechanics (Saleh: Camion Complet, Adam: Voiture) do the work at the customer's place, get the waiver signed, invoice
 and get paid before leaving; a treasurer keeps the books. People are beginners with apps: **simple words, one obvious
 action per screen, help bubbles « ? »**. Read `docs/DESIGN.md` first (the look and the writing rules).
 
@@ -169,7 +169,7 @@ RPCs (`callRpc` through `api.ts`): `book_job(p_job, p_items)` · `walk_in(p_job,
 `{ pay_later?, reason? }`, cancel/no_show: `{ reason }`, waiver: `{ signer, version, attachment_id }`) · `extra_answer(p_item, p_accept, p_via)` ·
 `invoice_for_job(p_job, p_refresh)` (draft from the work) · `invoice_finish(p_invoice)` (number) · `payment_add` · `payment_remove` ·
 `invoice_void(p_invoice, p_reason)` · `apply_hours(p_truck, p_mode: day|weeks|always, p_week {dow: [[start,end]]}, p_from, p_weeks)` ·
-`set_role_rights(p_role, p_right, p_on)` · `member_update(p_staff, p_patch)` · `shift_start()` · `shift_end()` · `report_position(…)`.
+`set_truck_start(p_truck, p_start {label, address, lat, lng} | null)` · `set_role_rights(p_role, p_right, p_on)` · `member_update(p_staff, p_patch)` · `shift_start()` · `shift_end()` · `report_position(…)`.
 Read-only: `suggest_blocks(p_lat, p_lng, p_duration, p_from, p_days, p_exclude, p_limit)` → `[{ day, block, drive_min, near, truck, left }]` ·
 `blocks_overview(p_from, p_to)` · `team_map(p_day)` → `{ home, trucks, jobs, people, trips }` · `day_path(p_staff, p_day)` ·
 `dashboard(p_month)` · `treasury_report(p_from, p_to)` · `my_access()` · `access_of(p_staff)`.

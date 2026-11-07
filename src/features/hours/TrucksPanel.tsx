@@ -8,6 +8,7 @@ import { saveTruck } from '../../data/api';
 import { uuid } from '../../data/sync';
 import type { Truck } from '../../data/types';
 import { Panel, Rows, RowItem, Button, Sheet, Field, Input, Select, Switch, attempt } from '../../ui';
+import { startWords } from './TruckStartPanel';
 
 /** the 8 colours a truck can take (data, the same in every theme) */
 export const TRUCK_COLORS: { key: string; hex: string }[] = [
@@ -31,7 +32,7 @@ export function TrucksPanel(p: { onAdded?: (id: string) => void }) {
           <RowItem key={tr.id} chevron onClick={() => setEdit(tr.id)} data-testid={`truck-row-${tr.id}`}
             start={<span class="hours-swatch" style={{ background: truckColor(tr.id) }} aria-hidden="true" />}
             title={tr.name}
-            sub={[tr.driver_id ? t('hours.manage.driverOf', { name: staffName(tr.driver_id) }) : t('hours.manage.noDriverShort'), tr.plate, !tr.active ? t('hours.inactive') : ''].filter(Boolean).join(', ')} />
+            sub={<>{[tr.driver_id ? t('hours.manage.driverOf', { name: staffName(tr.driver_id) }) : t('hours.manage.noDriverShort'), tr.plate, !tr.active ? t('hours.inactive') : ''].filter(Boolean).join(', ')}{tr.start && <><br />{t('hours.start.leaves', { place: startWords(tr.start) })}</>}</>} />
         ))}
       </Rows>
       <TruckSheet id={edit} onClose={() => setEdit(null)} onAdded={p.onAdded} />

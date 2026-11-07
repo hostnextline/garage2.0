@@ -60,6 +60,23 @@ export const hours = {
     reverted: 'Le {day} suit de nouveau l’horaire habituel',
     usual: 'Habituel : {hours}'
   },
+  start: {
+    title: 'Départ de ce camion',
+    sub: 'D’où il part le matin. L’après-midi et le soir, il part de son dernier arrêt.',
+    help: 'Le matin, la route du camion commence ici. L’app essaie aussi de finir chaque bloc près du premier arrêt du bloc suivant. Change-le si le mécano part de chez lui avec son camion.',
+    mode: 'Il part de',
+    ownOption: 'Une autre adresse',
+    own: 'Son adresse à lui',
+    fromHome: 'Comme les autres camions : {place}',
+    address: 'Adresse de départ',
+    label: 'Nom sur la carte',
+    labelHint: 'Par exemple : « Chez Saleh ».',
+    noPos: 'Cette adresse n’est pas trouvée sur la carte. Choisis-la dans la liste.',
+    replanNote: 'Les rendez-vous à venir seront replacés à partir de ce départ. Les blocs des clients ne changent pas.',
+    moved: 'Départ changé : les rendez-vous à venir sont replacés',
+    saved: 'Départ enregistré',
+    leaves: 'Part de : {place}'
+  },
   manage: {
     title: 'Les camions',
     sub: 'D’où ils partent, puis le nom, la couleur et le chauffeur de chaque camion.',

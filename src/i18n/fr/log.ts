@@ -10,6 +10,7 @@ export const log = {
   invoiceFinish: 'Facture terminée',
   payment: 'Paiement',
   hours: 'Horaire d’un camion',
+  truckStart: 'Départ d’un camion',
   settings: 'Réglages',
   expense: 'Dépense',
   change: 'Changement',
