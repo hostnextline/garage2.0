@@ -17,6 +17,7 @@ import { Page, IconButton, Banner, Empty, Button, Skeleton, StatusPill } from '.
 import { InvoicePanel } from '../invoices/InvoicePanel';
 import { PaySheet } from '../invoices/PaySheet';
 import { CoffreSheet } from '../coffre/CoffreSheet';
+import { CarFirst } from './CarFirst';
 import { isOwner } from '../../data/auth';
 import { startPositionSharing } from '../today/position';
 import type { NextStep } from './nextStep';
@@ -128,6 +129,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       {j.coffre_id && <Banner kind="info" data-testid="job-coffre">{t('coffre.job.banner')}</Banner>}
       <div class="jobs-layout">
         <div class="jobs-col">
+          <CarFirst job={j} />
           {pressable ? (
             <div class="jobs-step" ref={stepBox} data-tour={step.kind === 'pay' ? 'job-pay' : undefined}>
               <StepButton job={j} step={step} rights={rights} onUi={onUi} data-tour="job-bigstep" />

@@ -21,6 +21,17 @@ export const jobs = {
     waitingAnswer: 'réponse du client en attente',
     noTruck: 'sans camion'
   },
+  /* « Le véhicule d'abord »: the car, its oil, the work */
+  carFirst: {
+    label: 'Le véhicule et la job',
+    cyl: '{n} cyl.',
+    oil: 'Huile {grade}',
+    litres: '{n} L',
+    filter: 'filtre {ref}',
+    oilUnknown: 'Huile : pas encore connue (fiche du véhicule)',
+    toConfirm: 'À confirmer sur le véhicule',
+    more: { one: 'et 1 autre', other: 'et {n} autres' }
+  },
   /* the head of the sheet */
   head: {
     noPosition: 'Pas encore sur la carte : la position de l’adresse n’est pas trouvée.',

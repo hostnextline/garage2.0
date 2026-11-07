@@ -19,6 +19,16 @@ export const jobs: typeof fr = {
     waitingAnswer: 'waiting for the customer’s answer',
     noTruck: 'no truck'
   },
+  carFirst: {
+    label: 'The vehicle and the job',
+    cyl: '{n} cyl.',
+    oil: 'Oil {grade}',
+    litres: '{n} L',
+    filter: 'filter {ref}',
+    oilUnknown: 'Oil: not known yet (vehicle sheet)',
+    toConfirm: 'To confirm on the vehicle',
+    more: { one: 'and 1 more', other: 'and {n} more' }
+  },
   head: {
     noPosition: 'Not on the map yet: the address has no position.',
     positionNone: 'Address not found on the map. Fix it in the customer’s file.',

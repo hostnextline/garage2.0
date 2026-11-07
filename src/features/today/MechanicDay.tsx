@@ -13,6 +13,7 @@ import { isNetworkError } from '../../data/sync';
 import { may } from '../../app/routes';
 import type { Job } from '../../data/types';
 import { JobTicket } from '../jobs/JobTicket';
+import { CarFirst } from '../jobs/CarFirst';
 import { StepButton, PRESSABLE } from '../jobs/StepButton';
 import { stepOf, jobRights, dayWord, clockOf, seen } from '../jobs/select';
 import { sharing, retryPosition, agoText } from './position';
@@ -106,6 +107,7 @@ function NextStop(p: { list: Job[] }) {
     <section class={`panel glass today-next${now ? ' is-now' : ''}`} data-tour="today-next" data-testid="today-next">
       <div class="panel-head"><h2 class="panel-title">{now ? t('today.next.now') : t('today.next.title')}</h2></div>
       <div class="stack">
+        <CarFirst job={next} compact />
         <JobTicket job={next} />
         {PRESSABLE.includes(step.kind)
           ? <StepButton job={next} step={step} rights={jobRights(next)} />

@@ -150,3 +150,15 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 /* the address has no position yet: said under the address, with « Chercher » */
 .jobs-nopos { color: var(--warn); font-size: var(--t-sm); align-items: center; }
 .jobs-nopos .btn { flex: none; }
+
+/* « Le véhicule d'abord »: the car and its oil in big letters, the work under it */
+.jobs-carfirst { display: grid; gap: var(--sp-3); padding: var(--sp-4); }
+.jobs-carfirst > div { display: flex; gap: var(--sp-3); align-items: flex-start; }
+.jobs-carfirst svg { flex: none; width: 26px; height: 26px; margin-top: 2px; color: var(--ink-2); }
+.jobs-cf-name { display: block; font-size: var(--t-xl); font-weight: 560; line-height: 1.2; }
+.jobs-cf-oil b { display: block; font-size: var(--t-lg); font-weight: 560; }
+.jobs-cf-oil.is-unknown b { font-size: var(--t-md); font-weight: 500; color: var(--ink-2); }
+.jobs-cf-detail { display: block; color: var(--ink-2); }
+.jobs-cf-confirm { display: inline-block; margin-top: var(--sp-1); font-size: var(--t-sm); color: var(--st-en-route, var(--ink-2)); }
+.jobs-cf-work ul { margin: 0; padding-left: 1.1em; display: grid; gap: 2px; font-size: var(--t-md); }
+.jobs-carfirst.is-compact .jobs-cf-name { font-size: var(--t-lg); }
