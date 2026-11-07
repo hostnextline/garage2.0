@@ -42,8 +42,17 @@ describe('nextStep: one answer for each state', () => {
     expect(nextStep(job('en_route'), work, null, RIGHTS.mechanic, ctx).kind).toBe('arrive');
     expect(nextStep(job('en_route'), work, null, RIGHTS.viewer, ctx).kind).toBe('none');
   });
-  it('on site: the authorization comes first, whatever the invoice', () => {
-    for (const inv of Object.values(INVOICES)) expect(nextStep(job('on_site'), work, inv, RIGHTS.mechanic, ctx).kind).toBe('waiver');
+  it('on site: the authorization comes first, unless the job is already settled', () => {
+    for (const [name, inv] of Object.entries(INVOICES)) {
+      const live = inv && inv.status !== 'void' && !inv.deleted_at;
+      expect(nextStep(job('on_site'), work, inv, RIGHTS.mechanic, ctx).kind).toBe(live && inv.status === 'paid' ? 'finish' : 'waiver');
+      void name;
+    }
+  });
+  it('on site in the Coffre (family and friends): « Terminer », signed or not, its invoice cancelled', () => {
+    const coffre = { ...job('on_site'), coffre_id: 'c1' };
+    expect(nextStep(coffre, work, { status: 'void', total_cents: 18396, paid_cents: 0, lines: [] }, RIGHTS.mechanic, ctx).kind).toBe('finish');
+    expect(nextStep(coffre, work, null, RIGHTS.mechanic, ctx).kind).toBe('finish');
   });
   it('on site, signed: invoice, then payment, then finish', () => {
     const s = (inv: Inv, r = RIGHTS.mechanic, items = work) => nextStep(job('on_site', { waiver: true }), items, inv, r, ctx);
@@ -111,8 +120,8 @@ describe('nextStep: every status × waiver × invoice × rights', () => {
     if (!r.act) return 'none';
     if (status === 'booked') return 'leave';
     if (status === 'en_route') return 'arrive';
-    if (!waiver) return 'waiver';
     if (live?.status === 'paid') return 'finish';
+    if (!waiver) return 'waiver';
     if (live?.status === 'issued') return r.invoice ? 'pay' : 'none';
     return r.invoice ? 'invoice' : 'none';
   }
