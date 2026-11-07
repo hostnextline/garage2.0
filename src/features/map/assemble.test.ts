@@ -103,3 +103,26 @@ describe('team map: stops and routes per truck', () => {
     expect(minuteOf('not a date')).toBeNull();
   });
 });
+
+describe('team map: a truck that leaves from its own address (Part 18)', () => {
+  const own = { lat: 45.5600, lng: -73.7000, label: 'Chez Saleh', address: '10 rue X, Laval' };
+  const a = answer();
+  a.trucks[0] = { ...a.trucks[0], start: own };
+  const m = assemble(a);
+  const complet = m.trucks.find((t) => t.id === 't-complet')!;
+  const voiture = m.trucks.find((t) => t.id === 't-voiture')!;
+
+  it('starts its route from its own start; the others from « Départ des camions »', () => {
+    expect(complet.from).toEqual([own.lat, own.lng]);
+    expect(complet.start).toEqual(own);
+    expect(complet.legs[0].points[0]).toEqual([own.lat, own.lng]);
+    expect(voiture.from).toEqual([HOME.lat, HOME.lng]);
+    expect(voiture.start).toBeNull();
+  });
+  it('reads a start sent as text, and ignores one without a position', () => {
+    const n = normalize({ trucks: [{ id: 'a', start: { lat: '45.5', lng: '-73.6', label: 'X' } }, { id: 'b', start: { lat: null, lng: 2 } }, { id: 'c', start: 'oops' }] });
+    expect(n.trucks[0].start).toEqual({ lat: 45.5, lng: -73.6, label: 'X', address: null });
+    expect(n.trucks[1].start).toBeNull();
+    expect(n.trucks[2].start).toBeNull();
+  });
+});

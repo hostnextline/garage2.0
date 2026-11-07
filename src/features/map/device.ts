@@ -12,7 +12,7 @@ export function fromDevice(day: string): TeamMapAnswer {
   const now = Date.now();
   return {
     home: h ? { lat: h.lat ?? null, lng: h.lng ?? null, label: h.label || 'Centrale', address: h.address || '' } : null,
-    trucks: trucks.value.map((tr) => ({ id: tr.id, name: tr.name, color: tr.color, driver_id: tr.driver_id })),
+    trucks: trucks.value.map((tr) => ({ id: tr.id, name: tr.name, color: tr.color, driver_id: tr.driver_id, start: tr.start ?? null })),
     jobs: jobsOn(day).filter((j) => j.status !== 'cancelled' && j.status !== 'no_show').map((j) => {
       const c = customer(j.customer_id);
       return {

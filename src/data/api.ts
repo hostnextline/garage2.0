@@ -5,7 +5,7 @@ import { getRow } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
 import { t, lang } from '../lib/i18n';
-import type { Customer, CustomerNote, Vehicle, EngineSpec, JobItem, Quote, Truck, Expense, InventoryItem, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
+import type { Customer, CustomerNote, Vehicle, EngineSpec, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
 import type { BlockKey, Range } from '../lib/dates';
 import { appBase } from '../lib/config';
 
@@ -117,6 +117,12 @@ export async function saveTruck(tr: Partial<Truck>): Promise<string> { guard(); 
 export async function applyHours(truckId: string, mode: 'day' | 'weeks' | 'always', week: Record<number, Range[]>, from: string, weeks = 1) {
   guard();
   return callRpc('apply_hours', { p_truck: truckId, p_mode: mode, p_week: week, p_from: from, p_weeks: weeks }, { label: t('log.hours') });
+}
+
+/** where one truck leaves from (null: « Départ des camions »); the server plans the coming blocks again (Part 18) */
+export async function setTruckStart(truckId: string, start: TruckStart | null) {
+  guard();
+  return callRpc('set_truck_start', { p_truck: truckId, p_start: start }, { label: t('log.truckStart') });
 }
 
 /* ---------- settings, team ---------- */

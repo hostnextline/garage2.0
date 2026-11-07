@@ -19,6 +19,7 @@ import { Page, Panel, Banner, Button, IconButton, Chips, Seg, Field, Stepper, Da
 import { errorMessage } from '../../data/api';
 import { HoursGrid, weekdayName } from './HoursGrid';
 import { TrucksPanel } from './TrucksPanel';
+import { TruckStartPanel } from './TruckStartPanel';
 import { weekToPanes, changedDays, applyPlan, paneMinutes, FROM, TO, type Panes, type Mode } from './grid';
 import { rangesWords, weekdaysWords } from './words';
 import { spanEnds } from '../booking/when';
@@ -222,6 +223,7 @@ export default function HoursScreen({ params }: ScreenProps) {
         <div class="hours-side">
           {applyPanel}
           {exceptionsPanel}
+          {truckId && <TruckStartPanel truckId={truckId} canEdit={canEdit} />}
         </div>
       </div>
       {manage && <TrucksPanel onAdded={(id) => navigate(`/hours/${id}`, { replace: true })} />}

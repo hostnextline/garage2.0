@@ -10,6 +10,7 @@ export const log: typeof fr = {
   invoiceFinish: 'Invoice finished',
   payment: 'Payment',
   hours: 'Truck hours',
+  truckStart: 'Where a truck leaves from',
   settings: 'Settings',
   expense: 'Expense',
   change: 'Change',

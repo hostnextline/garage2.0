@@ -173,7 +173,7 @@ registerRpc('team_map', (a) => {
   const day = String(a.p_day || today());
   return {
     home: { lat: 45.5005053, lng: -73.6577429, label: 'Centrale', address: '8255 av. Mountain Sights, Montréal, QC H4P 2B5' },
-    trucks: table('trucks').filter((t) => !t.deleted_at).map((t) => ({ id: t.id, name: t.name, color: t.color, driver_id: t.driver_id })),
+    trucks: table('trucks').filter((t) => !t.deleted_at).map((t) => ({ id: t.id, name: t.name, color: t.color, driver_id: t.driver_id, start: t.start ?? null })),
     jobs: table('jobs').filter((j) => j.day === day && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status))).map((j) => {
       const c = find('customers', j.customer_id);
       return { id: j.id, number: j.number, truck_id: j.truck_id, order: j.stop_order, eta_min: j.eta_min, status: j.status, block: j.block, name: c?.first_name || c?.company || '—', address: j.address || c?.address, lat: j.lat ?? c?.lat, lng: j.lng ?? c?.lng };
