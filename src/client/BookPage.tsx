@@ -13,11 +13,12 @@ import { Header, Footer, Note, Skeleton, CallUs, garageName } from './ui';
 import { duration, shortDate, longDay, today } from '../lib/dates';
 import { formatPhone } from '../lib/text';
 import { searchPlaces } from '../features/customers/places';
+import { locate } from '../features/customers/locate';
 import type { Suggestion } from '../features/customers/photon';
 import { ErrorState } from './ViewPage';
 import {
   STEPS, stepNumber, serviceName, chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots,
-  EMPTY_CONTACT, type Step, type WebInfo, type WebSlot, type Contact, type ContactErrors, type Booked
+  onTypedStreet, EMPTY_CONTACT, type Step, type WebInfo, type WebSlot, type Contact, type ContactErrors, type Booked
 } from './book-state';
 
 interface Place { address: string; unit: string; postal_code: string | null; city: string | null; lat: number; lng: number; exact: boolean }
@@ -175,7 +176,13 @@ function Address(p: { l: CLang; value: Place | null; onValue: (x: Place | null) 
     const t = setTimeout(async () => {
       const r = await searchPlaces(q, ctl.signal);
       if (ctl.signal.aborted) return;
-      const ok = r.places.filter((s) => s.place.lat != null);
+      let ok = onTypedStreet(r.places, q);
+      // nothing on that street: ask again the careful way (short words written out, without the town)
+      if (!ok.length && !r.error) {
+        const x = await locate(q);
+        if (ctl.signal.aborted) return;
+        ok = onTypedStreet(x.status === 'found' ? [x.place] : x.status === 'choose' ? x.choices : [], q);
+      }
       setList(ok);
       setState(r.error === 'offline' ? 'offline' : ok.length ? 'idle' : 'none');
     }, 350);

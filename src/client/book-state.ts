@@ -2,6 +2,8 @@
 import { phoneDigits } from '../lib/text';
 import { totals } from '../lib/money';
 import type { CLang } from './i18n';
+import type { Suggestion } from '../features/customers/photon';
+import { wantedOf, sameStreet, sameTown, streetWords } from '../features/customers/locate';
 
 export interface WebService {
   id: string; name_fr: string; name_en: string; category: string; price_cents: number | null; taxable?: boolean; duration_min: number;
@@ -81,4 +83,17 @@ export function nextFrom(from: string, days: number): string {
 export function mergeSlots(a: WebSlot[], b: WebSlot[]): WebSlot[] {
   const seen = new Set(a.map((s) => `${s.day}|${s.block}`));
   return [...a, ...b.filter((s) => !seen.has(`${s.day}|${s.block}`))];
+}
+
+/** only the places on the street typed, with a position (Photon may answer another street with the same number:
+    « 1250 rue Graham » → « 1250 rue Jean-Talon »; the mechanic must never go there) */
+export function onTypedStreet(list: Suggestion[], typed: string): Suggestion[] {
+  const w = wantedOf(typed);
+  let out = list.filter((s) => s.place.lat != null && s.place.lng != null && (!w.street || sameStreet(w.street, s.street || s.label)));
+  // a town or a postal code typed: one of them must agree
+  if (w.city || w.fsa) out = out.filter((s) => (!!w.city && s.areas.some((a) => sameTown(a, w.city))) || (!!w.fsa && (s.place.postal_code || '').toUpperCase().startsWith(w.fsa)));
+  // the street exactly as typed wins over a longer name (« Graham » before « Graham-Bell »)
+  const key = streetWords(w.street).join(' ');
+  const exact = out.filter((s) => streetWords(s.street || s.label).join(' ') === key);
+  return exact.length ? exact : out;
 }

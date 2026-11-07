@@ -197,7 +197,7 @@ export const client = {
       total: 'Total prévu', totalIs: 'Total prévu : {amount}', totalTaxes: 'taxes incluses', plusHourly: 'plus le travail à l’heure', chosen: { one: '{n} service choisi', other: '{n} services choisis' } },
     address: { title: 'Où est votre véhicule ?', sub: 'Le mécano vient à cette adresse : votre entrée, votre stationnement ou la rue.',
       label: 'Adresse', placeholder: 'Ex. : 1250 rue Graham, Mont-Royal', unit: 'Appartement (facultatif)', unitIn: 'app. {unit}', pick: 'Choisissez votre adresse dans la liste.',
-      searching: 'Recherche…', nothing: 'Aucune adresse trouvée. Vérifiez le numéro et la rue.', offline: 'Pas de réseau : vérifiez votre connexion.',
+      searching: 'Recherche…', nothing: 'Aucune adresse trouvée. Vérifiez le numéro, la rue et la ville, ou appelez-nous.', offline: 'Pas de réseau : vérifiez votre connexion.',
       chosen: 'Adresse choisie', change: 'Changer', street: 'Le numéro de porte n’est pas sur la carte : le mécano vous appellera au besoin.',
       seeDates: 'Voir les dates' },
     slots: { title: 'Choisissez le moment', sub: 'Ces moments sont les plus proches de nos autres clients ce jour-là : le mécano arrive plus vite.',

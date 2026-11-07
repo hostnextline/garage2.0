@@ -3,6 +3,11 @@ import { chosenMinutes, chosenTotal, toggle, contactErrors, years, stepOfError, 
   EMPTY_CONTACT, type WebService } from './book-state';
 import { parseLink } from './link';
 import { ct } from './i18n';
+import { onTypedStreet } from './book-state';
+import type { Suggestion } from '../features/customers/photon';
+
+const place = (label: string, street: string, lat: number | null = 45.5): Suggestion => ({ place: { address: label, unit: null, postal_code: null, lat, lng: lat == null ? null : -73.6 },
+  label, sub: '', exact: true, key: label, house: '1250', street, areas: [] });
 
 const svc = (id: string, price: number | null, min: number, extra: Partial<WebService> = {}): WebService =>
   ({ id, name_fr: `S ${id}`, name_en: `E ${id}`, category: 'x', price_cents: price, taxable: true, duration_min: min, promo: false, promo_until: null, includes: [], ...extra });
@@ -83,5 +88,19 @@ describe('Réserver en ligne: the answers of the server', () => {
     expect(parseLink('#reserver').kind).toBe('reserver');
     expect(parseLink('#reserver&l=en')).toMatchObject({ kind: 'reserver', l: 'en' });
     expect(parseLink('#t=abc').kind).toBe('t');
+  });
+});
+
+describe('Réserver en ligne: the address', () => {
+  it('only the places on the street typed: never another street with the same door number', () => {
+    const tmr = { ...place('1250 rue Graham', 'Rue Graham'), areas: ['Mont-Royal'] };
+    const bell = { ...place('1250 rue Graham-Bell', 'rue Graham-Bell'), areas: ['Boucherville'] };
+    const jt = { ...place('1250 rue Jean-Talon Ouest', 'rue Jean-Talon Ouest'), areas: ['Ville de Mont-Royal'] };
+    expect(onTypedStreet([jt, bell, tmr], '1250 rue Graham, Mont-Royal').map((s) => s.label)).toEqual(['1250 rue Graham']);
+    expect(onTypedStreet([jt, bell], '1250 rue Graham, Mont-Royal')).toEqual([]);          // wrong street, wrong town
+    expect(onTypedStreet([jt, bell, tmr], '1250 rue Graham').map((s) => s.label)).toEqual(['1250 rue Graham']);
+    expect(onTypedStreet([bell], '1250 rue Graham').map((s) => s.label)).toEqual(['1250 rue Graham-Bell']);   // no town typed: offered, the customer sees the town
+    expect(onTypedStreet([{ ...place('144 58e Avenue', '58e Avenue'), areas: ['Laval'] }], '144 58e av., Laval')).toHaveLength(1);
+    expect(onTypedStreet([place('4521 rue Fabre', 'Rue Fabre', null)], '4521 rue Fabre')).toEqual([]);   // no position: not offered
   });
 });

@@ -195,7 +195,7 @@ export const client: typeof fr = {
       total: 'Expected total', totalIs: 'Expected total: {amount}', totalTaxes: 'taxes included', plusHourly: 'plus hourly work', chosen: { one: '{n} service chosen', other: '{n} services chosen' } },
     address: { title: 'Where is your vehicle?', sub: 'The mechanic comes to this address: your driveway, your parking spot or the street.',
       label: 'Address', placeholder: 'E.g. 1250 Graham St, Mount Royal', unit: 'Apartment (optional)', unitIn: 'apt. {unit}', pick: 'Choose your address from the list.',
-      searching: 'Searching…', nothing: 'No address found. Check the number and the street.', offline: 'No network: check your connection.',
+      searching: 'Searching…', nothing: 'No address found. Check the number, the street and the city, or call us.', offline: 'No network: check your connection.',
       chosen: 'Address chosen', change: 'Change', street: 'The door number is not on the map: the mechanic will call you if needed.',
       seeDates: 'See the dates' },
     slots: { title: 'Choose the time', sub: 'These times are the closest to our other customers that day: the mechanic gets to you faster.',
