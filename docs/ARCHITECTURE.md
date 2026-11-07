@@ -1,8 +1,11 @@
 # Architecture — Mécanique Mobile H.I.S (V2)
 
 The app of a **mobile garage** in Montréal: the owner (Hassan) and the office book appointments by phone into time
-**blocks** (matin 8–12, après-midi 12–16, soir 16–20); the server places each job on a truck and orders the stops; the
-mechanics (Saleh: Camion Complet, Adam: Voiture) do the work at the customer's place, get the waiver signed, invoice
+**blocks** (matin 8–12, après-midi 12–16, soir 16–20); the server places each job on a truck and orders the stops
+from « Départ des camions » (`settings.booking.home`, Réglages → Réservations; also reached from Horaires and the map
+legend): cheapest insertion, then each truck's route improved (`route_improve`: a piece turned around, a stop moved).
+Moving the start or a number of the route estimate re-plans every coming booked block (trigger `settings_replan`,
+Part 17); the mechanics (Saleh: Camion Complet, Adam: Voiture) do the work at the customer's place, get the waiver signed, invoice
 and get paid before leaving; a treasurer keeps the books. People are beginners with apps: **simple words, one obvious
 action per screen, help bubbles « ? »**. Read `docs/DESIGN.md` first (the look and the writing rules).
 

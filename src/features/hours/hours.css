@@ -79,6 +79,9 @@
 
 /* ---------- the trucks ---------- */
 .hours-swatch { flex: none; width: 18px; height: 18px; border-radius: 50%; box-shadow: 0 0 0 1px var(--glass-edge); }
+/* where the trucks leave from: the same black badge as on the map */
+.hours-swatch.is-home { display: grid; place-items: center; width: 30px; height: 30px; margin: -6px; padding: 3px; background: #000; box-shadow: 0 0 0 1.5px var(--chrome-2), 0 0 0 2.5px var(--chrome-3); }
+.hours-swatch.is-home img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
 .hours-colors { display: flex; flex-wrap: wrap; gap: 10px; }
 .hours-color { display: grid; place-items: center; width: var(--tap); height: var(--tap); border-radius: 50%; border: 0; background: var(--sw); color: #fff; box-shadow: 0 0 0 1px var(--line); }
 .hours-color.is-on { box-shadow: 0 0 0 3px var(--solid), 0 0 0 5px var(--sw); }

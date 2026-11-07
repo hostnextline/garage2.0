@@ -62,7 +62,9 @@ export const hours = {
   },
   manage: {
     title: 'Les camions',
-    sub: 'Le nom, la couleur et le chauffeur de chaque camion.',
+    sub: 'D’où ils partent, puis le nom, la couleur et le chauffeur de chaque camion.',
+    start: 'Départ des camions',
+    startNone: 'Pas encore d’adresse : touche pour l’ajouter.',
     add: 'Ajouter un camion',
     edit: 'Modifier le camion',
     newTitle: 'Nouveau camion',

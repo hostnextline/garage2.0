@@ -1,7 +1,7 @@
 import type { map as fr } from '../fr/map';
 export const map: typeof fr = {
   title: 'Map',
-  help: 'The team’s day: the Centrale, each truck in its colour with its stops numbered in the order of its route, and where the mechanics are right now.',
+  help: 'The team’s day: where the trucks leave from, each truck in its colour with its stops numbered in the order of its route, and where the mechanics are right now.',
   label: 'Team map',
   days: { yesterday: 'Yesterday', today: 'Today', tomorrow: 'Tomorrow' },
   dayLabel: 'Day shown',
@@ -30,7 +30,10 @@ export const map: typeof fr = {
     unplaced: 'To place',
     unplacedSub: { one: '{n} appointment without a truck', other: '{n} appointments without a truck' },
     focusOn: 'See only {name}',
-    focusOff: 'See the whole team again'
+    focusOff: 'See the whole team again',
+    start: 'Where the trucks leave from',
+    change: 'Change',
+    changeStart: 'Change the address the trucks leave from'
   },
   lost: {
     text: { one: '{n} appointment not on the map yet (address with no position)', other: '{n} appointments not on the map yet (addresses with no position)' },
@@ -66,7 +69,7 @@ export const map: typeof fr = {
     text: 'The trucks’ stops show here as soon as an appointment is booked.',
     book: 'Book'
   },
-  noHome: 'The Centrale has no place on the map yet. Add its address in Settings, Bookings.',
+  noHome: 'The trucks’ starting point has no place on the map yet. Add its address in Settings, Bookings.',
   noHomeAction: 'Open settings',
   pull: { open: 'See the list', close: 'Hide the list' }
 };

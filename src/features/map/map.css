@@ -50,6 +50,10 @@
 .map-legend-row[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
 .map-swatch { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; flex: none; color: #fff; background: var(--c); font-weight: 620;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 10px -6px var(--c); }
+/* where the trucks leave from: the same black badge as on the map */
+.map-swatch.is-home { border-radius: 50%; padding: 4px; background: #000; box-shadow: 0 0 0 2px var(--chrome-2), 0 0 0 3.5px var(--chrome-3); }
+.map-swatch.is-home img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+.map-legend-start { cursor: default; }
 .map-eta { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
 .map-eta b { font-size: var(--t-md); }
 .map-eta small { font-size: var(--t-xs); color: var(--ink-2); }

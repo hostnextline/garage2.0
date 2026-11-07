@@ -62,7 +62,9 @@ export const hours: typeof fr = {
   },
   manage: {
     title: 'The trucks',
-    sub: 'The name, colour and driver of each truck.',
+    sub: 'Where they leave from, then the name, colour and driver of each truck.',
+    start: 'Where the trucks leave from',
+    startNone: 'No address yet: tap to add it.',
     add: 'Add a truck',
     edit: 'Edit the truck',
     newTitle: 'New truck',

@@ -254,3 +254,70 @@ test('a service says what it takes that depends on the car (an array, or nothing
   assert.match(String(bad?.message), /services_needs_array/);
   assert.deepEqual(await h.val(`select needs from public.services where name_fr = 'Changement d’huile'`), [{ kind: 'oil' }, { kind: 'oil_filter' }]);
 }));
+
+/* Part 17: the trucks' starting point (« Départ des camions ») and the order of the stops */
+const LEGENDRE = [45.5312898, -73.6544639], CENTRALE = [45.5005053, -73.6577429];
+const AMRO = [45.52789, -73.66748], BASSAM = [45.54571, -73.72509], MAHDI = [45.58151, -73.64007];   // Chabanel, Laval, Montréal-Nord
+const setStart = (h, [lat, lng], label = 'Centrale') => h.q(`update public.settings set booking = jsonb_set(booking, '{home}', coalesce(booking->'home', '{}') || jsonb_build_object('lat', $1::float8, 'lng', $2::float8, 'label', $3::text)) where id = 1`, [lat, lng, label]);
+const route = async (h, ids) => (await h.q(`select id, stop_order, eta_min from public.jobs where id = any($1::uuid[]) order by stop_order`, [ids]));
+
+test('the stops go in the order that drives the least, not only where each one was put (Part 17)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion Complet', null, { [dow]: DAY });
+  await setStart(h, LEGENDRE);
+  const [a, b, m] = [await h.customer('Amro', ...AMRO), await h.customer('Bassam', ...BASSAM), await h.customer('Mahdi', ...MAHDI)];
+  await h.as(owner);
+  const ids = [];
+  for (const c of [a, b, m]) ids.push((await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'pm'), p_items: [] })).job_id);
+  // put one by one, Mahdi went before Bassam (Chabanel, Montréal-Nord, then back west to Laval): 36 min of driving;
+  // Chabanel, Laval, then Montréal-Nord drives 32
+  assert.deepEqual((await route(h, ids)).map((x) => x.id), [ids[0], ids[1], ids[2]], 'Amro, Bassam, then Mahdi');
+  const legs = await h.val(`select sum(travel_min)::int from public.jobs where id = any($1::uuid[])`, [ids]);
+  assert.equal(legs, 32 + 3 * 5, 'driving + 5 min per stop');
+
+  // the order of the stops on the way or there never changes
+  await h.as(null);
+  const pts = { x: { lat: MAHDI[0], lng: MAHDI[1], dur: 60 }, y: { lat: AMRO[0], lng: AMRO[1], dur: 60 }, z: { lat: BASSAM[0], lng: BASSAM[1], dur: 60 } };
+  const better = await h.val(`select public.route_improve($1::jsonb, 1, $2::jsonb, $3, $4, 35, 1.3, 20, 5)`, [JSON.stringify(['x', 'y', 'z']), JSON.stringify(pts), ...LEGENDRE]);
+  assert.equal(better[0], 'x', 'the first stop (on site) stays first');
+  assert.deepEqual([...better].sort(), ['x', 'y', 'z']);
+  assert.deepEqual(await h.val(`select public.route_improve('["x"]', 0, $1::jsonb, $2, $3, 35, 1.3, 20, 5)`, [JSON.stringify(pts), ...LEGENDRE]), ['x']);
+}));
+
+test('moving the starting point re-plans the coming blocks; its name alone does not (Part 17)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const mech = await h.person('Saleh', ['mechanic']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion Complet', null, { [dow]: DAY });
+  await setStart(h, CENTRALE);
+  const [a, b, m] = [await h.customer('Amro', ...AMRO), await h.customer('Bassam', ...BASSAM), await h.customer('Mahdi', ...MAHDI)];
+  await h.as(owner);
+  const ids = [];
+  for (const c of [a, b, m]) ids.push((await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'pm'), p_items: [] })).job_id);
+  const first = async () => (await h.one(`select eta_min, travel_min from public.jobs where id = $1`, [ids[0]]));
+  assert.deepEqual(await first(), { eta_min: 727, travel_min: 12 }, 'from 8255 Mountain Sights: 7 min to Amro, at 12 h 07');
+
+  // the owner moves the start to 1401 Legendre Ouest (Réglages, Réservations, Départ des camions): planned again at once
+  await h.q(`update public.settings set booking = jsonb_set(booking, '{home}', booking->'home' || '{"address":"1401 rue Legendre Ouest, Montréal, QC","lat":45.5312898,"lng":-73.6544639}') where id = 1`);
+  assert.deepEqual(await first(), { eta_min: 723, travel_min: 8 }, 'from Legendre: 3 min to Amro, at 12 h 03');
+  assert.deepEqual((await route(h, ids)).map((x) => x.id), ids, 'still Amro, Bassam, Mahdi');
+
+  // only the name on the map: nothing is planned again (a time put wrong by hand stays wrong)
+  await h.as(null);
+  await h.q(`update public.jobs set eta_min = 999 where id = $1`, [ids[0]]);
+  await h.as(owner);
+  await h.q(`update public.settings set booking = jsonb_set(booking, '{home,label}', '"Garage"') where id = 1`);
+  assert.equal((await first()).eta_min, 999, 'the name changed: not re-planned');
+  // a number of the route estimate: planned again
+  await h.q(`update public.settings set booking = booking || '{"stop_min": 7}' where id = 1`);
+  assert.deepEqual(await first(), { eta_min: 723, travel_min: 10 }, 'stop time 7 min: re-planned');
+
+  // a mechanic cannot move the start
+  await h.as(mech);
+  await h.q(`update public.settings set booking = jsonb_set(booking, '{home,lat}', '45.6') where id = 1`);
+  await h.as(null);
+  assert.equal(await h.val(`select (booking->'home'->>'lat')::float8 from public.settings where id = 1`), 45.5312898, 'not changed by a mechanic');
+}));

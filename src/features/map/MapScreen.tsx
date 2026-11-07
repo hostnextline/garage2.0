@@ -1,4 +1,4 @@
-/* La carte de l'équipe (#/map, ?day=YYYY-MM-DD): la Centrale, chaque camion dans sa couleur avec ses arrêts numérotés
+/* La carte de l'équipe (#/map, ?day=YYYY-MM-DD): le départ des camions (la Centrale), chaque camion dans sa couleur avec ses arrêts numérotés
    et sa route par les rues (pas à vol d'oiseau: roads.ts), les mécanos en direct, les trajets en cours. Mise à jour toutes les 30 s (team_map); sans réseau, la
    dernière réponse reste (avec son heure), sinon la copie du téléphone.
    Téléphone: la carte prend tout l'écran, la liste monte du bas. Ordinateur: la carte et la liste côte à côte. */
@@ -346,6 +346,20 @@ function Legend(p: { m: Assembled; focus: Focus; onFocus: (id: string) => void; 
               <span class="row-sub">{t('map.legend.unplacedSub', { n: m.unplaced.length })}</span>
             </span>
           </button>
+        )}
+        {m.home && (
+          <div class="row-item map-legend-row map-legend-start" role="listitem" data-testid="legend-start">
+            <span class="map-swatch is-home" aria-hidden="true"><img src="./logo-his.png" alt="" width={26} height={26} draggable={false} /></span>
+            <span class="row-main">
+              <span class="row-title">{t('map.legend.start')}</span>
+              <span class="row-sub">{[m.home.label, m.home.address].filter(Boolean).join(', ')}</span>
+            </span>
+            {can('settings') && (
+              <span class="row-end">
+                <Button size="sm" variant="ghost" href="#/settings/booking" label={t('map.legend.changeStart')} data-testid="legend-start-change">{t('map.legend.change')}</Button>
+              </span>
+            )}
+          </div>
         )}
       </div>
     </section>

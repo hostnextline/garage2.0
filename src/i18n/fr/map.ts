@@ -1,7 +1,7 @@
 /* Carte */
 export const map = {
   title: 'Carte',
-  help: 'La journée de l’équipe : la Centrale, chaque camion dans sa couleur avec ses arrêts numérotés dans l’ordre de sa route, et où sont les mécanos en ce moment.',
+  help: 'La journée de l’équipe : le départ des camions, chaque camion dans sa couleur avec ses arrêts numérotés dans l’ordre de sa route, et où sont les mécanos en ce moment.',
   label: 'Carte de l’équipe',
   days: { yesterday: 'Hier', today: 'Aujourd’hui', tomorrow: 'Demain' },
   dayLabel: 'Jour affiché',
@@ -30,7 +30,10 @@ export const map = {
     unplaced: 'À placer',
     unplacedSub: { one: '{n} rendez-vous sans camion', other: '{n} rendez-vous sans camion' },
     focusOn: 'Voir seulement {name}',
-    focusOff: 'Revoir toute l’équipe'
+    focusOff: 'Revoir toute l’équipe',
+    start: 'Départ des camions',
+    change: 'Changer',
+    changeStart: 'Changer l’adresse de départ des camions'
   },
   lost: {
     text: { one: '{n} rendez-vous pas encore sur la carte (adresse sans position)', other: '{n} rendez-vous pas encore sur la carte (adresses sans position)' },
@@ -66,7 +69,7 @@ export const map = {
     text: 'Les arrêts des camions apparaissent ici dès qu’un rendez-vous est réservé.',
     book: 'Réserver'
   },
-  noHome: 'La Centrale n’a pas encore de place sur la carte. Ajoute son adresse dans Réglages, Réservations.',
+  noHome: 'Le départ des camions n’a pas encore de place sur la carte. Ajoute son adresse dans Réglages, Réservations.',
   noHomeAction: 'Ouvrir les réglages',
   pull: { open: 'Voir la liste', close: 'Cacher la liste' }
 };

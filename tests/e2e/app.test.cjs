@@ -784,3 +784,77 @@ step('Needs of the week: oil by grade, filters, new tires by size, compared with
   noErrors(page);
   await page.context().close();
 });
+
+step('Départ des camions: from Horaires to Réglages, a new address, and the coming routes re-optimized at once; the map shows where they leave from', async () => {
+  // a coming evening with nothing booked yet: only Camion Complet works; the trucks leave from the Centrale
+  const day = h.sql(`select d::date::text from generate_series(public.local_today() + 2, public.local_today() + 9, interval '1 day') d
+    where not exists (select 1 from public.jobs j where j.day = d::date and j.block = 'eve' and j.deleted_at is null) limit 1`);
+  for (const [truck, ranges] of [[T.complet, '[[480,1200]]'], [T.voiture, '[]']]) {
+    h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${truck}', '${day}', '${ranges}', 'e2e') on conflict (truck_id, day) do update set ranges = excluded.ranges, deleted_at = null`);
+  }
+  h.sql(`update public.settings set booking = jsonb_set(booking, '{home}', '{"label":"Centrale","address":"8255 av. Mountain Sights, Montréal, QC H4P 2B5","lat":45.5005053,"lng":-73.6577429}') where id = 1`);
+  // three appointments: Chabanel, Laval, Montréal-Nord
+  const people = [['Amro', '160 rue Khalil-Gibran, Montréal', 45.52789, -73.66748], ['Bassam', '144 58e Avenue, Laval, QC', 45.54571, -73.72509], ['Mahdi', '3500 rue Fleury Est, Montréal, QC', 45.58151, -73.64007]];
+  const jobs = people.map(([name, address, lat, lng]) => {
+    const c = h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('${name}', 'Départ', '514 555-0177', '${address}', ${lat}, ${lng}, 'fr') returning id`);
+    return h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min) values ('${c}', '${day}', 'eve', 'booked', '${T.complet}', 45) returning id`);
+  });
+  h.sql(`select public.replan_block('${day}', 'eve') is not null`);
+  const list = `array['${jobs.join("','")}']::uuid[]`;
+  const route = () => h.sql(`select string_agg(stop_order || ':' || eta_min, ',' order by array_position(${list}, id)) from public.jobs where id = any(${list})`);
+  assert.equal(route(), '1:967,2:1028,3:1096', 'from Mountain Sights: Amro at 16 h 07, Bassam, then Mahdi');
+
+  const { ctx, page } = await h.openW({ kind: 'phone' });
+  await ctx.route('https://photon.komoot.io/**', (r) => {
+    const q = new URL(r.request().url()).searchParams.get('q') || '';
+    const features = /legendre/i.test(q) ? [photonHouse('1401', 'Rue Legendre Ouest', 'Montréal', 'H4N 1H5', -73.6544639, 45.5312898)] : [];
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ type: 'FeatureCollection', features }) });
+  });
+  await h.signIn(page, who.owner.email, PW);
+  // Horaires des camions: where they leave from, first in the list of the trucks
+  await page.goto(h.APP + '#/hours');
+  const row = page.getByTestId('truck-start');
+  await row.waitFor();
+  assert.match(await row.innerText(), /Départ des camions\s+Centrale, 8255 av\. Mountain Sights/);
+  await row.scrollIntoViewIfNeeded();
+  await h.shot(page, 'e2e-15-hours-start');
+  await row.click();
+  await page.waitForURL(/#\/settings\/booking$/);
+  // Réglages, Réservations: « Départ des camions » first; a new address chosen in the suggestions
+  const panel = page.getByTestId('booking-start');
+  await panel.waitFor();
+  assert.equal(await page.locator('[data-testid="settings-booking"] .panel').first().getAttribute('data-testid'), 'booking-start', 'the first panel');
+  await panel.getByTestId('address-input').fill('1401 legendre ouest');
+  await panel.getByTestId('address-suggestions').getByRole('option').first().click();
+  await panel.getByText('Position trouvée').waitFor();
+  await panel.getByTestId('booking-replan-note').waitFor();
+  await h.shot(page, 'e2e-15-settings-new-start');
+  await page.getByTestId('settings-save').click();
+  await page.getByText('Départ des camions changé. Les tournées à venir sont ré-optimisées.').waitFor({ timeout: 10000 });
+  assert.equal(await until(() => h.sql(`select booking->'home'->>'lat' from public.settings where id = 1`), (v) => v === '45.5312898'), '45.5312898');
+  assert.match(h.sql(`select booking->'home'->>'address' || '|' || (booking->'home'->>'label') from public.settings where id = 1`), /^1401 rue Legendre Ouest, Montréal, QC H4N 1H5\|Centrale$/i);
+  // the server planned the evening again from Legendre: Amro at 16 h 03
+  assert.equal(await until(route, (v) => v === '1:963,2:1024,3:1092', 15000), '1:963,2:1024,3:1092', 'the coming route re-optimized from the new start');
+  // only the name: saved, nothing to re-plan (the note says nothing)
+  await panel.getByTestId('booking-start-label').fill('Garage H.I.S');
+  assert.equal(await panel.getByTestId('booking-replan-note').count(), 0, 'the name does not re-plan');
+  await page.getByTestId('settings-save').click();
+  await page.getByText('Réglages enregistrés.').waitFor({ timeout: 10000 });
+  assert.equal(await until(() => h.sql(`select booking->'home'->>'label' from public.settings where id = 1`), (v) => v === 'Garage H.I.S'), 'Garage H.I.S');
+  noErrors(page);
+  await page.context().close();
+
+  // the map of that evening (computer): where the trucks leave from, with « Changer » for the owner
+  const d = await h.openW({ kind: 'desk' });
+  await h.signIn(d.page, who.owner.email, PW);
+  await d.page.goto(h.APP + `#/map?day=${day}`);
+  const start = d.page.getByTestId('legend-start');
+  await start.waitFor({ timeout: 15000 });
+  assert.match(await start.innerText(), /Départ des camions\s+Garage H\.I\.S, 1401 rue Legendre Ouest/i);
+  await h.shot(d.page, 'e2e-15-map-start');
+  await start.getByTestId('legend-start-change').click();
+  await d.page.waitForURL(/#\/settings\/booking$/);
+  await d.page.getByTestId('booking-start').waitFor();
+  noErrors(d.page);
+  await d.page.context().close();
+});

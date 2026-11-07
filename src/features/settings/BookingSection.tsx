@@ -1,10 +1,13 @@
-/* Réservations: the times of the 3 blocks, how far ahead one can book, the numbers of the route estimate, and the
-   Centrale (the trucks' starting point, shown on every map). */
+/* Réservations: « Départ des camions » first (where the trucks leave from: every route and arrival time is counted
+   from there, it is shown on every map), then the times of the 3 blocks, how far ahead one can book and the numbers
+   of the route estimate. Moving the start, or changing a number of the estimate, re-plans the coming appointments
+   on the server (Part 17); the phone brings them back at once. */
 import { useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { DEFAULT_BLOCKS, type BlockKey } from '../../lib/dates';
 import { settings } from '../../data/select';
 import { saveSettings } from '../../data/api';
+import { flush, pull } from '../../data/sync';
 import { Panel, Field, Input, Banner, attempt, toast } from '../../ui';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
 import { MapView } from '../map/MapView';
@@ -26,6 +29,9 @@ const NUMS: { k: keyof Booking; min: number; max: number; unit: 'days' | 'kmh' |
   { k: 'near_km', min: 1, max: 50, unit: 'km', decimals: true }
 ];
 const LABEL: Record<string, string> = { horizon_days: 'horizon', speed_kmh: 'speed', detour_pct: 'detour', stop_min: 'stop', unknown_min: 'unknown', min_block_min: 'minBlock', near_km: 'near' };
+/** what the planner counts: when one of these changes, the coming appointments are planned again */
+const planOf = (x: Pick<Booking, 'blocks' | 'speed_kmh' | 'detour_pct' | 'stop_min' | 'unknown_min' | 'min_block_min' | 'home'>) =>
+  JSON.stringify([x.home.lat, x.home.lng, x.speed_kmh, x.detour_pct, x.stop_min, x.unknown_min, x.min_block_min, x.blocks.map((b) => [b.key, b.start, b.end])]);
 
 export function BookingSection() {
   const b = settings.value.booking;
@@ -54,17 +60,44 @@ export function BookingSection() {
     setErr(e);
     if (bad || Object.values(e).some(Boolean)) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
     const home = { ...(settings.value.booking.home || {}), label: d.home.label.trim() || 'Centrale', address: d.home.address.trim(), lat: d.home.lat, lng: d.home.lng };
+    const replan = planOf(d) !== planOf(saved);
+    const moved = d.home.lat !== saved.home.lat || d.home.lng !== saved.home.lng;
     const ok = await attempt(() => saveSettings('booking', {
       ...settings.value.booking, blocks: d.blocks, horizon_days: Math.round(d.horizon_days!), speed_kmh: d.speed_kmh, detour: Math.round(100 + d.detour_pct!) / 100,
       stop_min: Math.round(d.stop_min!), unknown_min: Math.round(d.unknown_min!), min_block_min: Math.round(d.min_block_min!), near_km: d.near_km, home
-    }), { ok: t('settings.saved') });
-    if (ok) reset();
+    }), { ok: replan ? t(moved ? 'settings.booking.startMoved' : 'settings.booking.replanned') : t('settings.saved') });
+    if (!ok) return;
+    reset();
+    // the server planned the coming appointments again: bring them now (realtime brings them too, a bit later)
+    if (replan) void flush().then(() => pull('jobs')).catch(() => undefined);
   };
 
   const place: PlaceValue = { address: d.home.address, unit: null, postal_code: null, lat: d.home.lat, lng: d.home.lng };
   const hasPos = d.home.lat != null && d.home.lng != null;
   return (
     <Section testid="settings-booking" bar={<SaveBar dirty={dirty} onSave={save} onReset={() => { reset(); setErr({}); }} />}>
+      <Panel title={t('settings.booking.start')} help={t('settings.booking.startHelp')} data-testid="booking-start">
+        <div class="settings-centrale">
+          <div class="stack">
+            <div class="settings-address" data-testid="centrale-address">
+              <AddressField value={place} label={t('settings.booking.startAddress')}
+                onValue={(v) => set((x) => ({ ...x, home: { ...x.home, address: v.address, lat: v.lat, lng: v.lng } }))} />
+            </div>
+            {d.home.address && !hasPos && <Banner kind="warn">{t('settings.booking.noPos')}</Banner>}
+            <Field label={t('settings.booking.label')} help={t('settings.booking.labelHelp')}>
+              <Input value={d.home.label} onValue={(v) => set((x) => ({ ...x, home: { ...x.home, label: v } }))} maxLength={30} autoComplete="off" data-testid="booking-start-label" />
+            </Field>
+            {dirty && planOf(d) !== planOf(saved) && <p class="small muted settings-replan" data-testid="booking-replan-note">{t('settings.booking.replanNote')}</p>}
+          </div>
+          {hasPos && (
+            <figure class="settings-minimap">
+              <MapView height="220px" controls={false} label={t('settings.booking.mapLabel')}
+                markers={[{ id: 'home', kind: 'home', lat: d.home.lat!, lng: d.home.lng!, label: d.home.label || 'Centrale', title: d.home.address }]} />
+              {d.home.address && <figcaption class="small muted">{d.home.address}</figcaption>}
+            </figure>
+          )}
+        </div>
+      </Panel>
       <Panel title={t('settings.booking.blocks')} help={t('settings.booking.blocksHelp')}>
         <div class="settings-blocks">
           {d.blocks.map((bl, i) => {
@@ -91,27 +124,6 @@ export function BookingSection() {
                 unit={unit(n.unit)} decimals={n.decimals} invalid={!!err[n.k]} aria-label={t(`settings.booking.${LABEL[n.k]}`)} data-testid={`booking-${n.k}`} />
             </Field>
           ))}
-        </div>
-      </Panel>
-      <Panel title={t('settings.booking.centrale')} help={t('settings.booking.centraleHelp')}>
-        <div class="settings-centrale">
-          <div class="stack">
-            <Field label={t('settings.booking.label')}>
-              <Input value={d.home.label} onValue={(v) => set((x) => ({ ...x, home: { ...x.home, label: v } }))} maxLength={30} autoComplete="off" />
-            </Field>
-            <div class="settings-address" data-testid="centrale-address">
-              <AddressField value={place} label={t('settings.booking.address')}
-                onValue={(v) => set((x) => ({ ...x, home: { ...x.home, address: v.address, lat: v.lat, lng: v.lng } }))} />
-            </div>
-            {d.home.address && !hasPos && <Banner kind="warn">{t('settings.booking.noPos')}</Banner>}
-          </div>
-          {hasPos && (
-            <figure class="settings-minimap">
-              <MapView height="220px" controls={false} label={t('settings.booking.mapLabel')}
-                markers={[{ id: 'home', kind: 'home', lat: d.home.lat!, lng: d.home.lng!, label: d.home.label || 'Centrale', title: d.home.address }]} />
-              {d.home.address && <figcaption class="small muted">{d.home.address}</figcaption>}
-            </figure>
-          )}
         </div>
       </Panel>
     </Section>

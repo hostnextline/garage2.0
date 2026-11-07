@@ -1,8 +1,9 @@
-/* The trucks (owner, or the « settings » right): name, colour, driver, plate, in service. */
+/* The trucks (owner, or the « settings » right): where they leave from (« Départ des camions », changed in Réglages,
+   Réservations), then each truck: name, colour, driver, plate, in service. */
 import { useEffect, useState } from 'preact/hooks';
 import { Plus, Check as CheckIcon } from 'lucide-preact';
 import { t } from '../../lib/i18n';
-import { trucks, truck as truckRow, staffList, staffName, truckColor } from '../../data/select';
+import { trucks, truck as truckRow, staffList, staffName, truckColor, settings } from '../../data/select';
 import { saveTruck } from '../../data/api';
 import { uuid } from '../../data/sync';
 import type { Truck } from '../../data/types';
@@ -17,10 +18,15 @@ export const TRUCK_COLORS: { key: string; hex: string }[] = [
 export function TrucksPanel(p: { onAdded?: (id: string) => void }) {
   const [edit, setEdit] = useState<string | 'new' | null>(null);
   const list = trucks.value;
+  const home = settings.value.booking?.home;
   return (
     <Panel title={t('hours.manage.title')} sub={t('hours.manage.sub')} flush data-testid="trucks-panel"
       action={<Button size="sm" icon={<Plus />} onClick={() => setEdit('new')} data-testid="truck-add">{t('hours.manage.add')}</Button>}>
       <Rows>
+        <RowItem href="#/settings/booking" chevron data-testid="truck-start"
+          start={<span class="hours-swatch is-home" aria-hidden="true"><img src="./logo-his.png" alt="" width={24} height={24} draggable={false} /></span>}
+          title={t('hours.manage.start')}
+          sub={home?.address ? [home.label, home.address].filter(Boolean).join(', ') : t('hours.manage.startNone')} />
         {list.map((tr) => (
           <RowItem key={tr.id} chevron onClick={() => setEdit(tr.id)} data-testid={`truck-row-${tr.id}`}
             start={<span class="hours-swatch" style={{ background: truckColor(tr.id) }} aria-hidden="true" />}
