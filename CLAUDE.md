@@ -58,7 +58,7 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261106000300_start_replan.sql` (Part 17).
+- Applied on live: every migration up to `20261106000400_truck_start.sql` (Part 18, from commit `be42de0`).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off),
   currently `2610bc8`. Shared code is in `supabase/functions/_shared/`.
 - Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
@@ -78,7 +78,7 @@ end $do$;
   `src/app/locator.ts` finds missing positions in the background; a position found later re-plans its block (Part 15).
 - « Besoins de la semaine » (`#/needs`, Part 16): oil, filters, tires and parts the week's appointments need, from
   `services.needs` and the car's facts.
-- Start per truck (Part 18, `20261106000400_truck_start.sql`, **not yet applied on live**): `trucks.start`
+- Start per truck (Part 18, `20261106000400_truck_start.sql`, applied on live 2026-11-07): `trucks.start`
   {label, address, lat, lng} or null (= « Départ des camions »), changed with `set_truck_start` (owner, office with
   « hours », or the truck's driver) in Horaires → « Départ de ce camion ». The morning leaves from the truck's start;
   the afternoon and evening from its last stop of the block before; each block tries to end near the truck's first
