@@ -124,15 +124,63 @@
 .cl-map .leaflet-container { width: 100%; height: 100%; background: var(--sunken); font: inherit; }
 .cl-map .leaflet-control-attribution { font-size: 10px; }
 .cl-pin { background: none; border: 0; }
-.cl-dot { position: absolute; inset: 0; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
-.cl-dot::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid var(--accent); animation: cl-pulse 1.8s ease-out infinite; }
-@keyframes cl-pulse { from { transform: scale(1); opacity: 0.75; } to { transform: scale(2.8); opacity: 0; } }
-.cl-home { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: var(--solid); border: 3px solid var(--solid);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
-.cl-home svg { width: 18px; height: 18px; }
-.cl-map .cl-route { stroke: var(--accent); }
-.cl-map .cl-route-casing { stroke: var(--solid); }
-.cl-recenter { position: absolute; z-index: 1000; left: 0; right: 0; bottom: 16px; margin: 0 auto; width: max-content; box-shadow: var(--glass-shadow); }
+/* the truck: a black round with a white van, a soft ring around it */
+.cl-dot { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: #111; color: #fff; border: 2px solid #fff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35); }
+.cl-dot svg { width: 18px; height: 18px; }
+.cl-dot::after { content: ''; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid #111; animation: cl-pulse 2s ease-out infinite; }
+@keyframes cl-pulse { from { transform: scale(1); opacity: 0.45; } to { transform: scale(2.4); opacity: 0; } }
+/* the customer's place: a black square with a white middle */
+.cl-home { position: absolute; inset: 0; background: #111; border: 2px solid #fff; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35); }
+.cl-home::after { content: ''; position: absolute; inset: 6px; background: #fff; }
+.cl-map .cl-route { stroke: #111; }
+.cl-map .cl-route-casing { stroke: #fff; }
+.cl-recenter { position: absolute; z-index: 1000; right: 12px; top: calc(env(safe-area-inset-top) + 64px); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
+@media (prefers-reduced-motion: reduce) { .cl-dot::after { animation: none; } }
+
+/* ---------- on the way (Uber style): the map on the whole screen, a card at the bottom ---------- */
+.cl-uber { position: fixed; inset: 0; background: #eef0f2; overflow: hidden; }
+.cl-uber .cl-map { position: absolute; inset: 0; height: auto; min-height: 0; max-height: none; border: 0; border-radius: 0; box-shadow: none; background: #eef0f2; }
+.cl-uber .cl-map .leaflet-container { background: #eef0f2; }
+/* plain grey streets: no colours, a bit lighter */
+.cl-uber .leaflet-tile-pane { filter: grayscale(1) brightness(1.06) contrast(0.88); }
+.cl-uber .leaflet-control-attribution { background: rgba(255, 255, 255, 0.7); color: #666; }
+.cl-uber .leaflet-bottom { bottom: var(--cl-card-h, 0); }
+.cl-uber-top { position: absolute; z-index: 1001; top: calc(env(safe-area-inset-top) + 12px); left: 12px; right: 12px; display: flex; justify-content: space-between; gap: 8px; pointer-events: none; }
+.cl-uber-brand, .cl-uber-lang { pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 6px; border-radius: 999px;
+  background: #fff; color: #111; font-size: 14px; font-weight: 600; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16); min-width: 0; }
+.cl-uber-brand { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cl-uber-brand img { flex: none; width: 28px; height: 28px; border-radius: 50%; background: #000; }
+.cl-uber-lang { flex: none; padding: 0 12px; border: 0; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cl-uber-lang svg { width: 16px; height: 16px; }
+.cl-uber-card { position: absolute; z-index: 1001; left: 0; right: 0; bottom: 0; margin: 0 auto; max-width: 520px; background: #fff; color: #111;
+  border-radius: 20px 20px 0 0; box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.14); padding: 10px 20px calc(env(safe-area-inset-bottom) + 18px);
+  display: flex; flex-direction: column; gap: 6px; }
+.cl-uber-card::before { content: ''; width: 36px; height: 4px; border-radius: 2px; background: #d6d6d6; margin: 0 auto 6px; }
+.cl-uber-eta { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.cl-uber-min { font-size: 40px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cl-uber-min small { font-size: 20px; font-weight: 600; letter-spacing: 0; }
+.cl-uber-when { font-size: 16px; font-weight: 600; color: #111; }
+.cl-uber-head { margin: 2px 0 0; font-size: 16px; font-weight: 500; color: #333; font-stretch: normal; }
+.cl-uber-upd { margin: 0; font-size: 13px; color: #777; }
+.cl-uber-who { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding-top: 14px; border-top: 1px solid #eee; }
+.cl-uber-avatar { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: #f1f1f1; color: #111; font-weight: 700; font-size: 18px; }
+.cl-uber-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cl-uber-name b { font-size: 16px; font-weight: 600; }
+.cl-uber-name span { font-size: 13px; color: #777; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cl-uber-call { flex: none; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: #f1f1f1; color: #111; }
+.cl-uber-call:active { background: #e4e4e4; }
+.cl-uber-call svg { width: 20px; height: 20px; }
+.cl-uber-card .btn-ghost { color: #111; }
+.cl-uber.is-nomap .cl-uber-card { top: auto; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cl-uber, :root:not([data-theme="light"]) .cl-uber .cl-map, :root:not([data-theme="light"]) .cl-uber .leaflet-container { background: #1b1c1e; }
+  :root:not([data-theme="light"]) .cl-uber .leaflet-tile-pane { filter: grayscale(1) invert(1) brightness(0.82) contrast(0.9); }
+  :root:not([data-theme="light"]) .cl-uber .cl-route { stroke: #fff; }
+  :root:not([data-theme="light"]) .cl-uber .cl-route-casing { stroke: #000; }
+  :root:not([data-theme="light"]) .cl-uber .leaflet-control-attribution { background: rgba(0, 0, 0, 0.5); color: #aaa; }
+  :root:not([data-theme="light"]) .cl-uber .leaflet-control-attribution a { color: #ccc; }
+}
 .cl-map-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--sp-5); text-align: center; color: var(--ink-2); font-size: var(--t-sm); }
 
 /* ---------- the garage at the bottom ---------- */

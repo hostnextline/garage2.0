@@ -162,6 +162,7 @@ export const client = {
     onTheWay: '{name} est en route',
     onTheWayAnon: 'Votre mécano est en route',
     eta: 'Arrivée prévue vers {time} (environ {min}\u00a0min)',
+    etaAt: 'Arrivée prévue vers {time}',
     etaSoon: 'Arrivée d’un instant à l’autre',
     etaNone: 'Il s’en vient chez vous.',
     mechanic: 'Votre mécano\u00a0: {name}',
