@@ -60,7 +60,7 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261106000400_truck_start.sql` (Part 18, from commit `be42de0`).
+- Applied on live: every migration up to `20261107000200_coffre.sql` (Part 20, from commit `28c51cc`).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off),
   currently `2610bc8`. Shared code is in `supabase/functions/_shared/`.
 - Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
