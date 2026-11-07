@@ -41,6 +41,8 @@ jobs:
       - name: L'app de bout en bout
         if: ${{ !cancelled() }}
         run: node --test tests/e2e/app.test.cjs
+        env:
+          TZ: America/Toronto   # the garage's clock (Montréal), like the phones
       - name: Journaux du serveur (si ça casse)
         if: ${{ failure() }}
         run: for f in tests/stack/run/*.log; do echo "=== $f"; tail -40 "$f"; done
