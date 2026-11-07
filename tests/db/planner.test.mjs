@@ -506,7 +506,7 @@ test('a full block can be booked anyway by the owner or the office, without anyo
   const mech = await h.person('Saleh', ['mechanic']);
   const day = await futureDay(h);
   const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
-  const t1 = await h.truck('Camion 1', mech, { [dow]: AM });
+  const t1 = await h.truck('Camion 1', mech, { [dow]: [[480, 960]] });   // morning and afternoon
   const cs = [];
   for (let i = 0; i < 6; i++) cs.push(await h.customer('C' + i, near[0] + i * 0.002, near[1]));
   await h.as(owner);
