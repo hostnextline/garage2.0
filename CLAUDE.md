@@ -60,8 +60,9 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261107000300_stop_order.sql` (Part 21, applied 2026-11-07 through the
-  connector's `apply_migration` with the file's text, commit `96431c9`; Part 20 from commit `28c51cc`).
+- Applied on live: every migration up to `20261107000400_coffre_mechanic.sql` (Parts 21 and 22, applied 2026-11-07 through the
+  connector's `apply_migration` with the files' text, commits `96431c9` and `02dd77a`; Part 20 from commit `28c51cc`). Part 22: the
+  mechanic of the job's truck may also put jobs in the Coffre (`coffre_may_add`).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off),
   currently `2610bc8`. Shared code is in `supabase/functions/_shared/`.
 - Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
