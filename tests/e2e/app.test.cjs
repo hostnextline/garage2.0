@@ -414,11 +414,16 @@ step('a car without typing: Année → Marque → Modèle from the lists; the VI
   await h.shot(page, 'e2e-9-models');
   assert.ok(asked.some((u) => /make\/volkswagen\/modelyear\/2015\/vehicletype\/car/.test(u)), 'the models of that year were asked');
   await page.getByTestId('carpick-model').filter({ hasText: 'Jetta' }).first().click();
+  // then the engine (the engine list knows the 2015 Jetta): each one with its oil and filter; the first one is taken
+  await page.getByTestId('carpick-engines').waitFor({ timeout: 5000 });
+  assert.match(await page.getByTestId('carpick-engine').first().innerText(), /huile|filtre/i, 'the oil or the filter of each engine is said');
+  await page.getByTestId('carpick-engine').first().click();
   assert.equal(await page.getByTestId('vadd-model').innerText(), 'Jetta');
   await page.getByTestId('vehicle-add-ok').click();
   await page.getByTestId('car-row').filter({ hasText: 'Jetta' }).first().waitFor({ timeout: 15000 });
   const rowOf = async (sqlText) => { for (let i = 0; i < 40; i++) { const v = h.sql(sqlText); if (v) return v; await page.waitForTimeout(250); } return ''; };
   assert.equal(await rowOf(`select year || ' ' || make || ' ' || model from public.vehicles where customer_id = '${julie}' and model = 'Jetta'`), '2015 Volkswagen Jetta');
+  assert.ok(Number(await rowOf(`select displacement from public.vehicles where customer_id = '${julie}' and model = 'Jetta'`)) > 0, 'the engine chosen is kept on the car');
   // 2) by the VIN: the camera reads the door-frame barcode, the server says what car it is
   await page.getByTestId('car-add').click();
   await page.getByTestId('vehicle-add-mode').getByRole('button', { name: 'NIV' }).click();
