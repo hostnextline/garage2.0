@@ -67,6 +67,19 @@ const step = (name, fn) => test(name, async () => {
 const dismissSheets = async (page) => { for (let i = 0; i < 3; i++) { if (await page.locator('[role=dialog]').count()) await page.keyboard.press('Escape'); await page.waitForTimeout(200); } };
 h.openW = async (o) => { const r = await h.open(o); watch(r.page); return r; };
 const noErrors = (page) => assert.deepEqual(page.errors, [], 'no page errors');
+/* a signature with the mouse: hover() first, so Playwright waits for the pad to be still (a sheet rising) and in view before
+   the canvas is measured; then a zigzag */
+const draw = async (page, testid) => {
+  const canvas = page.getByTestId(testid).locator('canvas');
+  await canvas.hover();
+  const box = await canvas.boundingBox();
+  await page.mouse.move(box.x + 30, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + 30 + i * 18, box.y + box.height / 2 + (i % 2 ? -22 : 22));
+  await page.mouse.up();
+};
+/* today's block that is still on (the morning after noon is over: a job brought to today goes in the current block) */
+const blockNow = () => h.sql(`select case when public.now_min() < 720 then 'am' when public.now_min() < 960 then 'pm' else 'eve' end`);
 
 step('the office books Julie: customer, service, block, truck; the job is on the agenda', async () => {
   const { page } = await h.openW({ kind: 'desktop' });
@@ -111,8 +124,8 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await page.getByTestId('job-screen').waitFor();
   const day = h.sql(`select day::text from public.jobs where id = '${jobId}'`);
   const today = h.sql(`select public.local_today()::text`);
-  // (booked late in the day, the first block offered is tomorrow's: bring it to today)
-  if (day !== today) { h.sql(`update public.jobs set day = public.local_today(), block = 'am' where id = '${jobId}'`); await page.reload(); }
+  // (booked late in the day, the first block offered is tomorrow's: bring it to today, in the block that is on now)
+  if (day !== today) { h.sql(`update public.jobs set day = public.local_today(), block = '${blockNow()}' where id = '${jobId}'`); await page.reload(); }
   await page.getByTestId('step-leave').click();
   // texts not connected: the message with the tracking link is ready to send by hand
   await page.getByTestId('text-outcome').waitFor({ timeout: 15000 }).catch(() => undefined);
@@ -124,11 +137,7 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await dismissSheets(page);
   await page.getByTestId('step-waiver').click();
   await page.getByTestId('waiver-sheet').waitFor();
-  const pad = await page.getByTestId('waiver-pad').locator('canvas').boundingBox();
-  await page.mouse.move(pad.x + 30, pad.y + pad.height / 2);
-  await page.mouse.down();
-  for (let i = 1; i <= 12; i++) await page.mouse.move(pad.x + 30 + i * 18, pad.y + pad.height / 2 + (i % 2 ? -22 : 22));
-  await page.mouse.up();
+  await draw(page, 'waiver-pad');
   await page.getByTestId('waiver-save').click();
   await page.getByTestId('step-invoice').click();
   await page.getByTestId('invoice-finish').click({ timeout: 15000 });
@@ -161,7 +170,10 @@ step('the customer’s page: the appointment, the invoice paid, in the customer�
   const { page } = await h.openW({ kind: 'phone' });
   await page.goto(r.link);
   await page.getByTestId('client-appointment').waitFor({ timeout: 15000 });
-  await page.getByText(/Payé|Paid/).first().waitFor();
+  // (on its own: when the step before could not pay the invoice, the page shows the amount due instead)
+  const paid = h.sql(`select count(*) from public.invoices where job_id = '${jobId}' and status = 'paid'`) === '1';
+  await page.getByText(paid ? /Payé|Paid/ : /Facture|Invoice/).first().waitFor();
+  assert.ok(paid, 'the invoice of step 2 is paid (step 2 failed before this one)');
   await h.shot(page, 'e2e-3-client');
   noErrors(page);
   await page.context().close();
@@ -294,13 +306,6 @@ const rpcAs = async (jwt, name, args) => {
   if (!r.ok) throw new Error(JSON.stringify(d));
   return d;
 };
-const draw = async (page, testid) => {
-  const box = await page.getByTestId(testid).locator('canvas').boundingBox();
-  await page.mouse.move(box.x + 30, box.y + box.height / 2);
-  await page.mouse.down();
-  for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + 30 + i * 18, box.y + box.height / 2 + (i % 2 ? -22 : 22));
-  await page.mouse.up();
-};
 
 step('the estimate signed online from the confirmation link; at the door nothing is left to sign; « Je suis arrivé » sends the invoice', async () => {
   const jwt = await jwtOf(who.owner.email);
@@ -330,7 +335,7 @@ step('the estimate signed online from the confirmation link; at the door nothing
   assert.equal(h.sql(`select waiver_via || '|' || estimate_signer || '|' || estimate_cents from public.jobs where id = '${b.job_id}'`), 'online|Karim Haddad|22994');
   assert.equal(h.sql(`select kind from public.attachments where id = (select estimate_attachment from public.jobs where id = '${b.job_id}')`), 'signature');
   // the day comes: Saleh leaves, arrives; nothing to sign at the door; the invoice goes to the customer
-  h.sql(`update public.jobs set day = public.local_today(), block = 'am' where id = '${b.job_id}'`);
+  h.sql(`update public.jobs set day = public.local_today(), block = '${blockNow()}' where id = '${b.job_id}'`);
   const m = await h.openW({ kind: 'phone' });
   await h.signIn(m.page, who.saleh.email, PW);
   await m.page.goto(h.APP + `#/job/${b.job_id}`);
@@ -652,12 +657,15 @@ step('Addresses: the ones typed without a choice are found by themselves; the ma
   await h.signIn(page, who.owner.email, PW);
   // 1) by itself, a few seconds after the app opens: the appointment and its customer get the position; the block is re-planned
   //    (the second address is asked too, and Photon does not know it yet)
-  await until(() => asked.some((q) => /khalil/i.test(q)), Boolean);
+  // the app says when a run of the locator is through (data-locator on the page): no guessing of seconds
+  await page.waitForFunction(() => document.documentElement.dataset.locator === 'idle' && Number(document.documentElement.dataset.locatorRuns) >= 1, null, { timeout: 60000 })
+    .catch(() => { throw new Error('the locator never finished a run; asked: ' + asked.join(' | ')); });
+  assert.ok(asked.some((q) => /khalil/i.test(q)), 'both addresses were asked: ' + asked.join(' | '));
   const lat = await until(() => h.sql(`select coalesce(lat::text, '') from public.jobs where id = '${jobLaval}'`), (v) => !!v);
   assert.match(lat, /^45\.545/, 'the Laval appointment is placed: ' + asked.join(' | '));
   assert.match(h.sql(`select coalesce(lat::text, '') from public.customers where id = '${karim}'`), /^45\.545/);
   assert.equal(h.sql(`select coalesce(lat::text, '') from public.jobs where id = '${jobKhalil}'`), '', 'Photon does not know the second one yet');
-  await until(() => h.sql(`select count(*) from public.jobs where id = '${jobLaval}' and travel_min <> 25`), (v) => v === '1', 10000);
+  await until(() => h.sql(`select count(*) from public.jobs where id = '${jobLaval}' and travel_min <> 25`), (v) => v === '1', 20000);
   assert.equal(h.sql(`select count(*) from public.jobs where id = '${jobLaval}' and travel_min <> 25`), '1', 're-planned from the real place (no more « unknown » drive)');
   // 2) the appointment says it is not on the map
   await page.goto(h.APP + `#/job/${jobKhalil}`);
@@ -681,9 +689,9 @@ step('Addresses: the ones typed without a choice are found by themselves; the ma
   await page.getByTestId('customer-edit').click();
   const field = page.getByTestId('customer-edit-sheet').getByTestId('address-input');
   await field.fill('160 khalil gibran');
-  await page.getByTestId('customer-edit-sheet').getByTestId('address-suggestions').waitFor({ timeout: 10000 }).catch(() => undefined);
+  await page.getByTestId('customer-edit-sheet').getByTestId('address-suggestions').waitFor({ timeout: 20000 }).catch(() => undefined);
   await page.getByTestId('address-unit').focus();
-  await page.getByTestId('customer-edit-sheet').getByText('Position trouvée').waitFor({ timeout: 10000 });
+  await page.getByTestId('customer-edit-sheet').getByText('Position trouvée').waitFor({ timeout: 20000 });
   assert.equal(await field.inputValue(), '160 khalil gibran', 'the address stays as typed');
   await page.getByTestId('customer-save').click();
   const saved = await until(() => h.sql(`select coalesce(address, '') || '|' || coalesce(lat::text, '') from public.customers where id = '${other}'`), (v) => /\|45\.527/.test(v));

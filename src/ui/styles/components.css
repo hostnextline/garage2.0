@@ -65,6 +65,7 @@
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent); }
 .input[aria-invalid='true'] { border-color: var(--bad); }
 .input-money { text-align: right; font-stretch: var(--w-num); font-weight: 520; }
+.input-secret { -webkit-text-security: disc; } /* an API key: hidden like a password, but not a password (no password manager offers to replace it) */
 .input-vin { text-transform: uppercase; letter-spacing: 0.08em; font-stretch: 92%; font-weight: 520; }
 .input-wrap { position: relative; display: flex; align-items: center; }
 .input-wrap .input { padding-right: 44px; }

@@ -14,8 +14,9 @@ export const TABLES = [
   'shifts', 'trips', 'messages', 'public_links', 'invitations', 'activity', 'attachments',
   'coffre', 'positions', 'position_log', 'op_log', 'stripe_events'
 ] as const;
-// never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day)
-export const NOT_BACKED_UP = ['secrets', 'rate_limits'] as const;
+// never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day),
+// app_errors (diagnostics), heartbeats (the pulse of this very backup)
+export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'app_errors', 'heartbeats'] as const;
 const KEY: Record<string, string> = { counters: 'name', op_log: 'op' };
 const PAGE: Record<string, number> = { attachments: 100 };
 
@@ -74,6 +75,8 @@ export const handler = serve(async (req) => {
       if (error) throw error;
       out.push({ name: t, count: count || 0 });
     }
+    // the pulse: a backup started (health() shows it; the ping of GitHub complains when it gets old)
+    await db.from('heartbeats').upsert({ name: 'backup_started', at: new Date().toISOString(), note: `${out.reduce((a, t) => a + t.count, 0)} rows` });
     return json({ ok: true, at: new Date().toISOString(), tables: out });
   }
   if (action === 'rows') {
@@ -84,7 +87,12 @@ export const handler = serve(async (req) => {
     const { data, error } = await db.from(t).select('*').order(KEY[t] || 'id', { ascending: true }).range(from, from + limit - 1);
     if (error) throw error;
     const rows = data || [];
-    return json({ ok: true, table: t, from, rows, next: rows.length === limit ? from + limit : null });
+    const next = rows.length === limit ? from + limit : null;
+    // the last page of the last table: the backup is through (the script takes the tables in this order)
+    if (next == null && t === TABLES[TABLES.length - 1]) {
+      await db.from('heartbeats').upsert({ name: 'backup_done', at: new Date().toISOString(), note: `${from + rows.length} ${t}` });
+    }
+    return json({ ok: true, table: t, from, rows, next });
   }
   fail('action', 'Action inconnue.');
 });

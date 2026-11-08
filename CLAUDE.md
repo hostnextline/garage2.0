@@ -16,23 +16,26 @@ and `docs/DESIGN.md` (the look and the writing rules) before changing anything. 
 ## Branches and publishing
 
 - `main` and `construction-v2` stay equal: push `main`, then `git push origin main:construction-v2`.
-- A push to `main` runs `.github/workflows/deploy.yml`: `npm test`, build, then publishes two branches (the notes
+- A push to `main` runs `.github/workflows/deploy.yml`: the whole suite (job `tests`, like `tests-complets.yml`), then
+  `ops/pouls.sh --publication` (the live database has the newest migration, every function runs from a commit holding its
+  code, else nothing is published), then the build and two branches (the notes
   shown in « Mise à jour de l'app » are the first line of the last commit that changes the app itself: commits of
   only `CLAUDE.md`, `docs/`, `README.md`, `tests/`, `.github/` or `ops/` are skipped, so write that line for the team):
   - `vercel` → https://mecanique-mobile-his.vercel.app/ (Vercel team NextLine Pro, project mecanique-mobile-his;
     see `ops/vercel/README.md`). This is the app's address; links sent to customers use it.
   - `gh-pages` → https://hostnextline.github.io/garage2.0/ (old address, still works, shows « new address »).
-- CI runs only the unit tests. Run the database and end-to-end suites yourself before pushing a change to them.
+- `tests-complets.yml` runs the whole suite on every other branch; `pouls.yml` checks the live server every 6 hours
+  (`ops/pouls.sh`: app, `health()`, each function's `?version`, a backup finished in the last 30 h) and e-mails on failure.
 
 ## Tests
 
 | What | Command | Where it runs |
 |---|---|---|
 | Types | `npx tsc --noEmit` | anywhere |
-| Calculations and screens (~860) | `npm test` | anywhere |
+| Calculations and screens (~915) | `npm test` | anywhere |
 | Local copy of the server | `bash tests/stack/start.sh` (new migrations: `bash tests/stack/migrate.sh`, rebuild: `bash tests/stack/reset.sh`) | Linux x86_64 only (Postgres 16 in `/usr/lib/postgresql`, Linux GoTrue and PostgREST binaries) |
-| Database rules and server functions (44) | `node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs` | needs the local copy |
-| The whole app (16 steps, production build, real sign-in) | `node --test tests/e2e/app.test.cjs` (one step: `--test-name-pattern="…"`) | needs the local copy; puts the database back at the end; pictures in `tests/out/` |
+| Database rules and server functions (55) | `node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs` | needs the local copy |
+| The whole app (17 steps, production build, real sign-in) | `node --test tests/e2e/app.test.cjs` (one step: `--test-name-pattern="…"`) | needs the local copy; puts the database back at the end; pictures in `tests/out/` |
 
 On a Mac only the first two rows work as-is: run the others in a Claude Code cloud session (`claude --cloud "…"`
 or claude.ai/code), which is Linux. Photon (addresses) is mocked in the end-to-end test with `ctx.route`.
@@ -135,9 +138,21 @@ end $do$;
   (`applyRefund`); the invoice panel and screen show « Trop-perçu : X à remettre au client » when `paid > total` (`Amounts.over`).
   The booking page keeps its steps in the phone's history (`#reserver&etape=N`, back gesture = previous step, `reachable()` never
   skips a step) and what was typed in `sessionStorage` for 2 h (`saveDraft`/`loadDraft`).
+- Phase 2 of the audit (Part 26, `20261108000300_phase2_safety_nets.sql`, branch `v2`, **not applied on live, functions not
+  redeployed**): new functions are closed to `anon`/`authenticated` by default on live too (`alter default privileges`), and
+  `tests/db/rights.test.mjs` keeps the exact list of what the app and the public may call; `coffre_add` written in full;
+  `app_errors` + `report_error()` (the phones report uncaught errors, refused promises and CSP violations: `src/app/errors.ts`;
+  20/h per person, 90 days); `heartbeats` + `health()` (open to anon: newest migration, last backup started/done, written by
+  the `backup` function); `serve()` answers `GET ?version` with the deploy commit (`codeCommit()`). `ops/pouls.sh` (ping and
+  pre-publish check), `pouls.yml` every 6 h with a weekly « signe de vie » commit on branch `pouls`, `deploy.yml` runs the whole
+  suite then the check before publishing (« forcer » skips it). `config.toml` names `book` and `conversation`; `src/lib/ops.test.ts`
+  checks the toml, the CSP hashes (`Content-Security-Policy-Report-Only` in `ops/vercel/vercel.json`) and the pinned actions.
+  API keys in Réglages are `type="text"` + `.input-secret` (no password manager). End-to-end: `reducedMotion: 'reduce'`, `draw()`
+  hovers the pad first, a job brought to today goes in `blockNow()`, step 3 stands alone, step 13 waits for
+  `data-locator="idle"` on the page. Not done from the plan: `playwright` stays a CI-only install (no new package).
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
-  end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
+  end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 and 13 were flaky there before Phase 2.
 
 ## Ideas not done yet
 

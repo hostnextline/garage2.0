@@ -526,3 +526,16 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
     await q(`delete from public.services where id = any($1)`, [[oil, off, hourly]]);
   }
 });
+
+test('Part 26: every server function says which commit it runs from (GET ?version), for the pulse and the publishing', async () => {
+  const dirs = (await import('node:fs')).readdirSync(new URL('../../supabase/functions/', import.meta.url)).filter((d) => !d.startsWith('_')).sort();
+  assert.ok(dirs.length >= 9, dirs.join(','));
+  for (const name of dirs) {
+    const r = await fetch(`${API}/functions/v1/${name}?version`, { headers: { apikey: K.anon } });
+    const d = await r.json();
+    assert.deepEqual([r.status, d.ok, d.commit], [200, true, 'local'], `${name}: ${JSON.stringify(d)}`);
+  }
+  // a POST is still the function's own business (no version answer in the way)
+  const p = await fn('vin', { vin: 'x' });
+  assert.notEqual(p.commit, 'local');
+});

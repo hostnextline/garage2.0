@@ -1,0 +1,38 @@
+# Le pouls du serveur, toutes les 6 heures : l'app en ligne répond, la base répond (et n'est pas en pause), chaque
+# fonction répond, la sauvegarde de la nuit a fini (ops/pouls.sh). Quand quelque chose ne répond pas, le workflow
+# échoue et GitHub envoie un courriel à la personne qui a modifié ce fichier en dernier.
+# Un dépôt public sans commit depuis 60 jours perd ses horaires : une fois par semaine, un petit commit sur la branche
+# « pouls » (rien d'autre) garde le dépôt vivant. Les appels au serveur gardent aussi le projet Supabase réveillé.
+name: Le pouls du serveur
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: pouls
+  cancel-in-progress: false
+jobs:
+  pouls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Le serveur répond-il ?
+        run: bash ops/pouls.sh
+      - name: Un signe de vie (une fois par semaine)
+        if: ${{ always() }}
+        run: |
+          git fetch -q origin pouls 2>/dev/null || true
+          last=$(git log -1 --format=%ct origin/pouls 2>/dev/null || echo 0)
+          if [ $(( $(date +%s) - last )) -lt $(( 7 * 86400 )) ]; then echo "le dernier signe de vie date de moins d'une semaine"; exit 0; fi
+          git checkout -q --orphan pouls
+          git rm -rfq . >/dev/null 2>&1 || true
+          printf 'Dernier pouls : %s\n' "$(date -u +%FT%TZ)" > POULS.txt
+          git add POULS.txt
+          git -c user.name="Pouls automatique" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Pouls du $(date -u +%F)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" pouls

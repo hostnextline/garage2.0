@@ -16,9 +16,17 @@ export async function body<T = Record<string, unknown>>(req: Request): Promise<T
   try { return (await req.json()) as T; } catch { return {} as T; }
 }
 /** runs a handler: CORS preflight, JSON errors, never a stack trace (or a database's own words) to the outside */
+/** the commit this code was deployed from: the functions are deployed as raw GitHub files pinned to a commit, so the
+    address of this very file holds it (…/garage2.0/<commit>/supabase/functions/_shared/http.ts); 'local' elsewhere */
+export function codeCommit(url: string = import.meta.url): string {
+  const m = /githubusercontent\.com\/[^/]+\/[^/]+\/([0-9a-f]{7,40})\//.exec(url);
+  return m ? m[1] : 'local';
+}
 export function serve(fn: (req: Request) => Promise<Response>) {
   return async (req: Request): Promise<Response> => {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    // « which version are you? » (GET …/<function>?version): the publishing workflow and the ping compare it to the code
+    if (req.method === 'GET' && new URL(req.url).searchParams.has('version')) return json({ ok: true, commit: codeCommit() });
     try { return await fn(req); }
     catch (e) {
       if (e instanceof Fail) return json({ ok: false, code: e.code, error: e.message }, e.status);

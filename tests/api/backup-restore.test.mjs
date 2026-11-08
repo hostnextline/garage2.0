@@ -20,6 +20,7 @@ after(async () => {
   await q(`delete from public.vehicles where customer_id = any($1)`, [ids]);
   await q(`delete from public.customers where id = any($1)`, [ids]);
   await q(`delete from public.activity`);
+  await q(`delete from public.heartbeats`);
   rmSync(dir, { recursive: true, force: true });
   await db.end();
 });
@@ -34,9 +35,18 @@ test('backup at night, a mistake in the day, the restore brings back what was lo
   assert.ok(!readFileSync(join(dir, 'donnees', '_resume.json'), 'utf8').includes('secrets'));
   // every table of the garage is in the backup (the Coffre too, Part 24), except the ones that must never be
   const resume = JSON.parse(readFileSync(join(dir, 'donnees', '_resume.json'), 'utf8'));
-  const never = ['secrets', 'rate_limits', 'local_migrations'];
+  const never = ['secrets', 'rate_limits', 'app_errors', 'heartbeats', 'local_migrations'];
   const all = (await q(`select table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'`)).map((r) => r.table_name);
   assert.deepEqual(Object.keys(resume.tables).sort(), all.filter((t) => !never.includes(t)).sort(), 'a new table must be added to TABLES (backup) and ORDRE (restaurer.mjs), or to « never »');
+  // the pulse (Part 26): the backup says when it started and when it was through; health() tells the outside
+  const beats = Object.fromEntries((await q(`select name, at, note from public.heartbeats`)).map((r) => [r.name, r]));
+  assert.ok(beats.backup_started && beats.backup_done, 'backup_started and backup_done: ' + JSON.stringify(Object.keys(beats)));
+  assert.ok(Date.now() - new Date(beats.backup_done.at).getTime() < 120000, 'just now');
+  assert.match(beats.backup_done.note, /stripe_events$/, 'the last table');
+  const health = (await fetch(`${env.FONCTION.replace('/functions/v1/backup', '')}/rest/v1/rpc/health`, { headers: { apikey: K.anon, authorization: `Bearer ${K.anon}` } }));
+  const hv = await health.json();
+  assert.equal(health.status, 200, JSON.stringify(hv));
+  assert.deepEqual([hv.ok, typeof hv.backup_done, /^\d{14}$/.test(hv.schema)], [true, 'string', true], JSON.stringify(hv));
   // the day after: a customer deleted for good, another one changed, a new one added
   await q(`delete from public.vehicles where customer_id = $1`, [ids[0]]);
   await q(`delete from public.customers where id = $1`, [ids[0]]);

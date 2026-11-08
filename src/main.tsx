@@ -7,11 +7,13 @@ import './app/shell.css';
 import { App } from './app/App';
 import { startTheme } from './app/theme';
 import { startPwa } from './app/pwa';
+import { startErrors } from './app/errors';
 import { setLang, lang } from './lib/i18n';
 import { startAuth, finishOAuth, access } from './data/auth';
 import { effect } from '@preact/signals';
 
 startTheme();
+startErrors();
 setLang(lang.value);
 // a person's language follows their account once known
 let langFromAccount = false;

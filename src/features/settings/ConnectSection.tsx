@@ -87,7 +87,7 @@ function GhlPanel(p: { s: Secrets; onChanged: () => Promise<void> }) {
         {g.on && <p class="small" style={{ margin: 0 }}>{t('settings.connect.ghlState', { end: g.token_end || '…', loc: g.location || '…' })}</p>}
         <div class="grid-2">
           <Field label={t('settings.connect.ghlToken')} help={t('settings.connect.ghlTokenHelp')} error={err.token}>
-            <Input type="password" autoComplete="off" value={token} onValue={setToken} placeholder={g.on ? t('settings.connect.keepKey') : 'pit-…'} invalid={!!err.token} data-testid="ghl-token" />
+            <Input type="text" class="input-secret" autoComplete="off" autoCapitalize="off" spellcheck={false} data-1p-ignore data-lpignore="true" data-form-type="other" value={token} onValue={setToken} placeholder={g.on ? t('settings.connect.keepKey') : 'pit-…'} invalid={!!err.token} data-testid="ghl-token" />
           </Field>
           <Field label={t('settings.connect.ghlLocation')} help={t('settings.connect.ghlLocationHelp')} error={err.loc}>
             <Input autoComplete="off" value={loc} onValue={setLoc} placeholder={g.on ? t('settings.connect.keepKey') : ''} invalid={!!err.loc} data-testid="ghl-location" />
@@ -135,7 +135,7 @@ function StripePanel(p: { s: Secrets; onChanged: () => Promise<void> }) {
         {st.on && <p class="small" style={{ margin: 0 }}>{t('settings.connect.stripeState', { end: st.end || '…' })}</p>}
         {st.on && st.test && <Banner kind="warn">{t('settings.connect.testModeHint')}</Banner>}
         <Field label={t('settings.connect.stripeKey')} help={t('settings.connect.stripeKeyHelp')} error={err}>
-          <Input type="password" autoComplete="off" value={key} onValue={(v) => { setKey(v); setErr(null); }} placeholder={st.on ? t('settings.connect.keepKey') : 'sk_live_…'} invalid={!!err} data-testid="stripe-key" />
+          <Input type="text" class="input-secret" autoComplete="off" autoCapitalize="off" spellcheck={false} data-1p-ignore data-lpignore="true" data-form-type="other" value={key} onValue={(v) => { setKey(v); setErr(null); }} placeholder={st.on ? t('settings.connect.keepKey') : 'sk_live_…'} invalid={!!err} data-testid="stripe-key" />
         </Field>
         <div class="row-wrap">
           <Button variant="primary" onClick={save} disabled={!key.trim()} data-testid="stripe-save">{t('settings.connect.save')}</Button>

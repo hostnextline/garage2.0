@@ -1,31 +1,79 @@
 # Publie l'app à chaque changement de la branche main : sur Vercel (branche « vercel », voir ops/vercel) et sur
 # l'ancienne adresse https://hostnextline.github.io/garage2.0/ (branche gh-pages, GitHub Pages).
-# Les tests passent d'abord : si un test échoue, rien n'est publié et l'app en ligne reste la même.
+# D'abord TOUS les tests (types, calculs, la copie locale du serveur : base, fonctions, l'app de bout en bout) ; puis le
+# pouls du serveur (ops/pouls.sh --publication : la base a la dernière migration, chaque fonction tourne depuis un commit
+# qui contient son code) ; puis la publication. Si un test échoue ou si le serveur n'est pas au niveau, rien n'est
+# publié et l'app en ligne reste la même. « Run workflow » avec « forcer » publie sans regarder le serveur.
 name: Publier l'app
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      forcer:
+        description: "Publier même si le serveur (base, fonctions) n'est pas au niveau du code"
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
   group: publier
   cancel-in-progress: false
 jobs:
-  publier:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # the whole history: the date of the last important version
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Tests
-        run: npm test
+      - name: Types et tests de l'app
+        run: npx tsc --noEmit && npm test
+      - name: Postgres 16 de la machine
+        run: |
+          ls -d /usr/lib/postgresql/*/bin
+          sudo systemctl stop postgresql || true
+      - name: La copie locale du serveur
+        run: bash tests/stack/install.sh && bash tests/stack/start.sh
+      - name: Base de données et fonctions
+        run: node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs
+      - name: Playwright (Chromium)
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: L'app de bout en bout
+        run: node --test tests/e2e/app.test.cjs
+        env:
+          TZ: America/Toronto   # the garage's clock (Montréal), like the phones
+      - name: Journaux du serveur (si ça casse)
+        if: ${{ failure() }}
+        run: for f in tests/stack/run/*.log; do echo "=== $f"; tail -40 "$f"; done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !cancelled() }}
+        with:
+          name: tests-out
+          path: tests/out/
+          retention-days: 7
+          if-no-files-found: ignore
+  publier:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0   # the whole history: the date of the last important version, the commit each function runs from
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Le serveur est-il au niveau du code ?
+        if: ${{ !inputs.forcer }}
+        run: bash ops/pouls.sh --publication
       - name: Construire
         # the version file says when this version was made, what changes, and since when an important version exists
         # (a commit with « [important] » in its message): the phones with an older version then get a notification

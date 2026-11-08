@@ -203,6 +203,17 @@ https://hostnextline.github.io/garage2.0/, kept for links already sent: it shows
 `lib/config.ts`). Links made by the server always point to `HOME_URL` (`DEFAULT_BASES` in
 `supabase/functions/_shared/links.ts`; a test checks both are the same).
 
+Before publishing, `deploy.yml` runs the whole suite (types, unit, the local copy of the server, database, API, end to
+end) and then `ops/pouls.sh --publication`: the live database must have the newest migration of the code (`health()`),
+and every server function must run from a commit that contains its current code (each answers `GET …/<name>?version`
+with its commit, read from the raw-GitHub address it was deployed from). Otherwise nothing is published and the log
+says what to apply or redeploy first (« Run workflow » with « forcer » skips that check). The same script runs every
+6 hours (`pouls.yml`: the app, the database, the functions, a backup finished in the last 30 h; a failure e-mails the
+person who last edited the workflow). The phones report their own errors (`app/errors.ts` → `report_error`, table
+`app_errors`, 90 days; read it with SQL). The page-security header (`Content-Security-Policy-Report-Only` in
+`ops/vercel/vercel.json`) only reports for now; `src/lib/ops.test.ts` keeps it and `supabase/config.toml` in step with
+the code.
+
 ## Updates of the app
 
 A new version downloads quietly and is used the next time the app opens: nothing shows at the top of the screen.

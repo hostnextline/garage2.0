@@ -28,7 +28,10 @@ npm ci
 npm run dev                 # puis http://localhost:5173/?demo  (démo sans serveur : ?demo=mechanic, ?demo=office…)
 npm test                    # calculs
 bash tests/stack/start.sh   # copie locale du serveur (Postgres, Auth, API, fonctions), puis :
-node --test tests/db/*.test.mjs tests/api/*.test.mjs
+node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs
+node --test tests/e2e/app.test.cjs   # l'app au complet (Playwright)
 ```
 
-Chaque changement de la branche `main` est testé puis publié automatiquement (`.github/workflows/deploy.yml`).
+Chaque changement de la branche `main` passe tous les tests, puis le serveur est vérifié (`ops/pouls.sh` : dernière
+migration appliquée, fonctions à jour), puis l'app est publiée (`.github/workflows/deploy.yml`). Toutes les 6 heures,
+`pouls.yml` vérifie que l'app, la base, les fonctions et la sauvegarde de la nuit répondent.
