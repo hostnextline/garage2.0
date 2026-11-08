@@ -19,6 +19,13 @@ do $$ begin
   end if;
 end $$;
 
+-- a quantity in plain words: 5, 4.5, 0.25 (no rounding, no trailing zeros)
+create or replace function public.qty_text(p numeric) returns text language sql immutable set search_path = public as $$
+  select case when p is null then '' when p = trunc(p) then trunc(p)::text else rtrim(p::text, '0') end
+$$;
+revoke all on function public.qty_text(numeric) from public, anon, authenticated;
+grant execute on function public.qty_text(numeric) to service_role;
+
 create or replace function public.inventory_buy(p_op uuid, p_item uuid, p_qty numeric, p_total_cents int, p_from text,
   p_vendor text default null, p_note text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -38,7 +45,7 @@ begin
   select * into it from public.inventory_items where id = p_item and deleted_at is null;
   if not found then perform public.fail('not_found', 'Cet article n’existe plus.'); end if;
   perform set_config('garage.rpc', 'on', true);
-  v_desc := format('%s × %s', trim(to_char(p_qty, 'FM999999990.##')), it.name);
+  v_desc := format('%s × %s', public.qty_text(p_qty), it.name);
 
   insert into public.inventory_moves (id, item_id, delta, reason, note, created_by)
   values (v_move, it.id, p_qty, 'restock',
@@ -93,7 +100,7 @@ begin
                        else coalesce(nullif(trim(concat_ws(' ', cu.first_name, cu.last_name)), ''), cu.company, '—') end,
       'item_id', c.item_id, 'qty', c.qty,
       'amount_cents', c.amount_cents, 'value_cents', c.value_cents, 'note', c.note, 'job_ids', to_jsonb(c.job_ids), 'job_numbers', to_jsonb(c.job_numbers),
-      'work', case when c.kind = 'purchase' then format('%s × %s', trim(to_char(c.qty, 'FM999999990.##')), coalesce(c.item_name, ''))
+      'work', case when c.kind = 'purchase' then format('%s × %s', public.qty_text(c.qty), coalesce(c.item_name, ''))
                    else (select coalesce(string_agg(distinct i.description, ', '), '') from public.job_items i
                          where i.job_id = any(c.job_ids) and i.deleted_at is null and i.status in ('planned','done','approved')) end,
       'by', (select coalesce(s.short_name, s.full_name) from public.staff s where s.id = c.created_by))
