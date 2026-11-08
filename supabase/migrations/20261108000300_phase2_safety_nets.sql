@@ -4,8 +4,8 @@
 --                        only ADDS to that: the revoke has to be global for the role that makes the functions (postgres).
 --                        Before: a function without a word about rights was callable by anyone signed in (jobs_waiver_via,
 --                        a trigger, was in that state; closed here)
---   coffre_may_add       « Payé par le Coffre » is for every member of the team (Part 22 kept it to the owner and the
---                        mechanic of the job's truck; the office takes those payments too)
+--   coffre_may_add       « Payé par le Coffre » is for every member of the team (Part 24 bis did it on live; said again
+--                        here next to coffre_add, written in full)
 --   coffre_add           written out in full (Part 22 patched its text with replace(); a text patch cannot be replayed)
 --   app_errors           the phones tell the server when the app breaks (report_error: 20 an hour per person, the same
 --                        error counted once an hour; kept 90 days). The owner reads them with SQL or the connector.

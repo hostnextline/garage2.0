@@ -3,7 +3,7 @@
    they are saved or undone. Apparence and Branchements are the owner's. */
 import type { ComponentType } from 'preact';
 import { type LucideIcon, Building2, Receipt, Wrench, CalendarClock, MessageSquareText, FileSignature, Palette, PlugZap, Tags, ChevronRight, RefreshCw } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import { may, type ScreenProps } from '../../app/routes';
 import { navigate } from '../../app/router';
 import { wide } from '../../app/media';
 import { t } from '../../lib/i18n';
@@ -23,7 +23,7 @@ import { UpdatePanel } from '../../app/UpdatePanel';
 import './settings.css';
 
 export type SectionKey = 'company' | 'billing' | 'services' | 'booking' | 'texts' | 'waiver' | 'look' | 'connect' | 'expenses' | 'app';
-interface SectionDef { key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; tour?: string }
+interface SectionDef { key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; /** for everyone on the team (no « settings » right needed) */ all?: boolean; tour?: string }
 const SECTIONS: SectionDef[] = [
   { key: 'company', icon: Building2, view: CompanySection, tour: 'settings-company' },
   { key: 'billing', icon: Receipt, view: BillingSection },
@@ -34,7 +34,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'look', icon: Palette, view: LookSection, owner: true, tour: 'settings-look' },
   { key: 'connect', icon: PlugZap, view: ConnectSection, owner: true, tour: 'settings-connect' },
   { key: 'expenses', icon: Tags, view: ExpensesSection },
-  { key: 'app', icon: RefreshCw, view: AppSection }
+  { key: 'app', icon: RefreshCw, view: AppSection, all: true }
 ];
 
 /** Mise à jour de l'app: the version on this device and « Vérifier les mises à jour » */
@@ -43,7 +43,8 @@ function AppSection() {
 }
 
 export default function SettingsScreen({ params }: ScreenProps) {
-  const list = SECTIONS.filter((s) => !s.owner || isOwner());
+  // the owner sees all; the office (« settings ») everything but the owner's; a mechanic the app's own section (updates)
+  const list = SECTIONS.filter((s) => (s.owner ? isOwner() : s.all || may.settingsEdit()));
   const asked = list.find((s) => s.key === params.section);
   const isWide = wide.value;
   const current = asked || (isWide ? list[0] : undefined);

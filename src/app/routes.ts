@@ -34,7 +34,9 @@ export const may = {
   inventory: () => can('inventory'),
   dashboard: () => can('money'),
   team: () => isOwner(),
-  settings: () => can('settings'),
+  // Réglages opens for everyone (« Mise à jour de l'app » lives there too); the sections that change the garage need the right
+  settings: () => true,
+  settingsEdit: () => can('settings'),
   walkIn: () => can('book') || hasRole('mechanic'),
   newCustomer: () => can('clients') || can('book')
 };

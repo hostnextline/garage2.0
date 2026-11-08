@@ -399,7 +399,7 @@ test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the re
   const i2 = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j2, p_refresh: true })).rows.invoices[0].id;
   const n2 = (await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: i2 })).number;
 
-  // every member of the team (Part 26; Part 22 kept it to the owner and the truck's mechanic): nobody from outside
+  // every member of the team (Part 24 bis; Part 22 kept it to the owner and the truck's mechanic): nobody from outside
   await h.as(g.mech);
   assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), true, 'the mechanic may');
   assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([])]), false, 'no job, nothing to put');
