@@ -180,12 +180,6 @@ test('texts and card payment: keys saved, appointment text with total, the custo
   assert.equal(pays.length, 1, 'the second notice did not pay twice');
   assert.equal(pays[0].method, 'card_online');
   assert.equal(pays[0].amount_cents, v3.pay.amount_cents, 'what was due, extras included');
-  // a refund made in Stripe (part of it) comes back as a negative card payment, once even when the notice comes twice
-  const rf = await (await fetch(`${MOCK}/refund/${p3.url.split('/').pop()}?amount=1000&twice=1`)).json();
-  assert.equal(rf.hook, 200);
-  const after = await q(`select amount_cents, stripe_session from public.payments where job_id = $1 order by created_at`, [b.job_id]);
-  assert.deepEqual(after.map((x) => x.amount_cents), [v3.pay.amount_cents, -1000]);
-  assert.equal(after[1].stripe_session, rf.refund);
   // a forged notice is refused
   const forged = await fetch(`${API}/functions/v1/stripe`, { method: 'POST', headers: { 'stripe-signature': `t=${Math.floor(Date.now() / 1000)},v1=deadbeef`, 'content-type': 'application/json' }, body: '{"id":"evt_x","type":"checkout.session.completed"}' });
   assert.equal(forged.status, 400);
@@ -197,7 +191,15 @@ test('texts and card payment: keys saved, appointment text with total, the custo
   // the invoice text
   await clearLog();
   const ni = await fn('notify', { kind: 'invoice', job_id: b.job_id, base: BASE }, ownerJwt);
-  assert.match(ni.message, /voici votre facture F-0001 de Mécanique Mobile H\.I\.S \(218,42 \$\)/);
+  assert.match(ni.message, /voici votre facture F-0001 de Mécanique Mobile H\.I\.S \(229,92 \$\)/);
+  // a refund made in Stripe (part of it) comes back as a negative card payment on that invoice, once even when the notice comes twice
+  const rf = await (await fetch(`${MOCK}/refund/${p3.url.split('/').pop()}?amount=1000&twice=1`)).json();
+  assert.equal(rf.hook, 200);
+  const after = await q(`select amount_cents, stripe_session from public.payments where job_id = $1 and deleted_at is null order by created_at`, [b.job_id]);
+  assert.deepEqual(after.map((x) => x.amount_cents), [v3.pay.amount_cents, -1000]);
+  assert.equal(after[1].stripe_session, rf.refund);
+  const invAfter = (await q(`select status, paid_cents, total_cents from public.invoices where id = $1`, [inv.rows.invoices[0].id]))[0];
+  assert.deepEqual([invAfter.status, invAfter.paid_cents], ['issued', invAfter.total_cents - 1000], 'the invoice is back to « À payer » for the amount given back');
 });
 
 test('« Je pars »: en route, the tracking link texted, the customer follows the truck', async () => {
