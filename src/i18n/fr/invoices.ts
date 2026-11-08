@@ -229,7 +229,7 @@ export const invoices = {
     missingText: 'Elle n’est pas (ou plus) sur ce téléphone. Ferme et réessaie dans un instant.',
     refund: {
       title: 'Rembourser',
-      none: 'Rien à rembourser : le client n’a pas payé plus que la facture.',
+      none: 'Rien à rembourser : le client n’a pas payé plus que la facture.',
       toGive: 'À remettre au client',
       amount: 'Montant remis',
       confirm: 'Inscrire {amount} remboursé',
