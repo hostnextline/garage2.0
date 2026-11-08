@@ -95,6 +95,8 @@ end $do$;
   other coming blocks in block order (the block that changed again when one before it moved, so every block counts
   from where its truck really is), unless that would push a booked job to « À placer ». `replan_days` (hours, starts,
   route numbers) goes day by day in block order without that chain (twice faster; ~0.4 s for 240 coming jobs).
+- Réglages opens for everyone (`may.settings` is always true): a mechanic sees only « L'app » (« Mise à jour de l'app »);
+  the sections that change the garage need the « settings » right (`may.settingsEdit`), « Apparence » and « Connexions » the owner.
 - Rights: live gives « hours » to every mechanic (`settings.role_rights`), which opens every truck in Horaires.
   Without it, a mechanic still opens Horaires on the truck he drives only (`may.hours`, Part 18 follow-up), as the
   server allows (`truck_hours_editable`).

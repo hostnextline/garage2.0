@@ -194,11 +194,15 @@ step('no signal: the office books anyway; the booking leaves when the signal is 
 });
 
 step('rights: each person sees and does only what is theirs', async () => {
-  // a mechanic: no team, no settings
+  // a mechanic: no team; Réglages opens on « L'app » only (the update of the app is for every phone)
   let { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.saleh.email, PW);
   assert.equal(await page.getByTestId('nav-team').count(), 0);
-  assert.equal(await page.getByTestId('nav-settings').count(), 0);
+  await page.goto(h.APP + '#/settings');
+  await page.getByTestId('settings-nav-app').waitFor();
+  assert.equal(await page.getByTestId('settings-nav-company').count(), 0, 'no section that changes the garage');
+  assert.equal(await page.locator('[data-testid^="settings-nav-"]').count(), 1, 'only « L’app »');
+  await page.getByTestId('update-check').waitFor();
   await page.goto(h.APP + '#/team');
   await page.getByText(/n’as pas accès|don’t have access/).first().waitFor();
   await ctx.close();
