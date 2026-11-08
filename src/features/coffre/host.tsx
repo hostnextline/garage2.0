@@ -5,16 +5,17 @@ import type { ComponentType } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { job as jobRow } from '../../data/select';
-import { isOwner, myTrucks } from '../../data/auth';
+import { me } from '../../data/auth';
 import type { Job } from '../../data/types';
 import { whenHistorySettled } from '../../ui';
 
 const coffreFor = signal<string | null>(null);
 
-/** may this person put this job in the Coffre (as the server: the owner, or the mechanic of the job's truck) */
+/** may this person put this job in the Coffre (as the server: anyone on the team, for a job that is not cancelled
+    and not in the Coffre already) */
 export function mayCoffre(j: Job | undefined): boolean {
   if (!j || j.coffre_id || j.status === 'cancelled' || j.status === 'no_show') return false;
-  return isOwner() || (!!j.truck_id && myTrucks().includes(j.truck_id));
+  return !!me.value;
 }
 /** opens the Coffre sheet of this job once the sheet open now has closed */
 export function openCoffre(jobId: string) { setTimeout(() => whenHistorySettled(() => { coffreFor.value = jobId; }), 0); }

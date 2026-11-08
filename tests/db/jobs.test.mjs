@@ -372,12 +372,14 @@ test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the re
   const i2 = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j2, p_refresh: true })).rows.invoices[0].id;
   const n2 = (await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: i2 })).number;
 
-  // the owner, or the mechanic of the job's truck (Part 22); not the treasurer
+  // every member of the team (Part 24 bis; Part 22 kept it to the owner and the truck's mechanic): nobody from outside
   await h.as(g.mech);
-  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), true, 'the mechanic of the truck may');
-  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([])]), false);
+  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), true, 'the mechanic may');
+  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([])]), false, 'no job, nothing to put');
   await h.as(treasurer);
-  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), false);
+  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), true, 'the treasurer may too');
+  await h.as(uuid());   // a signed-in account that is not on the team (no staff row)
+  assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), false, 'an account that is not on the team may not');
   assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1]), p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
 
   await h.as(g.owner);

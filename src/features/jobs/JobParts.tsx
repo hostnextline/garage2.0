@@ -11,7 +11,6 @@ import { money } from '../../lib/money';
 import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals } from '../../data/select';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
-import { isOwner } from '../../data/auth';
 import { ConversationSheet } from '../conversation/ConversationSheet';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { locateMissing } from '../../app/locator';
@@ -388,7 +387,7 @@ export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
     canBack && backTo && <RowItem key="u" start={<span class="quick-icon"><Undo2 size={20} /></span>} title={t('jobs.menu.back')} sub={t('jobs.menu.backSub', { status: jobStatusWord(backTo as Job['status']) })} onClick={then(() => doBack(j))} data-testid="menu-back" />,
     (s === 'booked' || s === 'en_route' || s === 'on_site') && rights.act && <RowItem key="n" class="jobs-danger" start={<span class="quick-icon"><UserX size={20} /></span>} title={t('jobs.menu.noShow')} sub={t('jobs.menu.noShowSub')} onClick={then(() => doNoShow(j))} data-testid="menu-noshow" />,
     (s === 'booked' || s === 'en_route') && rights.act && <RowItem key="c" class="jobs-danger" start={<span class="quick-icon"><Ban size={20} /></span>} title={t('jobs.menu.cancel')} sub={t('jobs.menu.cancelSub')} onClick={then(() => doCancel(j))} data-testid="menu-cancel" />,
-    p.onCoffre && (isOwner() || rights.mine) && !j.coffre_id && s !== 'cancelled' && s !== 'no_show' && invoiceOf(j.id)?.status !== 'paid' && <RowItem key="k" start={<span class="quick-icon"><Vault size={20} /></span>} title={t('coffre.job.menu')} sub={t('coffre.job.menuSub')} onClick={then(p.onCoffre)} data-testid="menu-coffre" />,
+    p.onCoffre && !j.coffre_id && s !== 'cancelled' && s !== 'no_show' && invoiceOf(j.id)?.status !== 'paid' && <RowItem key="k" start={<span class="quick-icon"><Vault size={20} /></span>} title={t('coffre.job.menu')} sub={t('coffre.job.menuSub')} onClick={then(p.onCoffre)} data-testid="menu-coffre" />,
     (s === 'cancelled' || s === 'no_show') && rights.reopen && <RowItem key="r" start={<span class="quick-icon"><RotateCcw size={20} /></span>} title={t('jobs.menu.reopen')} sub={t('jobs.menu.reopenSub')} onClick={then(() => doReopen(j))} data-testid="menu-reopen" />
   ].filter(Boolean);
   return (
