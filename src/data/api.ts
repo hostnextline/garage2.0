@@ -229,9 +229,10 @@ export async function notify(kind: string, jobId: string, opts: { resend?: boole
   guard();
   return callFn<{ status: string; message?: string; link?: string; phone?: string | null }>('notify', { kind, job_id: jobId, base: appBase(), ...opts });
 }
-export async function enroute(action: 'start' | 'refresh' | 'end', jobId: string, opts: { pos?: { lat: number; lng: number }; notify?: boolean; resend?: boolean } = {}) {
+/** the trip of a job (start, refresh, end), or the trip back to the start after the last job (return, return_end: no job) */
+export async function enroute(action: 'start' | 'refresh' | 'end' | 'return' | 'return_end', jobId: string | null, opts: { pos?: { lat: number; lng: number }; notify?: boolean; resend?: boolean } = {}) {
   guard();
-  return callFn<{ sms: string; link?: string; message?: string; phone?: string | null; eta_at?: string | null; minutes?: number | null; km?: number | null; rows?: unknown }>('enroute', { action, job_id: jobId, base: appBase(), ...opts });
+  return callFn<{ sms: string; link?: string; message?: string; phone?: string | null; place?: string; eta_at?: string | null; minutes?: number | null; km?: number | null; rows?: unknown }>('enroute', { action, ...(jobId ? { job_id: jobId } : {}), base: appBase(), ...opts });
 }
 export async function team<T = Record<string, unknown>>(action: string, body: Record<string, unknown> = {}) {
   if (!['list', 'secrets', 'invite-info'].includes(action)) guard();

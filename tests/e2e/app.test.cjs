@@ -159,6 +159,22 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   assert.equal(inv[2], inv[3], 'paid in full, not a cent more (the change was given back)');
   assert.equal(h.sql(`select method from public.payments where job_id = '${jobId}'`), 'cash');
   assert.equal(Number(h.sql(`select count(*) from public.attachments where job_id = '${jobId}' and kind = 'signature'`)), 1);
+  // the last job done: « Ma journée » offers the way back to the Centrale; « Je pars » texts the garage's return number
+  // (texts not connected here: the message is shown to send by hand), then « Je suis arrivé »
+  h.sql(`update public.settings set booking = booking || jsonb_build_object('return_phone', '514 771-4243',
+    'home', jsonb_build_object('label', 'Centrale', 'address', '1401 rue Legendre O, Montréal', 'lat', 45.5312898, 'lng', -73.6544639)) where id = 1`);
+  await page.goto(h.APP + '#/');
+  await page.getByTestId('today-return-leave').waitFor({ timeout: 20000 });
+  await h.shot(page, 'e2e-2-return');
+  await page.getByTestId('today-return-leave').click();
+  await page.getByTestId('text-outcome').waitFor({ timeout: 20000 });
+  assert.match(await page.getByTestId('text-outcome-message').innerText(), /revient vers Centrale.*client\.html#suivi=/s);
+  await dismissSheets(page);
+  await page.getByTestId('today-return-arrived').waitFor({ timeout: 15000 });
+  assert.equal(h.sql(`select kind || '|' || status || '|' || coalesce(dest_label, '') from public.trips where staff_id = '${who.saleh.id}' and kind = 'return' order by started_at desc limit 1`), 'return|active|Centrale');
+  await page.getByTestId('today-return-arrived').click();
+  await page.getByTestId('today-return-leave').waitFor({ timeout: 15000 });
+  assert.equal(h.sql(`select status from public.trips where staff_id = '${who.saleh.id}' and kind = 'return' order by started_at desc limit 1`), 'arrived');
   noErrors(page);
   await page.context().close();
 });

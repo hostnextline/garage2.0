@@ -124,6 +124,10 @@ export function invoiceNumber(v: Pick<Invoice, 'number'> | null | undefined): st
 }
 export const invoicesList = computed(() => rowsOf<Invoice>('invoices').filter((v) => !v.deleted_at));
 export function activeTrip(jobId: string): Trip | undefined { return rowsOf<Trip>('trips').find((t) => t.job_id === jobId && t.status === 'active'); }
+/** this person's trip back to the start, still on (« Retour à la Centrale ») */
+export function activeReturnTrip(staffId: string): Trip | undefined {
+  return rowsOf<Trip>('trips').find((t) => t.staff_id === staffId && t.kind === 'return' && t.status === 'active' && !t.deleted_at && Date.parse(t.expires_at) > Date.now());
+}
 export function messagesOf(jobId: string): Message[] { return rowsOf<Message>('messages').filter((m) => m.job_id === jobId).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); }
 
 /* ---------- services, inventory, quotes, treasury ---------- */

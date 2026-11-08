@@ -202,6 +202,8 @@ export const settings: typeof fr = {
     startAddress: 'Starting address',
     label: 'Name on the map',
     labelHelp: 'The name of the starting point on the maps, for example « Centrale » or « Garage ».',
+    returnPhone: 'Number texted on the way back',
+    returnPhoneHelp: 'When a mechanic heads back to the starting point after the last job of the day, this number gets the arrival time and the live map, like a customer. Empty: no text.',
     noPos: 'This address is not found on the map: pick one of the suggestions so drives can be computed.',
     mapLabel: 'Where the trucks leave from, on the map',
     replanNote: 'When you save, the routes of the coming appointments are computed again (order of the stops, truck, arrival times). Blocks already started do not move.',
@@ -235,12 +237,13 @@ export const settings: typeof fr = {
       extras: { title: 'Work to approve', when: 'When the mechanic suggests extra work.' },
       invoice: { title: 'Invoice', when: 'When the invoice is sent, with the « Pay » button.' },
       payment_reminder: { title: 'Payment reminder', when: 'When you follow up on an unpaid invoice.' },
+      return_trip: { title: 'Back to the starting point', when: 'When the mechanic heads back to the Centrale after the last job (to the return number, Bookings).' },
       reminder: { title: 'Day-before reminder', when: 'The day before the appointment.' }
     },
     vars: {
       prenom: 'Customer’s first name', garage: 'Garage name', jour: 'Appointment day', debut: 'Block start', fin: 'Block end',
       total: 'Total', lien: 'Link to their page', mecano: 'Mechanic’s first name', heure: 'Arrival time', minutes: 'Drive minutes',
-      vehicule: 'Their vehicle', montant: 'Amount', numero: 'Invoice number', date: 'Invoice date', telephone: 'Garage phone',
+      vehicule: 'Their vehicle', montant: 'Amount', numero: 'Invoice number', date: 'Invoice date', telephone: 'Garage phone', lieu: 'Starting point (Centrale)',
       bloc: 'Block (in the morning, afternoon, evening)', payer: '« and pay now » (when card payment is connected)'
     },
     example: {

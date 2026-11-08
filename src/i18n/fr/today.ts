@@ -44,6 +44,24 @@ export const today = {
     noTruckText: 'Demande au propriétaire de t’attribuer un camion (Équipe).',
     seeAgenda: 'Voir l’agenda'
   },
+  return: {
+    next: 'Tes jobs du jour sont faites. Prochaine destination : {place}',
+    leave: 'Je pars vers {place}',
+    leaveSub: 'Le garage reçoit ton heure d’arrivée et la carte en direct.',
+    leaveSubManual: 'Les textos automatiques ne sont pas branchés : l’app te montre le message à envoyer.',
+    onWay: 'En route vers {place}',
+    eta: 'Arrivée prévue vers {time}',
+    noEta: 'Heure d’arrivée pas encore calculée (position du téléphone inconnue).',
+    arrived: 'Je suis arrivé',
+    arrivedSub: 'Le suivi s’arrête. Termine ta journée quand tu veux.',
+    arrivedToast: 'Bien arrivé. Bonne fin de journée.',
+    sent: 'Le garage a reçu ton heure d’arrivée.',
+    sentEta: 'Le garage a reçu ton heure d’arrivée ({time}).',
+    quiet: 'En route vers {place} (texto de retour éteint).',
+    noPhone: 'Aucun numéro de retour dans Réglages, Réservations : le garage n’a pas été texté.',
+    noHome: 'Le départ des camions n’a pas de position sur la carte. Demande au bureau de la choisir dans Réglages, Réservations.',
+    offline: 'Pas de signal : réessaie dans un instant.'
+  },
   then: 'Ensuite',
   closed: {
     show: { one: 'Voir l’arrêt terminé', other: 'Voir les {n} arrêts terminés' },

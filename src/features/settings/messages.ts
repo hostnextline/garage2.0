@@ -1,18 +1,18 @@
 /* The texts sent to customers (supabase/functions/notify and enroute fill them): their kinds, the words replaced
    in each one, the starting texts, and the preview shown while editing. Pure functions (messages.test.ts). */
 
-export type MsgKind = 'booking' | 'moved' | 'en_route' | 'en_route_no_eta' | 'arrived' | 'arrived_no_pay' | 'invoice' | 'extras' | 'reminder' | 'payment_reminder';
-export const MSG_KINDS: MsgKind[] = ['booking', 'moved', 'en_route', 'en_route_no_eta', 'arrived', 'arrived_no_pay', 'extras', 'invoice', 'payment_reminder', 'reminder'];
+export type MsgKind = 'booking' | 'moved' | 'en_route' | 'en_route_no_eta' | 'arrived' | 'arrived_no_pay' | 'invoice' | 'extras' | 'reminder' | 'payment_reminder' | 'return_trip';
+export const MSG_KINDS: MsgKind[] = ['booking', 'moved', 'en_route', 'en_route_no_eta', 'arrived', 'arrived_no_pay', 'extras', 'invoice', 'payment_reminder', 'reminder', 'return_trip'];
 /** the on/off switch a kind follows (the text « en route » without an arrival time follows « en route »; the same for « arrivé ») */
 export const SWITCH_OF: Record<MsgKind, string> = {
   booking: 'booking', moved: 'moved', en_route: 'en_route', en_route_no_eta: 'en_route', arrived: 'arrived', arrived_no_pay: 'arrived',
-  invoice: 'invoice', extras: 'extras', reminder: 'reminder', payment_reminder: 'payment_reminder'
+  invoice: 'invoice', extras: 'extras', reminder: 'reminder', payment_reminder: 'payment_reminder', return_trip: 'return_trip'
 };
-export const SWITCHES = ['booking', 'moved', 'en_route', 'arrived', 'extras', 'invoice', 'payment_reminder', 'reminder'] as const;
+export const SWITCHES = ['booking', 'moved', 'en_route', 'arrived', 'extras', 'invoice', 'payment_reminder', 'reminder', 'return_trip'] as const;
 /** what the server does when a switch was never set (messages.on[kind] missing) */
-export const DEFAULT_ON: Record<string, boolean> = { booking: true, moved: true, en_route: true, arrived: true, extras: true, invoice: true, payment_reminder: true, reminder: false };
+export const DEFAULT_ON: Record<string, boolean> = { booking: true, moved: true, en_route: true, arrived: true, extras: true, invoice: true, payment_reminder: true, reminder: false, return_trip: true };
 
-export const ALL_VARS = ['prenom', 'garage', 'jour', 'bloc', 'debut', 'fin', 'total', 'payer', 'lien', 'mecano', 'heure', 'minutes', 'vehicule', 'montant', 'numero', 'date', 'telephone'] as const;
+export const ALL_VARS = ['prenom', 'garage', 'jour', 'bloc', 'debut', 'fin', 'total', 'payer', 'lien', 'mecano', 'heure', 'minutes', 'vehicule', 'montant', 'numero', 'date', 'telephone', 'lieu'] as const;
 export type VarName = (typeof ALL_VARS)[number];
 const BASE: VarName[] = ['prenom', 'garage', 'jour', 'debut', 'fin', 'lien', 'telephone'];
 /** the words each text really gets from the server (others would come out empty) */
@@ -26,7 +26,8 @@ export const VARS_OF: Record<MsgKind, VarName[]> = {
   extras: [...BASE, 'mecano', 'vehicule', 'montant'],
   invoice: [...BASE, 'numero', 'total', 'montant', 'date'],
   payment_reminder: [...BASE, 'numero', 'total', 'montant', 'date'],
-  reminder: BASE
+  reminder: BASE,
+  return_trip: ['mecano', 'lieu', 'garage', 'heure', 'minutes', 'lien']
 };
 
 /* the starting texts (supabase/migrations/…_defaults.sql), for « Remettre le texte d'origine » */
@@ -41,7 +42,8 @@ export const DEFAULT_TEXTS: Record<'fr' | 'en', Record<MsgKind, string>> = {
     invoice: 'Bonjour {prenom}, voici votre facture {numero} de {garage} ({total}) : {lien}',
     extras: 'Bonjour {prenom}, {mecano} de {garage} propose des travaux supplémentaires sur votre {vehicule} ({montant} avant taxes). Pour voir et accepter ou refuser : {lien}',
     reminder: 'Rappel : {garage} vient demain, {jour}, entre {debut} et {fin}. Pour changer : {telephone}',
-    payment_reminder: 'Bonjour {prenom}, petit rappel de {garage} : la facture {numero} du {date} ({montant}) est toujours à payer. {lien}'
+    payment_reminder: 'Bonjour {prenom}, petit rappel de {garage} : la facture {numero} du {date} ({montant}) est toujours à payer. {lien}',
+    return_trip: '{mecano} a fini sa journée et revient vers {lieu} : arrivée prévue vers {heure} (environ {minutes} min). Suivre le camion en direct : {lien}'
   },
   en: {
     booking: 'Hello {prenom}, your appointment with {garage} is confirmed: {jour}, {bloc} (between {debut} and {fin}). Estimate: {total} taxes included. To see and sign your estimate{payer}: {lien}',
@@ -53,7 +55,8 @@ export const DEFAULT_TEXTS: Record<'fr' | 'en', Record<MsgKind, string>> = {
     invoice: 'Hello {prenom}, here is your invoice {numero} from {garage} ({total}): {lien}',
     extras: 'Hello {prenom}, {mecano} from {garage} suggests extra work on your {vehicule} ({montant} before taxes). To see it and accept or decline: {lien}',
     reminder: 'Reminder: {garage} comes tomorrow, {jour}, between {debut} and {fin}. To change: {telephone}',
-    payment_reminder: 'Hello {prenom}, a friendly reminder from {garage}: invoice {numero} of {date} ({montant}) is still unpaid. {lien}'
+    payment_reminder: 'Hello {prenom}, a friendly reminder from {garage}: invoice {numero} of {date} ({montant}) is still unpaid. {lien}',
+    return_trip: '{mecano} is done for the day and heading back to {lieu}: arriving around {heure} (about {minutes} min). Follow the truck live: {lien}'
   }
 };
 

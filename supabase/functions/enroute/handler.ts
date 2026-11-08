@@ -31,11 +31,67 @@ export async function route(a: Pt, b: Pt): Promise<{ km: number; minutes: number
   }
 }
 
+/** the garage's texts without an arrival time fall back to these (the owner may have erased the template) */
+const RETURN_FALLBACK = {
+  fr: '{mecano} a fini sa journée et revient vers {lieu}. Suivre le camion en direct : {lien}',
+  en: '{mecano} is done for the day and heading back to {lieu}. Follow the truck live: {lien}'
+};
+/** « Retour à la Centrale »: a trip with no job, from where the phone is to the truck's start (or « Départ des camions »);
+    the garage's return number gets the arrival time and the live map, like a customer would */
+async function returnTrip(c: Awaited<ReturnType<typeof caller>>, db: ReturnType<typeof adminDb>, b: Record<string, any>, action: string): Promise<Response> {
+  if (action === 'return_end') {
+    const { data } = await db.from('trips').update({ status: 'arrived', ended_at: new Date().toISOString() }).eq('staff_id', c.id).eq('kind', 'return').eq('status', 'active').select('*');
+    return json({ ok: true, rows: { trips: data || [] } });
+  }
+  const s = await settings();
+  // where to: the start of the truck this person drives (or their first truck), else the trucks' common start
+  const { data: trucks } = c.access.trucks.length ? await db.from('trucks').select('id, driver_id, start').in('id', c.access.trucks) : { data: [] };
+  const mineFirst = [...((trucks || []) as { id: string; driver_id: string | null; start: Record<string, any> | null }[])].sort((x, y) => Number(y.driver_id === c.id) - Number(x.driver_id === c.id));
+  const own = mineFirst.find((t) => okPt(t.start))?.start || null;
+  const home = (own || s.booking?.home || {}) as Record<string, any>;
+  if (!okPt(home)) fail('no_home', 'Le départ des camions n’a pas de position : choisis son adresse dans Réglages → Réservations.');
+  const dest: Pt = { lat: home.lat, lng: home.lng };
+  const label: string = String(home.label || s.booking?.home?.label || 'Centrale');
+  if (okPt(b.pos)) await c.db.rpc('report_position', { p_lat: b.pos.lat, p_lng: b.pos.lng, p_accuracy: null, p_heading: null, p_speed: null, p_job: null });
+  const { data: live } = await db.from('positions').select('lat, lng, at').eq('id', c.id).is('deleted_at', null).maybeSingle();
+  const from: Pt | null = okPt(b.pos) ? b.pos : (live && Date.parse((live as any).at) > Date.now() - 15 * 60000 ? { lat: (live as any).lat, lng: (live as any).lng } : null);
+  const rt = from ? await route(from, dest) : null;
+  const eta = rt ? new Date(Date.now() + rt.minutes * 60000) : null;
+  // one trip back at a time: a second « Je pars » replaces the first (a new link, the old one stops working)
+  await db.from('trips').update({ status: 'cancelled', ended_at: new Date().toISOString() }).eq('staff_id', c.id).eq('kind', 'return').eq('status', 'active');
+  const token = newToken(18);
+  const { data: trip, error } = await db.from('trips').insert({
+    job_id: null, kind: 'return', dest_label: label, staff_id: c.id, token_hash: await sha256hex(token), created_by: c.id,
+    eta_at: eta?.toISOString() ?? null, km: rt?.km ?? null, minutes: rt?.minutes ?? null, route: rt?.line ?? null,
+    dest_lat: dest.lat, dest_lng: dest.lng, expires_at: new Date(Date.now() + 4 * 3600000).toISOString()
+  }).select('*').single();
+  if (error) throw error;
+  // the text, to the garage's return number, in the owner's language
+  const { data: owner } = await db.from('staff').select('first_name:full_name, lang').contains('roles', ['owner']).is('deleted_at', null).order('created_at').limit(1).maybeSingle();
+  const lang: Lang = (owner as any)?.lang === 'en' ? 'en' : 'fr';
+  const link = trackLink(baseOf(b.base), token, lang);
+  const { data: drv } = await db.from('staff').select('short_name, full_name').eq('id', c.id).maybeSingle();
+  const vars = { mecano: first((drv as any)?.short_name || (drv as any)?.full_name) || (lang === 'en' ? 'The mechanic' : 'Le mécano'), lieu: label,
+    garage: s.company?.name || 'Mécanique Mobile H.I.S', heure: eta ? clock(localMinute(eta), lang) : '', minutes: rt ? String(rt.minutes) : '', lien: link };
+  const tpl = (rt ? s.messages?.[lang]?.return_trip : null) || RETURN_FALLBACK[lang];
+  const message = fill(String(tpl), vars);
+  const phone = String(s.booking?.return_phone || '').trim();
+  const quiet = b.notify === false || s.messages?.on?.return_trip === false;
+  const ownerName = String((owner as any)?.first_name || 'Garage').split(/\s+/);
+  const r = !phone ? { status: 'no_phone' as const } : quiet ? { status: 'quiet' as const } : await sendSms({ first: ownerName[0], last: ownerName.slice(1).join(' ') || null, phone, email: null }, message, 'garage-retour');
+  await db.from('trips').update({ sms_status: r.status }).eq('id', (trip as any).id);
+  await db.from('messages').insert({ job_id: null, customer_id: null, staff_id: c.id, kind: 'return_trip', channel: 'sms', to_addr: phone || null,
+    body: message, status: r.status === 'sent' ? 'sent' : r.status === 'error' ? 'failed' : 'skipped', error: (r as { error?: string }).error || r.status, created_by: c.id });
+  return json({ ok: true, sms: r.status, error: (r as { error?: string }).error, link, message, phone: phone || null, place: label,
+    eta_at: (trip as any)?.eta_at ?? null, minutes: (trip as any)?.minutes ?? null, km: (trip as any)?.km ?? null, route_source: rt?.source ?? null, rows: { trips: [trip] } });
+}
+
 export const handler = serve(async (req) => {
   const b = await body(req);
   const action = String(b.action || 'start');
   const c = await caller(req);
   const db = adminDb();
+  if (action === 'return' || action === 'return_end') return returnTrip(c, db, b, action);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(b.job_id || ''))) fail('not_found', 'Cette job n’existe plus.', 404);
   const { data: job } = await c.db.from('jobs').select('*').eq('id', String(b.job_id || '')).maybeSingle();
   if (!job) fail('not_found', 'Cette job n’existe plus (ou tu n’y as pas accès).');

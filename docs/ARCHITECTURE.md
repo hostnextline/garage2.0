@@ -33,7 +33,7 @@ src/
   client/               the customer's public page (client.html: #t= appointment/invoice, #suivi= tracking, #reserver online booking)
   dev/                  demo mode (dev only): fake server + demo data
 supabase/migrations     the database: tables, rights, planner, money rules (the truth — read it)
-supabase/functions      server functions: notify, enroute, client, book, stripe, vin, team, conversation, backup
+supabase/functions      server functions: notify, enroute (a job's trip; return / return_end: the way back to the start), client, book, stripe, vin, team, conversation, backup
 ```
 
 ## Reading data

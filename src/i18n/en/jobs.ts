@@ -309,7 +309,7 @@ export const jobs: typeof fr = {
     tripNoEta: 'Arrival time not worked out yet',
     noTracking: 'The customer did not get your arrival time.',
     sendTracking: 'Send the text',
-    kinds: { booking: 'Appointment confirmation', moved: 'Appointment moved', en_route: 'On the way', extras: 'Work to approve', invoice: 'Invoice', payment_reminder: 'Payment reminder', reminder: 'Day-before reminder', arrived: 'Mechanic arrived (invoice)', estimate_signed: 'Estimate signed online', extras_answer: 'Customer’s answer' },
+    kinds: { booking: 'Appointment confirmation', moved: 'Appointment moved', en_route: 'On the way', extras: 'Work to approve', invoice: 'Invoice', payment_reminder: 'Payment reminder', reminder: 'Day-before reminder', arrived: 'Mechanic arrived (invoice)', estimate_signed: 'Estimate signed online', extras_answer: 'Customer’s answer', return_trip: 'Back to the starting point' },
     status: { sent: 'Sent', failed: 'Did not go', skipped: 'Not sent' },
     failTitle: 'The text did not go',
     noArrived: 'The customer has not received the invoice to pay during the work yet.',

@@ -295,6 +295,32 @@ test('positions only during the day; the map needs its right; the customer follo
   assert.equal(t2.pos, null);
 }));
 
+test('Part 24 ter: the trip back to the start has no job; the public page says where to; ending the day = arrived', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.mech);
+  await h.val(`select public.shift_start()`);
+  const token = randomBytes(18).toString('base64url');
+  await h.c.query('reset role');
+  await h.c.query(`insert into public.trips (job_id, kind, dest_label, staff_id, token_hash, status, dest_lat, dest_lng, minutes, km) values (null, 'return', 'Centrale', $1, $2, 'active', 45.5312898, -73.6544639, 14, 6.1)`,
+    [g.mech, createHash('sha256').update(token).digest('hex')]);
+  // one trip back at a time per person
+  const twice = await h.fails(() => h.c.query(`insert into public.trips (job_id, kind, dest_label, staff_id, status, dest_lat, dest_lng) values (null, 'return', 'Centrale', $1, 'active', 45.5, -73.6)`, [g.mech]));
+  assert.match(String(twice?.message), /trips_one_return/);
+  assert.ok(await h.fails(() => h.c.query(`insert into public.trips (job_id, kind, staff_id, status) values (null, 'elsewhere', $1, 'active')`, [g.mech])), 'kind is job or return');
+  await h.c.query(`select set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true)`);
+  await h.c.query('set local role anon');
+  const t = await h.val(`select public.public_track($1)`, [token]);
+  assert.deepEqual([t.status, t.kind, t.dest_label, t.mechanic, t.customer, t.lang], ['active', 'return', 'Centrale', 'Saleh', '', 'fr']);
+  assert.deepEqual(t.dest, { lat: 45.5312898, lng: -73.6544639 });
+  await h.as(g.mech);
+  await h.val(`select public.shift_end()`);
+  await h.c.query('reset role');
+  assert.equal(await h.val(`select status from public.trips where token_hash = $1`, [createHash('sha256').update(token).digest('hex')]), 'arrived', 'home: arrived, not cancelled');
+  await h.c.query(`select set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true)`);
+  await h.c.query('set local role anon');
+  assert.equal((await h.val(`select public.public_track($1)`, [token])).status, 'arrived');
+}));
+
 test('the dashboard and the treasury report add up', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);

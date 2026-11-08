@@ -202,6 +202,8 @@ export const settings = {
     startAddress: 'Adresse de départ',
     label: 'Nom sur la carte',
     labelHelp: 'Le nom du point de départ sur les cartes, par exemple « Centrale » ou « Garage ».',
+    returnPhone: 'Numéro texté au retour',
+    returnPhoneHelp: 'Quand un mécano repart vers le point de départ après sa dernière job de la journée, ce numéro reçoit son heure d’arrivée et la carte en direct, comme un client. Vide : pas de texto.',
     noPos: 'Cette adresse n’est pas trouvée sur la carte : choisis une des suggestions pour que les trajets se calculent.',
     mapLabel: 'Le départ des camions sur la carte',
     replanNote: 'En enregistrant, les tournées des rendez-vous à venir sont recalculées (ordre des arrêts, camion, heures d’arrivée). Les blocs déjà commencés ne bougent pas.',
@@ -235,12 +237,13 @@ export const settings = {
       extras: { title: 'Travaux à approuver', when: 'Quand le mécano propose des travaux de plus.' },
       invoice: { title: 'Facture', when: 'Quand la facture est envoyée, avec le bouton « Payer ».' },
       payment_reminder: { title: 'Rappel de paiement', when: 'Quand tu relances une facture pas payée.' },
+      return_trip: { title: 'Retour au point de départ', when: 'Quand le mécano repart vers la Centrale après sa dernière job (au numéro de retour, Réservations).' },
       reminder: { title: 'Rappel la veille', when: 'La veille du rendez-vous.' }
     },
     vars: {
       prenom: 'Prénom du client', garage: 'Nom du garage', jour: 'Jour du rendez-vous', debut: 'Début du bloc', fin: 'Fin du bloc',
       total: 'Total', lien: 'Lien vers sa page', mecano: 'Prénom du mécano', heure: 'Heure d’arrivée', minutes: 'Minutes de route',
-      vehicule: 'Son véhicule', montant: 'Montant', numero: 'Numéro de facture', date: 'Date de la facture', telephone: 'Téléphone du garage',
+      vehicule: 'Son véhicule', montant: 'Montant', numero: 'Numéro de facture', date: 'Date de la facture', telephone: 'Téléphone du garage', lieu: 'Point de départ (Centrale)',
       bloc: 'Bloc (le matin, l’après-midi, le soir)', payer: '« et la payer maintenant » (quand le paiement par carte est branché)'
     },
     example: {

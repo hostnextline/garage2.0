@@ -8,7 +8,7 @@ import { DEFAULT_BLOCKS, type BlockKey } from '../../lib/dates';
 import { settings } from '../../data/select';
 import { saveSettings } from '../../data/api';
 import { flush, pull } from '../../data/sync';
-import { Panel, Field, Input, Banner, Button, Switch, attempt, toast } from '../../ui';
+import { Panel, Field, Input, PhoneInput, Banner, Button, Switch, attempt, toast } from '../../ui';
 import { Copy, Share2, ExternalLink } from 'lucide-preact';
 import { appBase, movedTo } from '../../lib/config';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
@@ -20,6 +20,8 @@ interface Booking {
   horizon_days: number | null; speed_kmh: number | null; detour_pct: number | null; stop_min: number | null; unknown_min: number | null;
   min_block_min: number | null; near_km: number | null;
   home: { label: string; address: string; lat: number | null; lng: number | null };
+  /** the number texted when a mechanic heads back after the last job (arrival time, live map) */
+  return_phone: string;
 }
 const NUMS: { k: keyof Booking; min: number; max: number; unit: 'days' | 'kmh' | 'pct' | 'min' | 'km'; decimals?: boolean }[] = [
   { k: 'horizon_days', min: 7, max: 365, unit: 'days' },
@@ -42,7 +44,8 @@ export function BookingSection() {
     blocks: (['am', 'pm', 'eve'] as BlockKey[]).map((k) => blocksSaved.find((x) => x.key === k) || DEFAULT_BLOCKS.find((x) => x.key === k)!),
     horizon_days: b.horizon_days, speed_kmh: b.speed_kmh, detour_pct: Math.round(((Number(b.detour) || 1.3) - 1) * 100), stop_min: b.stop_min,
     unknown_min: b.unknown_min, min_block_min: b.min_block_min, near_km: b.near_km,
-    home: { label: b.home?.label || 'Centrale', address: b.home?.address || '', lat: b.home?.lat ?? null, lng: b.home?.lng ?? null }
+    home: { label: b.home?.label || 'Centrale', address: b.home?.address || '', lat: b.home?.lat ?? null, lng: b.home?.lng ?? null },
+    return_phone: b.return_phone || ''
   };
   const { draft: d, set, dirty, reset } = useSectionDraft<Booking>('booking', saved);
   const [err, setErr] = useState<Record<string, string | null>>({});
@@ -66,7 +69,8 @@ export function BookingSection() {
     const moved = d.home.lat !== saved.home.lat || d.home.lng !== saved.home.lng;
     const ok = await attempt(() => saveSettings('booking', {
       ...settings.value.booking, blocks: d.blocks, horizon_days: Math.round(d.horizon_days!), speed_kmh: d.speed_kmh, detour: Math.round(100 + d.detour_pct!) / 100,
-      stop_min: Math.round(d.stop_min!), unknown_min: Math.round(d.unknown_min!), min_block_min: Math.round(d.min_block_min!), near_km: d.near_km, home
+      stop_min: Math.round(d.stop_min!), unknown_min: Math.round(d.unknown_min!), min_block_min: Math.round(d.min_block_min!), near_km: d.near_km, home,
+      return_phone: d.return_phone.trim() || null
     }), { ok: replan ? t(moved ? 'settings.booking.startMoved' : 'settings.booking.replanned') : t('settings.saved') });
     if (!ok) return;
     reset();
@@ -88,6 +92,9 @@ export function BookingSection() {
             {d.home.address && !hasPos && <Banner kind="warn">{t('settings.booking.noPos')}</Banner>}
             <Field label={t('settings.booking.label')} help={t('settings.booking.labelHelp')}>
               <Input value={d.home.label} onValue={(v) => set((x) => ({ ...x, home: { ...x.home, label: v } }))} maxLength={30} autoComplete="off" data-testid="booking-start-label" />
+            </Field>
+            <Field label={t('settings.booking.returnPhone')} help={t('settings.booking.returnPhoneHelp')}>
+              <PhoneInput value={d.return_phone} onValue={(v) => set((x) => ({ ...x, return_phone: v }))} />
             </Field>
             {dirty && planOf(d) !== planOf(saved) && <p class="small muted settings-replan" data-testid="booking-replan-note">{t('settings.booking.replanNote')}</p>}
           </div>

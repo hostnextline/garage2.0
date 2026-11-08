@@ -239,12 +239,44 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   // arriving ends the tracking
   await rpc('job_step', { p_op: randomUUID(), p_job: job, p_action: 'arrive', p_data: {} }, jwt);
   assert.equal((await rpc('public_track', { p_token: tokenOf(r.link) }, K.anon)).status, 'arrived');
+  // « Retour à la Centrale » (Part 24 ter): the last job done, « Je pars » makes a trip with no job and texts the garage's
+  // return number the arrival time and the live map, like a customer
+  const [{ booking: bookingBefore }] = await q(`select booking from public.settings where id = 1`);
+  await q(`update public.settings set booking = booking || jsonb_build_object('return_phone', '514 771-4243',
+    'home', jsonb_build_object('label', 'Centrale', 'address', '1401 rue Legendre O, Montréal', 'lat', 45.5312898, 'lng', -73.6544639)) where id = 1`);
+  await clearLog();
+  const back = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.50, lng: -73.66 } }, jwt);
+  assert.equal(back.ok, true, JSON.stringify(back));
+  assert.deepEqual([back.sms, back.place, back.phone], ['sent', 'Centrale', '514 771-4243']);
+  assert.match(back.message, /^Adam a fini sa journée et revient vers Centrale : arrivée prévue vers .+ \(environ \d+ min\)\. Suivre le camion en direct : http.+client\.html#suivi=[\w-]+$/);
+  assert.ok(back.minutes > 0 && back.eta_at, 'an arrival time');
+  const ghl = await mockLog();
+  assert.ok(ghl.some((x) => x.svc === 'ghl' && x.path === '/contacts/upsert' && /5147714243/.test(String(x.body?.phone))), 'texted to the return number: ' + JSON.stringify(ghl.filter((x) => x.svc === 'ghl').map((x) => x.body)));
+  assert.equal(ghl.filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').pop()?.body?.message, back.message);
+  const tr = await rpc('public_track', { p_token: tokenOf(back.link) }, K.anon);
+  assert.deepEqual([tr.status, tr.kind, tr.dest_label, tr.mechanic, tr.customer, tr.lang], ['active', 'return', 'Centrale', 'Adam', '', 'fr'], JSON.stringify(tr));
+  assert.deepEqual([tr.dest.lat, tr.dest.lng], [45.5312898, -73.6544639]);
+  assert.ok(tr.pos && Array.isArray(tr.route) && tr.route.length >= 2, 'the truck and its route on the map');
+  assert.equal((await q(`select count(*)::int n from public.messages where kind = 'return_trip' and staff_id = $1 and status = 'sent'`, [mech]))[0].n, 1);
+  // pressed again: one trip back at a time (the first link stops)
+  const back2 = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.51, lng: -73.65 } }, jwt);
+  assert.equal(back2.ok, true);
+  assert.equal((await rpc('public_track', { p_token: tokenOf(back.link) }, K.anon)).status, 'cancelled');
+  assert.equal((await q(`select count(*)::int n from public.trips where staff_id = $1 and kind = 'return' and status = 'active'`, [mech]))[0].n, 1);
+  // « Je suis arrivé »
+  assert.equal((await fn('enroute', { action: 'return_end', base: BASE }, jwt)).ok, true);
+  assert.equal((await rpc('public_track', { p_token: tokenOf(back2.link) }, K.anon)).status, 'arrived');
+  // ending the day while heading back = arrived (not cancelled)
+  const back3 = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.51, lng: -73.65 } }, jwt);
   await rpc('shift_end', {}, jwt);
+  assert.equal((await rpc('public_track', { p_token: tokenOf(back3.link) }, K.anon)).status, 'arrived');
+  await q(`update public.settings set booking = $1 where id = 1`, [bookingBefore]);
   // VIN
   const v = await fn('vin', { vin: '1HGCM82633A004352' }, jwt);
   assert.deepEqual([v.vehicle.year, v.vehicle.make, v.vehicle.model, v.vehicle.displacement, v.vehicle.cylinders, v.vehicle.fuel, v.vehicle.drive], [2003, 'Honda', 'Accord', 3, 6, 'essence', 'fwd']);
   assert.equal((await fn('vin', { vin: 'NOPE' }, jwt)).code, 'vin');
-  await q(`delete from public.trips where job_id = $1`, [job]);
+  await q(`delete from public.trips where job_id = $1 or staff_id = $2`, [job, mech]);
+  await q(`delete from public.messages where kind = 'return_trip' and staff_id = $1`, [mech]);
   await q(`delete from public.shifts where staff_id = $1`, [mech]);
   await q(`delete from public.positions where id = $1`, [mech]);
   await q(`delete from public.position_log where staff_id = $1`, [mech]);

@@ -109,6 +109,35 @@ export async function doLeave(j: Job): Promise<void> {
   void where.then((pos) => sendTracking(j, { pos, afterLeave: true }));
 }
 
+/** « Je pars vers la Centrale » after the last job: the trip back, and the garage's number gets the arrival time and the map */
+export async function doReturn(): Promise<void> {
+  const pos = await quickPosition();
+  try {
+    const e = await enroute('return', null, { pos, notify: true });
+    if (!e.ok) { toast(errorMessage(e), { kind: 'bad' }); return; }
+    const time = e.eta_at ? clockOf(e.eta_at) : '';
+    const place = e.place || 'Centrale';
+    if (e.sms === 'sent') toast(time ? t('today.return.sentEta', { time }) : t('today.return.sent'), { kind: 'ok' });
+    else if (e.sms === 'quiet') toast(t('today.return.quiet', { place }));
+    else if (e.sms === 'no_phone') { toast(t('today.return.noPhone'), { kind: 'bad' }); outcome.value = { status: 'off', message: e.message, link: e.link, phone: null, error: e.error }; }
+    else outcome.value = { status: e.sms, message: e.message, link: e.link, phone: e.phone, error: e.error };
+    void pull('trips');
+    void pull('messages');
+  } catch (err) {
+    toast(isNetworkError(err) ? t('today.return.offline') : errorMessage(err), { kind: 'bad' });
+  }
+}
+/** « Je suis arrivé » at the start: the trip back is over (ending the day does it too) */
+export async function doReturnEnd(): Promise<void> {
+  try {
+    await enroute('return_end', null);
+    void pull('trips');
+    toast(t('today.return.arrivedToast'), { kind: 'ok' });
+  } catch (err) {
+    toast(isNetworkError(err) ? t('today.return.offline') : errorMessage(err), { kind: 'bad' });
+  }
+}
+
 /** should the customer get the invoice when the mechanic arrives? (the switch is on, a number that takes texts) */
 export function wantsArrivalText(j: Job): boolean {
   if (settings.value.messages?.on?.arrived === false) return false;
