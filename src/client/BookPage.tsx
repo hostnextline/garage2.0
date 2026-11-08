@@ -69,7 +69,7 @@ export function BookPage(p: { linkLang: CLang | null }) {
         first_name: contact.first.trim(), last_name: contact.last.trim(), phone: contact.phone, email: contact.email.trim(),
         address: place.address, unit: place.unit.trim(), postal_code: place.postal_code, city: place.city, lat: place.lat, lng: place.lng,
         vehicle: { year: contact.year || null, make: contact.make.trim(), model: contact.model.trim() }, problem: contact.problem.trim(),
-        website: (document.getElementById('cl-website') as HTMLInputElement | null)?.value || ''
+        extra: (document.getElementById('cl-bk-f') as HTMLInputElement | null)?.value || ''
       });
       setDone(r);
       go('done');
@@ -373,8 +373,9 @@ function ContactStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; 
           <span>{ct(l, 'book.contact.problem')}</span>
           <textarea class="textarea" rows={3} maxLength={1000} value={c.problem} placeholder={ct(l, 'book.contact.problemPh')} onInput={set('problem')} data-testid="book-problem" />
         </label>
-        {/* not for people: robots fill every field */}
-        <input id="cl-website" name="website" class="bk-hp" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+        {/* not for people: robots fill every field. Its name means nothing to a phone's autofill (« website » did,
+            and a filled trap looks like a booking that was never made) */}
+        <input id="cl-bk-f" name="bk_f" class="bk-hp" tabIndex={-1} autoComplete="off" aria-hidden="true" />
       </div>
       {p.msg && <Note kind="bad">{p.msg}</Note>}
       <p class="cl-small cl-muted">{ct(l, 'book.contact.terms')}</p>

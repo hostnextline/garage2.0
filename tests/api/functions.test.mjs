@@ -60,7 +60,7 @@ after(async () => {
   await q(`delete from public.staff where id = any($1)`, [made.users]);
   await q(`delete from auth.users where id = any($1)`, [made.users]);
   await q(`update public.settings set company = '{}'::jsonb where id = 1`);
-  await q(`delete from public.op_log`); await q(`delete from public.activity`); await q(`delete from public.messages`);
+  await q(`delete from public.op_log`); await q(`delete from public.activity`); await q(`delete from public.messages`); await q(`delete from public.rate_limits`);
   await q(`update public.counters set next_value = $1 where name = 'invoice'`, [counter]);
   await db.end();
 });
@@ -444,18 +444,40 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
     assert.equal(view.customer.first, 'Sophie', 'the link opens the customer’s page');
     const [m] = await q(`select * from public.messages where job_id = $1 and kind = 'booking'`, [j.id]);
     assert.ok(m && /Sophie/.test(m.body) && m.body.includes(r.link), 'the confirmation text, with the link');
+    assert.equal((await q(`select count(*)::int n from public.public_links where job_id = $1`, [j.id]))[0].n, 1, 'the link is kept with the booking (Part 24)');
+    // the page sends the same booking again (a hiccup after the first answer): the same job, one text, a link that works
+    const again = await fn('book', form);
+    assert.equal(again.ok, true, JSON.stringify(again)); assert.equal(again.again, true, 'said to be the booking already made');
+    assert.equal((await q(`select count(*)::int n from public.jobs where customer_id = $1`, [c.id]))[0].n, 1, 'no second job');
+    assert.equal((await q(`select count(*)::int n from public.messages where job_id = $1 and kind = 'booking'`, [j.id]))[0].n, 1, 'no second text');
+    assert.equal(again.text, 'already');
+    assert.ok(again.link.startsWith(BASE + 'client.html#t=') && again.link !== r.link, 'a fresh link');
+    assert.equal((await fn('client', { action: 'view', token: tokenOf(again.link) })).customer.first, 'Sophie', 'that opens the same page');
     // the same phone: the same customer (their file is not changed), the car found again; a third coming one is refused
     const r2 = await fn('book', { ...form, first_name: 'Autre', address: '10 rue Autre, Montréal', vehicle: { make: 'toyota', model: 'rav4' } });
-    assert.equal(r2.ok, true, JSON.stringify(r2));
+    assert.equal(r2.ok, true, JSON.stringify(r2)); assert.equal(r2.again, false, 'another address: another booking');
     assert.equal((await q(`select count(*)::int n from public.customers where phone_digits = $1`, [phone.replace(/\D/g, '')]))[0].n, 1);
     assert.equal((await q(`select first_name from public.customers where id = $1`, [c.id]))[0].first_name, 'Sophie');
     assert.equal((await q(`select count(distinct vehicle_id)::int n from public.jobs where customer_id = $1`, [c.id]))[0].n, 1);
-    assert.equal((await fn('book', form)).code, 'too_many');
+    assert.equal((await fn('book', { ...form, address: '20 rue Trois, Montréal' })).code, 'too_many');
+    assert.equal((await fn('book', form)).again, true, 'the first booking sent again is still that booking, not « too_many »');
     // closed in Réglages: the page says to call
     await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'false') where id = 1`);
     assert.equal((await fn('book', { action: 'info' })).on, false);
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code, 'web_off');
+    await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
+    // the brake on the public « slots » (Part 24): 20 asks per 10 minutes for one visitor, then « busy »
+    let code = null, asks = 0;
+    for (; asks < 30 && code !== 'busy'; asks++) code = (await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code;
+    assert.equal(code, 'busy', 'too many asks → busy (after ' + asks + ')');
+    assert.ok(asks <= 20, 'the earlier asks of this test count too');
+    assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).status, 429);
+    await q(`delete from public.rate_limits`);
+    assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).ok, true, 'a new window: allowed again');
+    // a robot (the hidden field filled) is noted for the office, nothing else
+    assert.equal((await q(`select count(*)::int n from public.activity where entity = 'web' and action = 'web_robot'`))[0].n, 1);
   } finally {
+    await q(`delete from public.rate_limits`);
     await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
     await q(`delete from public.job_items where service_id = any($1)`, [[oil, off]]);
     await q(`delete from public.services where id = any($1)`, [[oil, off]]);

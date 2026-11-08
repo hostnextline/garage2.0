@@ -11,9 +11,12 @@ const AUDIENCE = 'garage2.0-backup';
 export const TABLES = [
   'settings', 'counters', 'staff', 'trucks', 'truck_week', 'truck_days', 'services', 'inventory_items', 'service_parts', 'engine_specs',
   'customers', 'customer_notes', 'vehicles', 'quotes', 'jobs', 'job_items', 'invoices', 'payments', 'expenses', 'inventory_moves',
-  'shifts', 'trips', 'messages', 'public_links', 'invitations', 'activity', 'attachments'
+  'shifts', 'trips', 'messages', 'public_links', 'invitations', 'activity', 'attachments',
+  'coffre', 'positions', 'position_log', 'op_log', 'stripe_events'
 ] as const;
-const KEY: Record<string, string> = { counters: 'name' };
+// never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day)
+export const NOT_BACKED_UP = ['secrets', 'rate_limits'] as const;
+const KEY: Record<string, string> = { counters: 'name', op_log: 'op' };
 const PAGE: Record<string, number> = { attachments: 100 };
 
 function b64url(s: string): Uint8Array {

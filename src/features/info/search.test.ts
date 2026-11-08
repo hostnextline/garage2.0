@@ -23,6 +23,12 @@ describe('Info: the articles', () => {
 
 describe('Info: the search', () => {
   const top = (q: string, l: 'fr' | 'en' = 'fr') => searchInfo(ARTICLES, q, l)[0]?.id;
+  it('a phone number or a symbol typed never breaks the screen (« +1 438… », « (tps) », « * »)', () => {
+    for (const q of ['+1 438 901-6606', '+tps', '(tps)', '* vidange', 'a[b', 'c\\d', 'e|f', 'g$h', '^i', '{j}']) {
+      expect(() => searchInfo(ARTICLES, q, 'fr')).not.toThrow();
+      expect(() => searchInfo(ARTICLES, q, 'en')).not.toThrow();
+    }
+  });
   it('accents and capitals do not count', () => {
     expect(fold('Équipe « Été »')).toBe('equipe ete');
     expect(top('COFFRE')).toBe('coffre');

@@ -1,7 +1,7 @@
 // « Équipe et accès »: invitations, activating an account, new password links, removing someone, the keys of the
 // texting and card-payment services. Without an account: only invite-info and invite-accept (with the secret link).
 import { serve, json, body, fail, env } from '../_shared/http.ts';
-import { adminDb, caller, secret, setSecret, settings, type Caller } from '../_shared/db.ts';
+import { adminDb, caller, secret, setSecret, setSecrets, settings, type Caller } from '../_shared/db.ts';
 import { newToken, sha256hex } from '../_shared/tokens.ts';
 import { baseOf, inviteLink } from '../_shared/links.ts';
 import { sendEmail, sendSms, e164 } from '../_shared/ghl.ts';
@@ -194,7 +194,8 @@ export const handler = serve(async (req) => {
       return json({ ok: true, link, sent: d.status, channel: d.channel, error: (d as { error?: string }).error, message: d.message });
     }
     case 'invite-cancel': {
-      await db.from('invitations').update({ used_at: new Date().toISOString() }).eq('id', String(b.id || '')).is('used_at', null);
+      const { error } = await db.from('invitations').update({ used_at: new Date().toISOString() }).eq('id', String(b.id || '')).is('used_at', null);
+      if (error) throw error;
       return json({ ok: true });
     }
     case 'remove': {
@@ -212,7 +213,7 @@ export const handler = serve(async (req) => {
     case 'secrets-set': {
       if ('ghl_token' in b || 'ghl_location' in b) {
         const t = b.ghl_token == null ? null : String(b.ghl_token).trim(), l = b.ghl_location == null ? null : String(b.ghl_location).trim();
-        if (t === '' && l === '') { await setSecret('ghl_token', null, c.id); await setSecret('ghl_location', null, c.id); }
+        if (t === '' && l === '') await setSecrets({ ghl_token: null, ghl_location: null }, c.id);
         else {
           if (t) { if (!/^pit-[A-Za-z0-9-]{10,}$/.test(t)) fail('ghl_token', 'La clé GoHighLevel commence par « pit- ».'); await setSecret('ghl_token', t, c.id); }
           if (l) { if (!/^[A-Za-z0-9]{8,40}$/.test(l)) fail('ghl_location', 'Le numéro du compte GoHighLevel (Location ID) n’a pas l’air bon.'); await setSecret('ghl_location', l, c.id); }
@@ -223,7 +224,7 @@ export const handler = serve(async (req) => {
         const old = await secret('stripe_key'), oldHook = await secret('stripe_webhook_id');
         if (!k) {
           if (old && oldHook) { try { await stripeCall(old, 'DELETE', `/webhook_endpoints/${encodeURIComponent(oldHook)}`); } catch { /* already gone */ } }
-          await setSecret('stripe_key', null, c.id); await setSecret('stripe_webhook_secret', null, c.id); await setSecret('stripe_webhook_id', null, c.id);
+          await setSecrets({ stripe_key: null, stripe_webhook_secret: null, stripe_webhook_id: null }, c.id);
         } else {
           if (!/^(sk|rk)_(live|test)_[A-Za-z0-9]{10,}$/.test(k)) fail('stripe_key', 'La clé Stripe commence par « sk_live_ », « sk_test_ » ou « rk_ ».');
           // the notice "payment done" comes to the garage's own function, signed with a secret only Stripe and the garage know
@@ -234,7 +235,8 @@ export const handler = serve(async (req) => {
             ['description', 'Mécanique Mobile H.I.S (app V2)']
           ]);
           if (old && oldHook) { try { await stripeCall(old, 'DELETE', `/webhook_endpoints/${encodeURIComponent(oldHook)}`); } catch { /* already gone */ } }
-          await setSecret('stripe_key', k, c.id); await setSecret('stripe_webhook_secret', hook.secret, c.id); await setSecret('stripe_webhook_id', hook.id, c.id);
+          // the three together: never a key without its webhook secret
+          await setSecrets({ stripe_key: k, stripe_webhook_secret: hook.secret, stripe_webhook_id: hook.id }, c.id);
         }
       }
       return json({ ok: true });
@@ -252,11 +254,11 @@ export const handler = serve(async (req) => {
 
 async function removePerson(id: string) {
   const db = adminDb();
-  const { data: s } = await db.from('staff').select('id, roles').eq('id', id).maybeSingle();
-  if (!s) fail('not_found', 'Cette personne n’existe plus.');
-  // the day closes, the truck is free, the account can no longer sign in; jobs and invoices stay
-  await db.rpc('close_day', { p_staff: id });
-  await db.from('trucks').update({ driver_id: null }).eq('driver_id', id);
-  await db.from('staff').update({ active: false, deleted_at: new Date().toISOString() }).eq('id', id);
-  await db.auth.admin.updateUserById(id, { ban_duration: '876000h' });
+  // the day closes, the truck is free, the account is inactive (one transaction: remove_member); jobs and invoices stay
+  const { data: done, error } = await db.rpc('remove_member', { p_staff: id });
+  if (error) throw error;
+  if (done !== true) fail('not_found', 'Cette personne n’existe plus.');
+  // and can no longer sign in
+  const { error: e2 } = await db.auth.admin.updateUserById(id, { ban_duration: '876000h' });
+  if (e2) throw e2;
 }

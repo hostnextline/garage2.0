@@ -107,6 +107,17 @@ end $do$;
   over 14 days (`suggest_core`, same ranking as `suggest_blocks`; « Voir d'autres dates » = next 14), then name/phone/car.
   `web_book` finds the customer by phone (file not changed) or creates one, books with `source = 'web'`, sends the usual
   booking text. Brakes: 2 coming web jobs per phone, 30 web bookings an hour, a hidden field for robots.
+- Phase 0 of the audit of 2026-11-08 (Part 24, `20261108000100_phase0_safety.sql`, branch `phase-0`, **not applied on live, `book`
+  and `team` not redeployed**): `block_open(day, block)` is the one rule for « may this block still be re-planned »; `replan_block`
+  and `set_job_duration` leave a started block alone (a cancel at 11:20 no longer throws the other morning jobs to « À placer »).
+  `rate_limits` + `rate_hit(key, window_sec, max)`: the brake of the public `book` function (« slots » 20 / 10 min per visitor,
+  150 / h in all; « book » 12 tries / h per visitor → `busy`, 429). `web_book` makes the customer's link itself (`p.token_hash`), returns the
+  job already made for the same booking sent again within 10 min (`again: true`, no second job or text), and counts its brakes under
+  a lock; `web_suggest` caps at 14 days. The robot field of the booking page is `bk_f` (« website » was filled by phones' autofill);
+  a filled one is noted in `activity` (`web_robot`). `remove_member(staff)` = « Retirer » in one transaction; `setSecrets` writes the
+  three Stripe secrets together and every database refusal is an error. The backup now includes `coffre`, `positions`,
+  `position_log`, `op_log`, `stripe_events` (test: every table is backed up or listed in `never`). `ops/live/2026-11-08_versions_migrations.sql`
+  fixes two misrecorded versions in live's `schema_migrations` (to run by hand, dry run first).
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

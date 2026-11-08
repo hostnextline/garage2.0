@@ -33,7 +33,7 @@ src/
   client/               the customer's public page (client.html: #t= appointment/invoice, #suivi= tracking, #reserver online booking)
   dev/                  demo mode (dev only): fake server + demo data
 supabase/migrations     the database: tables, rights, planner, money rules (the truth — read it)
-supabase/functions      server functions: notify, enroute, client, book, stripe, vin, team
+supabase/functions      server functions: notify, enroute, client, book, stripe, vin, team, conversation, backup
 ```
 
 ## Reading data
@@ -178,7 +178,7 @@ Server functions (`callFn` / helpers in api.ts): `notify { kind: booking|moved|a
 answer gives the message and the link so the person can send it from their own phone) · `enroute { action: start|refresh|end, job_id, pos?, notify? }` ·
 `vin { vin }` · `team { action: list|invite|reset-link|invite-cancel|remove|secrets|secrets-set|sms-test|leave|forgot|invite-info|invite-accept }` ·
 `book { action: info|slots|book }` (public, no token: « Réserver en ligne », client.html#reserver, Part 23; calls the service-role-only
-`web_services`, `web_suggest`, `web_book`; on/off = `settings.booking.web.on`, Réglages → Réservations) · `client { action: view|sign|answer|pay|check, token }` (public page: `sign { signer, png, confirm }` = the estimate signed with the
+`web_services`, `web_suggest`, `web_book`; on/off = `settings.booking.web.on`, Réglages → Réservations; brakes through `rate_hit`, Part 24: `busy` = 429, try again in a few minutes) · `client { action: view|sign|answer|pay|check, token }` (public page: `sign { signer, png, confirm }` = the estimate signed with the
 finger, which also signs the authorization of work, `waiver_via = 'online'`) · `public_track(p_token)` (RPC open to the public: tracking page).
 « arrived » (sent by « Je suis arrivé ») makes the invoice draft and texts it with « Payer » (prepayment on the job; a card payment
 that arrives after the invoice was finished goes on it).

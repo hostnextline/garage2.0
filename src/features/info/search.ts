@@ -8,6 +8,9 @@ export function fold(s: string): string {
 }
 const WEIGHTS: [keyof InfoText, number][] = [['title', 8], ['keys', 5], ['short', 3], ['steps', 1], ['example', 1], ['tips', 1]];
 const textOf = (x: InfoText, k: keyof InfoText) => fold(Array.isArray(x[k]) ? (x[k] as string[]).join(' ') : String(x[k] ?? ''));
+/** the word as plain text inside a regex: « +1 », « (tps) » or « * » typed must never break the search */
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const startsWord = (t: string, w: string) => new RegExp(`\\b${escapeRe(w)}`).test(t);
 
 /** articles matching the words (in the language shown), best first; no words: all of them in their order */
 export function searchInfo(list: InfoArticle[], q: string, lang: 'fr' | 'en', topic: InfoTopic | null = null): InfoArticle[] {
@@ -23,7 +26,7 @@ export function searchInfo(list: InfoArticle[], q: string, lang: 'fr' | 'en', to
       let best = 0;
       for (const [k, wt] of WEIGHTS) {
         const t = textOf(own, k);
-        if (t.includes(w)) best = Math.max(best, wt * (new RegExp(`\\b${w}`).test(t) ? 2 : 1));
+        if (t.includes(w)) best = Math.max(best, wt * (startsWord(t, w) ? 2 : 1));
       }
       if (!best) for (const [k] of WEIGHTS) if (textOf(other, k).includes(w)) { best = 1; break; }
       if (!best) return;          // every word must be somewhere

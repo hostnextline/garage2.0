@@ -127,6 +127,34 @@ test('cancel and « Client absent »: amount lost, the block frees up, back on t
   assert.equal(await h.val(`select lost_cents from public.jobs where id = $1`, [r.job_id]), 5000);
 }));
 
+test('a cancel in a block that has already started leaves the other jobs on their truck (Part 24)', () => tx(async (h) => {
+  const now = await h.val(`select public.now_min()`);
+  const b = await h.one(`select key, start_min, end_min from public.blocks() where start_min <= $1 order by start_min desc limit 1`, [now]);
+  if (!b) return;   // before the first block of the day (Montréal time): no block has started yet, nothing to check
+  const g = await garage(h, { today: true });
+  // the truck has (almost) no time left in this block: before Part 24 the re-plan after a cancel dropped it, and the
+  // mechanic's other jobs of the block went to « À placer »
+  await h.c.query(`update public.truck_week set ranges = $2 where truck_id = $1`, [g.truck, JSON.stringify([[b.start_min, Math.max(b.start_min + 5, Math.min(b.end_min, now + 10))]])]);
+  await h.as(null);
+  await h.c.query(`select set_config('garage.rpc', 'on', true)`);
+  const ids = [uuid(), uuid()];
+  for (const id of ids) {
+    await h.c.query(`insert into public.jobs (id, customer_id, day, block, truck_id, status, duration_min, lat, lng, stop_order) values ($1, $2, $3, $4, $5, 'booked', 30, 45.51, -73.63, $6)`,
+      [id, g.customer, g.day, b.key, g.truck, ids.indexOf(id) + 1]);
+  }
+  assert.equal(await h.val(`select public.block_open($1, $2)`, [g.day, b.key]), false, 'the block has started');
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: ids[0], p_action: 'cancel', p_data: { reason: 'Le client a annulé' } });
+  assert.equal(await h.val(`select status from public.jobs where id = $1`, [ids[0]]), 'cancelled');
+  assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [ids[1]]), g.truck, 'the other job stays on the truck');
+  // the same for a longer job in that block: the length changes, nothing moves
+  await h.rpc('set_job_duration', { p_op: uuid(), p_job: ids[1], p_duration: 90 });
+  const j = await h.one(`select truck_id, duration_min from public.jobs where id = $1`, [ids[1]]);
+  assert.deepEqual([j.truck_id, j.duration_min], [g.truck, 90]);
+  // a coming block is still re-planned as before
+  assert.equal(await h.val(`select public.block_open((public.local_today() + 1)::date, 'am')`), true);
+}));
+
 test('extra work: proposed, answered by the customer on the spot, billed only when accepted', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);

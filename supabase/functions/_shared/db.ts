@@ -36,9 +36,16 @@ export async function secret(key: string): Promise<string | null> {
   return (data as { value?: string } | null)?.value ?? null;
 }
 export async function setSecret(key: string, value: string | null, by: string | null) {
+  await setSecrets({ [key]: value }, by);
+}
+/** several secrets at once (null removes one); a refusal of the database is an error, never a silent « ok » */
+export async function setSecrets(values: Record<string, string | null>, by: string | null) {
   const db = adminDb();
-  if (value == null) await db.from('secrets').delete().eq('key', key);
-  else await db.from('secrets').upsert({ key, value, updated_at: new Date().toISOString(), updated_by: by });
+  const gone = Object.keys(values).filter((k) => values[k] == null);
+  const kept = Object.entries(values).filter(([, v]) => v != null)
+    .map(([key, value]) => ({ key, value, updated_at: new Date().toISOString(), updated_by: by }));
+  if (gone.length) { const { error } = await db.from('secrets').delete().in('key', gone); if (error) throw error; }
+  if (kept.length) { const { error } = await db.from('secrets').upsert(kept); if (error) throw error; }
 }
 export async function settings(): Promise<Record<string, any>> {
   const { data, error } = await adminDb().from('settings').select('*').eq('id', 1).single();
