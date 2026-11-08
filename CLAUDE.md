@@ -60,15 +60,15 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261108000150_coffre_pour_tous.sql` (Part 24 bis, applied 2026-11-08 from commit `e9d9652`;
-  Part 24 applied 2026-11-08 from commit `9835d52`, both with the
+- Applied on live: every migration up to `20261108000160_retour_centrale.sql` (Part 24 ter, applied 2026-11-08 from commit `a4f2da6`;
+  Part 24 bis from `e9d9652`, Part 24 from `9835d52`, all with the
   sha256 check; Parts 21–22 were applied through the connector's `apply_migration` and recorded under the wrong versions, fixed the
   same day with `ops/live/2026-11-08_versions_migrations.sql`, so `schema_migrations` now matches the file names). Part 22: the
   mechanic of the job's truck may also put jobs in the Coffre (`coffre_may_add`). Part 24 bis (`20261108000150_coffre_pour_tous.sql`):
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `book`, `team`, `backup` at `9835d52`; the others (`client`, `conversation`, `enroute`, `notify`, `stripe`, `vin`) at `2610bc8`.
+  `enroute` at `a4f2da6`; `book`, `team`, `backup` at `9835d52`; the others (`client`, `conversation`, `notify`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
 - Free plan: the project pauses after a week without use.
