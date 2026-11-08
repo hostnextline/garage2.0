@@ -12,6 +12,8 @@ import { t } from '../../lib/i18n';
 import { quickPosition } from '../today/position';
 import { jobFirstName, rememberLink, clockOf, keepAhead, type JobRights } from './select';
 import { exportSignature, type Stroke } from './signature';
+import { plannedParts, type UsedPart } from './parts';
+import { confirmParts } from './PartsSheet';
 
 const customerOf = (j: Job) => customerRow(j.customer_id);
 const isQueued = (r: unknown) => !!r && typeof r === 'object' && (r as { queued?: boolean }).queued === true;
@@ -164,22 +166,32 @@ export async function doArrive(j: Job): Promise<void> {
 }
 
 /** « Le client paiera plus tard » (owner, office): the job ends, the invoice stays to collect */
-export async function letGo(j: Job): Promise<boolean> {
+/** the parts this job used, confirmed by the person (null: they stepped back; [] when the job takes none) */
+async function partsUsed(j: Job): Promise<UsedPart[] | null> {
+  const planned = plannedParts(j.id);
+  return planned.length ? confirmParts(j, planned) : [];
+}
+export async function letGo(j: Job, parts?: UsedPart[]): Promise<boolean> {
   const reason = await askText({ title: t('jobs.ask.payLaterTitle'), text: t('jobs.ask.payLaterText'), label: t('jobs.ask.payLaterLabel'), ok: t('jobs.ask.payLaterOk') });
   if (reason == null) return false;
-  return stepKept(j, 'finish', { pay_later: true, reason }, t('jobs.did.payLater'), 'done');
+  const used = parts ?? await partsUsed(j);
+  if (!used) return false;
+  return stepKept(j, 'finish', { pay_later: true, reason, parts: used }, t('jobs.did.payLater'), 'done');
 }
 
-/** « Terminer la job »: needs the payment, unless the office lets the customer go */
+/** « Terminer la job »: the parts used are confirmed first (they leave the inventory with the step); needs the payment,
+    unless the office lets the customer go */
 export async function doFinish(j: Job, rights: Pick<JobRights, 'payLater'>): Promise<boolean> {
+  const parts = await partsUsed(j);
+  if (!parts) return false;
   try {
-    const r = await jobStep(j.id, 'finish');
+    const r = await jobStep(j.id, 'finish', { parts });
     if (isQueued(r)) keepAhead(j, { status: 'done' });
     toast(isQueued(r) ? t('shell.queued') : t('jobs.did.finish'), { kind: isQueued(r) ? 'info' : 'ok' });
     return true;
   } catch (e) {
     if (codeOf(e) === 'pay_first') {
-      if (rights.payLater) return letGo(j);
+      if (rights.payLater) return letGo(j, parts);
       const phone = settings.value.company?.phone;
       toast(t('jobs.ask.payFirstMechanic'), { kind: 'bad', action: phone ? { label: t('jobs.ask.callOffice'), run: () => { location.href = `tel:${phone.replace(/[^\d+]/g, '')}`; } } : undefined });
       return false;

@@ -378,6 +378,12 @@ export async function refetch(t: TableName, id: string) {
     else { removeLocal(t, [id]); await writeRows(uid, t, [], [id]); }
   } catch { /* stays as is */ }
 }
+/** rows the server deleted for good (an inventory item removed): gone from the screen and from the phone's copy */
+export async function forgetLocal(t: TableName, ids: string[]) {
+  if (!ids.length) return;
+  removeLocal(t, ids);
+  await writeRows(uid, t, [], ids);
+}
 /** the person read the refusal: drop it (or send it once more) */
 export async function dismissFailed(seq: number, retry = false) {
   const e = (await outboxAll(uid)).find((x) => x.seq === seq);

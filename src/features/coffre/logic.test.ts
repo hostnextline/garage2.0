@@ -35,6 +35,18 @@ describe('« Coffre »: the report apart', () => {
   it('reads the answer and adds it up', () => {
     expect(r).toMatchObject({ count: 2, amount_cents: 10000, value_cents: 33000 });
     expect(r.rows[1]).toMatchObject({ amount_cents: 0, note: null, work: '' });
+    expect(r).toMatchObject({ spent_cents: 0, balance_cents: 10000 });
+  });
+  it('stock bought with Coffre money is money out: spent, the balance from the server, a minus in the exports', () => {
+    const r = normalizeCoffre({ balance_cents: 4500, rows: [
+      { id: 'a', kind: 'received', day: '2026-11-02', customer: 'Tante Rima', amount_cents: 10000, value_cents: 25000, job_numbers: [12] },
+      { id: 'p', kind: 'purchase', day: '2026-11-06', customer: 'Filtre PH7317', amount_cents: 5500, value_cents: 0, work: '5 × Filtre PH7317', job_numbers: [] }
+    ] }, '2026-11-01', '2026-11-30');
+    expect(r).toMatchObject({ amount_cents: 10000, spent_cents: 5500, balance_cents: 4500 });
+    expect(r.rows.map((x) => x.kind)).toEqual(['received', 'purchase']);
+    const csv = coffreCsv(r, { sheet: 'C', title: 'C', period: 'P', day: 'D', customer: 'Cl', jobs: 'J', work: 'W', value: 'V', amount: 'A', note: 'N', by: 'B', total: 'T' }, 'fr');
+    expect(csv).toMatch(/-55,00/);
+    expect(csv).toMatch(/T;;2;;250,00;45,00/);
   });
   it('the Excel sheet: header, one line per entry, the totals', () => {
     const s = coffreSheet(r, L);

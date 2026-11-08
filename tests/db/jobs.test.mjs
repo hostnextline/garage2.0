@@ -65,13 +65,83 @@ test('a job from « Je pars » to « Terminé »: waiver, invoice with its numbe
   assert.equal(await h.val(`select status from public.invoices where id = $1`, [invoice.id]), 'issued');
   await h.rpc('payment_add', { p_op: uuid(), p_invoice: invoice.id, p_amount_cents: total - 5000, p_method: 'debit', p_reference: null, p_job: null, p_session: null });
   assert.equal(await h.val(`select status from public.invoices where id = $1`, [invoice.id]), 'paid');
-  // now the job can finish; the parts leave the inventory once
-  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: {} });
+  // now the job can finish; the parts the mechanic confirmed leave the inventory (Part 24 quater): 5 L of oil, no filter
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: { parts: [{ item_id: g.oil, qty: 5 }, { item_id: g.filter, qty: 0 }, { item_id: 'pas-un-id', qty: 3 }] } });
   assert.equal(await h.val(`select status from public.jobs where id = $1`, [jobId]), 'done');
   await h.as(null); await h.c.query('reset role');
-  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15.5);
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15);
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 5, 'the filter was not used');
+  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where job_id = $1`, [jobId]), 1);
+  // once: the list sent again (a retry) takes nothing more
+  await h.c.query(`select public.use_parts($1, $2)`, [jobId, JSON.stringify([{ item_id: g.oil, qty: 5 }])]);
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15);
+}));
+
+test('Part 24 quinquies: stock bought, paid by the Trésorerie (an expense with taxes) or by the Coffre (its balance goes down)', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.owner);
+  // the Trésorerie: 5 filters for 57,49 $ taxes included → an expense « Pièces », taxes split, the cost per filter
+  const a = await h.rpc('inventory_buy', { p_op: uuid(), p_item: g.filter, p_qty: 5, p_total_cents: 5749, p_from: 'treasury', p_vendor: 'Lordco', p_note: 'Facture 1234' });
+  assert.equal(a.ok, true);
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 10);
+  const e = await h.one(`select vendor, category, description, subtotal_cents, tps_cents, tvq_cents, total_cents from public.expenses where id = $1`, [a.expense_id]);
+  assert.deepEqual([e.vendor, e.category, e.description, e.total_cents], ['Lordco', 'Pièces', '5 × Filtre PH7317', 5749]);
+  assert.equal(e.subtotal_cents + e.tps_cents + e.tvq_cents, 5749, 'subtotal + taxes = what was paid');
+  assert.deepEqual([e.subtotal_cents, e.tps_cents], [5000, 250]);
+  assert.equal(await h.val(`select cost_cents from public.inventory_items where id = $1`, [g.filter]), 1150);
+  // the Coffre: family gave 100 $; 4,5 L of oil bought with it for 40 $ → the balance is 60 $
+  await h.c.query(`insert into public.coffre (kind, amount_cents, received_on) values ('received', 10000, public.local_today())`);
+  await h.as(g.owner);
+  const b = await h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 4.5, p_total_cents: 4000, p_from: 'coffre', p_vendor: null, p_note: null });
+  assert.ok(b.coffre_id && !b.expense_id, 'no expense for Coffre money');
+  const rep = await h.rpc('coffre_report', { p_from: null, p_to: null });
+  assert.deepEqual([rep.amount_cents, rep.spent_cents, rep.balance_cents], [10000, 4000, 6000]);
+  const row = rep.rows.find((x) => x.kind === 'purchase');
+  assert.deepEqual([row.customer, row.work, row.amount_cents], ['Huile 5W-30', '4.5 × Huile 5W-30', 4000]);
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 24.5);
+  // the same purchase sent twice (a retry): once
+  const op = uuid();
+  await h.as(g.owner);
+  await h.rpc('inventory_buy', { p_op: op, p_item: g.oil, p_qty: 1, p_total_cents: 900, p_from: 'coffre', p_vendor: null, p_note: null });
+  await h.rpc('inventory_buy', { p_op: op, p_item: g.oil, p_qty: 1, p_total_cents: 900, p_from: 'coffre', p_vendor: null, p_note: null });
+  assert.equal((await h.rpc('coffre_report', { p_from: null, p_to: null })).balance_cents, 5100);
+  // refusals: no price, a bad side, someone without the inventory right
+  assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: null, p_from: 'treasury', p_vendor: null, p_note: null })))?.hint, 'bad_amount');
+  assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: 100, p_from: 'poche', p_vendor: null, p_note: null })))?.hint, 'bad_from');
+  await h.as(null); await h.c.query('reset role');
+  const acc = await h.person('Comptable', ['treasurer'], { rights: { treasury: true, inventory: false } });
+  await h.as(acc);
+  assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: 100, p_from: 'coffre', p_vendor: null, p_note: null })))?.hint, 'not_allowed');
+}));
+
+test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
+  const g = await garage(h);
+  const jobId = await jobOnSite(h, g);
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'waiver', p_data: { signer: 'Jean', version: '1' } });
+  const invoice = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true })).rows.invoices[0];
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: invoice.id });
+  const total = await h.val(`select total_cents from public.invoices where id = $1`, [invoice.id]);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: invoice.id, p_amount_cents: total, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: {} });
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15.5, '4.5 L planned for the service');
   assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 4);
-  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where job_id = $1`, [jobId]), 2);
+  // delete for good: the inventory right (or the owner); not the accountant, who has no say on the shelf
+  const accountant = await h.person('Comptable', ['treasurer'], { rights: { treasury: true, inventory: false } });
+  await h.as(accountant);
+  assert.equal((await h.fails(() => h.rpc('inventory_delete', { p_op: uuid(), p_item: g.filter })))?.hint, 'not_allowed');
+  await h.as(g.owner);
+  const r = await h.rpc('inventory_delete', { p_op: uuid(), p_item: g.filter });
+  assert.deepEqual([r.ok, r.name], [true, 'Filtre PH7317']);
+  assert.equal((await h.fails(() => h.rpc('inventory_delete', { p_op: uuid(), p_item: g.filter })))?.hint, 'not_found');
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(await h.val(`select count(*)::int from public.inventory_items where id = $1`, [g.filter]), 0, 'gone');
+  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where item_id = $1`, [g.filter]), 0, 'its moves too');
+  assert.equal(await h.val(`select count(*)::int from public.service_parts where item_id = $1`, [g.filter]), 0, 'and its links to services');
+  assert.equal(await h.val(`select count(*)::int from public.job_items where item_id = $1`, [g.filter]), 0);
+  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where item_id = $1`, [g.oil]), 1, 'the other item keeps its history');
 }));
 
 test('invoice numbers follow each other, never twice; a cancelled one keeps its number and the job gets a new one', () => tx(async (h) => {

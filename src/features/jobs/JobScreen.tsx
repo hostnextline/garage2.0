@@ -28,6 +28,7 @@ import { WorkPanel, ItemSheet, AddWorkSheet, ProposeSheet, AnswerSheet } from '.
 import { StopOrderSheet } from './StopOrderSheet';
 import { HeadPanel, NotesSheet, WaiverPanel, StepState, MomentPanel, MoveSheet, TextsPanel, MenuSheet, afterSheet } from './JobParts';
 import { TextOutcomeHost } from './TextOutcome';
+import { PartsHost } from './PartsSheet';
 import './jobs.css';
 
 type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre' | 'order';
@@ -164,6 +165,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
         onAnswer={(id) => { setItemFor(null); afterSheet(() => setAnswerFor(id)); }} />}
       {answerFor && <AnswerSheet job={j} item={answerItem} rights={rights} onClose={() => setAnswerFor(null)} />}
       <TextOutcomeHost />
+      <PartsHost />
     </Page>
   );
 }

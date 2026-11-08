@@ -51,6 +51,19 @@ export default function MapScreen({ query }: ScreenProps) {
   const [fitKey, setFitKey] = useState(0);
   const [reload, setReload] = useState(0);
 
+  /* a position this phone already knows (found by the locator, saved a moment ago and still on its way to the server)
+     counts: the server's answer may be a few seconds behind the phone */
+  const withLocalPositions = (d: ReturnType<typeof normalize>, placed: Record<string, { lat: number; lng: number }> = {}): ReturnType<typeof normalize> => ({
+    ...d,
+    jobs: d.jobs.map((j) => {
+      if (j.lat != null && j.lng != null) return j;
+      const row = jobRow(j.id);
+      const c = row?.customer_id ? customerRow(row.customer_id) : undefined;
+      const p = placed[j.id] || (row?.lat != null && row?.lng != null ? { lat: row.lat, lng: row.lng } : c?.lat != null && c?.lng != null ? { lat: c.lat, lng: c.lng } : null);
+      return p ? { ...j, lat: p.lat, lng: p.lng } : j;
+    })
+  });
+
   /* the answer of the server, now and every 30 s (paused while the app is hidden) */
   useEffect(() => {
     let alive = true;
@@ -61,7 +74,7 @@ export default function MapScreen({ query }: ScreenProps) {
       if (typeof document !== 'undefined' && document.hidden) return;
       setBusy(true);
       try {
-        const data = normalize(await rpcNow<unknown>('team_map', { p_day: day }));
+        const data = withLocalPositions(normalize(await rpcNow<unknown>('team_map', { p_day: day })));
         if (!alive) return;
         const at = Date.now();
         memory.set(memKey(day), { data, at });
@@ -189,13 +202,7 @@ export default function MapScreen({ query }: ScreenProps) {
       else if (r.found) {
         toast(t('map.lost.found', { n: r.found }), { kind: 'ok' });
         // the positions found are on this phone already: on the map now; the server's answer follows
-        setLoaded((cur) => ({ ...cur, data: { ...cur.data, jobs: cur.data.jobs.map((j) => {
-          if (j.lat != null && j.lng != null) return j;
-          const row = jobRow(j.id);
-          const c = row?.customer_id ? customerRow(row.customer_id) : undefined;
-          const p = r.placed[j.id] || (row?.lat != null && row?.lng != null ? { lat: row.lat, lng: row.lng } : c?.lat != null && c?.lng != null ? { lat: c.lat, lng: c.lng } : null);
-          return p ? { ...j, lat: p.lat, lng: p.lng } : j;
-        }) } }));
+        setLoaded((cur) => ({ ...cur, data: withLocalPositions(cur.data, r.placed) }));
         void flush().catch(() => undefined).finally(() => setReload((n) => n + 1));
       }
       else toast(t('map.lost.none'), { kind: 'bad' });

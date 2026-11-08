@@ -2,7 +2,7 @@
    (when, who, which job), and its sheet (name, part number, category, unit, minimum, cost, price, supplier, notes,
    active). Phone: two tabs. Computer: side by side. */
 import { useState } from 'preact/hooks';
-import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, RotateCcw } from 'lucide-preact';
+import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, RotateCcw, Trash2 } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { stamp } from '../../lib/dates';
@@ -10,8 +10,9 @@ import { getRow } from '../../data/store';
 import { inventoryList, movesOf, staffName, job } from '../../data/select';
 import type { InventoryItem, InventoryMove } from '../../data/types';
 import { wide } from '../../app/media';
-import { Sheet, Tabs, Form, Field, Input, Textarea, MoneyInput, Switch, Button, Pill, Help, Empty, toast, attempt } from '../../ui';
-import { parseQty, formatQty, qtyLabel, unitWord, itemValue, isLow, moveDelta, round2, recordMove, saveItem, REASON, type MoveKind } from './stock';
+import { Sheet, Tabs, Form, Field, Input, Textarea, MoneyInput, Switch, Button, Pill, Help, Empty, Seg, toast, attempt, ask } from '../../ui';
+import { deleteInventoryItem, type PaidFrom } from '../../data/api';
+import { parseQty, formatQty, qtyLabel, unitWord, itemValue, isLow, moveDelta, round2, recordMove, recordPurchase, saveItem, REASON, type MoveKind } from './stock';
 
 export function useQty() {
   const l = lang.value;
@@ -69,6 +70,11 @@ function StockPart(p: { item: InventoryItem }) {
   const [text, setText] = useState('');
   const [note, setNote] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  // « Entrée »: what was paid, and who paid it (the money leaves the Trésorerie or the Coffre by itself)
+  const [price, setPrice] = useState<number | null>(null);
+  const [from, setFrom] = useState<PaidFrom>('none');
+  const [vendor, setVendor] = useState('');
+  const [priceErr, setPriceErr] = useState<string | null>(null);
   const cur = Number(item.qty);
   const amount = parseQty(text);
   const delta = mode && amount != null ? moveDelta(mode, amount, cur) : null;
@@ -82,6 +88,13 @@ function StockPart(p: { item: InventoryItem }) {
     if (mode !== 'count' && amount <= 0) { setErr(t('inventory.sheet.errZero')); return; }
     const d = moveDelta(mode, amount, cur);
     if (d === 0) { toast(t('inventory.sheet.same'), { kind: 'ok' }); setText(''); return; }
+    if (mode === 'in' && from !== 'none') {
+      if (!price || price <= 0) { setPriceErr(t('inventory.sheet.buy.needPrice')); return; }
+      const ok = await attempt(() => recordPurchase(item.id, d, price, from, vendor.trim() || null, note.trim() || null),
+        { ok: t(from === 'coffre' ? 'inventory.sheet.buy.doneCoffre' : 'inventory.sheet.buy.doneTreasury', { amount: money(price, l) }) });
+      if (ok) { setText(''); setNote(''); setErr(null); setPrice(null); setVendor(''); setFrom('none'); setPriceErr(null); }
+      return;
+    }
     const ok = await attempt(() => recordMove(item.id, d, REASON[mode], note.trim() || null), { ok: t(`inventory.sheet.done.${mode}`) });
     if (ok) { setText(''); setNote(''); setErr(null); }
   };
@@ -122,6 +135,22 @@ function StockPart(p: { item: InventoryItem }) {
                 {unitShown && <span class="input-unit" aria-hidden="true">{unitShown}</span>}
               </span>
             </Field>
+            {mode === 'in' && (
+              <div class="stack inv-buy" data-testid="move-buy">
+                <Field label={t('inventory.sheet.buy.from')} help={t('inventory.sheet.buy.fromHelp')} group>
+                  <Seg value={from} onValue={(v) => { setFrom(v); setPriceErr(null); }} label={t('inventory.sheet.buy.from')} data-testid="move-from"
+                    options={[{ value: 'none', label: t('inventory.sheet.buy.none') }, { value: 'treasury', label: t('inventory.sheet.buy.treasury') }, { value: 'coffre', label: t('inventory.sheet.buy.coffre') }]} />
+                </Field>
+                {from !== 'none' && <>
+                  <Field label={t('inventory.sheet.buy.price')} hint={t(from === 'coffre' ? 'inventory.sheet.buy.priceHintCoffre' : 'inventory.sheet.buy.priceHintTreasury')} error={priceErr}>
+                    <MoneyInput cents={price} onCents={(c) => { setPrice(c); setPriceErr(null); }} aria-label={t('inventory.sheet.buy.price')} data-testid="move-price" />
+                  </Field>
+                  <Field label={t('inventory.sheet.buy.vendor')} optional>
+                    <Input value={vendor} maxLength={80} autoComplete="off" onValue={setVendor} data-testid="move-vendor" />
+                  </Field>
+                </>}
+              </div>
+            )}
             <Field label={t('inventory.sheet.note')} optional hint={t('inventory.sheet.noteHint')}>
               <Input value={note} maxLength={200} onValue={setNote} data-testid="move-note" />
             </Field>
@@ -213,6 +242,13 @@ function EditForm(p: { item: InventoryItem | null; onDone?: () => void }) {
     }, first), { ok: isNew ? t('inventory.sheet.created') : t('inventory.sheet.saved') });
     if (ok && isNew) p.onDone?.();
   };
+  // gone for good: no history, no link to a service; nothing to undo
+  const del = async () => {
+    if (!item) return;
+    if (!(await ask({ title: t('inventory.sheet.deleteTitle', { name: item.name }), text: t('inventory.sheet.deleteText'), ok: t('inventory.sheet.deleteOk'), danger: true }))) return;
+    const ok = await attempt(() => deleteInventoryItem(item.id), { ok: t('inventory.sheet.deleted', { name: item.name }) });
+    if (ok) p.onDone?.();
+  };
 
   return (
     <Form class="stack inv-edit" onSubmit={save}>
@@ -256,6 +292,7 @@ function EditForm(p: { item: InventoryItem | null; onDone?: () => void }) {
       </Field>
       {!isNew && <Switch checked={f.active} onChange={(v) => set({ active: v })} label={t('inventory.sheet.active')} hint={t('inventory.sheet.activeHint')} data-testid="item-active" />}
       <Button variant="primary" type="submit" block data-testid="item-save">{isNew ? t('inventory.sheet.createItem') : t('inventory.sheet.saveItem')}</Button>
+      {!isNew && <Button variant="danger" block icon={<Trash2 size={18} />} onClick={del} data-testid="item-delete">{t('inventory.sheet.delete')}</Button>}
       <datalist id="inv-categories">{categories.map((c) => <option key={c} value={c} />)}</datalist>
       <datalist id="inv-units">{units.map((c) => <option key={c} value={c} />)}</datalist>
       <datalist id="inv-suppliers">{suppliers.map((c) => <option key={c} value={c} />)}</datalist>

@@ -4,7 +4,7 @@
    has left the phone (or was refused), so the screen never keeps a wrong count. */
 import { effect } from '@preact/signals';
 import { roundCents, type Cents } from '../../lib/money';
-import { moveStock, saveInventoryItem } from '../../data/api';
+import { moveStock, saveInventoryItem, buyStock, type PaidFrom } from '../../data/api';
 import { getRow, patchLocal } from '../../data/store';
 import { net, refetch } from '../../data/sync';
 import type { InventoryItem } from '../../data/types';
@@ -101,6 +101,12 @@ export async function recordMove(itemId: string, delta: number, reason: 'restock
   settle(itemId);
   keepAfterSave('inventory_moves', id);
   return id;
+}
+/** stock bought and paid (Trésorerie or Coffre): the server moves the stock and the money together */
+export async function recordPurchase(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null): Promise<void> {
+  await buyStock(itemId, qty, totalCents, from, vendor, note);
+  showQty(itemId, qty);
+  settle(itemId);
 }
 /** saves an item's sheet; a new item starts with its first quantity */
 export async function saveItem(item: Partial<InventoryItem>, firstQty: number | null): Promise<string> {

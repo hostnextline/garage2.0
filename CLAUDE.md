@@ -63,7 +63,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261108000160_retour_centrale.sql` (Part 24 ter, applied 2026-11-08 from commit `a4f2da6`;
+- Applied on live: every migration up to `20261108000180_achat_inventaire.sql` (Parts 24 quater and quinquies, applied 2026-11-08 from
+  commit `9c02c8b`; Part 24 ter from `a4f2da6`;
   Part 24 bis from `e9d9652`, Part 24 from `9835d52`, all with the
   sha256 check; Parts 21–22 were applied through the connector's `apply_migration` and recorded under the wrong versions, fixed the
   same day with `ops/live/2026-11-08_versions_migrations.sql`, so `schema_migrations` now matches the file names). Part 22: the
@@ -162,6 +163,17 @@ end $do$;
   `messages.*.return_trip`, switch `on.return_trip`) with the live map link, like a customer's. « Je suis arrivé » = `return_end`;
   ending the day marks the trip arrived. `public_track` answers `kind` and `dest_label` for it (the page says « … est en route vers la
   Centrale », owner's language). App: `activeReturnTrip`, `doReturn`/`doReturnEnd`, `ReturnCard` in `MechanicDay`.
+- Parts and inventory (Part 24 quater, `20261108000170_pieces_confirmees.sql`): « Terminer la job » first opens « Pièces utilisées »
+  (`PartsSheet`, `confirmParts()`; the list from `plannedParts()`: the job's lines that are items + `service_parts` × quantity) and
+  sends the confirmed quantities with the step (`job_step finish`, `p_data.parts`); `use_parts(job, parts)` takes exactly those off
+  the inventory, once per job (no list = the planned parts, as before). « Supprimer cet article » in the item sheet =
+  `inventory_delete(op, item)` (owner or « inventory » right): the item, its moves and its service links are deleted for good;
+  the phone forgets them (`forgetLocal`).
+- Buying stock (Part 24 quinquies, `20261108000180_achat_inventaire.sql`): « Entrée » in an item's sheet has « Payé par »
+  (Rien / Trésorerie / Coffre) and the total paid. `inventory_buy(op, item, qty, total, from, vendor, note)` moves the stock and the
+  money in one transaction: Trésorerie = an expense « Pièces » (taxes split from the total), Coffre = a `coffre` row of
+  `kind = 'purchase'` (`item_id`, `item_name`, `qty`); the item's `cost_cents` becomes the unit price paid. `coffre_report` gives
+  `amount_cents` (received), `spent_cents`, `balance_cents` (all time); the Coffre screen and its exports show purchases as money out.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 and 13 were flaky there before Phase 2.

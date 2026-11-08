@@ -317,6 +317,17 @@ export const jobs = {
     callOffice: 'Appeler le bureau'
   },
   /* texts to the customer */
+  parts: {
+    title: 'Pièces utilisées',
+    sub: 'Confirme ce qui sort de l’inventaire pour cette job',
+    help: 'Les quantités prévues sont déjà écrites. Ajuste si tu en as pris plus ou moins, puis confirme : l’inventaire se met à jour tout seul.',
+    planned: 'Prévu : {q}',
+    onHand: 'En stock : {q}',
+    short: 'Il n’en reste pas assez en stock pour : {names}. La quantité sera quand même retirée (le stock passera sous zéro).',
+    none: 'Aucune pièce',
+    confirm: { one: 'Confirmer la pièce', other: 'Confirmer les {n} pièces' },
+    confirmNone: 'Confirmer (rien d’utilisé)'
+  },
   text: {
     title: 'Textos au client',
     none: 'Aucun texto envoyé pour cette job.',

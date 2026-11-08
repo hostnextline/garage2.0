@@ -54,6 +54,8 @@ export default function CoffreScreen(_p: ScreenProps) {
             <div class="coffre-totals">
               <div class="coffre-total"><span class="muted small">{t('coffre.count')}</span><b class="num">{data.count}</b></div>
               <div class="coffre-total"><span class="muted small">{t('coffre.given')}</span><b class="num" data-testid="coffre-amount">{money(data.amount_cents, l)}</b></div>
+              <div class="coffre-total"><span class="muted small">{t('coffre.spent')}</span><b class="num" data-testid="coffre-spent">{money(data.spent_cents, l)}</b></div>
+              <div class="coffre-total"><span class="muted small">{t('coffre.balance')}</span><b class="num" data-testid="coffre-balance">{money(data.balance_cents, l)}</b></div>
               <div class="coffre-total"><span class="muted small">{t('coffre.worth')}</span><b class="num">{money(data.value_cents, l)}</b></div>
             </div>
             <div class="coffre-actions" style={{ marginTop: 'var(--sp-3)' }}>
@@ -66,11 +68,11 @@ export default function CoffreScreen(_p: ScreenProps) {
               <Rows>
                 {data.rows.slice().reverse().map((r) => (
                   <RowItem key={r.id} href={r.job_ids[0] ? `#/job/${r.job_ids[0]}` : undefined} data-testid={`coffre-row-${r.id}`}
-                    title={<>{r.customer} <span class="muted small">{longDay(r.day, l)}</span></>}
-                    sub={[t('coffre.jobs', { n: r.job_numbers.map((x) => `#${x}`).join(', ') }), r.work, r.note].filter(Boolean).join('. ')}
+                    title={<>{r.kind === 'purchase' ? t('coffre.purchase', { what: r.work }) : r.customer} <span class="muted small">{longDay(r.day, l)}</span></>}
+                    sub={(r.kind === 'purchase' ? [r.note] : [t('coffre.jobs', { n: r.job_numbers.map((x) => `#${x}`).join(', ') }), r.work, r.note]).filter(Boolean).join('. ')}
                     end={<span class="stack" style={{ alignItems: 'flex-end', gap: 0 }}>
-                      <b class="num">{money(r.amount_cents, l)}</b>
-                      <span class="muted small">{t('coffre.worthShort', { value: money(r.value_cents, l) })}</span>
+                      <b class={`num${r.kind === 'purchase' ? ' coffre-out' : ''}`}>{r.kind === 'purchase' ? `−${money(r.amount_cents, l)}` : money(r.amount_cents, l)}</b>
+                      {r.kind === 'received' && <span class="muted small">{t('coffre.worthShort', { value: money(r.value_cents, l) })}</span>}
                       {isOwner() && <Button size="sm" variant="ghost" icon={<Undo2 />} confirm={t('coffre.removeConfirm')} onClick={() => remove(r.id)}>{t('coffre.remove')}</Button>}
                     </span>} />
                 ))}

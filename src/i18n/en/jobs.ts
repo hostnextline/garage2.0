@@ -300,6 +300,17 @@ export const jobs: typeof fr = {
     payFirstMechanic: 'Payment is needed before leaving. Only the office can let a customer go without paying: call them.',
     callOffice: 'Call the office'
   },
+  parts: {
+    title: 'Parts used',
+    sub: 'Confirm what leaves the inventory for this job',
+    help: 'The planned quantities are already filled in. Adjust if you took more or less, then confirm: the inventory updates by itself.',
+    planned: 'Planned: {q}',
+    onHand: 'In stock: {q}',
+    short: 'Not enough left in stock for: {names}. The quantity will be taken off anyway (the stock will go below zero).',
+    none: 'No parts',
+    confirm: { one: 'Confirm the part', other: 'Confirm the {n} parts' },
+    confirmNone: 'Confirm (nothing used)'
+  },
   text: {
     title: 'Texts to the customer',
     none: 'No text sent for this job.',

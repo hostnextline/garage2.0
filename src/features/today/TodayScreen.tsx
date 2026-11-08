@@ -10,6 +10,7 @@ import { t, lang } from '../../lib/i18n';
 import { today, longDay } from '../../lib/dates';
 import { GuideCard } from '../guide/GuideCard';
 import { TextOutcomeHost } from '../jobs/TextOutcome';
+import { PartsHost } from '../jobs/PartsSheet';
 import { startPositionSharing } from './position';
 import { todayRole } from './select';
 import { MechanicDay } from './MechanicDay';
@@ -27,6 +28,7 @@ export default function TodayScreen(_p: ScreenProps) {
       <GuideCard />
       {role === 'mechanic' ? <MechanicDay /> : role === 'office' ? <OfficeDay /> : <TreasurerDay />}
       <TextOutcomeHost />
+      <PartsHost />
     </Page>
   );
 }

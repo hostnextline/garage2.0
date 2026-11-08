@@ -1,7 +1,7 @@
 /* Every change the app makes goes through here: on screen at once, sent when possible (see sync.ts), refused with a
    clear message when the server says no. In « Voir l'app comme… » nothing can be changed. */
-import { insertRow, updateRow, deleteRow, callRpc, uuid, isNetworkError } from './sync';
-import { getRow } from './store';
+import { insertRow, updateRow, deleteRow, callRpc, uuid, isNetworkError, forgetLocal } from './sync';
+import { getRow, rowsOf } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
 import { t, lang } from '../lib/i18n';
@@ -193,6 +193,23 @@ export async function saveInventoryItem(i: Partial<InventoryItem>): Promise<stri
   const id = await upsert('inventory_items', rest, { unit: 'unité', active: true, qty: 0 });
   if (isNew && qty) await moveStock(id, Number(qty), 'restock', null);
   return id;
+}
+/** an item removed with no trace: the server deletes it with its moves and its links to services; the phone forgets them */
+export async function deleteInventoryItem(id: string) {
+  guard();
+  const r = await callRpc('inventory_delete', { p_item: id }, { label: t('log.inventory') });
+  const moves = rowsOf<{ id: string; item_id: string }>('inventory_moves').filter((m) => m.item_id === id).map((m) => m.id);
+  const links = rowsOf<{ id: string; item_id: string }>('service_parts').filter((p) => p.item_id === id).map((p) => p.id);
+  await forgetLocal('inventory_moves', moves);
+  await forgetLocal('service_parts', links);
+  await forgetLocal('inventory_items', [id]);
+  return r;
+}
+/** stock bought: the quantity comes in and the money leaves the Trésorerie (an expense) or the Coffre, in one step */
+export type PaidFrom = 'treasury' | 'coffre' | 'none';
+export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null) {
+  guard();
+  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note }, { label: t('log.inventory') });
 }
 export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null) {
   guard();
