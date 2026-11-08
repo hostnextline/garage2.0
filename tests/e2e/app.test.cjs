@@ -702,8 +702,9 @@ step('Addresses: the ones typed without a choice are found by themselves; the ma
   await page.getByTestId('map-lost-find').click();
   await page.getByText('Position trouvée : le rendez-vous est sur la carte.').waitFor({ timeout: 15000 });
   await page.getByTestId('map-lost').waitFor({ state: 'detached', timeout: 20000 }).catch(() => { throw new Error('the note stays: ' + asked.join(' | ')); });
-  assert.match(h.sql(`select coalesce(lat::text, '') from public.jobs where id = '${jobKhalil}'`), /^45\.527/);
-  assert.match(h.sql(`select coalesce(lat::text, '') from public.customers where id = '${nour}'`), /^45\.527/);
+  // (the customer is saved first, the appointment a few ms later: wait for both, not for the instant the note went away)
+  assert.match(await until(() => h.sql(`select coalesce(lat::text, '') from public.jobs where id = '${jobKhalil}'`), (v) => /^45\.527/.test(v), 10000), /^45\.527/);
+  assert.match(await until(() => h.sql(`select coalesce(lat::text, '') from public.customers where id = '${nour}'`), (v) => /^45\.527/.test(v), 10000), /^45\.527/);
   await h.shot(page, 'e2e-13-map-all');
   // 4) the address field: typed without choosing, the position is taken when leaving the field (the address stays as typed)
   await page.goto(h.APP + `#/customer/${other}`);
