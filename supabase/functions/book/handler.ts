@@ -5,9 +5,10 @@
 //          transaction (web_book); then the usual confirmation text. A failure after the booking never hides it:
 //          the page still gets « ok » and the link (text: 'error'); the same booking sent again gets the same job.
 // Brakes (Part 24, rate_hit): « slots » 20 per 10 min per visitor and 150 an hour in all; « book » 12 tries an hour per visitor.
-import { serve, json, body, fail } from '../_shared/http.ts';
+import { serve, json, body, fail, env } from '../_shared/http.ts';
 import { adminDb, settings, secret } from '../_shared/db.ts';
-import { sha256hex, newToken } from '../_shared/tokens.ts';
+import { sha256hex, hmacHex, newToken } from '../_shared/tokens.ts';
+import { sumLines } from '../_shared/money.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
 import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang } from '../_shared/texts.ts';
@@ -30,10 +31,12 @@ async function rpc(name: string, args: Row) {
   if (error) throw error;
   return data;
 }
-/** who is asking, as a fingerprint (never the address itself) */
+/** who is asking, as a fingerprint for the day: keyed with a secret, so the address cannot be found back from it */
 async function ipOf(req: Request): Promise<string | null> {
   const ip = (req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || '').split(',')[0].trim();
-  return ip ? (await sha256hex(`web-book:${ip}`)).slice(0, 24) : null;
+  if (!ip) return null;
+  const day = new Date().toISOString().slice(0, 10);
+  return (await hmacHex(env('SUPABASE_SERVICE_ROLE_KEY', 'web-book'), `web:${day}:${ip}`)).slice(0, 24);
 }
 /** the brake: false when this visitor (or everyone) asked too often */
 async function allowed(key: string, windowSec: number, max: number): Promise<boolean> {
@@ -43,11 +46,11 @@ async function allowed(key: string, windowSec: number, max: number): Promise<boo
 async function robot(ip: string | null, reason: string) {
   try { await adminDb().from('activity').insert({ entity: 'web', entity_id: null, action: 'web_robot', data: { reason, ip } }); } catch { /* a log only */ }
 }
-function taxed(lines: Row[], s: Row): number {
-  let sub = 0, tx = 0;
-  for (const l of lines) { const t = Math.round(Number(l.qty || 1) * Number(l.unit_cents || 0)); sub += t; if (l.taxable !== false) tx += t; }
-  const on = s.taxes?.enabled !== false && tx > 0;
-  return sub + (on ? Math.round(tx * (s.taxes?.tps ?? 0.05)) + Math.round(tx * (s.taxes?.tvq ?? 0.09975)) : 0);
+/** the {total} of the text: the fixed part, and a word when some of the work is by the hour (never « 0,00 $ ») */
+function totalWords(fixedCents: number, hourly: boolean, lang: Lang): string {
+  if (!hourly) return money(fixedCents, lang);
+  if (fixedCents <= 0) return lang === 'en' ? 'as per the work on site' : 'selon le travail sur place';
+  return `${money(fixedCents, lang)} ${lang === 'en' ? '+ work by the hour' : '+ travaux à l’heure'}`;
 }
 
 async function info() {
@@ -111,12 +114,18 @@ async function book(req: Request, b: Row) {
     const tpl = String(s.messages?.[lang]?.booking || s.messages?.fr?.booking || '');
     if (tpl) {
       const blk = ((s.booking?.blocks || []) as Row[]).find((x) => x.key === res.block) || { start: 480, end: 720 };
-      const { data: items } = await db.from('job_items').select('qty, unit_cents, taxable, status').eq('job_id', jobId).is('deleted_at', null);
+      const { data: items } = await db.from('job_items').select('qty, unit_cents, taxable, kind, status').eq('job_id', jobId).is('deleted_at', null);
       const cardOn = !!(await secret('stripe_key'));
+      // work by the hour has no price yet: the text says so instead of « 0,00 $ »
+      const offered = (await rpc('web_services', {}) || []) as Row[];
+      const chosen = new Set(services(b.services));
+      const hourly = offered.some((x) => chosen.has(String(x.id)) && (x.price_cents === null || x.price_cents === undefined));
       const message = fill(tpl, {
-        prenom: first(cu.first_name || b.first_name) || '', garage: s.company?.name || 'Mécanique Mobile H.I.S', telephone: s.company?.phone || '',
+        // the person who booked is greeted by the name they typed (a spouse on a shared number is not « Bonjour Marc »)
+        prenom: first(typeof b.first_name === 'string' ? b.first_name : '') || first(cu.first_name) || '',
+        garage: s.company?.name || 'Mécanique Mobile H.I.S', telephone: s.company?.phone || '',
         jour: longDay(String(res.day), lang), debut: clock(blk.start, lang), fin: clock(blk.end, lang), bloc: blockWords(String(res.block), lang),
-        payer: payNowWords(cardOn, lang), total: money(taxed((items || []) as Row[], s), lang), lien: link
+        payer: payNowWords(cardOn, lang), total: totalWords(sumLines((items || []) as Row[], s).total, hourly, lang), lien: link
       });
       const quiet = cu.sms_ok === false || s.messages?.on?.booking === false;
       const r = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message);

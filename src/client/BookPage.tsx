@@ -167,7 +167,7 @@ function Address(p: { l: CLang; value: Place | null; onValue: (x: Place | null) 
   const { l } = p;
   const [q, setQ] = useState('');
   const [list, setList] = useState<Suggestion[]>([]);
-  const [state, setState] = useState<'idle' | 'searching' | 'none' | 'offline'>('idle');
+  const [state, setState] = useState<'idle' | 'searching' | 'none' | 'offline' | 'service'>('idle');
   const [hint, setHint] = useState(false);
   useEffect(() => {
     if (p.value || q.trim().length < 4) { setList([]); setState('idle'); return; }
@@ -184,7 +184,7 @@ function Address(p: { l: CLang; value: Place | null; onValue: (x: Place | null) 
         ok = onTypedStreet(x.status === 'found' ? [x.place] : x.status === 'choose' ? x.choices : [], q);
       }
       setList(ok);
-      setState(r.error === 'offline' ? 'offline' : ok.length ? 'idle' : 'none');
+      setState(r.error === 'offline' ? 'offline' : r.error === 'service' && !ok.length ? 'service' : ok.length ? 'idle' : 'none');
     }, 350);
     return () => { ctl.abort(); clearTimeout(t); };
   }, [q, p.value]);
@@ -219,6 +219,7 @@ function Address(p: { l: CLang; value: Place | null; onValue: (x: Place | null) 
             {state === 'searching' && ct(l, 'book.address.searching')}
             {state === 'none' && ct(l, 'book.address.nothing')}
             {state === 'offline' && ct(l, 'book.address.offline')}
+            {state === 'service' && ct(l, 'book.address.service')}
           </div>
           {list.length > 0 && (
             <ul class="bk-sugg" data-testid="book-suggestions">
@@ -249,8 +250,9 @@ function Slots(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; value:
   const [busy, setBusy] = useState(false);
   const [end, setEnd] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [failed, setFailed] = useState<'network' | 'server' | null>(null);   // the first ask did not come back: not « the garage is full »
   const ask = async (f: string | null) => {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setFailed(null);
     try {
       const r = await callBook<{ from: string | null; days: number; slots: WebSlot[] }>('slots', { lat: p.place.lat, lng: p.place.lng, services: p.ids, from: f, days: PAGE_DAYS });
       setSlots((cur) => (f && cur ? mergeSlots(cur, r.slots) : r.slots));
@@ -261,8 +263,10 @@ function Slots(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; value:
       if (f && !r.slots.length) setEnd(true);
     } catch (e) {
       const code = e instanceof ClientError ? e.code : 'server';
-      if (code === 'network' || code === 'server') setErr(ct(l, errorKey(code))); else p.onRefused(e);
-      if (!f) setSlots((cur) => cur || []);
+      if (code === 'network' || code === 'server' || code === 'busy') {
+        if (!f) { setSlots(null); setFailed(code === 'network' ? 'network' : 'server'); }
+        setErr(ct(l, errorKey(code)));
+      } else p.onRefused(e);
     } finally { setBusy(false); }
   };
   useEffect(() => { void ask(null); }, []);
@@ -272,7 +276,8 @@ function Slots(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; value:
       <h1 id="bk-t3" class="bk-title" ref={p.titleRef} tabIndex={-1}>{ct(l, 'book.slots.title')}</h1>
       <p class="cl-sub">{ct(l, 'book.slots.sub')}</p>
       {p.msg && <Note kind="warn">{p.msg}</Note>}
-      {slots === null ? <p class="cl-muted" role="status">{ct(l, 'book.slots.loading')}</p> : (
+      {slots === null && failed ? <ErrorState code={failed} l={l} garage={p.garage} onRetry={() => void ask(null)} />
+      : slots === null ? <p class="cl-muted" role="status">{ct(l, 'book.slots.loading')}</p> : (
         <>
           {slots.length === 0 && !busy && <div class="cl-stack"><Note kind="info">{ct(l, from && !end ? 'book.slots.none' : 'book.slots.noneMore')}</Note></div>}
           <ul class="bk-slots">

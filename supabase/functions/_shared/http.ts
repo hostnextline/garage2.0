@@ -15,17 +15,20 @@ export function fail(code: string, message: string, status = 400): never { throw
 export async function body<T = Record<string, unknown>>(req: Request): Promise<T> {
   try { return (await req.json()) as T; } catch { return {} as T; }
 }
-/** runs a handler: CORS preflight, JSON errors, never a stack trace to the outside */
+/** runs a handler: CORS preflight, JSON errors, never a stack trace (or a database's own words) to the outside */
 export function serve(fn: (req: Request) => Promise<Response>) {
   return async (req: Request): Promise<Response> => {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     try { return await fn(req); }
     catch (e) {
       if (e instanceof Fail) return json({ ok: false, code: e.code, error: e.message }, e.status);
+      // a refusal raised by public.fail() (errcode P0001, the code in the hint) is an answer; any other database
+      // error (a wrong column, a bad cast…) is a server problem: a short reference in the log, nothing technical outside
       const err = e as { message?: string; hint?: string; code?: string };
-      if (err?.hint) return json({ ok: false, code: err.hint, error: err.message }, 400);
-      console.error(e);
-      return json({ ok: false, code: 'server', error: 'Le serveur a eu un problème. Réessaie dans un instant.' }, 500);
+      if (err?.code === 'P0001' && err?.hint) return json({ ok: false, code: err.hint, error: err.message }, 400);
+      const ref = Math.random().toString(36).slice(2, 8);
+      console.error(`[${ref}]`, err?.code || '', String(err?.message || e).slice(0, 300));
+      return json({ ok: false, code: 'server', error: 'Le serveur a eu un problème. Réessaie dans un instant.', ref }, 500);
     }
   };
 }

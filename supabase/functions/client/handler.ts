@@ -11,6 +11,7 @@ import { baseOf } from '../_shared/links.ts';
 import { stripeCall } from '../_shared/stripe.ts';
 import { applyCheckout } from '../_shared/payments.ts';
 import { longDay, first, money } from '../_shared/texts.ts';
+import { sumLines } from '../_shared/money.ts';
 
 type Row = Record<string, any>;
 
@@ -23,13 +24,8 @@ async function linkOf(token: unknown): Promise<Row> {
   if (Date.parse(l.expires_at) < Date.now()) fail('expired', 'Ce lien a expiré. Demandez-en un nouveau au garage.', 410);
   return l;
 }
-function taxesOf(s: Row, lines: Row[]) {
-  let sub = 0, tx = 0;
-  for (const l of lines) { const t = Math.round(Number(l.qty || 1) * Number(l.unit_cents || 0)) * (l.kind === 'discount' && Number(l.unit_cents) > 0 ? -1 : 1); sub += t; if (l.taxable !== false) tx += t; }
-  const on = s.taxes?.enabled !== false && tx > 0;
-  const tps = on ? Math.round(tx * (s.taxes?.tps ?? 0.05)) : 0, tvq = on ? Math.round(tx * (s.taxes?.tvq ?? 0.09975)) : 0;
-  return { subtotal: sub, tps, tvq, total: sub + tps + tvq };
-}
+/** the totals of lines, the same way everywhere (discounts count negative): _shared/money.ts */
+const taxesOf = (s: Row, lines: Row[]) => sumLines(lines, s);
 async function view(l: Row) {
   const db = adminDb();
   const s = await settings();

@@ -196,6 +196,7 @@ export const client: typeof fr = {
     address: { title: 'Where is your vehicle?', sub: 'The mechanic comes to this address: your driveway, your parking spot or the street.',
       label: 'Address', placeholder: 'E.g. 1250 Graham St, Mount Royal', unit: 'Apartment (optional)', unitIn: 'apt. {unit}', pick: 'Choose your address from the list.',
       searching: 'Searching…', nothing: 'No address found. Check the number, the street and the city, or call us.', offline: 'No network: check your connection.',
+      service: 'The address search is not answering. Try again in a moment, or call us.',
       chosen: 'Address chosen', change: 'Change', street: 'The door number is not on the map: the mechanic will call you if needed.',
       seeDates: 'See the dates' },
     slots: { title: 'Choose the time', sub: 'These times are the closest to our other customers that day: the mechanic gets to you faster.',

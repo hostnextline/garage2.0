@@ -98,6 +98,10 @@ describe('cash: the change to give back (no pennies in Canada)', () => {
   });
   it('the exact cash amount settles the invoice even when rounded down', () => {
     expect(cashChange(9267, 9265)).toMatchObject({ record: 9267, change: 0, short: 0 });
+    // the rounding's few cents never leave an invoice open: 10,00 $ handed for 10,03 $ is paid; 10,00 $ for 10,07 $ is short
+    expect(cashChange(1003, 1000)).toMatchObject({ dueCash: 1005, record: 1003, change: 0, short: 0 });
+    expect(cashChange(1007, 1000)).toMatchObject({ dueCash: 1005, record: 1000, change: 0, short: 5 });
+    expect(cashChange(1007, 1005)).toMatchObject({ record: 1007, change: 0, short: 0 });
   });
   it('less than due: only what was received is recorded', () => {
     expect(cashChange(9267, 5000)).toMatchObject({ record: 5000, change: 0, short: 4265 });

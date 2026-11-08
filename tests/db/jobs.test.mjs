@@ -127,6 +127,32 @@ test('cancel and « Client absent »: amount lost, the block frees up, back on t
   assert.equal(await h.val(`select lost_cents from public.jobs where id = $1`, [r.job_id]), 5000);
 }));
 
+test('an issued invoice keeps its taxes whoever touches it; the app cannot change a job’s length or delete it directly (Part 25)', () => tx(async (h) => {
+  const g = await garage(h);
+  const jobId = await jobOnSite(h, g);
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'waiver', p_data: { signer: 'Jean Tremblay', version: '1' } });
+  await h.as(g.owner);
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true })).rows.invoices[0];
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv.id });
+  assert.equal(await h.val(`select tps_cents from public.invoices where id = $1`, [inv.id]), 400);
+  // the tax rate changes in Réglages, then the server re-sends the invoice (a direct update, not an RPC)
+  await h.as(null);
+  await h.c.query(`update public.settings set taxes = jsonb_set(taxes, '{tps}', '0.10') where id = 1`);
+  await h.c.query(`update public.invoices set sent_at = now() where id = $1`, [inv.id]);
+  const after = await h.one(`select tps_cents, tvq_cents, total_cents from public.invoices where id = $1`, [inv.id]);
+  assert.deepEqual([after.tps_cents, after.total_cents], [400, 9197], 'issued once, the taxes never move');
+  // a draft still follows the rate
+  const draft = await h.val(`insert into public.invoices (job_id, customer_id, lines, status) values ($1, $2, '[{"description":"x","qty":1,"unit_cents":1000}]', 'draft') returning tps_cents`, [jobId, g.customer]);
+  assert.equal(draft, 100);
+  // the mechanic may change the notes of his job, not its length (set_job_duration does that, with the room check) nor delete it
+  await h.as(g.mech);
+  assert.equal(await h.fails(() => h.c.query(`update public.jobs set notes = 'ok' where id = $1`, [jobId])), null);
+  assert.match(String((await h.fails(() => h.c.query(`update public.jobs set duration_min = 90 where id = $1`, [jobId])))?.message), /permission denied/);
+  assert.match(String((await h.fails(() => h.c.query(`update public.jobs set deleted_at = now() where id = $1`, [jobId])))?.message), /permission denied/);
+  // names compared without accents, capitals or punctuation
+  assert.equal(await h.val(`select public.fold_name('  Élodie-Marie ') = public.fold_name('elodie marie')`), true);
+}));
+
 test('a cancel in a block that has already started leaves the other jobs on their truck (Part 24)', () => tx(async (h) => {
   const now = await h.val(`select public.now_min()`);
   const b = await h.one(`select key, start_min, end_min from public.blocks() where start_min <= $1 order by start_min desc limit 1`, [now]);

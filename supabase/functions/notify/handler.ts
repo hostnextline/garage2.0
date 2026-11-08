@@ -8,6 +8,7 @@ import { newToken, sha256hex } from '../_shared/tokens.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
 import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang } from '../_shared/texts.ts';
+import { sumLines } from '../_shared/money.ts';
 
 const KINDS = ['booking', 'moved', 'arrived', 'invoice', 'extras', 'payment_reminder', 'reminder'];
 const LINK_DAYS = 90;
@@ -16,12 +17,8 @@ function blockWindow(s: Record<string, any>, key: string): [number, number] {
   const b = (s.booking?.blocks || []).find((x: { key: string }) => x.key === key) || { start: 480, end: 720 };
   return [b.start, b.end];
 }
-function taxed(lines: { qty: number; unit_cents: number; taxable: boolean }[], s: Record<string, any>): number {
-  let sub = 0, tx = 0;
-  for (const l of lines) { const t = Math.round(Number(l.qty || 1) * Number(l.unit_cents || 0)); sub += t; if (l.taxable !== false) tx += t; }
-  const on = s.taxes?.enabled !== false && tx > 0;
-  return sub + (on ? Math.round(tx * (s.taxes?.tps ?? 0.05)) + Math.round(tx * (s.taxes?.tvq ?? 0.09975)) : 0);
-}
+/** the total of lines, the same way everywhere (discounts count negative): _shared/money.ts */
+const taxed = (lines: Record<string, unknown>[], s: Record<string, any>): number => sumLines(lines, s).total;
 export async function makeLink(jobId: string | null, quoteId: string | null, by: string | null, base: string, lang: string) {
   const token = newToken(24);
   await adminDb().from('public_links').insert({ token_hash: await sha256hex(token), job_id: jobId, quote_id: quoteId,
@@ -74,7 +71,7 @@ export const handler = serve(async (req) => {
   const its = (items || []) as Record<string, any>[];
   if (kind === 'booking' || kind === 'moved') {
     const planned = its.filter((i) => ['planned', 'done', 'approved'].includes(i.status));
-    vars.total = money(taxed(planned as never, s), lang);
+    vars.total = money(taxed(planned, s), lang);
   }
   if (kind === 'extras' || kind === 'arrived') {
     const { data: mech } = j.truck_id ? await db.from('trucks').select('driver_id, staff:driver_id(short_name, full_name)').eq('id', j.truck_id).maybeSingle() : { data: null };

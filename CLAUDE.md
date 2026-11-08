@@ -119,6 +119,16 @@ end $do$;
   three Stripe secrets together and every database refusal is an error. The backup now includes `coffre`, `positions`,
   `position_log`, `op_log`, `stripe_events` (test: every table is backed up or listed in `never`). `ops/live/2026-11-08_versions_migrations.sql`
   fixes two misrecorded versions in live's `schema_migrations` (to run by hand, dry run first).
+- Phase 1 of the audit (Part 25, `20261108000200_phase1_money_rights.sql`, branch `phase-1`, **not applied on live, functions not
+  redeployed**): an issued invoice keeps its totals whoever updates the row (`invoice_totals` keys on `status <> 'draft'`, not on
+  `garage.rpc`); the app can no longer `update jobs set duration_min / deleted_at` directly; `fold_name(text)`; `web_book` matches a
+  customer on phone **and** first/last name (another name on the same number = a new file noted « Même numéro… »; a file is never
+  changed from the public form); `housekeeping` prunes `activity` after 24 months. Server: `_shared/money.ts` `sumLines` is the one
+  total calculator (book, notify, client; discounts negative); `serve()` maps only `P0001` refusals to a code, any other database error
+  is a 500 with a short `ref` in the log; the booking text greets the typed first name and says « selon le travail sur place » /
+  « + travaux à l’heure » instead of « 0,00 $ »; the visitor fingerprint is an HMAC (service key + day). App: cash within 4 ¢ of the
+  amount due counts as paid in full (`cashChange`); the address search tells « the service is not answering » apart from « no
+  network » (`places.ts` error `service`); a failed first ask for dates shows the error with « Réessayer », not « no free time ».
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

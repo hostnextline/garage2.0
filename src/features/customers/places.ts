@@ -3,7 +3,8 @@
    question twice is answered from memory (not an empty answer, and not when asked to ask again). */
 import { photonUrl, photonQuery, suggestionsOf, type Suggestion } from './photon';
 
-export interface Found { places: Suggestion[]; error: 'offline' | null }
+/** error: 'offline' = no network (or no answer in time); 'service' = the map service answered with an error */
+export interface Found { places: Suggestion[]; error: 'offline' | 'service' | null }
 const cache = new Map<string, Suggestion[]>();
 
 /** `fresh`: asks again even when the answer is kept (« Trouver »: the map service may know it now) */
@@ -20,7 +21,7 @@ export async function searchPlaces(q: string, signal?: AbortSignal, opts: { fres
   const timer = setTimeout(stop, 6000);
   try {
     const r = await fetch(photonUrl(query), { signal: ctl.signal, headers: { accept: 'application/json' } });
-    if (!r.ok) return { places: [], error: 'offline' };
+    if (!r.ok) return { places: [], error: 'service' };
     const places = suggestionsOf(await r.json(), query);
     if (places.length) cache.set(key, places);           // an empty answer is asked again next time
     if (cache.size > 60) cache.delete(cache.keys().next().value as string);

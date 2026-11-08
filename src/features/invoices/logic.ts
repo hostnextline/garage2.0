@@ -72,11 +72,12 @@ export function cleanLine(l: LineLike & { item_id?: string | null }): InvoiceLin
 /** the amount a customer can hand over in cash: rounded to the nearest 5 ¢ (no more pennies in Canada) */
 export function cashRound(cents: number): number { return Math.round(cents / 5) * 5; }
 export interface Cash { due: number; dueCash: number; received: number | null; record: number; change: number; short: number }
-/** cash received for an amount due: the change to give back, and what is recorded (never more than the amount due) */
+/** cash received for an amount due: the change to give back, and what is recorded (never more than the amount due).
+    A few cents under (10,00 $ handed for 10,03 $, the rounding) count as paid in full: no invoice stays open for 3 ¢. */
 export function cashChange(due: number, received: number | null | undefined): Cash {
   const dueCash = cashRound(due);
   if (received == null) return { due, dueCash, received: null, record: due, change: 0, short: 0 };
-  if (received >= dueCash) return { due, dueCash, received, record: due, change: received - dueCash, short: 0 };
+  if (received >= dueCash || due - received < 5) return { due, dueCash, received, record: due, change: Math.max(0, received - dueCash), short: 0 };
   return { due, dueCash, received, record: Math.max(0, received), change: 0, short: dueCash - received };
 }
 /** the bills a customer is likely to hand over: the exact amount, then the next round amounts */

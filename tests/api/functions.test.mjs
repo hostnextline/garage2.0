@@ -404,6 +404,7 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
   await q(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, '[[480,1200]]')`, [truck, dow]);
   const oil = (await q(`insert into public.services (name_fr, name_en, price_cents, duration_min) values ('Huile web', 'Oil web', 8000, 45) returning id`))[0].id;
   const off = (await q(`insert into public.services (name_fr, price_cents, duration_min, active) values ('Hors ligne', 1000, 30, false) returning id`))[0].id;
+  const hourly = (await q(`insert into public.services (name_fr, price_cents, duration_min) values ('Diagnostic web', null, 60) returning id`))[0].id;
   const phone = `514 555-${String(Math.floor(1000 + Math.random() * 8999))}`;
   try {
     const info = await fn('book', { action: 'info' });
@@ -453,13 +454,24 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
     assert.equal(again.text, 'already');
     assert.ok(again.link.startsWith(BASE + 'client.html#t=') && again.link !== r.link, 'a fresh link');
     assert.equal((await fn('client', { action: 'view', token: tokenOf(again.link) })).customer.first, 'Sophie', 'that opens the same page');
-    // the same phone: the same customer (their file is not changed), the car found again; a third coming one is refused
-    const r2 = await fn('book', { ...form, first_name: 'Autre', address: '10 rue Autre, Montréal', vehicle: { make: 'toyota', model: 'rav4' } });
+    // the same phone and the same name (accents and capitals aside): the same customer, the car found again, the file not changed
+    const r2 = await fn('book', { ...form, first_name: 'SOPHIE', email: 'sophie@exemple.ca', address: '10 rue Autre, Montréal', vehicle: { make: 'toyota', model: 'rav4' } });
     assert.equal(r2.ok, true, JSON.stringify(r2)); assert.equal(r2.again, false, 'another address: another booking');
     assert.equal((await q(`select count(*)::int n from public.customers where phone_digits = $1`, [phone.replace(/\D/g, '')]))[0].n, 1);
-    assert.equal((await q(`select first_name from public.customers where id = $1`, [c.id]))[0].first_name, 'Sophie');
+    assert.deepEqual((await q(`select first_name, email from public.customers where id = $1`, [c.id]))[0], { first_name: 'Sophie', email: null }, 'nothing written on the file from the public form');
     assert.equal((await q(`select count(distinct vehicle_id)::int n from public.jobs where customer_id = $1`, [c.id]))[0].n, 1);
-    assert.equal((await fn('book', { ...form, address: '20 rue Trois, Montréal' })).code, 'too_many');
+    // the same phone with another name (a spouse, a prank): a new file marked for the office, never the other person's file
+    const r3 = await fn('book', { ...form, first_name: 'Marc', last_name: 'Autre', address: '20 rue Trois, Montréal' });
+    assert.equal(r3.code, 'too_many', 'the brake counts the phone number, whoever types it');
+    await q(`update public.jobs set status = 'cancelled' where id = $1`, [j.id]);
+    const r4 = await fn('book', { ...form, first_name: 'Marc', last_name: 'Autre', address: '20 rue Trois, Montréal' });
+    assert.equal(r4.ok, true, JSON.stringify(r4));
+    const twins = await q(`select id, first_name, notes from public.customers where phone_digits = $1 order by created_at`, [phone.replace(/\D/g, '')]);
+    assert.equal(twins.length, 2, 'a second file');
+    made.customers.push(twins[1].id);
+    assert.equal(twins[1].first_name, 'Marc'); assert.match(twins[1].notes, /Même numéro/);
+    await q(`update public.jobs set status = 'booked' where id = $1`, [j.id]);
+    await q(`update public.jobs set status = 'cancelled' where customer_id = $1`, [twins[1].id]);
     assert.equal((await fn('book', form)).again, true, 'the first booking sent again is still that booking, not « too_many »');
     // closed in Réglages: the page says to call
     await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'false') where id = 1`);
@@ -476,10 +488,18 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).ok, true, 'a new window: allowed again');
     // a robot (the hidden field filled) is noted for the office, nothing else
     assert.equal((await q(`select count(*)::int n from public.activity where entity = 'web' and action = 'web_robot'`))[0].n, 1);
+    // work by the hour (no price yet): the text never says « 0,00 $ »
+    const phone2 = `438 555-${String(Math.floor(1000 + Math.random() * 8999))}`;
+    const rh = await fn('book', { ...form, phone: phone2, first_name: 'Hugo', services: [hourly], address: '30 rue Heure, Montréal' });
+    assert.equal(rh.ok, true, JSON.stringify(rh));
+    const [ch] = await q(`select id from public.customers where phone_digits = $1`, [phone2.replace(/\D/g, '')]);
+    made.customers.push(ch.id);
+    const [mh] = await q(`select body from public.messages where customer_id = $1 and kind = 'booking'`, [ch.id]);
+    assert.ok(mh && /selon le travail sur place/.test(mh.body) && !/0,00/.test(mh.body), mh?.body);
   } finally {
     await q(`delete from public.rate_limits`);
     await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
-    await q(`delete from public.job_items where service_id = any($1)`, [[oil, off]]);
-    await q(`delete from public.services where id = any($1)`, [[oil, off]]);
+    await q(`delete from public.job_items where service_id = any($1)`, [[oil, off, hourly]]);
+    await q(`delete from public.services where id = any($1)`, [[oil, off, hourly]]);
   }
 });
