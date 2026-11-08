@@ -60,11 +60,13 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261107000500_web_booking.sql` (Part 23, see below); before it, up to `20261107000400_coffre_mechanic.sql` (Parts 21 and 22, applied 2026-11-07 through the
-  connector's `apply_migration` with the files' text, commits `96431c9` and `02dd77a`; Part 20 from commit `28c51cc`). Part 22: the
+- Applied on live: every migration up to `20261108000100_phase0_safety.sql` (Part 24, applied 2026-11-08 from commit `9835d52` with the
+  sha256 check; Parts 21–22 were applied through the connector's `apply_migration` and recorded under the wrong versions, fixed the
+  same day with `ops/live/2026-11-08_versions_migrations.sql`, so `schema_migrations` now matches the file names). Part 22: the
   mechanic of the job's truck may also put jobs in the Coffre (`coffre_may_add`).
-- Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off),
-  currently `2610bc8` (`book`: `7b1b86b`). Shared code is in `supabase/functions/_shared/`.
+- Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
+  `book`, `team`, `backup` at `9835d52`; the others (`client`, `conversation`, `enroute`, `notify`, `stripe`, `vin`) at `2610bc8`.
+  Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
 - Free plan: the project pauses after a week without use.
 
@@ -107,8 +109,7 @@ end $do$;
   over 14 days (`suggest_core`, same ranking as `suggest_blocks`; « Voir d'autres dates » = next 14), then name/phone/car.
   `web_book` finds the customer by phone (file not changed) or creates one, books with `source = 'web'`, sends the usual
   booking text. Brakes: 2 coming web jobs per phone, 30 web bookings an hour, a hidden field for robots.
-- Phase 0 of the audit of 2026-11-08 (Part 24, `20261108000100_phase0_safety.sql`, branch `phase-0`, **not applied on live, `book`
-  and `team` not redeployed**): `block_open(day, block)` is the one rule for « may this block still be re-planned »; `replan_block`
+- Phase 0 of the audit of 2026-11-08 (Part 24, `20261108000100_phase0_safety.sql`, live since 2026-11-08): `block_open(day, block)` is the one rule for « may this block still be re-planned »; `replan_block`
   and `set_job_duration` leave a started block alone (a cancel at 11:20 no longer throws the other morning jobs to « À placer »).
   `rate_limits` + `rate_hit(key, window_sec, max)`: the brake of the public `book` function (« slots » 20 / 10 min per visitor,
   150 / h in all; « book » 12 tries / h per visitor → `busy`, 429). `web_book` makes the customer's link itself (`p.token_hash`), returns the
