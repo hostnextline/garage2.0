@@ -66,7 +66,7 @@ end $do$;
 - Applied on live: every migration up to `20261108000100_phase0_safety.sql` (Part 24, applied 2026-11-08 from commit `9835d52` with the
   sha256 check; Parts 21–22 were applied through the connector's `apply_migration` and recorded under the wrong versions, fixed the
   same day with `ops/live/2026-11-08_versions_migrations.sql`, so `schema_migrations` now matches the file names). Part 22: the
-  mechanic of the job's truck may also put jobs in the Coffre (`coffre_may_add`).
+  mechanic of the job's truck may also put jobs in the Coffre (`coffre_may_add`; Part 26 on `v2` opens it to the whole team).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
   `book`, `team`, `backup` at `9835d52`; the others (`client`, `conversation`, `enroute`, `notify`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
@@ -140,7 +140,7 @@ end $do$;
   skips a step) and what was typed in `sessionStorage` for 2 h (`saveDraft`/`loadDraft`).
 - Phase 2 of the audit (Part 26, `20261108000300_phase2_safety_nets.sql`, branch `v2`, **not applied on live, functions not
   redeployed**): new functions are closed to `anon`/`authenticated` by default on live too (`alter default privileges`), and
-  `tests/db/rights.test.mjs` keeps the exact list of what the app and the public may call; `coffre_add` written in full;
+  `tests/db/rights.test.mjs` keeps the exact list of what the app and the public may call; `coffre_add` written in full and « Payé par le Coffre » open to every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet and the job menu follow);
   `app_errors` + `report_error()` (the phones report uncaught errors, refused promises and CSP violations: `src/app/errors.ts`;
   20/h per person, 90 days); `heartbeats` + `health()` (open to anon: newest migration, last backup started/done, written by
   the `backup` function); `serve()` answers `GET ?version` with the deploy commit (`codeCommit()`). `ops/pouls.sh` (ping and

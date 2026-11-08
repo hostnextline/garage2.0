@@ -6,7 +6,6 @@ import { money } from '../../lib/money';
 import { longDay, today } from '../../lib/dates';
 import { allJobs, customer as customerRow, customerName, invoiceOf, jobTotals, paymentsOf } from '../../data/select';
 import { coffreAdd } from '../../data/api';
-import { isOwner, myTrucks } from '../../data/auth';
 import type { Job } from '../../data/types';
 import { Sheet, Button, Field, MoneyInput, Textarea, DateInput, Check, Banner, run } from '../../ui';
 import { coffreCandidates } from './logic';
@@ -21,8 +20,8 @@ function CoffreOpen(p: { job: Job; onClose: () => void; onDone?: () => void }) {
   const l = lang.value;
   const prepaid = (jobId: string) => paymentsOf({ jobId }).length > 0;
   // the mechanic: the jobs his trucks do (as the server allows); the owner: all of them
-  const mine = (j: Job) => isOwner() || (!!j.truck_id && myTrucks().includes(j.truck_id));
-  const list = coffreCandidates(p.job, allJobs.value.filter(mine), (id) => invoiceOf(id), prepaid).slice(0, 30);
+  // every member of the team may put the customer's jobs in the Coffre (the server says the same, coffre_may_add)
+  const list = coffreCandidates(p.job, allJobs.value, (id) => invoiceOf(id), prepaid).slice(0, 30);
   const [picked, setPicked] = useState<string[]>(() => list.some((j) => j.id === p.job.id) ? [p.job.id] : []);
   const [amount, setAmount] = useState<number | null>(null);
   const [note, setNote] = useState('');

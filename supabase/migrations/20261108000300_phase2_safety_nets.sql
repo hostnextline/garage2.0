@@ -4,6 +4,8 @@
 --                        only ADDS to that: the revoke has to be global for the role that makes the functions (postgres).
 --                        Before: a function without a word about rights was callable by anyone signed in (jobs_waiver_via,
 --                        a trigger, was in that state; closed here)
+--   coffre_may_add       « Payé par le Coffre » is for every member of the team (Part 22 kept it to the owner and the
+--                        mechanic of the job's truck; the office takes those payments too)
 --   coffre_add           written out in full (Part 22 patched its text with replace(); a text patch cannot be replayed)
 --   app_errors           the phones tell the server when the app breaks (report_error: 20 an hour per person, the same
 --                        error counted once an hour; kept 90 days). The owner reads them with SQL or the connector.
@@ -16,7 +18,14 @@ alter default privileges for role postgres revoke execute on functions from publ
 alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
 revoke execute on function public.jobs_waiver_via() from public, anon, authenticated;
 
--- ---------- coffre_add, whole (Part 20 + Part 22) ----------
+-- ---------- the Coffre: every member of the team may put jobs in it ----------
+create or replace function public.coffre_may_add(p_jobs uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_staff() and cardinality(coalesce(p_jobs, '{}')) > 0
+$$;
+revoke all on function public.coffre_may_add(uuid[]) from public, anon;
+grant execute on function public.coffre_may_add(uuid[]) to authenticated, service_role;
+
+-- ---------- coffre_add, whole (Part 20 + Part 22 + everyone) ----------
 create or replace function public.coffre_add(p_op uuid, p_jobs uuid[], p_amount int, p_note text default null, p_day date default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -24,7 +33,7 @@ declare
   v_id uuid := gen_random_uuid(); j record; v_cust uuid; v_value int := 0; v_nums bigint[] := '{}'; v_ids uuid[] := '{}'; inv record;
 begin
   if v_done is not null then return v_done; end if;
-  if not public.coffre_may_add(p_jobs) then perform public.fail('not_allowed', 'Seuls le propriétaire et le mécano du camion mettent ces jobs au Coffre.'); end if;
+  if not public.coffre_may_add(p_jobs) then perform public.fail('not_allowed', 'Connecte-toi avec ton compte de l’équipe pour mettre des jobs au Coffre.'); end if;
   if p_jobs is null or cardinality(p_jobs) = 0 then perform public.fail('no_job', 'Choisis les jobs payées par le Coffre.'); end if;
   if cardinality(p_jobs) > 30 then perform public.fail('too_many', 'Au plus 30 jobs à la fois.'); end if;
   if p_amount is null or p_amount < 0 or p_amount > 10000000 then perform public.fail('bad_amount', 'Écris le montant reçu (0 $ si rien).'); end if;
