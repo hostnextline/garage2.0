@@ -1,8 +1,9 @@
 -- Part 26: phase 2 of the audit of 2026-11-08 — safety nets and hygiene.
---   default privileges   a function made from now on is closed to the app (anon, authenticated) until a migration opens
---                        it: the real project gave EXECUTE to authenticated by default, the local test copy did not, so
---                        a forgotten grant passed the tests and was callable on live (only jobs_waiver_via, a trigger,
---                        was in that state; closed here)
+--   default privileges   a function made from now on is closed to the app (anon, authenticated) and to everyone (PUBLIC)
+--                        until a migration opens it. Postgres gives EXECUTE to PUBLIC by default, and a per-schema default
+--                        only ADDS to that: the revoke has to be global for the role that makes the functions (postgres).
+--                        Before: a function without a word about rights was callable by anyone signed in (jobs_waiver_via,
+--                        a trigger, was in that state; closed here)
 --   coffre_add           written out in full (Part 22 patched its text with replace(); a text patch cannot be replayed)
 --   app_errors           the phones tell the server when the app breaks (report_error: 20 an hour per person, the same
 --                        error counted once an hour; kept 90 days). The owner reads them with SQL or the connector.
@@ -10,7 +11,8 @@
 --                        by the ping of GitHub every 6 hours and by the publishing workflow before it publishes the app
 --   housekeeping         prunes app_errors after 90 days
 
--- ---------- closed by default, like the local test copy ----------
+-- ---------- closed by default ----------
+alter default privileges for role postgres revoke execute on functions from public;
 alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
 revoke execute on function public.jobs_waiver_via() from public, anon, authenticated;
 

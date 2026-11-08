@@ -1,7 +1,7 @@
-// Who may call what (Part 26). The real project gives EXECUTE on a new function to « authenticated » by default; the
-// local copy never did, so a forgotten grant passed here and was open on live. Part 26 closes the default on both, and
-// this test keeps the exact list of what the app (authenticated) and the public (anon) may call: a new function shows
-// up here on purpose, with its grant, or not at all.
+// Who may call what (Part 26). Postgres gives EXECUTE on a new function to everyone by default (and the real project
+// to « authenticated » on top), so a function made without a word about rights was callable by anyone signed in. Part 26
+// closes that default, and this test keeps the exact list of what the app (authenticated) and the public (anon) may
+// call: a new function shows up here on purpose, with its grant, or not at all.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tx } from './helpers.mjs';
