@@ -17,7 +17,8 @@ import { invoiceById, amountsOf, invoiceCustomer, invoiceLabel, methodWord, METH
 import { sendText, SendSheet, type SendResult } from './send';
 import './invoices.css';
 
-export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void; /** after the sheet closes for « Coffre » (else the shell opens the Coffre sheet itself) */ onCoffre?: () => void }
+export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void; /** after the sheet closes for « Coffre » (else the shell opens the Coffre sheet itself) */ onCoffre?: () => void;
+  /** « Rembourser »: money given back to a customer who paid more than the invoice (a negative payment) */ refund?: boolean }
 
 const ICONS: Record<string, typeof Banknote> = { cash: Banknote, debit: Landmark, credit: CreditCard, interac: Send, cheque: FileText, other: Ellipsis };
 
@@ -43,7 +44,9 @@ export function PaySheet(p: PaySheetProps) {
 function PayOpen(p: PaySheetProps) {
   const inv = invoiceById(p.invoiceId);
   const a = inv ? amountsOf(inv) : null;
-  const balance = a?.balance ?? 0;
+  const refund = !!p.refund;
+  // the amount in play: what is left to pay, or (refund) what was paid too much
+  const balance = refund ? (a?.over ?? 0) : (a?.balance ?? 0);
   const [amount, setAmount] = useState<number | null>(balance);
   const [touched, setTouched] = useState(false);
   const [method, setMethod] = useState<PayMethod | null>(null);
@@ -58,23 +61,23 @@ function PayOpen(p: PaySheetProps) {
   const close = p.onClose;
   const l = lang.value;
   const who = inv ? customerName(invoiceCustomer(inv)) : '';
-  const title = t('invoices.pay.title');
+  const title = refund ? t('invoices.pay.refund.title') : t('invoices.pay.title');
   if (!inv || !a) {
     return <Sheet open onClose={close} title={title}><Empty title={t('invoices.pay.missing')} text={t('invoices.pay.missingText')} /></Sheet>;
   }
   const sub = who ? t('invoices.pay.sub', { n: invoiceLabel(inv, l), who }) : t('invoices.numbered', { n: invoiceLabel(inv, l) });
   // (while a payment is being sent, its own rows arrive just before the sheet closes: keep the form)
-  if (!sending && (inv.status !== 'issued' || balance <= 0)) {
-    const kind = inv.status === 'draft' ? 'draft' : inv.status === 'void' ? 'void' : 'paid';
+  if (!sending && (refund ? balance <= 0 : (inv.status !== 'issued' || balance <= 0))) {
+    const kind = refund ? 'refund' : inv.status === 'draft' ? 'draft' : inv.status === 'void' ? 'void' : 'paid';
     return (
       <Sheet open onClose={close} title={title} sub={sub} footer={<Button variant="primary" onClick={close}>{t('common.close')}</Button>} data-testid="pay-sheet">
-        <Banner kind={kind === 'paid' ? 'ok' : 'warn'}>{t(`invoices.pay.not.${kind}`)}</Banner>
+        <Banner kind={kind === 'paid' || kind === 'refund' ? 'ok' : 'warn'}>{kind === 'refund' ? t('invoices.pay.refund.none') : t(`invoices.pay.not.${kind}`)}</Banner>
       </Sheet>
     );
   }
 
   const isCash = method === 'cash';
-  const cash = isCash ? cashChange(amount ?? 0, received) : null;
+  const cash = isCash && !refund ? cashChange(amount ?? 0, received) : null;
   const record = cash ? cash.record : amount ?? 0;
   const amountError = amount == null || amount <= 0 ? t('invoices.pay.errAmount') : amount > balance ? t('invoices.pay.errTooMuch', { max: money(balance, l) }) : null;
   const canPay = !!method && !amountError && record > 0;
@@ -84,19 +87,19 @@ function PayOpen(p: PaySheetProps) {
     if (!canPay || !method) return;
     const change = cash?.change || 0;
     setSending(true);
-    const r = await run(() => addPayment(inv.id, record, method, needsRef && reference.trim() ? reference.trim() : null, inv.job_id),
-      { ok: change > 0 ? t('invoices.pay.doneChange', { change: money(change, l) }) : t('invoices.pay.done') });
+    const r = await run(() => addPayment(inv.id, refund ? -record : record, method, needsRef && reference.trim() ? reference.trim() : null, inv.job_id),
+      { ok: refund ? t('invoices.pay.refund.done', { amount: money(record, l) }) : change > 0 ? t('invoices.pay.doneChange', { change: money(change, l) }) : t('invoices.pay.done') });
     if (r !== undefined) { close(); p.onPaid?.(); } else setSending(false);
   };
 
   const theJob = inv.job_id ? jobRow(inv.job_id) : undefined;
-  const coffreOk = !!theJob && mayCoffre(theJob) && a.paid <= 0;
+  const coffreOk = !refund && !!theJob && mayCoffre(theJob) && a.paid <= 0;
   const toCoffre = () => {
     if (!theJob) return;
     close();
     if (p.onCoffre) p.onCoffre(); else openCoffre(theJob.id);
   };
-  const confirmLabel = !method ? t('invoices.pay.pickMethod') : t('invoices.pay.confirm', { amount: money(record, l) });
+  const confirmLabel = !method ? t('invoices.pay.pickMethod') : refund ? t('invoices.pay.refund.confirm', { amount: money(record, l) }) : t('invoices.pay.confirm', { amount: money(record, l) });
   return (
     <Sheet open onClose={close} title={title} sub={sub} data-testid="pay-sheet"
       footer={<>
@@ -105,10 +108,13 @@ function PayOpen(p: PaySheetProps) {
       </>}>
       <div class="stack-lg">
         <div class="pay-due">
-          <span class="pay-due-label">{a.paid > 0 ? t('invoices.pay.balance') : t('invoices.pay.toPay')}</span>
+          <span class="pay-due-label">{refund ? t('invoices.pay.refund.toGive') : a.paid > 0 ? t('invoices.pay.balance') : t('invoices.pay.toPay')}</span>
           <span class="pay-due-amount money" data-testid="pay-balance">{money(balance, l)}</span>
-          {a.paid > 0 && <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>}
+          {refund
+            ? <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>
+            : a.paid > 0 && <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>}
         </div>
+        {refund && <Banner kind="info">{t('invoices.pay.refund.hint')}</Banner>}
 
         <Field label={t('invoices.pay.method')} group>
           <div class="pay-methods" role="radiogroup" aria-label={t('invoices.pay.method')}>
@@ -129,8 +135,8 @@ function PayOpen(p: PaySheetProps) {
           </div>
         </Field>
 
-        <Field label={t('invoices.pay.amount')} hint={!amountError && amount != null && amount < balance ? t('invoices.pay.partial', { left: money(balance - amount, l) }) : undefined} error={touched ? amountError : null}>
-          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c) => { setTouched(true); setAmount(c); }} aria-label={t('invoices.pay.amount')} /></div>
+        <Field label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} hint={!refund && !amountError && amount != null && amount < balance ? t('invoices.pay.partial', { left: money(balance - amount, l) }) : undefined} error={touched ? amountError : null}>
+          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c) => { setTouched(true); setAmount(c); }} aria-label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} /></div>
         </Field>
 
         {isCash && cash && (
@@ -162,7 +168,7 @@ function PayOpen(p: PaySheetProps) {
           </Field>
         )}
 
-        {inv.job_id && (
+        {inv.job_id && !refund && (
           <div class="pay-link">
             <h3 class="pay-link-title"><Smartphone aria-hidden="true" />{t('invoices.pay.link.title')}</h3>
             {stripe.value === 'off'

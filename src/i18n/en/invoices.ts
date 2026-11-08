@@ -145,7 +145,8 @@ export const invoices: typeof fr = {
     help: 'The invoice starts from the job’s work. While it is a draft, you can change the lines. “Finish the invoice” gives it its number: it no longer changes after that.',
     helpIssued: 'A finished invoice no longer changes. Take the payment here, or text it to the customer: their page has the “Pay” button when card payment is connected.',
     overTitle: 'Overpaid: {amount} to give back to the customer',
-    over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Refund them, then record the refund as a negative payment. A refund made in Stripe is recorded by itself.',
+    over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Give the difference back, then record it here. A refund made in Stripe is recorded by itself.',
+    overButton: 'Record the refund',
     noJob: 'This job is not on this phone.',
     expected: 'Expected total',
     expectedHint: 'From the job’s work, taxes included.',
@@ -226,6 +227,15 @@ export const invoices: typeof fr = {
     sub: 'Invoice {n} for {who}',
     missing: 'Invoice not found',
     missingText: 'It is not (or no longer) on this phone. Close and try again in a moment.',
+    refund: {
+      title: 'Refund',
+      none: 'Nothing to refund: the customer did not pay more than the invoice.',
+      toGive: 'To give back to the customer',
+      amount: 'Amount given back',
+      confirm: 'Record {amount} refunded',
+      done: 'Refund of {amount} recorded.',
+      hint: 'Record here money given back in person or by transfer. A refund made in Stripe is recorded by itself.'
+    },
     not: {
       draft: 'Finish the invoice before taking the payment.',
       void: 'This invoice is cancelled: nothing to collect.',

@@ -184,6 +184,7 @@ function FinishedInvoice(p: { job: Job; inv: Invoice }) {
   const pays = paymentsOfInvoice(inv.id);
   const editable = canEditInvoiceOf(job);
   const [payOpen, setPayOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
   const [manual, setManual] = useState<SendResult | null>(null);
   const pdf = usePdf();
   const pendingPays = usePending((e) => e.rpc === 'payment_add' && e.args?.p_invoice === inv.id);
@@ -217,7 +218,12 @@ function FinishedInvoice(p: { job: Job; inv: Invoice }) {
           <Totals subtotal={a.subtotal} tps={a.tps} tvq={a.tvq} total={a.total} paid={a.paid} taxesOn={a.showTaxes} />
         </div>
         {(pays.length > 0 || pendingPays.length > 0) && <PaymentsList pays={pays} pending={pendingPays} />}
-        {a.over > 0 && <Banner kind="warn" title={t('invoices.panel.overTitle', { amount: money(a.over, l) })} data-testid="invoice-over">{t('invoices.panel.over')}</Banner>}
+        {a.over > 0 && (
+          <Banner kind="warn" title={t('invoices.panel.overTitle', { amount: money(a.over, l) })} data-testid="invoice-over">
+            <p style={{ margin: 0 }}>{t('invoices.panel.over')}</p>
+            {editable && <Button size="sm" onClick={() => setRefundOpen(true)} data-testid="invoice-refund">{t('invoices.panel.overButton')}</Button>}
+          </Banner>
+        )}
         {inv.status === 'issued' && (
           <div class="stack">
             {editable
@@ -237,6 +243,7 @@ function FinishedInvoice(p: { job: Job; inv: Invoice }) {
         )}
       </div>
       <PaySheet open={payOpen} onClose={() => setPayOpen(false)} invoiceId={inv.id} />
+      <PaySheet open={refundOpen} refund onClose={() => setRefundOpen(false)} invoiceId={inv.id} />
       <SendSheet result={manual} onClose={() => setManual(null)} />
       {pdf.sheet}
     </Panel>

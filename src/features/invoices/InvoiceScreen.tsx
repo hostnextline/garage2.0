@@ -57,6 +57,7 @@ function DocScreen(p: { inv: Invoice }) {
   const editable = canEditInvoiceOf(j);
   const manage = canManageInvoices();
   const [payOpen, setPayOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
   const [manual, setManual] = useState<SendResult | null>(null);
   const pdf = usePdf();
   const prev = useRef(inv.status);
@@ -101,7 +102,12 @@ function DocScreen(p: { inv: Invoice }) {
                         : t('invoices.screen.issuedOn', { when: stampText(inv.issued_at, l) })}
                 </span>
               </div>
-              {a.over > 0 && <Banner kind="warn" title={t('invoices.panel.overTitle', { amount: money(a.over, l) })} data-testid="invoice-over">{t('invoices.panel.over')}</Banner>}
+              {a.over > 0 && (
+                <Banner kind="warn" title={t('invoices.panel.overTitle', { amount: money(a.over, l) })} data-testid="invoice-over">
+                  <p style={{ margin: 0 }}>{t('invoices.panel.over')}</p>
+                  {editable && <Button size="sm" onClick={() => setRefundOpen(true)} data-testid="invoice-refund">{t('invoices.panel.overButton')}</Button>}
+                </Banner>
+              )}
               {inv.status === 'issued' && editable && (
                 <Button variant="primary" block class="inv-pay-btn" icon={<Banknote />} onClick={() => setPayOpen(true)} data-tour="invoice-pay" data-testid="invoice-pay">
                   {t('invoices.panel.pay', { amount: money(a.balance, l) })}
@@ -151,6 +157,7 @@ function DocScreen(p: { inv: Invoice }) {
         </aside>
       </div>
       <PaySheet open={payOpen} onClose={() => setPayOpen(false)} invoiceId={inv.id} />
+      <PaySheet open={refundOpen} refund onClose={() => setRefundOpen(false)} invoiceId={inv.id} />
       <SendSheet result={manual} onClose={() => setManual(null)} />
       {pdf.sheet}
     </Page>

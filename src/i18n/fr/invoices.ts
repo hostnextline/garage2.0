@@ -145,7 +145,8 @@ export const invoices = {
     help: 'La facture part du travail de la job. Tant qu’elle est en brouillon, tu peux changer les lignes. « Terminer la facture » lui donne son numéro : elle ne change plus ensuite.',
     helpIssued: 'Une facture terminée ne change plus. Encaisse-la ici, ou texte-la au client : sa page a le bouton « Payer » quand le paiement par carte est branché.',
     overTitle: 'Trop-perçu : {amount} à remettre au client',
-    over: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Rembourse-le, puis inscris le remboursement comme un paiement négatif. Un remboursement fait dans Stripe s’inscrit tout seul.',
+    over: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Remets-lui la différence, puis inscris-la ici. Un remboursement fait dans Stripe s’inscrit tout seul.',
+    overButton: 'Inscrire le remboursement',
     noJob: 'Cette job n’est pas sur ce téléphone.',
     expected: 'Total prévu',
     expectedHint: 'Selon le travail de la job, taxes comprises.',
@@ -226,6 +227,15 @@ export const invoices = {
     sub: 'Facture {n} de {who}',
     missing: 'Facture introuvable',
     missingText: 'Elle n’est pas (ou plus) sur ce téléphone. Ferme et réessaie dans un instant.',
+    refund: {
+      title: 'Rembourser',
+      none: 'Rien à rembourser : le client n’a pas payé plus que la facture.',
+      toGive: 'À remettre au client',
+      amount: 'Montant remis',
+      confirm: 'Inscrire {amount} remboursé',
+      done: 'Remboursement de {amount} inscrit.',
+      hint: 'Inscris ici l’argent remis en main propre ou par virement. Un remboursement fait dans Stripe s’inscrit tout seul.'
+    },
     not: {
       draft: 'Termine la facture avant d’encaisser.',
       void: 'Cette facture est annulée : rien à encaisser.',
