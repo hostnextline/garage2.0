@@ -409,7 +409,8 @@ step('Mon compte: H.I.S light, dark or automatic; Réglages: « Vérifier les mi
   await page.waitForFunction(() => document.documentElement.dataset.mode === 'light');
   await page.getByTestId('theme-his-auto').click();
   await page.waitForFunction(() => document.documentElement.dataset.mode === 'light');   // the phone is light
-  assert.equal(h.sql(`select prefs->'look'->>'mode' from public.staff where id = '${who.owner.id}'`), 'auto');
+  // (the screen was light already: wait for the choice to reach the server, not for the screen)
+  assert.equal(await until(() => h.sql(`select prefs->'look'->>'mode' from public.staff where id = '${who.owner.id}'`), (v) => v === 'auto', 10000), 'auto');
   await page.getByTestId('account-update').waitFor();
   await page.goto(h.APP + '#/settings/app');
   await page.getByTestId('settings-app').waitFor();
