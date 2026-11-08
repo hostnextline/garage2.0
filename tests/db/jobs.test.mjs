@@ -65,13 +65,43 @@ test('a job from « Je pars » to « Terminé »: waiver, invoice with its numbe
   assert.equal(await h.val(`select status from public.invoices where id = $1`, [invoice.id]), 'issued');
   await h.rpc('payment_add', { p_op: uuid(), p_invoice: invoice.id, p_amount_cents: total - 5000, p_method: 'debit', p_reference: null, p_job: null, p_session: null });
   assert.equal(await h.val(`select status from public.invoices where id = $1`, [invoice.id]), 'paid');
-  // now the job can finish; the parts leave the inventory once
-  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: {} });
+  // now the job can finish; the parts the mechanic confirmed leave the inventory (Part 24 quater): 5 L of oil, no filter
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: { parts: [{ item_id: g.oil, qty: 5 }, { item_id: g.filter, qty: 0 }, { item_id: 'pas-un-id', qty: 3 }] } });
   assert.equal(await h.val(`select status from public.jobs where id = $1`, [jobId]), 'done');
   await h.as(null); await h.c.query('reset role');
-  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15.5);
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15);
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 5, 'the filter was not used');
+  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where job_id = $1`, [jobId]), 1);
+  // once: the list sent again (a retry) takes nothing more
+  await h.c.query(`select public.use_parts($1, $2)`, [jobId, JSON.stringify([{ item_id: g.oil, qty: 5 }])]);
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15);
+}));
+
+test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
+  const g = await garage(h);
+  const jobId = await jobOnSite(h, g);
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'waiver', p_data: { signer: 'Jean', version: '1' } });
+  const invoice = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true })).rows.invoices[0];
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: invoice.id });
+  const total = await h.val(`select total_cents from public.invoices where id = $1`, [invoice.id]);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: invoice.id, p_amount_cents: total, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobId, p_action: 'finish', p_data: {} });
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15.5, '4.5 L planned for the service');
   assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 4);
-  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where job_id = $1`, [jobId]), 2);
+  // delete for good: the inventory right (or the owner), not a mechanic without it
+  await h.as(g.mech);
+  assert.equal((await h.fails(() => h.rpc('inventory_delete', { p_op: uuid(), p_item: g.filter })))?.hint, 'not_allowed');
+  await h.as(g.owner);
+  const r = await h.rpc('inventory_delete', { p_op: uuid(), p_item: g.filter });
+  assert.deepEqual([r.ok, r.name], [true, 'Filtre PH7317']);
+  assert.equal((await h.fails(() => h.rpc('inventory_delete', { p_op: uuid(), p_item: g.filter })))?.hint, 'not_found');
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(await h.val(`select count(*)::int from public.inventory_items where id = $1`, [g.filter]), 0, 'gone');
+  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where item_id = $1`, [g.filter]), 0, 'its moves too');
+  assert.equal(await h.val(`select count(*)::int from public.service_parts where item_id = $1`, [g.filter]), 0, 'and its links to services');
+  assert.equal(await h.val(`select count(*)::int from public.job_items where item_id = $1`, [g.filter]), 0);
+  assert.equal(await h.val(`select count(*)::int from public.inventory_moves where item_id = $1`, [g.oil]), 1, 'the other item keeps its history');
 }));
 
 test('invoice numbers follow each other, never twice; a cancelled one keeps its number and the job gets a new one', () => tx(async (h) => {

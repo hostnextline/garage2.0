@@ -161,6 +161,11 @@ export const inventory: typeof fr = {
     errName: 'Enter the name of the item.',
     errNumber: 'Enter a quantity (for example 4 or 4.5).',
     saveItem: 'Save the item',
+    delete: 'Delete this item',
+    deleteTitle: 'Delete “{name}”?',
+    deleteText: 'The item disappears for good, with its history of moves and its links to services. Nothing is left. To keep it in the history without counting it, deactivate it instead.',
+    deleteOk: 'Delete for good',
+    deleted: '“{name}” deleted.',
     createItem: 'Add the item',
     saved: 'Item saved',
     created: 'Item added'

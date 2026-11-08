@@ -2,7 +2,7 @@
    (when, who, which job), and its sheet (name, part number, category, unit, minimum, cost, price, supplier, notes,
    active). Phone: two tabs. Computer: side by side. */
 import { useState } from 'preact/hooks';
-import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, RotateCcw } from 'lucide-preact';
+import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, RotateCcw, Trash2 } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { stamp } from '../../lib/dates';
@@ -10,7 +10,8 @@ import { getRow } from '../../data/store';
 import { inventoryList, movesOf, staffName, job } from '../../data/select';
 import type { InventoryItem, InventoryMove } from '../../data/types';
 import { wide } from '../../app/media';
-import { Sheet, Tabs, Form, Field, Input, Textarea, MoneyInput, Switch, Button, Pill, Help, Empty, toast, attempt } from '../../ui';
+import { Sheet, Tabs, Form, Field, Input, Textarea, MoneyInput, Switch, Button, Pill, Help, Empty, toast, attempt, ask } from '../../ui';
+import { deleteInventoryItem } from '../../data/api';
 import { parseQty, formatQty, qtyLabel, unitWord, itemValue, isLow, moveDelta, round2, recordMove, saveItem, REASON, type MoveKind } from './stock';
 
 export function useQty() {
@@ -213,6 +214,13 @@ function EditForm(p: { item: InventoryItem | null; onDone?: () => void }) {
     }, first), { ok: isNew ? t('inventory.sheet.created') : t('inventory.sheet.saved') });
     if (ok && isNew) p.onDone?.();
   };
+  // gone for good: no history, no link to a service; nothing to undo
+  const del = async () => {
+    if (!item) return;
+    if (!(await ask({ title: t('inventory.sheet.deleteTitle', { name: item.name }), text: t('inventory.sheet.deleteText'), ok: t('inventory.sheet.deleteOk'), danger: true }))) return;
+    const ok = await attempt(() => deleteInventoryItem(item.id), { ok: t('inventory.sheet.deleted', { name: item.name }) });
+    if (ok) p.onDone?.();
+  };
 
   return (
     <Form class="stack inv-edit" onSubmit={save}>
@@ -256,6 +264,7 @@ function EditForm(p: { item: InventoryItem | null; onDone?: () => void }) {
       </Field>
       {!isNew && <Switch checked={f.active} onChange={(v) => set({ active: v })} label={t('inventory.sheet.active')} hint={t('inventory.sheet.activeHint')} data-testid="item-active" />}
       <Button variant="primary" type="submit" block data-testid="item-save">{isNew ? t('inventory.sheet.createItem') : t('inventory.sheet.saveItem')}</Button>
+      {!isNew && <Button variant="danger" block icon={<Trash2 size={18} />} onClick={del} data-testid="item-delete">{t('inventory.sheet.delete')}</Button>}
       <datalist id="inv-categories">{categories.map((c) => <option key={c} value={c} />)}</datalist>
       <datalist id="inv-units">{units.map((c) => <option key={c} value={c} />)}</datalist>
       <datalist id="inv-suppliers">{suppliers.map((c) => <option key={c} value={c} />)}</datalist>

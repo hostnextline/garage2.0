@@ -161,6 +161,11 @@ export const inventory = {
     errName: 'Écris le nom de l’article.',
     errNumber: 'Écris une quantité (exemple : 4 ou 4,5).',
     saveItem: 'Enregistrer l’article',
+    delete: 'Supprimer cet article',
+    deleteTitle: 'Supprimer « {name} » ?',
+    deleteText: 'L’article disparaît pour de bon, avec son historique d’entrées et de sorties et ses liens aux services. Rien ne reste. Pour le garder dans l’historique sans qu’il compte, désactive-le plutôt.',
+    deleteOk: 'Supprimer pour de bon',
+    deleted: '« {name} » supprimé.',
     createItem: 'Ajouter l’article',
     saved: 'Article enregistré',
     created: 'Article ajouté'

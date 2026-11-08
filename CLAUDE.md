@@ -131,6 +131,12 @@ end $do$;
   `messages.*.return_trip`, switch `on.return_trip`) with the live map link, like a customer's. « Je suis arrivé » = `return_end`;
   ending the day marks the trip arrived. `public_track` answers `kind` and `dest_label` for it (the page says « … est en route vers la
   Centrale », owner's language). App: `activeReturnTrip`, `doReturn`/`doReturnEnd`, `ReturnCard` in `MechanicDay`.
+- Parts and inventory (Part 24 quater, `20261108000170_pieces_confirmees.sql`): « Terminer la job » first opens « Pièces utilisées »
+  (`PartsSheet`, `confirmParts()`; the list from `plannedParts()`: the job's lines that are items + `service_parts` × quantity) and
+  sends the confirmed quantities with the step (`job_step finish`, `p_data.parts`); `use_parts(job, parts)` takes exactly those off
+  the inventory, once per job (no list = the planned parts, as before). « Supprimer cet article » in the item sheet =
+  `inventory_delete(op, item)` (owner or « inventory » right): the item, its moves and its service links are deleted for good;
+  the phone forgets them (`forgetLocal`).
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

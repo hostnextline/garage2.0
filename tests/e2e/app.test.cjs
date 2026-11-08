@@ -114,6 +114,9 @@ step('the office books Julie: customer, service, block, truck; the job is on the
 });
 
 step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, cash with change, finished', async () => {
+  // the oil change takes a filter from the inventory (made before signing in: the phone's first copy of the data has it)
+  const filterId = h.sql(`insert into public.inventory_items (name, unit, qty) values ('Filtre à huile e2e', 'unité', 3) returning id`);
+  h.sql(`insert into public.service_parts (service_id, item_id, qty) values ('${SVC_OIL}', '${filterId}', 1)`);
   const { page } = await h.openW({ kind: 'phone' });
   await h.signIn(page, who.saleh.email, PW);
   await page.getByTestId('today-screen').waitFor();
@@ -149,8 +152,15 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await page.locator('[data-testid="pay-sheet"] input.input-money').nth(1).fill(String(Math.ceil(due / 100) + 10));
   await page.getByTestId('pay-change').waitFor();
   await page.getByTestId('pay-confirm').click();
+  // « Terminer la job »: the parts the service takes are confirmed first (1 filter here), then they leave the inventory
   await page.getByTestId('step-finish').click({ timeout: 15000 });
+  await page.getByTestId('parts-sheet').waitFor({ timeout: 20000 });
+  await page.getByTestId(`part-${filterId}`).waitFor();
+  await h.shot(page, 'e2e-2-parts');
+  await page.getByTestId('parts-confirm').click();
   await page.getByTestId('stamp-paid').waitFor({ timeout: 15000 });
+  assert.equal(Number(h.sql(`select qty from public.inventory_items where id = '${filterId}'`)), 2, 'one filter left the inventory');
+  assert.equal(h.sql(`select reason || '|' || delta from public.inventory_moves where job_id = '${jobId}'`), 'used|-1.00');
   await h.shot(page, 'e2e-2-done');
   const j = h.sql(`select status || '|' || (waiver_signed_at is not null) from public.jobs where id = '${jobId}'`);
   assert.equal(j, 'done|true');
