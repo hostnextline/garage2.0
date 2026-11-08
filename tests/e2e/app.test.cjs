@@ -494,15 +494,15 @@ step('Plus: a tile for each part the person may open, the filters, today in numb
   assert.equal(await page.getByTestId('more-filter-office').getAttribute('aria-pressed'), 'true');
   noErrors(page);
   await page.context().close();
-  // Saleh (mechanic): no team, no settings, no money he may not see; signing out still works from here
+  // Saleh (mechanic): no team, no money he may not see; Réglages is there (« L'app », the updates); signing out still works from here
   const m = await h.openW({ kind: 'phone', scheme: 'light' });
   await h.signIn(m.page, who.saleh.email, PW);
   await m.page.goto(h.APP + '#/more');
   await m.page.getByTestId('more-screen').waitFor();
   await m.page.getByTestId('more-today').waitFor();
   assert.equal(await m.page.getByTestId('more-team').count(), 0);
-  assert.equal(await m.page.getByTestId('more-settings').count(), 0);
-  assert.equal(await m.page.getByTestId('more-gear').count(), 0);
+  assert.equal(await m.page.getByTestId('more-settings').count(), 1, 'Réglages opens for everyone');
+  assert.equal(await m.page.getByTestId('more-gear').count(), 1);
   const canInvoices = await m.page.getByTestId('more-invoices').count();
   assert.equal(await m.page.getByTestId('more-stat-due').count(), canInvoices, 'the money owed only with the invoices');
   await h.shot(m.page, 'e2e-10-plus-mechanic');
