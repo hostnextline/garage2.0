@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261108000160_retour_centrale.sql` (Part 24 ter, applied 2026-11-08 from commit `a4f2da6`;
+- Applied on live: every migration up to `20261108000180_achat_inventaire.sql` (Parts 24 quater and quinquies, applied 2026-11-08 from
+  commit `9c02c8b`; Part 24 ter from `a4f2da6`;
   Part 24 bis from `e9d9652`, Part 24 from `9835d52`, all with the
   sha256 check; Parts 21–22 were applied through the connector's `apply_migration` and recorded under the wrong versions, fixed the
   same day with `ops/live/2026-11-08_versions_migrations.sql`, so `schema_migrations` now matches the file names). Part 22: the
