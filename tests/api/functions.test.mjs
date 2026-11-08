@@ -164,12 +164,28 @@ test('texts and card payment: keys saved, appointment text with total, the custo
   assert.ok(p1.url, JSON.stringify(p1));
   const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
   assert.equal(p2.url, p1.url, 'one open payment page, not two');
-  const paid = await (await fetch(p1.url + '?twice=1')).json();
+  // another link to the same job (another text) opens that same page; when the amount changes, the old page is closed
+  const n2 = await fn('notify', { kind: 'booking', job_id: b.job_id, base: BASE, resend: true }, ownerJwt);
+  assert.ok(n2.link && tokenOf(n2.link) !== t, JSON.stringify(n2));
+  assert.equal((await fn('client', { action: 'pay', token: tokenOf(n2.link), base: BASE })).url, p1.url, 'a second link of the same job: the same open page');
+  await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Lave-glace', 1000, 'approved')`, [b.job_id]);
+  const v3 = await fn('client', { action: 'view', token: t });
+  assert.equal(v3.pay.amount_cents, 18394 + 2999 + 150 + 299 + 1000 + 50 + 100);
+  const p3 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.notEqual(p3.url, p1.url, 'the amount changed: a new page');
+  assert.equal((await fetch(p1.url)).status, 410, 'the old page is closed in Stripe: it cannot be paid any more');
+  const paid = await (await fetch(p3.url + '?twice=1')).json();
   assert.equal(paid.hook, 200);
   const pays = await q(`select amount_cents, method from public.payments where job_id = $1`, [b.job_id]);
   assert.equal(pays.length, 1, 'the second notice did not pay twice');
   assert.equal(pays[0].method, 'card_online');
-  assert.equal(pays[0].amount_cents, 18394 + 2999 + 150 + 299, 'what was due, extras included');
+  assert.equal(pays[0].amount_cents, v3.pay.amount_cents, 'what was due, extras included');
+  // a refund made in Stripe (part of it) comes back as a negative card payment, once even when the notice comes twice
+  const rf = await (await fetch(`${MOCK}/refund/${p3.url.split('/').pop()}?amount=1000&twice=1`)).json();
+  assert.equal(rf.hook, 200);
+  const after = await q(`select amount_cents, stripe_session from public.payments where job_id = $1 order by created_at`, [b.job_id]);
+  assert.deepEqual(after.map((x) => x.amount_cents), [v3.pay.amount_cents, -1000]);
+  assert.equal(after[1].stripe_session, rf.refund);
   // a forged notice is refused
   const forged = await fetch(`${API}/functions/v1/stripe`, { method: 'POST', headers: { 'stripe-signature': `t=${Math.floor(Date.now() / 1000)},v1=deadbeef`, 'content-type': 'application/json' }, body: '{"id":"evt_x","type":"checkout.session.completed"}' });
   assert.equal(forged.status, 400);
@@ -351,6 +367,11 @@ test('« Je suis arrivé »: the customer gets the invoice to pay during the wor
   const fin = await rpc('invoice_finish', { p_op: randomUUID(), p_invoice: inv.id }, ownerJwt);
   assert.equal(fin.rows.invoices[0].status, 'paid');
   await rpc('job_step', { p_op: randomUUID(), p_job: b.job_id, p_action: 'finish', p_data: {} }, ownerJwt);
+  // the garage gives 50 $ back in Stripe: the invoice goes back to « À payer » for 50 $, never twice
+  const rf = await (await fetch(`${MOCK}/refund/${p1.url.split('/').pop()}?amount=5000&twice=1`)).json();
+  assert.equal(rf.hook, 200);
+  const inv2 = (await q(`select status, paid_cents, (select count(*)::int from public.payments p where p.invoice_id = i.id) n from public.invoices i where id = $1`, [inv.id]))[0];
+  assert.deepEqual([inv2.status, inv2.paid_cents, inv2.n], ['issued', 22994 - 5000, 2]);
   // without card payment: the text says where to see the invoice, not « pay online »
   await q(`delete from public.secrets where key = 'stripe_key'`);
   const cust2 = randomUUID(); made.customers.push(cust2);

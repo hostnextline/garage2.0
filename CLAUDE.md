@@ -129,6 +129,12 @@ end $do$;
   « + travaux à l’heure » instead of « 0,00 $ »; the visitor fingerprint is an HMAC (service key + day). App: cash within 4 ¢ of the
   amount due counts as paid in full (`cashChange`); the address search tells « the service is not answering » apart from « no
   network » (`places.ts` error `service`); a failed first ask for dates shows the error with « Réessayer », not « no free time ».
+  Card payments: one open Stripe page per **job** (`client pay` closes any other open page of the job's links with
+  `/checkout/sessions/{id}/expire` before making a new one, and reuses an open one for the same amount); a refund made in Stripe
+  (`charge.refunded`, subscribed on connect) becomes a negative `card_online` payment on the same invoice, once per refund
+  (`applyRefund`); the invoice panel and screen show « Trop-perçu : X à remettre au client » when `paid > total` (`Amounts.over`).
+  The booking page keeps its steps in the phone's history (`#reserver&etape=N`, back gesture = previous step, `reachable()` never
+  skips a step) and what was typed in `sessionStorage` for 2 h (`saveDraft`/`loadDraft`).
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

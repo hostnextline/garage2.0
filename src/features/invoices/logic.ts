@@ -30,7 +30,8 @@ export function linesTotals(lines: LineLike[], rates: Partial<TaxRates> | null |
   return moneyTotals(lines.map((l) => ({ qty: 1, unitCents: lineCents(l), taxable: l.taxable !== false })), r);
 }
 
-export interface Amounts { subtotal: number; tps: number; tvq: number; total: number; paid: number; balance: number; showTaxes: boolean }
+/** over: paid more than the total (a prepayment then a rebate, a double card payment): money to give back */
+export interface Amounts { subtotal: number; tps: number; tvq: number; total: number; paid: number; balance: number; over: number; showTaxes: boolean }
 type InvoiceMoney = Pick<Invoice, 'status' | 'lines' | 'taxes_on' | 'subtotal_cents' | 'tps_cents' | 'tvq_cents' | 'total_cents' | 'paid_cents'>;
 /** what an invoice says: a draft is computed from its lines (as the server will), a finished one is the server's */
 export function invoiceAmounts(inv: InvoiceMoney, rates: Partial<TaxRates> | null | undefined): Amounts {
@@ -38,12 +39,13 @@ export function invoiceAmounts(inv: InvoiceMoney, rates: Partial<TaxRates> | nul
   const ratesOn = rates?.enabled !== false;
   if (inv.status === 'draft') {
     const tt = linesTotals(inv.lines || [], rates, inv.taxes_on !== false);
-    return { subtotal: tt.subtotal, tps: tt.tps, tvq: tt.tvq, total: tt.total, paid, balance: Math.max(0, tt.total - paid), showTaxes: ratesOn && inv.taxes_on !== false };
+    return { subtotal: tt.subtotal, tps: tt.tps, tvq: tt.tvq, total: tt.total, paid, balance: Math.max(0, tt.total - paid), over: Math.max(0, paid - tt.total), showTaxes: ratesOn && inv.taxes_on !== false };
   }
   const tps = Number(inv.tps_cents || 0), tvq = Number(inv.tvq_cents || 0), total = Number(inv.total_cents || 0);
   return {
     subtotal: Number(inv.subtotal_cents || 0), tps, tvq, total, paid,
     balance: inv.status === 'void' ? 0 : Math.max(0, total - paid),
+    over: inv.status === 'void' ? Math.max(0, paid) : Math.max(0, paid - total),
     showTaxes: tps + tvq > 0 || (ratesOn && inv.taxes_on !== false)
   };
 }

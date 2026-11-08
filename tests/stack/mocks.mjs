@@ -23,9 +23,9 @@ const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'appli
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
 const formParse = (s) => { const o = {}; for (const p of s.split('&').filter(Boolean)) { const [k, v = ''] = p.split('='); o[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' ')); } return o; };
 
-async function stripeHook(session) {
+async function stripeHook(session, type = 'checkout.session.completed', object = session) {
   if (!state.hook) return;
-  const event = { id: 'evt_' + (++state.n), type: 'checkout.session.completed', data: { object: session } };
+  const event = { id: 'evt_' + (++state.n), type, data: { object } };
   const raw = JSON.stringify(event);
   const t = Math.floor(Date.now() / 1000);
   const sig = createHmac('sha256', state.hook.secret).update(`${t}.${raw}`).digest('hex');
@@ -90,6 +90,14 @@ http.createServer(async (req, res) => {
     }
     const m = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)$/.exec(p);
     if (m && req.method === 'GET') { const s = state.sessions.get(m[1]); return s ? send(res, 200, s) : send(res, 404, { error: { message: 'No such session' } }); }
+    const x = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)\/expire$/.exec(p);
+    if (x && req.method === 'POST') {
+      const s = state.sessions.get(x[1]);
+      if (!s) return send(res, 404, { error: { message: 'No such session' } });
+      if (s.status !== 'open') return send(res, 400, { error: { message: 'Session is not open' } });
+      s.status = 'expired';
+      return send(res, 200, s);
+    }
     return send(res, 404, { error: { message: 'no route' } });
   }
   // the customer "pays" on the fake Stripe page: the session is paid and the signed notice goes to the garage
@@ -97,10 +105,24 @@ http.createServer(async (req, res) => {
     const id = p.split('/').pop();
     const s = state.sessions.get(id);
     if (!s) return send(res, 404, { error: 'no session' });
+    if (s.status === 'expired') return send(res, 410, { error: 'expired' });   // a closed page cannot be paid any more
     s.status = 'complete'; s.payment_status = 'paid';
     const h = await stripeHook(s);
     if (u.searchParams.get('twice')) await stripeHook(s);
     return send(res, 200, { ok: true, hook: h?.status });
+  }
+  // the garage refunds (all or part) from the Stripe dashboard: the signed « charge.refunded » notice goes to the garage
+  if (p.startsWith('/refund/')) {
+    const id = p.split('/').pop();
+    const s = state.sessions.get(id);
+    if (!s || s.payment_status !== 'paid') return send(res, 404, { error: 'not paid' });
+    const amount = Number(u.searchParams.get('amount')) || s.amount_total;
+    s.refunded = (s.refunded || 0) + amount;
+    const charge = { id: 'ch_' + id, object: 'charge', payment_intent: s.payment_intent, amount: s.amount_total, amount_refunded: s.refunded, currency: 'cad',
+      refunds: { data: [{ id: 're_' + (++state.n), object: 'refund', amount, payment_intent: s.payment_intent, status: 'succeeded' }] } };
+    const h = await stripeHook(s, 'charge.refunded', charge);
+    if (u.searchParams.get('twice')) await stripeHook(s, 'charge.refunded', charge);
+    return send(res, 200, { ok: true, hook: h?.status, refund: charge.refunds.data[0].id });
   }
 
   // ---- GitHub OIDC ----

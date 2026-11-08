@@ -2,7 +2,7 @@
 import { serve, json, fail } from '../_shared/http.ts';
 import { adminDb, secret } from '../_shared/db.ts';
 import { verifyStripe } from '../_shared/stripe.ts';
-import { applyCheckout } from '../_shared/payments.ts';
+import { applyCheckout, applyRefund } from '../_shared/payments.ts';
 
 export const handler = serve(async (req) => {
   if (req.method !== 'POST') fail('method', 'POST seulement.', 405);
@@ -16,6 +16,8 @@ export const handler = serve(async (req) => {
   let result = 'ignored';
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     result = await applyCheckout(event.data?.object || {});   // throws → 500 → Stripe tries again later
+  } else if (event.type === 'charge.refunded') {
+    result = await applyRefund(event.data?.object || {});     // a refund made in Stripe: a negative payment on the invoice
   }
   // only once the payment is safely recorded
   await db.from('stripe_events').insert({ id: event.id }).then(() => undefined, () => undefined);

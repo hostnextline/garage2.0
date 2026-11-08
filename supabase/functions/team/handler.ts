@@ -232,6 +232,7 @@ export const handler = serve(async (req) => {
             ['url', `${env('SUPABASE_URL')}/functions/v1/stripe`],
             ['enabled_events[0]', 'checkout.session.completed'],
             ['enabled_events[1]', 'checkout.session.async_payment_succeeded'],
+            ['enabled_events[2]', 'charge.refunded'],
             ['description', 'Mécanique Mobile H.I.S (app V2)']
           ]);
           if (old && oldHook) { try { await stripeCall(old, 'DELETE', `/webhook_endpoints/${encodeURIComponent(oldHook)}`); } catch { /* already gone */ } }

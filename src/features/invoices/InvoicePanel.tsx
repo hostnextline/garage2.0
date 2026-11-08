@@ -217,6 +217,7 @@ function FinishedInvoice(p: { job: Job; inv: Invoice }) {
           <Totals subtotal={a.subtotal} tps={a.tps} tvq={a.tvq} total={a.total} paid={a.paid} taxesOn={a.showTaxes} />
         </div>
         {(pays.length > 0 || pendingPays.length > 0) && <PaymentsList pays={pays} pending={pendingPays} />}
+        {a.over > 0 && <Banner kind="warn" title={t('invoices.panel.overTitle', { amount: money(a.over, l) })} data-testid="invoice-over">{t('invoices.panel.over')}</Banner>}
         {inv.status === 'issued' && (
           <div class="stack">
             {editable

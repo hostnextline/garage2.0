@@ -83,6 +83,10 @@ describe('what an invoice says', () => {
   });
   it('a cancelled invoice has nothing left to pay', () => {
     expect(invoiceAmounts({ ...base, status: 'void' }, QC_TAXES).balance).toBe(0);
+    // paid more than the total (prepaid, then a rebate; a card payment twice): the money to give back is said
+    expect(invoiceAmounts({ ...base, status: 'paid', paid_cents: 20000 }, QC_TAXES)).toMatchObject({ balance: 0, over: 2755 });
+    expect(invoiceAmounts({ ...base, status: 'issued' }, QC_TAXES).over).toBe(0);
+    expect(invoiceAmounts({ ...base, status: 'void', paid_cents: 5000 }, QC_TAXES).over).toBe(5000);
   });
   it('an exempt invoice hides the tax lines', () => {
     expect(invoiceAmounts({ ...base, status: 'issued', taxes_on: false, tps_cents: 0, tvq_cents: 0 }, QC_TAXES).showTaxes).toBe(false);

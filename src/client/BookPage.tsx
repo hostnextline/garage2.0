@@ -18,21 +18,25 @@ import type { Suggestion } from '../features/customers/photon';
 import { ErrorState } from './ViewPage';
 import {
   STEPS, stepNumber, serviceName, chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots,
-  onTypedStreet, EMPTY_CONTACT, type Step, type WebInfo, type WebSlot, type Contact, type ContactErrors, type Booked
+  onTypedStreet, EMPTY_CONTACT, reachable, stepHash, saveDraft, loadDraft, clearDraft,
+  type Step, type WebInfo, type WebSlot, type Contact, type ContactErrors, type Booked, type Place
 } from './book-state';
 
-interface Place { address: string; unit: string; postal_code: string | null; city: string | null; lat: number; lng: number; exact: boolean }
 const PAGE_DAYS = 14;
+type Mark = { bk?: Step; n?: number };
+const mark = (): Mark => { try { return (history.state as Mark | null) || {}; } catch { return {}; } };
 
 export function BookPage(p: { linkLang: CLang | null }) {
   const [l, setL] = useState<CLang>(() => pickLang(p.linkLang, null));
   const [info, setInfo] = useState<WebInfo | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>('services');
-  const [ids, setIds] = useState<string[]>([]);
-  const [place, setPlace] = useState<Place | null>(null);
+  // what was typed in this tab before a reload or a trip to Messages, and the step the history says
+  const draft = useRef(loadDraft()).current;
+  const [ids, setIds] = useState<string[]>(draft?.ids || []);
+  const [place, setPlace] = useState<Place | null>(draft?.place || null);
   const [slot, setSlot] = useState<WebSlot | null>(null);
-  const [contact, setContact] = useState<Contact>(EMPTY_CONTACT);
+  const [contact, setContact] = useState<Contact>(draft?.contact || EMPTY_CONTACT);
+  const [step, setStep] = useState<Step>(() => reachable(mark().bk || 'services', { ids: draft?.ids || [], place: !!draft?.place, slot: false }));
   const [done, setDone] = useState<Booked | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const top = useRef<HTMLHeadingElement>(null);
@@ -44,14 +48,39 @@ export function BookPage(p: { linkLang: CLang | null }) {
     catch (e) { setLoadErr(e instanceof ClientError ? e.code : 'server'); }
   };
   useEffect(() => { void load(); }, []);
+  // the steps live in the phone's history: the back gesture goes to the previous step, never out of the page
+  const live = useRef({ ids, place, slot, done });
+  live.current = { ids, place, slot, done };
+  useEffect(() => {
+    try { history.replaceState({ bk: step, n: mark().n || 0 }, '', stepHash(step, l)); } catch { /* ignore */ }
+    const onPop = (e: PopStateEvent) => {
+      const want = ((e.state as Mark | null)?.bk || 'services') as Step;
+      const c = live.current;
+      if (c.done) { setDone(null); setSlot(null); setIds([]); setStep('services'); return; }
+      setStep(reachable(want, { ids: c.ids, place: !!c.place, slot: !!c.slot }));
+      setMsg(null); window.scrollTo({ top: 0 }); setTimeout(() => top.current?.focus(), 30);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  useEffect(() => { saveDraft({ ids, place, contact }); }, [ids, place, contact]);
   useEffect(() => {
     document.documentElement.lang = l === 'en' ? 'en-CA' : 'fr-CA';
     document.title = `${ct(l, 'book.title')} – ${garageName(garage, l)}`;
   }, [l, garage?.name]);
 
-  const go = (s: Step) => { setStep(s); setMsg(null); window.scrollTo({ top: 0 }); setTimeout(() => top.current?.focus(), 30); };
-  const back = () => { const i = STEPS.indexOf(step); if (i > 0) go(STEPS[i - 1]); };
-  const onLang = () => { const n: CLang = l === 'en' ? 'fr' : 'en'; setL(n); replaceHash(n === 'en' ? '#reserver&l=en' : '#reserver'); };
+  const go = (s: Step) => {
+    setStep(s); setMsg(null); window.scrollTo({ top: 0 }); setTimeout(() => top.current?.focus(), 30);
+    try { history.pushState({ bk: s, n: (mark().n || 0) + 1 }, '', stepHash(s, l)); } catch { /* ignore */ }
+  };
+  const back = () => {
+    const i = STEPS.indexOf(step);
+    if (i <= 0) return;
+    // the entry before is one of ours: the phone's back and ours do the same thing
+    if ((mark().n || 0) > 0) { try { history.back(); return; } catch { /* fall through */ } }
+    go(STEPS[i - 1]);
+  };
+  const onLang = () => { const n: CLang = l === 'en' ? 'fr' : 'en'; setL(n); replaceHash(stepHash(step, n)); };
   const refused = (e: unknown) => {
     const code = e instanceof ClientError ? e.code : 'server';
     const to = stepOfError(code);
@@ -71,6 +100,7 @@ export function BookPage(p: { linkLang: CLang | null }) {
         vehicle: { year: contact.year || null, make: contact.make.trim(), model: contact.model.trim() }, problem: contact.problem.trim(),
         extra: (document.getElementById('cl-bk-f') as HTMLInputElement | null)?.value || ''
       });
+      clearDraft();
       setDone(r);
       go('done');
     } catch (e) { refused(e); }

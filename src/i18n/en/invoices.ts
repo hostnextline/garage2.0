@@ -144,6 +144,8 @@ export const invoices: typeof fr = {
     title: 'Invoice',
     help: 'The invoice starts from the job’s work. While it is a draft, you can change the lines. “Finish the invoice” gives it its number: it no longer changes after that.',
     helpIssued: 'A finished invoice no longer changes. Take the payment here, or text it to the customer: their page has the “Pay” button when card payment is connected.',
+    overTitle: 'Overpaid: {amount} to give back to the customer',
+    over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Refund them, then record the refund as a negative payment. A refund made in Stripe is recorded by itself.',
     noJob: 'This job is not on this phone.',
     expected: 'Expected total',
     expectedHint: 'From the job’s work, taxes included.',

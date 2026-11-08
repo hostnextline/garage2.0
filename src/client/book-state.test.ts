@@ -3,7 +3,7 @@ import { chosenMinutes, chosenTotal, toggle, contactErrors, years, stepOfError, 
   EMPTY_CONTACT, type WebService } from './book-state';
 import { parseLink } from './link';
 import { ct } from './i18n';
-import { onTypedStreet } from './book-state';
+import { onTypedStreet, reachable, stepHash, saveDraft, loadDraft, clearDraft } from './book-state';
 import type { Suggestion } from '../features/customers/photon';
 
 const place = (label: string, street: string, lat: number | null = 45.5): Suggestion => ({ place: { address: label, unit: null, postal_code: null, lat, lng: lat == null ? null : -73.6 },
@@ -88,6 +88,41 @@ describe('Réserver en ligne: the answers of the server', () => {
     expect(parseLink('#reserver').kind).toBe('reserver');
     expect(parseLink('#reserver&l=en')).toMatchObject({ kind: 'reserver', l: 'en' });
     expect(parseLink('#t=abc').kind).toBe('t');
+  });
+});
+
+describe('Réserver en ligne: the steps in the history, the draft of the tab', () => {
+  it('« back » or a reload never skips a step: only what is chosen opens the next ones', () => {
+    const none = { ids: [], place: false, slot: false };
+    expect(reachable('contact', none)).toBe('services');
+    expect(reachable('contact', { ids: ['a'], place: false, slot: false })).toBe('address');
+    expect(reachable('contact', { ids: ['a'], place: true, slot: false })).toBe('slots');
+    expect(reachable('contact', { ids: ['a'], place: true, slot: true })).toBe('contact');
+    expect(reachable('address', { ids: ['a'], place: true, slot: true })).toBe('address');
+    expect(reachable('done', { ids: ['a'], place: true, slot: true })).toBe('services');
+  });
+  it('the address of each step, in both languages', () => {
+    expect(stepHash('services', null)).toBe('#reserver');
+    expect(stepHash('slots', null)).toBe('#reserver&etape=3');
+    expect(stepHash('contact', 'en')).toBe('#reserver&l=en&etape=4');
+    expect(stepHash('done', 'en')).toBe('#reserver&l=en');
+    expect(parseLink(stepHash('address', 'en'))).toMatchObject({ kind: 'reserver', l: 'en' });
+  });
+  it('what was typed is kept for the tab two hours, read back carefully, and dropped when nothing is chosen', () => {
+    const m = new Map<string, string>();
+    const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); }, removeItem: (k: string) => { m.delete(k); } };
+    const place = { address: '4521 rue Fabre', unit: '', postal_code: null, city: 'Montréal', lat: 45.53, lng: -73.59, exact: true };
+    saveDraft({ ids: ['a'], place, contact: { ...EMPTY_CONTACT, first: 'Sophie' } }, s, 1000);
+    expect(loadDraft(s, 2000)).toEqual({ ids: ['a'], place, contact: { ...EMPTY_CONTACT, first: 'Sophie' } });
+    expect(loadDraft(s, 1000 + 3 * 3600 * 1000)).toBe(null);
+    m.set('his.book.draft', JSON.stringify({ at: 1000, ids: [1, 'b'], place: { address: 'x' }, contact: { first: 'A', hack: 'x', phone: 5 } }));
+    expect(loadDraft(s, 2000)).toEqual({ ids: ['b'], place: null, contact: { ...EMPTY_CONTACT, first: 'A' } });
+    saveDraft({ ids: [], place: null, contact: EMPTY_CONTACT }, s, 1000);
+    expect(m.has('his.book.draft')).toBe(false);
+    m.set('his.book.draft', '{not json');
+    expect(loadDraft(s, 2000)).toBe(null);
+    clearDraft(s);
+    expect(m.size).toBe(0);
   });
 });
 

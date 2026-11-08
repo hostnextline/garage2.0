@@ -101,6 +101,7 @@ function DocScreen(p: { inv: Invoice }) {
                         : t('invoices.screen.issuedOn', { when: stampText(inv.issued_at, l) })}
                 </span>
               </div>
+              {a.over > 0 && <Banner kind="warn" title={t('invoices.panel.overTitle', { amount: money(a.over, l) })} data-testid="invoice-over">{t('invoices.panel.over')}</Banner>}
               {inv.status === 'issued' && editable && (
                 <Button variant="primary" block class="inv-pay-btn" icon={<Banknote />} onClick={() => setPayOpen(true)} data-tour="invoice-pay" data-testid="invoice-pay">
                   {t('invoices.panel.pay', { amount: money(a.balance, l) })}

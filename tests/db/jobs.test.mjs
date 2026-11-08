@@ -141,8 +141,8 @@ test('an issued invoice keeps its taxes whoever touches it; the app cannot chang
   await h.c.query(`update public.invoices set sent_at = now() where id = $1`, [inv.id]);
   const after = await h.one(`select tps_cents, tvq_cents, total_cents from public.invoices where id = $1`, [inv.id]);
   assert.deepEqual([after.tps_cents, after.total_cents], [400, 9197], 'issued once, the taxes never move');
-  // a draft still follows the rate
-  const draft = await h.val(`insert into public.invoices (job_id, customer_id, lines, status) values ($1, $2, '[{"description":"x","qty":1,"unit_cents":1000}]', 'draft') returning tps_cents`, [jobId, g.customer]);
+  // a draft still follows the rate (one invoice per job: this one stands alone, for the customer)
+  const draft = await h.val(`insert into public.invoices (job_id, customer_id, lines, status) values (null, $1, '[{"description":"x","qty":1,"unit_cents":1000}]', 'draft') returning tps_cents`, [g.customer]);
   assert.equal(draft, 100);
   // the mechanic may change the notes of his job, not its length (set_job_duration does that, with the room check) nor delete it
   await h.as(g.mech);

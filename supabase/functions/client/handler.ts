@@ -148,11 +148,24 @@ async function answer(req: Request): Promise<Response> {
     const v = await view(l) as Row;
     if (v.kind !== 'job' || !v.pay.available) fail('nothing', v.pay?.amount_cents ? 'Le paiement par carte n’est pas offert pour ce dossier.' : 'Rien à payer : merci !');
     const amount = v.pay.amount_cents as number;
-    // the same open card page is reused (never two payments for the same thing)
-    if (l.last_session && l.last_session_amount === amount && l.last_session_expires && Date.parse(l.last_session_expires) > Date.now() + 60000) {
-      const sess = await stripeCall(key, 'GET', `/checkout/sessions/${encodeURIComponent(l.last_session)}`);
-      if (sess.status === 'open' && sess.url) return json({ ok: true, url: sess.url });
+    // one open card page per job (never two payments for the same thing): the same page is reused while it is open
+    // for the amount due; any other page still open — an older text's link, or this one for an amount that has since
+    // changed — is closed in Stripe first
+    const { data: links } = await db.from('public_links').select('id, last_session, last_session_amount, last_session_expires').eq('job_id', l.job_id).not('last_session', 'is', null);
+    const open = ((links || []) as Row[]).filter((o) => o.last_session_expires && Date.parse(o.last_session_expires) > Date.now() + 60000)
+      .sort((a, b) => (a.id === l.id ? -1 : b.id === l.id ? 1 : 0));
+    for (const o of open) {
+      const sess = await stripeCall(key, 'GET', `/checkout/sessions/${encodeURIComponent(o.last_session)}`).catch(() => null);
+      if (!sess) continue;
       if (sess.payment_status === 'paid') { await applyCheckout(sess); return json({ ok: true, paid: true }); }
+      if (sess.status === 'open' && sess.url && o.last_session_amount === amount) {
+        if (o.id !== l.id) await db.from('public_links').update({ last_session: sess.id, last_session_url: sess.url, last_session_amount: amount, last_session_expires: o.last_session_expires }).eq('id', l.id);
+        return json({ ok: true, url: sess.url });
+      }
+      if (sess.status === 'open') {
+        await stripeCall(key, 'POST', `/checkout/sessions/${encodeURIComponent(o.last_session)}/expire`).catch(() => null);
+        await db.from('public_links').update({ last_session: null, last_session_url: null, last_session_amount: null, last_session_expires: null }).eq('id', o.id);
+      }
     }
     const lang = v.lang === 'en' ? 'en' : 'fr';
     const base = baseOf(b.base);

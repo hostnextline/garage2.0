@@ -18,6 +18,50 @@ export interface Booked { ok: true; link: string | null; day: string; block: str
 export type Step = 'services' | 'address' | 'slots' | 'contact' | 'done';
 export const STEPS: Step[] = ['services', 'address', 'slots', 'contact'];
 export function stepNumber(s: Step): number { return Math.max(1, STEPS.indexOf(s) + 1); }
+export interface Place { address: string; unit: string; postal_code: string | null; city: string | null; lat: number; lng: number; exact: boolean }
+
+/* ---------- the steps in the phone's history (back gesture = previous step, never out of the page) ---------- */
+export interface Progress { ids: string[]; place: boolean; slot: boolean }
+/** the furthest step the customer may stand on, given what is chosen (a reload or « back » never skips a step) */
+export function reachable(step: Step, p: Progress): Step {
+  if (step === 'done') return 'services';
+  let max = 0;
+  if (p.ids.length) max = 1;
+  if (p.ids.length && p.place) max = 2;
+  if (p.ids.length && p.place && p.slot) max = 3;
+  return STEPS[Math.max(0, Math.min(STEPS.indexOf(step), max))];
+}
+/** client.html#reserver[&l=en][&etape=N] */
+export function stepHash(step: Step, l: CLang | null): string {
+  const parts = ['reserver'];
+  if (l === 'en') parts.push('l=en');
+  if (step !== 'services' && step !== 'done') parts.push(`etape=${stepNumber(step)}`);
+  return '#' + parts.join('&');
+}
+
+/* ---------- what was typed, kept on this phone for the tab (a switch to Messages and back does not start over) ---------- */
+export interface Draft { ids: string[]; place: Place | null; contact: Contact }
+type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+const DRAFT = 'his.book.draft';
+const DRAFT_KEEP = 2 * 3600 * 1000;
+const store = (): Store | null => { try { return typeof sessionStorage !== 'undefined' ? sessionStorage : null; } catch { return null; } };
+export function saveDraft(d: Draft, s: Store | null = store(), now = Date.now()) {
+  try {
+    if (!d.ids.length && !d.place) s?.removeItem(DRAFT);
+    else s?.setItem(DRAFT, JSON.stringify({ ...d, at: now }));
+  } catch { /* private mode, full storage: the page still works */ }
+}
+export function loadDraft(s: Store | null = store(), now = Date.now()): Draft | null {
+  try {
+    const v = JSON.parse(s?.getItem(DRAFT) || 'null') as (Partial<Draft> & { at?: number }) | null;
+    if (!v || typeof v.at !== 'number' || now - v.at > DRAFT_KEEP) return null;
+    const place = v.place && typeof v.place === 'object' && typeof v.place.lat === 'number' && typeof v.place.lng === 'number' && typeof v.place.address === 'string' ? v.place : null;
+    const ids = Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === 'string').slice(0, 10) : [];
+    const contact = { ...EMPTY_CONTACT, ...Object.fromEntries(Object.entries(v.contact || {}).filter(([k, x]) => k in EMPTY_CONTACT && typeof x === 'string')) } as Contact;
+    return { ids, place, contact };
+  } catch { return null; }
+}
+export function clearDraft(s: Store | null = store()) { try { s?.removeItem(DRAFT); } catch { /* ignore */ } }
 
 export function serviceName(s: WebService, l: CLang): string { return (l === 'en' ? s.name_en : s.name_fr) || s.name_fr; }
 
