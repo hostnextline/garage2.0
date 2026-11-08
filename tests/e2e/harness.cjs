@@ -73,7 +73,8 @@ let browser = null;
 async function open({ kind = 'phone', locale = 'fr-CA', scheme = 'light', offline = false } = {}) {
   browser ||= await chromium.launch();
   const base = kind === 'phone' ? { ...devices['iPhone 13'] } : { viewport: { width: 1366, height: 860 } };
-  const ctx = await browser.newContext({ ...base, locale, colorScheme: scheme, timezoneId: 'America/Toronto', permissions: ['geolocation'], geolocation: { latitude: 45.5005, longitude: -73.6577 } });
+  // reducedMotion: the app's animations last 1 ms (base.css honours it), so a sheet is where it will be before anything is measured
+  const ctx = await browser.newContext({ ...base, locale, colorScheme: scheme, timezoneId: 'America/Toronto', reducedMotion: 'reduce', permissions: ['geolocation'], geolocation: { latitude: 45.5005, longitude: -73.6577 } });
   if (offline) await ctx.setOffline(true);
   const page = await ctx.newPage();
   page.errors = [];

@@ -25,7 +25,8 @@ export function fromDevice(day: string): TeamMapAnswer {
       .filter((p) => !p.deleted_at && openShift(p.id) && now - Date.parse(p.at) < HOURS12)
       .map((p) => { const s = staff(p.id); return { id: p.id, name: s ? s.short_name || s.full_name : '', color: s?.color ?? null, lat: p.lat, lng: p.lng, at: p.at, job_id: p.job_id }; }),
     trips: rowsOf<Trip>('trips')
-      .filter((tr) => tr.status === 'active' && !tr.deleted_at && Date.parse(tr.expires_at) > now)
-      .map((tr) => ({ job_id: tr.job_id, staff_id: tr.staff_id, eta_at: tr.eta_at, km: tr.km, minutes: tr.minutes, route: tr.route }))
+      // the trips to customers (a trip back to the start has no job: the person's dot moves, that is enough)
+      .filter((tr) => tr.status === 'active' && !tr.deleted_at && !!tr.job_id && Date.parse(tr.expires_at) > now)
+      .map((tr) => ({ job_id: tr.job_id!, staff_id: tr.staff_id, eta_at: tr.eta_at, km: tr.km, minutes: tr.minutes, route: tr.route }))
   };
 }

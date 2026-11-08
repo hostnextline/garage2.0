@@ -21,7 +21,9 @@ export interface Settings extends Row {
   booking: { blocks: { key: BlockKey; start: number; end: number }[]; horizon_days: number; speed_kmh: number; detour: number; stop_min: number;
     unknown_min: number; min_block_min: number; near_km: number; home: { label: string; address: string; lat: number; lng: number };
     /** « Réserver en ligne » (Part 23): the public link client.html#reserver is open */
-    web?: { on?: boolean; max_km?: number } };
+    web?: { on?: boolean; max_km?: number };
+    /** « Retour à la Centrale »: the number texted (arrival time, live map) when a mechanic heads back after the last job */
+    return_phone?: string | null };
   billing: { invoice_prefix: string; quote_prefix?: string; pad: number; due_days: number; hourly_cents: number | null; travel: { cents: number; free_over_cents: number | null }; goal_cents?: number | null; terms_fr?: string; terms_en?: string };
   messages: { on: Record<string, boolean>; fr: Record<string, string>; en: Record<string, string> };
   role_rights: Partial<Record<Exclude<Role, 'owner'>, Partial<Record<Right, boolean>>>>;
@@ -112,7 +114,8 @@ export interface Expense extends Base {
 export interface Shift extends Base { staff_id: string; started_at: string; ended_at: string | null }
 export interface Position extends Base { lat: number; lng: number; accuracy_m: number | null; heading: number | null; speed_kmh: number | null; job_id: string | null; at: string }
 export interface Trip extends Base {
-  job_id: string; staff_id: string | null; status: 'active' | 'arrived' | 'cancelled'; started_at: string; ended_at: string | null; eta_at: string | null;
+  /** null for a trip back to the start (kind 'return') */
+  job_id: string | null; kind?: 'job' | 'return'; dest_label?: string | null; staff_id: string | null; status: 'active' | 'arrived' | 'cancelled'; started_at: string; ended_at: string | null; eta_at: string | null;
   km: number | null; minutes: number | null; route: [number, number][] | null; dest_lat: number | null; dest_lng: number | null; sms_status: string | null; expires_at: string;
 }
 export interface Message extends Base { job_id: string | null; customer_id: string | null; staff_id: string | null; kind: string; channel: 'sms' | 'email' | 'web'; to_addr: string | null; body: string | null; status: string; error: string | null }

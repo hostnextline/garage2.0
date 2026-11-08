@@ -21,6 +21,8 @@ export interface TrackView {
   ended: number | null;
   /** Montréal clock minute of the last position */
   posMinute: number | null;
+  /** a trip back to the start: where to (« Centrale »); null for a trip to a customer */
+  destLabel: string | null;
 }
 
 const okPt = (p: unknown): p is LatLng => {
@@ -55,7 +57,8 @@ export function trackView(a: TrackAnswer | null | undefined, fetchedAt: number, 
     mechanic: String(a?.mechanic || '').trim().split(/\s+/)[0] || '',
     lang: isLang(a?.lang) ? a!.lang as CLang : null,
     ended: kind === 'arrived' && a?.ended_at ? localMinuteOf(a.ended_at) : null,
-    posMinute: pos ? localMinuteOf(pos.at) : null
+    posMinute: pos ? localMinuteOf(pos.at) : null,
+    destLabel: a?.kind === 'return' ? String(a.dest_label || '').trim() || 'Centrale' : null
   };
 }
 
@@ -72,8 +75,8 @@ export function etaText(v: TrackView, l: CLang): string | null {
 /** the big line at the top */
 export function headline(v: TrackView, l: CLang): string {
   switch (v.kind) {
-    case 'active': return v.mechanic ? ct(l, 'track.onTheWay', { name: v.mechanic }) : ct(l, 'track.onTheWayAnon');
-    case 'arrived': return v.mechanic ? ct(l, 'track.arrived', { name: v.mechanic }) : ct(l, 'track.arrivedAnon');
+    case 'active': return v.destLabel ? ct(l, 'track.onTheWayTo', { name: v.mechanic || ct(l, 'track.mechanicAnon'), place: v.destLabel }) : v.mechanic ? ct(l, 'track.onTheWay', { name: v.mechanic }) : ct(l, 'track.onTheWayAnon');
+    case 'arrived': return v.destLabel ? ct(l, 'track.arrivedTo', { name: v.mechanic || ct(l, 'track.mechanicAnon'), place: v.destLabel }) : v.mechanic ? ct(l, 'track.arrived', { name: v.mechanic }) : ct(l, 'track.arrivedAnon');
     case 'cancelled': return ct(l, 'track.cancelled');
     case 'expired': return ct(l, 'track.expired');
     default: return ct(l, 'track.notFound');

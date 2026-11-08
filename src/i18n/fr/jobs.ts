@@ -326,7 +326,7 @@ export const jobs = {
     tripNoEta: 'Heure d’arrivée pas encore calculée',
     noTracking: 'Le client n’a pas reçu ton heure d’arrivée.',
     sendTracking: 'Envoyer le texto',
-    kinds: { booking: 'Confirmation du rendez-vous', moved: 'Rendez-vous déplacé', en_route: 'En route', extras: 'Travail à approuver', invoice: 'Facture', payment_reminder: 'Rappel de paiement', reminder: 'Rappel la veille', arrived: 'Mécano arrivé (facture)', estimate_signed: 'Estimation signée en ligne', extras_answer: 'Réponse du client' },
+    kinds: { booking: 'Confirmation du rendez-vous', moved: 'Rendez-vous déplacé', en_route: 'En route', extras: 'Travail à approuver', invoice: 'Facture', payment_reminder: 'Rappel de paiement', reminder: 'Rappel la veille', arrived: 'Mécano arrivé (facture)', estimate_signed: 'Estimation signée en ligne', extras_answer: 'Réponse du client', return_trip: 'Retour au point de départ' },
     status: { sent: 'Envoyé', failed: 'Pas parti', skipped: 'Pas envoyé' },
     /* when the text did not go */
     failTitle: 'Le texto n’est pas parti',

@@ -42,6 +42,24 @@ export const today: typeof fr = {
     noTruckText: 'Ask the owner to give you a truck (Team).',
     seeAgenda: 'See the schedule'
   },
+  return: {
+    next: 'Your jobs of the day are done. Next destination: {place}',
+    leave: 'Heading to {place}',
+    leaveSub: 'The garage gets your arrival time and the live map.',
+    leaveSubManual: 'Automatic texts are not connected: the app shows you the message to send.',
+    onWay: 'On the way to {place}',
+    eta: 'Arriving around {time}',
+    noEta: 'Arrival time not worked out yet (the phone’s position is unknown).',
+    arrived: 'I have arrived',
+    arrivedSub: 'The tracking stops. End your day whenever you want.',
+    arrivedToast: 'Welcome back. Have a good evening.',
+    sent: 'The garage got your arrival time.',
+    sentEta: 'The garage got your arrival time ({time}).',
+    quiet: 'On the way to {place} (return text switched off).',
+    noPhone: 'No return number in Settings, Bookings: the garage was not texted.',
+    noHome: 'The trucks’ starting point has no position on the map. Ask the office to pick it in Settings, Bookings.',
+    offline: 'No signal: try again in a moment.'
+  },
   then: 'Then',
   closed: {
     show: { one: 'See the finished stop', other: 'See the {n} finished stops' },

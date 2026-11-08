@@ -124,6 +124,13 @@ end $do$;
   three Stripe secrets together and every database refusal is an error. The backup now includes `coffre`, `positions`,
   `position_log`, `op_log`, `stripe_events` (test: every table is backed up or listed in `never`). `ops/live/2026-11-08_versions_migrations.sql`
   fixes two misrecorded versions in live's `schema_migrations` (to run by hand, dry run first).
+- « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,
+  « Ma journée » shows the way back (the truck's own start, else « Départ des camions ») with « Je pars vers {place} » →
+  `enroute { action: 'return', pos }`: a trip with no job (`trips.kind = 'return'`, `dest_label`, one active per person), the route
+  and the arrival time, and a text to `settings.booking.return_phone` (Réglages → Réservations, « Numéro texté au retour »; template
+  `messages.*.return_trip`, switch `on.return_trip`) with the live map link, like a customer's. « Je suis arrivé » = `return_end`;
+  ending the day marks the trip arrived. `public_track` answers `kind` and `dest_label` for it (the page says « … est en route vers la
+  Centrale », owner's language). App: `activeReturnTrip`, `doReturn`/`doReturnEnd`, `ReturnCard` in `MechanicDay`.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

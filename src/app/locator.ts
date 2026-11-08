@@ -94,6 +94,14 @@ export interface LocateRun {
 /** the locator now: busy, and what the last run did */
 export const locator = signal<{ busy: boolean; last: LocateRun | null }>({ busy: false, last: null });
 let running: Promise<LocateRun> | null = null;
+let runs = 0;
+// the state on the page itself (data-locator = busy | idle, data-locator-runs): the end-to-end test waits for a run
+// to be through instead of guessing how many seconds the machine needs
+function tell(state: 'busy' | 'idle') {
+  if (typeof document === 'undefined') return;
+  document.documentElement.dataset.locator = state;
+  document.documentElement.dataset.locatorRuns = String(runs);
+}
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** looks for the positions still missing (or only `only`); `force` tries again the addresses tried lately */
@@ -101,6 +109,7 @@ export function locateMissing(opts: { only?: { jobs?: string[]; customers?: stri
   if (running) return running.then(() => (opts.only || opts.force ? locateMissing(opts) : (locator.value.last as LocateRun)));
   running = (async () => {
     locator.value = { ...locator.value, busy: true };
+    tell('busy');
     const seen = tried();
     const all = missingPositions(allJobs.value, customersList.value, today(), opts.only);
     const tasks = all.filter((t) => opts.force || !(seen[t.key] && Date.now() - seen[t.key] < AGAIN_MS)).slice(0, opts.max ?? 40);
@@ -130,6 +139,8 @@ export function locateMissing(opts: { only?: { jobs?: string[]; customers?: stri
       }
     }
     locator.value = { busy: false, last: run };
+    runs++;
+    tell('idle');
     return run;
   })().finally(() => { running = null; });
   return running;

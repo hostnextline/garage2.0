@@ -2,12 +2,12 @@
    button (the same next step as on the job sheet), the other stops in order, the finished ones folded, the day in
    numbers, and the first stop of the next working day. */
 import { useState } from 'preact/hooks';
-import { Power, MapPin, LocateOff, ChevronDown, ChevronUp, CalendarDays, CircleCheckBig, Truck } from 'lucide-preact';
-import { Panel, Button, Empty, Help, toast } from '../../ui';
+import { Power, MapPin, LocateOff, ChevronDown, ChevronUp, CalendarDays, MapPinCheck, Truck } from 'lucide-preact';
+import { Panel, Button, Empty, Help, Banner, BigStep, toast } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, duration } from '../../lib/dates';
 import { me, myTrucks } from '../../data/auth';
-import { openShift, positionOf } from '../../data/select';
+import { openShift, positionOf, settings, truck as truckRow, activeReturnTrip } from '../../data/select';
 import { shiftStart, shiftEnd, errorMessage } from '../../data/api';
 import { isNetworkError } from '../../data/sync';
 import { may } from '../../app/routes';
@@ -16,6 +16,7 @@ import { JobTicket } from '../jobs/JobTicket';
 import { CarFirst } from '../jobs/CarFirst';
 import { StepButton, PRESSABLE } from '../jobs/StepButton';
 import { stepOf, jobRights, dayWord, clockOf, seen } from '../jobs/select';
+import { doReturn, doReturnEnd } from '../jobs/flow';
 import { sharing, retryPosition, agoText } from './position';
 import { OPEN, myJobsOn, nextStopOf, summaryOf, nextWorkDay, shiftsOf, workedMinutes, useTick } from './select';
 
@@ -86,6 +87,44 @@ function PositionLine(p: { now: number }) {
   );
 }
 
+/* ---------- the way back: after the last stop, the next destination is the start ---------- */
+/** where this person's truck goes home: the truck's own start, else « Départ des camions » */
+function homeOf(): { label: string; address: string; ok: boolean } {
+  const own = myTrucks().map((id) => truckRow(id)?.start).find((s) => s && s.lat != null && s.lng != null);
+  const h = own || settings.value.booking?.home;
+  return { label: h?.label || 'Centrale', address: h?.address || '', ok: !!h && h.lat != null && h.lng != null };
+}
+function ReturnCard() {
+  const a = me.value;
+  if (!a) return null;
+  const trip = activeReturnTrip(a.id);
+  const home = homeOf();
+  const place = trip?.dest_label || home.label;
+  if (trip) {
+    return (
+      <section class="panel glass today-next is-now" data-tour="today-next" data-testid="today-return">
+        <div class="panel-head"><h2 class="panel-title">{t('today.return.onWay', { place })}</h2></div>
+        <div class="stack">
+          <p class="muted" style={{ margin: 0 }} data-testid="today-return-eta">{trip.eta_at ? t('today.return.eta', { time: clockOf(trip.eta_at) }) : t('today.return.noEta')}</p>
+          <BigStep icon={<MapPinCheck />} label={t('today.return.arrived')} sub={t('today.return.arrivedSub')} onClick={doReturnEnd} data-testid="today-return-arrived" />
+        </div>
+      </section>
+    );
+  }
+  const manual = me.value?.texts_online === false;
+  return (
+    <section class="panel glass today-next" data-tour="today-next" data-testid="today-return">
+      <div class="panel-head"><h2 class="panel-title">{t('today.next.allDone')}</h2></div>
+      <div class="stack">
+        <p class="muted" style={{ margin: 0 }}>{t('today.return.next', { place })}{home.address ? ` (${home.address})` : ''}</p>
+        {home.ok
+          ? <BigStep icon={<Truck />} label={t('today.return.leave', { place })} sub={manual ? t('today.return.leaveSubManual') : t('today.return.leaveSub')} onClick={doReturn} data-testid="today-return-leave" />
+          : <Banner kind="warn">{t('today.return.noHome')}</Banner>}
+      </div>
+    </section>
+  );
+}
+
 /* ---------- the next stop ---------- */
 function NextStop(p: { list: Job[] }) {
   const next = nextStopOf(p.list);
@@ -93,11 +132,12 @@ function NextStop(p: { list: Job[] }) {
     return <Panel data-tour="today-next"><Empty icon={<Truck />} title={t('today.next.noTruck')} text={t('today.next.noTruckText')} /></Panel>;
   }
   if (!next) {
-    const none = !p.list.length;
+    // the day's stops are all done (or there were none): the next destination is the start
+    if (p.list.length) return <ReturnCard />;
     return (
       <Panel data-tour="today-next" data-testid="today-next">
-        <Empty icon={none ? <CalendarDays /> : <CircleCheckBig />} title={none ? t('today.next.empty') : t('today.next.allDone')} text={none ? t('today.next.emptyText') : t('today.next.allDoneText')}
-          action={none && may.agenda() ? <Button href={`#/agenda/${addDays(today(), 1)}`}>{t('today.next.seeAgenda')}</Button> : undefined} />
+        <Empty icon={<CalendarDays />} title={t('today.next.empty')} text={t('today.next.emptyText')}
+          action={may.agenda() ? <Button href={`#/agenda/${addDays(today(), 1)}`}>{t('today.next.seeAgenda')}</Button> : undefined} />
       </Panel>
     );
   }

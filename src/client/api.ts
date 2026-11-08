@@ -36,6 +36,8 @@ export type View = JobView | QuoteView;
 
 export interface TrackAnswer {
   status: string;
+  /** 'return': the mechanic heads back to the start (dest_label), no appointment */
+  kind?: string | null; dest_label?: string | null;
   garage?: { name?: string | null; phone?: string | null } | null;
   mechanic?: string | null; customer?: string | null; lang?: string | null;
   dest?: { lat: number; lng: number } | null; route?: [number, number][] | null;
