@@ -90,7 +90,7 @@ test('Part 24 quater: without a confirmed list (an older app) the planned parts 
   assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15.5, '4.5 L planned for the service');
   assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 4);
   // delete for good: the inventory right (or the owner); not the accountant, who has no say on the shelf
-  const accountant = await h.person('Comptable', ['treasurer'], { rights: { treasury: true } });
+  const accountant = await h.person('Comptable', ['treasurer'], { rights: { treasury: true, inventory: false } });
   await h.as(accountant);
   assert.equal((await h.fails(() => h.rpc('inventory_delete', { p_op: uuid(), p_item: g.filter })))?.hint, 'not_allowed');
   await h.as(g.owner);

@@ -159,7 +159,9 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await h.shot(page, 'e2e-2-parts');
   await page.getByTestId('parts-confirm').click();
   await page.getByTestId('stamp-paid').waitFor({ timeout: 15000 });
-  assert.equal(Number(h.sql(`select qty from public.inventory_items where id = '${filterId}'`)), 2, 'one filter left the inventory');
+  // (the PAYÉ stamp was there since the payment: wait for the step itself to reach the server)
+  await until(() => h.sql(`select status from public.jobs where id = '${jobId}'`), (v) => v === 'done', 15000);
+  assert.equal(Number(await until(() => h.sql(`select qty from public.inventory_items where id = '${filterId}'`), (v) => v === '2.00', 10000)), 2, 'one filter left the inventory');
   assert.equal(h.sql(`select reason || '|' || delta from public.inventory_moves where job_id = '${jobId}'`), 'used|-1.00');
   await h.shot(page, 'e2e-2-done');
   const j = h.sql(`select status || '|' || (waiver_signed_at is not null) from public.jobs where id = '${jobId}'`);
