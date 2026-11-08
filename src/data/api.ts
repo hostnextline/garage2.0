@@ -205,6 +205,12 @@ export async function deleteInventoryItem(id: string) {
   await forgetLocal('inventory_items', [id]);
   return r;
 }
+/** stock bought: the quantity comes in and the money leaves the Trésorerie (an expense) or the Coffre, in one step */
+export type PaidFrom = 'treasury' | 'coffre' | 'none';
+export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null) {
+  guard();
+  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note }, { label: t('log.inventory') });
+}
 export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null) {
   guard();
   return (await insertRow('inventory_moves', { id: uuid(), item_id: itemId, delta, reason, note, created_at: now() })).id;

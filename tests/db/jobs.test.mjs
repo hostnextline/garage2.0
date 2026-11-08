@@ -77,6 +77,44 @@ test('a job from « Je pars » to « Terminé »: waiver, invoice with its numbe
   assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 15);
 }));
 
+test('Part 24 quinquies: stock bought, paid by the Trésorerie (an expense with taxes) or by the Coffre (its balance goes down)', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.owner);
+  // the Trésorerie: 5 filters for 57,49 $ taxes included → an expense « Pièces », taxes split, the cost per filter
+  const a = await h.rpc('inventory_buy', { p_op: uuid(), p_item: g.filter, p_qty: 5, p_total_cents: 5749, p_from: 'treasury', p_vendor: 'Lordco', p_note: 'Facture 1234' });
+  assert.equal(a.ok, true);
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 10);
+  const e = await h.one(`select vendor, category, description, subtotal_cents, tps_cents, tvq_cents, total_cents from public.expenses where id = $1`, [a.expense_id]);
+  assert.deepEqual([e.vendor, e.category, e.description, e.total_cents], ['Lordco', 'Pièces', '5 × Filtre PH7317', 5749]);
+  assert.equal(e.subtotal_cents + e.tps_cents + e.tvq_cents, 5749, 'subtotal + taxes = what was paid');
+  assert.deepEqual([e.subtotal_cents, e.tps_cents], [5000, 250]);
+  assert.equal(await h.val(`select cost_cents from public.inventory_items where id = $1`, [g.filter]), 1150);
+  // the Coffre: family gave 100 $; 4,5 L of oil bought with it for 40 $ → the balance is 60 $
+  await h.c.query(`insert into public.coffre (kind, amount_cents, received_on) values ('received', 10000, public.local_today())`);
+  await h.as(g.owner);
+  const b = await h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 4.5, p_total_cents: 4000, p_from: 'coffre', p_vendor: null, p_note: null });
+  assert.ok(b.coffre_id && !b.expense_id, 'no expense for Coffre money');
+  const rep = await h.rpc('coffre_report', { p_from: null, p_to: null });
+  assert.deepEqual([rep.amount_cents, rep.spent_cents, rep.balance_cents], [10000, 4000, 6000]);
+  const row = rep.rows.find((x) => x.kind === 'purchase');
+  assert.deepEqual([row.customer, row.work, row.amount_cents], ['Huile 5W-30', '4.5 × Huile 5W-30', 4000]);
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 24.5);
+  // the same purchase sent twice (a retry): once
+  const op = uuid();
+  await h.as(g.owner);
+  await h.rpc('inventory_buy', { p_op: op, p_item: g.oil, p_qty: 1, p_total_cents: 900, p_from: 'coffre', p_vendor: null, p_note: null });
+  await h.rpc('inventory_buy', { p_op: op, p_item: g.oil, p_qty: 1, p_total_cents: 900, p_from: 'coffre', p_vendor: null, p_note: null });
+  assert.equal((await h.rpc('coffre_report', { p_from: null, p_to: null })).balance_cents, 5100);
+  // refusals: no price, a bad side, someone without the inventory right
+  assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: null, p_from: 'treasury', p_vendor: null, p_note: null })))?.hint, 'bad_amount');
+  assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: 100, p_from: 'poche', p_vendor: null, p_note: null })))?.hint, 'bad_from');
+  const acc = await h.person('Comptable', ['treasurer'], { rights: { treasury: true, inventory: false } });
+  await h.as(acc);
+  assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: 100, p_from: 'coffre', p_vendor: null, p_note: null })))?.hint, 'not_allowed');
+}));
+
 test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);

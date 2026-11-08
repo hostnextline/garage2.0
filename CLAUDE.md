@@ -137,6 +137,11 @@ end $do$;
   the inventory, once per job (no list = the planned parts, as before). « Supprimer cet article » in the item sheet =
   `inventory_delete(op, item)` (owner or « inventory » right): the item, its moves and its service links are deleted for good;
   the phone forgets them (`forgetLocal`).
+- Buying stock (Part 24 quinquies, `20261108000180_achat_inventaire.sql`): « Entrée » in an item's sheet has « Payé par »
+  (Rien / Trésorerie / Coffre) and the total paid. `inventory_buy(op, item, qty, total, from, vendor, note)` moves the stock and the
+  money in one transaction: Trésorerie = an expense « Pièces » (taxes split from the total), Coffre = a `coffre` row of
+  `kind = 'purchase'` (`item_id`, `item_name`, `qty`); the item's `cost_cents` becomes the unit price paid. `coffre_report` gives
+  `amount_cents` (received), `spent_cents`, `balance_cents` (all time); the Coffre screen and its exports show purchases as money out.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
