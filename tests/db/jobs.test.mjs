@@ -405,10 +405,7 @@ test('« Coffre »: family and friends jobs, no invoice, no taxes, out of the re
   assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([])]), false, 'no job, nothing to put');
   await h.as(treasurer);
   assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), true, 'the treasurer may too');
-  const outsider = uuid();
-  await h.c.query(`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2, '', now(), now(), now(), '{}', '{}')`, [outsider, `${outsider.slice(0, 8)}@test.local`]).catch(() => undefined);
-  await h.as(outsider);
+  await h.as(uuid());   // a signed-in account that is not on the team (no staff row)
   assert.equal(await h.val(`select public.coffre_may_add($1::uuid[])`, [pgArr([j1])]), false, 'an account that is not on the team may not');
   assert.equal((await h.fails(() => h.rpc('coffre_add', { p_op: uuid(), p_jobs: pgArr([j1]), p_amount: 5000, p_note: null, p_day: null })))?.hint, 'not_allowed');
 
