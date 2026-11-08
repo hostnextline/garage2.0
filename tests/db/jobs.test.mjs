@@ -110,6 +110,7 @@ test('Part 24 quinquies: stock bought, paid by the Trésorerie (an expense with 
   // refusals: no price, a bad side, someone without the inventory right
   assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: null, p_from: 'treasury', p_vendor: null, p_note: null })))?.hint, 'bad_amount');
   assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: 100, p_from: 'poche', p_vendor: null, p_note: null })))?.hint, 'bad_from');
+  await h.as(null); await h.c.query('reset role');
   const acc = await h.person('Comptable', ['treasurer'], { rights: { treasury: true, inventory: false } });
   await h.as(acc);
   assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: 100, p_from: 'coffre', p_vendor: null, p_note: null })))?.hint, 'not_allowed');
