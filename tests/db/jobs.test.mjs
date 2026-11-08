@@ -177,7 +177,8 @@ test('a cancel in a block that has already started leaves the other jobs on thei
   await h.rpc('set_job_duration', { p_op: uuid(), p_job: ids[1], p_duration: 90 });
   const j = await h.one(`select truck_id, duration_min from public.jobs where id = $1`, [ids[1]]);
   assert.deepEqual([j.truck_id, j.duration_min], [g.truck, 90]);
-  // a coming block is still re-planned as before
+  // a coming block is still re-planned as before (block_open is the server's own: asked as the server)
+  await h.as(null);
   assert.equal(await h.val(`select public.block_open((public.local_today() + 1)::date, 'am')`), true);
 }));
 
