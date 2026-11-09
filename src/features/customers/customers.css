@@ -203,3 +203,6 @@
 /* « Moteur »: one engine per line, with its oil and filter */
 .carpick-engines { display: grid; gap: var(--sp-2); }
 .carpick-engine { display: grid; gap: 2px; text-align: left; justify-items: start; padding: var(--sp-3); }
+
+/* the long press on a row (shortcut menu): no iPhone link preview, no text selection */
+.customers-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

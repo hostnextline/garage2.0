@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261108000180_achat_inventaire.sql` (Parts 24 quater and quinquies, applied 2026-11-08 from
+- Applied on live: every migration up to `20261109000100_texte_reservation.sql` (Part 24 sexies, applied 2026-11-09 from commit `d8f87f6`
+  through the Claude Code MCP `supabase-garage`; Parts 24 quater and quinquies from
   commit `9c02c8b`; Part 24 ter from `a4f2da6`;
   Part 24 bis from `e9d9652`, Part 24 from `9835d52`, all with the
   sha256 check; Parts 21–22 were applied through the connector's `apply_migration` and recorded under the wrong versions, fixed the
@@ -69,9 +70,10 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `enroute` at `a4f2da6`; `book`, `team`, `backup` at `9835d52`; the others (`client`, `conversation`, `notify`, `stripe`, `vin`) at `2610bc8`.
+  `notify`, `book`, `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team`, `backup` at `9835d52`; the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
-- Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
+- Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
+  connector now points at another organization). Before: the claude.ai connector (`execute_sql`, `apply_migration`, `get_advisors`).
 - Free plan: the project pauses after a week without use.
 
 ## Things to know before touching them
@@ -153,7 +155,9 @@ end $do$;
   The same menu is the agenda's shortcut menu (`jobActions` / `blockActions` in `actions.tsx`, each shortcut only for those who
   may): on a job: open, copy, move (`#/job/ID?do=move`), customer file, text (`#/customer/ID?do=text`), call, directions, add a vehicle
   (`?do=car`), new estimate, new appointment for this customer, see the invoice; on a block: paste, book in this block, see the day
-  (computer), map of the day.
+  (computer), map of the day. The list of customers has the same menu on each row (`customerActions` in
+  `src/features/customers/shortcuts.tsx`, shared with the agenda; plus « Modifier la fiche » = `#/customer/ID?do=edit`). The menu host
+  (`ContextMenuHost`) is mounted once in the shell.
 - The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
   the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
   {soustotal} » = « 159,98 $ + tx » (`subtotalWords`; work by the hour: « …, plus le travail à l’heure »; nothing priced: « selon le
