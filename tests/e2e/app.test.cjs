@@ -1214,3 +1214,28 @@ step('Clients: right-click (computer) or long press (iPhone) on a customer: the 
   await ctx.close();
 });
 
+step('« Changer de camion »: an appointment booked on the wrong truck goes to another one, same day and block; then the app picks again', async () => {
+  // tomorrow afternoon: Karim Laval's appointment (Addresses step) is on Camion Complet; the other truck works then too
+  h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${T.voiture}', public.local_today() + 1, '[[480,1200]]', 'e2e') on conflict do nothing`);
+  const before = h.sql(`select day || '|' || block || '|' || truck_id from public.jobs where id = '${jobLaval}'`).split('|');
+  assert.equal(before[2], T.complet);
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/job/${jobLaval}`);
+  await page.getByTestId('job-menu').click();
+  await page.getByTestId('menu-truck').click();
+  await page.getByTestId('truck-sheet').waitFor({ timeout: 15000 });
+  await h.shot(page, 'e2e-truck-sheet');
+  await page.getByTestId(`truck-pick-${T.voiture}`).click();
+  await page.getByTestId('truck-sheet').waitFor({ state: 'detached', timeout: 15000 });
+  const after = await until(() => h.sql(`select day || '|' || block || '|' || truck_id || '|' || truck_pinned from public.jobs where id = '${jobLaval}'`), (v) => v.includes(T.voiture), 15000);
+  assert.deepEqual(after.split('|'), [before[0], before[1], T.voiture, 'true'], 'same day and block, the other truck, kept there');
+  // « Laisser l’app choisir »: the truck is no longer forced
+  await page.getByTestId('job-menu').click();
+  await page.getByTestId('menu-truck').click();
+  await page.getByTestId('truck-auto').click();
+  assert.equal(await until(() => h.sql(`select truck_pinned::text from public.jobs where id = '${jobLaval}'`), (v) => v === 'false', 15000), 'false');
+  noErrors(page);
+  await ctx.close();
+});
+
