@@ -1145,6 +1145,8 @@ step('Copier / Coller on an iPhone: a long press on an appointment, « Copier »
   await page.getByTestId('agenda-day').waitFor({ timeout: 15000 });
   const ticket = page.locator(`.agenda-ticketwrap:has(a[href="#/job/${jobId}"])`).first();
   await ticket.waitFor();
+  await ticket.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
   // held: the menu, and lifting the finger does not open the appointment
   await hold(ticket, 700);
   await page.getByTestId('agenda-menu').waitFor();
@@ -1161,6 +1163,8 @@ step('Copier / Coller on an iPhone: a long press on an appointment, « Copier »
   const block = page.locator('[data-testid^="block-"]:has([data-testid^="book-"]):has([data-testid^="paste-"])').first();
   await block.waitFor({ timeout: 15000 });
   const key = (await block.getAttribute('data-testid')).replace('block-', '');
+  await block.locator('.agenda-lanes').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
   await hold(block.locator('.agenda-lanes'), 700);
   await page.getByTestId('menu-paste').click();
   await page.getByTestId('book-copy').waitFor({ timeout: 15000 });
@@ -1198,6 +1202,9 @@ step('Clients: right-click (computer) or long press (iPhone) on a customer: the 
   await page.goto(h.APP + '#/customers');
   const prow = page.locator(`[data-testid="customer-row"][href="#/customer/${julie}"]`);
   await prow.waitFor({ timeout: 15000 });
+  // a finger is always on a row that is on the screen (a row out of view would make the page scroll, which closes the menu)
+  await prow.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
   await hold(prow, 700);
   await page.getByTestId('agenda-menu').waitFor();
   assert.equal(await page.getByTestId('customer-file').count(), 0, 'lifting the finger did not open the file');
