@@ -111,6 +111,8 @@ end $do$;
 - « Ordre des arrêts » (Part 21, `jobs.manual_order`): owner, office (« book ») or the truck's driver put a truck's
   booked stops of a block in the order wanted (`set_stop_order`, empty list = back to the planner). `plan_block` keeps
   them right after the stops en route / on site; moving a job to another day, block or truck clears its place.
+- « Réserver en ligne » is **switched off since 2026-11-09** (live `settings.booking.web.on = false`: the page says « fermée », `book`
+  refuses with `web_off`; the « Réservation en ligne » panel is hidden in Réglages) until Hassan and Claude rework it together.
 - « Réserver en ligne » (Part 23, `20261107000500_web_booking.sql`, applied on live 2026-11-07 from commit `7b1b86b` with the
   sha256 check; server function `book` deployed pinned to `7b1b86b`, link open): one public link `client.html#reserver` (Réglages → Réservations, second panel « Réservation en ligne »: on/off, copy). The
   customer picks services, an address (Photon, must be ≤ `booking.web.max_km` (60) from the start), one of the 6 best blocks
