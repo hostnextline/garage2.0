@@ -89,7 +89,7 @@ function NewCustomer(p: { query: URLSearchParams }) {
             dupAction={(c) => <Button size="sm" href={`#/customer/${c.id}`} data-testid="dup-open">{t('customers.dup.open')}</Button>} />
           <section class="stack customers-new-car" data-testid="new-car">
             <h3 class="customers-new-h">{t('customers.form.car')} <span class="faint">({t('common.optional')})</span></h3>
-            <CarForm value={car} onValue={setCar} mode={carMode} onMode={setCarMode} tried={tried && !carIsEmpty(car)} />
+            <CarForm value={car} onPatch={(patch) => setCar((x) => ({ ...x, ...patch }))} mode={carMode} onMode={setCarMode} tried={tried && !carIsEmpty(car)} />
           </section>
           <div class="customers-actions">
             <Button type="submit" variant="primary" icon={<UserPlus size={18} />} busy={saving === 'file'} data-testid="customer-create">{t('customers.form.create')}</Button>

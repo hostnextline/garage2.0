@@ -267,10 +267,12 @@ export function carErrors(d: AddDraft, mode: AddMode): { year: string | null; mo
 export function carRow(d: AddDraft, customerId: string): Partial<Vehicle> {
   return { ...d.extra, customer_id: customerId, year: d.year.trim() ? Number(d.year) : null, make: d.make.trim() || null, model: d.model.trim() || null, vin: d.vin || null };
 }
-/** the car's fields: year → make → model from the lists, or the VIN (typed or scanned) */
-export function CarForm(p: { value: AddDraft; onValue: (d: AddDraft) => void; mode: AddMode; onMode: (m: AddMode) => void; tried: boolean; autoFocusVin?: boolean }) {
+/** the car's fields: year → make → model from the lists, or the VIN (typed or scanned).
+    `onPatch` merges into the latest draft (the parent's setState with a function): the VIN's decoding arrives a moment after
+    the VIN itself, and must not put back the draft as it was before */
+export function CarForm(p: { value: AddDraft; onPatch: (patch: Partial<AddDraft>) => void; mode: AddMode; onMode: (m: AddMode) => void; tried: boolean; autoFocusVin?: boolean }) {
   const d = p.value;
-  const set = (patch: Partial<AddDraft>) => p.onValue({ ...d, ...patch });
+  const set = p.onPatch;
   const e = carErrors(d, p.mode);
   return (
     <div class="stack">
@@ -278,7 +280,7 @@ export function CarForm(p: { value: AddDraft; onValue: (d: AddDraft) => void; mo
         options={[{ value: 'ymm', label: t('vehicles.add.byModel') }, { value: 'vin', label: t('vehicles.add.byVin') }]} />
       {p.mode === 'vin' && (
         <VinField value={d.vin} onValue={(vin) => set({ vin })} autoFocus={p.autoFocusVin} error={p.tried ? e.vin : null}
-          onDecoded={(car) => set({ year: car.year ? String(car.year) : d.year, make: car.make || d.make, model: car.model || d.model, extra: car })} />
+          onDecoded={(car) => set({ ...(car.year ? { year: String(car.year) } : {}), ...(car.make ? { make: car.make } : {}), ...(car.model ? { model: car.model } : {}), extra: car })} />
       )}
       {(p.mode === 'ymm' || d.make || d.model) && (
         <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model, extra: c.engine ? { ...d.extra, ...c.engine } : d.extra })} testid="vadd"
@@ -306,7 +308,7 @@ export function VehicleAddSheet(p: { customerId: string; onClose: () => void; on
         <Button onClick={p.onClose}>{t('common.cancel')}</Button>
         <Button variant="primary" onClick={add} data-testid="vehicle-add-ok">{t('vehicles.add.ok')}</Button>
       </>}>
-      <CarForm value={d} onValue={setD} mode={mode} onMode={setMode} tried={tried} autoFocusVin />
+      <CarForm value={d} onPatch={(patch) => setD((x) => ({ ...x, ...patch }))} mode={mode} onMode={setMode} tried={tried} autoFocusVin />
     </Sheet>
   );
 }
