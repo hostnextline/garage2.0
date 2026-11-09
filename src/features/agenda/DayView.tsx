@@ -1,7 +1,7 @@
 /* One day: the day in words, the week strip, then the three blocks with each truck as a lane (how full it is, its
    jobs in stop order), the jobs « À placer », and the cancelled / no-show jobs apart. */
 import { useRef } from 'preact/hooks';
-import { ChevronLeft, ChevronRight, CalendarSearch, Plus, TriangleAlert, Clock } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, CalendarSearch, Plus, TriangleAlert, Clock, ClipboardPaste } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { addDays, longDay, clockRange, isValidDay, parseDay, today as todayOf, type Day } from '../../lib/dates';
 import { blocks, truckLabel, truckColor } from '../../data/select';
@@ -14,6 +14,14 @@ import { fillOf, freeWords, fillWords, weekOfDay } from './layout';
 import { blockView, dayJobs, isOff, type BlockView } from './select';
 import type { TruckBlock } from '../../data/select';
 import { focusAfterNav } from './focus';
+import { jobMenu, blockMenu, mayPaste } from './actions';
+import { pasteHref } from './copy';
+import type { Job } from '../../data/types';
+
+/** a ticket with its right-click menu (copy, open) */
+function Ticketed(p: { job: Job }) {
+  return <div class="agenda-ticketwrap" onContextMenu={(e) => jobMenu(e as MouseEvent, p.job)}><JobTicket job={p.job} /></div>;
+}
 
 /* ---------- the day in words, with the days around ---------- */
 export function DayHead(p: { day: Day; onDay: (d: Day) => void }) {
@@ -97,7 +105,7 @@ function Lane(p: { lane: TruckBlock; started: boolean }) {
           <span class={`agenda-free${cap - used <= 0 ? ' is-full' : ''}`}>{freeWords(used, cap, l)}</span>
         </div>
       )}
-      {jobs.length > 0 && <div class="agenda-tickets">{jobs.map((j) => <JobTicket key={j.id} job={j} />)}</div>}
+      {jobs.length > 0 && <div class="agenda-tickets">{jobs.map((j) => <Ticketed key={j.id} job={j} />)}</div>}
     </div>
   );
 }
@@ -114,7 +122,7 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
     <Panel class={`agenda-block${v.started ? ' is-started' : ''}${closed ? ' is-closed' : ''}`} data-tour={p.first ? 'agenda-block' : undefined} data-testid={`block-${v.key}`}
       title={t('agenda.block.title', { block: t(`common.blocks.${v.key}`), hours: clockRange(v.start, v.end, l) })}
       action={status ? <span class={`agenda-status${closed ? ' is-closed' : ''}${full && !v.started ? ' is-full' : ''}`}>{v.started && <Clock size={14} aria-hidden="true" />}{status}</span> : undefined}>
-      <div class="agenda-lanes">
+      <div class="agenda-lanes" onContextMenu={(e) => blockMenu(e as MouseEvent, p.day, v.key, v)}>
         {closed && !v.lanes.length && !v.unplaced.length && <p class="muted small agenda-closed-text">{t('agenda.block.closedText')}</p>}
         {v.lanes.map((lane) => <Lane key={lane.truck.id} lane={lane} started={v.started} />)}
         {!v.started && !closed && v.idle.map((tr) => (
@@ -133,14 +141,15 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
               <span class="agenda-lane-name">{t('agenda.lane.unplaced')}</span>
             </div>
             <p class="agenda-unplaced-text">{t('agenda.lane.unplacedText')}</p>
-            <div class="agenda-tickets">{v.unplaced.map((j) => <JobTicket key={j.id} job={j} />)}</div>
+            <div class="agenda-tickets">{v.unplaced.map((j) => <Ticketed key={j.id} job={j} />)}</div>
           </div>
         )}
         {!closed && v.jobs === 0 && <p class="faint small agenda-empty-block">{t('agenda.block.empty')}</p>}
       </div>
-      {canBook && (
+      {(canBook || mayPaste(v)) && (
         <div class="agenda-block-foot">
-          <Button size="sm" variant="secondary" icon={<Plus />} href={href('/book', { day: p.day, block: v.key })} data-testid={`book-${v.key}`}>{t('agenda.block.book')}</Button>
+          {mayPaste(v) && <Button size="sm" variant="primary" icon={<ClipboardPaste />} href={pasteHref(p.day, v.key)} data-testid={`paste-${v.key}`}>{t('agenda.copy.pasteHere')}</Button>}
+          {canBook && <Button size="sm" variant="secondary" icon={<Plus />} href={href('/book', { day: p.day, block: v.key })} data-testid={`book-${v.key}`}>{t('agenda.block.book')}</Button>}
         </div>
       )}
     </Panel>

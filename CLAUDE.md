@@ -174,6 +174,12 @@ end $do$;
   money in one transaction: Trésorerie = an expense « Pièces » (taxes split from the total), Coffre = a `coffre` row of
   `kind = 'purchase'` (`item_id`, `item_name`, `qty`); the item's `cost_cents` becomes the unit price paid. `coffre_report` gives
   `amount_cents` (received), `spent_cents`, `balance_cents` (all time); the Coffre screen and its exports show purchases as money out.
+- « Copier / Coller un rendez-vous » (agenda, no server change): right-click a job (week chip or day ticket; long press on Android)
+  → « Copier le rendez-vous » (`copyJob`, kept in `sessionStorage` for the visit, banner « Rendez-vous copié » with « Oublier la copie »);
+  right-click an open block that has not started → « Coller ici » (also a button in each such block) → `#/book?copy=JOB&day=&block=`:
+  `BookScreen` fills in the customer, car, the job's own address, the work (`draftsFromJob`: planned/done/approved lines), problem,
+  notes and card, in that block; the person checks and taps « Réserver » (the usual rules, « Réserver quand même » included).
+  Files: `src/features/agenda/copy.ts`, `actions.tsx`, `ContextMenu.tsx`.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 and 13 were flaky there before Phase 2.

@@ -2,7 +2,7 @@
    No signals here, so they are easy to test (logic.test.ts). */
 import { totals, type Line, type TaxRates, type Totals } from '../../lib/money';
 import { isValidDay, type BlockKey, type Day } from '../../lib/dates';
-import type { Job, Quote, Service } from '../../data/types';
+import type { Job, Quote, Service, JobItem } from '../../data/types';
 import type { ItemInput } from '../../data/api';
 import type { ItemDraft } from './ServicePicker';
 import type { BlockChoice } from './BlockPicker';
@@ -64,6 +64,16 @@ export function draftsFromQuote(q: Pick<Quote, 'items'>): ItemDraft[] {
     kind: it.kind || (it.service_id ? 'service' : 'labour'), service_id: it.service_id ?? null, item_id: null, description: String(it.description),
     qty: Number(it.qty) || 1, unit_cents: Number(it.unit_cents) || 0, taxable: it.taxable !== false, duration_min: it.duration_min ?? null, note: null
   }));
+}
+
+/** a copied appointment's work, as new lines: what was booked, done or accepted (not what was refused, removed or still
+    waiting for the customer's answer); the prices and times as they were, ready to change */
+export function draftsFromJob(items: Pick<JobItem, 'kind' | 'service_id' | 'item_id' | 'description' | 'qty' | 'unit_cents' | 'taxable' | 'duration_min' | 'status' | 'note' | 'sort'>[]): ItemDraft[] {
+  return items
+    .filter((it) => ['planned', 'done', 'approved'].includes(it.status) && String(it.description || '').trim())
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+    .map((it) => ({ kind: it.kind, service_id: it.service_id ?? null, item_id: it.item_id ?? null, description: String(it.description),
+      qty: Number(it.qty) || 1, unit_cents: Number(it.unit_cents) || 0, taxable: it.taxable !== false, duration_min: it.duration_min ?? null, note: it.note ?? null }));
 }
 
 /* ---------- the address of the address bar (#/book?day=…&block=…) ---------- */

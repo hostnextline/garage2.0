@@ -1,6 +1,7 @@
 /* Réserver — one page, not a wizard: the customer, the car and the address, the services, the problem, the block,
    then « Réserver ». The server picks the truck and the order of the stops.
-   #/book?customer=ID · ?day=YYYY-MM-DD&block=am · ?quote=ID (an estimate becomes a job) · ?walkin=1 (the job starts now). */
+   #/book?customer=ID · ?day=YYYY-MM-DD&block=am · ?quote=ID (an estimate becomes a job) · ?walkin=1 (the job starts now)
+   · ?copy=JOB (« Coller » in the agenda: the same customer, car, address, work, problem and notes, in the block chosen). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CalendarCheck, Wrench, RotateCcw } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
@@ -9,7 +10,7 @@ import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { duration, today as todayOf } from '../../lib/dates';
 import { money } from '../../lib/money';
-import { customer as customerRow, customerName, vehicle as vehicleRow, vehiclesOf, vehicleLabel, activeTrucks, truckLabel, truckColor, settings, service as serviceRow, blockLoad } from '../../data/select';
+import { job as jobRow, itemsOf, customer as customerRow, customerName, vehicle as vehicleRow, vehiclesOf, vehicleLabel, activeTrucks, truckLabel, truckColor, settings, service as serviceRow, blockLoad } from '../../data/select';
 import { getRow } from '../../data/store';
 import { bookJob, walkIn as walkInJob, errorMessage, type BookInput } from '../../data/api';
 import { uuid } from '../../data/sync';
@@ -21,7 +22,7 @@ import { VehiclePicker } from '../customers/VehiclePicker';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
 import { BlockPicker, choiceWords, type BlockChoice } from './BlockPicker';
-import { missingPiece, bookSummary, toItemInputs, draftsFromQuote, parseChoice, refusalCode, clampDuration, BLOCK_REFUSALS } from './logic';
+import { missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, BLOCK_REFUSALS } from './logic';
 import { blockPhrase } from './when';
 import { notifyCustomer, wantsText } from './notify';
 import { forgetRefusal, noLongWaitOffline } from './outbox';
@@ -113,6 +114,23 @@ function BookForm({ query }: ScreenProps) {
     setItems(draftsFromQuote(quote));
     if (quote.notes) setNotes((n) => n || quote.notes || '');
   }, [quote?.id]);
+
+  /* ---------- #/book?copy=JOB: a copy of an appointment (its rows may arrive after the first drawing) ---------- */
+  const copyOf = jobRow(query.get('copy'));
+  const fromCopy = useRef(false);
+  useEffect(() => {
+    if (!copyOf || fromCopy.current) return;
+    fromCopy.current = true;
+    if (copyOf.customer_id) { setCustomerId(copyOf.customer_id); setPlaceOwner(copyOf.customer_id); }
+    // the appointment's own address (it may differ from the customer's file)
+    const own = (copyOf.address || '').trim();
+    setPlace(own ? { address: own, unit: copyOf.unit || null, postal_code: copyOf.postal_code || null, lat: copyOf.lat ?? null, lng: copyOf.lng ?? null } : placeOf(copyOf.customer_id));
+    if (copyOf.vehicle_id) setVehicleId(copyOf.vehicle_id);
+    setItems(draftsFromJob(itemsOf(copyOf.id)));
+    if (copyOf.problem) setProblem(copyOf.problem);
+    if (copyOf.notes) setNotes(copyOf.notes);
+    setCard(!!copyOf.card_on_file);
+  }, [copyOf?.id]);
 
   /* ---------- #/book?customer=ID: the row may arrive after the first drawing (first start, slow network) ---------- */
   const qRow = customerRow(qCustomer);
@@ -393,6 +411,7 @@ function BookForm({ query }: ScreenProps) {
 
   return (
     <Page title={title} sub={isWalkIn ? t('booking.subWalkIn') : t('booking.sub')} back={back} help={t('booking.help')} wide={isWide} data-testid="book-screen">
+      {copyOf && <Banner kind="info" title={t('booking.copy.title', { n: copyOf.number })} data-testid="book-copy">{t('booking.copy.text')}</Banner>}
       {quote && (
         <Banner kind={quoteConverted ? 'warn' : 'info'} title={t('booking.quote.from', { n: quote.number })}
           action={quoteConverted && quote.job_id ? <Button size="sm" href={`#/job/${quote.job_id}`}>{t('booking.quote.open')}</Button> : undefined}>

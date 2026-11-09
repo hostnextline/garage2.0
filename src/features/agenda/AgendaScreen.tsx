@@ -2,13 +2,14 @@
    Phone: one day, its three blocks, each truck as a lane. Computer: the week as a grid (or one day, wider).
    A mechanic without the « agenda » right sees « Mon horaire »: his truck's jobs only. */
 import { useEffect, useState } from 'preact/hooks';
-import { ChevronLeft, ChevronRight } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, ClipboardCopy } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { navigate, href } from '../../app/router';
 import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { isValidDay, today as todayOf, type Day } from '../../lib/dates';
-import { blocks, allJobs } from '../../data/select';
+import { blocks, allJobs, job as jobRow } from '../../data/select';
+import { may } from '../../app/routes';
 import { net } from '../../data/sync';
 import { Page, Banner, Button, IconButton, Seg, Skeleton, Panel } from '../../ui';
 import { DayView, DatePick } from './DayView';
@@ -16,6 +17,9 @@ import { WeekGrid } from './WeekGrid';
 import { shiftWeek, weekTitle, sameWeek } from './layout';
 import { blockView, dayJobs, isOff, seesAll } from './select';
 import { focusAfterNav, restoreFocus } from './focus';
+import { ContextMenuHost } from './ContextMenu';
+import { copiedJob, clearCopy } from './copy';
+import { jobPerson } from './move';
 import './agenda.css';
 
 /** redraw every minute: blocks start, the day changes */
@@ -66,6 +70,15 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
     <Page title={mine ? t('agenda.titleMine') : t('agenda.title')} sub={sub} help={mine ? t('agenda.helpMine') : t('agenda.help')} actions={actions}
       wide={isWide && view === 'week'} data-testid="agenda-screen">
       {!net.value.online && <Banner kind="warn">{t('agenda.offline')}</Banner>}
+      {may.book() && copiedJob.value && (() => {
+        const cj = jobRow(copiedJob.value);
+        return (
+          <Banner kind="info" title={t('agenda.copy.bannerTitle', { name: cj ? jobPerson(cj) || `#${cj.number}` : '' })}
+            action={<Button size="sm" icon={<ClipboardCopy size={16} />} onClick={clearCopy} data-testid="copy-clear">{t('agenda.copy.clear')}</Button>} data-testid="copy-banner">
+            {t('agenda.copy.bannerText')}
+          </Banner>
+        );
+      })()}
       {loading ? (
         <Panel><div aria-busy="true"><span class="sr-only">{t('agenda.loading')}</span><Skeleton h={22} w="40%" /><div style={{ height: '12px' }} /><Skeleton h={64} lines={3} /></div></Panel>
       ) : view === 'week' ? (
@@ -73,6 +86,7 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
       ) : (
         <DayView day={day} onDay={(d) => go(d)} />
       )}
+      <ContextMenuHost />
     </Page>
   );
 }

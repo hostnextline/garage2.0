@@ -1,5 +1,6 @@
 import type { booking as fr } from '../fr/booking';
 export const booking: typeof fr = {
+  copy: { title: 'Copy of appointment #{n}', text: 'Same customer, car, address and work. Change what you need, then tap “Book”.' },
   title: 'Book',
   titleWalkIn: 'Walk-in customer',
   titleQuote: 'Book estimate no. {n}',
