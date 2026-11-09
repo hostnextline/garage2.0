@@ -178,6 +178,12 @@ end $do$;
 - New customer with the car (no server change): « Nouveau client » has « Son véhicule (facultatif) », the same form as « Ajouter un
   véhicule » (`CarForm`, `carErrors`, `carRow` in `VehicleBits.tsx`: year → make → model from the lists, or the VIN); saved right after
   the customer (`saveVehicle`), so « Créer et réserver » opens the booking with that car already chosen.
+- The Coffre's own stock (Part 24 septies, `20261109000200_stock_coffre.sql`): `inventory_items.pool` = 'garage' | 'coffre' (fixed once
+  made, trigger `inventory_pool_fixed`). `inventoryList` is the garage's only (so « À commander », the week's needs, the services'
+  parts, the stock value never see Coffre items); `coffreStock` the Coffre's. Inventaire has « Garage / Coffre » (`?pool=coffre`).
+  `inventory_buy`: a Coffre item is paid by the Coffre or « Rien » (no taxes, no expense, a `coffre` purchase row: only in the Coffre's
+  report), a garage item by the Trésorerie or « Rien » (`bad_from` otherwise). `coffre_report.stock_cents` = the Coffre stock's value
+  at cost, shown on the Coffre screen with a link to that stock. Coffre items have no selling price.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

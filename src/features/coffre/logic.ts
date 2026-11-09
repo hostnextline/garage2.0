@@ -15,7 +15,9 @@ export interface CoffreEntry {
 }
 export interface CoffreReport { from: Day; to: Day; rows: CoffreEntry[]; count: number; amount_cents: Cents; value_cents: Cents;
   /** spent on stock in the period; what is in the Coffre now (all time) */
-  spent_cents: Cents; balance_cents: Cents }
+  spent_cents: Cents; balance_cents: Cents;
+  /** what the Coffre's own stock is worth, at cost (no taxes) */
+  stock_cents: Cents }
 
 const num = (x: unknown) => { const n = Number(x); return Number.isFinite(n) ? n : 0; };
 /** reads the server's answer safely */
@@ -34,7 +36,7 @@ export function normalizeCoffre(raw: unknown, from: Day, to: Day): CoffreReport 
   const received = rows.filter((r) => r.kind === 'received').reduce((n, r) => n + r.amount_cents, 0);
   const spent = rows.filter((r) => r.kind === 'purchase').reduce((n, r) => n + r.amount_cents, 0);
   return { from, to, rows, count: rows.length, amount_cents: received, value_cents: rows.reduce((n, r) => n + r.value_cents, 0),
-    spent_cents: spent, balance_cents: a.balance_cents != null ? num(a.balance_cents) : received - spent };
+    spent_cents: spent, balance_cents: a.balance_cents != null ? num(a.balance_cents) : received - spent, stock_cents: num(a.stock_cents) };
 }
 
 /** the jobs that may go in the Coffre together with this one: same customer, not cancelled, not in it, nothing paid */

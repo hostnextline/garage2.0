@@ -10,6 +10,8 @@ export const coffre: typeof fr = {
   worthShort: 'value {value}',
   spent: 'Spent (stock bought)',
   balance: 'In the Coffre now',
+  stock: 'Coffre’s stock (value, no taxes)',
+  stockLink: 'See the Coffre’s stock',
   purchase: 'Bought: {what}',
   list: 'The entries',
   jobs: 'Jobs {n}',

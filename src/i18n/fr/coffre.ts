@@ -10,6 +10,8 @@ export const coffre = {
   worthShort: 'valeur {value}',
   spent: 'Dépensé (achats d’inventaire)',
   balance: 'Dans le Coffre maintenant',
+  stock: 'Stock du Coffre (valeur, sans taxes)',
+  stockLink: 'Voir le stock du Coffre',
   purchase: 'Achat : {what}',
   list: 'Les entrées',
   jobs: 'Jobs {n}',
