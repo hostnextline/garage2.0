@@ -250,22 +250,54 @@ export function yearOk(s: string): boolean {
 }
 
 /* ---------- « Ajouter un véhicule » ---------- */
-interface AddDraft { year: string; make: string; model: string; vin: string; extra: Partial<CarFields> }
+export interface AddDraft { year: string; make: string; model: string; vin: string; extra: Partial<CarFields> }
+export type AddMode = 'ymm' | 'vin';
+export const EMPTY_CAR: AddDraft = { year: '', make: '', model: '', vin: '', extra: {} };
+/** nothing typed yet (the car is optional on a new customer) */
+export const carIsEmpty = (d: AddDraft) => !d.year.trim() && !d.make.trim() && !d.model.trim() && !d.vin;
+/** what is wrong with the car typed (null: fine) */
+export function carErrors(d: AddDraft, mode: AddMode): { year: string | null; model: string | null; vin: string | null } {
+  return {
+    year: d.year.trim() && !yearOk(d.year.trim()) ? t('vehicles.errors.year') : null,
+    model: mode === 'ymm' && (!d.make.trim() || !d.model.trim()) ? t('vehicles.errors.model') : null,
+    vin: mode === 'vin' && !vinSavable(d.vin) ? t('vehicles.errors.vin') : mode === 'vin' && !d.vin && !d.make.trim() ? t('vehicles.errors.vinOrModel') : null
+  };
+}
+/** the car to save for a customer */
+export function carRow(d: AddDraft, customerId: string): Partial<Vehicle> {
+  return { ...d.extra, customer_id: customerId, year: d.year.trim() ? Number(d.year) : null, make: d.make.trim() || null, model: d.model.trim() || null, vin: d.vin || null };
+}
+/** the car's fields: year → make → model from the lists, or the VIN (typed or scanned) */
+export function CarForm(p: { value: AddDraft; onValue: (d: AddDraft) => void; mode: AddMode; onMode: (m: AddMode) => void; tried: boolean; autoFocusVin?: boolean }) {
+  const d = p.value;
+  const set = (patch: Partial<AddDraft>) => p.onValue({ ...d, ...patch });
+  const e = carErrors(d, p.mode);
+  return (
+    <div class="stack">
+      <Seg value={p.mode} onValue={p.onMode} label={t('vehicles.add.how')} class="customers-seg" data-testid="vehicle-add-mode"
+        options={[{ value: 'ymm', label: t('vehicles.add.byModel') }, { value: 'vin', label: t('vehicles.add.byVin') }]} />
+      {p.mode === 'vin' && (
+        <VinField value={d.vin} onValue={(vin) => set({ vin })} autoFocus={p.autoFocusVin} error={p.tried ? e.vin : null}
+          onDecoded={(car) => set({ year: car.year ? String(car.year) : d.year, make: car.make || d.make, model: car.model || d.model, extra: car })} />
+      )}
+      {(p.mode === 'ymm' || d.make || d.model) && (
+        <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model, extra: c.engine ? { ...d.extra, ...c.engine } : d.extra })} testid="vadd"
+          errors={{ year: p.tried ? e.year : null, make: p.tried && e.model && !d.make.trim() ? e.model : null, model: p.tried && e.model && d.make.trim() && !d.model.trim() ? e.model : null }} />
+      )}
+      {p.mode === 'ymm' && <p class="small muted" style={{ margin: 0 }}>{t('vehicles.add.later')}</p>}
+    </div>
+  );
+}
+
 export function VehicleAddSheet(p: { customerId: string; onClose: () => void; onAdded: (id: string) => void }) {
-  const [mode, setMode] = useState<'ymm' | 'vin'>('ymm');
-  const [d, setD] = useState<AddDraft>({ year: '', make: '', model: '', vin: '', extra: {} });
+  const [mode, setMode] = useState<AddMode>('ymm');
+  const [d, setD] = useState<AddDraft>(EMPTY_CAR);
   const [tried, setTried] = useState(false);
-  const set = (patch: Partial<AddDraft>) => setD((x) => ({ ...x, ...patch }));
-  const errYear = d.year.trim() && !yearOk(d.year.trim()) ? t('vehicles.errors.year') : null;
-  const errModel = mode === 'ymm' && (!d.make.trim() || !d.model.trim()) ? t('vehicles.errors.model') : null;
-  const errVin = mode === 'vin' && !vinSavable(d.vin) ? t('vehicles.errors.vin') : mode === 'vin' && !d.vin && !d.make.trim() ? t('vehicles.errors.vinOrModel') : null;
   const add = async () => {
     setTried(true);
-    if (errYear || errModel || errVin) return;
-    const id = await run(() => saveVehicle({
-      ...d.extra, customer_id: p.customerId, year: d.year.trim() ? Number(d.year) : null, make: d.make.trim() || null, model: d.model.trim() || null,
-      vin: d.vin || null
-    }), { ok: t('vehicles.add.added') });
+    const e = carErrors(d, mode);
+    if (e.year || e.model || e.vin) return;
+    const id = await run(() => saveVehicle(carRow(d, p.customerId)), { ok: t('vehicles.add.added') });
     if (id) p.onAdded(id);
   };
   return (
@@ -274,19 +306,7 @@ export function VehicleAddSheet(p: { customerId: string; onClose: () => void; on
         <Button onClick={p.onClose}>{t('common.cancel')}</Button>
         <Button variant="primary" onClick={add} data-testid="vehicle-add-ok">{t('vehicles.add.ok')}</Button>
       </>}>
-      <div class="stack">
-        <Seg value={mode} onValue={setMode} label={t('vehicles.add.how')} class="customers-seg" data-testid="vehicle-add-mode"
-          options={[{ value: 'ymm', label: t('vehicles.add.byModel') }, { value: 'vin', label: t('vehicles.add.byVin') }]} />
-        {mode === 'vin' && (
-          <VinField value={d.vin} onValue={(vin) => set({ vin })} autoFocus error={tried ? errVin : null}
-            onDecoded={(car) => set({ year: car.year ? String(car.year) : d.year, make: car.make || d.make, model: car.model || d.model, extra: car })} />
-        )}
-        {(mode === 'ymm' || d.make || d.model) && (
-          <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model, extra: c.engine ? { ...d.extra, ...c.engine } : d.extra })} testid="vadd"
-            errors={{ year: tried ? errYear : null, make: tried && errModel && !d.make.trim() ? errModel : null, model: tried && errModel && d.make.trim() && !d.model.trim() ? errModel : null }} />
-        )}
-        {mode === 'ymm' && <p class="small muted" style={{ margin: 0 }}>{t('vehicles.add.later')}</p>}
-      </div>
+      <CarForm value={d} onValue={setD} mode={mode} onMode={setMode} tried={tried} autoFocusVin />
     </Sheet>
   );
 }

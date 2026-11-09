@@ -72,6 +72,7 @@ export const customers = {
     cardHint: 'Le client a laissé une carte de crédit.',
     create: 'Créer la fiche',
     createBook: 'Créer et réserver',
+    car: 'Son véhicule',
     fix: 'Corrige ce qui est en rouge.',
     errors: {
       name: 'Écris un prénom, un nom ou une entreprise.',
@@ -89,6 +90,7 @@ export const customers = {
     noAddress: 'Pas d’adresse au dossier',
     saved: 'Fiche enregistrée',
     created: 'Client créé',
+    createdWithCar: 'Client et véhicule créés',
     delete: 'Supprimer ce client',
     deleted: 'Client supprimé',
     deleteHint: 'La fiche disparaît des listes. Les factures déjà faites restent.',

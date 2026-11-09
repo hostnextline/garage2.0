@@ -1239,3 +1239,31 @@ step('« Changer de camion »: an appointment booked on the wrong truck goes to 
   await ctx.close();
 });
 
+step('Nouveau client: his car right away (2015 Volkswagen Jetta from the lists); « Créer et réserver » books with that car', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/customer/new');
+  await page.getByTestId('customer-new').waitFor({ timeout: 15000 });
+  await page.getByTestId('cf-first').fill('Lina');
+  await page.getByTestId('cf-last').fill('Auto');
+  await page.locator('.customers-new input[type=tel]').fill('514 555-0123');
+  // the car, in the same screen
+  await page.getByTestId('new-car').getByTestId('vadd-year').click();
+  await page.getByTestId('carpick-year-2015').click();
+  await page.getByTestId('carpick-make-Volkswagen').click();
+  await page.getByTestId('carpick-model').filter({ hasText: 'Jetta' }).first().click({ timeout: 15000 });
+  if (await page.getByTestId('carpick-engines').count()) await page.getByTestId('carpick-engine').first().click();
+  assert.equal(await page.getByTestId('new-car').getByTestId('vadd-model').innerText(), 'Jetta');
+  await h.shot(page, 'e2e-new-customer-car');
+  await page.getByTestId('customer-create-book').click();
+  await page.getByTestId('book-screen').waitFor({ timeout: 20000 });
+  const cust = await until(() => h.sql(`select id from public.customers where first_name = 'Lina' and last_name = 'Auto'`), Boolean, 15000);
+  assert.equal(await until(() => h.sql(`select year || ' ' || make || ' ' || model from public.vehicles where customer_id = '${cust}'`), Boolean, 15000), '2015 Volkswagen Jetta');
+  // the booking screen has the customer and her only car already chosen
+  await page.getByTestId('customer-picked').waitFor();
+  await page.getByTestId('vehicle-chips').getByText(/Jetta/).waitFor({ timeout: 10000 });
+  assert.equal(await page.getByTestId('vehicle-chips').locator('[aria-pressed="true"]').count(), 1, 'the car is chosen');
+  noErrors(page);
+  await ctx.close();
+});
+

@@ -175,6 +175,9 @@ end $do$;
   (⋯ menu of the job, the agenda's right-click menu → `#/job/ID?do=truck`): `TruckSheet` lists the trucks working that block with
   their free time (`blockLoad`, the job left out); a tap = `move_job(same day, same block, truck)` (the truck is kept: `truck_pinned`;
   the server refuses `truck_full`); « Laisser l’app choisir » = `move_job(…, null)`. No text to the customer (day and time unchanged).
+- New customer with the car (no server change): « Nouveau client » has « Son véhicule (facultatif) », the same form as « Ajouter un
+  véhicule » (`CarForm`, `carErrors`, `carRow` in `VehicleBits.tsx`: year → make → model from the lists, or the VIN); saved right after
+  the customer (`saveVehicle`), so « Créer et réserver » opens the booking with that car already chosen.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
