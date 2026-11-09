@@ -153,7 +153,9 @@ end $do$;
   The same menu is the agenda's shortcut menu (`jobActions` / `blockActions` in `actions.tsx`, each shortcut only for those who
   may): on a job: open, copy, move (`#/job/ID?do=move`), customer file, text (`#/customer/ID?do=text`), call, directions, add a vehicle
   (`?do=car`), new estimate, new appointment for this customer, see the invoice; on a block: paste, book in this block, see the day
-  (computer), map of the day.
+  (computer), map of the day. The list of customers has the same menu on each row (`customerActions` in
+  `src/features/customers/shortcuts.tsx`, shared with the agenda; plus « Modifier la fiche » = `#/customer/ID?do=edit`). The menu host
+  (`ContextMenuHost`) is mounted once in the shell.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

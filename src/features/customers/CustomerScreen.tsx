@@ -100,6 +100,7 @@ function CustomerFile(p: { id: string; wanted?: string | null }) {
     setQuery({ do: null });
     if (w === 'text') setChat(true);
     else if (w === 'car' && isField()) setAddCar(true);
+    else if (w === 'edit' && isField()) setEditing(true);
   }, [p.wanted]);
   const gone = useRef(false);
   const c = customer(p.id);

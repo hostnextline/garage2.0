@@ -70,6 +70,8 @@ export function Rows(p: { children?: ComponentChildren; class?: string; 'data-te
 export interface RowItemProps {
   title: ComponentChildren; sub?: ComponentChildren; start?: ComponentChildren; end?: ComponentChildren;
   href?: string; onClick?: () => void; chevron?: boolean; class?: string; 'data-testid'?: string; 'data-tour'?: string;
+  /** extra handlers on the row (a right-click / long-press menu) */
+  events?: Record<string, (e: never) => unknown>;
 }
 export function RowItem(p: RowItemProps) {
   const inner = (
@@ -83,9 +85,10 @@ export function RowItem(p: RowItemProps) {
     </>
   );
   const cls = `row-item ${p.class || ''}`;
-  if (p.href) return <a class={cls} role="listitem" href={p.href} data-testid={p['data-testid']} data-tour={p['data-tour']}>{inner}</a>;
-  if (p.onClick) return <button type="button" class={cls} role="listitem" onClick={p.onClick} data-testid={p['data-testid']} data-tour={p['data-tour']}>{inner}</button>;
-  return <div class={cls} role="listitem" data-testid={p['data-testid']}>{inner}</div>;
+  const ev = (p.events || {}) as Record<string, unknown>;
+  if (p.href) return <a class={cls} role="listitem" href={p.href} data-testid={p['data-testid']} data-tour={p['data-tour']} {...ev}>{inner}</a>;
+  if (p.onClick) return <button type="button" class={cls} role="listitem" onClick={p.onClick} data-testid={p['data-testid']} data-tour={p['data-tour']} {...ev}>{inner}</button>;
+  return <div class={cls} role="listitem" data-testid={p['data-testid']} {...ev}>{inner}</div>;
 }
 export function Kv(p: { items: [ComponentChildren, ComponentChildren][]; class?: string }) {
   return (

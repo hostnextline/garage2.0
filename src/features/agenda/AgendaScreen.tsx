@@ -17,7 +17,6 @@ import { WeekGrid } from './WeekGrid';
 import { shiftWeek, weekTitle, sameWeek } from './layout';
 import { blockView, dayJobs, isOff, seesAll } from './select';
 import { focusAfterNav, restoreFocus } from './focus';
-import { ContextMenuHost } from './ContextMenu';
 import { copiedJob, clearCopy } from './copy';
 import { jobPerson } from './move';
 import './agenda.css';
@@ -86,7 +85,6 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
       ) : (
         <DayView day={day} onDay={(d) => go(d)} />
       )}
-      <ContextMenuHost />
     </Page>
   );
 }

@@ -14,6 +14,8 @@ import { can } from '../../data/auth';
 import { net } from '../../data/sync';
 import type { Customer } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, SearchInput, Seg, Empty, Skeleton, Avatar, Pill } from '../../ui';
+import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
+import { customerActions } from './shortcuts';
 import { factsOf, searchIndex, recentFirst, nameOrder, type CustomerFacts } from './facts';
 import { useSettled, useFocusOnMount } from './hooks';
 import { searchList, draftFromQuery } from './search';
@@ -114,12 +116,21 @@ export default function CustomersScreen({ query }: ScreenProps) {
   );
 }
 
+/** right-click (computer) or long press (phone) on a customer: the shortcut menu */
+function rowMenu(c: Customer) {
+  const actions = () => customerActions(c, { edit: true });
+  return {
+    onContextMenu: (e: MouseEvent) => openMenu(e, actions(), customerName(c)),
+    ...pressProps((x, y) => { const a = actions(); if (!a.length) return false; openMenuAt(x, y, a, customerName(c)); })
+  };
+}
+
 function CustomerRow(p: { c: Customer; f: CustomerFacts }) {
   const { c, f } = p;
   const name = customerName(c);
   const company = c.company && (c.first_name || c.last_name) ? c.company : null;
   return (
-    <RowItem href={`#/customer/${c.id}`} class="customers-row" data-testid="customer-row" chevron
+    <RowItem href={`#/customer/${c.id}`} class="customers-row" data-testid="customer-row" chevron events={rowMenu(c) as never}
       start={<Avatar name={name} />}
       title={<>{name}{company && <span class="customers-row-company">{company}</span>}</>}
       sub={<>

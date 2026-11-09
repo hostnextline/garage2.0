@@ -1155,3 +1155,35 @@ step('Copier / Coller on an iPhone: a long press on an appointment, « Copier »
   await ctx.close();
 });
 
+step('Clients: right-click (computer) or long press (iPhone) on a customer: the shortcuts; « Modifier la fiche », « Nouvelle estimation »', async () => {
+  // the computer: a right-click on Julie's row
+  let { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/customers');
+  const row = page.locator(`[data-testid="customer-row"][href="#/customer/${julie}"]`);
+  await row.waitFor({ timeout: 15000 });
+  await row.click({ button: 'right' });
+  await page.getByTestId('agenda-menu').waitFor();
+  await h.shot(page, 'e2e-clients-menu');
+  for (const id of ['menu-customer', 'menu-edit', 'menu-text', 'menu-call', 'menu-directions', 'menu-car', 'menu-quote', 'menu-book']) {
+    assert.equal(await page.getByTestId(id).count(), 1, `the shortcut ${id}`);
+  }
+  await page.getByTestId('menu-edit').click();
+  await page.getByTestId('customer-edit-sheet').waitFor({ timeout: 15000 });
+  noErrors(page);
+  await ctx.close();
+  // the iPhone: a long press on the row, « Nouvelle estimation »
+  ({ page, ctx } = await h.openW({ kind: 'phone' }));
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/customers');
+  const prow = page.locator(`[data-testid="customer-row"][href="#/customer/${julie}"]`);
+  await prow.waitFor({ timeout: 15000 });
+  await hold(prow, 700);
+  await page.getByTestId('agenda-menu').waitFor();
+  assert.equal(await page.getByTestId('customer-file').count(), 0, 'lifting the finger did not open the file');
+  await page.getByTestId('menu-quote').click();
+  await page.waitForURL(/#\/quote\/new\?customer=/, { timeout: 15000 });
+  noErrors(page);
+  await ctx.close();
+});
+
