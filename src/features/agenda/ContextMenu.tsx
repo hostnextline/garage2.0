@@ -3,6 +3,8 @@
    time, hosted once on the agenda; closes on a choice, a tap elsewhere, Escape, a scroll or a resize. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
+import './menu.css';
 import { signal } from '@preact/signals';
 
 export interface MenuAction { key: string; label: string; icon?: ComponentChildren; run: () => void; testid?: string; /** a thin line above (a new group) */ sep?: boolean; danger?: boolean }
@@ -89,7 +91,9 @@ export function ContextMenuHost() {
   const w = 260, h = Math.min(window.innerHeight - 16, 48 * m.actions.length + (m.title ? 40 : 12));
   const left = Math.max(8, Math.min(m.x, window.innerWidth - w - 8));
   const top = Math.max(8, Math.min(m.y, window.innerHeight - h - 8));
-  return (
+  // drawn on the page itself (document.body): inside the app's frame, a parent with a transform or a blur would move a « fixed »
+  // menu away from the finger (seen on phones)
+  return createPortal(
     <div ref={box} class="agenda-menu glass-strong" role="menu" aria-label={m.title} style={{ left: `${left}px`, top: `${top}px` }} data-testid="agenda-menu"
       onContextMenu={(e) => e.preventDefault()}>
       {m.title && <div class="agenda-menu-title">{m.title}</div>}
@@ -99,6 +103,7 @@ export function ContextMenuHost() {
           {a.icon}<span>{a.label}</span>
         </button>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }
