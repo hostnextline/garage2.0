@@ -14,7 +14,7 @@ import { dropRefusal, freeWords, weekOfDay, weekTitle, type DropRefusal } from '
 import { blockView, dayJobs, isOff, laneShown, type BlockView } from './select';
 import { Meter } from './DayView';
 import { moveFlow, jobPerson } from './move';
-import { jobMenu, blockMenu, mayPaste } from './actions';
+import { jobMenu, blockMenu, mayPaste, jobPress, blockPress } from './actions';
 import { pasteHref } from './copy';
 
 const cellKey = (day: Day, block: BlockKey) => `${day}|${block}`;
@@ -37,7 +37,7 @@ function Chip(p: { job: Job; unplaced?: boolean; draggable: boolean; dragging: b
   return (
     <a href={`#/job/${j.id}`} class={`agenda-chip st-${j.status}${p.unplaced ? ' is-unplaced' : ''}${p.dragging ? ' is-dragging' : ''}${p.draggable ? ' can-drag' : ''}`}
       style={{ '--tc': p.unplaced ? 'var(--warn)' : truckColor(j.truck_id) }} draggable={p.draggable} aria-label={label} title={label}
-      onDragStart={(e) => p.onDragStart(j, e as DragEvent)} onDragEnd={p.onDragEnd} onContextMenu={(e) => jobMenu(e as MouseEvent, j)} data-testid={`chip-${j.id}`}>
+      onDragStart={(e) => p.onDragStart(j, e as DragEvent)} onDragEnd={p.onDragEnd} onContextMenu={(e) => jobMenu(e as MouseEvent, j)} {...jobPress(j)} data-testid={`chip-${j.id}`}>
       <span class="agenda-chip-stub" aria-hidden="true">{stub}</span>
       <span class="agenda-chip-body" aria-hidden="true">
         <span class="agenda-chip-name">{name}</span>
@@ -58,7 +58,7 @@ function Cell(p: { day: Day; v: BlockView; isToday: boolean; drag: Job | null; o
   const canDrag = (j: Job) => may.book() && j.status === 'booked';
   const cls = ['agenda-cell', p.isToday && 'is-today', v.started && 'is-started', closed && 'is-closed', p.drag && (target ? 'is-target' : 'is-refused'), p.over === k && target && 'is-over'].filter(Boolean).join(' ');
   return (
-    <td class={cls} data-testid={`cell-${day}-${v.key}`} onContextMenu={(e) => blockMenu(e as MouseEvent, day, v.key, v)}
+    <td class={cls} data-testid={`cell-${day}-${v.key}`} onContextMenu={(e) => blockMenu(e as MouseEvent, day, v.key, v)} {...blockPress(day, v.key, v)}
       onDragOver={(e) => { if (!p.drag) return; if (target) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; } else if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; p.setRefused(refusal === 'same' ? null : refusal); if (p.over !== k) p.setOver(k); }}
       onDragLeave={(e) => { if (p.over === k && !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) p.setOver(null); }}
       onDrop={(e) => { e.preventDefault(); if (target) p.drop({ day, block: v.key }); else p.endDrag(); }}>

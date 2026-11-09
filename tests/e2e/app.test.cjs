@@ -1094,3 +1094,50 @@ step('Copier / Coller: right-click an appointment, « Copier »; right-click a f
   await ctx.close();
 });
 
+/* a finger held on an element (an iPhone never sends a right-click: the app times the press) */
+const hold = (loc, ms = 700) => loc.evaluate((node, ms) => new Promise((done) => {
+  const r = node.getBoundingClientRect();
+  const t = new Touch({ identifier: 1, target: node, clientX: r.left + Math.min(20, r.width / 2), clientY: r.top + Math.min(20, r.height / 2) });
+  node.dispatchEvent(new TouchEvent('touchstart', { touches: [t], targetTouches: [t], changedTouches: [t], bubbles: true, cancelable: true }));
+  setTimeout(() => { node.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [t], bubbles: true, cancelable: true })); done(); }, ms);
+}), ms);
+
+step('Copier / Coller on an iPhone: a long press on an appointment, « Copier »; a long press on a free block another day, « Coller ici »; « Réserver »', async () => {
+  const { page, ctx } = await h.openW({ kind: 'phone' });
+  await h.signIn(page, who.owner.email, PW);
+  const jobDay = h.sql(`select day::text from public.jobs where id = '${jobId}'`);
+  const before = Number(h.sql(`select count(*) from public.jobs where customer_id = '${julie}' and deleted_at is null`));
+  await page.goto(h.APP + `#/agenda/${jobDay}`);
+  await page.getByTestId('agenda-day').waitFor({ timeout: 15000 });
+  const ticket = page.locator(`.agenda-ticketwrap:has(a[href="#/job/${jobId}"])`).first();
+  await ticket.waitFor();
+  // held: the menu, and lifting the finger does not open the appointment
+  await hold(ticket, 700);
+  await page.getByTestId('agenda-menu').waitFor();
+  await h.shot(page, 'e2e-press-menu');
+  assert.equal(await page.getByTestId('job-screen').count(), 0, 'the release did not open the appointment');
+  await page.getByTestId('menu-copy-job').click();
+  await page.getByTestId('copy-banner').waitFor();
+  // another day the truck works, a block with room: held, « Coller ici »
+  const later = h.sql(`select d::date::text from generate_series(public.local_today() + 2, public.local_today() + 12, interval '1 day') d
+    where exists (select 1 from public.truck_week w where w.truck_id = '${T.complet}' and w.dow = extract(dow from d) and jsonb_array_length(w.ranges) > 0)
+      and not exists (select 1 from public.truck_days x where x.truck_id = '${T.complet}' and x.day = d::date) limit 1`);
+  await page.goto(h.APP + `#/agenda/${later}`);
+  await page.getByTestId('copy-banner').waitFor();
+  const block = page.locator('[data-testid^="block-"]:has([data-testid^="book-"]):has([data-testid^="paste-"])').first();
+  await block.waitFor({ timeout: 15000 });
+  const key = (await block.getAttribute('data-testid')).replace('block-', '');
+  await hold(block.locator('.agenda-lanes'), 700);
+  await page.getByTestId('menu-paste').click();
+  await page.getByTestId('book-copy').waitFor({ timeout: 15000 });
+  await page.getByTestId('customer-picked').waitFor();
+  await h.shot(page, 'e2e-press-book');
+  await page.getByTestId('book-confirm').click();
+  await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  assert.equal(Number(h.sql(`select count(*) from public.jobs where customer_id = '${julie}' and deleted_at is null`)), before + 1, 'one new appointment');
+  const made = h.sql(`select day || '|' || block from public.jobs where customer_id = '${julie}' and deleted_at is null order by created_at desc limit 1`);
+  assert.equal(made, `${later}|${key}`, 'in the block held');
+  noErrors(page);
+  await ctx.close();
+});
+

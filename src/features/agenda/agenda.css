@@ -131,3 +131,6 @@
 .agenda-menu-item:hover, .agenda-menu-item:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); outline: none; }
 .agenda-cell-paste { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 4px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: var(--t-xs); font-weight: 600; text-decoration: none; }
 .agenda-block-foot { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* the long press: no iPhone link preview, no text selection on what can be held */
+.agenda-chip, .agenda-ticketwrap, .agenda-ticketwrap a, .agenda-lanes, .agenda-cell { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
