@@ -89,6 +89,8 @@ export async function addItem(jobId: string, item: ItemInput) {
 }
 export async function updateItem(id: string, patch: Partial<JobItem>) { guard(); await updateRow('job_items', id, patch); }
 export async function removeItem(id: string) { guard(); await deleteRow('job_items', id); }
+/** « Changer le prix » of a line (everyone on the team; the server keeps the old and new prices) */
+export async function setItemPrice(id: string, unitCents: number) { guard(); return callRpc('job_item_price', { p_item: id, p_unit_cents: unitCents }, { label: t('log.price') }); }
 export async function answerExtra(itemId: string, accept: boolean, via: 'signature' | 'verbal', attachmentId: string | null = null) {
   guard();
   return callRpc('extra_answer', { p_item: itemId, p_accept: accept, p_via: via, p_attachment: attachmentId });

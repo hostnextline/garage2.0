@@ -5,14 +5,15 @@
    - « Proposer un travail »: a line written on the spot (what, price, why), then the customer's answer: signed on the
      phone, by the link in a text (the answer comes back by itself), or given to the office on the phone. */
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { Check, Plus, PenLine, Hourglass, CircleCheck, Circle, X, Minus, MessageSquareText, Phone } from 'lucide-preact';
+import { Check, Plus, PenLine, Hourglass, CircleCheck, Circle, X, Minus, MessageSquareText, Phone, Tag } from 'lucide-preact';
 import type { Job, JobItem, ItemStatus } from '../../data/types';
 import { Panel, Button, Sheet, Field, Input, Textarea, MoneyInput, Money, Totals, Seg, Kv, Check as CheckBox, attempt } from '../../ui';
 import { t, tl, lang } from '../../lib/i18n';
 import { money, lineTotal, totals } from '../../lib/money';
 import { duration } from '../../lib/dates';
-import { itemsOf, jobTotals, settings } from '../../data/select';
-import { addItem, updateItem, removeItem, setJobDuration } from '../../data/api';
+import { itemsOf, jobTotals, settings, invoiceOf } from '../../data/select';
+import { me } from '../../data/auth';
+import { addItem, updateItem, removeItem, setJobDuration, setItemPrice } from '../../data/api';
 import { ServicePicker, itemsDuration, type ItemDraft } from '../booking/ServicePicker';
 import { SignaturePad } from './SignaturePad';
 import { hasEnoughInk, type Stroke } from './signature';
@@ -104,6 +105,7 @@ export function ItemSheet(p: { job: Job; item: JobItem | undefined; rights: JobR
           [t('common.qty'), Number(i.qty) !== 1 ? t('jobs.work.qty', { qty: Number(i.qty).toLocaleString(l === 'en' ? 'en-CA' : 'fr-CA'), price: money(Math.abs(i.unit_cents), l) }) : null],
           [t('jobs.work.why'), i.note]
         ]} />
+        <PriceEdit job={p.job} item={i} />
         {canEdit && (
           <div class="stack">
             {/* on site: what was done, or not (not billed); before that, the plan only changes */}
@@ -124,6 +126,37 @@ export function ItemSheet(p: { job: Job; item: JobItem | undefined; rights: JobR
         )}
       </div>
     </Sheet>
+  );
+}
+
+/* ---------- « Changer le prix »: everyone on the team, while the appointment is coming or under way and its invoice is
+   not finished (the server says the same, job_item_price, and keeps the old and new prices) ---------- */
+function PriceEdit(p: { job: Job; item: JobItem }) {
+  const i = p.item;
+  const [open, setOpen] = useState(false);
+  const [cents, setCents] = useState<number | null>(Math.abs(i.unit_cents));
+  const inv = invoiceOf(p.job.id);
+  const finished = !!inv && inv.status !== 'draft' && inv.status !== 'void';
+  const may = !!me.value && OPEN_STATUSES.includes(p.job.status) && ['planned', 'approved', 'done', 'proposed'].includes(i.status);
+  if (!may) return null;
+  if (finished) return <p class="small muted" style={{ margin: 0 }}>{t('jobs.price.locked')}</p>;
+  if (!open) return <Button block icon={<Tag />} onClick={() => { setCents(Math.abs(i.unit_cents)); setOpen(true); }} data-testid="item-price-edit">{t('jobs.price.change')}</Button>;
+  const save = async () => {
+    if (cents == null || cents < 0) return;
+    if (cents === Math.abs(i.unit_cents)) { setOpen(false); return; }
+    const ok = await attempt(() => setItemPrice(i.id, cents), { ok: t(p.job.confirm_sent_at ? 'jobs.price.doneResend' : 'jobs.price.done', { price: money(cents, lang.value) }) });
+    if (ok) setOpen(false);
+  };
+  return (
+    <div class="stack jobs-price-edit" data-testid="item-price-form">
+      <Field label={Number(i.qty) !== 1 ? t('jobs.price.unitLabel') : t('jobs.price.label')} hint={t('jobs.price.hint')}>
+        <MoneyInput cents={cents} onCents={setCents} aria-label={t('jobs.price.label')} />
+      </Field>
+      <div class="row-wrap">
+        <Button onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+        <Button variant="primary" onClick={save} disabled={cents == null} data-testid="item-price-save">{t('jobs.price.save')}</Button>
+      </div>
+    </div>
   );
 }
 

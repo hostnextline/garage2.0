@@ -103,6 +103,21 @@ step('the office books Julie: customer, service, block, truck; the job is on the
   assert.equal(Number(h.sql(`select count(*) from public.job_items where job_id = '${jobId}' and service_id = '${SVC_OIL}'`)), 1);
   // no text service connected: the app gives the message to send by hand (never fails silently)
   await dismissSheets(page);
+  // « Changer le prix » on the line (any account): 69,99 $, then back to the price list's
+  const line = h.sql(`select id || '|' || unit_cents from public.job_items where job_id = '${jobId}' and service_id = '${SVC_OIL}'`).split('|');
+  const setPrice = async (text) => {
+    await page.getByTestId('job-item').first().locator('.jobs-item-main').click();
+    await page.getByTestId('item-price-edit').click();
+    await page.locator('[data-testid="item-price-form"] input').fill(text);
+    await page.getByTestId('item-price-save').click();
+    await page.getByTestId('item-price-form').waitFor({ state: 'detached', timeout: 15000 });
+    await dismissSheets(page);
+  };
+  await setPrice('69,99');
+  assert.equal(await until(() => h.sql(`select unit_cents from public.job_items where id = '${line[0]}'`), (v) => v === '6999', 15000), '6999');
+  assert.equal(h.sql(`select data->>'from' || '>' || (data->>'to') from public.activity where action = 'price_changed' and entity_id = '${jobId}'`), `${line[1]}>6999`, 'the change is noted');
+  await setPrice((Number(line[1]) / 100).toFixed(2).replace('.', ','));
+  assert.equal(await until(() => h.sql(`select unit_cents from public.job_items where id = '${line[0]}'`), (v) => v === line[1], 15000), line[1]);
   // on the agenda of her day (the first block suggested may be next week: a Saturday afternoon run)
   const bookedDay = h.sql(`select day::text from public.jobs where id = '${jobId}'`);
   await page.goto(h.APP + `#/agenda/${bookedDay}`);

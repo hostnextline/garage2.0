@@ -317,6 +317,16 @@ export const jobs = {
     callOffice: 'Appeler le bureau'
   },
   /* texts to the customer */
+  price: {
+    change: 'Changer le prix',
+    label: 'Nouveau prix (avant taxes)',
+    unitLabel: 'Nouveau prix à l’unité (avant taxes)',
+    hint: 'Le total du rendez-vous et l’estimation du client changent aussi. Le changement est noté (qui, quand, l’ancien prix).',
+    save: 'Enregistrer le prix',
+    done: 'Prix changé : {price}.',
+    doneResend: 'Prix changé : {price}. Le client a déjà reçu son estimation : renvoie-la (⋯, « Renvoyer le texto de confirmation »).',
+    locked: 'La facture est terminée : pour changer un prix, annule-la d’abord.'
+  },
   parts: {
     title: 'Pièces utilisées',
     sub: 'Confirme ce qui sort de l’inventaire pour cette job',

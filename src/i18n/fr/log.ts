@@ -16,6 +16,7 @@ export const log = {
   settings: 'Réglages',
   expense: 'Dépense',
   inventory: 'Inventaire',
+  price: 'Changement de prix',
   change: 'Changement',
   step: { leave: 'Je pars', arrive: 'Je suis arrivé', finish: 'Job terminée', cancel: 'Annulation', no_show: 'Client absent', reopen: 'Job rouverte', back: 'Étape défaite', waiver: 'Signature de l’autorisation' }
 };

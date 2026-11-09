@@ -162,6 +162,9 @@ end $do$;
   { click: true }`: signed electronically in the name on the customer's file, no picture, the authorization of work included; the
   proof in `activity` `signed_online`: signer, time, waiver version, amount, link, device, IP fingerprint); « Signer avec le doigt
   plutôt » keeps the drawing. `can_sign` no longer needs a total above zero.
+  « Changer le prix » (same Part): on a line of an appointment (its sheet), every account that sees the appointment, while it is
+  coming or under way and its invoice not finished: `job_item_price(op, item, unit_cents)` (a discount stays negative; the old and new
+  prices in `activity` `price_changed`); the app says to resend the confirmation when the customer already got it.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
