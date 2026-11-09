@@ -1257,7 +1257,9 @@ step('Nouveau client: his car right away (2015 Volkswagen Jetta from the lists);
   await h.shot(page, 'e2e-new-customer-car');
   await page.getByTestId('customer-create-book').click();
   await page.getByTestId('book-screen').waitFor({ timeout: 20000 });
-  const cust = await until(() => h.sql(`select id from public.customers where first_name = 'Lina' and last_name = 'Auto'`), Boolean, 15000);
+  // (found by the phone: the name fields depend on the screen's layout)
+  const cust = await until(() => h.sql(`select id from public.customers where phone_digits = '5145550123' order by created_at desc limit 1`), Boolean, 15000);
+  assert.ok(cust, 'the customer was made');
   assert.equal(await until(() => h.sql(`select year || ' ' || make || ' ' || model from public.vehicles where customer_id = '${cust}'`), Boolean, 15000), '2015 Volkswagen Jetta');
   // the booking screen has the customer and her only car already chosen
   await page.getByTestId('customer-picked').waitFor();
