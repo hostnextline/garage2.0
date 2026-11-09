@@ -136,7 +136,10 @@ export const activeServices = computed(() => servicesList.value.filter((s) => s.
 export function service(id: string | null | undefined): Service | undefined { return getRow<Service>('services', id); }
 export function serviceName(s: Service, l: string): string { return (l === 'en' && s.name_en) || s.name_fr; }
 export function partsOfService(serviceId: string): ServicePart[] { return rowsOf<ServicePart>('service_parts').filter((p) => p.service_id === serviceId && !p.deleted_at); }
-export const inventoryList = computed(() => rowsOf<InventoryItem>('inventory_items').filter((i) => !i.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'fr')));
+/** the garage's stock (the Coffre's own stock is apart: never in the garage's lists, value, orders, week's needs or services) */
+export const inventoryList = computed(() => rowsOf<InventoryItem>('inventory_items').filter((i) => !i.deleted_at && i.pool !== 'coffre').sort((a, b) => a.name.localeCompare(b.name, 'fr')));
+/** the Coffre's own stock (bought with the Coffre's money, no taxes) */
+export const coffreStock = computed(() => rowsOf<InventoryItem>('inventory_items').filter((i) => !i.deleted_at && i.pool === 'coffre').sort((a, b) => a.name.localeCompare(b.name, 'fr')));
 export const lowStock = computed(() => inventoryList.value.filter((i) => i.active && (i.min_qty != null ? Number(i.qty) <= Number(i.min_qty) : Number(i.qty) <= 0)));
 export function movesOf(itemId: string): InventoryMove[] { return rowsOf<InventoryMove>('inventory_moves').filter((m) => m.item_id === itemId && !m.deleted_at).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); }
 export const quotesList = computed(() => rowsOf<Quote>('quotes').filter((q) => !q.deleted_at).sort((a, b) => b.number - a.number));

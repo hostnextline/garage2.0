@@ -63,7 +63,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261109000100_texte_reservation.sql` (Part 24 sexies, applied 2026-11-09 from commit `d8f87f6`
+- Applied on live: every migration up to `20261109000200_stock_coffre.sql` (Part 24 septies, applied 2026-11-09 from commit `9d06aa3`;
+  Part 24 sexies from commit `d8f87f6`
   through the Claude Code MCP `supabase-garage`; Parts 24 quater and quinquies from
   commit `9c02c8b`; Part 24 ter from `a4f2da6`;
   Part 24 bis from `e9d9652`, Part 24 from `9835d52`, all with the
@@ -209,6 +210,12 @@ end $do$;
 - New customer with the car (no server change): « Nouveau client » has « Son véhicule (facultatif) », the same form as « Ajouter un
   véhicule » (`CarForm`, `carErrors`, `carRow` in `VehicleBits.tsx`: year → make → model from the lists, or the VIN); saved right after
   the customer (`saveVehicle`), so « Créer et réserver » opens the booking with that car already chosen.
+- The Coffre's own stock (Part 24 septies, `20261109000200_stock_coffre.sql`): `inventory_items.pool` = 'garage' | 'coffre' (fixed once
+  made, trigger `inventory_pool_fixed`). `inventoryList` is the garage's only (so « À commander », the week's needs, the services'
+  parts, the stock value never see Coffre items); `coffreStock` the Coffre's. Inventaire has « Garage / Coffre » (`?pool=coffre`).
+  `inventory_buy`: a Coffre item is paid by the Coffre or « Rien » (no taxes, no expense, a `coffre` purchase row: only in the Coffre's
+  report), a garage item by the Trésorerie or « Rien » (`bad_from` otherwise). `coffre_report.stock_cents` = the Coffre stock's value
+  at cost, shown on the Coffre screen with a link to that stock. Coffre items have no selling price.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 and 13 were flaky there before Phase 2.

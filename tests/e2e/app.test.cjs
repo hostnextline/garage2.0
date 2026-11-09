@@ -1269,3 +1269,40 @@ step('Nouveau client: his car right away (2015 Volkswagen Jetta from the lists);
   await ctx.close();
 });
 
+step('Stock du Coffre: an item of its own, bought with the Coffre’s money (no taxes, no expense); never in the garage’s stock; its value on the Coffre screen', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/inventory?pool=coffre');
+  await page.getByTestId('inventory-coffre-note').waitFor({ timeout: 15000 });
+  await page.getByTestId('inventory-add').click();
+  await page.getByTestId('item-name').fill('Huile famille e2e');
+  await page.getByTestId('item-save').click();
+  const item = await until(() => h.sql(`select id || '|' || pool from public.inventory_items where name = 'Huile famille e2e'`), Boolean, 15000);
+  const [itemId, pool] = item.split('|');
+  assert.equal(pool, 'coffre');
+  // « Entrée »: 2, paid by the Coffre, 30 $ (only « Rien » and « Coffre » are offered for this stock)
+  // (with nothing in stock yet, the item is under « À commander »)
+  await page.locator('[data-testid="low-row"], [data-testid="item-row"]').filter({ hasText: 'Huile famille e2e' }).first().click();
+  await page.getByTestId('move-in').click();
+  await page.getByTestId('move-qty').fill('2');
+  assert.equal(await page.getByTestId('move-from').getByRole('button', { name: /Trésorerie/ }).count(), 0, 'no Trésorerie for the Coffre’s stock');
+  await page.getByTestId('move-from').getByRole('button', { name: 'Coffre' }).click();
+  await page.locator('[data-testid="move-buy"] input.input-money').fill('30,00');
+  await page.getByTestId('move-save').click();
+  assert.equal(await until(() => h.sql(`select amount_cents || '|' || kind from public.coffre where item_id = '${itemId}'`), Boolean, 15000), '3000|purchase');
+  assert.equal(Number(h.sql(`select qty from public.inventory_items where id = '${itemId}'`)), 2);
+  assert.equal(h.sql(`select count(*) from public.expenses where description like '%Huile famille e2e%'`), '0', 'not in the Trésorerie');
+  await h.shot(page, 'e2e-coffre-stock');
+  await page.keyboard.press('Escape');
+  // the garage's stock does not show it
+  await page.goto(h.APP + '#/inventory');
+  await page.getByTestId('inventory-pool').waitFor();
+  assert.equal(await page.locator('[data-testid="low-row"], [data-testid="item-row"]').filter({ hasText: 'Huile famille e2e' }).count(), 0, 'not in the garage’s stock');
+  // the Coffre: the purchase in its report, the stock's value
+  await page.goto(h.APP + '#/coffre');
+  await page.getByTestId('coffre-stock').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('coffre-stock').innerText(), /30,00/);
+  noErrors(page);
+  await ctx.close();
+});
+

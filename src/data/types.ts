@@ -72,6 +72,8 @@ export interface ServicePart extends Base { service_id: string; item_id: string;
 export interface InventoryItem extends Base {
   name: string; sku: string | null; category: string | null; unit: string; qty: number; min_qty: number | null; cost_cents: number | null;
   price_cents: number | null; supplier: string | null; notes: string | null; active: boolean;
+  /** whose stock: the garage's (on the books) or the Coffre's (bought with the Coffre's money, no taxes); fixed once made */
+  pool?: 'garage' | 'coffre';
 }
 export interface InventoryMove extends Base { item_id: string; delta: number; reason: 'used' | 'restock' | 'adjust' | 'return'; job_id: string | null; note: string | null }
 export interface Job extends Base {

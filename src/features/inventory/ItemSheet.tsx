@@ -20,12 +20,13 @@ export function useQty() {
 }
 const signed = (n: number, text: string) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${text}`;
 
-export function ItemSheet(p: { open: boolean; itemId: string | null; onClose: () => void }) {
+/** `pool`: the stock a new item goes to (the garage's, or the Coffre's) */
+export function ItemSheet(p: { open: boolean; itemId: string | null; onClose: () => void; pool?: 'garage' | 'coffre' }) {
   if (!p.open) return null;
-  return <ItemPanel key={p.itemId || 'new'} itemId={p.itemId} onClose={p.onClose} />;
+  return <ItemPanel key={p.itemId || 'new'} itemId={p.itemId} onClose={p.onClose} pool={p.pool || 'garage'} />;
 }
 
-function ItemPanel(p: { itemId: string | null; onClose: () => void }) {
+function ItemPanel(p: { itemId: string | null; onClose: () => void; pool: 'garage' | 'coffre' }) {
   const item = p.itemId ? getRow<InventoryItem>('inventory_items', p.itemId) : undefined;
   const [tab, setTab] = useState<'stock' | 'edit'>('stock');
   const isWide = wide.value;
@@ -35,8 +36,8 @@ function ItemPanel(p: { itemId: string | null; onClose: () => void }) {
   }
   if (!item) {
     return (
-      <Sheet open onClose={p.onClose} title={t('inventory.sheet.newTitle')} data-testid="item-sheet">
-        <EditForm item={null} onDone={p.onClose} />
+      <Sheet open onClose={p.onClose} title={t(p.pool === 'coffre' ? 'inventory.coffre.newTitle' : 'inventory.sheet.newTitle')} data-testid="item-sheet">
+        <EditForm item={null} pool={p.pool} onDone={p.onClose} />
       </Sheet>
     );
   }
@@ -137,12 +138,14 @@ function StockPart(p: { item: InventoryItem }) {
             </Field>
             {mode === 'in' && (
               <div class="stack inv-buy" data-testid="move-buy">
-                <Field label={t('inventory.sheet.buy.from')} help={t('inventory.sheet.buy.fromHelp')} group>
+                <Field label={t('inventory.sheet.buy.from')} help={t(item.pool === 'coffre' ? 'inventory.coffre.fromHelp' : 'inventory.sheet.buy.fromHelp')} group>
                   <Seg value={from} onValue={(v) => { setFrom(v); setPriceErr(null); }} label={t('inventory.sheet.buy.from')} data-testid="move-from"
-                    options={[{ value: 'none', label: t('inventory.sheet.buy.none') }, { value: 'treasury', label: t('inventory.sheet.buy.treasury') }, { value: 'coffre', label: t('inventory.sheet.buy.coffre') }]} />
+                    options={item.pool === 'coffre'
+                      ? [{ value: 'none', label: t('inventory.sheet.buy.none') }, { value: 'coffre', label: t('inventory.sheet.buy.coffre') }]
+                      : [{ value: 'none', label: t('inventory.sheet.buy.none') }, { value: 'treasury', label: t('inventory.sheet.buy.treasury') }]} />
                 </Field>
                 {from !== 'none' && <>
-                  <Field label={t('inventory.sheet.buy.price')} hint={t(from === 'coffre' ? 'inventory.sheet.buy.priceHintCoffre' : 'inventory.sheet.buy.priceHintTreasury')} error={priceErr}>
+                  <Field label={t(item.pool === 'coffre' ? 'inventory.coffre.price' : 'inventory.sheet.buy.price')} hint={t(from === 'coffre' ? 'inventory.sheet.buy.priceHintCoffre' : 'inventory.sheet.buy.priceHintTreasury')} error={priceErr}>
                     <MoneyInput cents={price} onCents={(c) => { setPrice(c); setPriceErr(null); }} aria-label={t('inventory.sheet.buy.price')} data-testid="move-price" />
                   </Field>
                   <Field label={t('inventory.sheet.buy.vendor')} optional>
@@ -209,8 +212,10 @@ function History(p: { item: InventoryItem }) {
 }
 
 interface ItemForm { name: string; sku: string; category: string; unit: string; min: string; cost: number | null; price: number | null; supplier: string; notes: string; active: boolean; first: string }
-function EditForm(p: { item: InventoryItem | null; onDone?: () => void }) {
+function EditForm(p: { item: InventoryItem | null; pool?: 'garage' | 'coffre'; onDone?: () => void }) {
   const { item } = p;
+  // the Coffre's stock: no taxes, never sold (no selling price)
+  const coffre = (item?.pool ?? p.pool) === 'coffre';
   const l = lang.value;
   const isNew = !item;
   const [f, setF] = useState<ItemForm>(() => ({
@@ -238,7 +243,8 @@ function EditForm(p: { item: InventoryItem | null; onDone?: () => void }) {
     const ok = await attempt(() => saveItem({
       ...(item ? { id: item.id } : {}),
       name: f.name.trim(), sku: f.sku.trim() || null, category: f.category.trim() || null, unit: f.unit.trim() || 'unité',
-      min_qty: min, cost_cents: f.cost, price_cents: f.price, supplier: f.supplier.trim() || null, notes: f.notes.trim() || null, active: f.active
+      min_qty: min, cost_cents: f.cost, price_cents: coffre ? null : f.price, supplier: f.supplier.trim() || null, notes: f.notes.trim() || null, active: f.active,
+      ...(item ? {} : { pool: coffre ? 'coffre' as const : 'garage' as const })
     }, first), { ok: isNew ? t('inventory.sheet.created') : t('inventory.sheet.saved') });
     if (ok && isNew) p.onDone?.();
   };
@@ -277,12 +283,14 @@ function EditForm(p: { item: InventoryItem | null; onDone?: () => void }) {
         </Field>
       )}
       <div class="grid-2">
-        <Field label={t('inventory.sheet.cost')} optional hint={t('inventory.sheet.costHint')}>
+        <Field label={t(coffre ? 'inventory.coffre.cost' : 'inventory.sheet.cost')} optional hint={t(coffre ? 'inventory.coffre.costHint' : 'inventory.sheet.costHint')}>
           <MoneyInput cents={f.cost} onCents={(c) => set({ cost: c })} aria-label={t('inventory.sheet.cost')} />
         </Field>
-        <Field label={t('inventory.sheet.price')} optional hint={t('inventory.sheet.priceHint')}>
-          <MoneyInput cents={f.price} onCents={(c) => set({ price: c })} aria-label={t('inventory.sheet.price')} />
-        </Field>
+        {!coffre && (
+          <Field label={t('inventory.sheet.price')} optional hint={t('inventory.sheet.priceHint')}>
+            <MoneyInput cents={f.price} onCents={(c) => set({ price: c })} aria-label={t('inventory.sheet.price')} />
+          </Field>
+        )}
       </div>
       <Field label={t('inventory.sheet.supplier')} optional>
         <Input value={f.supplier} list="inv-suppliers" maxLength={80} autoComplete="off" onValue={(v) => set({ supplier: v })} />

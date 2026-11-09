@@ -1,13 +1,16 @@
 /* « Inventaire » (#/inventory, right « inventory »): the stock value, search and category, what to order first
-   (lowStock), then everything in stock with its quantity, minimum, cost and value. An item opens its sheet. */
+   (lowStock), then everything in stock with its quantity, minimum, cost and value. An item opens its sheet.
+   Two stocks (?pool=coffre): the garage's, and the Coffre's own (bought with the Coffre's money, no taxes, apart from the
+   garage's value, orders and the Trésorerie). */
 import { useState } from 'preact/hooks';
 import { Plus, PackageCheck, ClipboardList } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { inventoryList, lowStock } from '../../data/select';
+import { inventoryList, lowStock, coffreStock } from '../../data/select';
+import { setQuery } from '../../app/router';
 import type { InventoryItem } from '../../data/types';
-import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, Help, BigStep } from '../../ui';
+import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, Help, BigStep, Seg, Banner } from '../../ui';
 import { BigMoney } from '../dashboard/charts';
 import { itemValue, stockValue, toOrder } from './stock';
 import { ItemSheet, useQty } from './ItemSheet';
@@ -23,7 +26,9 @@ function found(i: InventoryItem, q: string): boolean {
   return s.split(/\s+/).every((w) => hay.includes(w));
 }
 
-export default function InventoryScreen(_p: ScreenProps) {
+export default function InventoryScreen({ query }: ScreenProps) {
+  const pool: 'garage' | 'coffre' = query.get('pool') === 'coffre' ? 'coffre' : 'garage';
+  const isCoffre = pool === 'coffre';
   const l = lang.value;
   const qtyText = useQty();
   const [q, setQ] = useState('');
@@ -32,13 +37,15 @@ export default function InventoryScreen(_p: ScreenProps) {
   const [sheet, setSheet] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const open = (id: string | null) => setSheet({ open: true, id });
 
-  const all = inventoryList.value;
+  const all = isCoffre ? coffreStock.value : inventoryList.value;
   const value = stockValue(all);
+  // what to order: the garage's (lowStock) or the same rule on the Coffre's stock
+  const lowAll = isCoffre ? all.filter((i) => i.active && (i.min_qty != null ? Number(i.qty) <= Number(i.min_qty) : Number(i.qty) <= 0)) : lowStock.value;
   const cats = [...new Set(all.map((i) => (i.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
   const keep = (i: InventoryItem) => (!cat || (i.category || '').trim() === cat) && found(i, q);
   const urgency = (i: InventoryItem) => (i.min_qty ? Number(i.qty) / Number(i.min_qty) : Number(i.qty));
-  const low = lowStock.value.filter(keep).sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name, 'fr'));
-  const lowIds = new Set(lowStock.value.map((i) => i.id));
+  const low = lowAll.filter(keep).sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name, 'fr'));
+  const lowIds = new Set(lowAll.map((i) => i.id));
   const rest = all.filter((i) => i.active && !lowIds.has(i.id) && keep(i));
   const off = all.filter((i) => !i.active && keep(i));
   const offCount = all.filter((i) => !i.active).length;
@@ -73,21 +80,26 @@ export default function InventoryScreen(_p: ScreenProps) {
   );
 
   return (
-    <Page title={t('inventory.title')} sub={t('inventory.sub')} help={t('inventory.help')} wide data-testid="inventory-screen"
-      actions={<Button variant="primary" icon={<Plus size={20} />} onClick={() => open(null)} data-testid="inventory-add">{t('inventory.add')}</Button>}>
-      <BigStep icon={<ClipboardList size={24} />} label={t('inventory.needs.title')} sub={t('inventory.needs.openSub', { week: weekWords(defaultWeek()) })} href="#/needs" data-testid="inventory-needs" />
+    <Page title={t('inventory.title')} sub={t(isCoffre ? 'inventory.coffre.sub' : 'inventory.sub')} help={t('inventory.help')} wide data-testid="inventory-screen"
+      actions={<Button variant="primary" icon={<Plus size={20} />} onClick={() => open(null)} data-testid="inventory-add">{t(isCoffre ? 'inventory.coffre.add' : 'inventory.add')}</Button>}>
+      <Seg value={pool} label={t('inventory.coffre.which')} data-testid="inventory-pool" class="inv-pool"
+        onValue={(v) => { setQ(''); setCat(''); setQuery({ pool: v === 'coffre' ? 'coffre' : null }); }}
+        options={[{ value: 'garage', label: t('inventory.coffre.garageTab') }, { value: 'coffre', label: t('inventory.coffre.coffreTab') }]} />
+      {isCoffre
+        ? <Banner kind="info" data-testid="inventory-coffre-note">{t('inventory.coffre.note')}</Banner>
+        : <BigStep icon={<ClipboardList size={24} />} label={t('inventory.needs.title')} sub={t('inventory.needs.openSub', { week: weekWords(defaultWeek()) })} href="#/needs" data-testid="inventory-needs" />}
       {!all.length ? (
-        <Panel><Empty title={t('inventory.empty')} text={t('inventory.emptyText')} action={<Button variant="primary" icon={<Plus size={18} />} onClick={() => open(null)}>{t('inventory.add')}</Button>} /></Panel>
+        <Panel><Empty title={t(isCoffre ? 'inventory.coffre.empty' : 'inventory.empty')} text={t(isCoffre ? 'inventory.coffre.emptyText' : 'inventory.emptyText')} action={<Button variant="primary" icon={<Plus size={18} />} onClick={() => open(null)}>{t(isCoffre ? 'inventory.coffre.add' : 'inventory.add')}</Button>} /></Panel>
       ) : (
         <>
           <Panel class="inv-summary" data-testid="inventory-summary">
             <div class="stack" style={{ gap: '6px' }}>
-              <span class="dash-kicker">{t('inventory.value')} <Help text={t('inventory.valueHelp')} /></span>
+              <span class="dash-kicker">{t(isCoffre ? 'inventory.coffre.value' : 'inventory.value')} <Help text={t(isCoffre ? 'inventory.coffre.valueHelp' : 'inventory.valueHelp')} /></span>
               <BigMoney cents={value} lang={l} size="lg" data-testid="inventory-value" />
             </div>
             <div class="inv-counts">
               <span>{t('inventory.items', { n: activeCount })}</span>
-              <span class={lowStock.value.length ? 'inv-warn' : 'inv-okay'}>{t('inventory.toOrderCount', { n: lowStock.value.length })}</span>
+              <span class={lowAll.length ? 'inv-warn' : 'inv-okay'}>{t('inventory.toOrderCount', { n: lowAll.length })}</span>
             </div>
           </Panel>
 
@@ -100,9 +112,9 @@ export default function InventoryScreen(_p: ScreenProps) {
             )}
           </div>
 
-          <Panel flush title={<>{t('inventory.low.title')} {lowStock.value.length > 0 && <Pill tone="warn">{lowStock.value.length}</Pill>}</>} sub={t('inventory.low.sub')} data-tour="inventory-low" data-testid="inventory-low">
+          <Panel flush title={<>{t('inventory.low.title')} {lowAll.length > 0 && <Pill tone="warn">{lowAll.length}</Pill>}</>} sub={t('inventory.low.sub')} data-tour="inventory-low" data-testid="inventory-low">
             {low.length ? <Rows>{head}{low.map((i) => row(i, true))}</Rows>
-              : <p class="inv-none">{lowStock.value.length && filtered ? t('inventory.noMatch') : <><PackageCheck size={18} aria-hidden="true" /> {t('inventory.low.none')}</>}</p>}
+              : <p class="inv-none">{lowAll.length && filtered ? t('inventory.noMatch') : <><PackageCheck size={18} aria-hidden="true" /> {t('inventory.low.none')}</>}</p>}
           </Panel>
 
           <Panel flush title={t('inventory.stockTitle')} sub={t('inventory.items', { n: rest.length })} data-testid="inventory-stock">
@@ -123,7 +135,7 @@ export default function InventoryScreen(_p: ScreenProps) {
           )}
         </>
       )}
-      <ItemSheet open={sheet.open} itemId={sheet.id} onClose={() => setSheet({ open: false, id: null })} />
+      <ItemSheet open={sheet.open} itemId={sheet.id} pool={pool} onClose={() => setSheet({ open: false, id: null })} />
     </Page>
   );
 }

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { FileSpreadsheet, FileText, Undo2 } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { t, lang } from '../../lib/i18n';
+import { may } from '../../app/routes';
 import { money } from '../../lib/money';
 import { today, longDay } from '../../lib/dates';
 import { rpcNow, coffreRemove, errorMessage } from '../../data/api';
@@ -56,6 +57,8 @@ export default function CoffreScreen(_p: ScreenProps) {
               <div class="coffre-total"><span class="muted small">{t('coffre.given')}</span><b class="num" data-testid="coffre-amount">{money(data.amount_cents, l)}</b></div>
               <div class="coffre-total"><span class="muted small">{t('coffre.spent')}</span><b class="num" data-testid="coffre-spent">{money(data.spent_cents, l)}</b></div>
               <div class="coffre-total"><span class="muted small">{t('coffre.balance')}</span><b class="num" data-testid="coffre-balance">{money(data.balance_cents, l)}</b></div>
+              <div class="coffre-total"><span class="muted small">{t('coffre.stock')}</span><b class="num" data-testid="coffre-stock">{money(data.stock_cents, l)}</b>
+                {may.inventory() && <a class="small" href="#/inventory?pool=coffre" data-testid="coffre-stock-link">{t('coffre.stockLink')}</a>}</div>
               <div class="coffre-total"><span class="muted small">{t('coffre.worth')}</span><b class="num">{money(data.value_cents, l)}</b></div>
             </div>
             <div class="coffre-actions" style={{ marginTop: 'var(--sp-3)' }}>
