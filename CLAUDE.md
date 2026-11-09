@@ -181,6 +181,10 @@ end $do$;
   `BookScreen` fills in the customer, car, the job's own address, the work (`draftsFromJob`: planned/done/approved lines), problem,
   notes and card, in that block; the person checks and taps « Réserver » (the usual rules, « Réserver quand même » included).
   Files: `src/features/agenda/copy.ts`, `actions.tsx`, `ContextMenu.tsx`.
+  The same menu is the agenda's shortcut menu (`jobActions` / `blockActions` in `actions.tsx`, each shortcut only for those who
+  may): on a job: open, copy, move (`#/job/ID?do=move`), customer file, text (`#/customer/ID?do=text`), call, directions, add a vehicle
+  (`?do=car`), new estimate, new appointment for this customer, see the invoice; on a block: paste, book in this block, see the day
+  (computer), map of the day.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 and 13 were flaky there before Phase 2.

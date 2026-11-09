@@ -1065,9 +1065,22 @@ step('Copier / Coller: right-click an appointment, « Copier »; right-click a f
   // the week of Julie's first appointment: right-click its ticket
   await page.goto(h.APP + `#/agenda/${jobDay}`);
   await page.getByTestId('agenda-week').waitFor({ timeout: 15000 });
-  await page.getByTestId(`chip-${jobId}`).click({ button: 'right' });
-  await page.getByTestId('agenda-menu').waitFor();
+  // the shortcuts of an appointment (the owner sees them all), then two of them at work
+  const menuOn = async () => { await page.getByTestId(`chip-${jobId}`).click({ button: 'right' }); await page.getByTestId('agenda-menu').waitFor(); };
+  await menuOn();
   await h.shot(page, 'e2e-copy-menu');
+  for (const id of ['menu-open', 'menu-copy-job', 'menu-customer', 'menu-text', 'menu-call', 'menu-directions', 'menu-car', 'menu-quote', 'menu-book']) {
+    assert.equal(await page.getByTestId(id).count(), 1, `the shortcut ${id}`);
+  }
+  await page.getByTestId('menu-text').click();
+  await page.getByTestId('conversation-sheet').waitFor({ timeout: 15000 });
+  assert.match(page.url(), new RegExp(`#/customer/${julie}$`), 'the address is clean (no ?do=)');
+  await page.goto(h.APP + `#/agenda/${jobDay}`);
+  await menuOn();
+  await page.getByTestId('menu-car').click();
+  await page.getByTestId('vehicle-add').waitFor({ timeout: 15000 });
+  await page.goto(h.APP + `#/agenda/${jobDay}`);
+  await menuOn();
   await page.getByTestId('menu-copy-job').click();
   await page.getByTestId('copy-banner').waitFor();
   // a week later: a block with room takes the paste (right-click on it)
@@ -1078,6 +1091,7 @@ step('Copier / Coller: right-click an appointment, « Copier »; right-click a f
   await cell.waitFor({ timeout: 15000 });
   const [, day, block] = /^cell-(\d{4}-\d{2}-\d{2})-(am|pm|eve)$/.exec(await cell.getAttribute('data-testid'));
   await cell.click({ button: 'right', position: { x: 6, y: 6 } });
+  for (const id of ['menu-paste', 'menu-book-here', 'menu-day']) assert.equal(await page.getByTestId(id).count(), 1, `the block's ${id}`);
   await page.getByTestId('menu-paste').click();
   // the booking screen: same customer and work, the block chosen
   await page.getByTestId('book-copy').waitFor({ timeout: 15000 });

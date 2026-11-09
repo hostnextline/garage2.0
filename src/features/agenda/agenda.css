@@ -134,3 +134,8 @@
 
 /* the long press: no iPhone link preview, no text selection on what can be held */
 .agenda-chip, .agenda-ticketwrap, .agenda-ticketwrap a, .agenda-lanes, .agenda-cell { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+.agenda-menu { max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; }
+.agenda-menu-item { min-height: 44px; }
+.agenda-menu-item.is-sep { margin-top: 5px; border-top: 1px solid var(--line); border-top-left-radius: 0; border-top-right-radius: 0; }
+.agenda-menu-item.is-danger { color: var(--bad); }
