@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261109000100_texte_reservation.sql` (Part 24 sexies, applied 2026-11-09 from commit `d8f87f6`
+- Applied on live: every migration up to `20261109000200_stock_coffre.sql` (Part 24 septies, applied 2026-11-09 from commit `9d06aa3`;
+  Part 24 sexies from commit `d8f87f6`
   through the Claude Code MCP `supabase-garage`; Parts 24 quater and quinquies from
   commit `9c02c8b`; Part 24 ter from `a4f2da6`;
   Part 24 bis from `e9d9652`, Part 24 from `9835d52`, all with the
