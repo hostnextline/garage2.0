@@ -1056,3 +1056,41 @@ step('two cars of the same customer: each car its own work; back to the first ca
   noErrors(page);
   await page.context().close();
 });
+
+step('Copier / Coller: right-click an appointment, « Copier »; right-click a free block next week, « Coller ici »; the booking screen is filled in; « Réserver »', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  const jobDay = h.sql(`select day::text from public.jobs where id = '${jobId}'`);
+  const before = Number(h.sql(`select count(*) from public.jobs where customer_id = '${julie}' and deleted_at is null`));
+  // the week of Julie's first appointment: right-click its ticket
+  await page.goto(h.APP + `#/agenda/${jobDay}`);
+  await page.getByTestId('agenda-week').waitFor({ timeout: 15000 });
+  await page.getByTestId(`chip-${jobId}`).click({ button: 'right' });
+  await page.getByTestId('agenda-menu').waitFor();
+  await h.shot(page, 'e2e-copy-menu');
+  await page.getByTestId('menu-copy-job').click();
+  await page.getByTestId('copy-banner').waitFor();
+  // a week later: a block with room takes the paste (right-click on it)
+  const later = h.sql(`select ('${jobDay}'::date + 7)::text`);
+  await page.goto(h.APP + `#/agenda/${later}`);
+  await page.getByTestId('copy-banner').waitFor();
+  const cell = page.locator('td:has([data-testid^="cell-book-"]):has([data-testid^="cell-paste-"])').first();
+  await cell.waitFor({ timeout: 15000 });
+  const [, day, block] = /^cell-(\d{4}-\d{2}-\d{2})-(am|pm|eve)$/.exec(await cell.getAttribute('data-testid'));
+  await cell.click({ button: 'right', position: { x: 6, y: 6 } });
+  await page.getByTestId('menu-paste').click();
+  // the booking screen: same customer and work, the block chosen
+  await page.getByTestId('book-copy').waitFor({ timeout: 15000 });
+  await page.getByTestId('customer-picked').waitFor();
+  await h.shot(page, 'e2e-copy-book');
+  await page.getByTestId('book-confirm').click();
+  await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  const after = Number(h.sql(`select count(*) from public.jobs where customer_id = '${julie}' and deleted_at is null`));
+  assert.equal(after, before + 1, 'one new appointment');
+  const made = h.sql(`select id || '|' || day || '|' || block || '|' || status from public.jobs where customer_id = '${julie}' and deleted_at is null order by created_at desc limit 1`).split('|');
+  assert.deepEqual(made.slice(1), [day, block, 'booked'], 'in the block where it was pasted');
+  assert.equal(h.sql(`select string_agg(service_id::text, ',') from public.job_items where job_id = '${made[0]}' and deleted_at is null`), SVC_OIL, 'the same work');
+  noErrors(page);
+  await ctx.close();
+});
+

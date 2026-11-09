@@ -17,6 +17,19 @@ export const agenda = {
     hours: 'Changer les horaires',
     strip: 'Les jours de la semaine'
   },
+  copy: {
+    copy: 'Copier le rendez-vous',
+    open: 'Ouvrir le rendez-vous',
+    copied: 'Rendez-vous de {name} copié. Clic droit sur un bloc, ou « Coller ici ».',
+    paste: 'Coller ici',
+    pasteHere: 'Coller ici',
+    pasteShort: 'Coller',
+    pasteIn: 'Coller le rendez-vous copié : {when}',
+    bannerTitle: 'Rendez-vous copié : {name}',
+    bannerText: 'Clic droit sur un bloc, ou touche « Coller ici », pour en faire un nouveau rendez-vous. Tu vérifies tout avant de réserver.',
+    clear: 'Oublier la copie',
+    hint: 'Clic droit sur une job pour la copier, puis sur un bloc pour la coller.'
+  },
   week: {
     title: 'Semaine du {from} au {to}',
     prev: 'Semaine d’avant',

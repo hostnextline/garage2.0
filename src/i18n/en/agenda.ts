@@ -17,6 +17,19 @@ export const agenda: typeof fr = {
     hours: 'Change the hours',
     strip: 'Days of the week'
   },
+  copy: {
+    copy: 'Copy the appointment',
+    open: 'Open the appointment',
+    copied: '{name}’s appointment copied. Right-click a block, or “Paste here”.',
+    paste: 'Paste here',
+    pasteHere: 'Paste here',
+    pasteShort: 'Paste',
+    pasteIn: 'Paste the copied appointment: {when}',
+    bannerTitle: 'Appointment copied: {name}',
+    bannerText: 'Right-click a block, or tap “Paste here”, to make it a new appointment. You check everything before booking.',
+    clear: 'Forget the copy',
+    hint: 'Right-click a job to copy it, then a block to paste it.'
+  },
   week: {
     title: 'Week of {from} to {to}',
     prev: 'Previous week',

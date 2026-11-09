@@ -1,5 +1,6 @@
 /* Réserver : le client, les services, le bloc. Aussi le choix du bloc et des services (utilisés ailleurs). */
 export const booking = {
+  copy: { title: 'Copie du rendez-vous #{n}', text: 'Même client, même auto, même adresse et mêmes travaux. Change ce qu’il faut, puis touche « Réserver ».' },
   title: 'Réserver',
   titleWalkIn: 'Client sans rendez-vous',
   titleQuote: 'Réserver l’estimation n° {n}',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, parseChoice, cellState, clampDuration, draftOfService, refusalCode, type LoadLike } from './logic';
+import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, type LoadLike } from './logic';
 import { blockPhrase, blockPhraseLower, relativeDay } from './when';
 import { QC_TAXES } from '../../lib/money';
 import type { ItemDraft } from './ServicePicker';
@@ -123,5 +123,23 @@ describe('days in words', () => {
   });
   it('French and English have the same keys and the same {placeholders}', () => {
     expect(sameShape(fr, en)).toEqual([]);
+  });
+});
+
+describe('« Coller » a copied appointment: its work as new lines', () => {
+  const it0 = (x: Record<string, unknown>) => ({ kind: 'service', service_id: null, item_id: null, description: 'Vidange', qty: 1, unit_cents: 7999, taxable: true, duration_min: 30, status: 'planned', note: null, sort: 0, ...x }) as never;
+  it('keeps what was booked, done or accepted, in order; leaves out refused, removed and still-waiting work', () => {
+    const d = draftsFromJob([
+      it0({ description: 'Pneus', sort: 2, status: 'done', service_id: 's-p', unit_cents: 12000, duration_min: 45 }),
+      it0({ description: 'Vidange', sort: 1, service_id: 's-v' }),
+      it0({ description: 'Essuie-glaces', sort: 3, status: 'proposed' }),
+      it0({ description: 'Freins', sort: 4, status: 'declined' }),
+      it0({ description: 'Filtre', sort: 5, status: 'approved', kind: 'part', item_id: 'i-f', qty: 2, unit_cents: 1500, duration_min: null, note: 'PH7317' }),
+      it0({ description: '  ', sort: 6 })
+    ]);
+    expect(d.map((x) => x.description)).toEqual(['Vidange', 'Pneus', 'Filtre']);
+    expect(d[0]).toEqual({ kind: 'service', service_id: 's-v', item_id: null, description: 'Vidange', qty: 1, unit_cents: 7999, taxable: true, duration_min: 30, note: null });
+    expect(d[2]).toMatchObject({ kind: 'part', item_id: 'i-f', qty: 2, note: 'PH7317' });
+    expect('id' in d[0]).toBe(false);
   });
 });
