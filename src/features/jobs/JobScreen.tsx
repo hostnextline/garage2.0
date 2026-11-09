@@ -102,6 +102,8 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       case 'work': setSheet('add'); break;
       case 'invoice': void startInvoice(j).then(() => setTimeout(scrollToInvoice, 60)); break;
       case 'pay': if (invoiceOf(j.id)) setSheet('pay'); break;
+      // the agenda's menu: « Déplacer »
+      case 'move': if (j.status === 'booked' && rights.move) setSheet('move'); break;
     }
   };
   const onUi = (s: NextStep) => ui(s.kind, s.itemId);

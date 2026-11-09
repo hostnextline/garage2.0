@@ -17,6 +17,22 @@ export const agenda = {
     hours: 'Changer les horaires',
     strip: 'Les jours de la semaine'
   },
+  menu: {
+    open: 'Ouvrir le rendez-vous',
+    copy: 'Copier le rendez-vous',
+    move: 'Déplacer',
+    customer: 'Fiche du client',
+    text: 'Envoyer un texto',
+    call: 'Appeler ({phone})',
+    directions: 'Itinéraire',
+    car: 'Ajouter un véhicule',
+    quote: 'Nouvelle estimation',
+    book: 'Nouveau rendez-vous pour ce client',
+    invoice: 'Voir la facture',
+    bookHere: 'Réserver dans ce bloc',
+    day: 'Voir cette journée',
+    map: 'Carte de la journée'
+  },
   copy: {
     copy: 'Copier le rendez-vous',
     open: 'Ouvrir le rendez-vous',

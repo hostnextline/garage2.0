@@ -17,6 +17,22 @@ export const agenda: typeof fr = {
     hours: 'Change the hours',
     strip: 'Days of the week'
   },
+  menu: {
+    open: 'Open the appointment',
+    copy: 'Copy the appointment',
+    move: 'Move',
+    customer: 'Customer file',
+    text: 'Send a text',
+    call: 'Call ({phone})',
+    directions: 'Directions',
+    car: 'Add a vehicle',
+    quote: 'New estimate',
+    book: 'New appointment for this customer',
+    invoice: 'See the invoice',
+    bookHere: 'Book in this block',
+    day: 'See this day',
+    map: 'Map of the day'
+  },
   copy: {
     copy: 'Copy the appointment',
     open: 'Open the appointment',

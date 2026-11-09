@@ -5,7 +5,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
 
-export interface MenuAction { key: string; label: string; icon?: ComponentChildren; run: () => void; testid?: string }
+export interface MenuAction { key: string; label: string; icon?: ComponentChildren; run: () => void; testid?: string; /** a thin line above (a new group) */ sep?: boolean; danger?: boolean }
 interface Open { x: number; y: number; title?: string; actions: MenuAction[] }
 const menu = signal<Open | null>(null);
 
@@ -82,7 +82,7 @@ export function ContextMenuHost() {
   }, [m]);
   if (!m) return null;
   // stays on the screen: near the right or bottom edge, it opens to the left or upward
-  const w = 260, h = 56 * m.actions.length + (m.title ? 40 : 12);
+  const w = 260, h = Math.min(window.innerHeight - 16, 48 * m.actions.length + (m.title ? 40 : 12));
   const left = Math.max(8, Math.min(m.x, window.innerWidth - w - 8));
   const top = Math.max(8, Math.min(m.y, window.innerHeight - h - 8));
   return (
@@ -90,7 +90,7 @@ export function ContextMenuHost() {
       onContextMenu={(e) => e.preventDefault()}>
       {m.title && <div class="agenda-menu-title">{m.title}</div>}
       {m.actions.map((a) => (
-        <button key={a.key} type="button" role="menuitem" class="agenda-menu-item" data-testid={a.testid}
+        <button key={a.key} type="button" role="menuitem" class={`agenda-menu-item${a.sep ? ' is-sep' : ''}${a.danger ? ' is-danger' : ''}`} data-testid={a.testid}
           onClick={() => { closeMenu(); a.run(); }}>
           {a.icon}<span>{a.label}</span>
         </button>

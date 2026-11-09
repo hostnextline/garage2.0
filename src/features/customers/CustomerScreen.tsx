@@ -3,12 +3,12 @@
    Réserver. Then the contact details, the cars, the notes; the appointments, the invoices (what is owed stands out)
    and the estimates. Changes are made in a sheet; the duplicate check warns when the phone is already on a file. */
 import type { ComponentChildren } from 'preact';
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Phone, MessageSquareText, MessagesSquare, Navigation, CalendarPlus, Pencil, Plus, Car, Trash2, UserPlus, MapPin, Gauge, Users } from 'lucide-preact';
 import { ConversationSheet } from '../conversation/ConversationSheet';
 import type { ScreenProps } from '../../app/routes';
 import { may, isField } from '../../app/routes';
-import { navigate } from '../../app/router';
+import { navigate, setQuery } from '../../app/router';
 import { touch } from '../../app/media';
 import { useFocusOnMount } from './hooks';
 import { t, lang } from '../../lib/i18n';
@@ -40,7 +40,7 @@ import './customers.css';
 
 export default function CustomerScreen({ params, query }: ScreenProps) {
   if (params.id === 'new') return <NewCustomer query={query} />;
-  return <CustomerFile id={params.id} />;
+  return <CustomerFile id={params.id} wanted={query.get('do')} />;
 }
 
 /* ---------- #/customer/new ---------- */
@@ -89,9 +89,18 @@ function NewCustomer(p: { query: URLSearchParams }) {
 }
 
 /* ---------- #/customer/:id ---------- */
-function CustomerFile(p: { id: string }) {
+function CustomerFile(p: { id: string; wanted?: string | null }) {
   const [editing, setEditing] = useState(false);
   const [chat, setChat] = useState(false);
+  const [addCar, setAddCar] = useState(false);
+  // ?do=text (the conversation) or ?do=car (add a vehicle), from the agenda's menu: cleared first, then opened
+  useEffect(() => {
+    if (!p.wanted) return;
+    const w = p.wanted;
+    setQuery({ do: null });
+    if (w === 'text') setChat(true);
+    else if (w === 'car' && isField()) setAddCar(true);
+  }, [p.wanted]);
   const gone = useRef(false);
   const c = customer(p.id);
   if (!c) {
@@ -131,7 +140,7 @@ function CustomerFile(p: { id: string }) {
       <div class="customers-file">
         <div class="customers-side">
           <ContactPanel c={c} canEdit={canEdit} />
-          <CarsPanel c={c} cars={f.cars} canEdit={canEdit} />
+          <CarsPanel c={c} cars={f.cars} canEdit={canEdit} adding={addCar} onAdding={setAddCar} />
           <NotesPanel customerId={c.id} canEdit={canEdit} />
         </div>
         <div class="customers-main">
@@ -217,8 +226,8 @@ function ContactPanel(p: { c: Customer; canEdit: boolean }) {
 }
 
 /* ---------- Véhicules ---------- */
-function CarsPanel(p: { c: Customer; cars: Vehicle[]; canEdit: boolean }) {
-  const [adding, setAdding] = useState(false);
+function CarsPanel(p: { c: Customer; cars: Vehicle[]; canEdit: boolean; adding: boolean; onAdding: (on: boolean) => void }) {
+  const adding = p.adding, setAdding = p.onAdding;
   return (
     <Panel title={t('customers.cars.title')} flush data-testid="cars-panel"
       action={p.canEdit && <Button icon={<Plus size={18} />} onClick={() => setAdding(true)} data-testid="car-add">{t('common.add')}</Button>}>
