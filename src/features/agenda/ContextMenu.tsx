@@ -67,16 +67,20 @@ export function ContextMenuHost() {
   useEffect(() => {
     if (!m) return;
     const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) closeMenu(); };
+    // the page may still be moving when the menu opens (the list brought into view, a phone's scroll momentum): a scroll
+    // closes the menu only after a short moment
+    const opened = Date.now();
+    const scrolled = () => { if (Date.now() - opened > 400) closeMenu(); };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') closeMenu(); };
     document.addEventListener('pointerdown', away, true);
     document.addEventListener('keydown', key);
-    window.addEventListener('scroll', closeMenu, true);
+    window.addEventListener('scroll', scrolled, true);
     window.addEventListener('resize', closeMenu);
     box.current?.querySelector<HTMLElement>('button')?.focus();
     return () => {
       document.removeEventListener('pointerdown', away, true);
       document.removeEventListener('keydown', key);
-      window.removeEventListener('scroll', closeMenu, true);
+      window.removeEventListener('scroll', scrolled, true);
       window.removeEventListener('resize', closeMenu);
     };
   }, [m]);

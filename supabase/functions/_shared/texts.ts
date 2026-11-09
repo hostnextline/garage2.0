@@ -29,7 +29,8 @@ export function servicesList(lines: Line[], lang: Lang): string {
       const c = lineCents(l);
       const q = Number(l.qty || 1);
       const what = `${q !== 1 ? `${String(q).replace('.', lang === 'en' ? '.' : ',')} × ` : ''}${String(l.description).trim()}`;
-      return `• ${what} : ${c !== 0 ? money(c, lang) : lang === 'en' ? 'according to the work on site' : 'selon le travail sur place'}`.replace(' : ', lang === 'en' ? ': ' : '\u00a0: ');
+      // « Promo : pneus… » keeps its own words: the separator is added after the name, never searched inside it
+      return `• ${what}${lang === 'en' ? ': ' : '\u00a0: '}${c !== 0 ? money(c, lang) : lang === 'en' ? 'according to the work on site' : 'selon le travail sur place'}`;
     }).join('\n');
 }
 /** the total before taxes of the work counted */
