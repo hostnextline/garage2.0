@@ -14,13 +14,13 @@ import { fillOf, freeWords, fillWords, weekOfDay } from './layout';
 import { blockView, dayJobs, isOff, type BlockView } from './select';
 import type { TruckBlock } from '../../data/select';
 import { focusAfterNav } from './focus';
-import { jobMenu, blockMenu, mayPaste } from './actions';
+import { jobMenu, blockMenu, mayPaste, jobPress, blockPress } from './actions';
 import { pasteHref } from './copy';
 import type { Job } from '../../data/types';
 
 /** a ticket with its right-click menu (copy, open) */
 function Ticketed(p: { job: Job }) {
-  return <div class="agenda-ticketwrap" onContextMenu={(e) => jobMenu(e as MouseEvent, p.job)}><JobTicket job={p.job} /></div>;
+  return <div class="agenda-ticketwrap" onContextMenu={(e) => jobMenu(e as MouseEvent, p.job)} {...jobPress(p.job)}><JobTicket job={p.job} /></div>;
 }
 
 /* ---------- the day in words, with the days around ---------- */
@@ -122,7 +122,7 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
     <Panel class={`agenda-block${v.started ? ' is-started' : ''}${closed ? ' is-closed' : ''}`} data-tour={p.first ? 'agenda-block' : undefined} data-testid={`block-${v.key}`}
       title={t('agenda.block.title', { block: t(`common.blocks.${v.key}`), hours: clockRange(v.start, v.end, l) })}
       action={status ? <span class={`agenda-status${closed ? ' is-closed' : ''}${full && !v.started ? ' is-full' : ''}`}>{v.started && <Clock size={14} aria-hidden="true" />}{status}</span> : undefined}>
-      <div class="agenda-lanes" onContextMenu={(e) => blockMenu(e as MouseEvent, p.day, v.key, v)}>
+      <div class="agenda-lanes" onContextMenu={(e) => blockMenu(e as MouseEvent, p.day, v.key, v)} {...blockPress(p.day, v.key, v)}>
         {closed && !v.lanes.length && !v.unplaced.length && <p class="muted small agenda-closed-text">{t('agenda.block.closedText')}</p>}
         {v.lanes.map((lane) => <Lane key={lane.truck.id} lane={lane} started={v.started} />)}
         {!v.started && !closed && v.idle.map((tr) => (

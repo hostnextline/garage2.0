@@ -1,5 +1,6 @@
-/* The right-click menu of the agenda (and a long press on Android): a few actions next to the mouse. One menu at a
-   time, hosted once on the agenda; closes on a choice, a click elsewhere, Escape, a scroll or a resize. */
+/* The menu of the agenda: a right-click on a computer, a long press (« appui long ») on a phone, iPhone included (Safari
+   never sends a right-click: the press is timed here). A few actions next to the finger or the mouse. One menu at a
+   time, hosted once on the agenda; closes on a choice, a tap elsewhere, Escape, a scroll or a resize. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
@@ -13,7 +14,50 @@ export function openMenu(e: MouseEvent, actions: MenuAction[], title?: string) {
   if (!actions.length) return;
   e.preventDefault();
   e.stopPropagation();
+  // Android also sends a right-click after a long press: the menu is open already
+  if (Date.now() - lastPress < 1200) return;
   menu.value = { x: e.clientX, y: e.clientY, title, actions };
+}
+export function openMenuAt(x: number, y: number, actions: MenuAction[], title?: string) {
+  if (actions.length) menu.value = { x, y, title, actions };
+}
+
+/* ---------- the long press ---------- */
+export const PRESS_MS = 500;
+const MOVE_PX = 10;
+let timer: ReturnType<typeof setTimeout> | null = null;
+let from: { x: number; y: number } | null = null;
+let lastPress = 0;
+const stop = () => { if (timer) clearTimeout(timer); timer = null; from = null; };
+/** touch handlers for an element: held still for half a second, `onPress` gets the point (the innermost element wins:
+    a ticket inside a block opens the ticket's menu); the tap that follows the release opens nothing */
+export function pressProps(onPress: (x: number, y: number) => boolean | void) {
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const ev = e as TouchEvent & { __press?: boolean };
+      if (ev.__press || e.touches.length !== 1) { if (e.touches.length !== 1) stop(); return; }
+      ev.__press = true;
+      stop();
+      const t = e.touches[0];
+      from = { x: t.clientX, y: t.clientY };
+      timer = setTimeout(() => {
+        const at = from;
+        stop();
+        if (!at) return;
+        if (onPress(at.x, at.y) === false) return;
+        lastPress = Date.now();
+        try { navigator.vibrate?.(12); } catch { /* no vibration */ }
+      }, PRESS_MS);
+    },
+    onTouchMove: (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (from && t && Math.hypot(t.clientX - from.x, t.clientY - from.y) > MOVE_PX) stop();
+    },
+    onTouchEnd: () => { if (timer) stop(); },
+    onTouchCancel: () => stop(),
+    // the finger lifted after the menu opened: that tap does not open the appointment
+    onClickCapture: (e: MouseEvent) => { if (Date.now() - lastPress < 900) { e.preventDefault(); e.stopPropagation(); } }
+  };
 }
 export function closeMenu() { menu.value = null; }
 

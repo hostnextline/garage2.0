@@ -143,7 +143,8 @@ end $do$;
   money in one transaction: Trésorerie = an expense « Pièces » (taxes split from the total), Coffre = a `coffre` row of
   `kind = 'purchase'` (`item_id`, `item_name`, `qty`); the item's `cost_cents` becomes the unit price paid. `coffre_report` gives
   `amount_cents` (received), `spent_cents`, `balance_cents` (all time); the Coffre screen and its exports show purchases as money out.
-- « Copier / Coller un rendez-vous » (agenda, no server change): right-click a job (week chip or day ticket; long press on Android)
+- « Copier / Coller un rendez-vous » (agenda, no server change): right-click a job on a computer, or a long press (500 ms, `pressProps`
+  in `ContextMenu.tsx`: iPhone and Android; the iPhone link preview is off there) on a phone (week chip or day ticket)
   → « Copier le rendez-vous » (`copyJob`, kept in `sessionStorage` for the visit, banner « Rendez-vous copié » with « Oublier la copie »);
   right-click an open block that has not started → « Coller ici » (also a button in each such block) → `#/book?copy=JOB&day=&block=`:
   `BookScreen` fills in the customer, car, the job's own address, the work (`draftsFromJob`: planned/done/approved lines), problem,
