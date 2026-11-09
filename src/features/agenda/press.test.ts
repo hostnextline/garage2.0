@@ -18,7 +18,7 @@ describe('the long press (iPhone and every touch screen)', () => {
     expect(got).toEqual([]);
     vi.advanceTimersByTime(1);
     expect(got).toEqual([[40, 80]]);
-    p.onTouchEnd(touch(40, 80, 0));
+    p.onTouchEnd();
     const c = click();
     p.onClickCapture(c);
     expect(c.preventDefault).toHaveBeenCalled();
@@ -29,7 +29,7 @@ describe('the long press (iPhone and every touch screen)', () => {
     const p = pressProps((x, y) => { got.push([x, y]); });
     p.onTouchStart(touch(10, 10));
     vi.advanceTimersByTime(150);
-    p.onTouchEnd(touch(10, 10, 0));
+    p.onTouchEnd();
     vi.advanceTimersByTime(PRESS_MS);
     const c = click();
     p.onClickCapture(c);
