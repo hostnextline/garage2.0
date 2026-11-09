@@ -1281,7 +1281,8 @@ step('Stock du Coffre: an item of its own, bought with the Coffre’s money (no 
   const [itemId, pool] = item.split('|');
   assert.equal(pool, 'coffre');
   // « Entrée »: 2, paid by the Coffre, 30 $ (only « Rien » and « Coffre » are offered for this stock)
-  await page.getByTestId('item-row').filter({ hasText: 'Huile famille e2e' }).first().click();
+  // (with nothing in stock yet, the item is under « À commander »)
+  await page.locator('[data-testid="low-row"], [data-testid="item-row"]').filter({ hasText: 'Huile famille e2e' }).first().click();
   await page.getByTestId('move-in').click();
   await page.getByTestId('move-qty').fill('2');
   assert.equal(await page.getByTestId('move-from').getByRole('button', { name: /Trésorerie/ }).count(), 0, 'no Trésorerie for the Coffre’s stock');
@@ -1296,7 +1297,7 @@ step('Stock du Coffre: an item of its own, bought with the Coffre’s money (no 
   // the garage's stock does not show it
   await page.goto(h.APP + '#/inventory');
   await page.getByTestId('inventory-pool').waitFor();
-  assert.equal(await page.getByTestId('item-row').filter({ hasText: 'Huile famille e2e' }).count(), 0, 'not in the garage’s stock');
+  assert.equal(await page.locator('[data-testid="low-row"], [data-testid="item-row"]').filter({ hasText: 'Huile famille e2e' }).count(), 0, 'not in the garage’s stock');
   // the Coffre: the purchase in its report, the stock's value
   await page.goto(h.APP + '#/coffre');
   await page.getByTestId('coffre-stock').waitFor({ timeout: 15000 });
