@@ -317,6 +317,22 @@ export const jobs = {
     callOffice: 'Appeler le bureau'
   },
   /* texts to the customer */
+  truck: {
+    menu: 'Changer de camion',
+    menuSub: 'Maintenant : {truck}. Même jour, même bloc.',
+    noneYet: 'pas encore de camion',
+    title: 'Changer de camion',
+    sub: '{when} : choisis le camion qui fera ce rendez-vous.',
+    current: 'Actuel',
+    off: 'Ne travaille pas dans ce bloc',
+    tight: 'Peut-être trop juste pour {d}',
+    none: 'Aucun camion ne travaille dans ce bloc.',
+    auto: 'Laisser l’app choisir le meilleur camion',
+    done: 'Rendez-vous passé à {truck}. La tournée est recalculée.',
+    doneAuto: 'L’app choisit le camion. La tournée est recalculée.',
+    same: 'C’est déjà ce camion.',
+    noText: 'Le client ne reçoit pas de texto : le jour et l’heure ne changent pas.'
+  },
   price: {
     change: 'Changer le prix',
     label: 'Nouveau prix (avant taxes)',

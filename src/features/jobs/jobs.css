@@ -172,3 +172,6 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-order-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .jobs-order-name b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .jobs-order-btns { flex: none; display: flex; gap: 2px; }
+
+/* « Changer de camion »: the truck's colour */
+.jobs-truck-dot { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: color-mix(in srgb, var(--tc) 18%, transparent); color: var(--tc); }

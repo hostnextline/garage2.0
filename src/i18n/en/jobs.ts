@@ -300,6 +300,22 @@ export const jobs: typeof fr = {
     payFirstMechanic: 'Payment is needed before leaving. Only the office can let a customer go without paying: call them.',
     callOffice: 'Call the office'
   },
+  truck: {
+    menu: 'Change truck',
+    menuSub: 'Now: {truck}. Same day, same block.',
+    noneYet: 'no truck yet',
+    title: 'Change truck',
+    sub: '{when}: pick the truck that will do this appointment.',
+    current: 'Current',
+    off: 'Not working in this block',
+    tight: 'Maybe too tight for {d}',
+    none: 'No truck works in this block.',
+    auto: 'Let the app pick the best truck',
+    done: 'Appointment moved to {truck}. The route is worked out again.',
+    doneAuto: 'The app picks the truck. The route is worked out again.',
+    same: 'It is already this truck.',
+    noText: 'The customer gets no text: the day and time do not change.'
+  },
   price: {
     change: 'Change the price',
     label: 'New price (before taxes)',

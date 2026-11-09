@@ -206,3 +206,7 @@
 
 /* the long press on a row (shortcut menu): no iPhone link preview, no text selection */
 .customers-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+/* the new customer's car */
+.customers-new-h { margin: 0; font-size: var(--t-md); font-weight: 600; }
+.customers-new-car { padding-top: var(--sp-3); border-top: 1px solid var(--line); }

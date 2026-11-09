@@ -202,6 +202,13 @@ end $do$;
   « Changer le prix » (same Part): on a line of an appointment (its sheet), every account that sees the appointment, while it is
   coming or under way and its invoice not finished: `job_item_price(op, item, unit_cents)` (a discount stays negative; the old and new
   prices in `activity` `price_changed`); the app says to resend the confirmation when the customer already got it.
+- « Changer de camion » (no server change): on a booked appointment whose block has not started, for those who may move appointments
+  (⋯ menu of the job, the agenda's right-click menu → `#/job/ID?do=truck`): `TruckSheet` lists the trucks working that block with
+  their free time (`blockLoad`, the job left out); a tap = `move_job(same day, same block, truck)` (the truck is kept: `truck_pinned`;
+  the server refuses `truck_full`); « Laisser l’app choisir » = `move_job(…, null)`. No text to the customer (day and time unchanged).
+- New customer with the car (no server change): « Nouveau client » has « Son véhicule (facultatif) », the same form as « Ajouter un
+  véhicule » (`CarForm`, `carErrors`, `carRow` in `VehicleBits.tsx`: year → make → model from the lists, or the VIN); saved right after
+  the customer (`saveVehicle`), so « Créer et réserver » opens the booking with that car already chosen.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 and 13 were flaky there before Phase 2.

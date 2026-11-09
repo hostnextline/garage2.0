@@ -2,7 +2,7 @@
    On an appointment: open it, copy it, move it; the customer (file, text, call, directions, a new car, an estimate, a
    new appointment); its invoice. On a block: paste the appointment copied, book in this block, see the day, its map.
    Each shortcut shows only to the people who may use it (the screen it opens checks again, as always). */
-import { Copy, ClipboardPaste, ExternalLink, CalendarPlus, CalendarClock, ReceiptText, CalendarDays, Map as MapIcon } from 'lucide-preact';
+import { Copy, ClipboardPaste, ExternalLink, CalendarPlus, CalendarClock, ReceiptText, CalendarDays, Map as MapIcon, Truck } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import type { BlockKey, Day } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
@@ -15,6 +15,7 @@ import { blockPhrase } from '../booking/when';
 import { today as todayOf } from '../../lib/dates';
 import { customerActions } from '../customers/shortcuts';
 import { jobRights } from '../jobs/select';
+import { mayChangeTruck } from '../jobs/JobParts';
 import { jobPerson } from './move';
 import { copiedJob, copyJob, pasteHref } from './copy';
 import { openMenu, openMenuAt, pressProps, type MenuAction } from './ContextMenu';
@@ -38,6 +39,7 @@ export function jobActions(j: Job): { title: string; actions: MenuAction[] } {
   add(may.book() && !!j.customer_id && { key: 'copy', label: t('agenda.menu.copy'), icon: icon(Copy), testid: 'menu-copy-job',
     run: () => { copyJob(j.id); toast(t('agenda.copy.copied', { name }), { kind: 'ok' }); } });
   add(j.status === 'booked' && r.move && { key: 'move', label: t('agenda.menu.move'), icon: icon(CalendarClock), run: go(`/job/${j.id}?do=move`), testid: 'menu-move' });
+  add(mayChangeTruck(j, r) && { key: 'truck', label: t('jobs.truck.menu'), icon: icon(Truck), run: go(`/job/${j.id}?do=truck`), testid: 'menu-truck' });
   // the customer (the same shortcuts as in the list of customers; directions to the appointment's own address)
   if (c) {
     group();

@@ -72,6 +72,7 @@ export const customers: typeof fr = {
     cardHint: 'The customer left a credit card.',
     create: 'Create the file',
     createBook: 'Create and book',
+    car: 'Their vehicle',
     fix: 'Fix what is in red.',
     errors: {
       name: 'Write a first name, a last name or a company.',
@@ -89,6 +90,7 @@ export const customers: typeof fr = {
     noAddress: 'No address on file',
     saved: 'File saved',
     created: 'Customer created',
+    createdWithCar: 'Customer and vehicle created',
     delete: 'Delete this customer',
     deleted: 'Customer deleted',
     deleteHint: 'The file leaves the lists. Invoices already made stay.',

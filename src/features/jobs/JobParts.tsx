@@ -8,7 +8,8 @@ import { t, lang } from '../../lib/i18n';
 import { e164, formatPhone } from '../../lib/text';
 import { duration, stamp, clock } from '../../lib/dates';
 import { money } from '../../lib/money';
-import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals } from '../../data/select';
+import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals, blockLoad } from '../../data/select';
+import { freeWords } from '../agenda/layout';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
 import { ConversationSheet } from '../conversation/ConversationSheet';
@@ -315,6 +316,58 @@ export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   );
 }
 
+/* ---------- « Changer de camion »: the same day and block, another truck (booked by mistake on the wrong one) ---------- */
+/** may this appointment change truck now: booked, its block not started, the person may move appointments */
+export function mayChangeTruck(j: Job, rights: Pick<JobRights, 'move'>): boolean {
+  return j.status === 'booked' && rights.move && !blockLoad(j.day, j.block).started;
+}
+export function TruckSheet(p: { job: Job; open: boolean; onClose: () => void }) {
+  const { job: j } = p;
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!p.open) return null;
+  const l = lang.value;
+  // the trucks of that block, the appointment's own time left out (it moves with it)
+  const load = blockLoad(j.day, j.block, { exclude: j.id });
+  const working = load.trucks.filter((x) => x.cap > 0 || x.truck.id === j.truck_id);
+  const pick = async (truckId: string | null) => {
+    setBusy(truckId || 'auto');
+    try {
+      const r = await moveJob(j.id, j.day, j.block, truckId);
+      const d = r.data as { unchanged?: boolean } | undefined;
+      if (r.queued) toast(t('shell.queued'));
+      else if (d?.unchanged) toast(t('jobs.truck.same'));
+      else toast(truckId ? t('jobs.truck.done', { truck: truckLabel(truckId) }) : t('jobs.truck.doneAuto'), { kind: 'ok' });
+      p.onClose();
+    } catch (e) {
+      toast(errorMessage(e), { kind: 'bad' });
+    } finally { setBusy(null); }
+  };
+  return (
+    <Sheet open onClose={p.onClose} title={t('jobs.truck.title')} sub={t('jobs.truck.sub', { when: `${dayInSentence(j.day)}, ${t(`common.blocks.${j.block}`).toLowerCase()}` })} data-testid="truck-sheet"
+      footer={<Button onClick={p.onClose}>{t('common.cancel')}</Button>}>
+      <div class="stack">
+        <p class="small muted" style={{ margin: 0 }}>{t('jobs.truck.noText')}</p>
+        {working.length ? (
+          <Rows>
+            {working.map((x) => {
+              const mine = x.truck.id === j.truck_id;
+              const fits = x.cap - x.used >= j.duration_min;
+              return (
+                <RowItem key={x.truck.id} data-testid={`truck-pick-${x.truck.id}`}
+                  start={<span class="jobs-truck-dot" style={{ '--tc': truckColor(x.truck.id) }} aria-hidden="true"><Truck size={18} /></span>}
+                  title={<>{truckLabel(x.truck.id)}{mine && <Pill tone="booked">{t('jobs.truck.current')}</Pill>}</>}
+                  sub={x.cap > 0 ? `${freeWords(x.used, x.cap, l)}${fits || mine ? '' : `. ${t('jobs.truck.tight', { d: duration(j.duration_min, l) })}`}` : t('jobs.truck.off')}
+                  onClick={mine || busy ? undefined : () => void pick(x.truck.id)} />
+              );
+            })}
+          </Rows>
+        ) : <p class="muted">{t('jobs.truck.none')}</p>}
+        {j.truck_pinned && <Button block onClick={() => void pick(null)} busy={busy === 'auto'} data-testid="truck-auto">{t('jobs.truck.auto')}</Button>}
+      </div>
+    </Sheet>
+  );
+}
+
 /* ---------- texts to the customer, the live trip ---------- */
 export function TextsPanel(p: { job: Job; rights: JobRights }) {
   const { job: j } = p;
@@ -368,7 +421,7 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
 
 /* ---------- « … » ---------- */
 const invoiceIssued = (jobId: string) => { const v = invoiceOf(jobId); return !!v && v.status !== 'draft'; };
-export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onOrder: () => void; onCoffre?: () => void }) {
+export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onOrder: () => void; onCoffre?: () => void; onTruck?: () => void }) {
   const { job: j, rights } = p;
   const s = j.status;
   const link = clientLinkOf(j.id);
@@ -384,6 +437,7 @@ export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
     s === 'booked' && rights.order && !!j.truck_id && <RowItem key="f" start={<span class="quick-icon"><ChevronsUp size={20} /></span>} title={t('jobs.order.firstMenu')} sub={t('jobs.order.firstMenuSub')} onClick={then(() => { void stopFirst(j); })} data-testid="menu-first" />,
     s === 'booked' && rights.order && !!j.truck_id && <RowItem key="o" start={<span class="quick-icon"><ListOrdered size={20} /></span>} title={t('jobs.order.open')} sub={t('jobs.order.openSub')} onClick={then(p.onOrder)} data-testid="menu-order" />,
     s === 'booked' && rights.move && <RowItem key="m" start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={t('jobs.menu.move')} sub={t('jobs.menu.moveSub')} onClick={then(p.onMove)} />,
+    p.onTruck && mayChangeTruck(j, rights) && <RowItem key="tk" start={<span class="quick-icon"><Truck size={20} /></span>} title={t('jobs.truck.menu')} sub={t('jobs.truck.menuSub', { truck: truckLabel(j.truck_id) || t('jobs.truck.noneYet') })} onClick={then(p.onTruck)} data-testid="menu-truck" />,
     canBack && backTo && <RowItem key="u" start={<span class="quick-icon"><Undo2 size={20} /></span>} title={t('jobs.menu.back')} sub={t('jobs.menu.backSub', { status: jobStatusWord(backTo as Job['status']) })} onClick={then(() => doBack(j))} data-testid="menu-back" />,
     (s === 'booked' || s === 'en_route' || s === 'on_site') && rights.act && <RowItem key="n" class="jobs-danger" start={<span class="quick-icon"><UserX size={20} /></span>} title={t('jobs.menu.noShow')} sub={t('jobs.menu.noShowSub')} onClick={then(() => doNoShow(j))} data-testid="menu-noshow" />,
     (s === 'booked' || s === 'en_route') && rights.act && <RowItem key="c" class="jobs-danger" start={<span class="quick-icon"><Ban size={20} /></span>} title={t('jobs.menu.cancel')} sub={t('jobs.menu.cancelSub')} onClick={then(() => doCancel(j))} data-testid="menu-cancel" />,
