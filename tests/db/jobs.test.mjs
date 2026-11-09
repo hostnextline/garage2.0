@@ -424,8 +424,10 @@ test('the estimate signed online carries the authorization (nothing to sign at t
 test('the texts: the confirmation with the block and the estimate to sign, the new « mechanic arrived » text', () => tx(async (h) => {
   const m = await h.val(`select messages from public.settings where id = 1`);
   assert.match(m.fr.booking, /\{bloc\}/);
-  assert.match(m.fr.booking, /signer votre estimation\{payer\}/);
-  assert.match(m.en.booking, /sign your estimate\{payer\}/);
+  // Part 24 sexies: the services line by line, the total before taxes « + tx », no « pay now »
+  assert.match(m.fr.booking, /\{services\}\nTotal : \{soustotal\}\n/);
+  assert.match(m.en.booking, /\{services\}\nTotal: \{soustotal\}\n/);
+  assert.doesNotMatch(m.fr.booking, /\{payer\}/);
   assert.match(m.fr.arrived, /payer en ligne pendant les travaux/);
   assert.match(m.fr.arrived_no_pay, /\{total\}/);
   assert.equal(m.on.arrived, true);

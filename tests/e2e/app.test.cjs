@@ -350,10 +350,15 @@ step('the estimate signed online from the confirmation link; at the door nothing
     p_items: [{ description: 'Promo : pneus non montés + huile + inspection', unit_cents: 19999, duration_min: 60 }] });
   const n = await callAs(jwt, 'notify', { kind: 'booking', job_id: b.job_id, base: h.APP });
   assert.ok(n.link, JSON.stringify(n));
-  assert.match(n.message, /, l’après-midi \(entre 12 h et 16 h\)\. Estimation : 229,94 \$ taxes incluses\. Pour voir et signer votre estimation : http/);
+  assert.match(n.message, /, l’après-midi \(entre 12 h et 16 h\)\.\n\nEstimation :\n• Promo : pneus non montés \+ huile \+ inspection\u00a0: 199,99 \$\nTotal : 199,99 \$ \+ tx\n\nPour accepter l’estimation et autoriser les travaux sur votre véhicule \(un seul bouton\) : http/);
   // the customer's phone: the estimate, the conditions, the finger, « J'accepte », « Signer »
   const { page } = await h.openW({ kind: 'phone' });
   await page.goto(n.link);
+  // the page: the total before taxes « + tx », no payment before the work, one button to accept (or the finger, below)
+  await page.getByTestId('client-sign-click').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('client-expected').innerText(), /199,99\s\$ \+ tx/);
+  assert.equal(await page.getByTestId('client-pay').count(), 0, 'no « pay now » before the work');
+  await h.shot(page, 'e2e-7-client-one-tap');
   await page.getByTestId('client-sign-open').click({ timeout: 15000 });
   await page.getByTestId('client-sign-submit').click();
   await page.getByText('Écrivez votre nom.').waitFor();

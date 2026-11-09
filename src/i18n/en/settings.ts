@@ -243,6 +243,7 @@ export const settings: typeof fr = {
     vars: {
       prenom: 'Customer’s first name', garage: 'Garage name', jour: 'Appointment day', debut: 'Block start', fin: 'Block end',
       total: 'Total', lien: 'Link to their page', mecano: 'Mechanic’s first name', heure: 'Arrival time', minutes: 'Drive minutes',
+      services: 'The services and their price (one line each)', soustotal: 'Total before taxes, with “+ tx”',
       vehicule: 'Their vehicle', montant: 'Amount', numero: 'Invoice number', date: 'Invoice date', telephone: 'Garage phone', lieu: 'Starting point (Centrale)',
       bloc: 'Block (in the morning, afternoon, evening)', payer: '« and pay now » (when card payment is connected)'
     },

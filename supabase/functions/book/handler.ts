@@ -10,7 +10,7 @@ import { adminDb, settings, secret } from '../_shared/db.ts';
 import { sha256hex, newToken } from '../_shared/tokens.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
-import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang } from '../_shared/texts.ts';
+import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang, servicesList, subtotalWords } from '../_shared/texts.ts';
 
 type Row = Record<string, any>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,12 +111,13 @@ async function book(req: Request, b: Row) {
     const tpl = String(s.messages?.[lang]?.booking || s.messages?.fr?.booking || '');
     if (tpl) {
       const blk = ((s.booking?.blocks || []) as Row[]).find((x) => x.key === res.block) || { start: 480, end: 720 };
-      const { data: items } = await db.from('job_items').select('qty, unit_cents, taxable, status').eq('job_id', jobId).is('deleted_at', null);
+      const { data: items } = await db.from('job_items').select('description, kind, qty, unit_cents, taxable, status, sort').eq('job_id', jobId).is('deleted_at', null).order('sort');
       const cardOn = !!(await secret('stripe_key'));
       const message = fill(tpl, {
         prenom: first(cu.first_name || b.first_name) || '', garage: s.company?.name || 'Mécanique Mobile H.I.S', telephone: s.company?.phone || '',
         jour: longDay(String(res.day), lang), debut: clock(blk.start, lang), fin: clock(blk.end, lang), bloc: blockWords(String(res.block), lang),
-        payer: payNowWords(cardOn, lang), total: money(taxed((items || []) as Row[], s), lang), lien: link
+        payer: '', total: money(taxed((items || []) as Row[], s), lang), lien: link,
+        services: servicesList((items || []) as never, lang), soustotal: subtotalWords((items || []) as never, lang)
       });
       const quiet = cu.sms_ok === false || s.messages?.on?.booking === false;
       const r = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message);

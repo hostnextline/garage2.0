@@ -7,7 +7,7 @@ import { adminDb, caller, settings, secret } from '../_shared/db.ts';
 import { newToken, sha256hex } from '../_shared/tokens.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
-import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang } from '../_shared/texts.ts';
+import { money, clock, longDay, fill, first, blockWords, payNowWords, servicesList, subtotalWords, type Lang } from '../_shared/texts.ts';
 
 const KINDS = ['booking', 'moved', 'arrived', 'invoice', 'extras', 'payment_reminder', 'reminder'];
 const LINK_DAYS = 90;
@@ -73,8 +73,12 @@ export const handler = serve(async (req) => {
   const { data: items } = await db.from('job_items').select('*').eq('job_id', j.id).is('deleted_at', null);
   const its = (items || []) as Record<string, any>[];
   if (kind === 'booking' || kind === 'moved') {
-    const planned = its.filter((i) => ['planned', 'done', 'approved'].includes(i.status));
+    const planned = its.filter((i) => ['planned', 'done', 'approved'].includes(i.status)).sort((x, y) => (x.sort ?? 0) - (y.sort ?? 0));
     vars.total = money(taxed(planned as never, s), lang);
+    // the estimate, line by line, and the total before taxes (« + tx »); no invoice and no payment before the work
+    vars.services = servicesList(planned as never, lang);
+    vars.soustotal = subtotalWords(planned as never, lang);
+    vars.payer = '';
   }
   if (kind === 'extras' || kind === 'arrived') {
     const { data: mech } = j.truck_id ? await db.from('trucks').select('driver_id, staff:driver_id(short_name, full_name)').eq('id', j.truck_id).maybeSingle() : { data: null };

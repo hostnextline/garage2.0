@@ -25,7 +25,9 @@ export function exampleVars(l: Lang): Record<string, string> {
     mecano: t('settings.texts.example.mecano', undefined, l), heure: clock(Math.min(1435, Math.ceil((nowMinute() + 25) / 5) * 5), l), minutes: '25',
     vehicule: t('settings.texts.example.vehicule', undefined, l), montant: money(8000, l),
     numero: `${b.invoice_prefix ?? 'F-'}${String(43).padStart(Number(b.pad ?? 4), '0')}`, date: longDay(today(), l),
-    telephone: settings.value.company?.phone || '438 901-6606'
+    telephone: settings.value.company?.phone || '438 901-6606',
+    services: l === 'en' ? `• Oil change: ${money(7999, l)}\n• Tire swap: ${money(7000, l)}` : `• Changement d’huile\u00a0: ${money(7999, l)}\n• Changement de pneus\u00a0: ${money(7000, l)}`,
+    soustotal: `${money(14999, l)} + tx`
   };
 }
 

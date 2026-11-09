@@ -12,12 +12,12 @@ export const SWITCHES = ['booking', 'moved', 'en_route', 'arrived', 'extras', 'i
 /** what the server does when a switch was never set (messages.on[kind] missing) */
 export const DEFAULT_ON: Record<string, boolean> = { booking: true, moved: true, en_route: true, arrived: true, extras: true, invoice: true, payment_reminder: true, reminder: false, return_trip: true };
 
-export const ALL_VARS = ['prenom', 'garage', 'jour', 'bloc', 'debut', 'fin', 'total', 'payer', 'lien', 'mecano', 'heure', 'minutes', 'vehicule', 'montant', 'numero', 'date', 'telephone', 'lieu'] as const;
+export const ALL_VARS = ['prenom', 'garage', 'jour', 'bloc', 'debut', 'fin', 'total', 'services', 'soustotal', 'payer', 'lien', 'mecano', 'heure', 'minutes', 'vehicule', 'montant', 'numero', 'date', 'telephone', 'lieu'] as const;
 export type VarName = (typeof ALL_VARS)[number];
 const BASE: VarName[] = ['prenom', 'garage', 'jour', 'debut', 'fin', 'lien', 'telephone'];
 /** the words each text really gets from the server (others would come out empty) */
 export const VARS_OF: Record<MsgKind, VarName[]> = {
-  booking: [...BASE, 'bloc', 'total', 'payer'],
+  booking: [...BASE, 'bloc', 'services', 'soustotal', 'total'],
   moved: [...BASE, 'bloc', 'total'],
   en_route: ['prenom', 'mecano', 'garage', 'heure', 'minutes', 'lien'],
   en_route_no_eta: ['prenom', 'mecano', 'garage', 'lien'],
@@ -33,7 +33,7 @@ export const VARS_OF: Record<MsgKind, VarName[]> = {
 /* the starting texts (supabase/migrations/…_defaults.sql), for « Remettre le texte d'origine » */
 export const DEFAULT_TEXTS: Record<'fr' | 'en', Record<MsgKind, string>> = {
   fr: {
-    booking: 'Bonjour {prenom}, votre rendez-vous avec {garage} est confirmé : {jour}, {bloc} (entre {debut} et {fin}). Estimation : {total} taxes incluses. Pour voir et signer votre estimation{payer} : {lien}',
+    booking: 'Bonjour {prenom}, votre rendez-vous avec {garage} est confirmé : {jour}, {bloc} (entre {debut} et {fin}).\n\nEstimation :\n{services}\nTotal : {soustotal}\n\nPour accepter l’estimation et autoriser les travaux sur votre véhicule (un seul bouton) : {lien}',
     moved: 'Bonjour {prenom}, votre rendez-vous avec {garage} a changé : {jour}, entre {debut} et {fin}. Détails : {lien}',
     en_route: 'Bonjour {prenom}, {mecano} de {garage} est en route vers chez vous : arrivée prévue vers {heure} (environ {minutes} min). Suivez son trajet en direct : {lien}',
     en_route_no_eta: 'Bonjour {prenom}, {mecano} de {garage} est en route vers chez vous. Suivez son trajet en direct : {lien}',
@@ -46,7 +46,7 @@ export const DEFAULT_TEXTS: Record<'fr' | 'en', Record<MsgKind, string>> = {
     return_trip: '{mecano} a fini sa journée et revient vers {lieu} : arrivée prévue vers {heure} (environ {minutes} min). Suivre le camion en direct : {lien}'
   },
   en: {
-    booking: 'Hello {prenom}, your appointment with {garage} is confirmed: {jour}, {bloc} (between {debut} and {fin}). Estimate: {total} taxes included. To see and sign your estimate{payer}: {lien}',
+    booking: 'Hello {prenom}, your appointment with {garage} is confirmed: {jour}, {bloc} (between {debut} and {fin}).\n\nEstimate:\n{services}\nTotal: {soustotal}\n\nTo accept the estimate and authorize the work on your vehicle (one button): {lien}',
     moved: 'Hello {prenom}, your appointment with {garage} has changed: {jour}, between {debut} and {fin}. Details: {lien}',
     en_route: 'Hello {prenom}, {mecano} from {garage} is on the way to you: arriving around {heure} (about {minutes} min). Follow the trip live: {lien}',
     en_route_no_eta: 'Hello {prenom}, {mecano} from {garage} is on the way to you. Follow the trip live: {lien}',

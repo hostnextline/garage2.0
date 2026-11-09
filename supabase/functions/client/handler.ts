@@ -81,7 +81,7 @@ async function view(l: Row) {
       start: block.start ?? null, end: block.end ?? null, status: j.status, tracking: !!trip,
       vehicle: veh ? [(veh as Row).year, (veh as Row).make, (veh as Row).model].filter(Boolean).join(' ') : null, waiver_signed: !!j.waiver_signed_at },
     estimate: { signed_at: j.estimate_signed_at || null, signer: j.estimate_signer || null, cents: j.estimate_cents ?? null,
-      changed, can_sign: open && !issued && planned.length > 0 && expected.total > 0 && (!signed || changed) },
+      changed, can_sign: open && !issued && planned.length > 0 && (!signed || changed) },
     conditions: conditions || null,
     bill: draft ? { lines: (draft.lines || []) as Row[], subtotal_cents: draft.subtotal_cents, tps_cents: draft.tps_cents, tvq_cents: draft.tvq_cents, total_cents: draft.total_cents } : null,
     items: planned.map((i) => ({ id: i.id, description: i.description, qty: Number(i.qty), unit_cents: i.unit_cents, status: i.status })),
@@ -121,24 +121,40 @@ async function answer(req: Request): Promise<Response> {
   if (action === 'sign') {
     if (!l.job_id) fail('bad_link', 'Rien à signer ici.');
     if (b.confirm !== true) fail('confirm', 'Cochez « J’accepte » pour signer.');
-    const signer = String(b.signer || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-    if (signer.length < 2) fail('signer', 'Écrivez votre nom.');
-    const png = String(b.png || '');
-    const data = png.startsWith('data:image/png;base64,') ? png.slice(22) : png;
-    // a real picture of a signature (a PNG of a reasonable size), never anything else
-    if (!/^iVBORw0KGgo[A-Za-z0-9+/]+=*$/.test(data) || data.length < 300 || data.length > 400000) fail('signature', 'La signature n’est pas arrivée. Signez encore.');
     const v = await view(l) as Row;
     if (!v.estimate?.can_sign) fail('signed', v.estimate?.signed_at ? 'Cette estimation est déjà signée.' : 'Il n’y a plus rien à signer ici.');
     const s = await settings();
-    const num = (x: unknown) => { const n = Math.round(Number(x)); return Number.isFinite(n) && n > 0 && n < 5000 ? n : null; };
-    const { data: att, error } = await db.from('attachments').insert({ kind: 'signature', mime: 'image/png', data, bytes: Math.round(data.length * 0.75),
-      width: num(b.width), height: num(b.height), job_id: l.job_id, created_by: null }).select('id').single();
-    if (error) throw error;
+    // one tap (« J’accepte et je signe »): an electronic signature in the name on the customer's file; or the name typed
+    // and a signature drawn with the finger (the older page)
+    const { data: jc } = await db.from('jobs').select('waiver_signed_at, customer:customer_id(first_name, last_name, company)').eq('id', l.job_id).single();
+    const cuj = ((jc as Row | null)?.customer || {}) as Row;
+    const onFile = [cuj.first_name, cuj.last_name].filter(Boolean).join(' ').trim() || String(cuj.company || '').trim();
+    const click = b.click === true;
+    const signer = (click ? onFile || String(b.signer || '') : String(b.signer || '')).replace(/\s+/g, ' ').trim().slice(0, 80) || (click ? 'Client' : '');
+    if (signer.length < 2) fail('signer', 'Écrivez votre nom.');
+    let attId: string | null = null;
+    if (!click) {
+      const png = String(b.png || '');
+      const data = png.startsWith('data:image/png;base64,') ? png.slice(22) : png;
+      // a real picture of a signature (a PNG of a reasonable size), never anything else
+      if (!/^iVBORw0KGgo[A-Za-z0-9+/]+=*$/.test(data) || data.length < 300 || data.length > 400000) fail('signature', 'La signature n’est pas arrivée. Signez encore.');
+      const num = (x: unknown) => { const n = Math.round(Number(x)); return Number.isFinite(n) && n > 0 && n < 5000 ? n : null; };
+      const { data: att, error } = await db.from('attachments').insert({ kind: 'signature', mime: 'image/png', data, bytes: Math.round(data.length * 0.75),
+        width: num(b.width), height: num(b.height), job_id: l.job_id, created_by: null }).select('id').single();
+      if (error) throw error;
+      attId = (att as Row).id as string;
+    }
     const now = new Date().toISOString();
-    const { data: jr } = await db.from('jobs').select('waiver_signed_at').eq('id', l.job_id).single();
-    const patch: Row = { estimate_signed_at: now, estimate_signer: signer, estimate_attachment: (att as Row).id, estimate_cents: v.expected.total };
+    const patch: Row = { estimate_signed_at: now, estimate_signer: signer, estimate_attachment: attId, estimate_cents: v.expected.total };
     // the estimate's page carries the authorization of work: signed here, nothing is left to sign at the door
-    if (!(jr as Row | null)?.waiver_signed_at) Object.assign(patch, { waiver_signed_at: now, waiver_signer: signer, waiver_version: String(s.waiver?.version || '1'), waiver_attachment: (att as Row).id, waiver_via: 'online' });
+    if (!(jc as Row | null)?.waiver_signed_at) Object.assign(patch, { waiver_signed_at: now, waiver_signer: signer, waiver_version: String(s.waiver?.version || '1'), waiver_attachment: attId, waiver_via: 'online' });
+    // the proof of an electronic signature: when, which link, from which device (the address is kept as a fingerprint only)
+    if (click) {
+      const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim();
+      await db.from('activity').insert({ entity: 'job', entity_id: l.job_id, action: 'signed_online', data: {
+        signer, at: now, version: String(s.waiver?.version || '1'), cents: v.expected.total, link: l.id,
+        device: (req.headers.get('user-agent') || '').slice(0, 160), ip: ip ? (await sha256hex(`sig:${ip}`)).slice(0, 24) : null } });
+    }
     const { error: e2 } = await db.from('jobs').update(patch).eq('id', l.job_id);
     if (e2) throw e2;
     await db.from('messages').insert({ job_id: l.job_id, kind: 'estimate_signed', channel: 'web', status: 'skipped', error: 'answer',

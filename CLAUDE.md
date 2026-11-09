@@ -154,6 +154,14 @@ end $do$;
   may): on a job: open, copy, move (`#/job/ID?do=move`), customer file, text (`#/customer/ID?do=text`), call, directions, add a vehicle
   (`?do=car`), new estimate, new appointment for this customer, see the invoice; on a block: paste, book in this block, see the day
   (computer), map of the day.
+- The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
+  the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
+  {soustotal} » = « 159,98 $ + tx » (`subtotalWords`; work by the hour: « …, plus le travail à l’heure »; nothing priced: « selon le
+  travail sur place »); `fill()` keeps the lines of a text. No « pay now » before the work (`{payer}` empty for booking, the page's
+  pre-payment box only once the mechanic is there). The page's sign panel is one button « J’accepte et je signe » (`client sign
+  { click: true }`: signed electronically in the name on the customer's file, no picture, the authorization of work included; the
+  proof in `activity` `signed_online`: signer, time, waiver version, amount, link, device, IP fingerprint); « Signer avec le doigt
+  plutôt » keeps the drawing. `can_sign` no longer needs a total above zero.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.

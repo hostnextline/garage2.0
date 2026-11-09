@@ -243,6 +243,7 @@ export const settings = {
     vars: {
       prenom: 'Prénom du client', garage: 'Nom du garage', jour: 'Jour du rendez-vous', debut: 'Début du bloc', fin: 'Fin du bloc',
       total: 'Total', lien: 'Lien vers sa page', mecano: 'Prénom du mécano', heure: 'Heure d’arrivée', minutes: 'Minutes de route',
+      services: 'Les services et leur prix (une ligne chacun)', soustotal: 'Total avant taxes, avec « + tx »',
       vehicule: 'Son véhicule', montant: 'Montant', numero: 'Numéro de facture', date: 'Date de la facture', telephone: 'Téléphone du garage', lieu: 'Point de départ (Centrale)',
       bloc: 'Bloc (le matin, l’après-midi, le soir)', payer: '« et la payer maintenant » (quand le paiement par carte est branché)'
     },

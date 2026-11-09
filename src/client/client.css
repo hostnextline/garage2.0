@@ -287,3 +287,7 @@
 .cl-field .textarea { font-weight: 460; font-size: var(--t-md); }
 .bk-hp { position: absolute !important; left: -10000px; width: 1px; height: 1px; opacity: 0; }
 .bk-done-when { font-size: var(--t-md); color: var(--ink) !important; font-weight: 520; }
+
+/* « Signer avec le doigt plutôt »: a quiet link */
+.cl-linkbtn { border: 0; padding: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.cl-sign { display: grid; gap: var(--sp-3, 12px); }
