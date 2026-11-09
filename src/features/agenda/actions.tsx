@@ -2,19 +2,18 @@
    On an appointment: open it, copy it, move it; the customer (file, text, call, directions, a new car, an estimate, a
    new appointment); its invoice. On a block: paste the appointment copied, book in this block, see the day, its map.
    Each shortcut shows only to the people who may use it (the screen it opens checks again, as always). */
-import { Copy, ClipboardPaste, ExternalLink, UserRound, MessageSquareText, Phone, Navigation, Car, FileText, CalendarPlus, CalendarClock, ReceiptText, CalendarDays, Map as MapIcon } from 'lucide-preact';
+import { Copy, ClipboardPaste, ExternalLink, CalendarPlus, CalendarClock, ReceiptText, CalendarDays, Map as MapIcon } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import type { BlockKey, Day } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { e164 } from '../../lib/text';
-import { may, isField } from '../../app/routes';
+import { may } from '../../app/routes';
 import { navigate, href } from '../../app/router';
 import { wide } from '../../app/media';
 import { customer as customerRow, invoiceOf } from '../../data/select';
 import { toast } from '../../ui';
 import { blockPhrase } from '../booking/when';
 import { today as todayOf } from '../../lib/dates';
-import { directionsUrl } from '../customers/address';
+import { customerActions } from '../customers/shortcuts';
 import { jobRights } from '../jobs/select';
 import { jobPerson } from './move';
 import { copiedJob, copyJob, pasteHref } from './copy';
@@ -39,18 +38,10 @@ export function jobActions(j: Job): { title: string; actions: MenuAction[] } {
   add(may.book() && !!j.customer_id && { key: 'copy', label: t('agenda.menu.copy'), icon: icon(Copy), testid: 'menu-copy-job',
     run: () => { copyJob(j.id); toast(t('agenda.copy.copied', { name }), { kind: 'ok' }); } });
   add(j.status === 'booked' && r.move && { key: 'move', label: t('agenda.menu.move'), icon: icon(CalendarClock), run: go(`/job/${j.id}?do=move`), testid: 'menu-move' });
-  // the customer
+  // the customer (the same shortcuts as in the list of customers; directions to the appointment's own address)
   if (c) {
     group();
-    const tel = e164(c.phone);
-    const dir = directionsUrl({ address: j.address || c.address, unit: j.address ? j.unit : c.unit, postal_code: j.address ? j.postal_code : c.postal_code, lat: j.lat ?? c.lat, lng: j.lng ?? c.lng });
-    add(may.customers() && { key: 'file', label: t('agenda.menu.customer'), icon: icon(UserRound), run: go(`/customer/${c.id}`), testid: 'menu-customer' });
-    add(may.customers() && !!tel && { key: 'text', label: t('agenda.menu.text'), icon: icon(MessageSquareText), run: go(`/customer/${c.id}?do=text`), testid: 'menu-text' });
-    add(!!tel && { key: 'call', label: t('agenda.menu.call', { phone: c.phone || '' }), icon: icon(Phone), run: () => { location.href = `tel:${tel}`; }, testid: 'menu-call' });
-    add(!!dir && { key: 'dir', label: t('agenda.menu.directions'), icon: icon(Navigation), run: () => { window.open(dir!, '_blank', 'noopener'); }, testid: 'menu-directions' });
-    add(may.customers() && isField() && { key: 'car', label: t('agenda.menu.car'), icon: icon(Car), run: go(`/customer/${c.id}?do=car`), testid: 'menu-car' });
-    add(may.quotes() && { key: 'quote', label: t('agenda.menu.quote'), icon: icon(FileText), run: go(`/quote/new?customer=${c.id}`), testid: 'menu-quote' });
-    add(may.book() && { key: 'book', label: t('agenda.menu.book'), icon: icon(CalendarPlus), run: go(`/book?customer=${c.id}`), testid: 'menu-book' });
+    for (const x of customerActions(c, { place: j.address ? { address: j.address, unit: j.unit, postal_code: j.postal_code, lat: j.lat, lng: j.lng } : undefined })) add(x);
   }
   // the money
   const inv = invoiceOf(j.id);

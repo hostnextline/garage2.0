@@ -1,5 +1,6 @@
 /* Clients : la liste, la fiche, la recherche de client (réservation, estimation), l'adresse, les notes. */
 export const customers = {
+  menu: { edit: 'Modifier la fiche' },
   title: 'Clients',
   count: { zero: 'Aucun client', one: '{n} client', other: '{n} clients' },
   found: { zero: 'Aucun client trouvé', one: '{n} client trouvé', other: '{n} clients trouvés' },

@@ -116,6 +116,34 @@ test('Part 24 quinquies: stock bought, paid by the Trésorerie (an expense with 
   assert.equal((await h.fails(() => h.rpc('inventory_buy', { p_op: uuid(), p_item: g.oil, p_qty: 1, p_total_cents: 100, p_from: 'coffre', p_vendor: null, p_note: null })))?.hint, 'not_allowed');
 }));
 
+test('Part 24 sexies: « Changer le prix »: any account that sees the appointment, noted; never on a finished invoice or a closed job', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.owner);
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'am', duration_min: 60 },
+    p_items: [{ description: 'Vidange', service_id: g.svc, unit_cents: 7999, duration_min: 30 }, { description: 'Rabais', kind: 'discount', unit_cents: 1000 }] });
+  const [oil, rebate] = await h.q(`select id, kind from public.job_items where job_id = $1 order by kind desc`, [r.job_id]).then((x) => [x.find((i) => i.kind !== 'discount').id, x.find((i) => i.kind === 'discount').id]);
+  // the mechanic of the truck (no « invoices » right): the wrong price fixed
+  await h.as(g.mech);
+  const a = await h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 6999 });
+  assert.equal(a.ok, true);
+  await h.rpc('job_item_price', { p_op: uuid(), p_item: rebate, p_unit_cents: 500 });
+  await h.as(null); await h.c.query('reset role');
+  assert.deepEqual((await h.q(`select unit_cents from public.job_items where id = any($1) order by kind desc`, [[oil, rebate]])).map((x) => x.unit_cents), [6999, -500], 'a discount stays a discount');
+  const note = await h.one(`select actor, data from public.activity where action = 'price_changed' and data->>'item' = $1`, [oil]);
+  assert.deepEqual([note.actor, note.data.from, note.data.to], [g.mech, 7999, 6999]);
+  // someone who does not see the appointment, a bad price
+  const other = await h.person('Autre Mécano', ['mechanic']);
+  await h.as(other);
+  assert.equal((await h.fails(() => h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 100 })))?.hint, 'not_found');
+  await h.as(g.owner);
+  assert.equal((await h.fails(() => h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: -5 })))?.hint, 'bad_amount');
+  // a finished invoice: refused (cancel it first)
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: r.job_id, p_refresh: true })).rows.invoices[0];
+  assert.equal((await h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 7500 })).ok, true, 'a draft follows the work');
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv.id });
+  assert.equal((await h.fails(() => h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 7000 })))?.hint, 'invoice_done');
+}));
+
 test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);
@@ -450,8 +478,10 @@ test('the estimate signed online carries the authorization (nothing to sign at t
 test('the texts: the confirmation with the block and the estimate to sign, the new « mechanic arrived » text', () => tx(async (h) => {
   const m = await h.val(`select messages from public.settings where id = 1`);
   assert.match(m.fr.booking, /\{bloc\}/);
-  assert.match(m.fr.booking, /signer votre estimation\{payer\}/);
-  assert.match(m.en.booking, /sign your estimate\{payer\}/);
+  // Part 24 sexies: the services line by line, the total before taxes « + tx », no « pay now »
+  assert.match(m.fr.booking, /\{services\}\nTotal : \{soustotal\}\n/);
+  assert.match(m.en.booking, /\{services\}\nTotal: \{soustotal\}\n/);
+  assert.doesNotMatch(m.fr.booking, /\{payer\}/);
   assert.match(m.fr.arrived, /payer en ligne pendant les travaux/);
   assert.match(m.fr.arrived_no_pay, /\{total\}/);
   assert.equal(m.on.arrived, true);

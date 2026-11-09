@@ -20,6 +20,7 @@ import { Button, IconButton, Sheet, Banner, Avatar, Rows, RowItem, Empty, Skelet
 import { MovedBanner } from './moved';
 import { CoffreHost } from '../features/coffre/host';
 import { startLocator } from './locator';
+import { ContextMenuHost } from '../features/agenda/ContextMenu';
 
 /* ---------- the screen for the current address ---------- */
 const loaded = new Map<string, ComponentType<ScreenProps>>();
@@ -259,6 +260,7 @@ export function Shell() {
       <QuickSheet />
       <SyncSheet />
       <CoffreHost />
+      <ContextMenuHost />
     </div>
   );
 }

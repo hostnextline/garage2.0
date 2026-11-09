@@ -63,7 +63,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261108000180_achat_inventaire.sql` (Parts 24 quater and quinquies, applied 2026-11-08 from
+- Applied on live: every migration up to `20261109000100_texte_reservation.sql` (Part 24 sexies, applied 2026-11-09 from commit `d8f87f6`
+  through the Claude Code MCP `supabase-garage`; Parts 24 quater and quinquies from
   commit `9c02c8b`; Part 24 ter from `a4f2da6`;
   Part 24 bis from `e9d9652`, Part 24 from `9835d52`, all with the
   sha256 check; Parts 21–22 were applied through the connector's `apply_migration` and recorded under the wrong versions, fixed the
@@ -72,9 +73,10 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `enroute` at `a4f2da6`; `book`, `team`, `backup` at `9835d52`; the others (`client`, `conversation`, `notify`, `stripe`, `vin`) at `2610bc8`.
+  `notify`, `book` at `408de6c`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team`, `backup` at `9835d52`; the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
-- Live access so far has gone through the Supabase connector (`execute_sql`, `apply_migration`, `get_advisors`).
+- Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
+  connector now points at another organization). Before: the claude.ai connector (`execute_sql`, `apply_migration`, `get_advisors`).
 - Free plan: the project pauses after a week without use.
 
 ## Things to know before touching them
@@ -112,6 +114,8 @@ end $do$;
 - « Ordre des arrêts » (Part 21, `jobs.manual_order`): owner, office (« book ») or the truck's driver put a truck's
   booked stops of a block in the order wanted (`set_stop_order`, empty list = back to the planner). `plan_block` keeps
   them right after the stops en route / on site; moving a job to another day, block or truck clears its place.
+- « Réserver en ligne » is **switched off since 2026-11-09** (live `settings.booking.web.on = false`: the page says « fermée », `book`
+  refuses with `web_off`; the « Réservation en ligne » panel is hidden in Réglages) until Hassan and Claude rework it together.
 - « Réserver en ligne » (Part 23, `20261107000500_web_booking.sql`, applied on live 2026-11-07 from commit `7b1b86b` with the
   sha256 check; server function `book` deployed pinned to `7b1b86b`, link open): one public link `client.html#reserver` (Réglages → Réservations, second panel « Réservation en ligne »: on/off, copy). The
   customer picks services, an address (Photon, must be ≤ `booking.web.max_km` (60) from the start), one of the 6 best blocks
@@ -184,7 +188,20 @@ end $do$;
   The same menu is the agenda's shortcut menu (`jobActions` / `blockActions` in `actions.tsx`, each shortcut only for those who
   may): on a job: open, copy, move (`#/job/ID?do=move`), customer file, text (`#/customer/ID?do=text`), call, directions, add a vehicle
   (`?do=car`), new estimate, new appointment for this customer, see the invoice; on a block: paste, book in this block, see the day
-  (computer), map of the day.
+  (computer), map of the day. The list of customers has the same menu on each row (`customerActions` in
+  `src/features/customers/shortcuts.tsx`, shared with the agenda; plus « Modifier la fiche » = `#/customer/ID?do=edit`). The menu host
+  (`ContextMenuHost`) is mounted once in the shell.
+- The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
+  the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
+  {soustotal} » = « 159,98 $ + tx » (`subtotalWords`; work by the hour: « …, plus le travail à l’heure »; nothing priced: « selon le
+  travail sur place »); `fill()` keeps the lines of a text. No « pay now » before the work (`{payer}` empty for booking, the page's
+  pre-payment box only once the mechanic is there). The page's sign panel is one button « J’accepte et je signe » (`client sign
+  { click: true }`: signed electronically in the name on the customer's file, no picture, the authorization of work included; the
+  proof in `activity` `signed_online`: signer, time, waiver version, amount, link, device, IP fingerprint); « Signer avec le doigt
+  plutôt » keeps the drawing. `can_sign` no longer needs a total above zero.
+  « Changer le prix » (same Part): on a line of an appointment (its sheet), every account that sees the appointment, while it is
+  coming or under way and its invoice not finished: `job_item_price(op, item, unit_cents)` (a discount stays negative; the old and new
+  prices in `activity` `price_changed`); the app says to resend the confirmation when the customer already got it.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 and 13 were flaky there before Phase 2.

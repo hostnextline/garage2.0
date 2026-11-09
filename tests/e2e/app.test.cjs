@@ -103,6 +103,21 @@ step('the office books Julie: customer, service, block, truck; the job is on the
   assert.equal(Number(h.sql(`select count(*) from public.job_items where job_id = '${jobId}' and service_id = '${SVC_OIL}'`)), 1);
   // no text service connected: the app gives the message to send by hand (never fails silently)
   await dismissSheets(page);
+  // « Changer le prix » on the line (any account): 69,99 $, then back to the price list's
+  const line = h.sql(`select id || '|' || unit_cents from public.job_items where job_id = '${jobId}' and service_id = '${SVC_OIL}'`).split('|');
+  const setPrice = async (text) => {
+    await page.getByTestId('job-item').first().locator('.jobs-item-main').click();
+    await page.getByTestId('item-price-edit').click();
+    await page.locator('[data-testid="item-price-form"] input').fill(text);
+    await page.getByTestId('item-price-save').click();
+    await page.getByTestId('item-price-form').waitFor({ state: 'detached', timeout: 15000 });
+    await dismissSheets(page);
+  };
+  await setPrice('69,99');
+  assert.equal(await until(() => h.sql(`select unit_cents from public.job_items where id = '${line[0]}'`), (v) => v === '6999', 15000), '6999');
+  assert.equal(h.sql(`select data->>'from' || '>' || (data->>'to') from public.activity where action = 'price_changed' and entity_id = '${jobId}'`), `${line[1]}>6999`, 'the change is noted');
+  await setPrice((Number(line[1]) / 100).toFixed(2).replace('.', ','));
+  assert.equal(await until(() => h.sql(`select unit_cents from public.job_items where id = '${line[0]}'`), (v) => v === line[1], 15000), line[1]);
   // on the agenda of her day (the first block suggested may be next week: a Saturday afternoon run)
   const bookedDay = h.sql(`select day::text from public.jobs where id = '${jobId}'`);
   await page.goto(h.APP + `#/agenda/${bookedDay}`);
@@ -350,10 +365,15 @@ step('the estimate signed online from the confirmation link; at the door nothing
     p_items: [{ description: 'Promo : pneus non montés + huile + inspection', unit_cents: 19999, duration_min: 60 }] });
   const n = await callAs(jwt, 'notify', { kind: 'booking', job_id: b.job_id, base: h.APP });
   assert.ok(n.link, JSON.stringify(n));
-  assert.match(n.message, /, l’après-midi \(entre 12 h et 16 h\)\. Estimation : 229,94 \$ taxes incluses\. Pour voir et signer votre estimation : http/);
+  assert.match(n.message, /, l’après-midi \(entre 12 h et 16 h\)\.\n\nEstimation :\n• Promo : pneus non montés \+ huile \+ inspection\u00a0: 199,99 \$\nTotal : 199,99 \$ \+ tx\n\nPour accepter l’estimation et autoriser les travaux sur votre véhicule \(un seul bouton\) : http/);
   // the customer's phone: the estimate, the conditions, the finger, « J'accepte », « Signer »
   const { page } = await h.openW({ kind: 'phone' });
   await page.goto(n.link);
+  // the page: the total before taxes « + tx », no payment before the work, one button to accept (or the finger, below)
+  await page.getByTestId('client-sign-click').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('client-expected').innerText(), /199,99\s\$ \+ tx/);
+  assert.equal(await page.getByTestId('client-pay').count(), 0, 'no « pay now » before the work');
+  await h.shot(page, 'e2e-7-client-one-tap');
   await page.getByTestId('client-sign-open').click({ timeout: 15000 });
   await page.getByTestId('client-sign-submit').click();
   await page.getByText('Écrivez votre nom.').waitFor();
@@ -1125,6 +1145,8 @@ step('Copier / Coller on an iPhone: a long press on an appointment, « Copier »
   await page.getByTestId('agenda-day').waitFor({ timeout: 15000 });
   const ticket = page.locator(`.agenda-ticketwrap:has(a[href="#/job/${jobId}"])`).first();
   await ticket.waitFor();
+  await ticket.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
   // held: the menu, and lifting the finger does not open the appointment
   await hold(ticket, 700);
   await page.getByTestId('agenda-menu').waitFor();
@@ -1141,6 +1163,8 @@ step('Copier / Coller on an iPhone: a long press on an appointment, « Copier »
   const block = page.locator('[data-testid^="block-"]:has([data-testid^="book-"]):has([data-testid^="paste-"])').first();
   await block.waitFor({ timeout: 15000 });
   const key = (await block.getAttribute('data-testid')).replace('block-', '');
+  await block.locator('.agenda-lanes').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
   await hold(block.locator('.agenda-lanes'), 700);
   await page.getByTestId('menu-paste').click();
   await page.getByTestId('book-copy').waitFor({ timeout: 15000 });
@@ -1151,6 +1175,41 @@ step('Copier / Coller on an iPhone: a long press on an appointment, « Copier »
   assert.equal(Number(h.sql(`select count(*) from public.jobs where customer_id = '${julie}' and deleted_at is null`)), before + 1, 'one new appointment');
   const made = h.sql(`select day || '|' || block from public.jobs where customer_id = '${julie}' and deleted_at is null order by created_at desc limit 1`);
   assert.equal(made, `${later}|${key}`, 'in the block held');
+  noErrors(page);
+  await ctx.close();
+});
+
+step('Clients: right-click (computer) or long press (iPhone) on a customer: the shortcuts; « Modifier la fiche », « Nouvelle estimation »', async () => {
+  // the computer: a right-click on Julie's row
+  let { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/customers');
+  const row = page.locator(`[data-testid="customer-row"][href="#/customer/${julie}"]`);
+  await row.waitFor({ timeout: 15000 });
+  await row.click({ button: 'right' });
+  await page.getByTestId('agenda-menu').waitFor();
+  await h.shot(page, 'e2e-clients-menu');
+  for (const id of ['menu-customer', 'menu-edit', 'menu-text', 'menu-call', 'menu-directions', 'menu-car', 'menu-quote', 'menu-book']) {
+    assert.equal(await page.getByTestId(id).count(), 1, `the shortcut ${id}`);
+  }
+  await page.getByTestId('menu-edit').click();
+  await page.getByTestId('customer-edit-sheet').waitFor({ timeout: 15000 });
+  noErrors(page);
+  await ctx.close();
+  // the iPhone: a long press on the row, « Nouvelle estimation »
+  ({ page, ctx } = await h.openW({ kind: 'phone' }));
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/customers');
+  const prow = page.locator(`[data-testid="customer-row"][href="#/customer/${julie}"]`);
+  await prow.waitFor({ timeout: 15000 });
+  // a finger is always on a row that is on the screen (a row out of view would make the page scroll, which closes the menu)
+  await prow.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await hold(prow, 700);
+  await page.getByTestId('agenda-menu').waitFor();
+  assert.equal(await page.getByTestId('customer-file').count(), 0, 'lifting the finger did not open the file');
+  await page.getByTestId('menu-quote').click();
+  await page.waitForURL(/#\/quote\/new\?customer=/, { timeout: 15000 });
   noErrors(page);
   await ctx.close();
 });

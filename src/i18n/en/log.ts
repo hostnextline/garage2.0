@@ -16,6 +16,7 @@ export const log: typeof fr = {
   settings: 'Settings',
   expense: 'Expense',
   inventory: 'Inventory',
+  price: 'Price change',
   change: 'Change',
   step: { leave: 'I’m leaving', arrive: 'I’ve arrived', finish: 'Job finished', cancel: 'Cancellation', no_show: 'Customer absent', reopen: 'Job reopened', back: 'Step undone', waiver: 'Authorization signed' }
 };

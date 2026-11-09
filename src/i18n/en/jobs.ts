@@ -300,6 +300,16 @@ export const jobs: typeof fr = {
     payFirstMechanic: 'Payment is needed before leaving. Only the office can let a customer go without paying: call them.',
     callOffice: 'Call the office'
   },
+  price: {
+    change: 'Change the price',
+    label: 'New price (before taxes)',
+    unitLabel: 'New price per unit (before taxes)',
+    hint: 'The appointment’s total and the customer’s estimate change too. The change is noted (who, when, the old price).',
+    save: 'Save the price',
+    done: 'Price changed: {price}.',
+    doneResend: 'Price changed: {price}. The customer already got the estimate: send it again (⋯, “Send the confirmation text again”).',
+    locked: 'The invoice is finished: to change a price, cancel it first.'
+  },
   parts: {
     title: 'Parts used',
     sub: 'Confirm what leaves the inventory for this job',

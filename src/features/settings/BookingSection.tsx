@@ -107,7 +107,8 @@ export function BookingSection() {
           )}
         </div>
       </Panel>
-      <WebBooking />
+      {/* « Réservation en ligne »: put aside on 2026-11-09 (switched off on the server, booking.web.on = false) until it is reworked */}
+      {false && <WebBooking />}
       <Panel title={t('settings.booking.blocks')} help={t('settings.booking.blocksHelp')}>
         <div class="settings-blocks">
           {d.blocks.map((bl, i) => {

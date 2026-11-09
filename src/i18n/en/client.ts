@@ -61,6 +61,10 @@ export const client: typeof fr = {
 
   sign: {
     open: 'Sign the estimate',
+    oneLead: 'By accepting, you authorize {garage} to do the work above on your vehicle, under the conditions below. The final price can only change with your consent.',
+    oneButton: 'I accept and sign',
+    oneNote: 'Electronic signature in your name, with the date and time.',
+    drawInstead: 'Sign with your finger instead',
     title: 'Sign the estimate',
     lead: 'You accept the work and the estimated price ({total}). The final price can only change with your consent.',
     changed: 'Your estimate changed since you signed it: please sign the new one.',

@@ -1,5 +1,6 @@
 import type { customers as fr } from '../fr/customers';
 export const customers: typeof fr = {
+  menu: { edit: 'Edit the file' },
   title: 'Customers',
   count: { zero: 'No customers', one: '{n} customer', other: '{n} customers' },
   found: { zero: 'No customer found', one: '{n} customer found', other: '{n} customers found' },

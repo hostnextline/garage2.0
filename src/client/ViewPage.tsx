@@ -84,7 +84,9 @@ export function ViewPage(p: { token: string; linkLang: CLang | null; retour: str
     show(nv);
     setThanks(true);
   };
-  const sign = async (signer: string, strokes: Stroke[]) => {
+  const sign = async (signer: string, strokes: Stroke[], click = false) => {
+    // one tap: an electronic signature in the name on the file (no drawing)
+    if (click) { const nv = await callClient<View>('sign', p.token, { click: true, confirm: true }); if (alive.current) show(nv); return; }
     const png = exportSignature(strokes);
     if (!png) throw new ClientError('signature', 'no ink');
     const nv = await callClient<View>('sign', p.token, { signer, png: png.dataUrl, width: png.width, height: png.height, confirm: true });
@@ -131,7 +133,7 @@ export function ViewPage(p: { token: string; linkLang: CLang | null; retour: str
 
 /* ---------- an appointment ---------- */
 function JobPage(p: { v: JobView; l: CLang; token: string; check: PayCheck; justPaid: boolean; thanks: boolean; payErr: string | null;
-  onAnswer: (x: ExtraV, accept: boolean) => Promise<void>; onPay: () => Promise<void>; onSign: (signer: string, strokes: Stroke[]) => Promise<void>; onCheckAgain: () => void }) {
+  onAnswer: (x: ExtraV, accept: boolean) => Promise<void>; onPay: () => Promise<void>; onSign: (signer: string, strokes: Stroke[], click?: boolean) => Promise<void>; onCheckAgain: () => void }) {
   const { v, l } = p;
   const s = sections(v);
   const inv = v.invoice;
@@ -213,7 +215,7 @@ function Line(p: { desc: string; meta?: ComponentChildren; cents: number; l: CLa
   );
 }
 
-function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: () => Promise<void>; onSign: (signer: string, strokes: Stroke[]) => Promise<void> }) {
+function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: () => Promise<void>; onSign: (signer: string, strokes: Stroke[], click?: boolean) => Promise<void> }) {
   const { v, l } = p;
   const s = sections(v);
   const taxed = chargesTaxes(v);
@@ -245,8 +247,8 @@ function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: (
       {e.total > 0 && (
         <>
           <div class="cl-total">
-            <span class="cl-total-label">{ct(l, bill ? 'work.billTotal' : taxed ? 'work.expected' : 'work.expectedNoTax')}</span>
-            <b class="cl-total-amt" data-testid="client-expected">{cad(e.total, l)}</b>
+            <span class="cl-total-label">{ct(l, bill ? 'work.billTotal' : 'work.expectedNoTax')}</span>
+            <b class="cl-total-amt" data-testid="client-expected">{bill || !taxed ? cad(e.total, l) : `${cad(e.subtotal, l)} + tx`}</b>
           </div>
           {taxed && (
             <details class="cl-details">
@@ -266,13 +268,14 @@ function PlannedPanel(p: { v: JobView; l: CLang; payErr: string | null; onPay: (
         </div>
       )}
       <EstimateSign v={v} l={l} onSign={p.onSign} />
-      {prepay && <PayBox v={v} l={l} prepay={!bill} now err={p.payErr} onPay={p.onPay} />}
+      {/* no payment before the work: only once the mechanic is there */}
+      {prepay && bill && <PayBox v={v} l={l} prepay={false} now err={p.payErr} onPay={p.onPay} />}
     </section>
   );
 }
 
 /* ---------- the estimate, signed with the finger (with the conditions of the work) ---------- */
-function EstimateSign(p: { v: JobView; l: CLang; onSign: (signer: string, strokes: Stroke[]) => Promise<void> }) {
+function EstimateSign(p: { v: JobView; l: CLang; onSign: (signer: string, strokes: Stroke[], click?: boolean) => Promise<void> }) {
   const { v, l } = p;
   const e = v.estimate;
   const [open, setOpen] = useState(false);
@@ -285,6 +288,14 @@ function EstimateSign(p: { v: JobView; l: CLang; onSign: (signer: string, stroke
   useEffect(() => { if (open) titleRef.current?.focus(); }, [open]);
   if (!e) return null;
   const total = cad(v.expected.total, l);
+  // one tap: the estimate accepted and the work authorized, signed electronically in the name on the customer's file
+  const signNow = async () => {
+    setErr(null);
+    setBusy(true);
+    try { await p.onSign('', [], true); }
+    catch (x) { setErr(x instanceof ClientError && x.code === 'signed' ? x.message : ct(l, 'sign.fail')); }
+    finally { setBusy(false); }
+  };
   if (!e.can_sign) {
     if (!e.signed_at) return null;
     return (
@@ -297,7 +308,18 @@ function EstimateSign(p: { v: JobView; l: CLang; onSign: (signer: string, stroke
     return (
       <div class="cl-sign cl-noprint" data-testid="client-sign">
         {e.changed && <Note kind="warn">{ct(l, 'sign.changed')}</Note>}
-        <Button variant="primary" block icon={<PenLine />} onClick={() => { setOpen(true); setErr(null); }} data-testid="client-sign-open">{ct(l, 'sign.open')}</Button>
+        <p class="cl-sub" style={{ margin: 0 }}>{ct(l, 'sign.oneLead', { garage: garageName(v.garage, l) })}</p>
+        {v.conditions && (
+          <details class="cl-details">
+            <summary>{ct(l, 'sign.conditions')}</summary>
+            <p class="cl-cond">{v.conditions}</p>
+          </details>
+        )}
+        {err && <Note kind="bad">{err}</Note>}
+        <Button variant="primary" block busy={busy} icon={<PenLine />} onClick={signNow} data-testid="client-sign-click">{ct(l, 'sign.oneButton')}</Button>
+        <p class="cl-small cl-muted" style={{ margin: 0 }}>{ct(l, 'sign.oneNote')}{' '}
+          <button type="button" class="cl-linkbtn" onClick={() => { setOpen(true); setErr(null); }} data-testid="client-sign-open">{ct(l, 'sign.drawInstead')}</button>
+        </p>
       </div>
     );
   }

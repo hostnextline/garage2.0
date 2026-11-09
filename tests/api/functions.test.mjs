@@ -115,8 +115,10 @@ test('texts and card payment: keys saved, appointment text with total, the custo
     p_items: [{ description: 'Vidange d’huile + changement de filtre', unit_cents: 7999 }, { description: 'Pneus non montés · 15 à 17 po', unit_cents: 7999 }] }, ownerJwt);
   const n = await fn('notify', { kind: 'booking', job_id: b.job_id, base: BASE }, ownerJwt);
   assert.equal(n.ok, true, JSON.stringify(n));
-  // the block in words, the estimate to sign, « pay now » (card payment is on)
-  assert.match(n.message, /^Bonjour Jean, votre rendez-vous avec Mécanique Mobile H\.I\.S est confirmé : .+, l’après-midi \(entre 12 h et 16 h\)\. Estimation : 183,94 \$ taxes incluses\. Pour voir et signer votre estimation \(et la payer maintenant si vous le voulez\) : http/);
+  // the block in words, the estimate line by line, the total before taxes « + tx », one button to accept (Part 24 sexies);
+  // never « pay now » before the work, even with card payment on
+  assert.match(n.message, /^Bonjour Jean, votre rendez-vous avec Mécanique Mobile H\.I\.S est confirmé : .+, l’après-midi \(entre 12 h et 16 h\)\.\n\nEstimation :\n• Vidange d’huile \+ changement de filtre\u00a0: 79,99 \$\n• Pneus non montés · 15 à 17 po\u00a0: 79,99 \$\nTotal : 159,98 \$ \+ tx\n\nPour accepter l’estimation et autoriser les travaux sur votre véhicule \(un seul bouton\) : http/, JSON.stringify(n.message));
+  assert.doesNotMatch(n.message, /payer|taxes incluses/);
   const sms = (await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages');
   assert.equal(sms.length, 1);
   assert.equal(sms[0].body.type, 'SMS');
@@ -159,6 +161,15 @@ test('texts and card payment: keys saved, appointment text with total, the custo
   // the work changed since the signature: a new signature is asked (the authorization of work stays)
   assert.equal(a.estimate.changed, true);
   assert.equal(a.estimate.can_sign, true);
+  // one tap (« J’accepte et je signe »): signed electronically in the name on the file, no drawing; the proof is kept
+  const one = await fn('client', { action: 'sign', token: t, click: true, confirm: true });
+  assert.equal(one.ok, true, JSON.stringify(one));
+  assert.deepEqual([one.estimate.signer, one.estimate.can_sign, one.estimate.changed], ['Jean Tremblay', false, false]);
+  assert.equal((await q(`select estimate_attachment from public.jobs where id = $1`, [b.job_id]))[0].estimate_attachment, null, 'no picture: an electronic signature');
+  const proof = (await q(`select data from public.activity where entity_id = $1 and action = 'signed_online'`, [b.job_id]))[0];
+  assert.ok(proof && proof.data.signer === 'Jean Tremblay' && proof.data.at && proof.data.cents > 0 && 'device' in proof.data, JSON.stringify(proof));
+  assert.equal((await fn('client', { action: 'sign', token: t, click: true, confirm: true })).code, 'signed', 'once');
+  assert.equal((await fn('client', { action: 'sign', token: t, click: true })).code, 'confirm', 'the button says « J’accepte »: confirm comes with it');
   // paying ahead by card: the same Stripe page is reused, the notice pays it once even if sent twice
   const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
   assert.ok(p1.url, JSON.stringify(p1));
@@ -500,6 +511,7 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
     assert.equal(view.customer.first, 'Sophie', 'the link opens the customer’s page');
     const [m] = await q(`select * from public.messages where job_id = $1 and kind = 'booking'`, [j.id]);
     assert.ok(m && /Sophie/.test(m.body) && m.body.includes(r.link), 'the confirmation text, with the link');
+    assert.match(m.body, /\nEstimation :\n• .+\u00a0: [\d ,]+\$\nTotal : [\d ,]+\$ \+ tx\n/, 'the online booking says the same estimate, line by line');
     assert.equal((await q(`select count(*)::int n from public.public_links where job_id = $1`, [j.id]))[0].n, 1, 'the link is kept with the booking (Part 24)');
     // the page sends the same booking again (a hiccup after the first answer): the same job, one text, a link that works
     const again = await fn('book', form);

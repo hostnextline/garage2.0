@@ -62,6 +62,10 @@ export const client = {
 
   sign: {
     open: 'Signer l’estimation',
+    oneLead: 'En acceptant, vous autorisez {garage} à faire les travaux ci-dessus sur votre véhicule, aux conditions ci-dessous. Le prix final peut changer seulement avec votre accord.',
+    oneButton: 'J’accepte et je signe',
+    oneNote: 'Signature électronique à votre nom, avec la date et l’heure.',
+    drawInstead: 'Signer avec le doigt plutôt',
     title: 'Signer l’estimation',
     lead: 'Vous acceptez les travaux et le prix estimé ({total}). Le prix final peut changer seulement avec votre accord.',
     changed: 'Votre estimation a changé depuis votre signature : signez la nouvelle.',

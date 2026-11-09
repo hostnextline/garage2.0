@@ -11,7 +11,7 @@ import { sha256hex, hmacHex, newToken } from '../_shared/tokens.ts';
 import { sumLines } from '../_shared/money.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
-import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang } from '../_shared/texts.ts';
+import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang, servicesList, subtotalWords } from '../_shared/texts.ts';
 
 type Row = Record<string, any>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -114,7 +114,7 @@ async function book(req: Request, b: Row) {
     const tpl = String(s.messages?.[lang]?.booking || s.messages?.fr?.booking || '');
     if (tpl) {
       const blk = ((s.booking?.blocks || []) as Row[]).find((x) => x.key === res.block) || { start: 480, end: 720 };
-      const { data: items } = await db.from('job_items').select('qty, unit_cents, taxable, kind, status').eq('job_id', jobId).is('deleted_at', null);
+      const { data: items } = await db.from('job_items').select('description, kind, qty, unit_cents, taxable, status, sort').eq('job_id', jobId).is('deleted_at', null).order('sort');
       const cardOn = !!(await secret('stripe_key'));
       // work by the hour has no price yet: the text says so instead of « 0,00 $ »
       const offered = (await rpc('web_services', {}) || []) as Row[];
@@ -125,7 +125,8 @@ async function book(req: Request, b: Row) {
         prenom: first(typeof b.first_name === 'string' ? b.first_name : '') || first(cu.first_name) || '',
         garage: s.company?.name || 'Mécanique Mobile H.I.S', telephone: s.company?.phone || '',
         jour: longDay(String(res.day), lang), debut: clock(blk.start, lang), fin: clock(blk.end, lang), bloc: blockWords(String(res.block), lang),
-        payer: payNowWords(cardOn, lang), total: totalWords(sumLines((items || []) as Row[], s).total, hourly, lang), lien: link
+        payer: '', total: totalWords(sumLines((items || []) as Row[], s).total, hourly, lang), lien: link,
+        services: servicesList((items || []) as never, lang), soustotal: subtotalWords((items || []) as never, lang)
       });
       const quiet = cu.sms_ok === false || s.messages?.on?.booking === false;
       const r = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message);
