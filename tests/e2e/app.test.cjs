@@ -1393,13 +1393,15 @@ step('La carte, n’importe quel jour: ‹ › and the calendar plan the routes 
   await page.getByTestId('map-day').waitFor({ timeout: 15000 });
   assert.equal(await page.getByTestId('map-day-name').innerText(), 'Aujourd’hui');
   await page.getByTestId('map-day-next').click();
-  await page.waitForURL(/day=/);
+  // (only the part after « # » changes: no page load to wait for)
+  assert.match(await until(() => page.url(), (u) => /day=/.test(u), 10000), /day=/);
+  await page.getByTestId('map-day-name').filter({ hasText: 'Demain' }).waitFor({ timeout: 10000 });
   assert.equal(await page.getByTestId('map-day-name').innerText(), 'Demain');
   await page.getByTestId('map-day-next').click();
   assert.doesNotMatch(await page.getByTestId('map-day-name').innerText(), /Demain|Aujourd/, 'a day further is shown by its date');
   // the calendar: any day
   await page.getByTestId('map-day-input').evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, far);
-  await page.waitForURL(new RegExp(`day=${far}`));
+  assert.match(await until(() => page.url(), (u) => u.includes(`day=${far}`), 10000), new RegExp(`day=${far}`));
   await page.getByTestId('map-pull').filter({ hasText: /\b[1-9]\d* arrêts?\b/ }).waitFor({ timeout: 15000 });
   await page.getByTestId('map-status').filter({ hasText: /Mis à jour/ }).waitFor({ timeout: 15000 });
   await h.shot(page, 'e2e-map-any-day');
