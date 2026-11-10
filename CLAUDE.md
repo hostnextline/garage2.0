@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261110000100_hermes_questions.sql` (Part 24 octies, applied 2026-11-10 from commit `b87b956`;
+- Applied on live: every migration up to `20261110000200_job_customer.sql` (Part 24 nonies, applied 2026-11-10 from commit `c8c507c`;
+  Part 24 octies applied 2026-11-10 from commit `b87b956`;
   Part 24 septies applied 2026-11-09 from commit `9d06aa3`;
   Part 24 sexies from commit `d8f87f6`
   through the Claude Code MCP `supabase-garage`; Parts 24 quater and quinquies from
@@ -144,6 +145,14 @@ end $do$;
   `{ action: 'log' }`). The key lives only in `secrets` (`hermes_url`, `hermes_key`); it was put there by the Hermes server itself
   with `{ action: 'pair', code, url, key }` and a one-time code (`hermes_pair` = sha256|expiry, 10 minutes, then deleted): to change
   the key, do the same pairing again, never copy the key by hand.
+- « Modifier le rendez-vous » (Part 24 nonies, `20261110000200_job_customer.sql`; `src/features/jobs/JobEdit.tsx`): a « Modifier »
+  button on the job screen (also first in its ⋯ menu and in the agenda's right-click / long-press menu, `?do=edit`) gathers every
+  fix of an appointment: customer, car, address of this appointment only, day and block, truck, services and prices, problem and
+  notes. « Changer de client » = `job_customer(op, job, customer, vehicle)`: booked only, no finished invoice, book right or the
+  truck's mechanic; the chosen car (must be that customer's) or the customer's only car; the customer's address; the wrong
+  customer's links revoked and signatures cleared, `confirm_sent_at` null (resend the booking text), draft invoice follows,
+  activity `customer_changed`. The address view keeps a min height (`.jobs-edit-address`) so closing the suggestions does not
+  move the « Garder » button under the finger.
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,
   « Ma journée » shows the way back (the truck's own start, else « Départ des camions ») with « Je pars vers {place} » →
   `enroute { action: 'return', pos }`: a trip with no job (`trips.kind = 'return'`, `dest_label`, one active per person), the route
