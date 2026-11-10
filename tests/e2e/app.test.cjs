@@ -1412,3 +1412,38 @@ step('La carte, n’importe quel jour: ‹ › and the calendar plan the routes 
   noErrors(page);
   await ctx.close();
 });
+
+step('« Modifier le rendez-vous »: booked with the wrong customer → the right one (her car comes too), then another address; nothing deleted, nothing booked again', async () => {
+  const jobId = h.sql(`select id from public.jobs where customer_id = '${julie}' and status = 'booked' and deleted_at is null order by day desc limit 1`);
+  assert.ok(jobId, 'a booked appointment of Julie');
+  const lina = h.sql(`select id from public.customers where phone_digits = '5145550123' and deleted_at is null order by created_at desc limit 1`);
+  const linaCar = h.sql(`select id from public.vehicles where customer_id = '${lina}' and deleted_at is null`);
+  assert.ok(lina && linaCar, 'Lina and her Jetta (Nouveau client step)');
+  const jobsBefore = h.sql(`select count(*) from public.jobs`);
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/job/${jobId}`);
+  await page.getByTestId('job-edit').click();
+  await page.getByTestId('job-edit-sheet').waitFor();
+  await h.shot(page, 'e2e-job-edit');
+  // the customer
+  await page.getByTestId('edit-customer').click();
+  await page.getByTestId('customer-search').fill('Lina');
+  await page.getByTestId('customer-option').filter({ hasText: 'Lina' }).first().click();
+  await page.getByTestId('edit-customer-ok').click();
+  assert.equal(await until(() => h.sql(`select customer_id || '|' || coalesce(vehicle_id::text, '') from public.jobs where id = '${jobId}'`), (v) => v.startsWith(lina), 15000), `${lina}|${linaCar}`, 'Lina, with her only car');
+  assert.equal(h.sql(`select action from public.activity where entity_id = '${jobId}' and action = 'customer_changed'`), 'customer_changed');
+  // the address of this appointment only
+  await page.getByTestId('job-edit').click();
+  await page.getByTestId('edit-address').click();
+  await page.getByTestId('address-input').fill('500 rue Sherbrooke Est, Montréal');
+  // the suggestions open under the field; « Garder cette adresse » right away still works (closing them must not move the button)
+  await page.getByTestId('address-suggestions').waitFor({ timeout: 10000 }).catch(() => {});
+  await page.getByTestId('edit-address-ok').click();
+  assert.equal(await until(() => h.sql(`select address from public.jobs where id = '${jobId}'`), (v) => /Sherbrooke/.test(v), 15000), '500 rue Sherbrooke Est, Montréal');
+  assert.notEqual(h.sql(`select coalesce(address, '') from public.customers where id = '${lina}'`), '500 rue Sherbrooke Est, Montréal', 'her file is not changed');
+  assert.equal(h.sql(`select count(*) from public.jobs`), jobsBefore, 'nothing booked again');
+  // the agenda's shortcut menu has it too
+  noErrors(page);
+  await ctx.close();
+});

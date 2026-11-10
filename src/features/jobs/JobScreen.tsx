@@ -4,7 +4,7 @@
    invoice, the appointment, the texts. Opened from « Ma journée » with ?do=waiver|answer|work|invoice|pay, the sheet is
    ready for that step. */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Ellipsis } from 'lucide-preact';
+import { Ellipsis, Pencil } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { may } from '../../app/routes';
 import { setQuery } from '../../app/router';
@@ -26,12 +26,13 @@ import { StepButton } from './StepButton';
 import { WaiverSheet, SignatureView } from './WaiverSheet';
 import { WorkPanel, ItemSheet, AddWorkSheet, ProposeSheet, AnswerSheet } from './WorkPanel';
 import { StopOrderSheet } from './StopOrderSheet';
+import { EditSheet, mayEditJob } from './JobEdit';
 import { HeadPanel, NotesSheet, WaiverPanel, StepState, MomentPanel, MoveSheet, TruckSheet, mayChangeTruck, TextsPanel, MenuSheet, afterSheet } from './JobParts';
 import { TextOutcomeHost } from './TextOutcome';
 import { PartsHost } from './PartsSheet';
 import './jobs.css';
 
-type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre' | 'order' | 'truck';
+type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre' | 'order' | 'truck' | 'edit';
 
 export default function JobScreen({ params, query }: ScreenProps) {
   const id = params.id;
@@ -105,6 +106,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       // the agenda's menu: « Déplacer »
       case 'move': if (j.status === 'booked' && rights.move) setSheet('move'); break;
       case 'truck': if (mayChangeTruck(j, rights)) setSheet('truck'); break;
+      case 'edit': if (mayEditJob(j, rights)) setSheet('edit'); break;
     }
   };
   const onUi = (s: NextStep) => ui(s.kind, s.itemId);
@@ -128,7 +130,10 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
   return (
     <Page title={title} back={back} data-testid="job-screen"
       sub={<span class="jobs-sub"><StatusPill status={j.status} /><span>{whenLine(j)}</span></span>}
-      actions={<IconButton icon={<Ellipsis />} label={t('jobs.more')} onClick={() => setSheet('menu')} data-testid="job-menu" />}>
+      actions={<div class="row">
+        {mayEditJob(j, rights) && <Button icon={<Pencil />} onClick={() => setSheet('edit')} data-testid="job-edit">{t('jobs.edit.button')}</Button>}
+        <IconButton icon={<Ellipsis />} label={t('jobs.more')} onClick={() => setSheet('menu')} data-testid="job-menu" />
+      </div>}>
       {!net.value.online && <Banner kind="warn">{t('jobs.offline')}</Banner>}
       {j.coffre_id && <Banner kind="info" data-testid="job-coffre">{t('coffre.job.banner')}</Banner>}
       {j.forced && j.status === 'booked' && <Banner kind="warn" data-testid="job-forced">{t('booking.force.banner')}</Banner>}
@@ -162,7 +167,11 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       <MoveSheet job={j} open={sheet === 'move'} onClose={close} />
       <TruckSheet job={j} open={sheet === 'truck'} onClose={close} />
       <StopOrderSheet job={j} open={sheet === 'order'} onClose={close} />
-      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} onCoffre={() => setSheet('coffre')} onTruck={() => setSheet('truck')} />
+      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} onCoffre={() => setSheet('coffre')} onTruck={() => setSheet('truck')}
+        onEdit={mayEditJob(j, rights) ? () => setSheet('edit') : undefined} />
+      <EditSheet job={j} rights={rights} open={sheet === 'edit'} onClose={close}
+        onMove={() => afterSheet(() => setSheet('move'))} onTruck={() => afterSheet(() => setSheet('truck'))} onNotes={() => afterSheet(() => setSheet('notes'))}
+        onWork={() => afterSheet(() => document.querySelector('[data-testid="job-work"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))} />
       {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} onCoffre={() => afterSheet(() => setSheet('coffre'))} />}
       <CoffreSheet job={j} open={sheet === 'coffre'} onClose={close} />
       {openItem && <ItemSheet job={j} item={openItem} rights={rights} onClose={() => setItemFor(null)}

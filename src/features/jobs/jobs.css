@@ -175,3 +175,6 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 
 /* « Changer de camion »: the truck's colour */
 .jobs-truck-dot { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: color-mix(in srgb, var(--tc) 18%, transparent); color: var(--tc); }
+
+/* « Modifier le rendez-vous » → the address: room kept for the suggestions, so closing them does not move the button under the finger */
+.jobs-edit-address { min-height: 420px; }

@@ -421,7 +421,7 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
 
 /* ---------- « … » ---------- */
 const invoiceIssued = (jobId: string) => { const v = invoiceOf(jobId); return !!v && v.status !== 'draft'; };
-export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onOrder: () => void; onCoffre?: () => void; onTruck?: () => void }) {
+export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onOrder: () => void; onCoffre?: () => void; onTruck?: () => void; onEdit?: () => void }) {
   const { job: j, rights } = p;
   const s = j.status;
   const link = clientLinkOf(j.id);
@@ -429,6 +429,7 @@ export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
   const backTo = s === 'en_route' ? 'booked' : s === 'on_site' ? 'en_route' : s === 'done' ? 'on_site' : null;
   const canBack = (s === 'en_route' || s === 'on_site') ? rights.act : s === 'done' ? rights.backFromDone : false;
   const items = [
+    p.onEdit && <RowItem key="e" start={<span class="quick-icon"><Pencil size={20} /></span>} title={t('jobs.edit.menu')} sub={t('jobs.edit.menuSub')} onClick={then(p.onEdit)} data-testid="menu-edit" />,
     s === 'booked' && rights.text && <RowItem key="b" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.resendBooking')} sub={t('jobs.menu.resendBookingSub')} onClick={then(() => sendText('booking', j, { resend: true }))} data-testid="menu-resend" />,
     s === 'en_route' && rights.act && <RowItem key="t" start={<span class="quick-icon"><Navigation size={20} /></span>} title={t('jobs.menu.sendTracking')} sub={t('jobs.menu.sendTrackingSub')} onClick={then(() => sendTracking(j, { resend: true }))} />,
     s === 'on_site' && rights.act && !invoiceIssued(j.id) && <RowItem key="a" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.sendArrived')} sub={t('jobs.menu.sendArrivedSub')} onClick={then(() => sendText('arrived', j, { resend: true, okText: t('jobs.did.arriveInvoice', { name: jobName(j) }) }))} data-testid="menu-send-arrived" />,
