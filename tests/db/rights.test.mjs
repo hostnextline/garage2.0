@@ -14,7 +14,7 @@ const AUTHENTICATED = [
   'coffre_add', 'coffre_may_add', 'coffre_remove', 'coffre_report', 'customer_visible', 'dashboard', 'day_path', 'extra_answer',
   'fail', 'fold_name', 'has_role', 'health', 'home_point', 'inventory_apply_move', 'inventory_buy', 'inventory_delete', 'inventory_guard', 'invoice_editable',
   'invoice_finish', 'invoice_for_job', 'invoice_totals', 'invoice_visible', 'invoice_void', 'invoices_guard', 'is_field',
-  'is_owner', 'is_staff', 'job_actor', 'job_id_visible', 'job_item_price', 'job_items_editable', 'job_step', 'job_visible', 'km_between',
+  'is_owner', 'is_staff', 'job_actor', 'job_customer', 'job_id_visible', 'job_item_price', 'job_items_editable', 'job_step', 'job_visible', 'km_between',
   'local_now', 'local_today', 'log_activity', 'me', 'member_update', 'move_job', 'my_access', 'my_truck_ids', 'now_min',
   'payment_add', 'payment_remove', 'payment_visible', 'public_track', 'ranges_first', 'ranges_from', 'ranges_norm',
   'ranges_norm_trg', 'ranges_overlap', 'replan_after_hours', 'report_error', 'report_position', 'right_default', 'right_of',
