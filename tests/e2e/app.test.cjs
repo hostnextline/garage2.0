@@ -1251,7 +1251,11 @@ step('Nouveau client: his car right away (2015 Volkswagen Jetta from the lists);
   await page.locator('.customers-new input[type=tel]').fill('514 555-0123');
   // the car, in the same screen
   await page.getByTestId('new-car').getByTestId('vadd-year').click();
-  await page.getByTestId('carpick-year-2015').click();
+  // the picker slides in: a click on « 2015 » while it moves can be lost, so click again until the makes show
+  for (let i = 0; i < 4 && !(await page.getByTestId('carpick-makes').count()); i++) {
+    await page.getByTestId('carpick-year-2015').click();
+    await page.getByTestId('carpick-makes').waitFor({ timeout: 3000 }).catch(() => {});
+  }
   await page.getByTestId('carpick-make-Volkswagen').click();
   await page.getByTestId('carpick-model').filter({ hasText: 'Jetta' }).first().click({ timeout: 15000 });
   if (await page.getByTestId('carpick-engines').count()) await page.getByTestId('carpick-engine').first().click();
