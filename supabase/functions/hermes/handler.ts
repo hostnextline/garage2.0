@@ -5,8 +5,12 @@
 // Brakes (rate_hit): 30 questions an hour per person, 200 an hour for the whole garage.
 // Private: each person sees only their own conversation; every question is kept (hermes_questions, Part 24 octies) and
 // only the owner reads them all ({ action: 'log' }).
+// Plugging in ({ action: 'pair', code, url, key }): the Hermes server sends its own address and key here itself, with a
+// one-time code whose fingerprint was put in secrets (hermes_pair = « sha256(code)|expiry »): the key never goes
+// through a person, a chat or the app. The code works once, for a short time; 10 tries an hour.
 import { serve, json, body, fail, env } from '../_shared/http.ts';
-import { caller, secret, adminDb } from '../_shared/db.ts';
+import { caller, secret, adminDb, setSecrets } from '../_shared/db.ts';
+import { sha256hex, safeEqual } from '../_shared/tokens.ts';
 
 export const SYSTEM = `You are Hermes, the assistant of the team of Mécanique Mobile H.I.S, a mobile mechanic garage in Montréal (Québec): the mechanics drive to the customer's home or work in service trucks. You are talking to one member of the team inside the garage's team app (agenda, customers, jobs, invoices, inventory, treasury, the « Coffre » for family and friends).
 How to answer:
@@ -43,9 +47,24 @@ async function keep(row: Record<string, unknown>) {
   if (error) console.error('hermes keep', error.message);
 }
 
+async function pair(b: { code?: unknown; url?: unknown; key?: unknown }) {
+  if (!(await brake('hermes:pair', 3600, 10))) fail('busy', 'Trop d’essais. Réessaie dans une heure.', 429);
+  const code = String(b.code || ''), url = String(b.url || '').trim().replace(/\/+$/, ''), key = String(b.key || '').trim();
+  const want = (await secret('hermes_pair')) || '';
+  const [hash, until] = want.split('|');
+  if (!hash || !until) fail('no_pair', 'Aucun branchement de Hermes n’est attendu.', 403);
+  if (!(Date.parse(until) > Date.now())) { await setSecrets({ hermes_pair: null }, null); fail('pair_expired', 'Le code de branchement a expiré.', 403); }
+  if (!code || !safeEqual(await sha256hex(code), hash)) fail('bad_pair', 'Ce code de branchement n’est pas le bon.', 403);
+  if (!/^https:\/\/[\w.-]+(:\d+)?(\/[\w./-]*)?$/.test(url) && !/^http:\/\/127\.0\.0\.1(:\d+)?(\/[\w./-]*)?$/.test(url)) fail('bad_url', 'L’adresse de Hermes doit être en https.');
+  if (key.length < 32) fail('bad_key', 'La clé de Hermes est trop courte.');
+  await setSecrets({ hermes_url: url, hermes_key: key, hermes_pair: null }, null);
+  return json({ ok: true });
+}
+
 export const handler = serve(async (req) => {
+  const b = await body<{ action?: unknown; messages?: unknown; context?: unknown; session?: unknown; staff_id?: unknown; before?: unknown; code?: unknown; url?: unknown; key?: unknown }>(req);
+  if (b.action === 'pair') return await pair(b);
   const me = await caller(req);
-  const b = await body<{ action?: unknown; messages?: unknown; context?: unknown; session?: unknown; staff_id?: unknown; before?: unknown }>(req);
   if (b.action === 'log') {
     if (!me.access.owner) fail('owner_only', 'Seul le propriétaire voit les questions de l’équipe.', 403);
     return await questionsLog(b);

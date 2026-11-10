@@ -596,3 +596,30 @@ test('🤖 Hermes: the whole team; who is asking and their picture of the garage
     await q(`delete from public.rate_limits where key like 'hermes:%'`);
   }
 });
+
+test('🤖 Hermes plugged in by the Hermes server itself: a one-time code (only its fingerprint kept), never twice, never late', async () => {
+  const { createHash } = await import('node:crypto');
+  const fp = (c) => createHash('sha256').update(c).digest('hex');
+  const key = 'k'.repeat(64);
+  try {
+    assert.equal((await fn('hermes', { action: 'pair', code: 'x', url: MOCK + '/hermes', key })).code, 'no_pair', 'nothing expected: refused');
+    await q(`insert into public.secrets (key, value) values ('hermes_pair', $1)`, [`${fp('code-123')}|${new Date(Date.now() + 600000).toISOString()}`]);
+    let r = await fn('hermes', { action: 'pair', code: 'code-999', url: MOCK + '/hermes', key });
+    assert.equal(r.status, 403); assert.equal(r.code, 'bad_pair');
+    assert.equal((await fn('hermes', { action: 'pair', code: 'code-123', url: 'http://evil.example/hermes', key })).code, 'bad_url');
+    assert.equal((await fn('hermes', { action: 'pair', code: 'code-123', url: MOCK + '/hermes', key: 'short' })).code, 'bad_key');
+    r = await fn('hermes', { action: 'pair', code: 'code-123', url: MOCK + '/hermes/', key });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual(Object.fromEntries((await q(`select key, value from public.secrets where key like 'hermes%' order by key`)).map((x) => [x.key, x.value])),
+      { hermes_key: key, hermes_url: MOCK + '/hermes' }, 'stored; the code is gone');
+    assert.equal((await fn('hermes', { action: 'pair', code: 'code-123', url: MOCK + '/hermes', key: 'z'.repeat(64) })).code, 'no_pair', 'never twice');
+    // too late: refused and forgotten
+    await q(`insert into public.secrets (key, value) values ('hermes_pair', $1)`, [`${fp('old')}|${new Date(Date.now() - 1000).toISOString()}`]);
+    assert.equal((await fn('hermes', { action: 'pair', code: 'old', url: MOCK + '/hermes', key })).code, 'pair_expired');
+    assert.equal((await q(`select count(*)::int n from public.secrets where key = 'hermes_pair'`))[0].n, 0);
+    assert.equal((await q(`select value from public.secrets where key = 'hermes_key'`))[0].value, key, 'the key in place is kept');
+  } finally {
+    await q(`delete from public.secrets where key like 'hermes%'`);
+    await q(`delete from public.rate_limits where key = 'hermes:pair'`);
+  }
+});
