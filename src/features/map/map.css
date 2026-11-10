@@ -67,3 +67,11 @@
 .map-card-title { font-size: var(--t-lg); overflow-wrap: anywhere; }
 .map-card-meta { gap: var(--sp-3); }
 .map-status { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-1) 0; }
+/* the day: ‹ name › 📅 (any day, for who has the agenda) */
+.map-day { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 16px; background: var(--glass-strong); border: 1px solid var(--glass-edge); box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); }
+.map-day .iconbtn { min-width: 40px; min-height: 40px; }
+.map-day-name { min-width: 112px; min-height: 40px; padding: 0 10px; border: 0; border-radius: 12px; background: var(--sunken); color: var(--ink); font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.map-day-name.is-today { cursor: default; }
+.map-day-pick { position: relative; display: inline-flex; }
+.map-day-input { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
