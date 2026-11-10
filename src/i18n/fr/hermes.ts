@@ -1,0 +1,28 @@
+/* 🤖 Hermes : l'assistant du propriétaire (la bulle en bas à droite). */
+export const hermes = {
+  open: 'Ouvrir Hermes, ton assistant',
+  close: 'Fermer Hermes',
+  title: 'Hermes',
+  lead: 'Ton assistant connaît la semaine du garage, les factures à payer et le stock à commander. Écris ou parle (micro), en français ou en anglais.',
+  suggest1: 'Qu’est-ce qui est important aujourd’hui ?',
+  suggest2: 'Écris un texte pour rappeler à un client sa facture',
+  suggest3: 'Combien demander pour un changement de freins avant ?',
+  placeholder: 'Pose ta question…',
+  ask: 'Question pour Hermes',
+  send: 'Envoyer',
+  stop: 'Arrêter',
+  thinking: 'Hermes réfléchit…',
+  newChat: 'Nouvelle conversation',
+  voice: 'Lire les réponses à voix haute',
+  speak: 'Lire',
+  copy: 'Copier',
+  copied: 'Copié',
+  copyFail: 'Sélectionne le texte pour le copier',
+  mic: 'Parler',
+  micDenied: 'Autorise le micro pour cette app (Réglages de Safari ou cadenas à côté de l’adresse).',
+  dictFr: 'Français',
+  dictEn: 'English',
+  keys: 'Entrée envoie, Maj+Entrée = nouvelle ligne',
+  offline: 'Pas de réseau : Hermes répond seulement en ligne.',
+  privacy: 'Pas de numéros ni d’adresses de clients : seulement les noms et les autos.'
+};

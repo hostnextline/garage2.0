@@ -21,6 +21,7 @@ import { MovedBanner } from './moved';
 import { CoffreHost } from '../features/coffre/host';
 import { startLocator } from './locator';
 import { ContextMenuHost } from '../features/agenda/ContextMenu';
+import { HermesHost } from '../features/hermes/host';
 
 /* ---------- the screen for the current address ---------- */
 const loaded = new Map<string, ComponentType<ScreenProps>>();
@@ -261,6 +262,7 @@ export function Shell() {
       <SyncSheet />
       <CoffreHost />
       <ContextMenuHost />
+      <HermesHost />
     </div>
   );
 }

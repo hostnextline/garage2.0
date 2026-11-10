@@ -1,0 +1,28 @@
+/* 🤖 Hermes: the owner's assistant (the bubble at the bottom right). */
+export const hermes = {
+  open: 'Open Hermes, your assistant',
+  close: 'Close Hermes',
+  title: 'Hermes',
+  lead: 'Your assistant knows the garage’s week, the invoices to be paid and the stock to order. Type or talk (mic), in French or English.',
+  suggest1: 'What matters today?',
+  suggest2: 'Write a text reminding a customer of their invoice',
+  suggest3: 'How much should I charge for front brakes?',
+  placeholder: 'Ask your question…',
+  ask: 'Question for Hermes',
+  send: 'Send',
+  stop: 'Stop',
+  thinking: 'Hermes is thinking…',
+  newChat: 'New conversation',
+  voice: 'Read the answers out loud',
+  speak: 'Read',
+  copy: 'Copy',
+  copied: 'Copied',
+  copyFail: 'Select the text to copy it',
+  mic: 'Talk',
+  micDenied: 'Allow the microphone for this app (Safari settings or the lock next to the address).',
+  dictFr: 'Français',
+  dictEn: 'English',
+  keys: 'Enter sends, Shift+Enter = new line',
+  offline: 'No network: Hermes only answers online.',
+  privacy: 'No customer phone numbers or addresses: names and cars only.'
+};

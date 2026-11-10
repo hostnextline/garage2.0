@@ -1306,3 +1306,49 @@ step('Stock du Coffre: an item of its own, bought with the Coffre’s money (no 
   await ctx.close();
 });
 
+
+step('🤖 Hermes: the owner’s round button at the bottom right; a question, the answer; never for a mechanic', async () => {
+  h.sql(`insert into public.secrets (key, value) values ('hermes_url', 'http://127.0.0.1:8021/hermes'), ('hermes_key', 'hk-test') on conflict (key) do update set value = excluded.value`);
+  try {
+    // a mechanic: no button
+    const m = await h.openW({ kind: 'phone' });
+    await h.signIn(m.page, who.saleh.email, PW);
+    await m.page.getByTestId('app').waitFor();
+    await m.page.waitForTimeout(800);
+    assert.equal(await m.page.getByTestId('hermes-bubble').count(), 0, 'not for a mechanic');
+    await m.ctx.close();
+    // the owner, on an iPhone: the button sits above the tab bar, at the right
+    const { page, ctx } = await h.openW({ kind: 'phone' });
+    await h.signIn(page, who.owner.email, PW);
+    const bubble = page.getByTestId('hermes-bubble');
+    await bubble.waitFor({ timeout: 15000 });
+    const vp = page.viewportSize();
+    const bb = await bubble.boundingBox(), tb = await page.locator('.tabbar').boundingBox();
+    assert.ok(bb.x + bb.width > vp.width - 40, 'at the right');
+    assert.ok(bb.y + bb.height <= tb.y, 'above the tab bar');
+    await clearMock();
+    await bubble.click();
+    await page.getByTestId('hermes-panel').waitFor();
+    await page.getByTestId('hermes-ask').fill('Combien de jobs cette semaine ?');
+    await page.getByTestId('hermes-send').click();
+    await page.getByTestId('hermes-assistant').filter({ hasText: 'Réponse à : Combien de jobs cette semaine ?' }).waitFor({ timeout: 20000 });
+    const sent = (await mockLog()).filter((l) => l.svc === 'hermes');
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].session, /^his-[a-z0-9]+$/);
+    const sys = sent[0].body.messages[0].content;
+    assert.match(sys, /THE GARAGE TODAY, FROM THE APP/); assert.match(sys, /JOBS from /);
+    assert.doesNotMatch(sys, /514 555|rue /i, 'no phone numbers or addresses of customers');
+    await h.shot(page, 'e2e-hermes');
+    // closed and opened again: the conversation is still there; « Nouvelle conversation » empties it
+    await bubble.click();
+    assert.equal(await page.getByTestId('hermes-panel').count(), 0);
+    await bubble.click();
+    assert.equal(await page.getByTestId('hermes-assistant').count(), 1);
+    await page.getByTestId('hermes-new').click();
+    assert.equal(await page.getByTestId('hermes-assistant').count(), 0);
+    noErrors(page);
+    await ctx.close();
+  } finally {
+    h.sql(`delete from public.secrets where key in ('hermes_url', 'hermes_key')`);
+  }
+});
