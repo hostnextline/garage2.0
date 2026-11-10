@@ -1307,19 +1307,12 @@ step('Stock du Coffre: an item of its own, bought with the Coffre’s money (no 
 });
 
 
-step('🤖 Hermes: the owner’s round button at the bottom right; a question, the answer; never for a mechanic', async () => {
+step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic asks, his picture has no prices he may not see; the owner too', async () => {
   h.sql(`insert into public.secrets (key, value) values ('hermes_url', 'http://127.0.0.1:8021/hermes'), ('hermes_key', 'hk-test') on conflict (key) do update set value = excluded.value`);
   try {
-    // a mechanic: no button
-    const m = await h.openW({ kind: 'phone' });
-    await h.signIn(m.page, who.saleh.email, PW);
-    await m.page.getByTestId('app').waitFor();
-    await m.page.waitForTimeout(800);
-    assert.equal(await m.page.getByTestId('hermes-bubble').count(), 0, 'not for a mechanic');
-    await m.ctx.close();
-    // the owner, on an iPhone: the button sits above the tab bar, at the right
+    // Saleh (mechanic), on an iPhone: the button sits above the tab bar, at the right
     const { page, ctx } = await h.openW({ kind: 'phone' });
-    await h.signIn(page, who.owner.email, PW);
+    await h.signIn(page, who.saleh.email, PW);
     const bubble = page.getByTestId('hermes-bubble');
     await bubble.waitFor({ timeout: 15000 });
     const vp = page.viewportSize();
@@ -1329,15 +1322,22 @@ step('🤖 Hermes: the owner’s round button at the bottom right; a question, t
     await clearMock();
     await bubble.click();
     await page.getByTestId('hermes-panel').waitFor();
-    await page.getByTestId('hermes-ask').fill('Combien de jobs cette semaine ?');
+    assert.match(await page.getByTestId('hermes-suggest').first().innerText(), /freinage/, 'a mechanic’s questions offered');
+    await page.getByTestId('hermes-ask').fill('Quoi apporter aujourd’hui ?');
     await page.getByTestId('hermes-send').click();
-    await page.getByTestId('hermes-assistant').filter({ hasText: 'Réponse à : Combien de jobs cette semaine ?' }).waitFor({ timeout: 20000 });
-    const sent = (await mockLog()).filter((l) => l.svc === 'hermes');
+    await page.getByTestId('hermes-assistant').filter({ hasText: 'Réponse à : Quoi apporter aujourd’hui ?' }).waitFor({ timeout: 20000 });
+    let sent = (await mockLog()).filter((l) => l.svc === 'hermes');
     assert.equal(sent.length, 1);
-    assert.match(sent[0].session, /^his-[a-z0-9]+$/);
-    const sys = sent[0].body.messages[0].content;
-    assert.match(sys, /THE GARAGE TODAY, FROM THE APP/); assert.match(sys, /JOBS from /);
-    assert.doesNotMatch(sys, /514 555|rue /i, 'no phone numbers or addresses of customers');
+    assert.match(sent[0].session, new RegExp(`^his-${who.saleh.id.slice(0, 8)}-[a-z0-9]+$`));
+    let sys = sent[0].body.messages[0].content;
+    assert.match(sys, /a mechanic\./); assert.match(sys, /JOBS from /);
+    assert.doesNotMatch(sys, /514 555|rue Graham/i, 'no phone numbers or addresses of customers');
+    // only what his rights show: prices with « Argent » or « Factures », the invoices with « Factures », expenses with « Trésorerie »
+    const right = (r) => h.sql(`select public.right_of(s, '${r}')::text from public.staff s where s.id = '${who.saleh.id}'`) === 'true';
+    const [money, invoices, treasury] = [right('money'), right('invoices'), right('treasury')];
+    if (!money && !invoices) assert.doesNotMatch(sys, /before tax/, 'prices only with « Argent » or « Factures »');
+    assert.equal(/INVOICES NOT FULLY PAID/.test(sys), invoices);
+    assert.equal(/EXPENSES THIS MONTH/.test(sys), treasury);
     await h.shot(page, 'e2e-hermes');
     // closed and opened again: the conversation is still there; « Nouvelle conversation » empties it
     await bubble.click();
@@ -1348,7 +1348,20 @@ step('🤖 Hermes: the owner’s round button at the bottom right; a question, t
     assert.equal(await page.getByTestId('hermes-assistant').count(), 0);
     noErrors(page);
     await ctx.close();
+    // the owner, on a computer: bottom right too, and his picture has the prices and the invoices
+    const o = await h.openW({ kind: 'desktop' });
+    await h.signIn(o.page, who.owner.email, PW);
+    await o.page.getByTestId('hermes-bubble').click();
+    await o.page.getByTestId('hermes-ask').fill('Et les factures ?');
+    await o.page.getByTestId('hermes-send').click();
+    await o.page.getByTestId('hermes-assistant').waitFor({ timeout: 20000 });
+    sent = (await mockLog()).filter((l) => l.svc === 'hermes');
+    sys = sent[sent.length - 1].body.messages[0].content;
+    assert.match(sys, /the owner\./); assert.match(sys, /INVOICES NOT FULLY PAID/);
+    noErrors(o.page);
+    await o.ctx.close();
   } finally {
     h.sql(`delete from public.secrets where key in ('hermes_url', 'hermes_key')`);
+    h.sql(`delete from public.rate_limits where key like 'hermes:%'`);
   }
 });

@@ -1,5 +1,5 @@
-/* 🤖 Hermes: the round button at the bottom right of every screen, for the owner only (not while « Voir l'app comme… »).
-   The panel's code is loaded the first time it is opened. The server function checks the owner too. */
+/* 🤖 Hermes: the round button at the bottom right of every screen, for everyone on the team (not while the owner
+   « Voir l'app comme… »). The panel's code is loaded the first time it is opened. */
 import type { ComponentType } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
@@ -13,7 +13,7 @@ export const hermesBusy = signal(false);
 const remember = (v: boolean) => { try { localStorage.setItem('his-hermes-open', v ? '1' : '0'); } catch { /* private window */ } };
 export function setHermesOpen(v: boolean) { hermesOpen.value = v; remember(v); }
 
-export function mayHermes(): boolean { return !!access.value?.owner && !preview.value; }
+export function mayHermes(): boolean { return !!access.value && !preview.value; }
 
 export function HermesHost() {
   const show = mayHermes();

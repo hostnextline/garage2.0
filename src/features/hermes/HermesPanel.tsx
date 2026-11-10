@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { Send, Mic, Volume2, RotateCcw, Copy, Square } from 'lucide-preact';
-import { callFn } from '../../data/auth';
+import { callFn, isOwner, hasRole, can } from '../../data/auth';
 import { net } from '../../data/sync';
 import { t } from '../../lib/i18n';
 import { toast, IconButton, Button, Banner } from '../../ui';
@@ -30,6 +30,12 @@ export function speak(text: string) {
       const u = new SpeechSynthesisUtterance(part.trim()); u.lang = l; if (v) u.voice = v; ss.speak(u);
     }
   } catch { /* no voice on this browser */ }
+}
+
+/** the three first questions offered: by what this person does */
+function suggestions(): string[] {
+  const k = isOwner() || hasRole('office') ? 'suggest' : hasRole('treasurer') || (can('treasury') && !hasRole('mechanic')) ? 'tres' : 'meca';
+  return [1, 2, 3].map((n) => `hermes.${k}${n}`);
 }
 
 export function HermesPanel() {
@@ -99,8 +105,8 @@ export function HermesPanel() {
         {!chat.value.length && (
           <>
             <p class="muted small" style={{ margin: 0 }}>{t('hermes.lead')}</p>
-            {['suggest1', 'suggest2', 'suggest3'].map((k) => (
-              <button key={k} type="button" class="hermes-suggest" disabled={busy} onClick={() => void send(t(`hermes.${k}`))}>{t(`hermes.${k}`)}</button>
+            {suggestions().map((k) => (
+              <button key={k} type="button" class="hermes-suggest" disabled={busy} onClick={() => void send(t(k))} data-testid="hermes-suggest">{t(k)}</button>
             ))}
             <p class="faint small" style={{ margin: 0 }}>{t('hermes.privacy')}</p>
           </>
