@@ -1215,10 +1215,12 @@ step('Clients: right-click (computer) or long press (iPhone) on a customer: the 
 });
 
 step('« Changer de camion »: an appointment booked on the wrong truck goes to another one, same day and block; then the app picks again', async () => {
-  // tomorrow afternoon: Karim Laval's appointment (Addresses step) is on Camion Complet; the other truck works then too
-  h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${T.voiture}', public.local_today() + 1, '[[480,1200]]', 'e2e') on conflict do nothing`);
+  // tomorrow afternoon: Karim Laval's appointment (Addresses step) is on one truck (the planner chose it: it depends on
+  // the hour the tests run); the other truck works then too
   const before = h.sql(`select day || '|' || block || '|' || truck_id from public.jobs where id = '${jobLaval}'`).split('|');
-  assert.equal(before[2], T.complet);
+  assert.ok([T.complet, T.voiture].includes(before[2]), 'on one of the trucks');
+  const other = before[2] === T.complet ? T.voiture : T.complet;
+  h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${other}', '${before[0]}', '[[480,1200]]', 'e2e') on conflict do nothing`);
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + `#/job/${jobLaval}`);
@@ -1226,10 +1228,10 @@ step('« Changer de camion »: an appointment booked on the wrong truck goes to 
   await page.getByTestId('menu-truck').click();
   await page.getByTestId('truck-sheet').waitFor({ timeout: 15000 });
   await h.shot(page, 'e2e-truck-sheet');
-  await page.getByTestId(`truck-pick-${T.voiture}`).click();
+  await page.getByTestId(`truck-pick-${other}`).click();
   await page.getByTestId('truck-sheet').waitFor({ state: 'detached', timeout: 15000 });
-  const after = await until(() => h.sql(`select day || '|' || block || '|' || truck_id || '|' || truck_pinned from public.jobs where id = '${jobLaval}'`), (v) => v.includes(T.voiture), 15000);
-  assert.deepEqual(after.split('|'), [before[0], before[1], T.voiture, 'true'], 'same day and block, the other truck, kept there');
+  const after = await until(() => h.sql(`select day || '|' || block || '|' || truck_id || '|' || truck_pinned from public.jobs where id = '${jobLaval}'`), (v) => v.includes(other), 15000);
+  assert.deepEqual(after.split('|'), [before[0], before[1], other, 'true'], 'same day and block, the other truck, kept there');
   // « Laisser l’app choisir »: the truck is no longer forced
   await page.getByTestId('job-menu').click();
   await page.getByTestId('menu-truck').click();
@@ -1249,7 +1251,11 @@ step('Nouveau client: his car right away (2015 Volkswagen Jetta from the lists);
   await page.locator('.customers-new input[type=tel]').fill('514 555-0123');
   // the car, in the same screen
   await page.getByTestId('new-car').getByTestId('vadd-year').click();
-  await page.getByTestId('carpick-year-2015').click();
+  // the picker slides in: a click on « 2015 » while it moves can be lost, so click again until the makes show
+  for (let i = 0; i < 4 && !(await page.getByTestId('carpick-makes').count()); i++) {
+    await page.getByTestId('carpick-year-2015').click();
+    await page.getByTestId('carpick-makes').waitFor({ timeout: 3000 }).catch(() => {});
+  }
   await page.getByTestId('carpick-make-Volkswagen').click();
   await page.getByTestId('carpick-model').filter({ hasText: 'Jetta' }).first().click({ timeout: 15000 });
   if (await page.getByTestId('carpick-engines').count()) await page.getByTestId('carpick-engine').first().click();
@@ -1306,3 +1312,73 @@ step('Stock du Coffre: an item of its own, bought with the Coffre’s money (no 
   await ctx.close();
 });
 
+
+step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic asks, his picture has no prices he may not see; the owner too', async () => {
+  h.sql(`insert into public.secrets (key, value) values ('hermes_url', 'http://127.0.0.1:8021/hermes'), ('hermes_key', 'hk-test') on conflict (key) do update set value = excluded.value`);
+  try {
+    // Saleh (mechanic), on an iPhone: the button sits above the tab bar, at the right
+    const { page, ctx } = await h.openW({ kind: 'phone' });
+    await h.signIn(page, who.saleh.email, PW);
+    const bubble = page.getByTestId('hermes-bubble');
+    await bubble.waitFor({ timeout: 15000 });
+    const vp = page.viewportSize();
+    const bb = await bubble.boundingBox(), tb = await page.locator('.tabbar').boundingBox();
+    assert.ok(bb.x + bb.width > vp.width - 40, 'at the right');
+    assert.ok(bb.y + bb.height <= tb.y, 'above the tab bar');
+    await h.clearMock();
+    await bubble.click();
+    await page.getByTestId('hermes-panel').waitFor();
+    assert.match(await page.getByTestId('hermes-suggest').first().innerText(), /freinage/, 'a mechanic’s questions offered');
+    assert.match(await page.getByTestId('hermes-kept').innerText(), /privée/, 'told that the owner can read the questions');
+    await page.getByTestId('hermes-ask').fill('Quoi apporter aujourd’hui ?');
+    await page.getByTestId('hermes-send').click();
+    await page.getByTestId('hermes-assistant').filter({ hasText: 'Réponse à : Quoi apporter aujourd’hui ?' }).waitFor({ timeout: 20000 });
+    let sent = (await h.mockLog()).filter((l) => l.svc === 'hermes');
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].session, new RegExp(`^his-${who.saleh.id.slice(0, 8)}-[a-z0-9]+$`));
+    let sys = sent[0].body.messages[0].content;
+    assert.match(sys, /a mechanic\./); assert.match(sys, /JOBS from /);
+    assert.doesNotMatch(sys, /514 555|rue Graham/i, 'no phone numbers or addresses of customers');
+    // only what his rights show: prices with « Argent » or « Factures », the invoices with « Factures », expenses with « Trésorerie »
+    const right = (r) => h.sql(`select public.right_of(s, '${r}')::text from public.staff s where s.id = '${who.saleh.id}'`) === 'true';
+    const [money, invoices, treasury] = [right('money'), right('invoices'), right('treasury')];
+    if (!money && !invoices) assert.doesNotMatch(sys, /before tax/, 'prices only with « Argent » or « Factures »');
+    assert.equal(/INVOICES NOT FULLY PAID/.test(sys), invoices);
+    assert.equal(/EXPENSES THIS MONTH/.test(sys), treasury);
+    assert.equal(await page.getByTestId('hermes-kept').count(), 0, 'shown before the first question only');
+    assert.equal(await page.getByTestId('hermes-team-open').count(), 0, 'a mechanic has no « Questions de l’équipe »');
+    await h.shot(page, 'e2e-hermes');
+    // closed and opened again: the conversation is still there; « Nouvelle conversation » empties it
+    await bubble.click();
+    assert.equal(await page.getByTestId('hermes-panel').count(), 0);
+    await bubble.click();
+    assert.equal(await page.getByTestId('hermes-assistant').count(), 1);
+    await page.getByTestId('hermes-new').click();
+    assert.equal(await page.getByTestId('hermes-assistant').count(), 0);
+    noErrors(page);
+    await ctx.close();
+    // the owner, on a computer: bottom right too, and his picture has the prices and the invoices
+    const o = await h.openW({ kind: 'desktop' });
+    await h.signIn(o.page, who.owner.email, PW);
+    await o.page.getByTestId('hermes-bubble').click();
+    await o.page.getByTestId('hermes-ask').fill('Et les factures ?');
+    await o.page.getByTestId('hermes-send').click();
+    await o.page.getByTestId('hermes-assistant').waitFor({ timeout: 20000 });
+    sent = (await h.mockLog()).filter((l) => l.svc === 'hermes');
+    sys = sent[sent.length - 1].body.messages[0].content;
+    assert.match(sys, /the owner\./); assert.match(sys, /INVOICES NOT FULLY PAID/);
+    // « Questions de l’équipe »: Saleh's question, read by the owner only
+    await o.page.getByTestId('hermes-team-open').click();
+    await o.page.getByTestId('hermes-team-row').filter({ hasText: 'Quoi apporter aujourd’hui ?' }).waitFor({ timeout: 15000 });
+    assert.match(await o.page.getByTestId('hermes-team-row').filter({ hasText: 'Quoi apporter' }).innerText(), /Saleh/);
+    await h.shot(o.page, 'e2e-hermes-team');
+    await o.page.getByTestId('hermes-team-back').click();
+    await o.page.getByTestId('hermes-ask').waitFor();
+    noErrors(o.page);
+    await o.ctx.close();
+  } finally {
+    h.sql(`delete from public.secrets where key in ('hermes_url', 'hermes_key')`);
+    h.sql(`delete from public.rate_limits where key like 'hermes:%'`);
+    h.sql(`delete from public.hermes_questions`);
+  }
+});

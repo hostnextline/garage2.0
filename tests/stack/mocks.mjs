@@ -1,4 +1,4 @@
-// Fake outside services for the tests (port 8021): GoHighLevel, Stripe, OSRM, NHTSA vPIC. They answer like the real ones
+// Fake outside services for the tests (port 8021): GoHighLevel, Stripe, OSRM, NHTSA vPIC, Hermes. They answer like the real ones
 // and keep a log of every call (GET /log, POST /log/clear) so the tests can check what would have been sent.
 // GET /control?ghl=fail makes GoHighLevel refuse the next messages; ?ghl=ok puts it back.
 import http from 'node:http';
@@ -136,6 +136,14 @@ http.createServer(async (req, res) => {
     const km = Math.hypot((x2 - x1) * 78, (y2 - y1) * 111) * 1.25;
     log.push({ svc: 'osrm', pts });
     return send(res, 200, { code: 'Ok', routes: [{ distance: km * 1000, duration: (km / 32) * 3600, geometry: { coordinates: [[x1, y1], [(x1 + x2) / 2, (y1 + y2) / 2], [x2, y2]] } }] });
+  }
+  // ---- Hermes (the owner's assistant, OpenAI-compatible): answers « Réponse à : <the last question> » ----
+  if (p === '/hermes/v1/chat/completions' && req.method === 'POST') {
+    const body = raw ? JSON.parse(raw) : {};
+    log.push({ svc: 'hermes', auth: req.headers.authorization, session: req.headers['x-hermes-session-id'] || null, body });
+    if (req.headers.authorization !== 'Bearer hk-test') return send(res, 401, { error: { message: 'Invalid API key' } });
+    const last = [...(body.messages || [])].reverse().find((m) => m.role === 'user');
+    return send(res, 200, { id: 'chatcmpl-' + (++state.n), object: 'chat.completion', model: body.model, choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Réponse à : ' + (last?.content || '') } }] });
   }
   // ---- NHTSA vPIC ----
   if (p.startsWith('/vpic/api/vehicles/DecodeVinValues/')) {

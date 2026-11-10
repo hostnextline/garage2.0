@@ -26,5 +26,6 @@ import { dashboard } from './dashboard';
 import { client } from './client';
 import { guide } from './guide';
 import { info } from './info';
+import { hermes } from './hermes';
 
-export const en: typeof fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide, info };
+export const en: typeof fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide, info, hermes };
