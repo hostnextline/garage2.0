@@ -21,6 +21,7 @@ import { MapView, type MapMarker, type MapLine } from './MapView';
 import { assemble, normalize, minuteOf, UNPLACED_COLOR, type TeamMapAnswer, type Stop, type TruckRoute, type Assembled } from './assemble';
 import type { JobStatus } from '../../data/types';
 import { fromDevice } from './device';
+import { MapDay } from './MapDay';
 import { routeThrough, knownLeg, knownTotal, allKnown, type LatLng } from './roads';
 import { ago, minutesSince } from './ago';
 import './map.css';
@@ -212,10 +213,13 @@ export default function MapScreen({ query }: ScreenProps) {
   /* words */
   const updated = t('map.updated', { time: clock(nowMinuteOf(loaded.at), lang.value) });
   const summary = t('map.summary', { trucks: t('map.trucksCount', { n: m.trucks.length }), stops: t('map.stopsCount', { n: m.count }) });
-  const daySwitch = (
-    <Seg label={t('map.dayLabel')} value={day} onValue={(d) => setQuery({ day: d === today() ? null : d })} data-testid="map-day"
-      options={[{ value: addDays(today(), -1), label: t('map.days.yesterday') }, { value: today(), label: t('map.days.today') }, { value: addDays(today(), 1), label: t('map.days.tomorrow') }]} />
-  );
+  // any day with the « Agenda » right (plan ahead, look back); otherwise yesterday, today, tomorrow (the server's rule too)
+  const daySwitch = can('agenda')
+    ? <MapDay day={day} onDay={(d) => setQuery({ day: d === today() ? null : d })} />
+    : (
+      <Seg label={t('map.dayLabel')} value={day} onValue={(d) => setQuery({ day: d === today() ? null : d })} data-testid="map-day"
+        options={[{ value: addDays(today(), -1), label: t('map.days.yesterday') }, { value: today(), label: t('map.days.today') }, { value: addDays(today(), 1), label: t('map.days.tomorrow') }]} />
+    );
   const notices = (
     <>
       {status === 'offline' && <Banner kind="warn" data-testid="map-offline">{loaded.source === 'server' ? t('map.offline', { time: clock(nowMinuteOf(loaded.at), lang.value) }) : t('map.offlineDevice')}</Banner>}

@@ -1382,3 +1382,31 @@ step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic
     h.sql(`delete from public.hermes_questions`);
   }
 });
+
+step('La carte, n’importe quel jour: ‹ › and the calendar plan the routes ahead (an appointment in 9 days is on its map); the name comes back to today', async () => {
+  const far = h.sql(`select (public.local_today() + 9)::text`);
+  const moved = h.sql(`update public.jobs set day = public.local_today() + 9 where id = (select id from public.jobs where customer_id = '${julie}' and status = 'booked' and deleted_at is null and lat is not null order by created_at limit 1) returning id`);
+  assert.ok(moved, 'an appointment of Julie to move');
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/map');
+  await page.getByTestId('map-day').waitFor({ timeout: 15000 });
+  assert.equal(await page.getByTestId('map-day-name').innerText(), 'Aujourd’hui');
+  await page.getByTestId('map-day-next').click();
+  await page.waitForURL(/day=/);
+  assert.equal(await page.getByTestId('map-day-name').innerText(), 'Demain');
+  await page.getByTestId('map-day-next').click();
+  assert.doesNotMatch(await page.getByTestId('map-day-name').innerText(), /Demain|Aujourd/, 'a day further is shown by its date');
+  // the calendar: any day
+  await page.getByTestId('map-day-input').evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, far);
+  await page.waitForURL(new RegExp(`day=${far}`));
+  await page.getByTestId('map-pull').filter({ hasText: /\b[1-9]\d* arrêts?\b/ }).waitFor({ timeout: 15000 });
+  await page.getByTestId('map-status').filter({ hasText: /Mis à jour/ }).waitFor({ timeout: 15000 });
+  await h.shot(page, 'e2e-map-any-day');
+  // the name: back to today
+  await page.getByTestId('map-day-name').click();
+  await until(() => page.url(), (u) => !/day=/.test(u), 10000);
+  assert.equal(await page.getByTestId('map-day-name').innerText(), 'Aujourd’hui');
+  noErrors(page);
+  await ctx.close();
+});
