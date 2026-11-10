@@ -73,6 +73,11 @@ export async function updateJob(jobId: string, patch: Partial<Record<'problem' |
   guard();
   await updateRow('jobs', jobId, patch, { label: t('log.job') });
 }
+/** « Modifier le rendez-vous »: booked with the wrong customer (Part 24 nonies): the right one, their car, their address */
+export async function changeJobCustomer(jobId: string, customerId: string, vehicleId: string | null = null) {
+  guard();
+  return callRpc<{ ok: boolean; vehicle_id: string | null }>('job_customer', { p_job: jobId, p_customer: customerId, p_vehicle: vehicleId }, { label: t('log.job'), queue: false });
+}
 export type StepAction = 'leave' | 'arrive' | 'finish' | 'cancel' | 'no_show' | 'reopen' | 'back' | 'waiver';
 export async function jobStep(jobId: string, action: StepAction, data: Record<string, unknown> = {}) {
   guard();

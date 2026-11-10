@@ -153,6 +153,43 @@ test('Part 24 sexies: « Changer le prix »: any account that sees the appointme
   assert.equal((await h.fails(() => h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 7000 })))?.hint, 'invoice_done');
 }));
 
+test('Part 24 nonies: « Changer de client »: the appointment goes to the right customer (car, address); the wrong one loses the link and the signature', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(null); await h.c.query('reset role');
+  const right = await h.customer('Marie', 45.52, -73.62, { last: 'Bon', phone: '5145559876', address: '22 rue Juste' });
+  const marieCar = await h.val(`insert into public.vehicles (customer_id, year, make, model) values ($1, 2018, 'Honda', 'Civic') returning id`, [right]);
+  const wrongCar = await h.val(`insert into public.vehicles (customer_id, year, make, model) values ($1, 2012, 'Ford', 'Focus') returning id`, [g.customer]);
+  await h.as(g.owner);
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, vehicle_id: wrongCar, day: g.day, block: 'am', duration_min: 60 },
+    p_items: [{ description: 'Vidange', service_id: g.svc, unit_cents: 7999, duration_min: 30 }] });
+  await h.as(null); await h.c.query('reset role');
+  // the wrong customer had the confirmation link and had signed online
+  const link = await h.val(`insert into public.public_links (token_hash, job_id, expires_at) values ('h-' || gen_random_uuid(), $1, now() + interval '30 days') returning id`, [r.job_id]);
+  await h.c.query(`update public.jobs set estimate_signed_at = now(), estimate_signer = 'Jean Tremblay', waiver_signed_at = now(), waiver_signer = 'Jean Tremblay', confirm_sent_at = now() where id = $1`, [r.job_id]);
+  // a mechanic of another truck: refused; the one of this truck may
+  const other = await h.person('Autre Mécano', ['mechanic']);
+  await h.as(other);
+  assert.equal((await h.fails(() => h.rpc('job_customer', { p_op: uuid(), p_job: r.job_id, p_customer: right, p_vehicle: null })))?.hint, 'not_found');
+  await h.as(g.owner);
+  assert.equal((await h.fails(() => h.rpc('job_customer', { p_op: uuid(), p_job: r.job_id, p_customer: g.customer, p_vehicle: null })))?.hint, 'same');
+  assert.equal((await h.fails(() => h.rpc('job_customer', { p_op: uuid(), p_job: r.job_id, p_customer: right, p_vehicle: wrongCar })))?.hint, 'bad_vehicle', 'the car must be hers');
+  // Marie's only car is taken by itself; her address and position; the draft invoice follows
+  const out = await h.rpc('job_customer', { p_op: uuid(), p_job: r.job_id, p_customer: right, p_vehicle: null });
+  assert.equal(out.ok, true); assert.equal(out.vehicle_id, marieCar);
+  await h.as(null); await h.c.query('reset role');
+  const j = await h.one(`select customer_id, vehicle_id, address, lat, confirm_sent_at, waiver_signed_at, waiver_via, estimate_signed_at, estimate_signer, status from public.jobs where id = $1`, [r.job_id]);
+  assert.deepEqual([j.customer_id, j.vehicle_id, j.address, j.lat, j.status], [right, marieCar, '22 rue Juste', 45.52, 'booked']);
+  assert.deepEqual([j.confirm_sent_at, j.waiver_signed_at, j.waiver_via, j.estimate_signed_at, j.estimate_signer], [null, null, null, null, null], 'Jean’s signature is gone; the text can go to Marie');
+  assert.ok(await h.val(`select revoked_at from public.public_links where id = $1`, [link]), 'Jean’s link no longer works');
+  assert.equal(await h.val(`select count(*)::int from public.job_items where job_id = $1`, [r.job_id]), 1, 'the services stay');
+  const note = await h.one(`select actor, data from public.activity where action = 'customer_changed' and entity_id = $1`, [r.job_id]);
+  assert.deepEqual([note.actor, note.data.from, note.data.to, note.data.links_closed, note.data.signature_removed], [g.owner, g.customer, right, 1, true]);
+  // once the truck has left: refused (cancel and book again)
+  await h.c.query(`update public.jobs set status = 'en_route' where id = $1`, [r.job_id]);
+  await h.as(g.owner);
+  assert.equal((await h.fails(() => h.rpc('job_customer', { p_op: uuid(), p_job: r.job_id, p_customer: g.customer, p_vehicle: null })))?.hint, 'started');
+}));
+
 test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);
