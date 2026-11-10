@@ -1215,10 +1215,12 @@ step('Clients: right-click (computer) or long press (iPhone) on a customer: the 
 });
 
 step('« Changer de camion »: an appointment booked on the wrong truck goes to another one, same day and block; then the app picks again', async () => {
-  // tomorrow afternoon: Karim Laval's appointment (Addresses step) is on Camion Complet; the other truck works then too
-  h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${T.voiture}', public.local_today() + 1, '[[480,1200]]', 'e2e') on conflict do nothing`);
+  // tomorrow afternoon: Karim Laval's appointment (Addresses step) is on one truck (the planner chose it: it depends on
+  // the hour the tests run); the other truck works then too
   const before = h.sql(`select day || '|' || block || '|' || truck_id from public.jobs where id = '${jobLaval}'`).split('|');
-  assert.equal(before[2], T.complet);
+  assert.ok([T.complet, T.voiture].includes(before[2]), 'on one of the trucks');
+  const other = before[2] === T.complet ? T.voiture : T.complet;
+  h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${other}', '${before[0]}', '[[480,1200]]', 'e2e') on conflict do nothing`);
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + `#/job/${jobLaval}`);
@@ -1226,10 +1228,10 @@ step('« Changer de camion »: an appointment booked on the wrong truck goes to 
   await page.getByTestId('menu-truck').click();
   await page.getByTestId('truck-sheet').waitFor({ timeout: 15000 });
   await h.shot(page, 'e2e-truck-sheet');
-  await page.getByTestId(`truck-pick-${T.voiture}`).click();
+  await page.getByTestId(`truck-pick-${other}`).click();
   await page.getByTestId('truck-sheet').waitFor({ state: 'detached', timeout: 15000 });
-  const after = await until(() => h.sql(`select day || '|' || block || '|' || truck_id || '|' || truck_pinned from public.jobs where id = '${jobLaval}'`), (v) => v.includes(T.voiture), 15000);
-  assert.deepEqual(after.split('|'), [before[0], before[1], T.voiture, 'true'], 'same day and block, the other truck, kept there');
+  const after = await until(() => h.sql(`select day || '|' || block || '|' || truck_id || '|' || truck_pinned from public.jobs where id = '${jobLaval}'`), (v) => v.includes(other), 15000);
+  assert.deepEqual(after.split('|'), [before[0], before[1], other, 'true'], 'same day and block, the other truck, kept there');
   // « Laisser l’app choisir »: the truck is no longer forced
   await page.getByTestId('job-menu').click();
   await page.getByTestId('menu-truck').click();
@@ -1319,14 +1321,14 @@ step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic
     const bb = await bubble.boundingBox(), tb = await page.locator('.tabbar').boundingBox();
     assert.ok(bb.x + bb.width > vp.width - 40, 'at the right');
     assert.ok(bb.y + bb.height <= tb.y, 'above the tab bar');
-    await clearMock();
+    await h.clearMock();
     await bubble.click();
     await page.getByTestId('hermes-panel').waitFor();
     assert.match(await page.getByTestId('hermes-suggest').first().innerText(), /freinage/, 'a mechanic’s questions offered');
     await page.getByTestId('hermes-ask').fill('Quoi apporter aujourd’hui ?');
     await page.getByTestId('hermes-send').click();
     await page.getByTestId('hermes-assistant').filter({ hasText: 'Réponse à : Quoi apporter aujourd’hui ?' }).waitFor({ timeout: 20000 });
-    let sent = (await mockLog()).filter((l) => l.svc === 'hermes');
+    let sent = (await h.mockLog()).filter((l) => l.svc === 'hermes');
     assert.equal(sent.length, 1);
     assert.match(sent[0].session, new RegExp(`^his-${who.saleh.id.slice(0, 8)}-[a-z0-9]+$`));
     let sys = sent[0].body.messages[0].content;
@@ -1355,7 +1357,7 @@ step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic
     await o.page.getByTestId('hermes-ask').fill('Et les factures ?');
     await o.page.getByTestId('hermes-send').click();
     await o.page.getByTestId('hermes-assistant').waitFor({ timeout: 20000 });
-    sent = (await mockLog()).filter((l) => l.svc === 'hermes');
+    sent = (await h.mockLog()).filter((l) => l.svc === 'hermes');
     sys = sent[sent.length - 1].body.messages[0].content;
     assert.match(sys, /the owner\./); assert.match(sys, /INVOICES NOT FULLY PAID/);
     noErrors(o.page);
