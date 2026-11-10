@@ -1402,7 +1402,7 @@ step('La carte, n’importe quel jour: ‹ › and the calendar plan the routes 
   // the calendar: any day
   await page.getByTestId('map-day-input').fill(far, { force: true });
   assert.match(await until(() => page.url(), (u) => u.includes(`day=${far}`), 10000), new RegExp(`day=${far}`));
-  await page.getByTestId('map-pull').filter({ hasText: /\b[1-9]\d* arrêts?\b/ }).waitFor({ timeout: 15000 });
+  await page.getByTestId(`stop-${moved}`).waitFor({ timeout: 15000 });
   await page.getByTestId('map-status').filter({ hasText: /Mis à jour/ }).waitFor({ timeout: 15000 });
   await h.shot(page, 'e2e-map-any-day');
   // the name: back to today
