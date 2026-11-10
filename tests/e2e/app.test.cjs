@@ -1437,6 +1437,8 @@ step('« Modifier le rendez-vous »: booked with the wrong customer → the righ
   await page.getByTestId('job-edit').click();
   await page.getByTestId('edit-address').click();
   await page.getByTestId('address-input').fill('500 rue Sherbrooke Est, Montréal');
+  // the suggestions open under the field; « Garder cette adresse » right away still works (closing them must not move the button)
+  await page.getByTestId('address-suggestions').waitFor({ timeout: 10000 }).catch(() => {});
   await page.getByTestId('edit-address-ok').click();
   assert.equal(await until(() => h.sql(`select address from public.jobs where id = '${jobId}'`), (v) => /Sherbrooke/.test(v), 15000), '500 rue Sherbrooke Est, Montréal');
   assert.notEqual(h.sql(`select coalesce(address, '') from public.customers where id = '${lina}'`), '500 rue Sherbrooke Est, Montréal', 'her file is not changed');

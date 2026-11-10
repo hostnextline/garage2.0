@@ -105,7 +105,9 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
         <VehiclePicker customerId={c.id} value={j.vehicle_id} onPick={(id) => { if (id && id !== j.vehicle_id) { void attempt(() => updateJob(j.id, { vehicle_id: id }), { ok: t('jobs.head.carSaved') }).then((ok) => { if (ok) p.onClose(); }); } }} />
       )}
       {view === 'address' && (
-        <div class="stack">
+        // room kept for the suggestions: when they close (a tap on « Garder cette adresse »), the window does not shrink
+        // under the finger and the tap is not lost
+        <div class="stack jobs-edit-address">
           <p class="muted small" style={{ margin: 0 }}>{t('jobs.edit.addressLead')}</p>
           <AddressField value={place} onValue={setPlace} autoFocus />
         </div>
