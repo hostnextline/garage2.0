@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261109000200_stock_coffre.sql` (Part 24 septies, applied 2026-11-09 from commit `9d06aa3`;
+- Applied on live: every migration up to `20261110000100_hermes_questions.sql` (Part 24 octies, applied 2026-11-10 from commit `b87b956`;
+  Part 24 septies applied 2026-11-09 from commit `9d06aa3`;
   Part 24 sexies from commit `d8f87f6`
   through the Claude Code MCP `supabase-garage`; Parts 24 quater and quinquies from
   commit `9c02c8b`; Part 24 ter from `a4f2da6`;
@@ -71,7 +72,8 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `notify`, `book` at `408de6c`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team`, `backup` at `9835d52`; the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
+  `notify`, `book` at `408de6c`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `9835d52`; `backup` at `b87b956`; `hermes` at `8db1695`;
+  the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
   connector now points at another organization). Before: the claude.ai connector (`execute_sql`, `apply_migration`, `get_advisors`).
@@ -130,6 +132,18 @@ end $do$;
   three Stripe secrets together and every database refusal is an error. The backup now includes `coffre`, `positions`,
   `position_log`, `op_log`, `stripe_events` (test: every table is backed up or listed in `never`). `ops/live/2026-11-08_versions_migrations.sql`
   fixes two misrecorded versions in live's `schema_migrations` (to run by hand, dry run first).
+- 🤖 Hermes (Part 24 octies, `20261110000100_hermes_questions.sql`; function `hermes`; `src/features/hermes/`): a round button at the
+  bottom right of every screen for everyone on the team (not while « Voir l'app comme… »). Each question goes with a picture of the
+  garage built by the app from what THAT person may see (`context.ts`: their jobs; prices only with « Argent »/« Factures »; unpaid
+  invoices with « Factures »; stock with « Inventaire »; the month's expenses with « Trésorerie »; never customer phones or addresses)
+  to the Hermes server (DigitalOcean 142.93.150.240, profile `garage` of the multiplexed gateway, `https://142-93-150-240.sslip.io/p/garage`,
+  its own `API_SERVER_KEY`; memory, user profile, session search and skills switched off so nothing passes from one person to another;
+  model through the owner's ChatGPT subscription). Brakes: 30 questions an hour per person, 200 for the garage (`rate_hit`).
+  Private: each person sees only their own conversation (the panel says the owner can read the questions); every question is kept
+  with its answer in `hermes_questions` (no access from the app; backed up) and only the owner reads them (« Questions de l'équipe »,
+  `{ action: 'log' }`). The key lives only in `secrets` (`hermes_url`, `hermes_key`); it was put there by the Hermes server itself
+  with `{ action: 'pair', code, url, key }` and a one-time code (`hermes_pair` = sha256|expiry, 10 minutes, then deleted): to change
+  the key, do the same pairing again, never copy the key by hand.
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,
   « Ma journée » shows the way back (the truck's own start, else « Départ des camions ») with « Je pars vers {place} » →
   `enroute { action: 'return', pos }`: a trip with no job (`trips.kind = 'return'`, `dest_label`, one active per person), the route
