@@ -565,6 +565,21 @@ test('🤖 Hermes: the whole team; who is asking and their picture of the garage
     sent = (await mockLog()).filter((l) => l.svc === 'hermes');
     assert.match(sent[0].body.messages[0].content, /YOU ARE TALKING TO: Adam Méca \(« Adam »\), a mechanic\./);
     assert.equal(sent[0].session, `his-${meca.slice(0, 8)}-abc123`, 'never the owner’s conversation');
+    // every question is kept with its answer; only the owner reads them all (and can pick one person)
+    const keptRow = (await q(`select question, answer, session, error from public.hermes_questions where staff_id = $1`, [meca]))[0];
+    assert.deepEqual(keptRow, { question: 'Grincement au freinage ?', answer: 'Réponse à : Grincement au freinage ?', session: 'abc123', error: null });
+    r = await fn('hermes', { action: 'log' }, mecaJwt);
+    assert.equal(r.status, 403); assert.equal(r.code, 'owner_only', 'a mechanic never reads the others’ questions');
+    r = await fn('hermes', { action: 'log' }, ownerJwt);
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.questions.map((x) => x.question), ['Grincement au freinage ?', 'Et demain ?'], 'newest first, everyone');
+    r = await fn('hermes', { action: 'log', staff_id: owner }, ownerJwt);
+    assert.deepEqual(r.questions.map((x) => x.question), ['Et demain ?']);
+    r = await fn('hermes', { action: 'log', before: (await q(`select created_at::text from public.hermes_questions where staff_id = $1`, [meca]))[0].created_at }, ownerJwt);
+    assert.deepEqual(r.questions.map((x) => x.question), ['Et demain ?'], '« Voir plus »: the older ones');
+    // the app itself cannot read the table
+    const direct = await fetch(`${API}/rest/v1/hermes_questions?select=question`, { headers: { apikey: K.anon, authorization: `Bearer ${ownerJwt}` } });
+    assert.ok(direct.status === 401 || direct.status === 403 || (await direct.json()).length === 0, 'no direct access, even for the owner');
     // the brake: 30 questions an hour for one person (the 31st waits), the others are not held back
     let code = null, asks = 1;
     for (; asks < 40 && code !== 'busy'; asks++) code = (await fn('hermes', { messages: [{ role: 'user', content: 'Encore ?' }] }, mecaJwt)).code;
@@ -574,7 +589,9 @@ test('🤖 Hermes: the whole team; who is asking and their picture of the garage
     await q(`update public.secrets set value = 'hk-wrong' where key = 'hermes_key'`);
     r = await fn('hermes', { messages: [{ role: 'user', content: 'Bonjour' }] }, ownerJwt);
     assert.equal(r.status, 502); assert.equal(r.code, 'hermes_error'); assert.match(r.error, /clé/);
+    assert.equal((await q(`select error from public.hermes_questions where staff_id = $1 order by created_at desc limit 1`, [owner]))[0].error, 'hermes 401', 'a question without an answer is kept too');
   } finally {
+    await q(`delete from public.hermes_questions`);
     await q(`delete from public.secrets where key in ('hermes_url', 'hermes_key')`);
     await q(`delete from public.rate_limits where key like 'hermes:%'`);
   }

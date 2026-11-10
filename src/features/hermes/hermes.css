@@ -25,3 +25,7 @@
 /* the end of each screen stays clear of the round button */
 .has-hermes .page { padding-bottom: calc(160px + env(safe-area-inset-bottom)); }
 @media (min-width: 960px) { .has-hermes .page { padding-bottom: 96px; } }
+.hermes-q { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 9px 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--sunken); color: var(--ink); font: inherit; cursor: pointer; }
+.hermes-q-text { font-weight: 600; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hermes-q-answer { color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hermes-q-answer.is-open { display: block; -webkit-line-clamp: unset; }

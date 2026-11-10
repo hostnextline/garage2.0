@@ -2,13 +2,14 @@
    which asks Hermes with the key kept on the server. Mic (the browser's dictation) and reading out loud, like the CRM's. */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import { Send, Mic, Volume2, RotateCcw, Copy, Square } from 'lucide-preact';
+import { Send, Mic, Volume2, RotateCcw, Copy, Square, Users, MessageCircle } from 'lucide-preact';
 import { callFn, isOwner, hasRole, can } from '../../data/auth';
 import { net } from '../../data/sync';
 import { t } from '../../lib/i18n';
 import { toast, IconButton, Button, Banner } from '../../ui';
 import { garageContext } from './context';
 import { hermesBusy } from './host';
+import { TeamLog } from './TeamLog';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 const newSession = () => Math.random().toString(36).slice(2, 12);
@@ -46,6 +47,8 @@ export function HermesPanel() {
   const [off, setOff] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), rec = useRef<any>(null);
   const busy = hermesBusy.value;
+  const [view, setView] = useState<'chat' | 'team'>('chat');
+  const owner = isOwner();
   const scroll = () => setTimeout(() => end.current?.scrollIntoView({ block: 'nearest' }), 40);
   useEffect(() => { scroll(); setTimeout(() => input.current?.focus(), 60); }, []);
 
@@ -94,11 +97,15 @@ export function HermesPanel() {
   return (
     <section class="hermes-panel glass-strong" aria-label={t('hermes.title')} data-testid="hermes-panel">
       <header class="hermes-head">
-        <b class="grow">🤖 {t('hermes.title')}</b>
+        <b class="grow">🤖 {view === 'team' ? t('hermes.team') : t('hermes.title')}</b>
+        {owner && (view === 'chat'
+          ? <IconButton icon={<Users size={18} />} label={t('hermes.team')} onClick={() => setView('team')} data-testid="hermes-team-open" />
+          : <IconButton icon={<MessageCircle size={18} />} label={t('hermes.back')} onClick={() => setView('chat')} data-testid="hermes-team-back" />)}
         <IconButton icon={<Volume2 size={18} />} label={t('hermes.voice')} pressed={voice}
           onClick={() => { const v = !voice; setVoice(v); store.set('his-hermes-voice', v ? '1' : '0'); if (!v) window.speechSynthesis?.cancel(); }} />
         {chat.value.length > 0 && <IconButton icon={<RotateCcw size={18} />} label={t('hermes.newChat')} onClick={restart} data-testid="hermes-new" />}
       </header>
+      {view === 'team' ? <div class="hermes-body"><TeamLog /></div> : <>
       <div class="hermes-body">
         {off && <Banner kind="warn">{off}</Banner>}
         {!net.value.online && <Banner kind="warn">{t('hermes.offline')}</Banner>}
@@ -109,6 +116,7 @@ export function HermesPanel() {
               <button key={k} type="button" class="hermes-suggest" disabled={busy} onClick={() => void send(t(k))} data-testid="hermes-suggest">{t(k)}</button>
             ))}
             <p class="faint small" style={{ margin: 0 }}>{t('hermes.privacy')}</p>
+            {!owner && <p class="faint small" style={{ margin: 0 }} data-testid="hermes-kept">{t('hermes.kept')}</p>}
           </>
         )}
         {chat.value.map((m, i) => (
@@ -141,6 +149,7 @@ export function HermesPanel() {
           {t('hermes.keys')}
         </span>
       </footer>
+      </>}
     </section>
   );
 }

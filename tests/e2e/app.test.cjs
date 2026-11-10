@@ -1325,6 +1325,7 @@ step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic
     await bubble.click();
     await page.getByTestId('hermes-panel').waitFor();
     assert.match(await page.getByTestId('hermes-suggest').first().innerText(), /freinage/, 'a mechanic’s questions offered');
+    assert.match(await page.getByTestId('hermes-kept').innerText(), /privée/, 'told that the owner can read the questions');
     await page.getByTestId('hermes-ask').fill('Quoi apporter aujourd’hui ?');
     await page.getByTestId('hermes-send').click();
     await page.getByTestId('hermes-assistant').filter({ hasText: 'Réponse à : Quoi apporter aujourd’hui ?' }).waitFor({ timeout: 20000 });
@@ -1340,6 +1341,8 @@ step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic
     if (!money && !invoices) assert.doesNotMatch(sys, /before tax/, 'prices only with « Argent » or « Factures »');
     assert.equal(/INVOICES NOT FULLY PAID/.test(sys), invoices);
     assert.equal(/EXPENSES THIS MONTH/.test(sys), treasury);
+    assert.equal(await page.getByTestId('hermes-kept').count(), 0, 'shown before the first question only');
+    assert.equal(await page.getByTestId('hermes-team-open').count(), 0, 'a mechanic has no « Questions de l’équipe »');
     await h.shot(page, 'e2e-hermes');
     // closed and opened again: the conversation is still there; « Nouvelle conversation » empties it
     await bubble.click();
@@ -1360,10 +1363,18 @@ step('🤖 Hermes: the round button at the bottom right for everyone; a mechanic
     sent = (await h.mockLog()).filter((l) => l.svc === 'hermes');
     sys = sent[sent.length - 1].body.messages[0].content;
     assert.match(sys, /the owner\./); assert.match(sys, /INVOICES NOT FULLY PAID/);
+    // « Questions de l’équipe »: Saleh's question, read by the owner only
+    await o.page.getByTestId('hermes-team-open').click();
+    await o.page.getByTestId('hermes-team-row').filter({ hasText: 'Quoi apporter aujourd’hui ?' }).waitFor({ timeout: 15000 });
+    assert.match(await o.page.getByTestId('hermes-team-row').filter({ hasText: 'Quoi apporter' }).innerText(), /Saleh/);
+    await h.shot(o.page, 'e2e-hermes-team');
+    await o.page.getByTestId('hermes-team-back').click();
+    await o.page.getByTestId('hermes-ask').waitFor();
     noErrors(o.page);
     await o.ctx.close();
   } finally {
     h.sql(`delete from public.secrets where key in ('hermes_url', 'hermes_key')`);
     h.sql(`delete from public.rate_limits where key like 'hermes:%'`);
+    h.sql(`delete from public.hermes_questions`);
   }
 });

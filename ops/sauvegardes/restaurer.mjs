@@ -16,7 +16,7 @@ for (let i = 2; i < process.argv.length; i++) {
 const ORDRE = ['settings', 'counters', 'staff', 'trucks', 'truck_week', 'truck_days', 'services', 'inventory_items', 'service_parts', 'engine_specs',
   'customers', 'customer_notes', 'vehicles', 'quotes', 'jobs', 'job_items', 'invoices', 'payments', 'expenses', 'inventory_moves',
   'shifts', 'trips', 'messages', 'public_links', 'invitations', 'activity', 'attachments',
-  'coffre', 'positions', 'position_log', 'op_log', 'stripe_events'];
+  'coffre', 'positions', 'position_log', 'op_log', 'stripe_events', 'hermes_questions'];
 const CLE = { counters: 'name', op_log: 'op' };
 const PAQUET = 500;
 const dollar = (s) => { let tag = 'r'; while (s.includes(`$${tag}$`)) tag += 'x'; return `$${tag}$${s}$${tag}$`; };
