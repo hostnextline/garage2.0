@@ -193,7 +193,13 @@ test('Part 24 nonies: « Changer de client »: the appointment goes to the right
 test('Part 24 decies: « Modifier la facture »: the draft follows the work, a finished invoice reopens with its number, payments wait and come back', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);
-  const lines = async (inv) => (await h.val(`select lines from public.invoices where id = $1`, [inv])).map((l) => [l.description, Number(l.unit_cents)]);
+  // what the test looks at, read as the database (the person's role comes back after)
+  const peek = async (sql, params = []) => {
+    const was = await h.val('select current_user');
+    await h.c.query('reset role');
+    try { return await h.val(sql, params); } finally { if (was === 'authenticated') await h.c.query('set local role authenticated'); }
+  };
+  const lines = async (inv) => (await peek(`select lines from public.invoices where id = $1`, [inv])).map((l) => [l.description, Number(l.unit_cents)]);
   // the mechanic on site: a second part of the job, then the invoice
   await h.as(g.mech);
   const oil = await h.val(`select id from public.job_items where job_id = $1`, [jobId]);
@@ -222,12 +228,12 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   await h.as(other);
   assert.equal((await h.fails(() => h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })))?.hint, 'not_allowed');
   await h.as(g.mech);
-  const counter = await h.val(`select next_value from public.counters where name = 'invoice'`);
+  const counter = await peek(`select next_value from public.counters where name = 'invoice'`);
   const r = await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv });
   assert.deepEqual([r.ok, r.number], [true, n]);
   const open = await h.one(`select status, number, paid_cents from public.invoices where id = $1`, [inv]);
   assert.deepEqual([open.status, Number(open.number), open.paid_cents], ['draft', n, 0]);
-  assert.equal(await h.val(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null`, [jobId]), 1, 'the 20 $ wait on the job');
+  assert.equal(await peek(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null`, [jobId]), 1, 'the 20 $ wait on the job');
   // the brakes come back, then go again; under what was paid: refused
   await h.c.query(`update public.job_items set status = 'planned' where id = $1`, [brakes]);
   await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true });
@@ -241,7 +247,7 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   // finished again: the same number, no number used, the 20 $ back on it
   const again = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
   assert.deepEqual([again.number, again.again], [n, true]);
-  assert.equal(await h.val(`select next_value from public.counters where name = 'invoice'`), counter, 'no invoice number spent');
+  assert.equal(await peek(`select next_value from public.counters where name = 'invoice'`), counter, 'no invoice number spent');
   const back = await h.one(`select status, paid_cents from public.invoices where id = $1`, [inv]);
   assert.deepEqual([back.status, back.paid_cents], ['issued', 2000]);
   // reopened while the customer pays by card: the money is in, it waits on the job and comes back when finished
@@ -253,7 +259,7 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   await h.as(g.mech);
   assert.equal((await h.fails(() => h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 500, p_method: 'cash', p_reference: null, p_job: null, p_session: null })))?.hint, 'invoice_first');
   await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
-  assert.equal(await h.val(`select paid_cents from public.invoices where id = $1`, [inv]), 3000);
+  assert.equal(await peek(`select paid_cents from public.invoices where id = $1`, [inv]), 3000);
   // the job over: no more; paid: no more
   await h.as(null); await h.c.query('reset role');
   await h.c.query(`update public.jobs set status = 'done' where id = $1`, [jobId]);
@@ -262,7 +268,7 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   await h.as(null); await h.c.query('reset role');
   await h.c.query(`update public.jobs set status = 'on_site' where id = $1`, [jobId]);
   await h.as(g.mech);
-  const left = await h.val(`select total_cents - paid_cents from public.invoices where id = $1`, [inv]);
+  const left = await peek(`select total_cents - paid_cents from public.invoices where id = $1`, [inv]);
   await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: left, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
   assert.equal((await h.fails(() => h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })))?.hint, 'paid');
   await h.as(null); await h.c.query('reset role');
