@@ -309,7 +309,7 @@ export const settings: typeof fr = {
     stripeText: 'Connected: the invoice sent to the customer has a « Pay » button. The money goes to your Stripe account and the invoice marks itself paid.',
     stripeState: 'Key ending in {end}',
     stripeKey: 'Stripe secret key',
-    stripeKeyHelp: 'In Stripe: Developers, API keys. It starts with « sk_live_ » (real payments) or « sk_test_ » (trials).',
+    stripeKeyHelp: 'In Stripe: Developers, API keys. The key for real payments, starting with « sk_live_ ». A test key is refused: the app has only one database.',
     test_mode: 'Trial mode',
     live_mode: 'Real payments',
     testModeHint: 'Trial mode: no real payment. Replace it with the « sk_live_ » key to collect for real.'

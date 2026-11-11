@@ -226,7 +226,12 @@ export const handler = serve(async (req) => {
           if (old && oldHook) { try { await stripeCall(old, 'DELETE', `/webhook_endpoints/${encodeURIComponent(oldHook)}`); } catch { /* already gone */ } }
           await setSecrets({ stripe_key: null, stripe_webhook_secret: null, stripe_webhook_id: null }, c.id);
         } else {
-          if (!/^(sk|rk)_(live|test)_[A-Za-z0-9]{10,}$/.test(k)) fail('stripe_key', 'La clé Stripe commence par « sk_live_ », « sk_test_ » ou « rk_ ».');
+          if (!/^(sk|rk)_(live|test)_[A-Za-z0-9]{10,}$/.test(k)) fail('stripe_key', 'La clé Stripe commence par « sk_live_ » ou « rk_live_ ».');
+          // the app has one database (the real one): a test payment would mark a real invoice PAID, with no way to remove it.
+          // Test keys only on a test copy of the server (its secrets have stripe_test_ok = 'on'; never on live).
+          if (/_test_/.test(k) && (await secret('stripe_test_ok')) !== 'on') {
+            fail('stripe_key', 'Clé de test refusée : l’app n’a qu’une seule base de données, un paiement test marquerait une vraie facture payée. Mets la clé « sk_live_ ».');
+          }
           // the notice "payment done" comes to the garage's own function, signed with a secret only Stripe and the garage know
           const hook = await stripeCall(k, 'POST', '/webhook_endpoints', [
             ['url', `${env('SUPABASE_URL')}/functions/v1/stripe`],

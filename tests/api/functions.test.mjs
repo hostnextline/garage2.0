@@ -99,6 +99,13 @@ test('a link asked from the old address (GitHub Pages) or a stranger site goes t
 
 test('texts and card payment: keys saved, appointment text with total, the customer page, a paid card, a notice sent twice', async () => {
   await clearLog();
+  // a test key on the real server (one database: a test payment would mark a real invoice PAID): refused, nothing saved
+  await q(`delete from public.secrets where key = 'stripe_test_ok'`);
+  const refused = await fn('team', { action: 'secrets-set', stripe_key: 'sk_test_abcdefghijklmnop' }, ownerJwt);
+  assert.deepEqual([refused.ok, refused.code, /Clé de test refusée/.test(refused.error)], [false, 'stripe_key', true], JSON.stringify(refused));
+  assert.equal((await q(`select count(*)::int n from public.secrets where key like 'stripe%'`))[0].n, 0);
+  // a test copy of the server says so (never on live): test keys are taken
+  await q(`insert into public.secrets (key, value) values ('stripe_test_ok', 'on') on conflict (key) do update set value = 'on'`);
   const sk = await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678', stripe_key: 'sk_test_abcdefghijklmnop' }, ownerJwt);
   assert.equal(sk.ok, true, JSON.stringify(sk));
   const sec = await fn('team', { action: 'secrets' }, ownerJwt);
@@ -373,6 +380,7 @@ test('inviting a mechanic with his truck: once he activates his access, he drive
 
 test('« Je suis arrivé »: the customer gets the invoice to pay during the work; paid online, the finished invoice is PAID', async () => {
   await clearLog();
+  await q(`insert into public.secrets (key, value) values ('stripe_test_ok', 'on') on conflict (key) do update set value = 'on'`);
   const sk = await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678', stripe_key: 'sk_test_abcdefghijklmnop' }, ownerJwt);
   assert.equal(sk.ok, true, JSON.stringify(sk));
   const dow = (await q(`select extract(dow from $1::date)::int d`, [day]))[0].d;

@@ -309,7 +309,7 @@ export const settings = {
     stripeText: 'Branché : la facture envoyée au client a un bouton « Payer ». L’argent arrive dans ton compte Stripe et la facture se marque payée toute seule.',
     stripeState: 'Clé qui finit par {end}',
     stripeKey: 'Clé secrète Stripe',
-    stripeKeyHelp: 'Dans Stripe : Développeurs, Clés API. Elle commence par « sk_live_ » (vrais paiements) ou « sk_test_ » (essais).',
+    stripeKeyHelp: 'Dans Stripe : Développeurs, Clés API. La clé des vrais paiements, qui commence par « sk_live_ ». Une clé de test est refusée : l’app n’a qu’une seule base de données.',
     test_mode: 'Mode essai',
     live_mode: 'Vrais paiements',
     testModeHint: 'Mode essai : aucun vrai paiement. Remplace par la clé « sk_live_ » pour encaisser pour vrai.'

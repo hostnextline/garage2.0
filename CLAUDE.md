@@ -63,7 +63,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261110000200_job_customer.sql` (Part 24 nonies, applied 2026-11-10 from commit `c8c507c`;
+- Applied on live: every migration up to `20261110000300_facture_modifiable.sql` (Part 24 decies, applied 2026-11-11 from commit `9791d65`;
+  Part 24 nonies applied 2026-11-10 from commit `c8c507c`;
   Part 24 octies applied 2026-11-10 from commit `b87b956`;
   Part 24 septies applied 2026-11-09 from commit `9d06aa3`;
   Part 24 sexies from commit `d8f87f6`
@@ -184,6 +185,22 @@ end $do$;
   customer's links revoked and signatures cleared, `confirm_sent_at` null (resend the booking text), draft invoice follows,
   activity `customer_changed`. The address view keeps a min height (`.jobs-edit-address`) so closing the suggestions does not
   move the « Garder » button under the finger.
+- « Modifier la facture » (Part 24 decies, `20261110000300_facture_modifiable.sql`): the invoice changes before and during the
+  appointment, without cancelling it. `invoice_reopen(op, invoice)`: a finished invoice not paid, its job booked / en route / on
+  site, for whoever may finish it (`invoice_editable`) → back to a draft with its number; its payments wait on the job
+  (`invoice_id` null, « Le client a déjà payé … ») and the customer's open card page is forgotten (`public_links.last_session*`);
+  activity `invoice_reopened`. `invoice_finish` keeps a reopened invoice's number (`again: true`, no number spent) and refuses a
+  total under what was paid (`below_paid`). `payment_add`: a card payment (no person) landing on a reopened draft waits on the
+  job instead of being refused. Trigger `job_items_invoice_follow`: a job line taken off (removed, declined, deleted) leaves the
+  draft invoice; a new price / quantity / words go on its line (only what changed: a price typed on the invoice stays when the work
+  is only marked done); a person may not take off or reprice work billed on a FINISHED invoice (`invoice_done`: « Modifier la
+  facture » first; « a person » = the request's `role` setting, which a security definer function does not change).
+  `job_item_price` answers the invoices too. App: `ReopenButton` / `mayReopen` (`InvoicePanel.tsx`; finished invoice panel, invoice
+  screen, and the line sheet of billed work: `item-locked`); the draft shows `draft-reopened`; removing a line of the job's work in
+  the invoice editor marks that work « Pas fait » (`onRemoveWork`, undo puts it back); after a `job_items` change is sent the phone
+  pulls `invoices` (`sync.ts`), so the draft on screen follows even without realtime.
+- « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
+  and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,
   « Ma journée » shows the way back (the truck's own start, else « Départ des camions ») with « Je pars vers {place} » →
   `enroute { action: 'return', pos }`: a trip with no job (`trips.kind = 'return'`, `dest_label`, one active per person), the route
