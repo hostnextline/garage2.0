@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261110000300_facture_modifiable.sql` (Part 24 decies, applied 2026-11-11 from commit `9791d65`;
+- Applied on live: every migration up to `20261111000100_historique_niv.sql` (Part 24 undecies, applied 2026-11-11 from commit `2f75cc5`;
+  Part 24 decies applied 2026-11-11 from commit `9791d65`;
   Part 24 nonies applied 2026-11-10 from commit `c8c507c`;
   Part 24 octies applied 2026-11-10 from commit `b87b956`;
   Part 24 septies applied 2026-11-09 from commit `9d06aa3`;
@@ -171,6 +172,13 @@ end $do$;
 - Stripe test keys are refused on live (`team` `secrets-set`, since 2026-11-11): the app has one database, so a test card payment
   would mark a real invoice PAID and an online payment cannot be removed (`payment_remove` refuses `card_online`). A test copy of
   the server allows them with a `secrets` row `stripe_test_ok = 'on'` (the API tests insert it; never on live).
+- « Historique du véhicule » (Part 24 undecies, `20261111000100_historique_niv.sql`; `src/features/customers/VinHistory.tsx`): the car
+  has its own file by its VIN (like Serti). `vin_history(vin, customer)` (every member of the team): each visit of a car with that VIN,
+  whoever owned it (not cancelled / no show; a Coffre visit only for the owner): day, number, status, the work lines, `here` (this
+  customer's) and `open` (`job_id_visible`); never the other owner's name, phone, address or prices. App: under any VIN of 17
+  characters (`VinField`, so the add sheet, the new customer's car and « Modifier » the car) « Déjà venu chez nous : N visites » +
+  « Voir l'historique » (`VinSeen`); the car's screen shows « Historique du véhicule » from the server (`useVinHistory`, asked
+  before any early return), the local job tickets when there is no VIN or no network. Live had only 2 VINs of 35 cars (2026-11-11).
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,
