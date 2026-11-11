@@ -217,6 +217,7 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   assert.equal((await h.fails(() => h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 5000 })))?.hint, 'invoice_done');
   await h.c.query(`update public.job_items set status = 'planned' where id = $1`, [oil]);  // done ⇄ planned bills the same: allowed
   // a mechanic of another truck may not; the job's mechanic may
+  await h.as(null);
   const other = await h.person('Autre Mécano', ['mechanic']);
   await h.as(other);
   assert.equal((await h.fails(() => h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })))?.hint, 'not_allowed');
