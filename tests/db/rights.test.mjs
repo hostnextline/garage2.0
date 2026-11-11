@@ -20,7 +20,7 @@ const AUTHENTICATED = [
   'ranges_norm_trg', 'ranges_overlap', 'replan_after_hours', 'report_error', 'report_position', 'right_default', 'right_of',
   'right_rule', 'rights_table', 'set_job_duration', 'set_role_rights', 'set_stop_order', 'set_truck_start', 'settings_guard',
   'shift_end', 'shift_start', 'suggest_blocks', 'team_map', 'touch', 'treasury_report', 'truck_hours_editable', 'truck_ranges',
-  'update_me', 'walk_in'
+  'update_me', 'vin_history', 'walk_in'
 ];
 
 const callable = (h, role) => h.q(`select distinct p.proname from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
