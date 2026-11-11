@@ -112,7 +112,9 @@ export async function saveSignature(jobId: string, dataUrl: string, signer: stri
 /* ---------- invoices and payments ---------- */
 export async function invoiceForJob(jobId: string, refresh = true) { guard(); return callRpc('invoice_for_job', { p_job: jobId, p_refresh: refresh }, { label: t('log.invoice') }); }
 export async function saveInvoiceDraft(id: string, patch: { lines?: InvoiceLine[]; taxes_on?: boolean; notes?: string | null }) { guard(); await updateRow('invoices', id, patch); }
-export async function finishInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number }>('invoice_finish', { p_invoice: id }, { label: t('log.invoiceFinish') }); }
+export async function finishInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number; again?: boolean }>('invoice_finish', { p_invoice: id }, { label: t('log.invoiceFinish') }); }
+/** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network) */
+export async function reopenInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false }); }
 export async function addPayment(invoiceId: string | null, amountCents: number, method: PayMethod, reference: string | null = null, jobId: string | null = null) {
   guard();
   return callRpc('payment_add', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_reference: reference, p_job: jobId, p_session: null }, { label: t('log.payment') });

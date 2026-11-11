@@ -119,6 +119,7 @@ export const invoices: typeof fr = {
     amount: 'Amount',
     remove: 'Remove the line',
     removed: 'Line removed',
+    removedWork: 'Removed from the invoice and the job',
     undo: 'Undo',
     addLine: 'A line',
     addDiscount: 'A discount',
@@ -142,8 +143,8 @@ export const invoices: typeof fr = {
 
   panel: {
     title: 'Invoice',
-    help: 'The invoice starts from the job’s work. While it is a draft, you can change the lines. “Finish the invoice” gives it its number: it no longer changes after that.',
-    helpIssued: 'A finished invoice no longer changes. Take the payment here, or text it to the customer: their page has the “Pay” button when card payment is connected.',
+    help: 'The invoice starts from the job’s work: removing work from the job removes it from the invoice too. “Finish the invoice” gives it its number. While it is not paid and the job is not over, “Change the invoice” opens it again.',
+    helpIssued: 'Take the payment here, or text it to the customer: their page has the “Pay” button when card payment is connected. A mistake, work to take off? “Change the invoice” (while it is not paid and the job is not over).',
     overTitle: 'Overpaid: {amount} to give back to the customer',
     over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Give the difference back, then record it here. A refund made in Stripe is recorded by itself.',
     overButton: 'Record the refund',
@@ -170,7 +171,7 @@ export const invoices: typeof fr = {
   },
 
   draft: {
-    help: 'Change the lines as needed: everything saves by itself. “Finish the invoice” gives it its number, then it no longer changes.',
+    help: 'Change the lines as needed: everything saves by itself. Removing a line of the job’s work removes it from the job too. “Finish the invoice” gives it its number.',
     readOnly: 'Draft: only the job’s mechanic or the office can change it.',
     taxes: 'Taxes (GST and QST)',
     taxesOffHint: 'No taxes on this invoice: only for an exempt customer.',
@@ -178,9 +179,9 @@ export const invoices: typeof fr = {
     notes: 'Note for the customer',
     notesHint: 'It shows on the invoice.',
     finish: 'Finish the invoice ({total})',
-    finishHint: 'It gets its number and no longer changes. Then: take the payment or text it to the customer.',
-    paidAhead: 'The customer already paid {amount} online. Left to pay: {left}.',
-    paidAheadAll: 'The customer already paid everything online ({amount}). Finish the invoice: it will be marked PAID.',
+    finishHint: 'It gets its number. Then: take the payment or text it to the customer.',
+    paidAhead: 'The customer already paid {amount}. Left to pay: {left}.',
+    paidAheadAll: 'The customer already paid everything ({amount}). Finish the invoice: it will be marked PAID.',
     finished: 'Invoice {n} finished',
     newWork: { one: 'Work was added to the job', other: '{n} pieces of work were added to the job' },
     addNewWork: 'Add to the invoice',
@@ -194,6 +195,17 @@ export const invoices: typeof fr = {
       no_description: 'A line has no description: write what was done.',
       negative: 'The total is negative: check the discount.'
     }
+  },
+
+  reopen: {
+    button: 'Change the invoice',
+    confirm: 'Tap again to open it again',
+    done: 'Invoice {n} opened again: change what is needed, then finish it again.',
+    banner: 'Invoice {n} being changed: it keeps its number. Finish it again when it is ready.',
+    finishedAgain: 'Invoice {n} finished again. The customer got the old one: text it again.',
+    finishedAgainQuiet: 'Invoice {n} finished again.',
+    item: 'The invoice is finished. To remove this line or change its price, open it again:',
+    itemPaid: 'The invoice is paid: this line no longer changes.'
   },
 
   void: {

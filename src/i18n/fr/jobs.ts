@@ -240,6 +240,12 @@ export const jobs = {
     left: 'Parti à',
     arrived: 'Arrivé à',
     finished: 'Fini à',
+    booked: 'Réservé par',
+    byStaff: '{who}, le {when}',
+    byWalkIn: '{who}, sur place, le {when}',
+    byQuote: '{who}, depuis une estimation, le {when}',
+    byWeb: 'Le client, en ligne, le {when}',
+    bySomeone: 'Quelqu’un de l’équipe',
     truck: 'Camion',
     move: 'Déplacer',
     moveTitle: 'Déplacer le rendez-vous',
@@ -367,7 +373,7 @@ export const jobs = {
     save: 'Enregistrer le prix',
     done: 'Prix changé : {price}.',
     doneResend: 'Prix changé : {price}. Le client a déjà reçu son estimation : renvoie-la (⋯, « Renvoyer le texto de confirmation »).',
-    locked: 'La facture est terminée : pour changer un prix, annule-la d’abord.'
+    locked: 'La facture est terminée : pour changer un prix, touche « Modifier la facture ».'
   },
   parts: {
     title: 'Pièces utilisées',

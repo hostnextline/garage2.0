@@ -2,17 +2,19 @@
    (saved by themselves), finish it (its number), text it to the customer with the « Payer » link, take the payment,
    and the PAYÉ stamp. Who may change it mirrors the server (invoice_editable): the office, or the mechanic of the job. */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { FileText, Send, FileDown, RotateCcw, Ban, Receipt, Banknote } from 'lucide-preact';
-import type { Invoice, Job, Payment } from '../../data/types';
+import { FileText, Send, FileDown, RotateCcw, Ban, Receipt, Banknote, PencilLine } from 'lucide-preact';
+import type { Invoice, Job, JobItem, Payment } from '../../data/types';
 import { job as jobRow, invoiceOf, jobTotals, itemsOf, settings, invoiceNumber, vehicle } from '../../data/select';
-import { invoiceForJob, saveInvoiceDraft, finishInvoice, voidInvoice, errorMessage } from '../../data/api';
+import { invoiceForJob, saveInvoiceDraft, finishInvoice, voidInvoice, reopenInvoice, updateItem, errorMessage } from '../../data/api';
 import { net, outboxList } from '../../data/sync';
 import type { OutboxEntry } from '../../data/local';
 import { getRow, rowsOf } from '../../data/store';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { clock, stamp as stampText, dayOf, today } from '../../lib/dates';
-import { Panel, Button, Banner, Totals, InvoicePill, Stamp, Switch, Field, Textarea, askText, run, toast, Rows, RowItem, Money } from '../../ui';
+import { Panel, Button, Banner, Totals, InvoicePill, Stamp, Switch, Field, Textarea, askText, run, attempt, toast, Rows, RowItem, Money } from '../../ui';
+import { jobRights } from '../jobs/select';
+import { BILLABLE } from '../jobs/nextStep';
 import { linesTotals, draftProblems, cleanLine } from './logic';
 import { voidedOf, paymentsOfInvoice, amountsOf, canEditInvoiceOf, canManageInvoices, methodWord, invoiceCustomer } from './select';
 import { LinesEditor, LinesView, CatalogSheet, withKeys, type EditLine } from './Lines';
@@ -24,6 +26,18 @@ import { useDraft } from './useDraft';
 import './invoices.css';
 
 export interface InvoicePanelProps { jobId: string }
+
+const JOB_OPEN = ['booked', 'en_route', 'on_site'];
+/** « Modifier la facture »: finished, not paid, its job coming or under way, and the person may finish it (as the server) */
+export function mayReopen(inv: Invoice | undefined, job: Job | undefined): boolean {
+  return !!inv && inv.status === 'issued' && !!job && JOB_OPEN.includes(job.status) && canEditInvoiceOf(job);
+}
+/** the button: the invoice goes back to a draft with the same number (the payments wait on the job, then come back) */
+export function ReopenButton(p: { inv: Invoice; job: Job | undefined; block?: boolean; variant?: 'primary' | 'ghost' }) {
+  if (!mayReopen(p.inv, p.job)) return null;
+  const go = () => run(() => reopenInvoice(p.inv.id), { ok: t('invoices.reopen.done', { n: invoiceNumber(p.inv) }) });
+  return <Button block={p.block} variant={p.variant} icon={<PencilLine />} confirm={t('invoices.reopen.confirm')} onClick={go} data-testid="invoice-reopen">{t('invoices.reopen.button')}</Button>;
+}
 
 /** operations of this invoice still waiting on the phone (no signal) */
 function usePending(match: (e: OutboxEntry) => boolean): OutboxEntry[] {
@@ -109,7 +123,22 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
     if (check.problem) { setShowErrors(true); toast(t(`invoices.draft.problem.${check.problem}`), { kind: 'bad' }); return; }
     await d.flush();
     const r = await run(() => finishInvoice(inv.id));
-    if (r && !r.queued) toast(t('invoices.draft.finished', { n: invoiceNumber({ number: r.data?.number ?? getRow<Invoice>('invoices', inv.id)?.number ?? null }) }), { kind: 'ok' });
+    if (r && !r.queued) {
+      const n = invoiceNumber({ number: r.data?.number ?? getRow<Invoice>('invoices', inv.id)?.number ?? null });
+      // finished again after « Modifier la facture »: the customer may hold the old one
+      const key = r.data?.again ? (inv.sent_at ? 'invoices.reopen.finishedAgain' : 'invoices.reopen.finishedAgainQuiet') : 'invoices.draft.finished';
+      toast(t(key, { n }), { kind: 'ok' });
+    }
+  };
+  // a line of the job's work taken off the invoice leaves the job too (« Pas fait »), while the job is coming or under way
+  const workEditable = !!p.job && JOB_OPEN.includes(p.job.status) && jobRights(p.job).act;
+  const removeWork = (line: EditLine) => {
+    if (!workEditable || !line.item_id) return null;
+    const it = getRow<JobItem>('job_items', line.item_id);
+    if (!it || it.deleted_at || !BILLABLE.includes(it.status)) return null;
+    const was = it.status;
+    void attempt(() => updateItem(it.id, { status: 'removed' }));
+    return { undo: () => { void attempt(() => updateItem(it.id, { status: was })); } };
   };
   const refresh = async () => {
     if (!p.job) return;
@@ -129,6 +158,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
       action={editable ? <span class={`inv-saved inv-saved-${d.state}`} role="status" aria-live="polite" data-testid="draft-state">{t(`invoices.draft.state.${d.state}`)}</span> : undefined}>
       <div class="stack-lg">
         {!editable && <Banner kind="info">{t('invoices.draft.readOnly')}</Banner>}
+        {inv.number != null && <Banner kind="info" data-testid="draft-reopened">{t('invoices.reopen.banner', { n: invoiceNumber(inv) })}</Banner>}
         {editable && newWork.length > 0 && (
           <Banner kind="warn" title={t('invoices.draft.newWork', { n: newWork.length })} data-testid="draft-new-work">
             <span class="inv-new-work">{newWork.map((i) => i.description).join(', ')}</span>
@@ -136,7 +166,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
           </Banner>
         )}
         {editable
-          ? <LinesEditor lines={v.lines} onLines={(lines) => d.change({ ...v, lines })} docLang={docLang} errorLines={showErrors ? check.lines : []} onCatalog={() => setCatalog(true)} />
+          ? <LinesEditor lines={v.lines} onLines={(lines) => d.change({ ...v, lines })} docLang={docLang} errorLines={showErrors ? check.lines : []} onCatalog={() => setCatalog(true)} onRemoveWork={removeWork} />
           : <LinesView lines={v.lines} docLang={docLang} />}
         {editable && (
           <div class="stack">
@@ -231,6 +261,7 @@ function FinishedInvoice(p: { job: Job; inv: Invoice }) {
                 {t('invoices.panel.pay', { amount: money(a.balance, l) })}
               </Button>
               : <p class="muted small" style={{ margin: 0 }}>{t('invoices.panel.payNotYours')}</p>}
+            <ReopenButton inv={inv} job={job} block />
           </div>
         )}
         <div class="inv-actions">

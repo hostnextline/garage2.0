@@ -52,13 +52,17 @@ export interface LinesEditorProps {
   /** lines to point at (no description) */
   errorLines?: number[];
   onCatalog?: () => void;
+  /** a line of the job's work taken off the invoice: the work leaves the job too (gives back how to undo it), or null */
+  onRemoveWork?: (line: EditLine) => { undo: () => void } | null;
 }
 export function LinesEditor(p: LinesEditorProps) {
   const set = (i: number, patch: Partial<EditLine>) => p.onLines(p.lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const remove = (i: number) => {
     const before = p.lines;
+    const line = before[i];
+    const work = line?.item_id && p.onRemoveWork ? p.onRemoveWork(line) : null;
     p.onLines(before.filter((_, j) => j !== i));
-    toast(t('invoices.lines.removed'), { action: { label: t('invoices.lines.undo'), run: () => p.onLines(before) } });
+    toast(t(work ? 'invoices.lines.removedWork' : 'invoices.lines.removed'), { action: { label: t('invoices.lines.undo'), run: () => { work?.undo(); p.onLines(before); } } });
   };
   const add = (l: EditLine) => {
     p.onLines([...p.lines, l]);

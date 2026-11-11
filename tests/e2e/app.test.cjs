@@ -1423,6 +1423,10 @@ step('« Modifier le rendez-vous »: booked with the wrong customer → the righ
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + `#/job/${jobId}`);
+  // « Réservé par »: the team member who booked it, and when
+  const booker = h.sql(`select coalesce(s.short_name, '') from public.jobs j join public.staff s on s.id = j.created_by where j.id = '${jobId}'`);
+  assert.ok(booker, 'the appointment was booked by someone of the team');
+  assert.match(await page.getByTestId('job-booked-by').innerText({ timeout: 15000 }), new RegExp(`^${booker}, le .+ h \\d\\d$`));
   await page.getByTestId('job-edit').click();
   await page.getByTestId('job-edit-sheet').waitFor();
   await h.shot(page, 'e2e-job-edit');
@@ -1444,6 +1448,55 @@ step('« Modifier le rendez-vous »: booked with the wrong customer → the righ
   assert.notEqual(h.sql(`select coalesce(address, '') from public.customers where id = '${lina}'`), '500 rue Sherbrooke Est, Montréal', 'her file is not changed');
   assert.equal(h.sql(`select count(*) from public.jobs`), jobsBefore, 'nothing booked again');
   // the agenda's shortcut menu has it too
+  noErrors(page);
+  await ctx.close();
+});
+
+step('« Modifier la facture »: before the appointment, work taken off the job leaves the invoice; finished, it opens again with its number; a line taken off it leaves the job', async () => {
+  const jobId = h.sql(`select j.id from public.jobs j where j.status = 'booked' and j.deleted_at is null and j.coffre_id is null
+    and not exists (select 1 from public.invoices v where v.job_id = j.id and v.status <> 'void') order by j.day desc limit 1`);
+  assert.ok(jobId, 'a booked appointment without an invoice');
+  const brakes = h.sql(`insert into public.job_items (job_id, description, unit_cents, status, kind, sort) values ('${jobId}', 'Plaquettes avant e2e', 15000, 'planned', 'service', 99998) returning id`);
+  const wipers = h.sql(`insert into public.job_items (job_id, description, unit_cents, status, kind, sort) values ('${jobId}', 'Essuie-glaces e2e', 3000, 'planned', 'service', 99999) returning id`);
+  const lines = () => h.sql(`select coalesce(string_agg(x.l->>'description', ',' order by x.n), '') from public.invoices v, jsonb_array_elements(v.lines) with ordinality x(l, n)
+    where v.job_id = '${jobId}' and v.status <> 'void'`);
+  const invoice = () => h.sql(`select status || '|' || coalesce(number::text, '') from public.invoices where job_id = '${jobId}' and status <> 'void'`);
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/job/${jobId}`);
+  // the invoice made before the appointment
+  await page.getByTestId('invoice-make').click({ timeout: 20000 });
+  await page.getByTestId('lines-editor').waitFor({ timeout: 15000 });
+  assert.match(await until(lines, (v) => /Essuie-glaces/.test(v), 15000), /Plaquettes avant e2e,Essuie-glaces e2e$/);
+  // the wipers taken off the job's work: they leave the invoice by themselves (screen and server)
+  await page.getByTestId('job-item').filter({ hasText: 'Essuie-glaces e2e' }).locator('.jobs-item-main').click();
+  await page.getByTestId('item-remove').click();
+  await page.getByTestId('item-remove').click();
+  assert.doesNotMatch(await until(lines, (v) => !/Essuie-glaces/.test(v), 15000), /Essuie-glaces/);
+  await page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="line-desc"]')].some((i) => /Essuie-glaces/.test(i.value)), null, { timeout: 15000 });
+  // finished: it has its number
+  const counter = h.sql(`select next_value from public.counters where name = 'invoice'`);
+  await page.getByTestId('invoice-finish').click();
+  const [, number] = (await until(invoice, (v) => v.startsWith('issued|'), 15000)).split('|');
+  // the brakes on a finished invoice: their sheet says to open the invoice again, and does it
+  await page.getByTestId('job-item').filter({ hasText: 'Plaquettes avant e2e' }).locator('.jobs-item-main').click();
+  await page.getByTestId('item-locked').waitFor();
+  await h.shot(page, 'e2e-invoice-locked');
+  await page.getByTestId('item-locked').getByTestId('invoice-reopen').click();
+  await page.getByTestId('item-locked').getByTestId('invoice-reopen').click();
+  assert.equal(await until(invoice, (v) => v.startsWith('draft|'), 15000), `draft|${number}`, 'back to a draft, same number');
+  await dismissSheets(page);
+  await page.getByTestId('draft-reopened').waitFor({ timeout: 15000 });
+  // the brakes taken off the invoice (the last line): they leave the job too (« Pas fait »)
+  await page.getByTestId('line-remove').last().click();
+  assert.equal(await until(() => h.sql(`select status from public.job_items where id = '${brakes}'`), (v) => v === 'removed', 15000), 'removed');
+  assert.doesNotMatch(await until(lines, (v) => !/Plaquettes/.test(v), 15000), /Plaquettes/);
+  await h.shot(page, 'e2e-invoice-reopened');
+  // finished again: the same number, no number spent
+  await page.getByTestId('invoice-finish').click();
+  assert.equal(await until(invoice, (v) => v.startsWith('issued|'), 15000), `issued|${number}`);
+  assert.equal(h.sql(`select next_value from public.counters where name = 'invoice'`), String(Number(counter) + 1), 'one number for this invoice, not two');
+  assert.equal(h.sql(`select deleted_at is not null from public.job_items where id = '${wipers}'`), 't');
   noErrors(page);
   await ctx.close();
 });

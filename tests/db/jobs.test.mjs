@@ -190,6 +190,92 @@ test('Part 24 nonies: « Changer de client »: the appointment goes to the right
   assert.equal((await h.fails(() => h.rpc('job_customer', { p_op: uuid(), p_job: r.job_id, p_customer: g.customer, p_vehicle: null })))?.hint, 'started');
 }));
 
+test('Part 24 decies: « Modifier la facture »: the draft follows the work, a finished invoice reopens with its number, payments wait and come back', () => tx(async (h) => {
+  const g = await garage(h);
+  const jobId = await jobOnSite(h, g);
+  // what the test looks at, read as the database (the person's role comes back after)
+  const peek = async (sql, params = []) => {
+    const was = await h.val('select current_user');
+    await h.c.query('reset role');
+    try { return await h.val(sql, params); } finally { if (was === 'authenticated') await h.c.query('set local role authenticated'); }
+  };
+  const lines = async (inv) => (await peek(`select lines from public.invoices where id = $1`, [inv])).map((l) => [l.description, Number(l.unit_cents)]);
+  // the mechanic on site: a second part of the job, then the invoice
+  await h.as(g.mech);
+  const oil = await h.val(`select id from public.job_items where job_id = $1`, [jobId]);
+  const brakes = await h.val(`insert into public.job_items (job_id, description, unit_cents, status, kind, sort) values ($1, 'Plaquettes avant', 15000, 'planned', 'service', 99999) returning id`, [jobId]);
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true })).rows.invoices[0].id;
+  assert.deepEqual(await lines(inv), [['Vidange d’huile + changement de filtre', 7999], ['Plaquettes avant', 15000]]);
+  // a part of the job taken off: it leaves the draft by itself
+  await h.c.query(`update public.job_items set status = 'removed' where id = $1`, [brakes]);
+  assert.deepEqual(await lines(inv), [['Vidange d’huile + changement de filtre', 7999]]);
+  // a new price on the work goes on the draft; a price written on the invoice by hand stays when the work is only marked done
+  await h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 6999 });
+  assert.deepEqual(await lines(inv), [['Vidange d’huile + changement de filtre', 6999]]);
+  await h.c.query(`update public.invoices set lines = jsonb_set(lines, '{0,unit_cents}', '6500') where id = $1`, [inv]);
+  await h.c.query(`update public.job_items set status = 'done' where id = $1`, [oil]);
+  assert.deepEqual(await lines(inv), [['Vidange d’huile + changement de filtre', 6500]]);
+  // finished, 20 $ received
+  const n = (await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv })).number;
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 2000, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
+  // the work billed on a finished invoice does not change by itself: « Modifier la facture » first
+  assert.equal((await h.fails(() => h.c.query(`update public.job_items set status = 'removed' where id = $1`, [oil])))?.hint, 'invoice_done');
+  assert.equal((await h.fails(() => h.rpc('job_item_price', { p_op: uuid(), p_item: oil, p_unit_cents: 5000 })))?.hint, 'invoice_done');
+  await h.c.query(`update public.job_items set status = 'planned' where id = $1`, [oil]);  // done ⇄ planned bills the same: allowed
+  // a mechanic of another truck may not; the job's mechanic may
+  await h.as(null);
+  const other = await h.person('Autre Mécano', ['mechanic']);
+  await h.as(other);
+  assert.equal((await h.fails(() => h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })))?.hint, 'not_allowed');
+  await h.as(g.mech);
+  const counter = await peek(`select next_value from public.counters where name = 'invoice'`);
+  const r = await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv });
+  assert.deepEqual([r.ok, r.number], [true, n]);
+  const open = await h.one(`select status, number, paid_cents from public.invoices where id = $1`, [inv]);
+  assert.deepEqual([open.status, Number(open.number), open.paid_cents], ['draft', n, 0]);
+  assert.equal(await peek(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null`, [jobId]), 1, 'the 20 $ wait on the job');
+  // the brakes come back, then go again; under what was paid: refused
+  await h.c.query(`update public.job_items set status = 'planned' where id = $1`, [brakes]);
+  await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true });
+  assert.equal((await lines(inv)).length, 2);
+  await h.c.query(`update public.job_items set deleted_at = now() where id = $1`, [brakes]);
+  assert.deepEqual(await lines(inv), [['Vidange d’huile + changement de filtre', 6999]]);
+  await h.c.query(`update public.invoices set lines = jsonb_set(lines, '{0,unit_cents}', '1000') where id = $1`, [inv]);
+  const low = await h.fails(() => h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv }));
+  assert.equal(low?.hint, 'below_paid'); assert.match(low.message, /20,00 \$/);
+  await h.c.query(`update public.invoices set lines = jsonb_set(lines, '{0,unit_cents}', '6999') where id = $1`, [inv]);
+  // finished again: the same number, no number used, the 20 $ back on it
+  const again = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
+  assert.deepEqual([again.number, again.again], [n, true]);
+  assert.equal(await peek(`select next_value from public.counters where name = 'invoice'`), counter, 'no invoice number spent');
+  const back = await h.one(`select status, paid_cents from public.invoices where id = $1`, [inv]);
+  assert.deepEqual([back.status, back.paid_cents], ['issued', 2000]);
+  // reopened while the customer pays by card: the money is in, it waits on the job and comes back when finished
+  await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv });
+  await h.as(null); await h.c.query('reset role');
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 1000, p_method: 'card_online', p_reference: 'pi_1', p_job: null, p_session: 'cs_1' });
+  assert.equal(await h.val(`select invoice_id from public.payments where stripe_session = 'cs_1'`), null);
+  // a cash payment on a draft: still « finish it first »
+  await h.as(g.mech);
+  assert.equal((await h.fails(() => h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 500, p_method: 'cash', p_reference: null, p_job: null, p_session: null })))?.hint, 'invoice_first');
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
+  assert.equal(await peek(`select paid_cents from public.invoices where id = $1`, [inv]), 3000);
+  // the job over: no more; paid: no more
+  await h.as(null); await h.c.query('reset role');
+  await h.c.query(`update public.jobs set status = 'done' where id = $1`, [jobId]);
+  await h.as(g.mech);
+  assert.equal((await h.fails(() => h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })))?.hint, 'closed');
+  await h.as(null); await h.c.query('reset role');
+  await h.c.query(`update public.jobs set status = 'on_site' where id = $1`, [jobId]);
+  await h.as(g.mech);
+  const left = await peek(`select total_cents - paid_cents from public.invoices where id = $1`, [inv]);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: left, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
+  assert.equal((await h.fails(() => h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })))?.hint, 'paid');
+  await h.as(null); await h.c.query('reset role');
+  const note = await h.one(`select actor, data from public.activity where action = 'invoice_reopened' and entity_id = $1 limit 1`, [jobId]);
+  assert.deepEqual([note.actor, Number(note.data.number), note.data.paid, note.data.payments], [g.mech, n, 2000, 1]);
+}));
+
 test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);

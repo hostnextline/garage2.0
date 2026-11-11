@@ -119,6 +119,7 @@ export const invoices = {
     amount: 'Montant',
     remove: 'Retirer la ligne',
     removed: 'Ligne retirée',
+    removedWork: 'Retiré de la facture et de la job',
     undo: 'Annuler',
     addLine: 'Une ligne',
     addDiscount: 'Un rabais',
@@ -142,8 +143,8 @@ export const invoices = {
 
   panel: {
     title: 'Facture',
-    help: 'La facture part du travail de la job. Tant qu’elle est en brouillon, tu peux changer les lignes. « Terminer la facture » lui donne son numéro : elle ne change plus ensuite.',
-    helpIssued: 'Une facture terminée ne change plus. Encaisse-la ici, ou texte-la au client : sa page a le bouton « Payer » quand le paiement par carte est branché.',
+    help: 'La facture part du travail de la job : retirer du travail de la job le retire aussi de la facture. « Terminer la facture » lui donne son numéro. Tant qu’elle n’est pas payée et que la job n’est pas finie, « Modifier la facture » la rouvre.',
+    helpIssued: 'Encaisse-la ici, ou texte-la au client : sa page a le bouton « Payer » quand le paiement par carte est branché. Une erreur, du travail à retirer? « Modifier la facture » (tant qu’elle n’est pas payée et que la job n’est pas finie).',
     overTitle: 'Trop-perçu : {amount} à remettre au client',
     over: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Remets-lui la différence, puis inscris-la ici. Un remboursement fait dans Stripe s’inscrit tout seul.',
     overButton: 'Inscrire le remboursement',
@@ -170,7 +171,7 @@ export const invoices = {
   },
 
   draft: {
-    help: 'Change les lignes au besoin : tout s’enregistre tout seul. « Terminer la facture » lui donne son numéro, ensuite elle ne change plus.',
+    help: 'Change les lignes au besoin : tout s’enregistre tout seul. Retirer une ligne du travail de la job la retire aussi de la job. « Terminer la facture » lui donne son numéro.',
     readOnly: 'Brouillon : seul le mécano de la job ou le bureau peut le changer.',
     taxes: 'Taxes (TPS et TVQ)',
     taxesOffHint: 'Pas de taxes sur cette facture : seulement pour un client exempté.',
@@ -178,9 +179,9 @@ export const invoices = {
     notes: 'Note pour le client',
     notesHint: 'Elle paraît sur la facture.',
     finish: 'Terminer la facture ({total})',
-    finishHint: 'Elle reçoit son numéro et ne change plus. Ensuite : encaisser ou texter au client.',
-    paidAhead: 'Le client a déjà payé {amount} en ligne. Reste à payer\u00a0: {left}.',
-    paidAheadAll: 'Le client a déjà tout payé en ligne ({amount}). Termine la facture\u00a0: elle sera marquée PAYÉ.',
+    finishHint: 'Elle reçoit son numéro. Ensuite : encaisser ou texter au client.',
+    paidAhead: 'Le client a déjà payé {amount}. Reste à payer : {left}.',
+    paidAheadAll: 'Le client a déjà tout payé ({amount}). Termine la facture : elle sera marquée PAYÉ.',
     finished: 'Facture {n} terminée',
     newWork: { one: 'Du travail a été ajouté à la job', other: '{n} travaux ont été ajoutés à la job' },
     addNewWork: 'Ajouter à la facture',
@@ -194,6 +195,17 @@ export const invoices = {
       no_description: 'Une ligne n’a pas de description : écris ce qui a été fait.',
       negative: 'Le total est négatif : vérifie le rabais.'
     }
+  },
+
+  reopen: {
+    button: 'Modifier la facture',
+    confirm: 'Toucher encore pour la rouvrir',
+    done: 'Facture {n} rouverte : change ce qu’il faut, puis termine-la de nouveau.',
+    banner: 'Facture {n} en modification : elle garde son numéro. Termine-la de nouveau quand c’est prêt.',
+    finishedAgain: 'Facture {n} terminée de nouveau. Le client a reçu l’ancienne : renvoie-la par texto.',
+    finishedAgainQuiet: 'Facture {n} terminée de nouveau.',
+    item: 'La facture est terminée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
+    itemPaid: 'La facture est payée : cette ligne ne change plus.'
   },
 
   void: {

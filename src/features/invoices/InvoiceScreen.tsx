@@ -15,7 +15,7 @@ import { stamp as stampText } from '../../lib/dates';
 import { Page, Panel, Button, Banner, Empty, Skeleton, InvoicePill, Rows, RowItem, askText, run, toast } from '../../ui';
 import { invoiceById, paymentsOfInvoice, amountsOf, invoiceCustomer, invoiceWho, canEditInvoiceOf, canManageInvoices, methodWord, invoiceTexts } from './select';
 import { invoicePdfData, type PdfData } from './pdf';
-import { DraftInvoice, PaymentsList } from './InvoicePanel';
+import { DraftInvoice, PaymentsList, ReopenButton } from './InvoicePanel';
 import { PaySheet } from './PaySheet';
 import { sendText, SendSheet, type SendResult } from './send';
 import { usePdf } from './usePdf';
@@ -113,6 +113,7 @@ function DocScreen(p: { inv: Invoice }) {
                   {t('invoices.panel.pay', { amount: money(a.balance, l) })}
                 </Button>
               )}
+              {inv.status === 'issued' && <ReopenButton inv={inv} job={j} block variant="ghost" />}
               {inv.status !== 'void' && inv.job_id && (
                 <div class="inv-actions">
                   <Button icon={<Send />} onClick={() => send('invoice')} data-tour="invoice-send" data-testid="invoice-send">

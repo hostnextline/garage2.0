@@ -328,6 +328,8 @@ async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
       const row = (r.data as Row[] | null)?.[0];
       if (!row) throw Object.assign(new Error('Changement refusé : tu n’as pas (ou plus) accès à cette fiche'), { code: '42501' });
       applyServerRows(e.table as TableName, [row], true);
+      // the server makes the job's draft invoice follow its work (a line taken off, a new price): bring it at once
+      if (e.table === 'job_items') void pull('invoices');
       data = row;
     } else {
       const r = await withTimeout(client.rpc(e.rpc!, e.args!), 40000);
