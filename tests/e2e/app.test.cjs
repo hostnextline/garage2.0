@@ -1423,6 +1423,10 @@ step('« Modifier le rendez-vous »: booked with the wrong customer → the righ
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + `#/job/${jobId}`);
+  // « Réservé par »: the team member who booked it, and when
+  const booker = h.sql(`select coalesce(s.short_name, '') from public.jobs j join public.staff s on s.id = j.created_by where j.id = '${jobId}'`);
+  assert.ok(booker, 'the appointment was booked by someone of the team');
+  assert.match(await page.getByTestId('job-booked-by').innerText({ timeout: 15000 }), new RegExp(`^${booker}, le .+ h \\d\\d$`));
   await page.getByTestId('job-edit').click();
   await page.getByTestId('job-edit-sheet').waitFor();
   await h.shot(page, 'e2e-job-edit');

@@ -8,7 +8,7 @@ import { t, lang } from '../../lib/i18n';
 import { e164, formatPhone } from '../../lib/text';
 import { duration, stamp, clock } from '../../lib/dates';
 import { money } from '../../lib/money';
-import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals, blockLoad } from '../../data/select';
+import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals, blockLoad, staffName } from '../../data/select';
 import { freeWords } from '../agenda/layout';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
@@ -17,6 +17,7 @@ import { VehiclePicker } from '../customers/VehiclePicker';
 import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
 import type { NextStep } from './nextStep';
+import { bookedBy } from './bookedBy';
 import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, type JobRights } from './select';
 import { stopFirst } from './StopOrderSheet';
 import { sendText, sendTracking, trackingSent, doBack, doCancel, doNoShow, doReopen } from './flow';
@@ -261,6 +262,7 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
   const { job: j, rights } = p;
   const l = lang.value;
   const booked = j.status === 'booked';
+  const byWho = bookedBy(j, staffName(j.created_by), l);
   const stop = j.stop_order != null && !['cancelled', 'no_show'].includes(j.status)
     ? (j.eta_min != null && booked ? t('jobs.moment.stopValue', { n: j.stop_order, time: clock(j.eta_min, l) }) : String(j.stop_order)) : null;
   return (
@@ -274,7 +276,8 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
           [t('jobs.moment.duration'), booked && rights.duration ? null : duration(j.duration_min, l)],
           [t('jobs.moment.left'), clockOf(j.started_at) || null],
           [t('jobs.moment.arrived'), clockOf(j.arrived_at) || null],
-          [t('jobs.moment.finished'), clockOf(j.finished_at) || null]
+          [t('jobs.moment.finished'), clockOf(j.finished_at) || null],
+          [t('jobs.moment.booked'), byWho ? <span data-testid="job-booked-by">{byWho}</span> : null]
         ]} />
         {booked && rights.duration && <DurationEditor job={j} />}
         {booked && (rights.move || (rights.order && !!j.truck_id)) && (
