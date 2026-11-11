@@ -276,6 +276,51 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   assert.deepEqual([note.actor, Number(note.data.number), note.data.paid, note.data.payments], [g.mech, n, 2000, 1]);
 }));
 
+test('Part 24 undecies: « Historique du véhicule »: every visit of a VIN, whoever owned the car; never the other owner’s name', () => tx(async (h) => {
+  const g = await garage(h);
+  const VIN = '1HGCM82633A004352';
+  await h.as(null); await h.c.query('reset role');
+  // Jean had the car (and booked it twice: one done, one cancelled); Marie bought it and entered the same VIN
+  const marie = await h.customer('Marie', 45.52, -73.62, { last: 'Nouvelle', phone: '5145559876' });
+  const jeanCar = await h.val(`insert into public.vehicles (customer_id, year, make, model, vin) values ($1, 2003, 'Honda', 'Accord', $2) returning id`, [g.customer, VIN]);
+  const marieCar = await h.val(`insert into public.vehicles (customer_id, year, make, model, vin) values ($1, 2003, 'Honda', 'Accord', $2) returning id`, [marie, VIN]);
+  await h.as(g.owner);
+  const book = async (customer, car, what) => (await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: customer, vehicle_id: car, day: g.day, block: 'am', duration_min: 60 },
+    p_items: [{ description: what, unit_cents: 12000, duration_min: 30 }] })).job_id;
+  const done = await book(g.customer, jeanCar, 'Freins avant');
+  const cancelled = await book(g.customer, jeanCar, 'Pneus d’hiver');
+  const coming = await book(marie, marieCar, 'Vidange');
+  const family = await book(g.customer, jeanCar, 'Batterie');
+  await h.as(null); await h.c.query('reset role');
+  await h.c.query(`update public.jobs set status = 'done', day = day - 30 where id = $1`, [done]);
+  await h.c.query(`update public.jobs set status = 'cancelled' where id = $1`, [cancelled]);
+  const coffre = await h.val(`insert into public.coffre (kind, amount_cents, received_on) values ('received', 5000, public.local_today()) returning id`);
+  await h.c.query(`update public.jobs set coffre_id = $2 where id = $1`, [family, coffre]);
+  // the owner, from Marie's file: Jean's visit is « another owner », hers is here; the cancelled one is not a visit
+  await h.as(g.owner);
+  const r = await h.rpc('vin_history', { p_vin: ' 1hgcm82633a004352 ', p_customer: marie });
+  assert.equal(r.vin, VIN, 'spaces and small letters do not matter');
+  const byJob = Object.fromEntries(r.visits.map((x) => [x.job_id, x]));
+  assert.ok(!byJob[cancelled], 'a cancelled appointment is not a visit');
+  assert.deepEqual([byJob[done].here, byJob[done].work, byJob[done].status], [false, ['Freins avant'], 'done']);
+  assert.deepEqual([byJob[coming].here, byJob[coming].work], [true, ['Vidange']]);
+  assert.equal(r.visits[0].job_id, coming, 'the newest first');
+  assert.ok(byJob[family], 'the owner sees a visit paid by the Coffre');
+  // a mechanic of another truck: the visits (what was done on the car), not the jobs themselves; never Jean's name or phone
+  await h.as(null);
+  const other = await h.person('Autre Mécano', ['mechanic']);
+  await h.as(other);
+  const m = await h.rpc('vin_history', { p_vin: VIN, p_customer: null });
+  assert.ok(m.visits.length >= 2);
+  assert.ok(m.visits.every((x) => x.open === false), 'he may not open jobs that are not his');
+  assert.ok(!m.visits.some((x) => x.job_id === family), 'the Coffre stays the owner’s');
+  assert.doesNotMatch(JSON.stringify(m), /Jean|Tremblay|5145551234|Marie|Nouvelle|12000/, 'no name, phone or price');
+  // a VIN that is not 17 characters: nothing; someone not of the team: refused
+  assert.deepEqual((await h.rpc('vin_history', { p_vin: '1HGCM826', p_customer: null })).visits, []);
+  await h.as(null);
+  assert.equal((await h.fails(() => h.rpc('vin_history', { p_vin: VIN, p_customer: null })))?.hint, 'not_allowed');
+}));
+
 test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);

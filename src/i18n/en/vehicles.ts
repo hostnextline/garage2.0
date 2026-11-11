@@ -161,5 +161,21 @@ export const vehicles: typeof fr = {
       parts: 'Parts',
       notes: 'Notes'
     }
+  },
+  vinHistory: {
+    title: 'Vehicle history',
+    sub: 'By the VIN: every visit we made on this car, even with another owner.',
+    job: 'job {n}',
+    noWork: 'work not written down',
+    coming: 'Coming',
+    now: 'Under way',
+    otherOwner: 'Another owner',
+    otherOwnerNote: 'Some of these visits were with another owner.',
+    seen: { one: 'Already came to us: 1 visit', other: 'Already came to us: {n} visits' },
+    last: 'The last one: {day} ({work}).',
+    see: 'See the history',
+    none: 'No visit for this VIN.',
+    offline: 'No signal: only this customer’s visits.',
+    noVin: 'Add the VIN to also see visits with another owner.'
   }
 };

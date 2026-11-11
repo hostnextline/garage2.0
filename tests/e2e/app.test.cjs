@@ -1500,3 +1500,38 @@ step('« Modifier la facture »: before the appointment, work taken off the job 
   noErrors(page);
   await ctx.close();
 });
+
+step('« Historique du véhicule »: Lina bought Julie’s Accord; its VIN typed in Lina’s file says it already came, with the work; the car’s screen lists every visit', async () => {
+  const VIN = '1HGCM82633A004352';
+  const accord = h.sql(`select id from public.vehicles where customer_id = '${julie}' and vin = '${VIN}'`);
+  assert.ok(accord, 'Julie’s Accord, read by its VIN in an earlier step');
+  // Julie's finished job was on that car
+  h.sql(`update public.jobs set vehicle_id = '${accord}' where id = '${jobId}'`);
+  const number = h.sql(`select number from public.jobs where id = '${jobId}'`);
+  const lina = h.sql(`select id from public.customers where phone_digits = '5145550123' and deleted_at is null order by created_at desc limit 1`);
+  assert.ok(lina, 'Lina (Nouveau client step)');
+  const { page, ctx } = await h.openW({ kind: 'phone' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/customer/${lina}`);
+  await page.getByTestId('car-add').click({ timeout: 20000 });
+  await page.getByTestId('vehicle-add-mode').getByRole('button', { name: 'NIV' }).click();
+  await page.getByTestId('vin-input').fill(VIN);
+  const seen = page.getByTestId('vin-seen');
+  await seen.waitFor({ timeout: 15000 });
+  assert.match(await seen.innerText(), /Déjà venu chez nous/);
+  await h.shot(page, 'e2e-vin-seen');
+  await page.getByTestId('vin-seen-open').click();
+  const visit = page.getByTestId('vin-history-sheet').getByTestId('vin-visit').filter({ hasText: `job ${number}` });
+  await visit.waitFor({ timeout: 10000 });
+  assert.match(await visit.innerText(), /Autre propriétaire/, 'it was Julie’s car then');
+  assert.doesNotMatch(await page.getByTestId('vin-history-sheet').innerText(), /Julie|Tremblay/, 'never the other owner’s name');
+  await dismissSheets(page);
+  // the car's own file: the same visit, Julie's own (no « autre propriétaire » there)
+  await page.goto(h.APP + `#/vehicle/${accord}`);
+  const mine = page.getByTestId('vehicle-history').getByTestId('vin-visit').filter({ hasText: `job ${number}` });
+  await mine.waitFor({ timeout: 15000 });
+  assert.doesNotMatch(await mine.innerText(), /Autre propriétaire/);
+  await h.shot(page, 'e2e-vin-history');
+  noErrors(page);
+  await ctx.close();
+});
