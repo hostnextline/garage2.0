@@ -272,7 +272,7 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: left, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
   assert.equal((await h.fails(() => h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })))?.hint, 'paid');
   await h.as(null); await h.c.query('reset role');
-  const note = await h.one(`select actor, data from public.activity where action = 'invoice_reopened' and entity_id = $1 order by created_at limit 1`, [jobId]);
+  const note = await h.one(`select actor, data from public.activity where action = 'invoice_reopened' and entity_id = $1 limit 1`, [jobId]);
   assert.deepEqual([note.actor, Number(note.data.number), note.data.paid, note.data.payments], [g.mech, n, 2000, 1]);
 }));
 
