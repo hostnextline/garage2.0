@@ -42,7 +42,7 @@ test('backup at night, a mistake in the day, the restore brings back what was lo
   const beats = Object.fromEntries((await q(`select name, at, note from public.heartbeats`)).map((r) => [r.name, r]));
   assert.ok(beats.backup_started && beats.backup_done, 'backup_started and backup_done: ' + JSON.stringify(Object.keys(beats)));
   assert.ok(Date.now() - new Date(beats.backup_done.at).getTime() < 120000, 'just now');
-  assert.match(beats.backup_done.note, /stripe_events$/, 'the last table');
+  assert.match(beats.backup_done.note, /hermes_questions$/, 'the last table (the last of TABLES in the backup function)');
   const health = (await fetch(`${env.FONCTION.replace('/functions/v1/backup', '')}/rest/v1/rpc/health`, { headers: { apikey: K.anon, authorization: `Bearer ${K.anon}` } }));
   const hv = await health.json();
   assert.equal(health.status, 200, JSON.stringify(hv));
