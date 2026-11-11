@@ -373,7 +373,7 @@ export const jobs = {
     save: 'Enregistrer le prix',
     done: 'Prix changé : {price}.',
     doneResend: 'Prix changé : {price}. Le client a déjà reçu son estimation : renvoie-la (⋯, « Renvoyer le texto de confirmation »).',
-    locked: 'La facture est terminée : pour changer un prix, annule-la d’abord.'
+    locked: 'La facture est terminée : pour changer un prix, touche « Modifier la facture ».'
   },
   parts: {
     title: 'Pièces utilisées',

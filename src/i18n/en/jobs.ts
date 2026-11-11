@@ -356,7 +356,7 @@ export const jobs: typeof fr = {
     save: 'Save the price',
     done: 'Price changed: {price}.',
     doneResend: 'Price changed: {price}. The customer already got the estimate: send it again (⋯, “Send the confirmation text again”).',
-    locked: 'The invoice is finished: to change a price, cancel it first.'
+    locked: 'The invoice is finished: to change a price, tap “Change the invoice”.'
   },
   parts: {
     title: 'Parts used',

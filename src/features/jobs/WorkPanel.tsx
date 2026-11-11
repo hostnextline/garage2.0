@@ -20,6 +20,7 @@ import { hasEnoughInk, type Stroke } from './signature';
 import { answerBySignature, answerByVoice, sendText } from './flow';
 import { customerLang } from './WaiverSheet';
 import type { JobRights } from './select';
+import { ReopenButton } from '../invoices/InvoicePanel';
 
 const OPEN_STATUSES = ['booked', 'en_route', 'on_site'];
 const lineCents = (i: Pick<JobItem, 'qty' | 'unit_cents' | 'kind'>) => (i.kind === 'discount' ? -1 : 1) * lineTotal({ qty: Number(i.qty), unitCents: Math.abs(i.unit_cents) });
@@ -92,6 +93,9 @@ export function WorkPanel(p: WorkPanelProps) {
 export function ItemSheet(p: { job: Job; item: JobItem | undefined; rights: JobRights; onClose: () => void; onAnswer: (id: string) => void }) {
   const i = p.item;
   if (!i) return null;
+  const inv = invoiceOf(p.job.id);
+  // on a finished invoice, the work it bills changes only once it is opened again (« Modifier la facture »)
+  const billed = !!inv && (inv.status === 'issued' || inv.status === 'paid') && (inv.lines || []).some((l) => l.item_id === i.id);
   const canEdit = p.rights.act && OPEN_STATUSES.includes(p.job.status);
   const onSite = p.job.status === 'on_site';
   const set = (status: ItemStatus) => async () => { if (await attempt(() => updateItem(i.id, { status }), { ok: t('jobs.work.changed') })) p.onClose(); };
@@ -105,15 +109,20 @@ export function ItemSheet(p: { job: Job; item: JobItem | undefined; rights: JobR
           [t('common.qty'), Number(i.qty) !== 1 ? t('jobs.work.qty', { qty: Number(i.qty).toLocaleString(l === 'en' ? 'en-CA' : 'fr-CA'), price: money(Math.abs(i.unit_cents), l) }) : null],
           [t('jobs.work.why'), i.note]
         ]} />
-        <PriceEdit job={p.job} item={i} />
+        {billed && OPEN_STATUSES.includes(p.job.status) ? (
+          <div class="stack" data-testid="item-locked">
+            <p class="small muted" style={{ margin: 0 }}>{t(inv!.status === 'paid' ? 'invoices.reopen.itemPaid' : 'invoices.reopen.item')}</p>
+            <ReopenButton inv={inv!} job={p.job} block />
+          </div>
+        ) : <PriceEdit job={p.job} item={i} />}
         {canEdit && (
           <div class="stack">
             {/* on site: what was done, or not (not billed); before that, the plan only changes */}
             {onSite && i.status === 'planned' && <Button variant="primary" block icon={<Check />} onClick={set('done')}>{t('jobs.work.setDone')}</Button>}
             {onSite && i.status === 'done' && <Button block onClick={set('planned')}>{t('jobs.work.setPlanned')}</Button>}
-            {onSite && (i.status === 'planned' || i.status === 'done' || i.status === 'approved') && <Button block variant="danger" icon={<Minus />} onClick={set('removed')}>{t('jobs.work.setRemoved')}</Button>}
+            {onSite && !billed && (i.status === 'planned' || i.status === 'done' || i.status === 'approved') && <Button block variant="danger" icon={<Minus />} onClick={set('removed')} data-testid="item-not-done">{t('jobs.work.setRemoved')}</Button>}
             {i.status === 'removed' && <Button block onClick={set('planned')}>{t('jobs.work.setBack')}</Button>}
-            {!onSite && (i.status === 'planned' || i.status === 'approved') && (
+            {!onSite && !billed && (i.status === 'planned' || i.status === 'approved') && (
               <Button block variant="danger" icon={<X />} confirm={t('jobs.work.removeConfirm')}
                 onClick={async () => { if (await attempt(() => removeItem(i.id), { ok: t('jobs.work.removedFromJob') })) p.onClose(); }} data-testid="item-remove">{t('jobs.work.removeFromJob')}</Button>
             )}
