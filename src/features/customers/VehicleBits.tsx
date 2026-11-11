@@ -13,6 +13,7 @@ import { engineLine, vinFromCode } from './vehicleText';
 import { barcodeReader, hasCamera, readVinPhoto, type VinReading } from './vinScan';
 import { CarPicker } from './CarPicker';
 import './customers.css';
+import { VinSeen } from './VinHistory';
 
 /* ---------- reading a VIN on the server ---------- */
 export type CarFields = Pick<Vehicle, 'year' | 'make' | 'model' | 'trim' | 'engine' | 'displacement' | 'cylinders' | 'fuel' | 'drive'>;
@@ -58,7 +59,7 @@ export function vinState(vin: string): 'empty' | 'short' | 'ok' | 'bad' | 'old' 
 /** a VIN the database takes: none, or 11 to 17 letters and digits (never I, O, Q) */
 export const vinSavable = (vin: string) => !vin || (vin.length >= 11 && vin.length <= 17);
 
-export function VinField(p: { value: string; onValue: (v: string) => void; onDecoded?: (car: Partial<CarFields>) => void; autoFocus?: boolean; error?: string | null }) {
+export function VinField(p: { value: string; onValue: (v: string) => void; onDecoded?: (car: Partial<CarFields>) => void; autoFocus?: boolean; error?: string | null; customerId?: string | null }) {
   const [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'warn' | 'bad'; text: string } | null>(null);
@@ -93,6 +94,8 @@ export function VinField(p: { value: string; onValue: (v: string) => void; onDec
         <Button icon={<CarFront size={18} />} disabled={v.length !== 17} busy={busy} onClick={() => decode()} data-testid="vin-decode">{t('vehicles.vin.read')}</Button>
       )}
       {msg && <Banner kind={msg.kind}>{msg.text}</Banner>}
+      {/* a car we already worked on (any owner): its visits, by the VIN */}
+      {v.length === 17 && <VinSeen vin={v} customerId={p.customerId} />}
       {scan && <VinScanSheet onClose={() => setScan(false)} onVin={(vin) => { setScan(false); set(vin); if (p.onDecoded) void decode(vin); }} />}
     </div>
   );
@@ -270,7 +273,7 @@ export function carRow(d: AddDraft, customerId: string): Partial<Vehicle> {
 /** the car's fields: year → make → model from the lists, or the VIN (typed or scanned).
     `onPatch` merges into the latest draft (the parent's setState with a function): the VIN's decoding arrives a moment after
     the VIN itself, and must not put back the draft as it was before */
-export function CarForm(p: { value: AddDraft; onPatch: (patch: Partial<AddDraft>) => void; mode: AddMode; onMode: (m: AddMode) => void; tried: boolean; autoFocusVin?: boolean }) {
+export function CarForm(p: { value: AddDraft; onPatch: (patch: Partial<AddDraft>) => void; mode: AddMode; onMode: (m: AddMode) => void; tried: boolean; autoFocusVin?: boolean; customerId?: string | null }) {
   const d = p.value;
   const set = p.onPatch;
   const e = carErrors(d, p.mode);
@@ -279,7 +282,7 @@ export function CarForm(p: { value: AddDraft; onPatch: (patch: Partial<AddDraft>
       <Seg value={p.mode} onValue={p.onMode} label={t('vehicles.add.how')} class="customers-seg" data-testid="vehicle-add-mode"
         options={[{ value: 'ymm', label: t('vehicles.add.byModel') }, { value: 'vin', label: t('vehicles.add.byVin') }]} />
       {p.mode === 'vin' && (
-        <VinField value={d.vin} onValue={(vin) => set({ vin })} autoFocus={p.autoFocusVin} error={p.tried ? e.vin : null}
+        <VinField value={d.vin} onValue={(vin) => set({ vin })} autoFocus={p.autoFocusVin} error={p.tried ? e.vin : null} customerId={p.customerId}
           onDecoded={(car) => set({ ...(car.year ? { year: String(car.year) } : {}), ...(car.make ? { make: car.make } : {}), ...(car.model ? { model: car.model } : {}), extra: car })} />
       )}
       {(p.mode === 'ymm' || d.make || d.model) && (
@@ -308,7 +311,7 @@ export function VehicleAddSheet(p: { customerId: string; onClose: () => void; on
         <Button onClick={p.onClose}>{t('common.cancel')}</Button>
         <Button variant="primary" onClick={add} data-testid="vehicle-add-ok">{t('vehicles.add.ok')}</Button>
       </>}>
-      <CarForm value={d} onPatch={(patch) => setD((x) => ({ ...x, ...patch }))} mode={mode} onMode={setMode} tried={tried} autoFocusVin />
+      <CarForm value={d} onPatch={(patch) => setD((x) => ({ ...x, ...patch }))} mode={mode} onMode={setMode} tried={tried} autoFocusVin customerId={p.customerId} />
     </Sheet>
   );
 }

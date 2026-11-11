@@ -77,7 +77,7 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `notify`, `book` at `408de6c`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `9835d52`; `backup` at `b87b956`; `hermes` at `8db1695`;
+  `notify`, `book` at `408de6c`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
   the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
@@ -199,6 +199,9 @@ end $do$;
   screen, and the line sheet of billed work: `item-locked`); the draft shows `draft-reopened`; removing a line of the job's work in
   the invoice editor marks that work « Pas fait » (`onRemoveWork`, undo puts it back); after a `job_items` change is sent the phone
   pulls `invoices` (`sync.ts`), so the draft on screen follows even without realtime.
+- Stripe test keys are refused on live (`team` `secrets-set`, since 2026-11-11): the app has one database, so a test card payment
+  would mark a real invoice PAID and an online payment cannot be removed (`payment_remove` refuses `card_online`). A test copy of
+  the server allows them with a `secrets` row `stripe_test_ok = 'on'` (the API tests insert it; never on live).
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,

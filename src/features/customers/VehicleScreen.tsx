@@ -19,6 +19,7 @@ import { jobOrder } from './facts';
 import { SpecPanel } from './SpecPanel';
 import { VinField, VinScanSheet, canScan, readVin, vinSavable, yearOk, type CarFields } from './VehicleBits';
 import { CarPicker } from './CarPicker';
+import { useVinHistory, VinVisits } from './VinHistory';
 import { specKeyOf } from './engineRef';
 import { km, parseKm, engineLine, sampleNumber } from './vehicleText';
 import { Plate, carName } from './bits';
@@ -38,6 +39,8 @@ export default function VehicleScreen({ params }: ScreenProps) {
   const [scanning, setScanning] = useState(false);
   const gone = useRef(false);
   const v = vehicle(params.id);
+  // (asked before any early return: the same hooks on every render)
+  const byVin = useVinHistory(v?.vin, v?.customer_id ?? null);
   if (!v) {
     if (gone.current) return null;
     return (
@@ -86,9 +89,20 @@ export default function VehicleScreen({ params }: ScreenProps) {
           <SpecPanel v={v} canEdit={canEdit} />
         </div>
         <div class="customers-main">
-          <Panel title={t('vehicles.screen.history')} sub={jobs.length ? t('customers.jobs.count', { n: jobs.length }) : undefined} data-testid="vehicle-history">
-            {jobs.length ? <div class="stack">{jobs.map((j) => <JobTicket key={j.id} job={j} showDay />)}</div> : <p class="muted" style={{ margin: 0 }}>{t('vehicles.screen.historyNone')}</p>}
-          </Panel>
+          {byVin.state === 'ok' ? (
+            /* the car's own file: every visit of this VIN, whoever owned it then */
+            <Panel title={t('vehicles.vinHistory.title')} sub={t('vehicles.vinHistory.sub')} data-testid="vehicle-history">
+              {byVin.visits.length ? <VinVisits visits={byVin.visits} owners /> : <p class="muted" style={{ margin: 0 }}>{t('vehicles.vinHistory.none')}</p>}
+            </Panel>
+          ) : (
+            <Panel title={t('vehicles.screen.history')} sub={jobs.length ? t('customers.jobs.count', { n: jobs.length }) : undefined} data-testid="vehicle-history">
+              <div class="stack">
+                {jobs.length ? <div class="stack">{jobs.map((j) => <JobTicket key={j.id} job={j} showDay />)}</div> : <p class="muted" style={{ margin: 0 }}>{t('vehicles.screen.historyNone')}</p>}
+                {byVin.state === 'none' && <p class="small muted" style={{ margin: 0 }}>{t('vehicles.vinHistory.noVin')}</p>}
+                {byVin.state === 'error' && <p class="small muted" style={{ margin: 0 }}>{t('vehicles.vinHistory.offline')}</p>}
+              </div>
+            </Panel>
+          )}
         </div>
       </div>
       {scanning && <VinScanSheet onClose={() => setScanning(false)} onVin={(vin) => void scanned(vin)} />}
@@ -169,7 +183,7 @@ function VehicleEditSheet(p: { v: Vehicle; onClose: () => void; onRemoved: () =>
       </>}>
       <div class="stack-lg">
         {tried && bad && <Banner kind="bad">{t('customers.form.fix')}</Banner>}
-        <VinField value={d.vin} onValue={(vin) => set({ vin })} onDecoded={decoded} error={err('vin')} />
+        <VinField value={d.vin} onValue={(vin) => set({ vin })} onDecoded={decoded} error={err('vin')} customerId={p.v.customer_id} />
         <section class="stack">
           <h3 class="divider-title">{t('vehicles.screen.groupCar')}</h3>
           <CarPicker value={{ year: d.year, make: d.make, model: d.model }} onValue={(c) => set({ year: c.year, make: c.make, model: c.model, ...(c.engine ? { engine: c.engine.engine, displacement: c.engine.displacement ? c.engine.displacement.toFixed(1) : d.displacement, cylinders: c.engine.cylinders ? String(c.engine.cylinders) : d.cylinders, fuel: c.engine.fuel || d.fuel } : {}) })} testid="ve" errors={{ year: err('year') }} />

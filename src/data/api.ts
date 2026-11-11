@@ -109,6 +109,13 @@ export async function saveSignature(jobId: string, dataUrl: string, signer: stri
   return jobStep(jobId, 'waiver', { signer, version, attachment_id: att.id });
 }
 
+/* ---------- « Historique du véhicule »: every visit of a car by its VIN, whoever owned it (needs the network) ---------- */
+export interface VinVisit { job_id: string; number: number; day: string; status: string; here: boolean; open: boolean; work: string[] }
+export async function vinHistory(vin: string, customerId: string | null = null): Promise<VinVisit[]> {
+  const r = await callRpc<{ vin: string; visits: VinVisit[] }>('vin_history', { p_vin: vin, p_customer: customerId }, { noOp: true });
+  return r.data?.visits || [];
+}
+
 /* ---------- invoices and payments ---------- */
 export async function invoiceForJob(jobId: string, refresh = true) { guard(); return callRpc('invoice_for_job', { p_job: jobId, p_refresh: refresh }, { label: t('log.invoice') }); }
 export async function saveInvoiceDraft(id: string, patch: { lines?: InvoiceLine[]; taxes_on?: boolean; notes?: string | null }) { guard(); await updateRow('invoices', id, patch); }

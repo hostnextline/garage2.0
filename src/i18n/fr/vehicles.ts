@@ -161,5 +161,21 @@ export const vehicles = {
       parts: 'Pièces',
       notes: 'Notes'
     }
+  },
+  vinHistory: {
+    title: 'Historique du véhicule',
+    sub: 'Par le NIV : toutes nos visites sur cette voiture, même avec un autre propriétaire.',
+    job: 'job {n}',
+    noWork: 'travail non noté',
+    coming: 'À venir',
+    now: 'En cours',
+    otherOwner: 'Autre propriétaire',
+    otherOwnerNote: 'Une partie de ces visites était avec un autre propriétaire.',
+    seen: { one: 'Déjà venu chez nous : 1 visite', other: 'Déjà venu chez nous : {n} visites' },
+    last: 'La dernière : le {day} ({work}).',
+    see: 'Voir l’historique',
+    none: 'Aucune visite pour ce NIV.',
+    offline: 'Pas de réseau : seulement les visites de ce client.',
+    noVin: 'Ajoute le NIV pour voir aussi les visites avec un autre propriétaire.'
   }
 };
