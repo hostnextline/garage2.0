@@ -285,12 +285,12 @@ test('Part 24 undecies: « Historique du véhicule »: every visit of a VIN, who
   const jeanCar = await h.val(`insert into public.vehicles (customer_id, year, make, model, vin) values ($1, 2003, 'Honda', 'Accord', $2) returning id`, [g.customer, VIN]);
   const marieCar = await h.val(`insert into public.vehicles (customer_id, year, make, model, vin) values ($1, 2003, 'Honda', 'Accord', $2) returning id`, [marie, VIN]);
   await h.as(g.owner);
-  const book = async (customer, car, what) => (await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: customer, vehicle_id: car, day: g.day, block: 'am', duration_min: 60 },
+  const book = async (customer, car, what, block) => (await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: customer, vehicle_id: car, day: g.day, block, duration_min: 30 },
     p_items: [{ description: what, unit_cents: 12000, duration_min: 30 }] })).job_id;
-  const done = await book(g.customer, jeanCar, 'Freins avant');
-  const cancelled = await book(g.customer, jeanCar, 'Pneus d’hiver');
-  const coming = await book(marie, marieCar, 'Vidange');
-  const family = await book(g.customer, jeanCar, 'Batterie');
+  const done = await book(g.customer, jeanCar, 'Freins avant', 'am');
+  const cancelled = await book(g.customer, jeanCar, 'Pneus d’hiver', 'pm');
+  const coming = await book(marie, marieCar, 'Vidange', 'eve');
+  const family = await book(g.customer, jeanCar, 'Batterie', 'pm');
   await h.as(null); await h.c.query('reset role');
   await h.c.query(`update public.jobs set status = 'done', day = day - 30 where id = $1`, [done]);
   await h.c.query(`update public.jobs set status = 'cancelled' where id = $1`, [cancelled]);
