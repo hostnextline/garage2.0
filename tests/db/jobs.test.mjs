@@ -197,7 +197,7 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   // the mechanic on site: a second part of the job, then the invoice
   await h.as(g.mech);
   const oil = await h.val(`select id from public.job_items where job_id = $1`, [jobId]);
-  const brakes = await h.val(`insert into public.job_items (job_id, description, unit_cents, status, kind) values ($1, 'Plaquettes avant', 15000, 'planned', 'service') returning id`, [jobId]);
+  const brakes = await h.val(`insert into public.job_items (job_id, description, unit_cents, status, kind, sort) values ($1, 'Plaquettes avant', 15000, 'planned', 'service', 99999) returning id`, [jobId]);
   const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true })).rows.invoices[0].id;
   assert.deepEqual(await lines(inv), [['Vidange d’huile + changement de filtre', 7999], ['Plaquettes avant', 15000]]);
   // a part of the job taken off: it leaves the draft by itself
