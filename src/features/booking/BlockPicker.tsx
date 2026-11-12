@@ -1,7 +1,7 @@
 /* Choose the day and block: the best suggestions near the address first (they need the network), then a two-week
    calendar coloured by the room left (works with the copy on the phone). Shared: booking, moving a job. */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon, Car, Truck } from 'lucide-preact';
+import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon, Car, Truck, ListOrdered } from 'lucide-preact';
 import { today as todayOf, addDays, daysBetween, tinyDay, longDay, duration, clockRange, isValidDay, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { blocks, blockLoad, settings, job as jobRow, activeTrucks } from '../../data/select';
@@ -11,6 +11,8 @@ import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
 import { cellState, type CellState } from './logic';
 import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
+import { stopRank } from './preview';
+import { fromDevice } from '../map/device';
 import { blockPhrase, blockPhraseWithHours, spanEnds } from './when';
 import './booking.css';
 
@@ -51,6 +53,14 @@ export function BlockPicker(p: BlockPickerProps) {
 
   /* ---------- suggestions (server) ---------- */
   const [sugg, setSugg] = useState<SuggState>({ status: 'loading', list: [] });
+  /* which stop of its route the appointment would be at each moment offered (the phone's copy of the day, the same
+     estimate as « Voir sur la carte ») */
+  const ranks = useMemo(() => sugg.list.map((s) => {
+    if (p.lat == null || p.lng == null) return null;
+    const day = fromDevice(s.day);
+    const base = p.excludeJob ? { ...day, jobs: day.jobs.filter((j) => j.id !== p.excludeJob) } : day;
+    return stopRank(base, { day: s.day, block: s.block, truckId: s.truck, lat: p.lat, lng: p.lng, name: '', address: '' });
+  }), [sugg.list, p.lat, p.lng, p.excludeJob]);
   const [retry, setRetry] = useState(0);
   const online = net.value.online;
   useEffect(() => {
@@ -203,6 +213,7 @@ export function BlockPicker(p: BlockPickerProps) {
                 s.left != null && s.left > 0 ? t('booking.picker.free', { d: duration(s.left, l) }) : ''
               ].filter(Boolean);
               if (bits[0]) bits[0] = bits[0].charAt(0).toUpperCase() + bits[0].slice(1);
+              const rank = ranks[i];
               return (
                 <button key={keyOf(s.day, s.block)} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => pick(s.day, s.block)} {...menuProps(s.day, s.block)} data-testid="bp-sugg">
                   <span class="bp-sugg-main">
@@ -211,6 +222,7 @@ export function BlockPicker(p: BlockPickerProps) {
                     <span class="bp-sugg-title">{phrase(s.day, s.block)}</span>
                     {/* said clearly: this moment is the car's, or the truck's (never a vehicle's or a mechanic's name) */}
                     {bothKinds && s.truck && <span class={`bp-kind-tag is-${kindOf(s.truck)}`} data-testid="bp-sugg-kind">{kindOf(s.truck) === 'car' ? <Car size={16} aria-hidden="true" /> : <Truck size={16} aria-hidden="true" />}{t(`booking.kind.with.${kindOf(s.truck)}`)}</span>}
+                    {rank && <span class="bp-order-tag" data-testid="bp-sugg-order"><ListOrdered size={16} aria-hidden="true" />{rank.total === 1 ? t('booking.picker.orderOnly') : t('booking.picker.order', { n: rank.n, total: rank.total })}</span>}
                     <span class="bp-sugg-sub">{bits.join(', ')}</span>
                   </span>
                   <span class="bp-tick" aria-hidden="true">{on && <Check size={22} />}</span>

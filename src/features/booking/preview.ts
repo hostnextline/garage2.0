@@ -70,3 +70,13 @@ export function placeNewStop(a: TeamMapAnswer, spot: Spot): Placed {
     extraKm: Math.round(pick.extraKm * 10) / 10
   };
 }
+
+/** the new appointment's rank in its route that day (« arrêt 2 sur 4 »), the same estimate as the map's; null when no
+    vehicle works that day yet */
+export function stopRank(a: TeamMapAnswer, spot: Spot): { n: number; total: number } | null {
+  const p = placeNewStop(a, spot);
+  if (!p.truckId) return null;
+  const mine = p.after.jobs.filter((j) => j.truck_id === p.truckId && j.status !== 'cancelled' && j.status !== 'no_show');
+  const n = mine.find((j) => j.id === NEW_STOP)?.order;
+  return n ? { n, total: mine.length } : null;
+}

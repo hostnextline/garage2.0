@@ -158,6 +158,8 @@ export const booking: typeof fr = {
     need: 'This work needs the truck (mounting or balancing tires): only its times are offered.'
   },
   picker: {
+    order: 'Stop {n} of {total} that day',
+    orderOnly: 'First stop of the day (the only one so far)',
     title: 'The best blocks',
     best: 'Best choice',
     current: 'Current block',

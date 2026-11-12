@@ -158,6 +158,8 @@ export const booking = {
     need: 'Ce travail demande le camion (montage ou balancement des pneus) : seuls ses moments sont proposés.'
   },
   picker: {
+    order: 'Arrêt {n} sur {total} de la journée',
+    orderOnly: 'Premier arrêt de la journée (seul pour l’instant)',
     title: 'Les meilleurs blocs',
     best: 'Meilleur choix',
     current: 'Bloc actuel',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bestPlace, placeNewStop, NEW_STOP } from './preview';
+import { bestPlace, placeNewStop, stopRank, NEW_STOP } from './preview';
 import type { TeamMapAnswer } from '../map/assemble';
 
 // the Centrale, then stops going east along a line; the new one between two of them
@@ -35,5 +35,19 @@ describe('« Voir sur la carte »: where the new appointment goes in the truck�
     const p = placeNewStop(day, { day: '2026-11-17', block: 'pm', truckId: null, lat: 45.5, lng: -73.21, name: 'Nouveau', address: '' });
     expect(p.truckId).toBe('T2');
     expect(p.extraKm).toBeLessThan(1);   // on its way to its stop: almost nothing more
+  });
+});
+
+describe('the stop number said on a moment offered', () => {
+  const spot = { day: '2026-11-17', name: 'Nouveau', address: '', lat: 45.5 };
+  it('second of four when it sits between the two morning stops', () => {
+    expect(stopRank(day, { ...spot, block: 'am', truckId: 'T1', lng: -73.64 })).toEqual({ n: 2, total: 4 });
+  });
+  it('an evening appointment comes last', () => {
+    expect(stopRank(day, { ...spot, block: 'eve', truckId: 'T1', lng: -73.69 })).toEqual({ n: 4, total: 4 });
+  });
+  it('first and alone on a route with nothing yet; nothing said when no vehicle works', () => {
+    expect(stopRank({ ...day, jobs: [] }, { ...spot, block: 'am', truckId: 'T2', lng: -73.64 })).toEqual({ n: 1, total: 1 });
+    expect(stopRank({ ...day, trucks: [], jobs: [] }, { ...spot, block: 'am', truckId: null, lng: -73.64 })).toBeNull();
   });
 });

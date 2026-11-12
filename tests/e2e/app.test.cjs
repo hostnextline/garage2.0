@@ -1727,7 +1727,11 @@ step('« Appel entrant », two cars: « Ajouter une autre voiture », each car i
   const addr = page.getByTestId('call-address');
   await addr.getByTestId('address-input').fill('2500 jarry est');
   await addr.getByTestId('address-suggestions').getByRole('option').first().click();
-  await page.getByTestId('bp-sugg').first().click({ timeout: 20000 });
+  await page.getByTestId('bp-sugg').first().waitFor({ timeout: 20000 });
+  // each moment offered says which stop of the day the appointment would be
+  await page.getByTestId('bp-sugg-order').first().waitFor({ timeout: 10000 });
+  assert.match(await page.getByTestId('bp-sugg-order').first().innerText(), /Arrêt \d+ sur \d+|Premier arrêt/);
+  await page.getByTestId('bp-sugg').first().click();
   await page.getByTestId('call-first').fill('Deux');
   await page.getByTestId('call-last').fill('Autos');
   await page.getByTestId('book-confirm').click();

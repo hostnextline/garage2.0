@@ -194,6 +194,7 @@ end $do$;
   suggestion or a calendar cell of `BlockPicker` (menu « Choisir ce moment », « Voir sur la carte »), or the button under the moment
   chosen: the truck's day (phone's copy, `fromDevice`) with the new stop at the cheapest place inside its block (straight-line
   insertion; the suggestion's truck, else the truck where it adds the least), stop n of N, the day's route and what it adds (km, min).
+  The same estimate is said on every suggestion (`stopRank`, tag `bp-sugg-order`: « Arrêt 2 sur 4 de la journée »).
 - « Appel entrant » (`#/call`, `src/features/booking/CallScreen.tsx`; « + » menu first): the number finds known customers (`callMatches`:
   phone digits, 3 at least) with « Réserver pour … », file, next appointment. New caller: « L’adresse » / « La voiture » / « La job »
   → `#/book?call=1&start=…&phone=…`: BookScreen shows the panels in that order (`callOrder`), the name and number last (`call-who`);
