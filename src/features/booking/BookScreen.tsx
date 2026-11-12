@@ -386,7 +386,7 @@ function BookForm({ query }: ScreenProps) {
     <div ref={blockPanel} class="book-block-anchor">
       <Panel title={t('booking.block.title')} sub={t('booking.block.sub')} data-tour="book-block">
         {blockError && <div style={{ marginBottom: 'var(--sp-3)' }}><Banner kind="bad">{blockError}</Banner></div>}
-        <BlockPicker lat={place.lat} lng={place.lng} duration={allMinutes} truckId={effTruck} value={choice}
+        <BlockPicker lat={place.lat} lng={place.lng} address={place.address} duration={allMinutes} truckId={effTruck} value={choice}
           onPick={(c) => { setChoice(c); setBlockError(null); }} />
       </Panel>
     </div>

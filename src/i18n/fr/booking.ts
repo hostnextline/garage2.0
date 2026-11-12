@@ -93,6 +93,20 @@ export const booking = {
     weekday: '{day} {block}',
     date: '{day}, {block}'
   },
+  preview: {
+    title: 'Sur la carte',
+    see: 'Voir sur la carte',
+    pick: 'Choisir ce moment',
+    newLabel: 'Nouveau rendez-vous',
+    start: 'Départ',
+    mapLabel: 'La journée du camion avec le nouveau rendez-vous',
+    stop: 'Arrêt {n} sur {total} de la journée de {truck}',
+    day: 'Route de la journée : {km} km, {d}',
+    addsRoad: 'Ce rendez-vous ajoute {km} km et {d} de route.',
+    addsLine: 'Ce rendez-vous ajoute environ {km} km (à vol d’oiseau, la route par les rues arrive).',
+    noTruck: 'Aucun camion ne travaille ce jour-là pour l’instant : le rendez-vous est seul sur la carte.',
+    note: 'Une estimation : l’app choisit l’ordre final des arrêts quand tu réserves.'
+  },
   picker: {
     title: 'Les meilleurs blocs',
     best: 'Meilleur choix',

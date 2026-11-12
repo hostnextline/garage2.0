@@ -331,7 +331,7 @@ export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   return (
     <Sheet open={p.open} onClose={p.onClose} title={t('jobs.moment.moveTitle')} sub={textOn ? t('jobs.moment.moveLeadText') : t('jobs.moment.moveLead')} wide data-testid="move-sheet"
       footer={<><Button onClick={p.onClose}>{t('common.cancel')}</Button><Button variant="primary" disabled={!choice || same} onClick={move} data-testid="move-ok">{t('jobs.moment.moveOk')}</Button></>}>
-      <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} duration={j.duration_min} excludeJob={j.id} value={choice} onPick={setChoice} />
+      <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} address={j.address || c?.address || null} duration={j.duration_min} excludeJob={j.id} value={choice} onPick={setChoice} />
     </Sheet>
   );
 }

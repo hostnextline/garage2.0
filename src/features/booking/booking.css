@@ -136,3 +136,7 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 
 /* the other cars of the customer that have work in this appointment */
 .book-cars { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+/* « Voir sur la carte » */
+.bp-chosen .btn svg { width: 18px; height: 18px; }
+.bp-preview-facts { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.bp-preview-facts b { font-weight: 600; }

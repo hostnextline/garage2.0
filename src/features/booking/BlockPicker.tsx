@@ -1,7 +1,7 @@
 /* Choose the day and block: the best suggestions near the address first (they need the network), then a two-week
    calendar coloured by the room left (works with the copy on the phone). Shared: booking, moving a job. */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles } from 'lucide-preact';
+import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon } from 'lucide-preact';
 import { today as todayOf, addDays, daysBetween, tinyDay, longDay, duration, clockRange, isValidDay, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { blocks, blockLoad, settings, job as jobRow } from '../../data/select';
@@ -9,6 +9,8 @@ import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton } from '../../ui';
 import { cellState, type CellState } from './logic';
+import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
+import { RoutePreview, type PreviewAsk } from './RoutePreview';
 import { blockPhrase, blockPhraseWithHours, spanEnds } from './when';
 import './booking.css';
 
@@ -23,6 +25,8 @@ export interface BlockPickerProps {
   onPick: (c: BlockChoice) => void;
   /** optional: only this truck counts (a truck chosen by hand, a mechanic booking on his own truck) */
   truckId?: string | null;
+  /** the address, for « Voir sur la carte » */
+  address?: string | null;
 }
 
 type Suggestion = Awaited<ReturnType<typeof suggestBlocks>>[number];
@@ -97,6 +101,21 @@ export function BlockPicker(p: BlockPickerProps) {
     setSaid(t('booking.picker.chosen', { when: phrase(day, block) }));
   };
 
+  /* « Voir sur la carte »: a right-click or a long press on a moment (or the button under the moment chosen) */
+  const [preview, setPreview] = useState<PreviewAsk | null>(null);
+  const hasPos = p.lat != null && p.lng != null;
+  const truckOf = (day: string, block: BlockKey) => p.truckId || sugg.list.find((s) => s.day === day && s.block === block)?.truck || null;
+  const see = (day: string, block: BlockKey) => setPreview({ day, block, truckId: truckOf(day, block), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
+    when: phrase(day, block), exclude: p.excludeJob ?? null });
+  const actions = (day: string, block: BlockKey) => [
+    { key: 'pick', label: t('booking.preview.pick'), icon: <Check size={18} />, run: () => pick(day, block), testid: 'menu-pick' },
+    ...(hasPos ? [{ key: 'map', label: t('booking.preview.see'), icon: <MapIcon size={18} />, run: () => see(day, block), testid: 'menu-see-map' }] : [])
+  ];
+  const menuProps = (day: string, block: BlockKey) => ({
+    onContextMenu: (e: MouseEvent) => openMenu(e, actions(day, block), phrase(day, block)),
+    ...pressProps((x, y) => { openMenuAt(x, y, actions(day, block), phrase(day, block)); })
+  });
+
   /* keyboard: one tab stop in the calendar, arrows move */
   const grid = useRef<HTMLTableElement>(null);
   const flat = cells.flatMap((r) => r.blocks.map((c) => ({ day: r.day, block: c.key, state: c.state })));
@@ -137,7 +156,9 @@ export function BlockPicker(p: BlockPickerProps) {
           <span>{p.value ? t('booking.picker.chosen', { when: phrase(p.value.day, p.value.block) }) : t('booking.picker.nothing')}</span>
           <span class="bp-chosen-sub">{t('booking.picker.duration', { d: duration(dur, l) })}</span>
         </span>
+        {p.value && hasPos && <Button size="sm" variant="ghost" icon={<MapIcon />} onClick={() => see(p.value!.day, p.value!.block)} data-testid="bp-see-map">{t('booking.preview.see')}</Button>}
       </div>
+      {preview && <RoutePreview ask={preview} onClose={() => setPreview(null)} onPick={() => pick(preview.day, preview.block as BlockKey)} />}
       {p.value && pickedCell?.state === 'full' && <Banner kind="warn">{t('booking.picker.fullWarn')}</Banner>}
       {p.value && pickedCell?.state === 'tight' && <Banner kind="info">{t('booking.picker.tightWarn')}</Banner>}
 
@@ -165,7 +186,7 @@ export function BlockPicker(p: BlockPickerProps) {
               ].filter(Boolean);
               if (bits[0]) bits[0] = bits[0].charAt(0).toUpperCase() + bits[0].slice(1);
               return (
-                <button key={keyOf(s.day, s.block)} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => pick(s.day, s.block)} data-testid="bp-sugg">
+                <button key={keyOf(s.day, s.block)} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => pick(s.day, s.block)} {...menuProps(s.day, s.block)} data-testid="bp-sugg">
                   <span class="bp-sugg-main">
                     {isCurrent(s.day, s.block) ? <span class="bp-best"><Pill tone="muted" dot={false}>{t('booking.picker.current')}</Pill></span>
                       : i === 0 && <span class="bp-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
@@ -210,7 +231,7 @@ export function BlockPicker(p: BlockPickerProps) {
                       <td key={c.key}>
                         <button type="button" class={`bp-cell is-${c.state}${on ? ' is-on' : ''}${cur ? ' is-current' : ''}`} data-k={k} tabIndex={k === currentKey ? 0 : -1}
                           aria-pressed={on} aria-disabled={off || undefined} aria-label={label} title={label}
-                          onClick={() => { setFocusKey(k); if (!off) pick(r.day, c.key); }} data-testid={`bp-cell-${r.day}-${c.key}`}>
+                          onClick={() => { setFocusKey(k); if (!off) pick(r.day, c.key); }} {...(off ? {} : menuProps(r.day, c.key))} data-testid={`bp-cell-${r.day}-${c.key}`}>
                           {on && <Check size={16} aria-hidden="true" />}
                           <span>{t(`booking.picker.state.${c.state}`, { d: duration(c.left, l) })}</span>
                         </button>

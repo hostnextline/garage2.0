@@ -1591,3 +1591,43 @@ step('« La voiture » at « Je suis arrivé »: the km of the visit and the VIN
   // the truck is free again for the steps after
   h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
 });
+
+step('« Voir sur la carte » on a moment offered: right-click → the truck’s day with the new appointment, by the streets, and what it adds', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  // the route planner (OSRM, and its backup): a road with a bend in each leg, so the street line is not the straight one
+  const asked = [];
+  const osrm = (route) => {
+    const u = new URL(route.request().url());
+    const pts = u.pathname.split('/driving/')[1].split(';').map((p) => p.split(',').map(Number));
+    asked.push(pts.length);
+    const legs = pts.slice(1).map((b, i) => { const a = pts[i]; return { distance: 1500, duration: 240, steps: [{ geometry: { coordinates: [a, [(a[0] + b[0]) / 2 + 0.003, (a[1] + b[1]) / 2], b] } }] }; });
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ code: 'Ok', routes: [{ distance: 1500 * legs.length, duration: 240 * legs.length, legs }] }) });
+  };
+  await ctx.route('https://router.project-osrm.org/**', osrm);
+  await ctx.route('https://routing.openstreetmap.de/**', osrm);
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/book?customer=${julie}`);
+  await page.getByTestId('book-screen').waitFor();
+  const first = page.getByTestId('bp-sugg').first();
+  await first.waitFor({ timeout: 20000 });
+  await first.click({ button: 'right' });
+  await page.getByTestId('agenda-menu').waitFor();
+  await page.getByTestId('menu-see-map').click();
+  const sheet = page.getByTestId('route-preview');
+  await sheet.waitFor();
+  await page.getByTestId('route-preview-map').locator('.leaflet-container, .mv, canvas, svg').first().waitFor({ timeout: 15000 }).catch(() => undefined);
+  const facts = page.getByTestId('route-preview-facts');
+  await facts.waitFor({ timeout: 10000 });
+  assert.match(await facts.innerText(), /Arrêt \d+ sur \d+ de la journée de /);
+  // by the streets once the planner answered: the day's route and what this appointment adds, in km and minutes
+  await page.getByTestId('route-preview-extra').getByText(/ajoute [\d,]+ km et .*de route/).waitFor({ timeout: 15000 });
+  assert.ok(asked.length >= 1, 'the route planner was asked');
+  await h.shot(page, 'e2e-route-preview');
+  // « Choisir ce moment » picks it
+  await page.getByTestId('route-preview-pick').click();
+  await sheet.waitFor({ state: 'detached' });
+  assert.match(await page.getByTestId('bp-chosen').innerText(), /Choisi|choisi/);
+  noErrors(page);
+  await ctx.close();
+});

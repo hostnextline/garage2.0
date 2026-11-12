@@ -1,8 +1,12 @@
 /* The truck's day on the map by the streets, not as the crow flies: the route through the Centrale and the stops (in the
-   planned order) from OSRM, the free route planner of OpenStreetMap (the same one that times « Je pars »).
-   One request per truck; each leg is kept in memory, so the map's refresh every minute asks nothing again. */
+   planned order) from OSRM, the free route planner of OpenStreetMap (the same one that times « Je pars »); when it does not
+   answer, the same planner run by OpenStreetMap Germany (FOSSGIS). One request per truck; each leg is kept in memory, so the
+   map's refresh every minute asks nothing again. A route neither answered is asked again a minute later (not 5). */
 export type LatLng = [number, number];
 export const OSRM = 'https://router.project-osrm.org';
+export const OSRM_BACKUP = 'https://routing.openstreetmap.de/routed-car';
+const PLANNERS = [OSRM, OSRM_BACKUP];
+const RETRY_MS = 60 * 1000;
 
 const k = (p: LatLng) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
 export const legKey = (a: LatLng, b: LatLng) => `${k(a)}>${k(b)}`;
@@ -47,22 +51,28 @@ export async function routeThrough(pts: LatLng[], fetchImpl: typeof fetch = fetc
   const rk = routeKey(pts);
   if (allKnown(pts) && totals.has(rk)) return { legs: pts.slice(1).map((p, i) => legs.get(legKey(pts[i], p))!), ...totals.get(rk)! };
   // a planner that did not answer is asked again only after a while
-  if (Date.now() - (failedAt.get(rk) || 0) < 5 * 60 * 1000) return null;
-  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = setTimeout(() => ctl?.abort(), timeoutMs);
-  try {
-    const coords = pts.map((p) => `${p[1].toFixed(6)},${p[0].toFixed(6)}`).join(';');
-    const res = await fetchImpl(`${OSRM}/route/v1/driving/${coords}?overview=false&steps=true&geometries=geojson`, ctl ? { signal: ctl.signal } : undefined);
-    const r = res.ok ? parseOsrm(await res.json(), pts.length) : null;
-    if (!r) { failedAt.set(rk, Date.now()); return null; }
+  if (Date.now() - (failedAt.get(rk) || 0) < RETRY_MS) return null;
+  const coords = pts.map((p) => `${p[1].toFixed(6)},${p[0].toFixed(6)}`).join(';');
+  for (const base of PLANNERS) {
+    const r = await askPlanner(`${base}/route/v1/driving/${coords}?overview=false&steps=true&geometries=geojson`, pts.length, fetchImpl, timeoutMs);
+    if (!r) continue;
     r.legs.forEach((line, i) => {
       // the route starts and ends exactly on the stops (the road snaps to the nearest street)
       legs.set(legKey(pts[i], pts[i + 1]), [pts[i], ...line, pts[i + 1]]);
     });
     totals.set(rk, { km: r.km, minutes: r.minutes });
     return r;
+  }
+  failedAt.set(rk, Date.now());
+  return null;
+}
+async function askPlanner(url: string, n: number, fetchImpl: typeof fetch, timeoutMs: number) {
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => ctl?.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(url, ctl ? { signal: ctl.signal } : undefined);
+    return res.ok ? parseOsrm(await res.json(), n) : null;
   } catch {
-    failedAt.set(rk, Date.now());
     return null;
   } finally {
     clearTimeout(timer);

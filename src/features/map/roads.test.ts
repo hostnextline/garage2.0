@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { parseOsrm, routeThrough, knownLeg, knownTotal, allKnown, forgetRoads, OSRM, type LatLng } from './roads';
+import { parseOsrm, routeThrough, knownLeg, knownTotal, allKnown, forgetRoads, OSRM, OSRM_BACKUP, type LatLng } from './roads';
 
 const centrale: LatLng = [45.5005, -73.6577];
 const a: LatLng = [45.5307, -73.6702];
@@ -36,11 +36,24 @@ describe('the truck’s day by the streets', () => {
     await routeThrough([centrale, a, b], f);
     expect(f).toHaveBeenCalledTimes(1);
   });
-  it('without an answer: straight lines stay, and the planner is not asked again right away', async () => {
-    const f = vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch;
-    expect(await routeThrough([centrale, a], f)).toBeNull();
-    expect(knownLeg(centrale, a)).toBeNull();
-    expect(await routeThrough([centrale, a], f)).toBeNull();
-    expect(f).toHaveBeenCalledTimes(1);
+  it('the first planner down: the backup one draws the streets', async () => {
+    const two = { ...osrm, routes: [{ ...osrm.routes[0], legs: [osrm.routes[0].legs[0]] }] };
+    const f = vi.fn(async (u: string) => (u.startsWith(OSRM_BACKUP) ? new Response(JSON.stringify(two), { status: 200 }) : new Response('busy', { status: 429 }))) as unknown as typeof fetch;
+    expect(await routeThrough([centrale, a], f)).not.toBeNull();
+    expect(knownLeg(centrale, a)!.length).toBeGreaterThan(2);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+  it('without an answer: straight lines stay, and the planners are asked again only a minute later', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const f = vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch;
+      expect(await routeThrough([centrale, a], f)).toBeNull();
+      expect(knownLeg(centrale, a)).toBeNull();
+      expect(await routeThrough([centrale, a], f)).toBeNull();
+      expect(f).toHaveBeenCalledTimes(2);   // the two planners, once
+      vi.setSystemTime(Date.now() + 61 * 1000);
+      await routeThrough([centrale, a], f);
+      expect(f).toHaveBeenCalledTimes(4);
+    } finally { vi.useRealTimers(); }
   });
 });

@@ -22,7 +22,7 @@ import { assemble, normalize, minuteOf, UNPLACED_COLOR, type TeamMapAnswer, type
 import type { JobStatus } from '../../data/types';
 import { fromDevice } from './device';
 import { MapDay } from './MapDay';
-import { routeThrough, knownLeg, knownTotal, allKnown, type LatLng } from './roads';
+import { useRoads, roadOf, roadTotal } from './useRoads';
 import { ago, minutesSince } from './ago';
 import './map.css';
 
@@ -101,25 +101,8 @@ export default function MapScreen({ query }: ScreenProps) {
     return live ? a : { ...a, people: [], trips: [], trucks: a.trucks.filter((tr) => tr.total > 0).map((tr) => ({ ...tr, trip: null, legs: tr.legs.map((l) => (l.kind === 'trip' ? { ...l, kind: 'todo' as const } : l)) })) };
   }, [loaded, live]);
 
-  /* the road route of each truck (Centrale → stops, in order): asked once per truck, then kept */
-  const [, setRoadsIn] = useState(0);
-  const waypoints = (tr: TruckRoute): LatLng[] => [...(tr.from ? [tr.from] : []), ...tr.stops.filter((s) => s.hasPos).map((s) => [s.lat!, s.lng!] as LatLng)];
-  const routeSig = m.trucks.map((tr) => `${tr.id}:${waypoints(tr).map((p) => p.join(',')).join(';')}`).join('|');
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      for (const tr of m.trucks) {
-        const pts = waypoints(tr);
-        if (pts.length < 2 || (allKnown(pts) && knownTotal(pts))) continue;
-        const r = await routeThrough(pts);
-        if (!alive) return;
-        if (r) setRoadsIn((n) => n + 1);
-        await new Promise((res) => setTimeout(res, 350));   // gentle with the free route planner
-      }
-    })();
-    return () => { alive = false; };
-  }, [routeSig]);
-  const roadOf = (tr: TruckRoute) => { const pts = waypoints(tr); return pts.length >= 2 ? knownTotal(pts) : null; };
+  /* the road route of each truck (its start → stops, in order) and of a live trip without one: asked once, then kept */
+  useRoads(m.trucks);
 
   const truckOf = (id: string | null) => m.trucks.find((tr) => tr.id === id) || null;
   const allStops: (Stop & { color: string; truckName: string })[] = [
@@ -170,9 +153,8 @@ export default function MapScreen({ query }: ScreenProps) {
   for (const tr of m.trucks) {
     const dim = dimTruck(tr.id);
     for (const leg of tr.legs) {
-      // by the streets once the route planner answered (the live trip already follows them)
-      const road = leg.kind !== 'trip' && leg.points.length === 2 ? knownLeg(leg.points[0], leg.points[1]) : null;
-      lines.push({ points: road || leg.points, color: tr.color, dashed: leg.kind === 'trip', weight: leg.kind === 'trip' ? 5 : 4,
+      // by the streets once the route planner answered (a live trip follows them already when the server had its road)
+      lines.push({ points: roadOf(leg), color: tr.color, dashed: leg.kind === 'trip', weight: leg.kind === 'trip' ? 5 : 4,
         opacity: dim ? 0.14 : leg.kind === 'done' ? 0.32 : leg.kind === 'trip' ? 0.95 : 0.8 });
     }
   }
@@ -267,14 +249,14 @@ export default function MapScreen({ query }: ScreenProps) {
             <p class={`small map-line ${warnLine ? 'map-warn' : 'muted'}`} aria-live="polite" data-testid="map-status">{line}</p>
             {notices}
             {sel && <StopCard stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} />}
-            <Legend m={m} focus={focus} onFocus={toggleFocus} roadOf={roadOf} />
+            <Legend m={m} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
             {m.count === 0 ? <div class="panel glass map-empty">{empty}</div> : <StopList m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
           </aside>
         ) : (
           <PullUp open={open} onOpen={setOpen} summary={summary} status={line} warn={warnLine}
             card={sel ? <StopCard plain stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} /> : null}>
             {notices}
-            <Legend plain m={m} focus={focus} onFocus={toggleFocus} roadOf={roadOf} />
+            <Legend plain m={m} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
             {m.count === 0 ? empty : <StopList plain m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
             <div class="map-status small muted">
               <span>{updated}</span>

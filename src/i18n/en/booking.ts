@@ -93,6 +93,20 @@ export const booking: typeof fr = {
     weekday: '{day} {block}',
     date: '{day}, {block}'
   },
+  preview: {
+    title: 'On the map',
+    see: 'See on the map',
+    pick: 'Choose this time',
+    newLabel: 'New appointment',
+    start: 'Start',
+    mapLabel: 'The truck’s day with the new appointment',
+    stop: 'Stop {n} of {total} in {truck}’s day',
+    day: 'Route of the day: {km} km, {d}',
+    addsRoad: 'This appointment adds {km} km and {d} of driving.',
+    addsLine: 'This appointment adds about {km} km (as the crow flies, the street route is on its way).',
+    noTruck: 'No truck works that day yet: the appointment is alone on the map.',
+    note: 'An estimate: the app sets the final order of the stops when you book.'
+  },
   picker: {
     title: 'The best blocks',
     best: 'Best choice',

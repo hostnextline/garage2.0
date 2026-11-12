@@ -14,6 +14,7 @@ import { rpcNow } from '../../data/api';
 import { jobsOn, customer as customerRow, customerName, vehicle as vehicleRow, vehicleLabel, itemsOf, staffName } from '../../data/select';
 import type { JobStatus } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Empty, StatusPill } from '../../ui';
+import { useRoads, roadOf } from '../map/useRoads';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, normalize, UNPLACED_COLOR, type TeamMapAnswer } from '../map/assemble';
 import { fromDevice } from '../map/device';
@@ -46,6 +47,8 @@ export default function OverviewScreen(_p: ScreenProps) {
   }, [day]);
 
   const m = useMemo(() => assemble(data, { nameOf: staffName }), [data]);
+  // the routes by the streets, like « Carte » (straight lines only until the route planner answers)
+  useRoads(m.trucks);
   const jobs = jobsOn(day).filter((j) => j.status !== 'cancelled' && j.status !== 'no_show');
   const rows = overviewRows(jobs, m);
   const counts = dayCounts(jobs);
@@ -61,7 +64,7 @@ export default function OverviewScreen(_p: ScreenProps) {
       markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: tr.color, number: s.n, done: s.done, active: selected === s.id,
         label: selected === s.id ? s.name : undefined, title: `${s.n}. ${s.name}`, onClick: () => pick(s.id) });
     }
-    for (const leg of tr.legs) lines.push({ points: leg.points, color: tr.color, dashed: leg.kind === 'trip', opacity: leg.kind === 'done' ? 0.35 : 0.85 });
+    for (const leg of tr.legs) lines.push({ points: roadOf(leg), color: tr.color, dashed: leg.kind === 'trip', opacity: leg.kind === 'done' ? 0.35 : 0.85 });
   }
   for (const s of m.unplaced) {
     if (s.hasPos) markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: UNPLACED_COLOR, number: '?', active: selected === s.id, title: s.name, onClick: () => pick(s.id) });
