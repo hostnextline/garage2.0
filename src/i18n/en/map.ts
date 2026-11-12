@@ -22,6 +22,18 @@ export const map: typeof fr = {
   trucksCount: { zero: 'No truck', one: '{n} truck', other: '{n} trucks' },
   stopsCount: { zero: 'no stop', one: '{n} stop', other: '{n} stops' },
   summary: '{trucks}, {stops}',
+  truckDay: {
+    open: 'Start and time of {name}',
+    title: 'Start and time: {name}',
+    timeTitle: 'Start time',
+    timeSub: 'That day only. Hours keeps the usual week.',
+    now: 'That day: {hours}',
+    off: 'This truck does not work that day. Choose a time to open it.',
+    start: 'It leaves at',
+    after: 'After: {hours}',
+    save: 'Change the time',
+    saved: 'Leaves at {time} that day. The appointments are placed again.'
+  },
   legend: {
     title: 'The trucks',
     help: 'Tap a truck to see only its route on the map. Tap it again to see the whole team.',

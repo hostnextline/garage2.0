@@ -1686,3 +1686,27 @@ step('« Appel entrant »: the number finds Julie; a new caller starts with the 
   noErrors(page);
   await ctx.close();
 });
+
+step('« Départ et heure » from the map: a truck leaves at 9 h on a coming day (that day only); its start point in the same sheet', async () => {
+  const day = h.sql(`select (public.local_today() + 2)::text`);
+  const job = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order) values ('${julie}', '${day}', 'am', 'booked', '${T.complet}', 45, 1) returning id`);
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/map?day=${day}`);
+  const edit = page.getByTestId(`legend-edit-${T.complet}`);
+  await edit.waitFor({ timeout: 20000 });
+  await edit.click();
+  const sheet = page.getByTestId('truck-day-sheet');
+  await sheet.waitFor();
+  await sheet.getByTestId('truck-start-panel').waitFor();
+  await sheet.getByTestId('truck-day-time').locator('select').selectOption('540');
+  assert.match(await page.getByTestId('truck-day-after').innerText(), /^Après : 9 h/);
+  await h.shot(page, 'e2e-truck-day');
+  await page.getByTestId('truck-day-save').click();
+  const r = await until(() => h.sql(`select coalesce((select (ranges->0->>0) from public.truck_days where truck_id = '${T.complet}' and day = '${day}' and deleted_at is null), '')`), (v) => v === '540', 15000);
+  assert.equal(r, '540', 'that day starts at 9 h');
+  assert.ok(Number(h.sql(`select count(*) from public.truck_week where truck_id = '${T.complet}'`)) > 0, 'the usual week is still there');
+  noErrors(page);
+  await ctx.close();
+  h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
+});

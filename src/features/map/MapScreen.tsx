@@ -14,7 +14,8 @@ import { today, addDays, longDay, clock, isValidDay, nowMinute } from '../../lib
 import { rpcNow, errorMessage } from '../../data/api';
 import { isNetworkError, flush } from '../../data/sync';
 import { locateMissing } from '../../app/locator';
-import { access, can } from '../../data/auth';
+import { access, can, isOwner, myTrucks, preview } from '../../data/auth';
+import { TruckDaySheet } from './TruckDaySheet';
 import { staffName, job as jobRow, customer as customerRow } from '../../data/select';
 import { Page, Seg, Banner, Empty, Button, IconButton, StatusPill, Help, Pill, toast } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from './MapView';
@@ -249,14 +250,14 @@ export default function MapScreen({ query }: ScreenProps) {
             <p class={`small map-line ${warnLine ? 'map-warn' : 'muted'}`} aria-live="polite" data-testid="map-status">{line}</p>
             {notices}
             {sel && <StopCard stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} />}
-            <Legend m={m} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
+            <Legend m={m} day={day} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
             {m.count === 0 ? <div class="panel glass map-empty">{empty}</div> : <StopList m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
           </aside>
         ) : (
           <PullUp open={open} onOpen={setOpen} summary={summary} status={line} warn={warnLine}
             card={sel ? <StopCard plain stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} /> : null}>
             {notices}
-            <Legend plain m={m} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
+            <Legend plain m={m} day={day} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
             {m.count === 0 ? empty : <StopList plain m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
             <div class="map-status small muted">
               <span>{updated}</span>
@@ -329,8 +330,11 @@ function PullUp(p: { open: boolean; onOpen: (v: boolean) => void; summary: strin
   );
 }
 
-function Legend(p: { m: Assembled; focus: Focus; onFocus: (id: string) => void; plain?: boolean; roadOf: (tr: TruckRoute) => { km: number; minutes: number } | null }) {
+function Legend(p: { m: Assembled; day: string; focus: Focus; onFocus: (id: string) => void; plain?: boolean; roadOf: (tr: TruckRoute) => { km: number; minutes: number } | null }) {
   const { m } = p;
+  // « Départ et heure »: the owner, the « hours » right, or the truck's own driver (as Horaires)
+  const [editing, setEditing] = useState<string | null>(null);
+  const mayEdit = (id: string) => (isOwner() || can('hours') || myTrucks().includes(id)) && !preview.value;
   if (!m.trucks.length && !m.unplaced.length) return null;
   return (
     <section class={`panel ${p.plain ? 'panel-plain' : 'glass'} panel-flush map-legend`} data-tour="map-legend" data-testid="map-legend">
@@ -338,7 +342,13 @@ function Legend(p: { m: Assembled; focus: Focus; onFocus: (id: string) => void; 
         <h2 class="panel-title">{t('map.legend.title')} <Help text={t('map.legend.help')} /></h2>
       </div>
       <div class="rows" role="list">
-        {m.trucks.map((tr) => <LegendRow key={tr.id} tr={tr} road={p.roadOf(tr)} on={p.focus === tr.id} onClick={() => p.onFocus(tr.id)} />)}
+        {m.trucks.map((tr) => (
+          <div key={tr.id} class="map-legend-item">
+            <LegendRow tr={tr} road={p.roadOf(tr)} on={p.focus === tr.id} onClick={() => p.onFocus(tr.id)} />
+            {mayEdit(tr.id) && <IconButton icon={<Settings2 />} label={t('map.truckDay.open', { name: tr.name })} onClick={() => setEditing(tr.id)} data-testid={`legend-edit-${tr.id}`} />}
+          </div>
+        ))}
+        {editing && <TruckDaySheet truckId={editing} day={p.day} onClose={() => setEditing(null)} />}
         {m.unplaced.length > 0 && (
           <button type="button" class="row-item map-legend-row" aria-pressed={p.focus === 'unplaced'} onClick={() => p.onFocus('unplaced')} data-testid="legend-unplaced"
             aria-label={p.focus === 'unplaced' ? t('map.legend.focusOff') : t('map.legend.focusOn', { name: t('map.legend.unplaced') })}>

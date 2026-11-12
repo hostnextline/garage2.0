@@ -22,6 +22,18 @@ export const map = {
   trucksCount: { zero: 'Aucun camion', one: '{n} camion', other: '{n} camions' },
   stopsCount: { zero: 'aucun arrêt', one: '{n} arrêt', other: '{n} arrêts' },
   summary: '{trucks}, {stops}',
+  truckDay: {
+    open: 'Départ et heure de {name}',
+    title: 'Départ et heure : {name}',
+    timeTitle: 'L’heure de départ',
+    timeSub: 'Ce jour-là seulement. Horaires garde la semaine habituelle.',
+    now: 'Ce jour-là : {hours}',
+    off: 'Ce camion ne travaille pas ce jour-là. Choisis une heure pour l’ouvrir.',
+    start: 'Il part à',
+    after: 'Après : {hours}',
+    save: 'Changer l’heure',
+    saved: 'Départ à {time} ce jour-là. Les rendez-vous sont replacés.'
+  },
   legend: {
     title: 'Les camions',
     help: 'Touche un camion pour voir seulement sa route sur la carte. Touche-le encore pour revoir toute l’équipe.',

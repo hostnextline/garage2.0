@@ -75,3 +75,7 @@
 .map-day-name.is-today { cursor: default; }
 .map-day-pick { position: relative; display: inline-flex; }
 .map-day-input { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+/* a truck of the legend and its « Départ et heure » button */
+.map-legend-item { display: flex; align-items: center; gap: var(--sp-1); }
+.map-legend-item > .map-legend-row { flex: 1; min-width: 0; }
+.map-legend-item > .icon-btn, .map-legend-item > button:last-child:not(.map-legend-row) { flex: none; margin-right: var(--sp-2); }
