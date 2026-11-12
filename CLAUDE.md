@@ -60,7 +60,9 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261112000100_km_visite.sql` (Part 24 duodecies, applied 2026-11-12 from commit `a5d1edf`;
+- Applied on live: every migration up to `20261112000200_voiture_camion.sql` (Part 24 terdecies, applied 2026-11-12 from commit `502e7a3`,
+  BEFORE its app is published: neutral while every vehicle has `tire_machine = true` and `shared_routes` is off;
+  Part 24 duodecies applied 2026-11-12 from commit `a5d1edf`;
   Part 24 undecies applied 2026-11-11 from commit `2f75cc5`;
   Part 24 decies applied 2026-11-11 from commit `9791d65`;
   Part 24 nonies applied 2026-11-10 from commit `c8c507c`;
@@ -209,7 +211,7 @@ end $do$;
 - Postal codes (2026-11-12): OpenStreetMap's are often wrong in Canada, so Photon's code is never written in the address nor saved
   (`photon.ts`: no code in `place.address`; `AddressField` and `locator.ts` keep only a code the person typed). `place.postal_code`
   still helps `locate.ts` recognise the area (first 3 characters).
-- « La voiture ou le camion » (Part 24 terdecies, `20261112000200_voiture_camion.sql`; NOT applied on live yet): `trucks.tire_machine`
+- « La voiture ou le camion » (Part 24 terdecies, `20261112000200_voiture_camion.sql`): `trucks.tire_machine`
   (Horaires → the vehicle's sheet, « Monte et balance les pneus »; false = « la voiture »), `services.needs_machine` (Réglages →
   Services, « Camion seulement »), `jobs.needs_machine` (kept by the trigger `job_items_machine` from the lines: a marked service, or
   words `words_need_machine`: montage, non montés, balancement), `jobs.vehicle_kind` ('car' | 'truck' | null: asked when booking).
@@ -282,6 +284,8 @@ end $do$;
   report), a garage item by the Trésorerie or « Rien » (`bad_from` otherwise). `coffre_report.stock_cents` = the Coffre stock's value
   at cost, shown on the Coffre screen with a link to that stock. Coffre items have no selling price.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
+- The end-to-end step « Changer de camion » fails when the suite runs after 16 h Montréal (seen 2026-11-12, on code that passed at 13 h
+  too): the click on the other truck does nothing in the test; `move_job` itself works on live in both directions.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
 
