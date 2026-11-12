@@ -1710,3 +1710,27 @@ step('« Départ et heure » from the map: a truck leaves at 9 h on a coming day
   await ctx.close();
   h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
 });
+
+step('« Modifier le travail »: one button shows « Retirer » on every line, with « Ajouter » next to it; a line taken off leaves the job', async () => {
+  const day = h.sql(`select (public.local_today() + 3)::text`);
+  const job = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order) values ('${julie}', '${day}', 'pm', 'booked', '${T.complet}', 60, 1) returning id`);
+  h.sql(`insert into public.job_items (job_id, kind, description, qty, unit_cents, sort) values ('${job}', 'service', 'Freins avant e2e', 1, 25000, 1), ('${job}', 'service', 'Essuie-glaces e2e', 1, 4000, 2)`);
+  const { page, ctx } = await h.openW({ kind: 'phone' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/job/${job}`);
+  const work = page.getByTestId('job-work');
+  await work.getByText('Essuie-glaces e2e').waitFor({ timeout: 20000 });
+  assert.equal(await work.getByTestId('item-remove-line').count(), 0, 'no remove buttons before « Modifier »');
+  await page.getByTestId('work-edit').click();
+  await page.getByTestId('work-add').waitFor();
+  assert.equal(await work.getByTestId('item-remove-line').count(), 2);
+  await h.shot(page, 'e2e-work-edit');
+  await work.getByTestId('job-item').filter({ hasText: 'Essuie-glaces e2e' }).getByTestId('item-remove-line').click();
+  assert.equal(await until(() => h.sql(`select count(*) from public.job_items where job_id = '${job}' and deleted_at is null`), (v) => v === '1', 15000), '1', 'the line left the job');
+  assert.equal(h.sql(`select description from public.job_items where job_id = '${job}' and deleted_at is null`), 'Freins avant e2e');
+  await page.getByTestId('work-edit-done').click();
+  await page.getByTestId('work-edit').waitFor();
+  noErrors(page);
+  await ctx.close();
+  h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
+});

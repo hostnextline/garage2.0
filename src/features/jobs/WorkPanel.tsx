@@ -5,9 +5,9 @@
    - « Proposer un travail »: a line written on the spot (what, price, why), then the customer's answer: signed on the
      phone, by the link in a text (the answer comes back by itself), or given to the office on the phone. */
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { Check, Plus, PenLine, Hourglass, CircleCheck, Circle, X, Minus, MessageSquareText, Phone, Tag } from 'lucide-preact';
+import { Check, Plus, PenLine, Hourglass, CircleCheck, Circle, X, Minus, MessageSquareText, Phone, Tag, Pencil, Trash2 } from 'lucide-preact';
 import type { Job, JobItem, ItemStatus } from '../../data/types';
-import { Panel, Button, Sheet, Field, Input, Textarea, MoneyInput, Money, Totals, Seg, Kv, Check as CheckBox, attempt } from '../../ui';
+import { Panel, Button, IconButton, Sheet, Field, Input, Textarea, MoneyInput, Money, Totals, Seg, Kv, Check as CheckBox, attempt } from '../../ui';
 import { t, tl, lang } from '../../lib/i18n';
 import { money, lineTotal, totals } from '../../lib/money';
 import { duration } from '../../lib/dates';
@@ -46,6 +46,16 @@ export function WorkPanel(p: WorkPanelProps) {
   const pending = items.filter((i) => i.status === 'proposed').reduce((n, i) => n + lineCents(i), 0);
   const canEdit = rights.act && OPEN_STATUSES.includes(j.status);
   const l = lang.value;
+  /* « Modifier le travail »: every line gets its « Retirer » and « Changer » buttons; adding is there too */
+  const [editing, setEditing] = useState(false);
+  const inv = invoiceOf(j.id);
+  const finished = !!inv && (inv.status === 'issued' || inv.status === 'paid');
+  const billed = (i: JobItem) => finished && (inv!.lines || []).some((x) => x.item_id === i.id);
+  const removable = (i: JobItem) => !billed(i) && ['planned', 'done', 'approved', 'proposed'].includes(i.status);
+  // on site, work taken off stays on the job as « Pas fait »; before, the line leaves the job. Both can be put back.
+  const remove = (i: JobItem) => attempt(
+    () => (j.status === 'on_site' && i.status !== 'proposed' ? updateItem(i.id, { status: 'removed' }) : removeItem(i.id)),
+    { ok: t('jobs.work.removedLine', { what: i.description }) });
   return (
     <Panel title={t('jobs.work.title')} help={t('jobs.work.help')} data-tour="job-work" class="jobs-work" data-testid="job-work">
       {items.length ? (
@@ -61,7 +71,14 @@ export function WorkPanel(p: WorkPanelProps) {
                 </button>
                 <Money cents={lineCents(i)} class={`jobs-item-price${off ? ' faint' : ''}`} />
                 <span class="jobs-item-act">
-                  {canEdit && j.status === 'on_site' && i.status === 'planned' && (
+                  {canEdit && editing && (
+                    <>
+                      <IconButton icon={<Pencil />} label={t('jobs.work.changeLine', { what: i.description })} onClick={() => p.onItem(i.id)} data-testid="item-edit" />
+                      {removable(i) && <IconButton icon={<Trash2 />} label={t('jobs.work.removeLine', { what: i.description })} onClick={() => remove(i)} data-testid="item-remove-line" />}
+                      {i.status === 'removed' && <Button size="sm" onClick={() => attempt(() => updateItem(i.id, { status: 'planned' }))} data-testid="item-back">{t('jobs.work.setBack')}</Button>}
+                    </>
+                  )}
+                  {canEdit && !editing && j.status === 'on_site' && i.status === 'planned' && (
                     <Button size="sm" icon={<Check />} label={t('jobs.work.markDoneLabel', { what: i.description })} onClick={() => attempt(() => updateItem(i.id, { status: 'done' }))} data-testid="item-done">{t('jobs.work.markDone')}</Button>
                   )}
                   {rights.act && i.status === 'proposed' && (
@@ -79,10 +96,13 @@ export function WorkPanel(p: WorkPanelProps) {
         </div>
       )}
       {pending > 0 && <p class="small jobs-pending">{t('jobs.work.pendingTotal', { amount: money(pending, l) })}</p>}
+      {canEdit && editing && finished && <p class="small muted" style={{ margin: 'var(--sp-2) 0 0' }} data-testid="work-edit-billed">{t('jobs.work.editBilled')}</p>}
       {canEdit && (
         <div class="jobs-work-actions">
-          <Button icon={<Plus />} onClick={p.onAdd} data-testid="work-add">{t('jobs.work.add')}</Button>
+          {!editing && <Button icon={<Pencil />} onClick={() => setEditing(true)} data-testid="work-edit">{t('jobs.work.edit')}</Button>}
+          {editing && <Button icon={<Plus />} onClick={p.onAdd} data-testid="work-add">{t('jobs.work.add')}</Button>}
           <Button icon={<PenLine />} onClick={p.onPropose} data-tour="job-extra" data-testid="work-propose">{t('jobs.work.propose')}</Button>
+          {editing && <Button variant="primary" icon={<Check />} onClick={() => setEditing(false)} data-testid="work-edit-done">{t('jobs.work.editDone')}</Button>}
         </div>
       )}
     </Panel>
