@@ -28,6 +28,7 @@ import { phoneOwners } from '../customers/dupes';
 import { customersList } from '../../data/select';
 import { phoneDigits } from '../../lib/text';
 import type { CallStart } from './CallScreen';
+import { OilHint } from '../jobs/CarFirst';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
 import { BlockPicker, choiceWords, type BlockChoice } from './BlockPicker';
 import { missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, BLOCK_REFUSALS } from './logic';
@@ -352,6 +353,7 @@ function BookForm({ query }: ScreenProps) {
         <div class="stack">
           <Field label={t('booking.vehicle.vehicle')} group>
             <VehiclePicker customerId={customerId} value={vehicleId} onPick={chooseVehicle} />
+            <OilHint vehicleId={vehicleId} />
             {others.length > 0 && (
               <div class="book-cars" data-testid="book-cars">
                 <span class="small muted">{t('booking.cars.also')}</span>

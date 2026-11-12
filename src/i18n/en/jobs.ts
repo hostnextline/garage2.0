@@ -27,6 +27,15 @@ export const jobs: typeof fr = {
     filter: 'filter {ref}',
     oilUnknown: 'Oil: not known yet (vehicle sheet)',
     toConfirm: 'To confirm on the vehicle',
+    missing: 'Missing: {what}',
+    piece: { grade: 'the oil grade', litres: 'the quantity', filter: 'the filter' },
+    noCar: 'No vehicle on this appointment: add it to see the oil and the filter.',
+    fill: 'Fill in',
+    confirm: 'Confirm',
+    fillTitle: 'Oil and filters',
+    needCar: 'The year, make and model first',
+    needCarText: 'With them, the app finds the engine and suggests the oil and the filter.',
+    openCar: 'Complete the car',
     more: { one: 'and 1 more', other: 'and {n} more' }
   },
   head: {

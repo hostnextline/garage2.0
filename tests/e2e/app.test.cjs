@@ -1577,6 +1577,12 @@ step('« La voiture » at « Je suis arrivé »: the km of the visit and the VIN
   assert.equal(await until(() => h.sql(`select coalesce(odometer_km::text, '') from public.jobs where id = '${job}'`), (v) => v === '123456', 15000), '123456');
   assert.equal(await until(() => h.sql(`select coalesce(vin, '') || '|' || odometer_km from public.vehicles where id = '${car}'`), (v) => v.startsWith(VIN), 15000), `${VIN}|123456`, 'the car follows: its VIN, its km');
   await page.getByTestId('job-km').getByText('123 456 km à cette visite').waitFor({ timeout: 15000 });
+  // a car with no engine sheet: the job says what the oil change needs and offers to fill it in
+  assert.match(await page.getByTestId('carfirst-missing').innerText(), /Il manque\u00a0: le grade d’huile, la quantité, le filtre/);
+  await page.getByTestId('carfirst-fill').click();
+  await page.getByTestId('carfirst-sheet').waitFor();
+  await h.shot(page, 'e2e-carfirst-fill');
+  await dismissSheets(page);
   // an older visit noted later never lowers the car's km
   h.sql(`update public.jobs set odometer_km = 100000 where id = '${job}'`);
   assert.equal(h.sql(`select odometer_km from public.vehicles where id = '${car}'`), '123456');

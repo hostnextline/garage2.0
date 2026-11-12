@@ -16,7 +16,10 @@ describe('« Le véhicule d’abord »', () => {
     expect(sure.sub).toContain('4,5 L');
     expect(sure.sub).toContain('PH7317');
     expect(oilLine({ label: '', cylinders: null, values: { oil_visc: '0W-20' }, from: { oil_visc: 'list' } }, 'fr').toConfirm).toBe(true);
-    expect(oilLine({ label: '', cylinders: null, values: {}, from: {} }, 'fr')).toMatchObject({ known: false, sub: '' });
+    expect(oilLine({ label: '', cylinders: null, values: {}, from: {} }, 'fr')).toMatchObject({ known: false, sub: '', missing: ['grade', 'litres', 'filter'] });
+    // what is not known is said, so it gets filled in
+    expect(sure.missing).toEqual([]);
+    expect(oilLine({ label: '', cylinders: null, values: { oil_visc: '5W-30', oil_l: 4.4 }, from: { oil_visc: 'sheet', oil_l: 'sheet' } }, 'fr').missing).toEqual(['filter']);
   });
   it('the work: what is planned or accepted, not the declined ones nor the discounts; else the problem', () => {
     const items = [

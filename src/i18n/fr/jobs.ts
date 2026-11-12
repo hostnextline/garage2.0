@@ -30,6 +30,15 @@ export const jobs = {
     filter: 'filtre {ref}',
     oilUnknown: 'Huile : pas encore connue (fiche du véhicule)',
     toConfirm: 'À confirmer sur le véhicule',
+    missing: 'Il manque : {what}',
+    piece: { grade: 'le grade d’huile', litres: 'la quantité', filter: 'le filtre' },
+    noCar: 'Aucun véhicule sur ce rendez-vous : ajoute-le pour voir l’huile et le filtre.',
+    fill: 'Compléter',
+    confirm: 'Confirmer',
+    fillTitle: 'L’huile et les filtres',
+    needCar: 'Il faut d’abord l’année, la marque et le modèle',
+    needCarText: 'Avec eux, l’app trouve le moteur et propose l’huile et le filtre.',
+    openCar: 'Compléter la voiture',
     more: { one: 'et 1 autre', other: 'et {n} autres' }
   },
   /* the head of the sheet */

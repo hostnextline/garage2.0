@@ -178,3 +178,8 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 
 /* « Modifier le rendez-vous » → the address: room kept for the suggestions, so closing them does not move the button under the finger */
 .jobs-edit-address { min-height: 420px; }
+.jobs-cf-missing { display: block; margin-top: var(--sp-1); font-size: var(--t-sm); font-weight: 560; color: var(--warn-ink, var(--st-en-route, var(--ink-2))); }
+.jobs-cf-oil > .btn { margin-left: auto; align-self: center; flex: none; }
+.jobs-oilhint { display: flex; gap: 6px; align-items: flex-start; margin: 0; color: var(--ink-2); }
+.jobs-oilhint svg { flex: none; margin-top: 2px; }
+.jobs-oilhint.is-missing { color: var(--warn-ink, var(--ink-2)); }

@@ -1,8 +1,11 @@
 /* « Le véhicule d'abord » (the mechanic, first thing on the job): the car in big letters (year, make, model, engine,
    plate), the oil it takes (grade, litres, filter: from the confirmed engine sheet, else the engine list « à confirmer »),
    then the work to do, right under it. Shared: the job screen and the next stop of « Ma journée ». */
-import { useEffect } from 'preact/hooks';
-import { Car, Droplet, Wrench } from 'lucide-preact';
+import { useEffect, useState } from 'preact/hooks';
+import { Car, Droplet, Wrench, Pencil } from 'lucide-preact';
+import { Button, Sheet, Banner } from '../../ui';
+import { isField } from '../../app/routes';
+import { SpecPanel } from '../customers/SpecPanel';
 import { t, lang } from '../../lib/i18n';
 import { vehicle as vehicleRow, specByKey, itemsOf } from '../../data/select';
 import type { Job } from '../../data/types';
@@ -15,6 +18,8 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
   const j = p.job;
   useEffect(() => { void ensureEngineRef().catch(() => undefined); }, []);
   const v = vehicleRow(j.vehicle_id);
+  const [filling, setFilling] = useState(false);
+  const mayFill = isField();
   const facts = carFacts(v, specByKey(v?.spec_key), engineRef.value.rows);
   const car = carLine(v);
   const oil = oilLine(facts, lang.value);
@@ -34,8 +39,21 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
           <b>{oil.known ? oil.main : t('jobs.carFirst.oilUnknown')}</b>
           {oil.sub && <span class="jobs-cf-detail">{oil.sub}</span>}
           {oil.toConfirm && <span class="jobs-cf-confirm">{t('jobs.carFirst.toConfirm')}</span>}
+          {v && oil.missing.length > 0 && <span class="jobs-cf-missing" data-testid="carfirst-missing">{t('jobs.carFirst.missing', { what: oil.missing.map((k) => t(`jobs.carFirst.piece.${k}`)).join(', ') })}</span>}
+          {!v && <span class="jobs-cf-missing">{t('jobs.carFirst.noCar')}</span>}
         </div>
+        {v && mayFill && (oil.missing.length > 0 || oil.toConfirm) && (
+          <Button size="sm" icon={<Pencil />} onClick={() => setFilling(true)} data-testid="carfirst-fill">{oil.missing.length ? t('jobs.carFirst.fill') : t('jobs.carFirst.confirm')}</Button>
+        )}
       </div>
+      {v && filling && (
+        <Sheet open onClose={() => setFilling(false)} title={t('jobs.carFirst.fillTitle')} sub={car.name} data-testid="carfirst-sheet"
+          footer={<Button onClick={() => setFilling(false)}>{t('common.close')}</Button>}>
+          {!(v.year && v.make && v.model)
+            ? <Banner kind="warn" title={t('jobs.carFirst.needCar')} action={<Button size="sm" href={`#/vehicle/${v.id}`}>{t('jobs.carFirst.openCar')}</Button>}>{t('jobs.carFirst.needCarText')}</Banner>
+            : <SpecPanel v={v} canEdit />}
+        </Sheet>
+      )}
       {work.length > 0 && (
         <div class="jobs-cf-work" data-testid="carfirst-work">
           <Wrench aria-hidden="true" />
@@ -43,5 +61,23 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
         </div>
       )}
     </section>
+  );
+}
+
+/** one line for the booking screen: the oil the chosen car takes (grade, litres, filter), or what is missing with a link to fill it */
+export function OilHint(p: { vehicleId: string | null }) {
+  useEffect(() => { void ensureEngineRef().catch(() => undefined); }, []);
+  const v = vehicleRow(p.vehicleId);
+  if (!v) return null;
+  const oil = oilLine(carFacts(v, specByKey(v.spec_key), engineRef.value.rows), lang.value);
+  return (
+    <p class={`small jobs-oilhint${oil.missing.length ? ' is-missing' : ''}`} data-testid="book-oil">
+      <Droplet size={16} aria-hidden="true" />
+      <span>
+        {[oil.known ? oil.main : '', oil.sub].filter(Boolean).join(', ')}
+        {oil.missing.length > 0 && <>{oil.known || oil.sub ? '. ' : ''}{t('jobs.carFirst.missing', { what: oil.missing.map((k) => t(`jobs.carFirst.piece.${k}`)).join(', ') })} <a href={`#/vehicle/${v.id}`}>{t('jobs.carFirst.fill')}</a></>}
+        {oil.toConfirm && !oil.missing.length ? ` (${t('jobs.carFirst.toConfirm').toLowerCase()})` : ''}
+      </span>
+    </p>
   );
 }
