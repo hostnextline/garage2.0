@@ -1,9 +1,11 @@
 /* Réserver — one page, not a wizard: the customer, the car and the address, the services, the problem, the block,
    then « Réserver ». The server picks the truck and the order of the stops.
    #/book?customer=ID · ?day=YYYY-MM-DD&block=am · ?quote=ID (an estimate becomes a job) · ?walkin=1 (the job starts now)
-   · ?copy=JOB (« Coller » in the agenda: the same customer, car, address, work, problem and notes, in the block chosen). */
+   · ?copy=JOB (« Coller » in the agenda: the same customer, car, address, work, problem and notes, in the block chosen)
+   · ?call=1&start=address|car|job&phone=… (« Appel entrant », somebody new: the panels in the order of the call, the name
+   asked last; the customer and the car are made when « Réserver » is tapped, then the booking). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, Wrench, RotateCcw } from 'lucide-preact';
+import { CalendarCheck, Wrench, RotateCcw, Search, UserPlus } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { navigate } from '../../app/router';
 import { wide } from '../../app/media';
@@ -12,14 +14,20 @@ import { duration, today as todayOf } from '../../lib/dates';
 import { money } from '../../lib/money';
 import { job as jobRow, itemsOf, customer as customerRow, customerName, vehicle as vehicleRow, vehiclesOf, vehicleLabel, activeTrucks, truckLabel, truckColor, settings, service as serviceRow, blockLoad } from '../../data/select';
 import { getRow } from '../../data/store';
-import { bookJob, walkIn as walkInJob, errorMessage, type BookInput } from '../../data/api';
+import { bookJob, walkIn as walkInJob, errorMessage, saveCustomer, saveVehicle, type BookInput } from '../../data/api';
 import { uuid } from '../../data/sync';
 import { can, hasRole, isOwner, myTrucks } from '../../data/auth';
 import type { Quote } from '../../data/types';
-import { Page, Panel, Field, Input, Textarea, Check, Chips, Stepper, Button, BigStep, Banner, Kv, Money, toast, ask } from '../../ui';
+import { Page, Panel, Field, Input, PhoneInput, Textarea, Check, Chips, Stepper, Button, BigStep, Banner, Kv, Money, toast, ask } from '../../ui';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
+import { CarForm, EMPTY_CAR, carIsEmpty, carErrors, carRow, type AddDraft, type AddMode } from '../customers/VehicleBits';
+import { customerPatch, emptyDraft } from '../customers/CustomerFields';
+import { phoneOwners } from '../customers/dupes';
+import { customersList } from '../../data/select';
+import { phoneDigits } from '../../lib/text';
+import type { CallStart } from './CallScreen';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
 import { BlockPicker, choiceWords, type BlockChoice } from './BlockPicker';
 import { missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, BLOCK_REFUSALS } from './logic';
@@ -52,6 +60,14 @@ function BookForm({ query }: ScreenProps) {
   const quote = quoteId ? getRow<Quote>('quotes', quoteId) : undefined;
 
   const qCustomer = query.get('customer');
+  /* « Appel entrant »: a new caller, the panels in the order of the call */
+  const isCall = query.get('call') === '1';
+  const callStart = (['address', 'car', 'job'].includes(query.get('start') || '') ? query.get('start') : 'address') as CallStart;
+  const [caller, setCaller] = useState(() => ({ first: '', last: '', phone: query.get('phone') || '' }));
+  const [car, setCar] = useState<AddDraft>(EMPTY_CAR);
+  const [carMode, setCarMode] = useState<AddMode>('ymm');
+  const [callTried, setCallTried] = useState(false);
+  const [searchKnown, setSearchKnown] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(() => (customerRow(qCustomer) ? qCustomer : null));
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [place, setPlace] = useState<PlaceValue>(() => placeOf(qCustomer));
@@ -171,14 +187,38 @@ function BookForm({ query }: ScreenProps) {
     .map(([vid, cart]) => ({ vehicleId: vid, items: cart.items, sum: bookSummary(cart.items, settings.value.taxes, { override: cart.dur, priceless: (id) => serviceRow(id)?.price_cents == null }) }));
   const allMinutes = sum.minutes + others.reduce((n, o) => n + o.sum.minutes, 0);
   const allTotal = sum.total + others.reduce((n, o) => n + o.sum.total, 0);
-  const miss = missingPiece({ customerId, items: others.length ? [...items, ...others.flatMap((o) => o.items)] : items, problem, choice }, isWalkIn);
+  // a new caller: the customer counts once a first name and a full number are typed (made when « Réserver » is tapped)
+  const needNew = isCall && !customerId;
+  const callerOk = !!caller.first.trim() && !!phoneDigits(caller.phone);
+  const carErr = carErrors(car, carMode);
+  const carOk = carIsEmpty(car) || !Object.values(carErr).some(Boolean);
+  const miss = missingPiece({ customerId: customerId || (needNew && callerOk && carOk ? 'new' : null), items: others.length ? [...items, ...others.flatMap((o) => o.items)] : items, problem, choice }, isWalkIn);
 
   /* ---------- « Réserver » ---------- */
   const mayForce = isOwner() || hasRole('office');
+  /** a new caller: the customer (with the address) and the car are made first, once; the booking follows */
+  const made = useRef<{ customer: string; vehicle: string | null } | null>(null);
+  const makeCaller = async (): Promise<{ customer: string; vehicle: string | null } | null> => {
+    if (made.current) return made.current;
+    try {
+      const customer = await saveCustomer(customerPatch(emptyDraft({ first_name: caller.first, last_name: caller.last, phone: caller.phone, place })));
+      const vehicle = carIsEmpty(car) ? null : await saveVehicle(carRow(car, customer));
+      made.current = { customer, vehicle };
+      // the screen now has this customer (a refused block can be chosen again without making them twice)
+      setPlaceOwner(customer); setCustomerId(customer); setVehicleId(vehicle);
+      return made.current;
+    } catch (e) {
+      toast(errorMessage(e), { kind: 'bad' });
+      return null;
+    }
+  };
   const submit = async () => {
+    if (needNew) setCallTried(true);
     if (miss) return;
+    let cid = customerId, vid = vehicleId;
+    if (!cid) { const m = await makeCaller(); if (!m) return; cid = m.customer; vid = m.vehicle; }
     const base = {
-      id: jobId, customer_id: customerId!, vehicle_id: vehicleId, duration_min: sum.minutes, truck_id: effTruck || null,
+      id: jobId, customer_id: cid!, vehicle_id: vid, duration_min: sum.minutes, truck_id: effTruck || null,
       problem: problem.trim() || null, notes: notes.trim() || null,
       address: place.address.trim() || null, unit: place.unit?.trim() || null, postal_code: place.postal_code || null, lat: place.lat, lng: place.lng,
       card_on_file: !!card, quote_id: quote?.id ?? null, source: quote ? 'quote' : isWalkIn ? 'walk_in' : 'phone'
@@ -260,7 +300,7 @@ function BookForm({ query }: ScreenProps) {
       const forced = !!r.data?.forced;
       toast(forced ? t('booking.force.done', { when: choiceWords(c, l) }) : t('booking.done', { when: choiceWords(c, l) }), { kind: forced ? 'info' : 'ok', ms: forced ? 9000 : undefined });
       navigate(`/job/${r.id}`, { replace: true });
-      if (wantsText('booking', r.id)) void notifyCustomer('booking', r.id, { customerId });
+      if (wantsText('booking', r.id)) void notifyCustomer('booking', r.id, { customerId: job.customer_id });
       // the texts are on, but this customer has no cell number: the office can ask for one
       else if (settings.value.messages?.on?.booking && cust && !cust.phone) toast(t('booking.sms.noPhone'));
     } catch (e) {
@@ -285,10 +325,10 @@ function BookForm({ query }: ScreenProps) {
   };
 
   /* ---------- words ---------- */
-  const title = isWalkIn ? t('booking.titleWalkIn') : quote ? t('booking.titleQuote', { n: quote.number }) : t('booking.title');
-  const back = quote ? `/quote/${quote.id}` : qCustomer ? `/customer/${qCustomer}` : isWalkIn ? '/' : '/agenda';
+  const title = isWalkIn ? t('booking.titleWalkIn') : quote ? t('booking.titleQuote', { n: quote.number }) : isCall ? t('booking.call.title') : t('booking.title');
+  const back = quote ? `/quote/${quote.id}` : qCustomer ? `/customer/${qCustomer}` : isWalkIn ? '/' : isCall ? '/call' : '/agenda';
   const totalWords = allTotal > 0 ? money(allTotal, l) : '';
-  const stepSub = miss ? t(`booking.missing.${miss}`)
+  const stepSub = miss ? (miss === 'customer' && needNew ? t('booking.call.missing') : t(`booking.missing.${miss}`))
     : isWalkIn ? [t('booking.walkInSub'), totalWords].filter(Boolean).join(', ')
     : [blockPhrase(choice!.day, choice!.block, todayOf(), l), totalWords].filter(Boolean).join(', ');
   const step = (
@@ -392,10 +432,62 @@ function BookForm({ query }: ScreenProps) {
     </div>
   );
 
+  /* ---------- « Appel entrant »: a new caller's panels ---------- */
+  const dupes = needNew ? phoneOwners(caller.phone, customersList.value) : [];
+  const callerPanel = (
+    <Panel title={t('booking.call.who')} sub={t('booking.call.whoSub')} data-testid="call-who">
+      <div class="stack">
+        <div class="call-names">
+          <Field label={t('customers.form.first')} error={callTried && !caller.first.trim() ? t('booking.call.needFirst') : null}>
+            <Input value={caller.first} onValue={(v) => setCaller((c) => ({ ...c, first: v }))} autoComplete="off" autoCapitalize="words" data-testid="call-first" />
+          </Field>
+          <Field label={t('customers.form.last')} optional>
+            <Input value={caller.last} onValue={(v) => setCaller((c) => ({ ...c, last: v }))} autoComplete="off" autoCapitalize="words" data-testid="call-last" />
+          </Field>
+        </div>
+        <Field label={t('customers.form.phone')} error={callTried && !phoneDigits(caller.phone) ? t('booking.call.needPhone') : null}>
+          <PhoneInput value={caller.phone} onValue={(v) => setCaller((c) => ({ ...c, phone: v }))} />
+        </Field>
+        {dupes.length > 0 && (
+          <Banner kind="warn" title={t('booking.call.already', { name: customerName(dupes[0]) })} data-testid="call-already"
+            action={<Button size="sm" onClick={() => pickCustomer(dupes[0].id)} data-testid="call-same">{t('booking.call.isThem')}</Button>}>
+            {t('booking.call.alreadyText')}
+          </Banner>
+        )}
+        <div><Button size="sm" variant="ghost" icon={<Search />} onClick={() => setSearchKnown(true)} data-testid="call-search-known">{t('booking.call.searchKnown')}</Button></div>
+      </div>
+    </Panel>
+  );
+  const callAddressPanel = (
+    <Panel title={t('booking.call.addressTitle')} sub={t('booking.call.addressSub')} data-testid="call-address">
+      <div class="stack">
+        <AddressField label={t('booking.vehicle.address')} value={place} onValue={setPlace} />
+        <Field label={t('booking.vehicle.unit')} optional class="book-unit">
+          <Input value={place.unit} onValue={(v) => setPlace({ ...place, unit: v || null })} autoComplete="address-line2" maxLength={20} />
+        </Field>
+      </div>
+    </Panel>
+  );
+  const callCarPanel = (
+    <Panel title={t('booking.call.carTitle')} sub={t('booking.call.carSub')} data-testid="call-car">
+      <CarForm value={car} onPatch={(patch) => setCar((c) => ({ ...c, ...patch }))} mode={carMode} onMode={setCarMode} tried={callTried} />
+    </Panel>
+  );
+  const customerPanel = needNew && !searchKnown ? callerPanel : (
+    <Panel title={t('booking.customer.title')} data-tour="book-customer">
+      <CustomerPicker value={customerId} onPick={pickCustomer} allowCreate autoFocus={!customerId && !quote && !isCall} />
+      {needNew && searchKnown && <div style={{ marginTop: 'var(--sp-3)' }}><Button size="sm" variant="ghost" icon={<UserPlus />} onClick={() => setSearchKnown(false)}>{t('booking.call.backNew')}</Button></div>}
+    </Panel>
+  );
+  const block = !isWide ? blockSection : null;
+  const callOrder = callStart === 'car' ? [callCarPanel, servicesPanel, callAddressPanel, block, notesPanel, customerPanel]
+    : callStart === 'job' ? [servicesPanel, callAddressPanel, block, callCarPanel, notesPanel, customerPanel]
+    : [callAddressPanel, block, servicesPanel, callCarPanel, notesPanel, customerPanel];
+
   const summaryPanel = (
     <Panel title={t('booking.summary.title')} class="book-summary">
       <Kv items={[
-        [t('booking.summary.customer'), cust ? [customerName(cust), vehicleLabel(vehicleRow(vehicleId))].filter(Boolean).join(', ') : null],
+        [t('booking.summary.customer'), cust ? [customerName(cust), vehicleLabel(vehicleRow(vehicleId))].filter(Boolean).join(', ') : needNew && caller.first.trim() ? [`${caller.first} ${caller.last}`.trim(), [car.year, car.make, car.model].filter((x) => x.trim()).join(' ')].filter(Boolean).join(', ') : null],
         [t('booking.summary.when'), isWalkIn ? t('booking.walkInSub') : choice ? choiceWords(choice, l) : t('booking.summary.noBlock')],
         [t('booking.services.title'), items.length ? `${t('booking.summary.services', { n: items.length })}, ${t('booking.summary.work', { d: duration(sum.minutes, l) })}` : problem.trim() ? t('booking.summary.problemOnly') : t('booking.summary.noWork')],
         ...others.map((o) => [vehicleLabel(vehicleRow(o.vehicleId)) || '—', `${t('booking.summary.services', { n: o.items.length })}, ${t('booking.summary.work', { d: duration(o.sum.minutes, l) })}`] as [string, string]),
@@ -425,14 +517,14 @@ function BookForm({ query }: ScreenProps) {
       {mechanicOnly && own && <Banner kind="info">{t('booking.mechanicTruck', { name: truckLabel(own) })}</Banner>}
       <div class={`book${isWide ? ' book-wide' : ''}`}>
         <div class="book-main">
-          <Panel title={t('booking.customer.title')} data-tour="book-customer">
-            <CustomerPicker value={customerId} onPick={pickCustomer} allowCreate autoFocus={!customerId && !quote} />
-          </Panel>
-          {vehiclePanel}
-          {servicesPanel}
-          {notesPanel}
-          {(showTruckChoice || !isWalkIn) && optionsPanel}
-          {!isWide && blockSection}
+          {needNew ? <>{callOrder}{(showTruckChoice || !isWalkIn) && optionsPanel}</> : <>
+            {customerPanel}
+            {vehiclePanel}
+            {servicesPanel}
+            {notesPanel}
+            {(showTruckChoice || !isWalkIn) && optionsPanel}
+            {!isWide && blockSection}
+          </>}
         </div>
         {isWide && (
           <aside ref={side} class="book-side" aria-label={t('booking.summary.title')}>

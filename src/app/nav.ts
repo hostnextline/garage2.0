@@ -1,5 +1,5 @@
 /* The menu: what each person sees depends on their rights (the server checks every action again). */
-import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen } from 'lucide-preact';
+import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen, PhoneIncoming } from 'lucide-preact';
 import { may, type NavKey } from './routes';
 import { t } from '../lib/i18n';
 
@@ -32,6 +32,7 @@ export function tabItems(): NavItem[] {
 
 export interface QuickAction { key: string; href: string; icon: LucideIcon; show: () => boolean }
 export const QUICK: QuickAction[] = [
+  { key: 'call', href: '#/call', icon: PhoneIncoming, show: may.book },
   { key: 'book', href: '#/book', icon: CalendarPlus, show: may.book },
   { key: 'walkIn', href: '#/book?walkin=1', icon: Wrench, show: may.walkIn },
   { key: 'quote', href: '#/quote/new', icon: FileText, show: may.quotes },

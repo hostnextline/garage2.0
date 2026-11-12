@@ -1631,3 +1631,52 @@ step('« Voir sur la carte » on a moment offered: right-click → the truck’s
   noErrors(page);
   await ctx.close();
 });
+
+step('« Appel entrant »: the number finds Julie; a new caller starts with the job, then the address, the time and the name; « Réserver » makes the customer and books', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await ctx.route('https://photon.komoot.io/**', (r) => {
+    const q = new URL(r.request().url()).searchParams.get('q') || '';
+    const features = /jarry/i.test(q) ? [photonHouse('2500', 'Rue Jarry Est', 'Montréal', 'H1Z 4M4', -73.6005, 45.5605)] : [];
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ type: 'FeatureCollection', features }) });
+  });
+  await h.signIn(page, who.owner.email, PW);
+  // the « + » menu has it; the screen opens with the cursor in the number
+  await page.goto(h.APP + '#/call');
+  await page.getByTestId('call-screen').waitFor();
+  await page.locator('[data-testid="call-screen"] input[type=tel]').fill('514 555-0141');
+  const known = page.getByTestId('call-known');
+  await known.first().waitFor();
+  assert.match(await known.first().innerText(), /Julie Tremblay/);
+  assert.match(await known.first().getByTestId('call-book').getAttribute('href'), new RegExp(`customer=${julie}`));
+  await h.shot(page, 'e2e-call-known');
+  // somebody new: start with the job
+  await page.locator('[data-testid="call-screen"] input[type=tel]').fill('438 555-0177');
+  await page.waitForTimeout(300);
+  assert.equal(await known.count(), 0, 'nobody has this number');
+  await page.getByTestId('call-start-job').click();
+  await page.getByTestId('book-screen').waitFor();
+  const first = await page.locator('.book-main > .panel').first().innerText();
+  assert.match(first, /^Services/, 'the job first');
+  await page.getByTestId(`svc-${SVC_OIL}`).click();
+  const addr = page.getByTestId('call-address');
+  await addr.getByTestId('address-input').fill('2500 jarry est');
+  await addr.getByTestId('address-suggestions').getByRole('option').first().click();
+  await page.getByTestId('bp-sugg').first().click({ timeout: 20000 });
+  // the name last; the number typed on the call screen is already there
+  const who_ = page.getByTestId('call-who');
+  assert.equal(await who_.locator('input[type=tel]').inputValue(), '438 555-0177');
+  assert.match(await page.getByTestId('book-confirm').innerText(), /prénom et le numéro/);
+  await page.getByTestId('call-first').fill('Mario');
+  await page.getByTestId('call-last').fill('Appel');
+  await h.shot(page, 'e2e-call-new');
+  await page.getByTestId('book-confirm').click();
+  await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  const row = await until(() => h.sql(`select c.id || '|' || c.first_name || '|' || coalesce(c.address, '') || '|' || j.source || '|' || j.status
+    from public.customers c join public.jobs j on j.customer_id = c.id where c.phone_digits = '4385550177'`), Boolean, 15000);
+  const [, firstName, address, source, status] = row.split('|');
+  assert.deepEqual([firstName, source, status], ['Mario', 'phone', 'booked']);
+  assert.match(address, /2500 Rue Jarry Est/i);
+  assert.equal(h.sql(`select count(*) from public.customers where phone_digits = '4385550177'`), '1', 'one file, not two');
+  noErrors(page);
+  await ctx.close();
+});

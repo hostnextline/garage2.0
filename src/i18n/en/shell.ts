@@ -20,6 +20,7 @@ export const shell: typeof fr = {
   book: 'Book',
   quick: {
     title: 'Add',
+    call: 'Incoming call', callSub: 'The number finds the customer; if not, start with the address, the car or the job',
     book: 'Book an appointment', bookSub: 'Customer, services, block',
     walkIn: 'Walk-in customer', walkInSub: 'The job starts now, here',
     quote: 'Estimate', quoteSub: 'A price on site, no customer file',

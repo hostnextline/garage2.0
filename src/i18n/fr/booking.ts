@@ -1,6 +1,6 @@
 /* Réserver : le client, les services, le bloc. Aussi le choix du bloc et des services (utilisés ailleurs). */
 export const booking = {
-  copy: { title: 'Copie du rendez-vous #{n}', text: 'Même client, même auto, même adresse et mêmes travaux. Change ce qu’il faut, puis touche « Réserver ».' },
+  copy: { title: 'Copie du rendez-vous #{n}', text: 'Même client, même auto, même adresse et mêmes travaux. Change ce qu’il faut, puis touche « Réserver ».' },
   title: 'Réserver',
   titleWalkIn: 'Client sans rendez-vous',
   titleQuote: 'Réserver l’estimation n° {n}',
@@ -106,6 +106,39 @@ export const booking = {
     addsLine: 'Ce rendez-vous ajoute environ {km} km (à vol d’oiseau, la route par les rues arrive).',
     noTruck: 'Aucun camion ne travaille ce jour-là pour l’instant : le rendez-vous est seul sur la carte.',
     note: 'Une estimation : l’app choisit l’ordre final des arrêts quand tu réserves.'
+  },
+  call: {
+    title: 'Appel entrant',
+    sub: 'Le numéro trouve le client. Quelqu’un de nouveau : commence par ce dont il parle.',
+    phone: 'Le numéro qui appelle',
+    phoneHint: 'Tape les chiffres : un client connu sort tout seul.',
+    known: { one: 'Le client', other: '{n} clients avec ces chiffres' },
+    next: 'Prochain rendez-vous : {day}, {block}',
+    book: 'Réserver pour {name}',
+    file: 'Sa fiche',
+    appointment: 'Son rendez-vous',
+    notThem: 'Ce n’est pas lui ? Nouveau client',
+    newTitle: 'Nouveau client',
+    newSub: 'Par quoi on commence ? Le nom vient à la fin.',
+    start: {
+      address: 'L’adresse', addressSub: 'Pour voir quand on passe dans son coin',
+      car: 'La voiture', carSub: 'Année, marque, modèle ou NIV',
+      job: 'La job', jobSub: 'Ce qu’il faut faire, le prix, le temps'
+    },
+    who: 'Le client',
+    whoSub: 'Le prénom et le numéro suffisent. La fiche se crée quand tu touches « Réserver ».',
+    needFirst: 'Écris le prénom.',
+    needPhone: 'Écris les 10 chiffres du numéro.',
+    already: 'Ce numéro est déjà à {name}',
+    alreadyText: 'C’est peut-être le même client : prends sa fiche plutôt que d’en créer une deuxième.',
+    isThem: 'C’est lui',
+    searchKnown: 'Chercher un client qu’on connaît',
+    backNew: 'Non, c’est un nouveau client',
+    addressTitle: 'L’adresse du rendez-vous',
+    addressSub: 'Les meilleurs moments se calculent avec elle.',
+    carTitle: 'La voiture',
+    carSub: 'Facultatif : l’année, la marque et le modèle, ou le NIV.',
+    missing: 'Écris le prénom et le numéro du client'
   },
   picker: {
     title: 'Les meilleurs blocs',
