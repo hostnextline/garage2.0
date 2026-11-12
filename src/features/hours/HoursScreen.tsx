@@ -9,9 +9,11 @@ import { navigate } from '../../app/router';
 import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { addDays, dow, longDay, parseDay, duration, today as todayOf, isValidDay, type Day } from '../../lib/dates';
-import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs } from '../../data/select';
+import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs, blockOfKey } from '../../data/select';
 import { rowsOf } from '../../data/store';
-import { applyHours } from '../../data/api';
+import { applyHours, moveJob } from '../../data/api';
+import { closedJobs, otherKind, movesFor, type Move } from './closing';
+import { CloseDaySheet } from './CloseDaySheet';
 import { deleteRow, pull, net } from '../../data/sync';
 import { can, isOwner, myTrucks, preview } from '../../data/auth';
 import type { TruckDay } from '../../data/types';
@@ -84,8 +86,15 @@ export default function HoursScreen({ params }: ScreenProps) {
   const pickPhoneDay = (d: number) => { setPhoneDay(d); if (mode === 'day') setFrom(nextDow(today, d)); };
 
   /* ---------- « Appliquer » ---------- */
-  const apply = async () => {
+  /* the new hours close a day (or a block) that has appointments, and the garage has the other kind of vehicle: ask first */
+  const [closing, setClosing] = useState<Move[] | null>(null);
+  const apply = async (asked = false) => {
     if (!truckId || plan.empty) return;
+    if (!asked) {
+      const hit = closedJobs(allJobs.value, truckId, plan.week, plan.dates, blockOfKey);
+      const targets = otherKind(activeTrucks.value, truckId);
+      if (hit.length && targets.length) { setClosing(movesFor(hit, targets, truckRanges, blockOfKey)); return; }
+    }
     try {
       const r = await applyHours(truckId, mode, plan.week, mode === 'always' ? today : from, weeks);
       if (r.queued) { toast(t('hours.apply.queued')); return; }
@@ -96,6 +105,22 @@ export default function HoursScreen({ params }: ScreenProps) {
       if (mode !== 'always') setSt((s) => ({ ...s, draft: s.from }));
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
+    }
+  };
+  /** « Déplacer vers le camion »: each appointment first (while its vehicle is still open), then the hours */
+  const closeWith = async (move: boolean) => {
+    const list = closing || [];
+    setClosing(null);
+    let moved = 0;
+    if (move) for (const m of list) {
+      if (!m.target) continue;
+      try { await moveJob(m.job.id, m.job.day, m.job.block, m.target); moved++; } catch { /* refused (full, started…): it stays, said below */ }
+    }
+    await apply(true);
+    if (move) {
+      const left = list.length - moved;
+      const to = t(`hours.closing.to.${truckRow(list.find((m) => m.target)?.target)?.tire_machine === false ? 'car' : 'truck'}`);
+      toast(left ? t('hours.closing.donePart', { n: moved, total: list.length, to }) : t('hours.closing.done', { n: moved, to }), { kind: left ? 'info' : 'ok', ms: 9000 });
     }
   };
   const revert = (x: TruckDay) => attempt(() => deleteRow('truck_days', x.id, { label: t('log.hours') }), { ok: t('hours.exceptions.reverted', { day: longDay(x.day, l) }) });
@@ -194,7 +219,7 @@ export default function HoursScreen({ params }: ScreenProps) {
             </>
           )}
         </div>
-        <Button variant="primary" block disabled={plan.empty || !canEdit} onClick={apply} data-testid="hours-apply-btn">{t('hours.apply.button')}</Button>
+        <Button variant="primary" block disabled={plan.empty || !canEdit} onClick={() => apply()} data-testid="hours-apply-btn">{t('hours.apply.button')}</Button>
       </div>
     </Panel>
   );
@@ -229,6 +254,7 @@ export default function HoursScreen({ params }: ScreenProps) {
         </div>
       </div>
       {manage && <TrucksPanel onAdded={(id) => navigate(`/hours/${id}`, { replace: true })} />}
+      {closing && truckId && <CloseDaySheet truckId={truckId} moves={closing} onMove={() => void closeWith(true)} onJustClose={() => void closeWith(false)} onClose={() => setClosing(null)} />}
     </Page>
   );
 }

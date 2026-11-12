@@ -80,3 +80,32 @@ export function stopRank(a: TeamMapAnswer, spot: Spot): { n: number; total: numb
   const n = mine.find((j) => j.id === NEW_STOP)?.order;
   return n ? { n, total: mine.length } : null;
 }
+
+/** the day with these appointments moved to another vehicle (« La voiture ferme »: its stops go to the truck), each at
+    the cheapest place inside its own block, in the order given; the vehicle's stops numbered again */
+export function moveStops(a: TeamMapAnswer, ids: string[], truckId: string): TeamMapAnswer {
+  const home = a.home && a.home.lat != null && a.home.lng != null ? { lat: a.home.lat, lng: a.home.lng } : null;
+  const tr = a.trucks.find((x) => x.id === truckId);
+  const from = tr?.start ? { lat: tr.start.lat, lng: tr.start.lng } : home;
+  const live = (j: Job) => j.truck_id === truckId && j.status !== 'cancelled' && j.status !== 'no_show';
+  let jobs = a.jobs.slice();
+  for (const id of ids) {
+    const j = jobs.find((x) => x.id === id);
+    if (!j || j.truck_id === truckId) continue;
+    jobs = jobs.filter((x) => x.id !== id);
+    const mine = dayOrder(jobs.filter(live));
+    let at: number;
+    if (has(j)) {
+      const located = mine.filter(has);
+      const r = bestPlace(from, mine, { block: j.block, lat: j.lat!, lng: j.lng! });
+      at = r.index < located.length ? mine.indexOf(located[r.index]) : mine.length;
+    } else {
+      // no position: at the end of its block
+      const b = BLOCKS[j.block] ?? 1;
+      at = mine.filter((x) => (BLOCKS[x.block] ?? 9) <= b).length;
+    }
+    const next = [...mine.slice(0, at), { ...j, truck_id: truckId }, ...mine.slice(at)].map((x, i) => ({ ...x, order: i + 1 }));
+    jobs = [...jobs.filter((x) => !live(x)), ...next];
+  }
+  return { ...a, jobs };
+}

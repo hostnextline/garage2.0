@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bestPlace, placeNewStop, stopRank, NEW_STOP } from './preview';
+import { bestPlace, placeNewStop, stopRank, moveStops, NEW_STOP } from './preview';
 import type { TeamMapAnswer } from '../map/assemble';
 
 // the Centrale, then stops going east along a line; the new one between two of them
@@ -49,5 +49,20 @@ describe('the stop number said on a moment offered', () => {
   it('first and alone on a route with nothing yet; nothing said when no vehicle works', () => {
     expect(stopRank({ ...day, jobs: [] }, { ...spot, block: 'am', truckId: 'T2', lng: -73.64 })).toEqual({ n: 1, total: 1 });
     expect(stopRank({ ...day, trucks: [], jobs: [] }, { ...spot, block: 'am', truckId: null, lng: -73.64 })).toBeNull();
+  });
+});
+
+describe('« La voiture ferme »: its appointments on the other vehicle', () => {
+  it('each goes to its own block of the other route, at the cheapest place; the route is numbered again', () => {
+    const r = moveStops(day, ['far'], 'T1');
+    const t1 = r.jobs.filter((j) => j.truck_id === 'T1').sort((a, b) => a.order! - b.order!);
+    expect(t1.map((j) => j.id)).toEqual(['a1', 'a2', 'p1', 'far']);
+    expect(t1.map((j) => j.order)).toEqual([1, 2, 3, 4]);
+    expect(r.jobs.some((j) => j.truck_id === 'T2')).toBe(false);
+  });
+  it('a morning one never lands after the afternoon; one already there stays', () => {
+    const r = moveStops(day, ['a1', 'a2', 'p1'], 'T2');
+    expect(r.jobs.filter((j) => j.truck_id === 'T2').sort((a, b) => a.order! - b.order!).map((j) => j.block)).toEqual(['am', 'am', 'pm', 'pm']);
+    expect(moveStops(day, ['far'], 'T2')).toEqual(day);
   });
 });

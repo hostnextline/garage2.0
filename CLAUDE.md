@@ -226,6 +226,11 @@ end $do$;
   vehicle's or a mechanic's name: Hassan's rule). The kind is KEPT: `jobs_kind_follow` sets `vehicle_kind` from the vehicle a job is
   put on, so a replan never slides a job from the truck to the car or back; `trucks_kind_keep` when a vehicle's switch changes;
   `move_job` with a truck changes the kind by hand. With every vehicle on `tire_machine = true` (the default) nothing changes.
+- « La voiture ferme » (no server change; `src/features/hours/closing.ts`, `CloseDaySheet.tsx`): Horaires → « Appliquer » with hours that
+  close a block holding booked appointments of that vehicle, when the garage has the other kind: a sheet lists them (`closedJobs`,
+  `movesFor`: a vehicle of the other kind open in that block; tire-machine work never to the car), shows the other vehicle's route
+  that day with them in it (`moveStops` in `booking/preview.ts`), and asks: « Déplacer vers le camion » (`move_job` each, same day and
+  block, then `apply_hours`), « Fermer sans déplacer » (they go to « À placer »), or cancel.
 - « Routes partagées » (same migration; `settings.booking.shared_routes`, Réglages → Réservations, off by default): the vehicles are
   nobody's own (Hassan: mechanics switch during the day). On, `my_truck_ids()` gives every vehicle to every mechanic, so each sees
   every route and may move any job forward; « Ma journée » gets « La route que je fais » (Les deux / Voiture / Camion, kept on the

@@ -27,6 +27,25 @@ export const hours: typeof fr = {
     keys: 'Arrows to move, Space to light up or turn off a pane.',
     outside: 'These hours include time before 6 a.m. or after 10 p.m.: it stays as it is.'
   },
+  closing: {
+    title: { one: '{n} appointment affected', other: '{n} appointments affected' },
+    sub: 'These hours close {from} during appointments already booked.',
+    of: { car: 'the car', truck: 'the truck' },
+    to: { car: 'the car', truck: 'the truck' },
+    ask: { one: 'Move this appointment to {to}? The day and the time do not change for the customer.', other: 'Move these {n} appointments to {to}? The day and the time do not change for the customers.' },
+    none: 'None of these appointments can go to the other vehicle. If you close, they go to “To place” in the schedule.',
+    someStay: { one: '{n} cannot go there: it will go to “To place”.', other: '{n} cannot go there: they will go to “To place”.' },
+    goes: 'Goes to {to}',
+    stays: { machine: 'Stays to place: needs the truck', closed: 'Stays to place: the other vehicle is closed then' },
+    mapTitle: 'The new route for {to}',
+    day: 'Which day',
+    stops: { one: '{n} stop that day.', other: '{n} stops that day.' },
+    road: 'Route of the day: {km} km, {d}.',
+    move: { one: 'Move to {to}', other: 'Move all {n} to {to}' },
+    only: 'Close without moving',
+    done: { one: '{n} appointment moved to {to}', other: '{n} appointments moved to {to}' },
+    donePart: '{n} of {total} appointments moved to {to}. The others are in “To place” in the schedule.'
+  },
   apply: {
     title: 'Apply',
     mode: 'For when?',

@@ -27,6 +27,25 @@ export const hours = {
     keys: 'Flèches pour bouger, Espace pour allumer ou éteindre un carreau.',
     outside: 'Cet horaire a des heures avant 6 h ou après 22 h : elles restent comme elles sont.'
   },
+  closing: {
+    title: { one: '{n} rendez-vous touché', other: '{n} rendez-vous touchés' },
+    sub: 'Ces heures ferment {from} pendant des rendez-vous déjà pris.',
+    of: { car: 'la voiture', truck: 'le camion' },
+    to: { car: 'la voiture', truck: 'le camion' },
+    ask: { one: 'Veux-tu déplacer ce rendez-vous vers {to} ? Le jour et le moment ne changent pas pour le client.', other: 'Veux-tu déplacer ces {n} rendez-vous vers {to} ? Le jour et le moment ne changent pas pour les clients.' },
+    none: 'Aucun de ces rendez-vous ne peut aller sur l’autre véhicule. Si tu fermes, ils passent dans « À placer » de l’agenda.',
+    someStay: { one: '{n} ne peut pas y aller : il passera dans « À placer ».', other: '{n} ne peuvent pas y aller : ils passeront dans « À placer ».' },
+    goes: 'Va sur {to}',
+    stays: { machine: 'Reste à placer : demande le camion', closed: 'Reste à placer : l’autre véhicule est fermé à ce moment-là' },
+    mapTitle: 'La nouvelle route pour {to}',
+    day: 'Quel jour',
+    stops: { one: '{n} arrêt ce jour-là.', other: '{n} arrêts ce jour-là.' },
+    road: 'Route de la journée : {km} km, {d}.',
+    move: { one: 'Déplacer vers {to}', other: 'Déplacer les {n} vers {to}' },
+    only: 'Fermer sans déplacer',
+    done: { one: '{n} rendez-vous déplacé vers {to}', other: '{n} rendez-vous déplacés vers {to}' },
+    donePart: '{n} rendez-vous sur {total} déplacés vers {to}. Les autres sont dans « À placer » de l’agenda.'
+  },
   apply: {
     title: 'Appliquer',
     mode: 'Pour quand ?',

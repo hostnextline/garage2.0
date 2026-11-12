@@ -1827,3 +1827,47 @@ step('« Voiture ou camion »: the switch above the moments offered; mounting ti
   await ctx.close();
   h.sql(`update public.trucks set active = false where id = '${car}'`);
 });
+
+step('« La voiture ferme »: closing the car on a day that has an appointment asks to move it to the truck, lists it, shows the new route, and moves it', async () => {
+  const car = h.sql(`insert into public.trucks (name, active, sort, color, tire_machine) values ('Voiture ferme', true, 9, '#2F6FD0', false) returning id`);
+  h.sql(`insert into public.truck_week (truck_id, dow, ranges) select '${car}', d, '[[480,720]]'::jsonb from generate_series(0, 6) d`);
+  const day = h.sql(`select d::date::text from generate_series(public.local_today() + 2, public.local_today() + 9, interval '1 day') d where extract(dow from d) between 1 and 5 limit 1`);
+  const dowOf = h.sql(`select extract(dow from '${day}'::date)::int`);
+  const job = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order) values ('${julie}', '${day}', 'am', 'booked', '${car}', 45, 1) returning id`);
+  assert.equal(h.sql(`select vehicle_kind from public.jobs where id = '${job}'`), 'car', 'the appointment is the car’s');
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/hours/${car}`);
+  await page.getByTestId('hours-grid').waitFor();
+  await page.getByTestId('hours-mode').locator('button').nth(0).click();
+  await page.locator('[data-testid="hours-apply"] input[type=date]').fill(day);
+  // erase that morning: a drag that starts on a lit cell turns the cells off
+  const a = page.locator(`[data-testid="hours-grid"] [data-d="${dowOf}"][data-u="480"]`);
+  const z = page.locator(`[data-testid="hours-grid"] [data-d="${dowOf}"][data-u="705"]`);
+  await a.scrollIntoViewIfNeeded();
+  const ab = await a.boundingBox(), zb = await z.boundingBox();
+  await page.mouse.move(ab.x + ab.width / 2, ab.y + ab.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(zb.x + zb.width / 2, zb.y + zb.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await page.getByTestId('hours-apply-btn').click();
+  const sheet = page.getByTestId('close-day-sheet');
+  await sheet.waitFor({ timeout: 10000 });
+  assert.match(await sheet.getByTestId('close-day-ask').innerText(), /déplacer ce rendez-vous vers le camion/i);
+  assert.match(await sheet.getByTestId('close-day-job').first().innerText(), /Julie Tremblay[\s\S]*Va sur le camion/);
+  await sheet.getByTestId('close-day-map').waitFor();
+  assert.match(await sheet.getByTestId('close-day-facts').innerText(), /arrêt/);
+  await h.shot(page, 'e2e-close-day');
+  // nothing changed yet
+  assert.equal(h.sql(`select truck_id from public.jobs where id = '${job}'`), car);
+  await sheet.getByTestId('close-day-move').click();
+  const row = await until(() => h.sql(`select tr.tire_machine || '|' || j.day || '|' || j.block || '|' || j.status || '|' || j.vehicle_kind from public.jobs j join public.trucks tr on tr.id = j.truck_id where j.id = '${job}' and j.truck_id <> '${car}'`), Boolean, 20000);
+  assert.ok(['true', 't'].includes(row.split('|')[0]), 'on a vehicle with the tire machine');
+  assert.equal(row.split('|').slice(1).join('|'), `${day}|am|booked|truck`, 'same day, same block, now the truck’s');
+  await until(() => h.sql(`select ranges::text from public.truck_days where truck_id = '${car}' and day = '${day}' and deleted_at is null`), (x) => x === '[]', 15000);
+  noErrors(page);
+  await ctx.close();
+  h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
+  h.sql(`update public.trucks set active = false where id = '${car}'`);
+});
+
