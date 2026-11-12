@@ -216,8 +216,10 @@ end $do$;
   `plan_block`: a job for the machine (or asked « truck ») only on a vehicle with it, « car » only on one without, nothing said: the
   car first (+10000 on a vehicle with the machine). `book_job` refuses machine work on the car (`needs_truck`); `suggest_blocks` takes
   `p_need`, `p_kind`. App: the switch « Peu importe / Voiture / Camion » above the moments offered (`BlockPicker`, only when the
-  garage has both kinds; machine work shows a note instead), each suggestion names its vehicle. With every vehicle on
-  `tire_machine = true` (the default) nothing changes.
+  garage has both kinds; machine work shows a note instead), each suggestion tagged « Avec la voiture » / « Avec le camion » (never a
+  vehicle's or a mechanic's name: Hassan's rule). The kind is KEPT: `jobs_kind_follow` sets `vehicle_kind` from the vehicle a job is
+  put on, so a replan never slides a job from the truck to the car or back; `trucks_kind_keep` when a vehicle's switch changes;
+  `move_job` with a truck changes the kind by hand. With every vehicle on `tire_machine = true` (the default) nothing changes.
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,

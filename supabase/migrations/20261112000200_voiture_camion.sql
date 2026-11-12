@@ -3,8 +3,12 @@
 --   services.needs_machine       this service needs the tire machine (mounting, unmounted tires, balancing): the truck only.
 --   jobs.needs_machine           the job has such work (a service marked so, or a line whose words say mounting / balancing):
 --                                kept by a trigger on its lines; a booked job that starts needing the machine is planned again.
---   jobs.vehicle_kind            'car' | 'truck' | null: the vehicle the person asked for when booking (the switch above the
---                                moments offered); null = the app chooses.
+--   jobs.vehicle_kind            'car' | 'truck': the kind of vehicle the job is on. Chosen when booking (the switch above the
+--                                moments offered; nothing chosen: the app picks, the car first), then KEPT: a job booked for the
+--                                car stays on a car, one for the truck on a truck, whatever is planned again (trigger
+--                                jobs_kind_follow: the kind follows the vehicle the job is put on; trucks_kind_keep: a vehicle
+--                                whose switch changes keeps its coming jobs). Only a move by hand to a vehicle of the other
+--                                kind (move_job with a truck), or work that starts needing the tire machine, changes it.
 --   plan_block                   a job that needs the machine (or asked « truck ») only goes on a vehicle with it; « car » only on
 --                                one without; nothing said: the car first (the truck only when no car can take it).
 --   book_job / web_book / suggest_core / suggest_blocks / web_suggest   say what the work needs (and the choice) to the planner;
@@ -596,3 +600,77 @@ begin
     least(greatest(1, p_days), 14, v_horizon - (v_from - public.local_today()) + 1), null, least(greatest(1, p_limit), 12),
     exists (select 1 from public.services s where s.id = any(p_services) and s.needs_machine));
 end $$;
+
+create or replace function public.move_job(p_op uuid, p_job uuid, p_day date, p_block text, p_truck uuid default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_done jsonb := public.op_done(p_op);
+  j public.jobs; b record; v_lat double precision; v_lng double precision; v_plan0 jsonb; v_plan1 jsonb; v_res jsonb;
+begin
+  if v_done is not null then return v_done; end if;
+  select * into j from public.jobs where id = p_job and deleted_at is null;
+  if not found then perform public.fail('not_found', 'Ce rendez-vous n’existe plus.'); end if;
+  if not (public.can('book') or (p_truck is not null and p_truck = any(public.my_truck_ids()) and j.truck_id = any(public.my_truck_ids()))) then
+    perform public.fail('not_allowed', 'Tu ne peux pas déplacer ce rendez-vous.');
+  end if;
+  if j.status <> 'booked' then perform public.fail('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.'); end if;
+  select * into b from public.blocks() x where x.key = p_block;
+  if not found then perform public.fail('bad_block', 'Bloc inconnu.'); end if;
+  if p_day < public.local_today() or (p_day = public.local_today() and public.now_min() >= b.start_min) then
+    perform public.fail('block_started', 'Ce bloc est déjà commencé.');
+  end if;
+  if j.day = p_day and j.block = p_block and p_truck is not distinct from (case when j.truck_pinned then j.truck_id end) then
+    return public.op_save(p_op, 'move_job', jsonb_build_object('ok', true, 'unchanged', true, 'rows', jsonb_build_object('jobs', jsonb_build_array(to_jsonb(j)))));
+  end if;
+  -- the two blocks, always locked in the same order (day, then morning → evening)
+  perform public.lock_two(j.day, j.block, p_day, p_block);
+  select coalesce(j.lat, c.lat), coalesce(j.lng, c.lng) into v_lat, v_lng from public.customers c where c.id = j.customer_id;
+  v_plan0 := public.plan_block(p_day, p_block, null, j.id);
+  v_plan1 := public.plan_block(p_day, p_block, jsonb_build_object('id', j.id, 'lat', v_lat, 'lng', v_lng, 'dur', j.duration_min, 'truck', p_truck,
+    -- a vehicle chosen by hand: its kind becomes the job's (work for the tire machine still needs the machine)
+    'need', j.needs_machine, 'kind', case when p_truck is not null then (select case when tr.tire_machine then 'truck' else 'car' end from public.trucks tr where tr.id = p_truck) else j.vehicle_kind end), j.id);
+  if jsonb_array_length(v_plan1->'trucks') = 0 then perform public.fail('block_closed', 'Ce bloc est fermé ce jour-là.'); end if;
+  if not coalesce((v_plan1->'extra'->>'placed')::boolean, false)
+     or exists (select 1 from jsonb_array_elements_text(v_plan1->'over') o where not ((v_plan0->'over') ? o)) then
+    perform public.fail('block_full', 'Ce bloc est complet : la route ne rentre plus dans le temps.');
+  end if;
+  if p_truck is not null and (v_plan1->'extra'->>'truck')::uuid is distinct from p_truck then
+    perform public.fail('truck_full', 'Ce camion n’a plus de place dans ce bloc.');
+  end if;
+  perform set_config('garage.rpc', 'on', true);
+  update public.jobs set day = p_day, block = p_block, truck_id = (v_plan1->'extra'->>'truck')::uuid, truck_pinned = p_truck is not null,
+    confirm_sent_at = case when day <> p_day or block <> p_block then null else confirm_sent_at end
+  where id = j.id;
+  perform public.apply_plan(v_plan1);
+  if j.day <> p_day or j.block <> p_block then perform public.apply_plan(public.plan_block(j.day, j.block)); end if;
+  v_res := jsonb_build_object('ok', true, 'job_id', j.id, 'changed', j.day <> p_day or j.block <> p_block,
+    'rows', jsonb_build_object('jobs', public.block_rows(p_day, p_block) || case when j.day <> p_day or j.block <> p_block then public.block_rows(j.day, j.block) else '[]'::jsonb end));
+  return public.op_save(p_op, 'move_job', v_res);
+end $$;
+
+-- the kind of a job follows the vehicle it is put on (booked, moved by hand, online booking, on the spot)
+create or replace function public.jobs_kind_follow() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.truck_id is not null then
+    select case when tr.tire_machine then 'truck' else 'car' end into new.vehicle_kind from public.trucks tr where tr.id = new.truck_id;
+  end if;
+  return new;
+end $$;
+revoke all on function public.jobs_kind_follow() from public, anon, authenticated;
+drop trigger if exists jobs_kind_follow on public.jobs;
+create trigger jobs_kind_follow before insert or update of truck_id on public.jobs for each row execute function public.jobs_kind_follow();
+
+-- a vehicle that gets or loses the tire machine keeps its jobs: they take its new kind
+create or replace function public.trucks_kind_keep() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update public.jobs set vehicle_kind = case when new.tire_machine then 'truck' else 'car' end
+   where truck_id = new.id and deleted_at is null and vehicle_kind is distinct from case when new.tire_machine then 'truck' else 'car' end;
+  return null;
+end $$;
+revoke all on function public.trucks_kind_keep() from public, anon, authenticated;
+drop trigger if exists trucks_kind_keep on public.trucks;
+create trigger trucks_kind_keep after update of tire_machine on public.trucks for each row execute function public.trucks_kind_keep();
+
+-- the jobs already there: the kind of the vehicle they are on
+update public.jobs j set vehicle_kind = case when tr.tire_machine then 'truck' else 'car' end
+  from public.trucks tr where tr.id = j.truck_id and j.vehicle_kind is null;

@@ -1625,7 +1625,7 @@ step('« Voir sur la carte » on a moment offered: right-click → the truck’s
   await page.getByTestId('route-preview-map').locator('.leaflet-container, .mv, canvas, svg').first().waitFor({ timeout: 15000 }).catch(() => undefined);
   const facts = page.getByTestId('route-preview-facts');
   await facts.waitFor({ timeout: 10000 });
-  assert.match(await facts.innerText(), /Arrêt \d+ sur \d+ de la journée de /);
+  assert.match(await facts.innerText(), /Arrêt \d+ sur \d+ dans la journée, sur /);
   // by the streets once the planner answered: the day's route and what this appointment adds, in km and minutes
   await page.getByTestId('route-preview-extra').getByText(/ajoute [\d,]+ km et .*de route/).waitFor({ timeout: 15000 });
   assert.ok(asked.length >= 1, 'the route planner was asked');
@@ -1746,11 +1746,11 @@ step('« Voiture ou camion »: the switch above the moments offered; mounting ti
   await kind.waitFor({ timeout: 20000 });
   const first = page.getByTestId('bp-sugg').first();
   // nothing said: the car first
-  await first.getByText('Voiture e2e').waitFor({ timeout: 20000 });
+  await first.getByText('Avec la voiture').waitFor({ timeout: 20000 });
   await kind.getByRole('radio', { name: 'Camion' }).or(kind.getByRole('button', { name: 'Camion' })).first().click();
-  await first.getByText('Camion Complet').waitFor({ timeout: 20000 });
+  await first.getByText('Avec le camion').waitFor({ timeout: 20000 });
   await kind.getByRole('radio', { name: 'Voiture' }).or(kind.getByRole('button', { name: 'Voiture' })).first().click();
-  await first.getByText('Voiture e2e').waitFor({ timeout: 20000 });
+  await first.getByText('Avec la voiture').waitFor({ timeout: 20000 });
   await h.shot(page, 'e2e-kind');
   // work for the tire machine: the switch gives way to a note, only the truck is offered, and the booking lands on it
   const custom = h.sql(`insert into public.services (name_fr, category, price_cents, duration_min, needs_machine) values ('Montage e2e', 'pneus', 9000, 60, true) returning id`);
@@ -1758,7 +1758,7 @@ step('« Voiture ou camion »: the switch above the moments offered; mounting ti
   await page.getByTestId('book-screen').waitFor();
   await page.getByTestId(`svc-${custom}`).click({ timeout: 20000 });
   await page.getByTestId('bp-kind-need').waitFor({ timeout: 15000 });
-  await first.getByText('Camion Complet').waitFor({ timeout: 20000 });
+  await first.getByText('Avec le camion').waitFor({ timeout: 20000 });
   await first.click();
   await page.getByTestId('book-confirm').click();
   await page.getByTestId('job-screen').waitFor({ timeout: 20000 });

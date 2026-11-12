@@ -100,7 +100,7 @@ export const booking: typeof fr = {
     newLabel: 'New appointment',
     start: 'Start',
     mapLabel: 'The truck’s day with the new appointment',
-    stop: 'Stop {n} of {total} in {truck}’s day',
+    stop: 'Stop {n} of {total} in the day, on {truck}',
     day: 'Route of the day: {km} km, {d}',
     addsRoad: 'This appointment adds {km} km and {d} of driving.',
     addsLine: 'This appointment adds about {km} km (as the crow flies, the street route is on its way).',
@@ -145,6 +145,8 @@ export const booking: typeof fr = {
     any: 'Either',
     car: 'Car',
     truck: 'Truck',
+    with: { car: 'With the car', truck: 'With the truck' },
+    ofCar: 'the car', ofTruck: 'the truck', ofRoute: 'the route',
     need: 'This work needs the truck (mounting or balancing tires): only its times are offered.'
   },
   picker: {

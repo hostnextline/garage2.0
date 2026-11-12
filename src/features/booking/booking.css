@@ -142,3 +142,6 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .bp-preview-facts b { font-weight: 600; }
 /* the car or the truck, above the moments offered */
 .bp-kind { margin-bottom: var(--sp-3); }
+.bp-kind-tag { display: inline-flex; align-items: center; gap: 6px; width: fit-content; margin: 2px 0; padding: 2px 10px; border-radius: 999px; font-size: var(--t-sm); font-weight: 600; background: var(--sunken); border: 1px solid var(--line); }
+.bp-kind-tag.is-car { color: #1D4E9E; border-color: #2F6FD055; background: #2F6FD014; }
+.bp-kind-tag.is-truck { color: #9E1420; border-color: #D3000E55; background: #D3000E12; }

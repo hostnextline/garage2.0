@@ -601,6 +601,13 @@ test('Part 24 terdecies: mounting or balancing goes on the truck only; the rest 
   await h.c.query(`select public.replan_block($1, 'am')`, [day]);
   assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [want.job_id]), truck);
   assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [oil.job_id]), car);
+  // booked for the truck stays for a truck, booked for the car stays for a car, even when the car fills up or frees up
+  assert.deepEqual((await h.q(`select vehicle_kind from public.jobs where id = any($1) order by vehicle_kind`, [[oil.job_id, s1.job_id]])).map((x) => x.vehicle_kind), ['car', 'truck']);
+  await h.c.query(`update public.jobs set status = 'cancelled' where id = $1`, [oil.job_id]);
+  await h.c.query(`select public.replan_block($1, 'am')`, [day]);
+  assert.equal(await h.val(`select count(*)::int from public.jobs where day = $1 and truck_id = $2 and status = 'booked'`, [day, car]), 1, 'the truck’s jobs did not slide to the freed car');
+  await h.c.query(`update public.jobs set status = 'booked' where id = $1`, [oil.job_id]);
+  await h.c.query(`select public.replan_block($1, 'am')`, [day]);
   // the suggestions follow: work for the machine or « truck » → the truck; « car » → the car
   await h.as(owner);
   const sugg = (o) => h.rpc('suggest_blocks', { p_lat: near[0], p_lng: near[1], p_duration: 60, p_from: day, p_days: 1, p_exclude: null, p_limit: 6, p_need: false, p_kind: null, ...o });

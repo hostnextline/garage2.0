@@ -100,7 +100,7 @@ export const booking = {
     newLabel: 'Nouveau rendez-vous',
     start: 'Départ',
     mapLabel: 'La journée du camion avec le nouveau rendez-vous',
-    stop: 'Arrêt {n} sur {total} de la journée de {truck}',
+    stop: 'Arrêt {n} sur {total} dans la journée, sur {truck}',
     day: 'Route de la journée : {km} km, {d}',
     addsRoad: 'Ce rendez-vous ajoute {km} km et {d} de route.',
     addsLine: 'Ce rendez-vous ajoute environ {km} km (à vol d’oiseau, la route par les rues arrive).',
@@ -145,6 +145,8 @@ export const booking = {
     any: 'Peu importe',
     car: 'Voiture',
     truck: 'Camion',
+    with: { car: 'Avec la voiture', truck: 'Avec le camion' },
+    ofCar: 'la voiture', ofTruck: 'le camion', ofRoute: 'la route',
     need: 'Ce travail demande le camion (montage ou balancement des pneus) : seuls ses moments sont proposés.'
   },
   picker: {

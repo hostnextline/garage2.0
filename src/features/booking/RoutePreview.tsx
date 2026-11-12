@@ -9,7 +9,7 @@ import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, type TruckRoute } from '../map/assemble';
 import { fromDevice } from '../map/device';
 import { useRoads, roadOf, roadTotal } from '../map/useRoads';
-import { staffName } from '../../data/select';
+import { staffName, activeTrucks } from '../../data/select';
 import { placeNewStop, NEW_STOP, type Spot } from './preview';
 
 export interface PreviewAsk extends Spot { when: string; exclude?: string | null }
@@ -52,7 +52,10 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?:
 
   // what it adds: by the streets once both routes are known, else the straight-line estimate
   const extra = roadA && roadB ? { km: Math.max(0, roadA.km - roadB.km), minutes: Math.max(0, roadA.minutes - roadB.minutes), road: true } : { km: placed.extraKm, minutes: null, road: false };
-  const truckName = trA?.name || '';
+  // the route is the car's or the truck's: no vehicle or mechanic name
+  const both = activeTrucks.value.some((x) => x.tire_machine === false) && activeTrucks.value.some((x) => x.tire_machine !== false);
+  const isCar = activeTrucks.value.find((x) => x.id === placed.truckId)?.tire_machine === false;
+  const truckName = both ? t(isCar ? 'booking.kind.ofCar' : 'booking.kind.ofTruck') : t('booking.kind.ofRoute');
   return (
     <Sheet open onClose={p.onClose} title={t('booking.preview.title')} sub={a.when} data-testid="route-preview"
       footer={<>

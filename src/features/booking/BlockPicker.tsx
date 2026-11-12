@@ -1,10 +1,10 @@
 /* Choose the day and block: the best suggestions near the address first (they need the network), then a two-week
    calendar coloured by the room left (works with the copy on the phone). Shared: booking, moving a job. */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon } from 'lucide-preact';
+import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon, Car, Truck } from 'lucide-preact';
 import { today as todayOf, addDays, daysBetween, tinyDay, longDay, duration, clockRange, isValidDay, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { blocks, blockLoad, settings, job as jobRow, activeTrucks, truckLabel } from '../../data/select';
+import { blocks, blockLoad, settings, job as jobRow, activeTrucks } from '../../data/select';
 import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
@@ -70,6 +70,7 @@ export function BlockPicker(p: BlockPickerProps) {
     return () => { alive = false; clearTimeout(tm); };
   }, [p.lat, p.lng, dur, p.excludeJob, p.truckId, p.need, p.kind, online, retry]);
 
+  const kindOf = (truckId: string): 'car' | 'truck' => (activeTrucks.value.find((x) => x.id === truckId)?.tire_machine === false ? 'car' : 'truck');
   const bothKinds = activeTrucks.value.some((x) => x.tire_machine === false) && activeTrucks.value.some((x) => x.tire_machine !== false);
 
   /* ---------- the calendar (device copy) ---------- */
@@ -198,7 +199,6 @@ export function BlockPicker(p: BlockPickerProps) {
               const on = isPicked(s.day, s.block);
               const bits = [
                 p.lat != null && p.lng != null ? (s.drive_min <= 2 ? t('booking.picker.noDrive') : t('booking.picker.drive', { d: duration(s.drive_min, l) })) : '',
-                bothKinds && s.truck ? truckLabel(s.truck) : '',
                 t('booking.picker.near', { n: s.near }),
                 s.left != null && s.left > 0 ? t('booking.picker.free', { d: duration(s.left, l) }) : ''
               ].filter(Boolean);
@@ -209,6 +209,8 @@ export function BlockPicker(p: BlockPickerProps) {
                     {isCurrent(s.day, s.block) ? <span class="bp-best"><Pill tone="muted" dot={false}>{t('booking.picker.current')}</Pill></span>
                       : i === 0 && <span class="bp-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
                     <span class="bp-sugg-title">{phrase(s.day, s.block)}</span>
+                    {/* said clearly: this moment is the car's, or the truck's (never a vehicle's or a mechanic's name) */}
+                    {bothKinds && s.truck && <span class={`bp-kind-tag is-${kindOf(s.truck)}`} data-testid="bp-sugg-kind">{kindOf(s.truck) === 'car' ? <Car size={16} aria-hidden="true" /> : <Truck size={16} aria-hidden="true" />}{t(`booking.kind.with.${kindOf(s.truck)}`)}</span>}
                     <span class="bp-sugg-sub">{bits.join(', ')}</span>
                   </span>
                   <span class="bp-tick" aria-hidden="true">{on && <Check size={22} />}</span>
