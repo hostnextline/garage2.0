@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261111000100_historique_niv.sql` (Part 24 undecies, applied 2026-11-11 from commit `2f75cc5`;
+- Applied on live: every migration up to `20261112000100_km_visite.sql` (Part 24 duodecies, applied 2026-11-12 from commit `a5d1edf`;
+  Part 24 undecies applied 2026-11-11 from commit `2f75cc5`;
   Part 24 decies applied 2026-11-11 from commit `9791d65`;
   Part 24 nonies applied 2026-11-10 from commit `c8c507c`;
   Part 24 octies applied 2026-11-10 from commit `b87b956`;
@@ -202,6 +203,12 @@ end $do$;
 - « Départ et heure » from the map (`src/features/map/TruckDaySheet.tsx`): a button on each truck of the legend (owner, « hours », or the
   truck's driver): the start time of the day shown (`withStart`: keeps the end of the day; `apply_hours` mode day) and « Départ de ce
   camion » (`TruckStartPanel`).
+- « Modifier le travail » (`WorkPanel`): one button puts the work panel in edit mode: « Retirer » (on site: the line becomes « Pas
+  fait »; before: it leaves the job) and « Changer » (the line's sheet: price) on every line, « Ajouter du travail » next to it,
+  « Terminé ». Work billed on a finished invoice has no « Retirer » (« Modifier la facture » first).
+- Postal codes (2026-11-12): OpenStreetMap's are often wrong in Canada, so Photon's code is never written in the address nor saved
+  (`photon.ts`: no code in `place.address`; `AddressField` and `locator.ts` keep only a code the person typed). `place.postal_code`
+  still helps `locate.ts` recognise the area (first 3 characters).
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,

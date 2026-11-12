@@ -922,7 +922,7 @@ step('Départ des camions: from Horaires to Réglages, a new address, and the co
   await page.getByTestId('settings-save').click();
   await page.getByText('Départ des camions changé. Les tournées à venir sont ré-optimisées.').waitFor({ timeout: 10000 });
   assert.equal(await until(() => h.sql(`select booking->'home'->>'lat' from public.settings where id = 1`), (v) => v === '45.5312898'), '45.5312898');
-  assert.match(h.sql(`select booking->'home'->>'address' || '|' || (booking->'home'->>'label') from public.settings where id = 1`), /^1401 rue Legendre Ouest, Montréal, QC H4N 1H5\|Centrale$/i);
+  assert.match(h.sql(`select booking->'home'->>'address' || '|' || (booking->'home'->>'label') from public.settings where id = 1`), /^1401 rue Legendre Ouest, Montréal, QC\|Centrale$/i);
   // the server planned the evening again from Legendre: Amro at 16 h 03
   assert.equal(await until(route, (v) => v === '1:963,2:1024,3:1092', 15000), '1:963,2:1024,3:1092', 'the coming route re-optimized from the new start');
   // only the name: saved, nothing to re-plan (the note says nothing)
@@ -993,7 +993,7 @@ step('Départ de ce camion: the office makes Camion Complet leave from Laval; it
   await panel.getByTestId('truck-start-save').click();
   await page.getByText('Départ changé : les rendez-vous à venir sont replacés').waitFor({ timeout: 10000 });
   assert.equal(await until(() => h.sql(`select coalesce(start->>'label', '') || '|' || coalesce(start->>'lat', '') from public.trucks where id = '${T.complet}'`), (v) => v === 'Chez Saleh|45.565'), 'Chez Saleh|45.565');
-  assert.match(h.sql(`select start->>'address' from public.trucks where id = '${T.complet}'`), /^3500 boul\. Saint-Martin Ouest, Laval, QC H7T 2W4$/);
+  assert.match(h.sql(`select start->>'address' from public.trucks where id = '${T.complet}'`), /^3500 boul\. Saint-Martin Ouest, Laval, QC$/);
   // the server placed the morning again from Laval: Bassam first, at 8 h 06; the customers' block does not change
   assert.equal(await until(route, (v) => v === FROM_LAVAL, 15000), FROM_LAVAL, 'the coming morning placed again from the truck’s start');
   assert.equal(h.sql(`select string_agg(distinct block, ',') from public.jobs where id = any(${list})`), 'am');

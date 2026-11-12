@@ -93,7 +93,9 @@ export function suggestionOf(f: PhotonFeature, typedCivic: string | null = null)
   const pc = postalCode(str(p.postcode)) || null;
   const prov = provinceCode(str(p.state), pc);
   const line = civic ? `${civic} ${street}` : street;
-  const tail = [city, [prov, pc].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  // OpenStreetMap's postal codes are often wrong in Canada (the last 3 characters above all): the code is never written in
+  // the address nor proposed; it only helps to recognise the area (`place.postal_code`, read by locate.ts, never saved)
+  const tail = [city, prov].filter(Boolean).join(', ');
   let exact = !!house;
   let pos = lat != null && lng != null ? { lat, lng } : null;
   if (!house) {

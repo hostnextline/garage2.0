@@ -96,7 +96,7 @@ export function AddressField(p: AddressFieldProps) {
     setOpen(false);
     setItems([]);
     setState('idle');
-    emit({ address: s.place.address, postal_code: s.place.postal_code || vRef.current.postal_code || null, lat: s.place.lat, lng: s.place.lng, city: s.place.city ?? null });
+    emit({ address: s.place.address, postal_code: vRef.current.postal_code || null, lat: s.place.lat, lng: s.place.lng, city: s.place.city ?? null });
   };
   const onInput = (e: Event) => {
     const el = e.currentTarget as HTMLInputElement;
@@ -138,7 +138,7 @@ export function AddressField(p: AddressFieldProps) {
       setPicked({ ...r.place, exact: r.quality === 'door' });
       setOpen(false);
       setState('idle');
-      emit({ lat: pl.lat, lng: pl.lng, city: vRef.current.city || pl.city || null, postal_code: vRef.current.postal_code || pl.postal_code || null });
+      emit({ lat: pl.lat, lng: pl.lng, city: vRef.current.city || pl.city || null, postal_code: vRef.current.postal_code || null });
     } else {
       if (r.status === 'choose') setItems(r.choices);
       setState(r.status === 'offline' ? 'offline' : r.status === 'none' && !items.length ? 'none' : 'idle');

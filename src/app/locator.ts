@@ -124,7 +124,7 @@ export function locateMissing(opts: { only?: { jobs?: string[]; customers?: stri
       try {
         if (t.customerId) {
           const c = customersList.value.find((x) => x.id === t.customerId);
-          if (c && c.lat == null) await saveCustomer({ id: c.id, lat: pl.lat, lng: pl.lng, ...(c.city ? {} : { city: pl.city ?? null }), ...(c.postal_code ? {} : { postal_code: pl.postal_code }) });
+          if (c && c.lat == null) await saveCustomer({ id: c.id, lat: pl.lat, lng: pl.lng, ...(c.city ? {} : { city: pl.city ?? null }) });
         }
         for (const id of t.jobIds) {
           const j = allJobs.value.find((x) => x.id === id);

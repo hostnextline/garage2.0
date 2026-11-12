@@ -5,9 +5,9 @@ import { suggestionsOf, suggestionOf, streetName, provinceCode, photonUrl, photo
 describe('Photon answer → addresses', () => {
   const list = suggestionsOf(sample, '1250 rue graham');
   it('writes the address the Québec way, with the position', () => {
-    expect(list[0].place).toEqual({ address: '1250 rue Graham, Mont-Royal, QC H3P 2C9', unit: null, postal_code: 'H3P 2C9', lat: 45.5205372, lng: -73.6489153, city: 'Mont-Royal' });
+    expect(list[0].place).toEqual({ address: '1250 rue Graham, Mont-Royal, QC', unit: null, postal_code: 'H3P 2C9', lat: 45.5205372, lng: -73.6489153, city: 'Mont-Royal' });
     expect(list[0].label).toBe('1250 rue Graham');
-    expect(list[0].sub).toBe('Mont-Royal, QC H3P 2C9');
+    expect(list[0].sub).toBe('Mont-Royal, QC');   // OpenStreetMap's postal code is never written (often wrong)
     expect(list[0].exact).toBe(true);
   });
   it('keeps one copy of the same address, leaves out other countries and whole cities', () => {
@@ -18,8 +18,8 @@ describe('Photon answer → addresses', () => {
   });
   it('a business shows its name, and its address is kept without the name', () => {
     const g = list.find((s) => s.label === 'Garage Royalmount')!;
-    expect(g.place.address).toBe('5600 av. Royalmount, Mont-Royal, QC H4P 2T1');
-    expect(g.sub).toBe('5600 av. Royalmount, Mont-Royal, QC H4P 2T1');
+    expect(g.place.address).toBe('5600 av. Royalmount, Mont-Royal, QC');
+    expect(g.sub).toBe('5600 av. Royalmount, Mont-Royal, QC');
   });
   it('a street without the door: the typed number, the position only when the street is short', () => {
     const short = suggestionOf(sample.features[1], '1250')!;
