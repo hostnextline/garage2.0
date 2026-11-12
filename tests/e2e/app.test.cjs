@@ -1237,6 +1237,12 @@ step('« Changer de camion »: an appointment booked on the wrong truck goes to 
   await page.getByTestId('truck-sheet').waitFor({ timeout: 15000 });
   await h.shot(page, 'e2e-truck-sheet');
   await page.getByTestId(`truck-pick-${other}`).click();
+  // a refusal says why (the toast), instead of a sheet that just stays open
+  const refused = await Promise.race([
+    page.getByTestId('truck-sheet').waitFor({ state: 'detached', timeout: 15000 }).then(() => null),
+    page.locator('.toast.is-bad, .toast-bad, [data-kind="bad"]').first().waitFor({ timeout: 15000 }).then(() => page.locator('.toast.is-bad, .toast-bad, [data-kind="bad"]').first().innerText()).catch(() => null)
+  ]);
+  assert.equal(refused, null, `the move was refused: ${refused} (plan: ${h.sql(`select string_agg(truck_id || ':' || block || ':' || status || ':' || duration_min || ':' || coalesce(vehicle_kind, '-') || ':' || truck_pinned, ', ') from public.jobs where day = '${before[0]}' and deleted_at is null`)}; hours: ${h.sql(`select string_agg(truck_id || ':' || ranges::text, ', ') from public.truck_days where day = '${before[0]}'`)})`);
   await page.getByTestId('truck-sheet').waitFor({ state: 'detached', timeout: 15000 });
   const after = await until(() => h.sql(`select day || '|' || block || '|' || truck_id || '|' || truck_pinned from public.jobs where id = '${jobLaval}'`), (v) => v.includes(other), 15000);
   assert.deepEqual(after.split('|'), [before[0], before[1], other, 'true'], 'same day and block, the other truck, kept there');
@@ -1764,7 +1770,7 @@ step('« Voiture ou camion »: the switch above the moments offered; mounting ti
   await page.getByTestId('book-confirm').click();
   await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
   const row = await until(() => h.sql(`select j.truck_id || '|' || j.needs_machine from public.jobs j join public.job_items i on i.job_id = j.id where i.service_id = '${custom}'`), Boolean, 15000);
-  assert.equal(row, `${T.complet}|t`);
+  assert.equal(row, `${T.complet}|true`);
   noErrors(page);
   await ctx.close();
   h.sql(`update public.trucks set active = false where id = '${car}'`);
