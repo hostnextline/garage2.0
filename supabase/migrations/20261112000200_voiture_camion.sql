@@ -481,7 +481,7 @@ begin
   perform public.lock_block(v_day, v_block);
   v_plan0 := public.plan_block(v_day, v_block);
   v_plan1 := public.plan_block(v_day, v_block, jsonb_build_object('id', v_id, 'lat', v_lat, 'lng', v_lng, 'dur', v_dur,
-    'need', exists (select 1 from public.services s where s.id = any(v_services) and s.needs_machine), 'kind', null));
+    'need', exists (select 1 from public.services sv where sv.id = any(v_services) and sv.needs_machine), 'kind', null));
   if jsonb_array_length(v_plan1->'trucks') = 0
      or not coalesce((v_plan1->'extra'->>'placed')::boolean, false)
      or exists (select 1 from jsonb_array_elements_text(v_plan1->'over') o where not ((v_plan0->'over') ? o))
@@ -598,7 +598,7 @@ begin
   -- at most 14 days per call: each day costs up to six plans
   return public.suggest_core(p_lat, p_lng, public.web_duration(p_services), v_from,
     least(greatest(1, p_days), 14, v_horizon - (v_from - public.local_today()) + 1), null, least(greatest(1, p_limit), 12),
-    exists (select 1 from public.services s where s.id = any(p_services) and s.needs_machine));
+    exists (select 1 from public.services sv where sv.id = any(p_services) and sv.needs_machine));
 end $$;
 
 create or replace function public.move_job(p_op uuid, p_job uuid, p_day date, p_block text, p_truck uuid default null) returns jsonb

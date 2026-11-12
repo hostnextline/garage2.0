@@ -579,7 +579,8 @@ test('Part 24 terdecies: mounting or balancing goes on the truck only; the rest 
   const mount = await h.val(`insert into public.services (name_fr, price_cents, duration_min, needs_machine) values ('Pose de pneus sur jantes', 9000, 60, true) returning id`);
   const cs = []; for (let i = 0; i < 6; i++) cs.push(await h.customer('C' + i, near[0] + i * 0.002, near[1]));
   await h.as(owner);
-  const book = (c, items, extra = {}) => h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'am', extra), p_items: items });
+  // short jobs: the truck's morning has room for all of them
+  const book = (c, items, extra = {}) => h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'am', { duration_min: 30, ...extra }), p_items: items });
   // an oil change: the car first, even though both are free
   const oil = await book(cs[0], [{ description: 'Vidange d’huile', unit_cents: 7999, duration_min: 30 }]);
   assert.equal(oil.truck_id, car, 'the car first');
