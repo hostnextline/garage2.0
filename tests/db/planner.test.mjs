@@ -620,3 +620,29 @@ test('Part 24 terdecies: mounting or balancing goes on the truck only; the rest 
   await h.as(null); await h.c.query('reset role');
   assert.deepEqual(await h.one(`select needs_machine, truck_id from public.jobs where id = $1`, [oil.job_id]), { needs_machine: true, truck_id: truck });
 }));
+
+test('« Routes partagées »: off, a mechanic has only the vehicle he drives; on, every mechanic has every route and may move its jobs forward', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const saleh = await h.person('Saleh', ['mechanic']);
+  const adam = await h.person('Adam', ['mechanic']);
+  const office = await h.person('Bureau', ['office']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const truck = await h.truck('Camion', saleh, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  await h.as(owner);
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'am'), p_items: [{ description: 'Vidange', unit_cents: 7999, duration_min: 30 }] });
+  const sees = async (who) => { await h.as(who); return (await h.q(`select id from public.jobs where id = $1`, [r.job_id])).length; };
+  assert.equal(await sees(saleh), 1);
+  assert.equal(await sees(adam), 0, 'not his vehicle');
+  await h.as(null); await h.c.query('reset role');
+  await h.c.query(`update public.settings set booking = booking || '{"shared_routes": true}' where id = 1`);
+  assert.equal(await sees(adam), 1, 'every route is his now');
+  assert.deepEqual(await h.val(`select public.my_truck_ids()`), [truck]);
+  await h.rpc('job_step', { p_op: uuid(), p_job: r.job_id, p_action: 'leave', p_data: {} });
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(await h.val(`select status from public.jobs where id = $1`, [r.job_id]), 'en_route', 'Adam left for a job of the shared route');
+  // the office gains nothing from it (the rule is for mechanics)
+  await h.as(office);
+  assert.deepEqual(await h.val(`select public.my_truck_ids()`), []);
+}));

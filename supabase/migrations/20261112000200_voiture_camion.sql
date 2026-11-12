@@ -674,3 +674,13 @@ create trigger trucks_kind_keep after update of tire_machine on public.trucks fo
 -- the jobs already there: the kind of the vehicle they are on
 update public.jobs j set vehicle_kind = case when tr.tire_machine then 'truck' else 'car' end
   from public.trucks tr where tr.id = j.truck_id and j.vehicle_kind is null;
+
+-- « Routes partagées » (settings.booking.shared_routes, Réglages → Réservations): the vehicles are not a mechanic's own. Every
+-- mechanic sees every route and may move any of its jobs forward (they switch vehicles during the day). Everything that asked
+-- « is it my truck? » asks my_truck_ids(): with the switch on, every vehicle is a mechanic's.
+create or replace function public.my_truck_ids() returns uuid[] language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(t.id), '{}') from public.trucks t
+   where t.deleted_at is null
+     and (t.driver_id = auth.uid()
+       or (public.has_role('mechanic') and coalesce((select (st.booking->>'shared_routes')::boolean from public.settings st where st.id = 1), false)))
+$$;

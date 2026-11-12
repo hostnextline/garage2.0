@@ -32,6 +32,7 @@ export const today = {
   },
   ago: { now: 'à l’instant', min: 'il y a {n} min', long: 'il y a {time}' },
   /* the next stop */
+  route: { label: 'La route que je fais', all: 'Les deux', car: 'Voiture', truck: 'Camion' },
   next: {
     title: 'Prochain arrêt',
     now: 'En ce moment',

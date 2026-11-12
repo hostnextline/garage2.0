@@ -30,6 +30,7 @@ export const today: typeof fr = {
     retry: 'Try again'
   },
   ago: { now: 'just now', min: '{n} min ago', long: '{time} ago' },
+  route: { label: 'The route I am doing', all: 'Both', car: 'Car', truck: 'Truck' },
   next: {
     title: 'Next stop',
     now: 'Right now',

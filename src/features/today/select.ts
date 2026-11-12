@@ -1,5 +1,6 @@
 /* Lookups of « Aujourd'hui »: my stops of the day, what each truck is doing now, the money to collect, the proposals
    waiting for an answer, tomorrow's confirmations, today's payments. */
+import { signal } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import type { Job, JobItem, Invoice, Payment, Shift, Truck } from '../../data/types';
 import { rowsOf, getRow } from '../../data/store';
@@ -26,10 +27,20 @@ export function useTick(ms = 30_000): number {
   return now;
 }
 
+/** the route this mechanic is doing now, when several are theirs (kept on the phone); null: all of them */
+const ROUTE_KEY = 'his.myRoute';
+export const myRoute = signal<string | null>((() => { try { return localStorage.getItem(ROUTE_KEY); } catch { return null; } })());
+export function setMyRoute(id: string | null) {
+  myRoute.value = id;
+  try { if (id) localStorage.setItem(ROUTE_KEY, id); else localStorage.removeItem(ROUTE_KEY); } catch { /* private window */ }
+}
+
 /* ---------- the mechanic ---------- */
 /** my trucks' jobs of a day, in order (block, then stop) */
 export function myJobsOn(day: string): Job[] {
-  const mine = myTrucks();
+  const all = myTrucks();
+  // several routes are mine (« Routes partagées »): the one I am doing now, chosen on « Ma journée »
+  const mine = all.length > 1 && myRoute.value && all.includes(myRoute.value) ? [myRoute.value] : all;
   return jobsOn(day).filter((j) => !!j.truck_id && mine.includes(j.truck_id));
 }
 /** the stop to look at now: the one on site, else the one on the way, else the first booked */

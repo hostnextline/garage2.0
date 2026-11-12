@@ -206,6 +206,8 @@ export const settings = {
     labelHelp: 'Le nom du point de départ sur les cartes, par exemple « Centrale » ou « Garage ».',
     returnPhone: 'Numéro texté au retour',
     returnPhoneHelp: 'Quand un mécano repart vers le point de départ après sa dernière job de la journée, ce numéro reçoit son heure d’arrivée et la carte en direct, comme un client. Vide : pas de texto.',
+    shared: 'Routes partagées',
+    sharedHint: 'Allumé : chaque mécano voit toutes les routes (voiture et camion) et peut faire avancer n’importe quel rendez-vous. Personne n’est attaché à un véhicule.',
     noPos: 'Cette adresse n’est pas trouvée sur la carte : choisis une des suggestions pour que les trajets se calculent.',
     mapLabel: 'Le départ des camions sur la carte',
     replanNote: 'En enregistrant, les tournées des rendez-vous à venir sont recalculées (ordre des arrêts, camion, heures d’arrivée). Les blocs déjà commencés ne bougent pas.',

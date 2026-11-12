@@ -3,7 +3,7 @@
    numbers, and the first stop of the next working day. */
 import { useState } from 'preact/hooks';
 import { Power, MapPin, LocateOff, ChevronDown, ChevronUp, CalendarDays, MapPinCheck, Truck } from 'lucide-preact';
-import { Panel, Button, Empty, Help, Banner, BigStep, toast } from '../../ui';
+import { Panel, Button, Empty, Help, Banner, BigStep, toast, Seg } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, duration } from '../../lib/dates';
 import { me, myTrucks } from '../../data/auth';
@@ -18,7 +18,7 @@ import { StepButton, PRESSABLE } from '../jobs/StepButton';
 import { stepOf, jobRights, dayWord, clockOf, seen } from '../jobs/select';
 import { doReturn, doReturnEnd } from '../jobs/flow';
 import { sharing, retryPosition, agoText } from './position';
-import { OPEN, myJobsOn, nextStopOf, summaryOf, nextWorkDay, shiftsOf, workedMinutes, useTick } from './select';
+import { OPEN, myJobsOn, nextStopOf, summaryOf, nextWorkDay, shiftsOf, workedMinutes, useTick, myRoute, setMyRoute } from './select';
 
 /* ---------- the shift ---------- */
 /** calm: another red button leads the screen (the next stop): the shift's own button stays quiet */
@@ -157,8 +157,26 @@ function NextStop(p: { list: Job[] }) {
   );
 }
 
+/* ---------- several routes are mine (« Routes partagées »): the one I am doing now; one tap to change ---------- */
+function RouteChoice() {
+  const ids = myTrucks().filter((id) => truckRow(id)?.active);
+  if (ids.length < 2) return null;
+  const rows = ids.map((id) => truckRow(id)!);
+  // « Voiture » / « Camion » when that tells them apart, else the vehicles' names
+  const cars = rows.filter((r) => r.tire_machine === false).length;
+  const byKind = cars === 1 && rows.length === 2;
+  const value = myRoute.value && ids.includes(myRoute.value) ? myRoute.value : 'all';
+  return (
+    <div class="today-route" data-testid="today-route">
+      <Seg<string> value={value} onValue={(v) => setMyRoute(v === 'all' ? null : v)} label={t('today.route.label')}
+        options={[{ value: 'all', label: t('today.route.all') }, ...rows.map((r) => ({ value: r.id, label: byKind ? t(r.tire_machine === false ? 'today.route.car' : 'today.route.truck') : r.name }))]} />
+    </div>
+  );
+}
+
 /* ---------- the day ---------- */
 export function MechanicDay() {
+  void myRoute.value;
   const day = today();
   const list = myJobsOn(day).map(seen);
   const next = nextStopOf(list);
@@ -171,6 +189,7 @@ export function MechanicDay() {
     <div class="today-grid">
       <div class="today-side"><ShiftCard calm={!!next && PRESSABLE.includes(stepOf(next).kind)} /></div>
       <div class="today-main">
+        <RouteChoice />
         <NextStop list={list} />
         {then.length > 0 && (
           <section class="today-section" aria-labelledby="today-then">

@@ -22,6 +22,8 @@ interface Booking {
   home: { label: string; address: string; lat: number | null; lng: number | null };
   /** the number texted when a mechanic heads back after the last job (arrival time, live map) */
   return_phone: string;
+  /** every mechanic sees every route and may do any of its jobs (the vehicles are nobody's own) */
+  shared_routes: boolean;
 }
 const NUMS: { k: keyof Booking; min: number; max: number; unit: 'days' | 'kmh' | 'pct' | 'min' | 'km'; decimals?: boolean }[] = [
   { k: 'horizon_days', min: 7, max: 365, unit: 'days' },
@@ -45,7 +47,8 @@ export function BookingSection() {
     horizon_days: b.horizon_days, speed_kmh: b.speed_kmh, detour_pct: Math.round(((Number(b.detour) || 1.3) - 1) * 100), stop_min: b.stop_min,
     unknown_min: b.unknown_min, min_block_min: b.min_block_min, near_km: b.near_km,
     home: { label: b.home?.label || 'Centrale', address: b.home?.address || '', lat: b.home?.lat ?? null, lng: b.home?.lng ?? null },
-    return_phone: b.return_phone || ''
+    return_phone: b.return_phone || '',
+    shared_routes: !!(b as { shared_routes?: boolean }).shared_routes
   };
   const { draft: d, set, dirty, reset } = useSectionDraft<Booking>('booking', saved);
   const [err, setErr] = useState<Record<string, string | null>>({});
@@ -70,7 +73,7 @@ export function BookingSection() {
     const ok = await attempt(() => saveSettings('booking', {
       ...settings.value.booking, blocks: d.blocks, horizon_days: Math.round(d.horizon_days!), speed_kmh: d.speed_kmh, detour: Math.round(100 + d.detour_pct!) / 100,
       stop_min: Math.round(d.stop_min!), unknown_min: Math.round(d.unknown_min!), min_block_min: Math.round(d.min_block_min!), near_km: d.near_km, home,
-      return_phone: d.return_phone.trim() || null
+      return_phone: d.return_phone.trim() || null, shared_routes: d.shared_routes
     }), { ok: replan ? t(moved ? 'settings.booking.startMoved' : 'settings.booking.replanned') : t('settings.saved') });
     if (!ok) return;
     reset();
@@ -96,6 +99,7 @@ export function BookingSection() {
             <Field label={t('settings.booking.returnPhone')} help={t('settings.booking.returnPhoneHelp')}>
               <PhoneInput value={d.return_phone} onValue={(v) => set((x) => ({ ...x, return_phone: v }))} />
             </Field>
+            <Switch checked={d.shared_routes} onChange={(v) => set((x) => ({ ...x, shared_routes: v }))} label={t('settings.booking.shared')} hint={t('settings.booking.sharedHint')} data-testid="booking-shared" />
             {dirty && planOf(d) !== planOf(saved) && <p class="small muted settings-replan" data-testid="booking-replan-note">{t('settings.booking.replanNote')}</p>}
           </div>
           {hasPos && (

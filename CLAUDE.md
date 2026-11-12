@@ -220,6 +220,10 @@ end $do$;
   vehicle's or a mechanic's name: Hassan's rule). The kind is KEPT: `jobs_kind_follow` sets `vehicle_kind` from the vehicle a job is
   put on, so a replan never slides a job from the truck to the car or back; `trucks_kind_keep` when a vehicle's switch changes;
   `move_job` with a truck changes the kind by hand. With every vehicle on `tire_machine = true` (the default) nothing changes.
+- « Routes partagées » (same migration; `settings.booking.shared_routes`, Réglages → Réservations, off by default): the vehicles are
+  nobody's own (Hassan: mechanics switch during the day). On, `my_truck_ids()` gives every vehicle to every mechanic, so each sees
+  every route and may move any job forward; « Ma journée » gets « La route que je fais » (Les deux / Voiture / Camion, kept on the
+  phone: `myRoute` in `today/select.ts`).
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,

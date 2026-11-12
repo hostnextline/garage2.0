@@ -206,6 +206,8 @@ export const settings: typeof fr = {
     labelHelp: 'The name of the starting point on the maps, for example « Centrale » or « Garage ».',
     returnPhone: 'Number texted on the way back',
     returnPhoneHelp: 'When a mechanic heads back to the starting point after the last job of the day, this number gets the arrival time and the live map, like a customer. Empty: no text.',
+    shared: 'Shared routes',
+    sharedHint: 'On: every mechanic sees every route (car and truck) and can move any appointment forward. Nobody is tied to a vehicle.',
     noPos: 'This address is not found on the map: pick one of the suggestions so drives can be computed.',
     mapLabel: 'Where the trucks leave from, on the map',
     replanNote: 'When you save, the routes of the coming appointments are computed again (order of the stops, truck, arrival times). Blocks already started do not move.',
