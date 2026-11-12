@@ -1693,6 +1693,53 @@ step('« Appel entrant »: the number finds Julie; a new caller starts with the 
   await ctx.close();
 });
 
+step('« Appel entrant », two cars: « Ajouter une autre voiture », each car its own work; « Réserver » makes one customer, two cars, one appointment each in the same block', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await ctx.route('https://photon.komoot.io/**', (r) => {
+    const q = new URL(r.request().url()).searchParams.get('q') || '';
+    const features = /jarry/i.test(q) ? [photonHouse('2500', 'Rue Jarry Est', 'Montréal', 'H1Z 4M4', -73.6005, 45.5605)] : [];
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ type: 'FeatureCollection', features }) });
+  });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/book?call=1&start=car&phone=' + encodeURIComponent('438 555-0188'));
+  await page.getByTestId('book-screen').waitFor();
+  const carPanel = page.getByTestId('call-car');
+  const typeVin = async (vin) => {
+    await carPanel.getByTestId('vehicle-add-mode').getByRole('button', { name: 'NIV' }).click();
+    await carPanel.getByTestId('vin-input').fill(vin);
+  };
+  // the first car and its work
+  await typeVin('2HGFC2F59KH512345');
+  await page.getByTestId(`svc-${SVC_OIL}`).click();
+  assert.equal(await page.getByTestId('call-cars').count(), 0, 'one car: no list of cars');
+  // a second car: the form is empty again, the work too
+  await page.getByTestId('call-car-add').click();
+  await page.getByTestId('call-cars').waitFor();
+  assert.equal(await carPanel.getByTestId('vin-input').count() ? await carPanel.getByTestId('vin-input').inputValue() : '', '', 'a fresh car');
+  assert.match(await page.getByTestId('call-car-tab-1').innerText(), /2HGFC2F59KH512345.*1/s, 'the first car keeps its work');
+  await typeVin('1HGCM82633A004352');
+  await page.getByTestId(`svc-${SVC_OIL}`).click();
+  assert.match(await page.getByTestId('book-services-for').innerText(), /1HGCM82633A004352/);
+  // back to the first car: its own work is there
+  await page.getByTestId('call-car-tab-1').click();
+  assert.equal(await carPanel.getByTestId('vin-input').inputValue(), '2HGFC2F59KH512345');
+  await h.shot(page, 'e2e-call-two-cars');
+  const addr = page.getByTestId('call-address');
+  await addr.getByTestId('address-input').fill('2500 jarry est');
+  await addr.getByTestId('address-suggestions').getByRole('option').first().click();
+  await page.getByTestId('bp-sugg').first().click({ timeout: 20000 });
+  await page.getByTestId('call-first').fill('Deux');
+  await page.getByTestId('call-last').fill('Autos');
+  await page.getByTestId('book-confirm').click();
+  const got = await until(() => h.sql(`select count(distinct j.id) || '|' || count(distinct j.vehicle_id) || '|' || count(distinct (j.day, j.block)) || '|' || count(distinct i.id)
+    from public.customers c join public.jobs j on j.customer_id = c.id left join public.job_items i on i.job_id = j.id where c.phone_digits = '4385550188'`), (x) => x && x.startsWith('2|'), 20000);
+  assert.equal(got, '2|2|1|2', 'two appointments, two cars, the same block, one line each');
+  assert.equal(h.sql(`select count(*) from public.customers where phone_digits = '4385550188'`), '1', 'one file');
+  assert.equal(h.sql(`select count(*) from public.vehicles v join public.customers c on c.id = v.customer_id where c.phone_digits = '4385550188'`), '2', 'two cars on file');
+  noErrors(page);
+  await ctx.close();
+});
+
 step('« Départ et heure » from the map: a truck leaves at 9 h on a coming day (that day only); its start point in the same sheet', async () => {
   const day = h.sql(`select (public.local_today() + 2)::text`);
   const job = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order) values ('${julie}', '${day}', 'am', 'booked', '${T.complet}', 45, 1) returning id`);

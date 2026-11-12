@@ -3,9 +3,10 @@
    #/book?customer=ID · ?day=YYYY-MM-DD&block=am · ?quote=ID (an estimate becomes a job) · ?walkin=1 (the job starts now)
    · ?copy=JOB (« Coller » in the agenda: the same customer, car, address, work, problem and notes, in the block chosen)
    · ?call=1&start=address|car|job&phone=… (« Appel entrant », somebody new: the panels in the order of the call, the name
-   asked last; the customer and the car are made when « Réserver » is tapped, then the booking). */
+   asked last; the customer and the car are made when « Réserver » is tapped, then the booking; « Ajouter une autre voiture »:
+   several cars, each with its own work, one appointment each in the same block). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, Wrench, RotateCcw, Search, UserPlus } from 'lucide-preact';
+import { CalendarCheck, Wrench, RotateCcw, Search, UserPlus, Plus, Trash2 } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { navigate } from '../../app/router';
 import { wide } from '../../app/media';
@@ -31,7 +32,7 @@ import type { CallStart } from './CallScreen';
 import { OilHint } from '../jobs/CarFirst';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
 import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind } from './BlockPicker';
-import { missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, BLOCK_REFUSALS } from './logic';
+import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, BLOCK_REFUSALS } from './logic';
 import { blockPhrase } from './when';
 import { notifyCustomer, wantsText } from './notify';
 import { forgetRefusal, noLongWaitOffline } from './outbox';
@@ -46,6 +47,8 @@ function placeOf(id: string | null): PlaceValue {
   if (!c) return EMPTY_PLACE;
   return { address: c.address || '', unit: c.unit || null, postal_code: c.postal_code || null, lat: c.lat ?? null, lng: c.lng ?? null };
 }
+/** a car of a new caller, not saved yet: its id is already the one its file will have */
+interface CallCar { id: string; draft: AddDraft; mode: AddMode }
 const samePlace = (a: PlaceValue, b: PlaceValue) => (a.address || '').trim() === (b.address || '').trim() && (a.unit || '') === (b.unit || '');
 
 /** a new address (#/book → #/book?customer=…, a second booking) starts a fresh form: the frame keeps the screen when
@@ -65,12 +68,12 @@ function BookForm({ query }: ScreenProps) {
   const isCall = query.get('call') === '1';
   const callStart = (['address', 'car', 'job'].includes(query.get('start') || '') ? query.get('start') : 'address') as CallStart;
   const [caller, setCaller] = useState(() => ({ first: '', last: '', phone: query.get('phone') || '' }));
-  const [car, setCar] = useState<AddDraft>(EMPTY_CAR);
-  const [carMode, setCarMode] = useState<AddMode>('ymm');
+  // the caller's cars (one, or several with « Ajouter une autre voiture »): each has its own work, like a known customer's cars
+  const [cars, setCars] = useState<CallCar[]>(() => [{ id: uuid(), draft: EMPTY_CAR, mode: 'ymm' }]);
   const [callTried, setCallTried] = useState(false);
   const [searchKnown, setSearchKnown] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(() => (customerRow(qCustomer) ? qCustomer : null));
-  const [vehicleId, setVehicleId] = useState<string | null>(null);
+  const [vehicleId, setVehicleId] = useState<string | null>(() => (isCall && !customerRow(qCustomer) ? cars[0].id : null));
   const [place, setPlace] = useState<PlaceValue>(() => placeOf(qCustomer));
   const [placeOwner, setPlaceOwner] = useState<string | null>(() => (customerRow(qCustomer) ? qCustomer : null));
   const [items, setItems] = useState<ItemDraft[]>([]);
@@ -171,7 +174,7 @@ function BookForm({ query }: ScreenProps) {
   }, [customerId, !!cust]);
   const pickCustomer = (id: string | null) => {
     setCustomerId(id);
-    if (!id) { setVehicleId(null); setPlace(EMPTY_PLACE); setPlaceOwner(null); setCard(null); }
+    if (!id) { setVehicleId(isCall ? cars[0].id : null); setPlace(EMPTY_PLACE); setPlaceOwner(null); setCard(null); }
     if (id !== customerId) setCarts({});
   };
 
@@ -185,42 +188,65 @@ function BookForm({ query }: ScreenProps) {
   const custLang = (cust?.lang === 'en' ? 'en' : 'fr') as 'fr' | 'en';
   const sum = useMemo(() => bookSummary(items, settings.value.taxes, { override: durOverride, priceless: (id) => serviceRow(id)?.price_cents == null }), [items, durOverride, settings.value.taxes]);
   // the other cars with work (still the customer's), and the time of all the cars together for the block
+  // a new caller: the customer counts once a first name and a full number are typed (made when « Réserver » is tapped)
+  const needNew = isCall && !customerId;
+  const cur = cars.find((c) => c.id === vehicleId) || cars[0];
   const others = Object.entries(carts)
-    .filter(([vid, cart]) => cart.items.length > 0 && vid !== vehicleId && vehicleRow(vid)?.customer_id === customerId)
+    .filter(([vid, cart]) => cart.items.length > 0 && vid !== vehicleId && (needNew ? cars.some((c) => c.id === vid) : vehicleRow(vid)?.customer_id === customerId))
     .map(([vid, cart]) => ({ vehicleId: vid, items: cart.items, sum: bookSummary(cart.items, settings.value.taxes, { override: cart.dur, priceless: (id) => serviceRow(id)?.price_cents == null }) }));
   const need = needsMachine([...items, ...others.flatMap((o) => o.items)], (id) => !!serviceRow(id)?.needs_machine);
   const allMinutes = sum.minutes + others.reduce((n, o) => n + o.sum.minutes, 0);
   const allTotal = sum.total + others.reduce((n, o) => n + o.sum.total, 0);
-  // a new caller: the customer counts once a first name and a full number are typed (made when « Réserver » is tapped)
-  const needNew = isCall && !customerId;
   const callerOk = !!caller.first.trim() && !!phoneDigits(caller.phone);
-  const carErr = carErrors(car, carMode);
-  const carOk = carIsEmpty(car) || !Object.values(carErr).some(Boolean);
+  const workOf = (id: string) => (id === cur.id ? items.length + (problem.trim() ? 1 : 0) : carts[id]?.items.length || 0);
+  /* a car typed must be right; one car may stay empty; with several, a car that has work must be said (an empty one
+     without work is simply not made) */
+  const carBad = (c: CallCar) => (carIsEmpty(c.draft) ? cars.length > 1 && workOf(c.id) > 0 : Object.values(carErrors(c.draft, c.mode)).some(Boolean));
+  const carOk = !cars.some(carBad);
+  /** a car's name: its file, else what is typed, else « Voiture 2 » */
+  const carName = (id: string | null) => {
+    const i = cars.findIndex((c) => c.id === id);
+    return vehicleLabel(vehicleRow(id)) || (i >= 0 ? carDraftLabel(cars[i].draft) || t('booking.call.carN', { n: i + 1 }) : '') || '—';
+  };
+  const addCar = () => { const c: CallCar = { id: uuid(), draft: EMPTY_CAR, mode: 'ymm' }; setCars((cs) => [...cs, c]); chooseVehicle(c.id); };
+  const removeCar = () => {
+    const rest = cars.filter((c) => c.id !== cur.id);
+    if (!rest.length) return;
+    const next = { ...carts };
+    delete next[cur.id];
+    const back = next[rest[0].id];
+    delete next[rest[0].id];
+    setCarts(next); setItems(back?.items || []); setDurOverride(back?.dur ?? null); setCars(rest); setVehicleId(rest[0].id);
+  };
   const miss = missingPiece({ customerId: customerId || (needNew && callerOk && carOk ? 'new' : null), items: others.length ? [...items, ...others.flatMap((o) => o.items)] : items, problem, choice }, isWalkIn);
 
   /* ---------- « Réserver » ---------- */
   const mayForce = isOwner() || hasRole('office');
-  /** a new caller: the customer (with the address) and the car are made first, once; the booking follows */
-  const made = useRef<{ customer: string; vehicle: string | null } | null>(null);
-  const makeCaller = async (): Promise<{ customer: string; vehicle: string | null } | null> => {
-    if (made.current) return made.current;
+  /** a new caller: the customer (with the address) and each car typed are made first, once (a car keeps the id it had
+      on the screen); the booking follows */
+  const made = useRef<{ customer: string; vehicles: string[] } | null>(null);
+  const makeCaller = async (): Promise<{ customer: string; vehicles: string[] } | null> => {
     try {
-      const customer = await saveCustomer(customerPatch(emptyDraft({ first_name: caller.first, last_name: caller.last, phone: caller.phone, place })));
-      const vehicle = carIsEmpty(car) ? null : await saveVehicle(carRow(car, customer));
-      made.current = { customer, vehicle };
+      const m = (made.current ||= { customer: await saveCustomer(customerPatch(emptyDraft({ first_name: caller.first, last_name: caller.last, phone: caller.phone, place }))), vehicles: [] });
+      for (const c of cars) if (!carIsEmpty(c.draft) && !m.vehicles.includes(c.id)) { await saveVehicle({ ...carRow(c.draft, m.customer), id: c.id }); m.vehicles.push(c.id); }
       // the screen now has this customer (a refused block can be chosen again without making them twice)
-      setPlaceOwner(customer); setCustomerId(customer); setVehicleId(vehicle);
-      return made.current;
+      setPlaceOwner(m.customer); setCustomerId(m.customer); setVehicleId(m.vehicles.includes(cur.id) ? cur.id : null);
+      return m;
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
       return null;
     }
   };
+  /** the car's file for an appointment: a car on file, or one just made (an empty car of a new caller has none) */
+  const realCar = (id: string | null) => (id && (vehicleRow(id) || made.current?.vehicles.includes(id)) ? id : null);
   const submit = async () => {
     if (needNew) setCallTried(true);
+    // a car to fix that is not the one on screen: show it
+    if (needNew && callerOk && !carOk) { const bad = cars.find(carBad); if (bad && bad.id !== cur.id) chooseVehicle(bad.id); }
     if (miss) return;
-    let cid = customerId, vid = vehicleId;
-    if (!cid) { const m = await makeCaller(); if (!m) return; cid = m.customer; vid = m.vehicle; }
+    let cid = customerId;
+    if (!cid) { const m = await makeCaller(); if (!m) return; cid = m.customer; }
+    const vid = realCar(vehicleId);
     const base = {
       id: jobId, customer_id: cid!, vehicle_id: vid, duration_min: sum.minutes, truck_id: effTruck || null,
       problem: problem.trim() || null, notes: notes.trim() || null,
@@ -254,7 +280,7 @@ function BookForm({ query }: ScreenProps) {
     const done: string[] = [];
     for (const [k, car] of cars.entries()) {
       const id = idOf(car.vehicleId);
-      const job = { ...base, id, vehicle_id: car.vehicleId, duration_min: car.minutes, quote_id: k === 0 ? base.quote_id : null };
+      const job = { ...base, id, vehicle_id: realCar(car.vehicleId), duration_min: car.minutes, quote_id: k === 0 ? base.quote_id : null };
       const lines = toItemInputs(car.items);
       try {
         if (isWalkIn) {
@@ -275,7 +301,7 @@ function BookForm({ query }: ScreenProps) {
     const left = cars.length - done.length;
     if (!done.length && left) return;
     toast(left ? t('booking.cars.partial', { n: done.length, total: cars.length }) : t('booking.cars.done', { n: done.length, when: isWalkIn ? '' : choiceWords(choice!, l) }), { kind: left ? 'bad' : 'ok', ms: 9000 });
-    for (const id of done) if (!isWalkIn && wantsText('booking', id)) void notifyCustomer('booking', id, { customerId });
+    for (const id of done) if (!isWalkIn && wantsText('booking', id)) void notifyCustomer('booking', id, { customerId: base.customer_id });
     if (!left) navigate(isWalkIn ? '/' : `/agenda/${choice!.day}`, { replace: true });
     // what was booked leaves the screen: the rest can be tried again in another block
     else { setCarts((cs) => { const n = { ...cs }; for (const car of cars) if (car.vehicleId && done.includes(idOf(car.vehicleId))) delete n[car.vehicleId]; return n; }); if (done.includes(jobId)) setItems([]); }
@@ -333,7 +359,7 @@ function BookForm({ query }: ScreenProps) {
   const title = isWalkIn ? t('booking.titleWalkIn') : quote ? t('booking.titleQuote', { n: quote.number }) : isCall ? t('booking.call.title') : t('booking.title');
   const back = quote ? `/quote/${quote.id}` : qCustomer ? `/customer/${qCustomer}` : isWalkIn ? '/' : isCall ? '/call' : '/agenda';
   const totalWords = allTotal > 0 ? money(allTotal, l) : '';
-  const stepSub = miss ? (miss === 'customer' && needNew ? t('booking.call.missing') : t(`booking.missing.${miss}`))
+  const stepSub = miss ? (miss === 'customer' && needNew ? t(callerOk && !carOk ? 'booking.call.missingCar' : 'booking.call.missing') : t(`booking.missing.${miss}`))
     : isWalkIn ? [t('booking.walkInSub'), totalWords].filter(Boolean).join(', ')
     : [blockPhrase(choice!.day, choice!.block, todayOf(), l), totalWords].filter(Boolean).join(', ');
   const step = (
@@ -363,7 +389,7 @@ function BookForm({ query }: ScreenProps) {
                 <span class="small muted">{t('booking.cars.also')}</span>
                 {others.map((o) => (
                   <button key={o.vehicleId} type="button" class="chip" onClick={() => chooseVehicle(o.vehicleId)} data-testid={`book-car-${o.vehicleId}`}>
-                    {t('booking.cars.chip', { car: vehicleLabel(vehicleRow(o.vehicleId)) || '—', n: o.items.length })}
+                    {t('booking.cars.chip', { car: carName(o.vehicleId), n: o.items.length })}
                   </button>
                 ))}
               </div>
@@ -385,6 +411,7 @@ function BookForm({ query }: ScreenProps) {
 
   const servicesPanel = (
     <Panel title={t('booking.services.title')} sub={t('booking.services.sub')} data-tour="book-services">
+      {needNew && cars.length > 1 && <p class="book-for" data-testid="book-services-for">{t('booking.call.workFor', { car: carName(cur.id) })}</p>}
       <ServicePicker value={items} onValue={setItems} lang={custLang} allowCustom hideTotal />
       <div class="book-duration" data-testid="book-duration">
         <Field label={t('booking.options.duration')} hint={durOverride != null ? t('booking.options.durationChanged') : t('booking.options.durationHint')} group>
@@ -476,8 +503,25 @@ function BookForm({ query }: ScreenProps) {
     </Panel>
   );
   const callCarPanel = (
-    <Panel title={t('booking.call.carTitle')} sub={t('booking.call.carSub')} data-testid="call-car">
-      <CarForm value={car} onPatch={(patch) => setCar((c) => ({ ...c, ...patch }))} mode={carMode} onMode={setCarMode} tried={callTried} />
+    <Panel title={cars.length > 1 ? t('booking.call.carsTitle', { n: cars.length }) : t('booking.call.carTitle')} sub={cars.length > 1 ? t('booking.call.carsSub') : t('booking.call.carSub')} data-testid="call-car">
+      <div class="stack">
+        {cars.length > 1 && (
+          <div class="book-cars" data-testid="call-cars">
+            {cars.map((c, i) => (
+              <button key={c.id} type="button" class="chip" aria-pressed={c.id === cur.id} onClick={() => chooseVehicle(c.id)} data-testid={`call-car-tab-${i + 1}`}>
+                {t('booking.cars.chip', { car: carName(c.id), n: c.id === cur.id ? items.length : carts[c.id]?.items.length || 0 })}
+              </button>
+            ))}
+          </div>
+        )}
+        <CarForm key={cur.id} value={cur.draft} onPatch={(patch) => setCars((cs) => cs.map((c) => (c.id === cur.id ? { ...c, draft: { ...c.draft, ...patch } } : c)))}
+          mode={cur.mode} onMode={(m) => setCars((cs) => cs.map((c) => (c.id === cur.id ? { ...c, mode: m } : c)))} tried={callTried} />
+        {callTried && cars.length > 1 && carIsEmpty(cur.draft) && carBad(cur) && <Banner kind="bad" data-testid="call-car-need">{t('booking.call.needCar')}</Banner>}
+        <div class="row-wrap">
+          <Button size="sm" icon={<Plus />} onClick={addCar} data-testid="call-car-add">{t('booking.call.addCar')}</Button>
+          {cars.length > 1 && <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={removeCar} data-testid="call-car-remove">{t('booking.call.removeCar')}</Button>}
+        </div>
+      </div>
     </Panel>
   );
   const customerPanel = needNew && !searchKnown ? callerPanel : (
@@ -494,10 +538,10 @@ function BookForm({ query }: ScreenProps) {
   const summaryPanel = (
     <Panel title={t('booking.summary.title')} class="book-summary">
       <Kv items={[
-        [t('booking.summary.customer'), cust ? [customerName(cust), vehicleLabel(vehicleRow(vehicleId))].filter(Boolean).join(', ') : needNew && caller.first.trim() ? [`${caller.first} ${caller.last}`.trim(), [car.year, car.make, car.model].filter((x) => x.trim()).join(' ')].filter(Boolean).join(', ') : null],
+        [t('booking.summary.customer'), cust ? [customerName(cust), vehicleLabel(vehicleRow(vehicleId))].filter(Boolean).join(', ') : needNew && caller.first.trim() ? [`${caller.first} ${caller.last}`.trim(), carDraftLabel(cur.draft) || (cars.length > 1 ? carName(cur.id) : '')].filter(Boolean).join(', ') : null],
         [t('booking.summary.when'), isWalkIn ? t('booking.walkInSub') : choice ? choiceWords(choice, l) : t('booking.summary.noBlock')],
         [t('booking.services.title'), items.length ? `${t('booking.summary.services', { n: items.length })}, ${t('booking.summary.work', { d: duration(sum.minutes, l) })}` : problem.trim() ? t('booking.summary.problemOnly') : t('booking.summary.noWork')],
-        ...others.map((o) => [vehicleLabel(vehicleRow(o.vehicleId)) || '—', `${t('booking.summary.services', { n: o.items.length })}, ${t('booking.summary.work', { d: duration(o.sum.minutes, l) })}`] as [string, string]),
+        ...others.map((o) => [carName(o.vehicleId), `${t('booking.summary.services', { n: o.items.length })}, ${t('booking.summary.work', { d: duration(o.sum.minutes, l) })}`] as [string, string]),
         [t('booking.summary.truckLabel'), effTruck ? truckLabel(effTruck) : null]
       ]} />
       <div class="book-total">

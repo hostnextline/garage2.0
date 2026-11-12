@@ -138,6 +138,14 @@ export const booking: typeof fr = {
     addressSub: 'The best times are worked out from it.',
     carTitle: 'The car',
     carSub: 'Optional: year, make and model, or the VIN.',
+    carsTitle: 'The {n} cars',
+    carsSub: 'Tap a car to see or change its work. Each one gets its own appointment, at the same time.',
+    carN: 'Car {n}',
+    addCar: 'Add another car',
+    removeCar: 'Remove this car',
+    workFor: 'Work for: {car}',
+    needCar: 'This car has work: say which car it is, or remove it.',
+    missingCar: 'Check the cars',
     missing: 'Type the customer’s first name and number'
   },
   kind: {

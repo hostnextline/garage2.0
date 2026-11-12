@@ -199,6 +199,9 @@ end $do$;
   → `#/book?call=1&start=…&phone=…`: BookScreen shows the panels in that order (`callOrder`), the name and number last (`call-who`);
   « Réserver » makes the customer (with the address) and the car once (`makeCaller`, kept in a ref), then books (`source = 'phone'`).
   A number already on file: « C’est lui ».
+  Several cars for a new caller (`cars` in BookScreen, « Ajouter une autre voiture » `call-car-add`, tabs `call-car-tab-N`): each car
+  typed has the id its file will get, so the per-car work (`carts`, `chooseVehicle`) and `bookCars` work as for a known customer's
+  cars: one appointment per car, same block. With several cars, a car that has work must be described (`carBad`).
 - Oil always said (`CarFirst`, `OilHint`): the job card says what the oil change still needs (grade, quantity, filter: `oilLine().missing`)
   with « Compléter » (the car's « Fiche technique » `SpecPanel` in a sheet; without year/make/model, a link to the car); the booking
   screen shows the chosen car's oil under the car.

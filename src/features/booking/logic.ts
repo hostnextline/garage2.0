@@ -126,3 +126,8 @@ export const wordsNeedMachine = (text: string | null | undefined): boolean => /(
 export function needsMachine(items: { service_id?: string | null; description: string }[], serviceNeeds: (id: string) => boolean): boolean {
   return items.some((i) => wordsNeedMachine(i.description) || (!!i.service_id && serviceNeeds(i.service_id)));
 }
+
+/** a car being typed, in a few words (« 2019 Honda Civic », else its VIN); '' when nothing is typed */
+export function carDraftLabel(d: { year: string; make: string; model: string; vin: string }): string {
+  return [d.year, d.make, d.model].map((x) => x.trim()).filter(Boolean).join(' ') || d.vin.trim();
+}

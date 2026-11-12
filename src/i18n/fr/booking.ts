@@ -138,6 +138,14 @@ export const booking = {
     addressSub: 'Les meilleurs moments se calculent avec elle.',
     carTitle: 'La voiture',
     carSub: 'Facultatif : l’année, la marque et le modèle, ou le NIV.',
+    carsTitle: 'Les {n} voitures',
+    carsSub: 'Touche une voiture pour voir ou changer son travail. Chacune aura son rendez-vous, au même moment.',
+    carN: 'Voiture {n}',
+    addCar: 'Ajouter une autre voiture',
+    removeCar: 'Retirer cette voiture',
+    workFor: 'Le travail pour : {car}',
+    needCar: 'Cette voiture a du travail : écris laquelle c’est, ou retire-la.',
+    missingCar: 'Vérifie les voitures',
     missing: 'Écris le prénom et le numéro du client'
   },
   kind: {

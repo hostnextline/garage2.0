@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, type LoadLike } from './logic';
+import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, type LoadLike } from './logic';
 import { blockPhrase, blockPhraseLower, relativeDay } from './when';
 import { QC_TAXES } from '../../lib/money';
 import type { ItemDraft } from './ServicePicker';
@@ -158,5 +158,14 @@ describe('the car or the truck: what needs the tire machine', () => {
     const marked = (id: string) => id === 's-machine';
     expect(needsMachine([{ service_id: 's-machine', description: 'Pose sur jantes' }], marked)).toBe(true);
     expect(needsMachine([{ service_id: 's-oil', description: 'Vidange' }, { service_id: null, description: 'Essuie-glaces' }], marked)).toBe(false);
+  });
+});
+
+describe('carDraftLabel', () => {
+  it('says the car typed, else its VIN, else nothing', () => {
+    expect(carDraftLabel({ year: '2019', make: 'Honda', model: ' Civic ', vin: '' })).toBe('2019 Honda Civic');
+    expect(carDraftLabel({ year: '', make: 'Honda', model: '', vin: '2HGFC2F59KH512345' })).toBe('Honda');
+    expect(carDraftLabel({ year: '', make: '', model: '', vin: '2HGFC2F59KH512345' })).toBe('2HGFC2F59KH512345');
+    expect(carDraftLabel({ year: '', make: '', model: '', vin: '' })).toBe('');
   });
 });
