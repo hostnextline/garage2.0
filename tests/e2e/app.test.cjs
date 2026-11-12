@@ -358,11 +358,19 @@ step('the estimate signed online from the confirmation link; at the door nothing
   const jwt = await jwtOf(who.owner.email);
   const karim = h.sql(`insert into public.customers (first_name, last_name, phone, address, postal_code, lat, lng, lang, sms_ok)
     values ('Karim', 'Haddad', '514 555-0199', '1000 rue Sherbrooke O, Montréal, QC', 'H3A 3G4', 45.5048, -73.5772, 'fr', true) returning id`);
-  // a coming day when Camion Complet works
-  const day = h.sql(`select d::date::text from generate_series(public.local_today() + 1, public.local_today() + 10, interval '1 day') d
-    where exists (select 1 from public.truck_week w where w.truck_id = '${T.complet}' and w.dow = extract(dow from d) and jsonb_array_length(w.ranges) > 0) limit 1`);
-  const b = await rpcAs(jwt, 'book_job', { p_op: require('node:crypto').randomUUID(), p_job: { customer_id: karim, day, block: 'pm', truck_id: T.complet, duration_min: 60 },
-    p_items: [{ description: 'Promo : pneus non montés + huile + inspection', unit_cents: 19999, duration_min: 60 }] });
+  // a coming day when Camion Complet works the afternoon (a day of mornings only says « block_closed »: the next one)
+  const days = h.sql(`select string_agg(d::date::text, ',' order by d) from generate_series(public.local_today() + 1, public.local_today() + 14, interval '1 day') d
+    where exists (select 1 from public.truck_week w where w.truck_id = '${T.complet}' and w.dow = extract(dow from d) and jsonb_array_length(w.ranges) > 0)`).split(',');
+  let b = null, day = null;
+  for (const d of days) {
+    try {
+      b = await rpcAs(jwt, 'book_job', { p_op: require('node:crypto').randomUUID(), p_job: { customer_id: karim, day: d, block: 'pm', truck_id: T.complet, duration_min: 60 },
+        p_items: [{ description: 'Promo : pneus non montés + huile + inspection', unit_cents: 19999, duration_min: 60 }] });
+      day = d;
+      break;
+    } catch (e) { if (!/block_closed/.test(String(e?.message || e))) throw e; }
+  }
+  assert.ok(b && day, 'an afternoon of Camion Complet in the next two weeks');
   const n = await callAs(jwt, 'notify', { kind: 'booking', job_id: b.job_id, base: h.APP });
   assert.ok(n.link, JSON.stringify(n));
   assert.match(n.message, /, l’après-midi \(entre 12 h et 16 h\)\.\n\nEstimation :\n• Promo : pneus non montés \+ huile \+ inspection\u00a0: 199,99 \$\nTotal : 199,99 \$ \+ tx\n\nPour accepter l’estimation et autoriser les travaux sur votre véhicule \(un seul bouton\) : http/);

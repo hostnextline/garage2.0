@@ -304,7 +304,10 @@ test('Part 24 undecies: « Historique du véhicule »: every visit of a VIN, who
   assert.ok(!byJob[cancelled], 'a cancelled appointment is not a visit');
   assert.deepEqual([byJob[done].here, byJob[done].work, byJob[done].status], [false, ['Freins avant'], 'done']);
   assert.deepEqual([byJob[coming].here, byJob[coming].work], [true, ['Vidange']]);
-  assert.equal(r.visits[0].job_id, coming, 'the newest first');
+  // the newest day first (the same day: the last booked first); Jean's visit 30 days ago comes last
+  const keys = r.visits.map((x) => `${x.day}|${String(x.number).padStart(9, '0')}`);
+  assert.deepEqual(keys, [...keys].sort().reverse(), 'the newest first');
+  assert.equal(r.visits[r.visits.length - 1].job_id, done);
   assert.ok(byJob[family], 'the owner sees a visit paid by the Coffre');
   // a mechanic of another truck: the visits (what was done on the car), not the jobs themselves; never Jean's name or phone
   await h.as(null);
