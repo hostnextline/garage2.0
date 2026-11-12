@@ -1254,9 +1254,12 @@ step('Nouveau client: his car right away (2015 Volkswagen Jetta from the lists);
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + '#/customer/new');
   await page.getByTestId('customer-new').waitFor({ timeout: 15000 });
+  // the screen puts the cursor in « Prénom » a moment after it opens: wait for it, or the phone typed meanwhile lands there
+  await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'cf-first', null, { timeout: 5000 }).catch(() => undefined);
   await page.getByTestId('cf-first').fill('Lina');
   await page.getByTestId('cf-last').fill('Auto');
   await page.locator('.customers-new input[type=tel]').fill('514 555-0123');
+  assert.equal(await page.getByTestId('cf-first').inputValue(), 'Lina', 'the phone went to its own field');
   // the car, in the same screen
   await page.getByTestId('new-car').getByTestId('vadd-year').click();
   // the picker slides in: a click on « 2015 » while it moves can be lost, so click again until the makes show
