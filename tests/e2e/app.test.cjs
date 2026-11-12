@@ -1769,8 +1769,9 @@ step('« Voiture ou camion »: the switch above the moments offered; mounting ti
   await first.click();
   await page.getByTestId('book-confirm').click();
   await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
-  const row = await until(() => h.sql(`select j.truck_id || '|' || j.needs_machine from public.jobs j join public.job_items i on i.job_id = j.id where i.service_id = '${custom}'`), Boolean, 15000);
-  assert.equal(row, `${T.complet}|true`);
+  // on a vehicle that has the tire machine (never the car), and the job knows it needs it
+  const row = await until(() => h.sql(`select tr.tire_machine || '|' || j.needs_machine || '|' || j.vehicle_kind from public.jobs j join public.job_items i on i.job_id = j.id join public.trucks tr on tr.id = j.truck_id where i.service_id = '${custom}'`), Boolean, 15000);
+  assert.equal(row, 'true|true|truck');
   noErrors(page);
   await ctx.close();
   h.sql(`update public.trucks set active = false where id = '${car}'`);
