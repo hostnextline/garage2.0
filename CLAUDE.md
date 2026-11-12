@@ -179,6 +179,29 @@ end $do$;
   characters (`VinField`, so the add sheet, the new customer's car and « Modifier » the car) « Déjà venu chez nous : N visites » +
   « Voir l'historique » (`VinSeen`); the car's screen shows « Historique du véhicule » from the server (`useVinHistory`, asked
   before any early return), the local job tickets when there is no VIN or no network. Live had only 2 VINs of 35 cars (2026-11-11).
+- « La voiture » à l’arrivée (Part 24 duodecies, `20261112000100_km_visite.sql`; `src/features/jobs/CarCheckSheet.tsx`): right after
+  « Je suis arrivé » (after the « text to send by hand » sheet, `outcomeClosed`), a sheet asks the km on the dashboard and the VIN when
+  the car has none (scan); « Plus tard » skips it. `jobs.odometer_km` (column grant like the notes; `jobs_upd` decides who); trigger
+  `jobs_km_follow` raises `vehicles.odometer_km` to the highest visit km (never lowers it); `vin_history` answers `km`. The job sheet
+  shows « N km à cette visite » with « Noter le km » / « Corriger » (on site or done); the invoice PDF writes the visit's km.
+- Routes by the streets everywhere (`src/features/map/useRoads.ts`, `roads.ts`): « Carte », « Aperçu » and « Voir sur la carte » ask
+  OSRM (`router.project-osrm.org`), then its FOSSGIS copy (`routing.openstreetmap.de/routed-car`) when it does not answer; a route
+  neither answered is asked again after a minute; a live trip without the server's road is routed too. Straight lines only meanwhile.
+- « Voir sur la carte » of a booking moment (`src/features/booking/RoutePreview.tsx`, `preview.ts`): right-click / long press on a
+  suggestion or a calendar cell of `BlockPicker` (menu « Choisir ce moment », « Voir sur la carte »), or the button under the moment
+  chosen: the truck's day (phone's copy, `fromDevice`) with the new stop at the cheapest place inside its block (straight-line
+  insertion; the suggestion's truck, else the truck where it adds the least), stop n of N, the day's route and what it adds (km, min).
+- « Appel entrant » (`#/call`, `src/features/booking/CallScreen.tsx`; « + » menu first): the number finds known customers (`callMatches`:
+  phone digits, 3 at least) with « Réserver pour … », file, next appointment. New caller: « L’adresse » / « La voiture » / « La job »
+  → `#/book?call=1&start=…&phone=…`: BookScreen shows the panels in that order (`callOrder`), the name and number last (`call-who`);
+  « Réserver » makes the customer (with the address) and the car once (`makeCaller`, kept in a ref), then books (`source = 'phone'`).
+  A number already on file: « C’est lui ».
+- Oil always said (`CarFirst`, `OilHint`): the job card says what the oil change still needs (grade, quantity, filter: `oilLine().missing`)
+  with « Compléter » (the car's « Fiche technique » `SpecPanel` in a sheet; without year/make/model, a link to the car); the booking
+  screen shows the chosen car's oil under the car.
+- « Départ et heure » from the map (`src/features/map/TruckDaySheet.tsx`): a button on each truck of the legend (owner, « hours », or the
+  truck's driver): the start time of the day shown (`withStart`: keeps the end of the day; `apply_hours` mode day) and « Départ de ce
+  camion » (`TruckStartPanel`).
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,
