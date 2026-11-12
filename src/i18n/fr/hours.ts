@@ -94,6 +94,8 @@ export const hours = {
     plate: 'Plaque',
     active: 'En service',
     activeHint: 'Hors service : il ne reçoit plus de rendez-vous.',
+    machine: 'Monte et balance les pneus',
+    machineHint: 'Allumé : c’est le camion, avec la machine à pneus. Éteint : c’est la voiture ; l’app ne lui donne jamais de montage ni de balancement.',
     saved: 'Camion enregistré',
     added: 'Camion ajouté',
     driverOf: 'Chauffeur : {name}',

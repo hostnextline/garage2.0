@@ -1734,3 +1734,37 @@ step('« Modifier le travail »: one button shows « Retirer » on every line, w
   await ctx.close();
   h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
 });
+
+step('« Voiture ou camion »: the switch above the moments offered; mounting tires locks it on the truck; the car is offered for the rest', async () => {
+  const car = h.sql(`insert into public.trucks (name, active, sort, color, tire_machine) values ('Voiture e2e', true, 9, '#2F6FD0', false) returning id`);
+  h.sql(`insert into public.truck_week (truck_id, dow, ranges) select '${car}', w.dow, w.ranges from public.truck_week w where w.truck_id = '${T.complet}'`);
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + `#/book?customer=${julie}`);
+  await page.getByTestId('book-screen').waitFor();
+  const kind = page.getByTestId('bp-kind');
+  await kind.waitFor({ timeout: 20000 });
+  const first = page.getByTestId('bp-sugg').first();
+  // nothing said: the car first
+  await first.getByText('Voiture e2e').waitFor({ timeout: 20000 });
+  await kind.getByRole('radio', { name: 'Camion' }).or(kind.getByRole('button', { name: 'Camion' })).first().click();
+  await first.getByText('Camion Complet').waitFor({ timeout: 20000 });
+  await kind.getByRole('radio', { name: 'Voiture' }).or(kind.getByRole('button', { name: 'Voiture' })).first().click();
+  await first.getByText('Voiture e2e').waitFor({ timeout: 20000 });
+  await h.shot(page, 'e2e-kind');
+  // work for the tire machine: the switch gives way to a note, only the truck is offered, and the booking lands on it
+  const custom = h.sql(`insert into public.services (name_fr, category, price_cents, duration_min, needs_machine) values ('Montage e2e', 'pneus', 9000, 60, true) returning id`);
+  await page.reload();
+  await page.getByTestId('book-screen').waitFor();
+  await page.getByTestId(`svc-${custom}`).click({ timeout: 20000 });
+  await page.getByTestId('bp-kind-need').waitFor({ timeout: 15000 });
+  await first.getByText('Camion Complet').waitFor({ timeout: 20000 });
+  await first.click();
+  await page.getByTestId('book-confirm').click();
+  await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  const row = await until(() => h.sql(`select j.truck_id || '|' || j.needs_machine from public.jobs j join public.job_items i on i.job_id = j.id where i.service_id = '${custom}'`), Boolean, 15000);
+  assert.equal(row, `${T.complet}|t`);
+  noErrors(page);
+  await ctx.close();
+  h.sql(`update public.trucks set active = false where id = '${car}'`);
+});

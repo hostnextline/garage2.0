@@ -140,6 +140,13 @@ export const booking: typeof fr = {
     carSub: 'Optional: year, make and model, or the VIN.',
     missing: 'Type the customer’s first name and number'
   },
+  kind: {
+    label: 'With the car or the truck',
+    any: 'Either',
+    car: 'Car',
+    truck: 'Truck',
+    need: 'This work needs the truck (mounting or balancing tires): only its times are offered.'
+  },
   picker: {
     title: 'The best blocks',
     best: 'Best choice',

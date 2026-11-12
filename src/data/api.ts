@@ -54,6 +54,8 @@ export interface BookInput {
   card_on_file?: boolean; source?: string; quote_id?: string | null;
   /** « Réserver quand même » in a full block (owner, office) */
   force?: boolean;
+  /** the vehicle asked for (the switch above the moments offered); nothing: the app chooses, the car first */
+  vehicle_kind?: 'car' | 'truck' | null;
 }
 export type ItemInput = Partial<JobItem> & { description: string };
 export async function bookJob(job: BookInput, items: ItemInput[]) {
@@ -248,8 +250,8 @@ function inTime<T>(p: PromiseLike<T>, ms = 15000): Promise<T> {
     Promise.resolve(p).then((v) => { clearTimeout(tm); res(v); }, (e) => { clearTimeout(tm); rej(e); });
   });
 }
-export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null) {
-  const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 6 }));
+export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
+  const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 6, p_need: need, p_kind: kind }));
   if (error) throw error;
   return (data || []) as { day: string; block: BlockKey; drive_min: number; near: number; truck: string | null; left: number }[];
 }

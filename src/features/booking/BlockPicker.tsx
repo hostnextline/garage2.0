@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon } from 'lucide-preact';
 import { today as todayOf, addDays, daysBetween, tinyDay, longDay, duration, clockRange, isValidDay, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { blocks, blockLoad, settings, job as jobRow } from '../../data/select';
+import { blocks, blockLoad, settings, job as jobRow, activeTrucks, truckLabel } from '../../data/select';
 import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
-import { Banner, Button, Pill, Skeleton } from '../../ui';
+import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
 import { cellState, type CellState } from './logic';
 import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
@@ -27,7 +27,13 @@ export interface BlockPickerProps {
   truckId?: string | null;
   /** the address, for « Voir sur la carte » */
   address?: string | null;
+  /** the work needs the tire machine: only the truck (the switch is locked on it) */
+  need?: boolean;
+  /** the vehicle asked for, and the switch « Peu importe / Voiture / Camion » (shown when the garage has both) */
+  kind?: VehicleKind;
+  onKind?: (k: VehicleKind) => void;
 }
+export type VehicleKind = 'car' | 'truck' | null;
 
 type Suggestion = Awaited<ReturnType<typeof suggestBlocks>>[number];
 type SuggState = { status: 'loading' | 'ok' | 'offline' | 'error'; list: Suggestion[] };
@@ -53,7 +59,7 @@ export function BlockPicker(p: BlockPickerProps) {
     setSugg((s) => ({ status: 'loading', list: s.list }));
     const tm = setTimeout(async () => {
       try {
-        const list = await suggestBlocks(p.lat, p.lng, dur, today, PAGE, p.excludeJob ?? null);
+        const list = await suggestBlocks(p.lat, p.lng, dur, today, PAGE, p.excludeJob ?? null, !!p.need, p.need ? null : p.kind ?? null);
         if (!alive) return;
         const mine = p.truckId ? list.filter((x) => !x.truck || x.truck === p.truckId) : list;
         setSugg({ status: 'ok', list: mine.filter((x) => isValidDay(String(x.day))).slice(0, 6) });
@@ -62,7 +68,9 @@ export function BlockPicker(p: BlockPickerProps) {
       }
     }, 350);
     return () => { alive = false; clearTimeout(tm); };
-  }, [p.lat, p.lng, dur, p.excludeJob, p.truckId, online, retry]);
+  }, [p.lat, p.lng, dur, p.excludeJob, p.truckId, p.need, p.kind, online, retry]);
+
+  const bothKinds = activeTrucks.value.some((x) => x.tire_machine === false) && activeTrucks.value.some((x) => x.tire_machine !== false);
 
   /* ---------- the calendar (device copy) ---------- */
   const [page, setPage] = useState(0);
@@ -170,6 +178,15 @@ export function BlockPicker(p: BlockPickerProps) {
             <Button size="sm" variant="ghost" icon={<RefreshCw />} onClick={() => setRetry((n) => n + 1)}>{t('booking.picker.retry')}</Button>
           )}
         </div>
+        {/* the car or the truck: only when the garage has both; work for the tire machine locks it on the truck */}
+        {bothKinds && p.onKind && (
+          <div class="bp-kind" data-testid="bp-kind">
+            {p.need
+              ? <p class="small bp-note" data-testid="bp-kind-need">{t('booking.kind.need')}</p>
+              : <Seg<'any' | 'car' | 'truck'> value={p.kind || 'any'} onValue={(v) => p.onKind!(v === 'any' ? null : v)} label={t('booking.kind.label')}
+                  options={[{ value: 'any', label: t('booking.kind.any') }, { value: 'car', label: t('booking.kind.car') }, { value: 'truck', label: t('booking.kind.truck') }]} />}
+          </div>
+        )}
         {sugg.status === 'ok' && (p.lat == null || p.lng == null) && <p class="faint small bp-note"><MapPin size={14} aria-hidden="true" /> {t('booking.picker.noPosition')}</p>}
         {sugg.status === 'loading' && !sugg.list.length && <div class="bp-sugg-skel" aria-busy="true"><span class="sr-only">{t('booking.picker.loading')}</span><Skeleton h={52} lines={3} /></div>}
         {sugg.status === 'offline' && <p class="muted small bp-note">{t('booking.picker.offline')}</p>}
@@ -181,6 +198,7 @@ export function BlockPicker(p: BlockPickerProps) {
               const on = isPicked(s.day, s.block);
               const bits = [
                 p.lat != null && p.lng != null ? (s.drive_min <= 2 ? t('booking.picker.noDrive') : t('booking.picker.drive', { d: duration(s.drive_min, l) })) : '',
+                bothKinds && s.truck ? truckLabel(s.truck) : '',
                 t('booking.picker.near', { n: s.near }),
                 s.left != null && s.left > 0 ? t('booking.picker.free', { d: duration(s.left, l) }) : ''
               ].filter(Boolean);

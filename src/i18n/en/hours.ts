@@ -94,6 +94,8 @@ export const hours: typeof fr = {
     plate: 'Plate',
     active: 'In service',
     activeHint: 'Out of service: it no longer gets appointments.',
+    machine: 'Mounts and balances tires',
+    machineHint: 'On: this is the truck, with the tire machine. Off: this is the car; the app never gives it mounting or balancing.',
     saved: 'Truck saved',
     added: 'Truck added',
     driverOf: 'Driver: {name}',

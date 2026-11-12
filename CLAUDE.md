@@ -209,6 +209,15 @@ end $do$;
 - Postal codes (2026-11-12): OpenStreetMap's are often wrong in Canada, so Photon's code is never written in the address nor saved
   (`photon.ts`: no code in `place.address`; `AddressField` and `locator.ts` keep only a code the person typed). `place.postal_code`
   still helps `locate.ts` recognise the area (first 3 characters).
+- « La voiture ou le camion » (Part 24 terdecies, `20261112000200_voiture_camion.sql`; NOT applied on live yet): `trucks.tire_machine`
+  (Horaires → the vehicle's sheet, « Monte et balance les pneus »; false = « la voiture »), `services.needs_machine` (Réglages →
+  Services, « Camion seulement »), `jobs.needs_machine` (kept by the trigger `job_items_machine` from the lines: a marked service, or
+  words `words_need_machine`: montage, non montés, balancement), `jobs.vehicle_kind` ('car' | 'truck' | null: asked when booking).
+  `plan_block`: a job for the machine (or asked « truck ») only on a vehicle with it, « car » only on one without, nothing said: the
+  car first (+10000 on a vehicle with the machine). `book_job` refuses machine work on the car (`needs_truck`); `suggest_blocks` takes
+  `p_need`, `p_kind`. App: the switch « Peu importe / Voiture / Camion » above the moments offered (`BlockPicker`, only when the
+  garage has both kinds; machine work shows a note instead), each suggestion names its vehicle. With every vehicle on
+  `tire_machine = true` (the default) nothing changes.
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,

@@ -143,3 +143,20 @@ describe('« Coller » a copied appointment: its work as new lines', () => {
     expect('id' in d[0]).toBe(false);
   });
 });
+
+import { needsMachine, wordsNeedMachine } from './logic';
+describe('the car or the truck: what needs the tire machine', () => {
+  it('mounting, unmounted tires, balancing: yes; tires already mounted, oil: no', () => {
+    expect(wordsNeedMachine('Pneus : montage et changement (18, 19 po)')).toBe(true);
+    expect(wordsNeedMachine('Promo : pneus non montés + huile + inspection')).toBe(true);
+    expect(wordsNeedMachine('Balancement des 4 roues')).toBe(true);
+    expect(wordsNeedMachine('Changement de pneus (déjà montés)')).toBe(false);
+    expect(wordsNeedMachine('Promo : pneus montés + huile')).toBe(false);
+    expect(wordsNeedMachine('Changement d’huile (5 L)')).toBe(false);
+  });
+  it('a service marked « Camion seulement » counts whatever its name', () => {
+    const marked = (id: string) => id === 's-machine';
+    expect(needsMachine([{ service_id: 's-machine', description: 'Pose sur jantes' }], marked)).toBe(true);
+    expect(needsMachine([{ service_id: 's-oil', description: 'Vidange' }, { service_id: null, description: 'Essuie-glaces' }], marked)).toBe(false);
+  });
+});

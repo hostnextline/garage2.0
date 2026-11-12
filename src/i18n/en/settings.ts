@@ -122,6 +122,8 @@ export const settings: typeof fr = {
     durationHelp: 'The work time at the customer’s place. Used to fit appointments in the blocks.',
     taxable: 'Taxes (GST and QST)',
     taxableHint: 'Off: this service is not taxed.',
+    machine: 'Truck only',
+    machineHint: 'On: this service needs the tire machine (mounting, balancing). It is never given to the car.',
     active: 'Offered to customers',
     activeHint: 'Off: the service is hidden when booking, but stays on past invoices.',
     isPromo: 'It’s a promo',

@@ -140,6 +140,13 @@ export const booking = {
     carSub: 'Facultatif : l’année, la marque et le modèle, ou le NIV.',
     missing: 'Écris le prénom et le numéro du client'
   },
+  kind: {
+    label: 'Avec la voiture ou le camion',
+    any: 'Peu importe',
+    car: 'Voiture',
+    truck: 'Camion',
+    need: 'Ce travail demande le camion (montage ou balancement des pneus) : seuls ses moments sont proposés.'
+  },
   picker: {
     title: 'Les meilleurs blocs',
     best: 'Meilleur choix',

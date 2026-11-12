@@ -118,3 +118,11 @@ export function refusalCode(e: unknown): string {
   return String(err?.hint || (/^[a-z_]+$/.test(String(err?.code || '')) ? err?.code : '') || '');
 }
 export type { BlockKey, Day };
+
+/* ---------- the car or the truck (Part 24 terdecies) ---------- */
+/** words that say the tire machine: montage, pneus non montés, balancement (the same rule as the server, words_need_machine) */
+export const wordsNeedMachine = (text: string | null | undefined): boolean => /(montage|non[ -]mont|balanc|mounting|unmounted|not mounted)/i.test(text || '');
+/** one of the lines needs the tire machine (its service is marked so, or its words say it): only the truck can take the job */
+export function needsMachine(items: { service_id?: string | null; description: string }[], serviceNeeds: (id: string) => boolean): boolean {
+  return items.some((i) => wordsNeedMachine(i.description) || (!!i.service_id && serviceNeeds(i.service_id)));
+}

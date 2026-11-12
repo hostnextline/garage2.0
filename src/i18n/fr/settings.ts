@@ -122,6 +122,8 @@ export const settings = {
     durationHelp: 'Le temps de travail chez le client. Sert à placer les rendez-vous dans les blocs.',
     taxable: 'Taxes (TPS et TVQ)',
     taxableHint: 'Éteint : ce service n’est pas taxé.',
+    machine: 'Camion seulement',
+    machineHint: 'Allumé : ce service demande la machine à pneus (montage, balancement). Il n’est jamais donné à la voiture.',
     active: 'Offert aux clients',
     activeHint: 'Éteint : le service est caché à la réservation, mais reste sur les anciennes factures.',
     isPromo: 'C’est une promo',

@@ -140,3 +140,5 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .bp-chosen .btn svg { width: 18px; height: 18px; }
 .bp-preview-facts { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .bp-preview-facts b { font-weight: 600; }
+/* the car or the truck, above the moments offered */
+.bp-kind { margin-bottom: var(--sp-3); }

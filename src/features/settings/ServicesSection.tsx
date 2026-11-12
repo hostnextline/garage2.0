@@ -53,13 +53,13 @@ export function ServicesSection() {
 
 interface Draft {
   name_fr: string; name_en: string; category: string; fixed: 'fixed' | 'hourly'; price_cents: number | null; duration_min: number; taxable: boolean;
-  is_promo: boolean; promo_until: string; includes: { fr: string; en: string }[]; active: boolean; sort: number;
+  is_promo: boolean; promo_until: string; includes: { fr: string; en: string }[]; active: boolean; sort: number; needs_machine: boolean;
   /** null: guessed from the name (the needs of the week) */
   needs: Need[] | null;
 }
 const toDraft = (s: Service | undefined): Draft => ({
   name_fr: s?.name_fr || '', name_en: s?.name_en || '', category: s?.category || '', fixed: s && s.price_cents == null ? 'hourly' : 'fixed',
-  price_cents: s?.price_cents ?? null, duration_min: s?.duration_min ?? 60, taxable: s?.taxable ?? true, is_promo: !!s?.is_promo,
+  price_cents: s?.price_cents ?? null, duration_min: s?.duration_min ?? 60, taxable: s?.taxable ?? true, needs_machine: !!s?.needs_machine, is_promo: !!s?.is_promo,
   promo_until: s?.promo_until || '', includes: (s?.includes || []).map((i) => ({ fr: i.fr || '', en: i.en || '' })), active: s?.active ?? true,
   sort: s?.sort ?? (Math.max(0, ...servicesList.value.map((x) => x.sort || 0)) + 1),
   needs: Array.isArray(s?.needs) ? s!.needs : null
@@ -93,7 +93,7 @@ function ServiceOpen(p: { id: string; onClose: () => void }) {
     const id = sid || uuid();
     const ok = await attempt(() => saveService({
       id, name_fr: d.name_fr.trim(), name_en: cleanText(d.name_en), category: (cleanText(d.category) || 'autre').toLowerCase(),
-      price_cents: d.fixed === 'fixed' ? d.price_cents : null, duration_min: Math.min(720, Math.max(5, Math.round(d.duration_min))), taxable: d.taxable,
+      price_cents: d.fixed === 'fixed' ? d.price_cents : null, duration_min: Math.min(720, Math.max(5, Math.round(d.duration_min))), taxable: d.taxable, needs_machine: d.needs_machine,
       is_promo: d.is_promo, promo_until: d.is_promo && d.promo_until ? d.promo_until : null,
       includes: d.includes.map((i) => ({ fr: i.fr.trim(), en: i.en.trim() || undefined })).filter((i) => i.fr), active: d.active, sort: Math.max(0, Math.round(d.sort)),
       needs: d.needs
@@ -137,6 +137,7 @@ function ServiceOpen(p: { id: string; onClose: () => void }) {
             <Stepper value={d.duration_min} onValue={(v) => put('duration_min', v)} step={15} min={5} max={720} label={t('settings.services.duration')} format={(v) => duration(v, lang.value)} />
           </Field>
           <Switch checked={d.taxable} onChange={(v) => put('taxable', v)} label={t('settings.services.taxable')} hint={t('settings.services.taxableHint')} />
+          <Switch checked={d.needs_machine} onChange={(v) => put('needs_machine', v)} label={t('settings.services.machine')} hint={t('settings.services.machineHint')} data-testid="service-machine" />
           <Switch checked={d.active} onChange={(v) => put('active', v)} label={t('settings.services.active')} hint={t('settings.services.activeHint')} data-testid="service-active" />
           <Switch checked={d.is_promo} onChange={(v) => put('is_promo', v)} label={t('settings.services.isPromo')} hint={t('settings.services.isPromoHint')} />
           {d.is_promo && (

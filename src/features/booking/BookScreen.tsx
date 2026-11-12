@@ -30,8 +30,8 @@ import { phoneDigits } from '../../lib/text';
 import type { CallStart } from './CallScreen';
 import { OilHint } from '../jobs/CarFirst';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
-import { BlockPicker, choiceWords, type BlockChoice } from './BlockPicker';
-import { missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, BLOCK_REFUSALS } from './logic';
+import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind } from './BlockPicker';
+import { missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, BLOCK_REFUSALS } from './logic';
 import { blockPhrase } from './when';
 import { notifyCustomer, wantsText } from './notify';
 import { forgetRefusal, noLongWaitOffline } from './outbox';
@@ -85,6 +85,8 @@ function BookForm({ query }: ScreenProps) {
   const [durOverride, setDurOverride] = useState<number | null>(null);
   const [card, setCard] = useState<boolean | null>(null);
   const [blockError, setBlockError] = useState<string | null>(null);
+  // the car or the truck (the switch above the moments offered); work for the tire machine is the truck's only
+  const [kind, setKind] = useState<VehicleKind>(null);
   // one id for this booking: tapped twice after a lost answer, the server books it once
   const [jobId] = useState(() => uuid());
   /* each car of the customer has its own work: the other cars' services, kept while another car is chosen */
@@ -186,6 +188,7 @@ function BookForm({ query }: ScreenProps) {
   const others = Object.entries(carts)
     .filter(([vid, cart]) => cart.items.length > 0 && vid !== vehicleId && vehicleRow(vid)?.customer_id === customerId)
     .map(([vid, cart]) => ({ vehicleId: vid, items: cart.items, sum: bookSummary(cart.items, settings.value.taxes, { override: cart.dur, priceless: (id) => serviceRow(id)?.price_cents == null }) }));
+  const need = needsMachine([...items, ...others.flatMap((o) => o.items)], (id) => !!serviceRow(id)?.needs_machine);
   const allMinutes = sum.minutes + others.reduce((n, o) => n + o.sum.minutes, 0);
   const allTotal = sum.total + others.reduce((n, o) => n + o.sum.total, 0);
   // a new caller: the customer counts once a first name and a full number are typed (made when « Réserver » is tapped)
@@ -222,7 +225,8 @@ function BookForm({ query }: ScreenProps) {
       id: jobId, customer_id: cid!, vehicle_id: vid, duration_min: sum.minutes, truck_id: effTruck || null,
       problem: problem.trim() || null, notes: notes.trim() || null,
       address: place.address.trim() || null, unit: place.unit?.trim() || null, postal_code: place.postal_code || null, lat: place.lat, lng: place.lng,
-      card_on_file: !!card, quote_id: quote?.id ?? null, source: quote ? 'quote' : isWalkIn ? 'walk_in' : 'phone'
+      card_on_file: !!card, quote_id: quote?.id ?? null, source: quote ? 'quote' : isWalkIn ? 'walk_in' : 'phone',
+      vehicle_kind: need ? null : kind
     };
     const lines = toItemInputs(items);
     if (others.length) { await bookCars(base); return; }
@@ -429,6 +433,7 @@ function BookForm({ query }: ScreenProps) {
       <Panel title={t('booking.block.title')} sub={t('booking.block.sub')} data-tour="book-block">
         {blockError && <div style={{ marginBottom: 'var(--sp-3)' }}><Banner kind="bad">{blockError}</Banner></div>}
         <BlockPicker lat={place.lat} lng={place.lng} address={place.address} duration={allMinutes} truckId={effTruck} value={choice}
+          need={need} kind={kind} onKind={(k) => { setKind(k); setChoice(null); }}
           onPick={(c) => { setChoice(c); setBlockError(null); }} />
       </Panel>
     </div>

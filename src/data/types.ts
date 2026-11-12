@@ -38,7 +38,9 @@ export interface Staff extends Base {
 }
 /** where one truck leaves from (Part 18); null on the truck: « Départ des camions » (settings.booking.home) */
 export interface TruckStart { label: string | null; address: string | null; lat: number; lng: number }
-export interface Truck extends Base { name: string; driver_id: string | null; active: boolean; color: string | null; plate: string | null; sort: number; start?: TruckStart | null }
+export interface Truck extends Base { name: string; driver_id: string | null; active: boolean; color: string | null; plate: string | null; sort: number; start?: TruckStart | null;
+  /** mounts and balances tires (« le camion »); false: « la voiture » (Part 24 terdecies; absent = true) */
+  tire_machine?: boolean }
 export interface TruckWeek extends Base { truck_id: string; dow: number; ranges: Range[] }
 export interface TruckDay extends Base { truck_id: string; day: string; ranges: Range[]; note: string | null }
 export interface Customer extends Base {
@@ -65,6 +67,8 @@ export interface Need { kind: NeedKind; qty?: number; season?: TireSeason | null
 export interface Service extends Base {
   name_fr: string; name_en: string | null; category: string; price_cents: number | null; duration_min: number; taxable: boolean;
   is_promo: boolean; promo_until: string | null; includes: { fr: string; en?: string }[]; active: boolean; sort: number;
+  /** needs the tire machine (mounting, balancing): only the truck (Part 24 terdecies) */
+  needs_machine?: boolean;
   /** null: guessed from the name (inventory/needs.ts); [] uses nothing that depends on the car */
   needs?: Need[] | null;
 }
@@ -85,6 +89,8 @@ export interface Job extends Base {
   coffre_id?: string | null;
   /** the car's km read at this visit (asked at « Je suis arrivé »; Part 24 duodecies) */
   odometer_km?: number | null;
+  /** the work needs the tire machine; the vehicle asked when booking ('car' | 'truck', null: the app chooses) */
+  needs_machine?: boolean; vehicle_kind?: 'car' | 'truck' | null;
   /** its place in its truck's route chosen by hand (1 = first), or null: the planner decides (Part 21) */
   manual_order?: number | null;
   /** booked « quand même » in a full block: the route goes past the truck's hours (Part 19) */

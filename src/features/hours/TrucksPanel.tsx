@@ -48,21 +48,22 @@ function TruckSheet(p: { id: string | 'new' | null; onClose: () => void; onAdded
   const [driver, setDriver] = useState<string>('');
   const [plate, setPlate] = useState('');
   const [active, setActive] = useState(true);
+  const [machine, setMachine] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     if (!p.id) return;
     setErr(null);
-    if (cur) { setName(cur.name); setColor(cur.color || truckColor(cur.id)); setDriver(cur.driver_id || ''); setPlate(cur.plate || ''); setActive(cur.active); }
+    if (cur) { setName(cur.name); setColor(cur.color || truckColor(cur.id)); setDriver(cur.driver_id || ''); setPlate(cur.plate || ''); setActive(cur.active); setMachine(cur.tire_machine !== false); }
     else {
       const used = new Set(trucks.value.map((x) => (x.color || '').toUpperCase()));
-      setName(''); setColor((TRUCK_COLORS.find((c) => !used.has(c.hex)) || TRUCK_COLORS[0]).hex); setDriver(''); setPlate(''); setActive(true);
+      setName(''); setColor((TRUCK_COLORS.find((c) => !used.has(c.hex)) || TRUCK_COLORS[0]).hex); setDriver(''); setPlate(''); setActive(true); setMachine(true);
     }
   }, [p.id]);
   const mechanics = staffList.value.filter((s) => s.active && (s.roles.includes('mechanic') || s.id === cur?.driver_id));
   const save = async () => {
     if (!name.trim()) { setErr(t('hours.manage.nameRequired')); return; }
     const id = cur?.id || uuid();
-    const row: Partial<Truck> = { id, name: name.trim().slice(0, 60), color, driver_id: driver || null, plate: plate.trim().toUpperCase() || null, active };
+    const row: Partial<Truck> = { id, name: name.trim().slice(0, 60), color, driver_id: driver || null, plate: plate.trim().toUpperCase() || null, active, tire_machine: machine };
     if (isNew) row.sort = Math.max(0, ...trucks.value.map((x) => x.sort || 0)) + 1;
     const ok = await attempt(() => saveTruck(row), { ok: isNew ? t('hours.manage.added') : t('hours.manage.saved') });
     if (!ok) return;
@@ -95,6 +96,7 @@ function TruckSheet(p: { id: string | 'new' | null; onClose: () => void; onAdded
         <Field label={t('hours.manage.plate')} optional>
           <Input value={plate} onValue={setPlate} maxLength={12} autoCapitalize="characters" />
         </Field>
+        <Switch checked={machine} onChange={setMachine} label={t('hours.manage.machine')} hint={t('hours.manage.machineHint')} data-testid="truck-machine" />
         <Switch checked={active} onChange={setActive} label={t('hours.manage.active')} hint={t('hours.manage.activeHint')} />
       </div>
     </Sheet>

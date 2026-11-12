@@ -568,3 +568,48 @@ test('a block closed that day still refuses, even « quand même » (Part 19)', 
   const e = await h.fails(() => h.rpc('book_job', { p_op: uuid(), p_job: { ...job(c, day, 'eve'), force: true }, p_items: [] }));
   assert.equal(e?.hint, 'block_closed');
 }));
+
+test('Part 24 terdecies: mounting or balancing goes on the truck only; the rest on the car first; the choice « car / truck » is kept', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const truck = await h.truck('Camion Complet', null, { [dow]: DAY });
+  const car = await h.truck('Voiture', null, { [dow]: DAY });
+  await h.c.query(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  const mount = await h.val(`insert into public.services (name_fr, price_cents, duration_min, needs_machine) values ('Pose de pneus sur jantes', 9000, 60, true) returning id`);
+  const cs = []; for (let i = 0; i < 6; i++) cs.push(await h.customer('C' + i, near[0] + i * 0.002, near[1]));
+  await h.as(owner);
+  const book = (c, items, extra = {}) => h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'am', extra), p_items: items });
+  // an oil change: the car first, even though both are free
+  const oil = await book(cs[0], [{ description: 'Vidange d’huile', unit_cents: 7999, duration_min: 30 }]);
+  assert.equal(oil.truck_id, car, 'the car first');
+  // a service marked « machine », and words that say it: the truck only
+  const s1 = await book(cs[1], [{ description: 'Pose de pneus sur jantes', service_id: mount, unit_cents: 9000, duration_min: 60 }]);
+  assert.equal(s1.truck_id, truck);
+  const s2 = await book(cs[2], [{ description: 'Balancement des 4 roues', unit_cents: 6000, duration_min: 30 }]);
+  assert.equal(s2.truck_id, truck);
+  assert.equal(await h.val(`select needs_machine from public.jobs where id = $1`, [s2.job_id]), true);
+  // « pneus déjà montés » is not mounting
+  assert.equal((await book(cs[3], [{ description: 'Changement de pneus (déjà montés)', unit_cents: 5000, duration_min: 30 }])).truck_id, car);
+  // asked on the car: refused; asked « car » by the switch: refused too
+  assert.equal((await h.fails(() => book(cs[4], [{ description: 'Montage de pneus', unit_cents: 9000, duration_min: 60 }], { truck_id: car })))?.hint, 'needs_truck');
+  assert.equal((await h.fails(() => book(cs[4], [{ description: 'Montage de pneus', unit_cents: 9000, duration_min: 60 }], { vehicle_kind: 'car' })))?.hint, 'needs_truck');
+  // an oil change asked « with the truck »: on the truck, and it stays there when the block is planned again
+  const want = await book(cs[4], [{ description: 'Vidange d’huile', unit_cents: 7999, duration_min: 30 }], { vehicle_kind: 'truck' });
+  assert.equal(want.truck_id, truck);
+  await h.as(null); await h.c.query('reset role');
+  await h.c.query(`select public.replan_block($1, 'am')`, [day]);
+  assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [want.job_id]), truck);
+  assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [oil.job_id]), car);
+  // the suggestions follow: work for the machine or « truck » → the truck; « car » → the car
+  await h.as(owner);
+  const sugg = (o) => h.rpc('suggest_blocks', { p_lat: near[0], p_lng: near[1], p_duration: 60, p_from: day, p_days: 1, p_exclude: null, p_limit: 6, p_need: false, p_kind: null, ...o });
+  assert.ok((await sugg({ p_need: true })).every((x) => x.truck === truck));
+  assert.ok((await sugg({ p_kind: 'truck' })).every((x) => x.truck === truck));
+  const onCar = await sugg({ p_kind: 'car' });
+  assert.ok(onCar.length > 0 && onCar.every((x) => x.truck === car));
+  // work added later on a job of the car: it needs the machine now → planned again on the truck
+  await h.c.query(`insert into public.job_items (job_id, kind, description, qty, unit_cents) values ($1, 'service', 'Balancement', 1, 4000)`, [oil.job_id]);
+  await h.as(null); await h.c.query('reset role');
+  assert.deepEqual(await h.one(`select needs_machine, truck_id from public.jobs where id = $1`, [oil.job_id]), { needs_machine: true, truck_id: truck });
+}));
