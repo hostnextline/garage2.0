@@ -293,6 +293,9 @@ end $do$;
   report), a garage item by the Trésorerie or « Rien » (`bad_from` otherwise). `coffre_report.stock_cents` = the Coffre stock's value
   at cost, shown on the Coffre screen with a link to that stock. Coffre items have no selling price.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
+  `{ action: 'contact', customer_id }` (`syncContact`): the customer's name and number go to their GoHighLevel contact (made, or the
+  name put on a number already there); the app asks it by itself once a new customer, or a changed name / number, has reached the
+  server (`sentHooks.customer` in `sync.ts`, set in `api.ts`). NOT deployed on live yet (needs `conversation` redeployed).
 - The end-to-end step « Changer de camion » fails when the suite runs after 16 h Montréal (seen 2026-11-12, on code that passed at 13 h
   too): the click on the other truck does nothing in the test; `move_job` itself works on live in both directions.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,

@@ -442,6 +442,14 @@ test('the conversation with a customer: the texts both ways from GoHighLevel, an
   const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
   assert.equal((await fn('conversation', { action: 'get', customer_id: cust }, mechJwt)).code, 'not_found');
   assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'allo' }, mechJwt)).code, 'not_found');
+  // « contact »: the name and the number go to GoHighLevel (made or completed), nothing is texted; not for who does not see the customer
+  const before = (await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').length;
+  const k = await fn('conversation', { action: 'contact', customer_id: cust }, ownerJwt);
+  assert.equal(k.status, 'ok', JSON.stringify(k));
+  const ups = (await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/contacts/upsert').pop();
+  assert.deepEqual([ups.body.firstName, ups.body.lastName, ups.body.phone], ['Rima', 'Haddad', `+1438555${four}`]);
+  assert.equal((await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').length, before, 'no text sent');
+  assert.equal((await fn('conversation', { action: 'contact', customer_id: cust }, mechJwt)).code, 'not_found');
   // no texts for a customer who said no
   await q(`update public.customers set sms_ok = false where id = $1`, [cust]);
   assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'allo' }, ownerJwt)).code, 'sms_off');

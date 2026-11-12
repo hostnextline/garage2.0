@@ -305,6 +305,9 @@ function scheduleRetry() {
   retryTimer = setTimeout(() => { retryTimer = null; void flush(); }, d);
 }
 
+/** told once a row has reached the server (api.ts: a new or renamed customer goes to GoHighLevel) */
+export const sentHooks: { customer?: (id: string) => void } = {};
+
 async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
   const client = sb!;
   try {
@@ -321,6 +324,7 @@ async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
         if (!row) throw Object.assign(new Error('Ligne refusée par le serveur'), { code: '42501' });
       }
       if (isSynced(e.table!)) applyServerRows(e.table as TableName, [row], true);
+      if (e.table === 'customers') sentHooks.customer?.(e.id!);
       data = row;
     } else if (e.kind === 'update') {
       const r = await withTimeout(client.from(e.table!).update(e.values!).eq('id', e.id!).select('*'));
@@ -332,6 +336,7 @@ async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
       if (e.table === 'job_items') void pull('invoices');
       // a visit's km becomes the car's km on the server (jobs_km_follow): bring the car at once
       if (e.table === 'jobs' && e.values && 'odometer_km' in e.values) void pull('vehicles');
+      if (e.table === 'customers' && e.values && ['first_name', 'last_name', 'phone'].some((k) => k in e.values!)) sentHooks.customer?.(e.id!);
       data = row;
     } else {
       const r = await withTimeout(client.rpc(e.rpc!, e.args!), 40000);

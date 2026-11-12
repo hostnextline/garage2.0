@@ -1,6 +1,6 @@
 /* Every change the app makes goes through here: on screen at once, sent when possible (see sync.ts), refused with a
    clear message when the server says no. In « Voir l'app comme… » nothing can be changed. */
-import { insertRow, updateRow, deleteRow, callRpc, uuid, isNetworkError, forgetLocal } from './sync';
+import { insertRow, updateRow, deleteRow, callRpc, uuid, isNetworkError, forgetLocal, sentHooks } from './sync';
 import { getRow, rowsOf } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
@@ -41,6 +41,9 @@ async function upsert(table: TableName, obj: Record<string, unknown>, defaults: 
 }
 
 /* ---------- customers, cars, engine sheets ---------- */
+/* a customer's file made, or its name / number changed, once it is on the server: its GoHighLevel contact is made or
+   completed (the name on a number already there). In the background; a failure changes nothing in the app. */
+sentHooks.customer = (id) => { void callFn('conversation', { action: 'contact', customer_id: id }, 20000).catch(() => undefined); };
 export async function saveCustomer(c: Partial<Customer>): Promise<string> { guard(); return upsert('customers', c, { lang: 'fr' }, t('log.customer')); }
 export async function deleteCustomer(id: string) { guard(); await deleteRow('customers', id); }
 export async function saveNote(n: Partial<CustomerNote> & { customer_id: string }) { guard(); return upsert('customer_notes', n); }

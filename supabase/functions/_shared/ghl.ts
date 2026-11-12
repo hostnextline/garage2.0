@@ -35,6 +35,15 @@ async function contactId(cfg: { token: string; location: string }, p: Person, ta
   if (!id) throw new Error('GoHighLevel: contact sans numéro');
   return id;
 }
+/** the customer's file in GoHighLevel: made when the number is new there, else completed (the name on a number it already
+    had); nothing is sent to the customer */
+export async function syncContact(p: Person, tag = 'garage-mobile'): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; id?: string; error?: string }> {
+  const cfg = await ghlReady();
+  if (!cfg) return { status: 'off' };
+  if (!e164(p.phone)) return { status: 'no_phone' };
+  try { return { status: 'ok', id: await contactId(cfg, p, tag) }; }
+  catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }
+}
 export async function sendSms(p: Person, message: string, tag = 'garage-mobile'): Promise<{ status: SendStatus; id?: string; error?: string }> {
   const cfg = await ghlReady();
   if (!cfg) return { status: 'off' };

@@ -1,17 +1,20 @@
 // The conversation with a customer (the texts both ways, through the garage's GoHighLevel number):
 //   { action: 'get', customer_id }            → { status: ok|off|no_phone|error, messages: [{ id, at, dir: in|out, body, kind, status }] }
 //   { action: 'send', customer_id, message }  → { status: sent|off|no_phone|error } (sent from the garage's number, kept in « messages »)
+//   { action: 'contact', customer_id }        → { status: ok|off|no_phone|error }: the customer's name and number go to their GoHighLevel
+//     contact (made when the number is new there, completed when it was there without the name); the app asks it when a file is
+//     made or its name / number change. Nothing is sent to the customer.
 // Only for a person who sees this customer through the normal rules. The mechanic needs no GoHighLevel app on his phone.
 import { serve, json, body, fail } from '../_shared/http.ts';
 import { adminDb, caller } from '../_shared/db.ts';
-import { readConversation, sendSms } from '../_shared/ghl.ts';
+import { readConversation, sendSms, syncContact } from '../_shared/ghl.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const handler = serve(async (req) => {
   const b = await body(req);
   const action = String(b.action || '');
-  if (action !== 'get' && action !== 'send') fail('action', 'Action inconnue.');
+  if (action !== 'get' && action !== 'send' && action !== 'contact') fail('action', 'Action inconnue.');
   const c = await caller(req);
   const id = String(b.customer_id || '');
   if (!UUID.test(id)) fail('not_found', 'Ce client n’existe plus.', 404);
@@ -23,6 +26,7 @@ export const handler = serve(async (req) => {
   const person = { first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email };
 
   if (action === 'get') return json({ ok: true, ...(await readConversation(person)) });
+  if (action === 'contact') { const r = await syncContact(person); return json({ ok: r.status === 'ok', status: r.status, error: r.error }); }
 
   const message = String(b.message ?? '').trim();
   if (!message) fail('empty', 'Écris le message.');
