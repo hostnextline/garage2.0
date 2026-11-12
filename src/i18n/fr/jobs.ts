@@ -375,6 +375,20 @@ export const jobs = {
     doneResend: 'Prix changé : {price}. Le client a déjà reçu son estimation : renvoie-la (⋯, « Renvoyer le texto de confirmation »).',
     locked: 'La facture est terminée : pour changer un prix, touche « Modifier la facture ».'
   },
+  car: {
+    title: 'La voiture',
+    help: 'Note le kilométrage au tableau de bord : il reste sur cette visite, dans l’historique de la voiture.',
+    helpVin: 'Note le kilométrage au tableau de bord et le NIV de la voiture (scanne-le) : chaque visite reste dans l’historique de la voiture, même si elle change de propriétaire.',
+    km: 'Kilométrage aujourd’hui',
+    kmLast: 'La dernière fois : {km}',
+    kmLower: 'C’est moins que la dernière fois ({km}). Vérifie le chiffre.',
+    later: 'Plus tard',
+    save: 'Enregistrer',
+    saved: 'La voiture est notée.',
+    kmVisit: '{km} à cette visite',
+    kmAdd: 'Noter le km',
+    kmFix: 'Corriger'
+  },
   parts: {
     title: 'Pièces utilisées',
     sub: 'Confirme ce qui sort de l’inventaire pour cette job',

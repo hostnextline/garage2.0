@@ -358,6 +358,20 @@ export const jobs: typeof fr = {
     doneResend: 'Price changed: {price}. The customer already got the estimate: send it again (⋯, “Send the confirmation text again”).',
     locked: 'The invoice is finished: to change a price, tap “Change the invoice”.'
   },
+  car: {
+    title: 'The car',
+    help: 'Note the mileage on the dashboard: it stays on this visit, in the car’s history.',
+    helpVin: 'Note the mileage on the dashboard and the car’s VIN (scan it): every visit stays in the car’s history, even when it changes owners.',
+    km: 'Mileage today',
+    kmLast: 'Last time: {km}',
+    kmLower: 'That is less than last time ({km}). Check the number.',
+    later: 'Later',
+    save: 'Save',
+    saved: 'The car is noted.',
+    kmVisit: '{km} at this visit',
+    kmAdd: 'Note the km',
+    kmFix: 'Fix'
+  },
   parts: {
     title: 'Parts used',
     sub: 'Confirm what leaves the inventory for this job',

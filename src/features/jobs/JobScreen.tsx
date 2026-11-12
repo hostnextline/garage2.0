@@ -30,6 +30,7 @@ import { EditSheet, mayEditJob } from './JobEdit';
 import { HeadPanel, NotesSheet, WaiverPanel, StepState, MomentPanel, MoveSheet, TruckSheet, mayChangeTruck, TextsPanel, MenuSheet, afterSheet } from './JobParts';
 import { TextOutcomeHost } from './TextOutcome';
 import { PartsHost } from './PartsSheet';
+import { CarCheckHost } from './CarCheckSheet';
 import './jobs.css';
 
 type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre' | 'order' | 'truck' | 'edit';
@@ -179,6 +180,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
       {answerFor && <AnswerSheet job={j} item={answerItem} rights={rights} onClose={() => setAnswerFor(null)} />}
       <TextOutcomeHost />
       <PartsHost />
+      <CarCheckHost />
     </Page>
   );
 }

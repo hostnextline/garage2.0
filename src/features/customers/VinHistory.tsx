@@ -8,6 +8,7 @@ import { net } from '../../data/sync';
 import { t, lang } from '../../lib/i18n';
 import { shortDate, today } from '../../lib/dates';
 import { Banner, Button, Sheet, Pill } from '../../ui';
+import { km } from './vehicleText';
 
 export type VinState = { state: 'none' } | { state: 'loading' } | { state: 'error' } | { state: 'ok'; visits: VinVisit[] };
 
@@ -39,7 +40,7 @@ export function VinVisits(p: { visits: VinVisit[]; owners: boolean }) {
         const body = (
           <>
             <span class="row-title">
-              {shortDate(x.day, l)}<span class="muted">, {t('vehicles.vinHistory.job', { n: x.number })}</span>
+              {shortDate(x.day, l)}<span class="muted">, {t('vehicles.vinHistory.job', { n: x.number })}{x.km != null ? <>, <span data-testid="vin-visit-km">{km(x.km, l)}</span></> : null}</span>
             </span>
             <span class="row-sub">{x.work.length ? x.work.join(', ') : t('vehicles.vinHistory.noWork')}</span>
             <span class="row-wrap">

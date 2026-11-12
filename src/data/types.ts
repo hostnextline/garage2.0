@@ -83,6 +83,8 @@ export interface Job extends Base {
   lost_cents: number | null; lost_reason: string | null; started_at: string | null; arrived_at: string | null; finished_at: string | null; cancelled_at: string | null;
   /** paid by the « Coffre » (family and friends): no invoice, no taxes (Part 20) */
   coffre_id?: string | null;
+  /** the car's km read at this visit (asked at « Je suis arrivé »; Part 24 duodecies) */
+  odometer_km?: number | null;
   /** its place in its truck's route chosen by hand (1 = first), or null: the planner decides (Part 21) */
   manual_order?: number | null;
   /** booked « quand même » in a full block: the route goes past the truck's hours (Part 19) */

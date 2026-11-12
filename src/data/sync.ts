@@ -330,6 +330,8 @@ async function send(e: OutboxEntry): Promise<'ok' | 'failed' | 'wait'> {
       applyServerRows(e.table as TableName, [row], true);
       // the server makes the job's draft invoice follow its work (a line taken off, a new price): bring it at once
       if (e.table === 'job_items') void pull('invoices');
+      // a visit's km becomes the car's km on the server (jobs_km_follow): bring the car at once
+      if (e.table === 'jobs' && e.values && 'odometer_km' in e.values) void pull('vehicles');
       data = row;
     } else {
       const r = await withTimeout(client.rpc(e.rpc!, e.args!), 40000);

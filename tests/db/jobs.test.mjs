@@ -321,6 +321,44 @@ test('Part 24 undecies: « Historique du véhicule »: every visit of a VIN, who
   assert.equal((await h.fails(() => h.rpc('vin_history', { p_vin: VIN, p_customer: null })))?.hint, 'not_allowed');
 }));
 
+test('Part 24 duodecies: the km of each visit; the car follows the highest; who may note it; the history answers it', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(null); await h.c.query('reset role');
+  const car = await h.val(`insert into public.vehicles (customer_id, year, make, model, odometer_km) values ($1, 2008, 'Mazda', '3', 120000) returning id`, [g.customer]);
+  const job = await jobOnSite(h, g);
+  await h.as(null); await h.c.query('reset role');
+  await h.c.query(`update public.jobs set vehicle_id = $2 where id = $1`, [job, car]);
+  const carKm = () => h.val(`select odometer_km from public.vehicles where id = $1`, [car]);
+  // the job's mechanic notes the km at arrival: the visit keeps it, the car follows
+  await h.as(g.mech);
+  assert.equal((await h.q(`update public.jobs set odometer_km = 123456 where id = $1 returning id`, [job])).length, 1);
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(await carKm(), 123456);
+  // a smaller number (a visit noted late, a typo fixed) stays on the visit but never lowers the car
+  await h.as(g.mech);
+  await h.q(`update public.jobs set odometer_km = 100000 where id = $1`, [job]);
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(await carKm(), 123456);
+  assert.equal(await h.val(`select odometer_km from public.jobs where id = $1`, [job]), 100000);
+  // the VIN of a car that had none: the job's mechanic may write it
+  await h.as(g.mech);
+  assert.equal((await h.q(`update public.vehicles set vin = '1HGCM82633A004352' where id = $1 returning id`, [car])).length, 1);
+  // the km is the only new thing a direct change may touch: never the status
+  assert.equal((await h.fails(() => h.q(`update public.jobs set status = 'done' where id = $1`, [job])))?.code, '42501');
+  assert.equal((await h.fails(() => h.q(`update public.jobs set odometer_km = -5 where id = $1`, [job])))?.code, '23514');
+  // a mechanic of another truck: nothing changes
+  await h.as(null);
+  const other = await h.person('Autre Mécano', ['mechanic']);
+  await h.as(other);
+  assert.equal((await h.q(`update public.jobs set odometer_km = 999999 where id = $1 returning id`, [job])).length, 0);
+  // the car's history: each visit with its km
+  await h.as(g.owner);
+  const r = await h.rpc('vin_history', { p_vin: '1HGCM82633A004352', p_customer: g.customer });
+  assert.equal(r.visits.find((x) => x.job_id === job)?.km, 100000);
+  await h.as(null); await h.c.query('reset role');
+  assert.equal(await carKm(), 123456);
+}));
+
 test('Part 24 quater: without a confirmed list (an older app) the planned parts leave as before; an item deleted for good leaves no trace', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);

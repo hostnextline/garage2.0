@@ -37,6 +37,10 @@ describe('invoice PDF, in French', () => {
     expect(d.vehicle).toEqual({ title: 'Véhicule', text: '2019 Honda Civic, plaque ABC 123, 84 200 km' });
     expect(d.meta).toEqual([['Date', '4 nov. 2026']]);
   });
+  it('writes the km read at this visit when the job has one', () => {
+    const v = nn(invoicePdfData({ invoice: paidInvoice, customer: julie, vehicle: civic, km: 91350, payments: [pay], settings }));
+    expect(v.vehicle).toEqual({ title: 'Véhicule', text: '2019 Honda Civic, plaque ABC 123, 91 350 km' });
+  });
   it('lists the lines and the totals with TPS and TVQ', () => {
     expect(d.head).toEqual(['Description', 'Qté', 'Prix', 'Montant']);
     expect(d.rows).toEqual([['Changement d’huile et filtre', '1', '89,99 $', '89,99 $'], ['Top up des liquides', '1', '60,00 $', '60,00 $']]);

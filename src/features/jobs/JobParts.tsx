@@ -1,7 +1,7 @@
 /* The pieces of the job sheet around the red button: who and where (with call, text, directions), the problem, the
    authorization, the state once closed, the appointment (length, move), the texts and the live trip, the « … » sheet. */
 import { useEffect, useState } from 'preact/hooks';
-import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault, MessagesSquare, ListOrdered, ChevronsUp } from 'lucide-preact';
+import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault, MessagesSquare, ListOrdered, ChevronsUp, Gauge } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
 import { t, lang } from '../../lib/i18n';
@@ -24,6 +24,11 @@ import { sendText, sendTracking, trackingSent, doBack, doCancel, doNoShow, doReo
 import { signedWhen } from './WaiverSheet';
 import { copyText } from './TextOutcome';
 import { JobTicket } from './JobTicket';
+import { askCar, saveCar } from './CarCheckSheet';
+import { km } from '../customers/vehicleText';
+
+/** the km of a visit is noted once the truck is there (and fixed after) */
+const KM_STATUS = ['on_site', 'done'];
 
 /** opens something after a closing sheet gave back its history step (else the step back would close the new one) */
 export function afterSheet(fn: () => void) { setTimeout(() => whenHistorySettled(fn), 0); }
@@ -61,6 +66,18 @@ export function HeadPanel(p: { job: Job; rights: JobRights; onEditNotes: () => v
           {v?.plate && <span class="jobs-plate" title={t('jobs.head.plate', { plate: v.plate })} aria-label={t('jobs.head.plate', { plate: v.plate })}>{v.plate}</span>}
           {mayCar && c && j.status !== 'done' && j.status !== 'cancelled' && <Button size="sm" variant="ghost" onClick={() => setPickCar(true)} data-testid="job-car-pick">{v ? t('jobs.head.carChange') : t('jobs.head.carAdd')}</Button>}
         </div>
+        {/* the km read at this visit (asked at « Je suis arrivé »): noted, or to note once the truck is there */}
+        {v && (j.odometer_km != null || (mayCar && KM_STATUS.includes(j.status))) && (
+          <div class="jobs-line">
+            <Gauge aria-hidden="true" />
+            {j.odometer_km != null && <span data-testid="job-km">{t('jobs.car.kmVisit', { km: km(j.odometer_km, lang.value) })}</span>}
+            {mayCar && KM_STATUS.includes(j.status) && (
+              <Button size="sm" variant="ghost" onClick={() => { void askCar(j, v).then((a) => a && saveCar(j, v, a)); }} data-testid="job-km-edit">
+                {j.odometer_km != null ? t('jobs.car.kmFix') : t('jobs.car.kmAdd')}
+              </Button>
+            )}
+          </div>
+        )}
         <div class="jobs-line">
           <MapPin aria-hidden="true" />
           <span class={addr ? '' : 'faint'}>{addr || t('jobs.head.noAddress')}{unit && <span class="muted"> ({t('jobs.head.unit', { unit })})</span>}</span>

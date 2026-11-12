@@ -2,18 +2,20 @@
    Terminer…), the texts to the customer and what to do when a text could not go, the signatures.
    Every action shows its own result (a toast, or the text to send by hand) and never throws. */
 import { signal } from '@preact/signals';
-import type { Job, JobItem, JobStatus } from '../../data/types';
+import type { Job, JobItem, JobStatus, Vehicle } from '../../data/types';
 import { jobStep, enroute, notify, errorMessage, shiftStart, invoiceForJob, saveSignature, answerExtra, Refused, type StepAction } from '../../data/api';
 import { pull, refetch, insertRow, uuid, isNetworkError } from '../../data/sync';
 import { me, preview } from '../../data/auth';
 import { openShift, truck, invoiceOf, settings, customer as customerRow } from '../../data/select';
-import { toast, ask, askText, attempt, run } from '../../ui';
+import { toast, ask, askText, attempt, run, whenHistorySettled } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../today/position';
 import { jobFirstName, rememberLink, clockOf, keepAhead, type JobRights } from './select';
 import { exportSignature, type Stroke } from './signature';
 import { plannedParts, type UsedPart } from './parts';
 import { confirmParts } from './PartsSheet';
+import { askCar, saveCar } from './CarCheckSheet';
+import { getRow } from '../../data/store';
 
 const customerOf = (j: Job) => customerRow(j.customer_id);
 const isQueued = (r: unknown) => !!r && typeof r === 'object' && (r as { queued?: boolean }).queued === true;
@@ -152,7 +154,7 @@ export function wantsArrivalText(j: Job): boolean {
 export async function doArrive(j: Job): Promise<void> {
   try {
     const r = await jobStep(j.id, 'arrive');
-    if (isQueued(r)) { keepAhead(j, { status: 'on_site' }); toast(t('shell.queued')); return; }
+    if (isQueued(r)) { keepAhead(j, { status: 'on_site' }); toast(t('shell.queued')); void carAtArrival(j); return; }
     void enroute('end', j.id).then(() => pull('trips'), () => undefined);
     if (wantsArrivalText(j)) {
       const okText = t('jobs.did.arriveInvoice', { name: jobFirstName(j) });
@@ -160,9 +162,32 @@ export async function doArrive(j: Job): Promise<void> {
     } else {
       toast(t('jobs.did.arrive', { name: jobFirstName(j) }), { kind: 'ok' });
     }
+    void carAtArrival(j);
   } catch (e) {
     toast(errorMessage(e), { kind: 'bad' });
   }
+}
+
+/** resolves once no « text to send by hand » sheet is open, and its step back in the history is done */
+function outcomeClosed(): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    let stop: (() => void) | undefined;
+    stop = outcome.subscribe((o) => {
+      if (o || done) return;
+      done = true;
+      setTimeout(() => { stop?.(); whenHistorySettled(resolve); }, 150);
+    });
+  });
+}
+/** once there: the km on the dashboard, and the VIN when the car has none (« La voiture »; « Plus tard » skips it) */
+async function carAtArrival(j: Job): Promise<void> {
+  const car = j.vehicle_id ? getRow<Vehicle>('vehicles', j.vehicle_id) : null;
+  if (!car || car.deleted_at || j.odometer_km != null) return;
+  // the text to send by hand (texts not connected) comes first: one sheet at a time
+  await outcomeClosed();
+  const a = await askCar(j, car);
+  if (a) await saveCar(j, car, a);
 }
 
 /** « Le client paiera plus tard » (owner, office): the job ends, the invoice stays to collect */

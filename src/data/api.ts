@@ -69,7 +69,7 @@ export async function setJobDuration(jobId: string, minutes: number) {
   guard();
   return callRpc('set_job_duration', { p_job: jobId, p_duration: minutes });
 }
-export async function updateJob(jobId: string, patch: Partial<Record<'problem' | 'notes' | 'vehicle_id' | 'address' | 'unit' | 'postal_code' | 'lat' | 'lng' | 'card_on_file', unknown>>) {
+export async function updateJob(jobId: string, patch: Partial<Record<'problem' | 'notes' | 'vehicle_id' | 'address' | 'unit' | 'postal_code' | 'lat' | 'lng' | 'card_on_file' | 'odometer_km', unknown>>) {
   guard();
   await updateRow('jobs', jobId, patch, { label: t('log.job') });
 }
@@ -110,7 +110,7 @@ export async function saveSignature(jobId: string, dataUrl: string, signer: stri
 }
 
 /* ---------- « Historique du véhicule »: every visit of a car by its VIN, whoever owned it (needs the network) ---------- */
-export interface VinVisit { job_id: string; number: number; day: string; status: string; here: boolean; open: boolean; work: string[] }
+export interface VinVisit { job_id: string; number: number; day: string; status: string; here: boolean; open: boolean; work: string[]; km?: number | null }
 export async function vinHistory(vin: string, customerId: string | null = null): Promise<VinVisit[]> {
   const r = await callRpc<{ vin: string; visits: VinVisit[] }>('vin_history', { p_vin: vin, p_customer: customerId }, { noOp: true });
   return r.data?.visits || [];

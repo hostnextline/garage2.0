@@ -1535,3 +1535,48 @@ step('« Historique du véhicule »: Lina bought Julie’s Accord; its VIN typed
   noErrors(page);
   await ctx.close();
 });
+
+step('« La voiture » at « Je suis arrivé »: the km of the visit and the VIN of a car that has none; the car follows; the history shows the km', async () => {
+  const VIN = 'JM1BK32F781234567';
+  const cust = h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('Kim', 'Arrivée', '514 555-0177', '50 rue Test, Montréal', 45.52, -73.61, 'fr') returning id`);
+  const car = h.sql(`insert into public.vehicles (customer_id, year, make, model, odometer_km) values ('${cust}', 2008, 'Mazda', '3', 120000) returning id`);
+  const job = h.sql(`insert into public.jobs (customer_id, vehicle_id, day, block, status, started_at, truck_id, duration_min, stop_order)
+    values ('${cust}', '${car}', public.local_today(), '${blockNow()}', 'en_route', now(), '${T.complet}', 45, 1) returning id`);
+  const { page, ctx } = await h.openW({ kind: 'phone' });
+  await h.signIn(page, who.saleh.email, PW);
+  await page.goto(h.APP + `#/job/${job}`);
+  await page.getByTestId('job-screen').waitFor();
+  await page.getByTestId('step-arrive').click();
+  // a text to send by hand comes first (texts not connected here); then « La voiture »
+  const sheet = page.getByTestId('car-check');
+  for (let i = 0; i < 40 && !(await sheet.isVisible()); i++) {
+    if (await page.getByTestId('text-outcome').isVisible()) await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+  }
+  await sheet.waitFor({ timeout: 5000 });
+  assert.match(await sheet.innerText(), /La dernière fois : 120 000 km/);
+  // fewer km than last time: a warning, not a refusal
+  await page.getByTestId('car-check-km').fill('119000');
+  await sheet.getByText(/C’est moins que la dernière fois/).waitFor();
+  await page.getByTestId('car-check-km').fill('123 456');
+  await page.getByTestId('vin-input').fill(VIN);
+  await h.shot(page, 'e2e-car-check');
+  await page.getByTestId('car-check-save').click();
+  await sheet.waitFor({ state: 'detached', timeout: 10000 });
+  assert.equal(await until(() => h.sql(`select coalesce(odometer_km::text, '') from public.jobs where id = '${job}'`), (v) => v === '123456', 15000), '123456');
+  assert.equal(await until(() => h.sql(`select coalesce(vin, '') || '|' || odometer_km from public.vehicles where id = '${car}'`), (v) => v.startsWith(VIN), 15000), `${VIN}|123456`, 'the car follows: its VIN, its km');
+  await page.getByTestId('job-km').getByText('123 456 km à cette visite').waitFor({ timeout: 15000 });
+  // an older visit noted later never lowers the car's km
+  h.sql(`update public.jobs set odometer_km = 100000 where id = '${job}'`);
+  assert.equal(h.sql(`select odometer_km from public.vehicles where id = '${car}'`), '123456');
+  h.sql(`update public.jobs set odometer_km = 123456 where id = '${job}'`);
+  // the car's screen: the visit with its km
+  await page.goto(h.APP + `#/vehicle/${car}`);
+  const visit = page.getByTestId('vehicle-history').getByTestId('vin-visit');
+  await visit.first().waitFor({ timeout: 15000 });
+  assert.match(await visit.first().getByTestId('vin-visit-km').innerText(), /123 456 km/);
+  noErrors(page);
+  await ctx.close();
+  // the truck is free again for the steps after
+  h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
+});

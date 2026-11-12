@@ -80,11 +80,13 @@ function customerLines(c: Customer | null | undefined): string[] {
   if (c.email) out.push(c.email);
   return out;
 }
-function vehicleText(v: Vehicle | null | undefined, lang: Lang, fallback?: string | null): string | null {
+/** the car in one line; `visitKm`: the km read at this visit, written instead of the car's latest */
+function vehicleText(v: Vehicle | null | undefined, lang: Lang, fallback?: string | null, visitKm?: number | null): string | null {
   if (!v) return fallback?.trim() || null;
   const parts = [[v.year, v.make, v.model].filter(Boolean).join(' ')];
   if (v.plate) parts.push(L(lang, 'plate', { p: v.plate }));
-  if (v.odometer_km) parts.push(L(lang, 'km', { n: new Intl.NumberFormat(lang === 'en' ? 'en-CA' : 'fr-CA').format(v.odometer_km) }));
+  const odo = visitKm ?? v.odometer_km;
+  if (odo) parts.push(L(lang, 'km', { n: new Intl.NumberFormat(lang === 'en' ? 'en-CA' : 'fr-CA').format(odo) }));
   if (v.vin) parts.push(L(lang, 'vin', { v: v.vin }));
   return parts.filter(Boolean).join(', ') || fallback?.trim() || null;
 }
@@ -112,6 +114,8 @@ export interface InvoicePdfInput {
   invoice: Invoice;
   customer?: Customer | null;
   vehicle?: Vehicle | null;
+  /** the car's km read at this visit (the job's), written instead of the car's latest */
+  km?: number | null;
   payments?: Payment[];
   settings: SettingsPart;
   /** the language of the document (the invoice's own language by default) */
@@ -147,7 +151,7 @@ export function invoicePdfData(p: InvoicePdfInput): PdfData {
     meta,
     garage: garageBlock(p.settings, lang),
     to: p.customer ? { title: L(lang, 'billTo'), lines: customerLines(p.customer) } : null,
-    vehicle: (() => { const v = vehicleText(p.vehicle, lang); return v ? { title: L(lang, 'vehicle'), text: v } : null; })(),
+    vehicle: (() => { const v = vehicleText(p.vehicle, lang, null, p.km); return v ? { title: L(lang, 'vehicle'), text: v } : null; })(),
     head: [L(lang, 'description'), L(lang, 'qty'), L(lang, 'price'), L(lang, 'amount')],
     rows, taxNote, totals,
     payments: pays.length ? {

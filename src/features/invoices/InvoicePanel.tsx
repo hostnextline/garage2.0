@@ -224,7 +224,7 @@ function FinishedInvoice(p: { job: Job; inv: Invoice }) {
   const paid = inv.status === 'paid';
   const number = invoiceNumber(inv);
   const send = async () => { const r = await sendText('invoice', job.id, paid ? t('invoices.send.receiptSent') : undefined); if (r) setManual(r); };
-  const makePdf = () => pdf.make(() => invoicePdfData({ invoice: inv, customer: invoiceCustomer(inv), vehicle: vehicle(job.vehicle_id), payments: pays, settings: settings.value }));
+  const makePdf = () => pdf.make(() => invoicePdfData({ invoice: inv, customer: invoiceCustomer(inv), vehicle: vehicle(job.vehicle_id), km: job.odometer_km, payments: pays, settings: settings.value }));
   const cancel = async () => {
     if (pays.length) { toast(t('invoices.void.hasPayments'), { kind: 'bad' }); return; }
     const reason = await askText({ title: t('invoices.void.title', { n: number }), text: t('invoices.void.text'), label: t('invoices.void.reason'), ok: t('invoices.void.ok'), danger: true });

@@ -63,7 +63,7 @@ function DocScreen(p: { inv: Invoice }) {
   const landed = useRef(false);
   if (prev.current !== inv.status) { if (inv.status === 'paid') landed.current = true; prev.current = inv.status; }
 
-  const data = invoicePdfData({ invoice: inv, customer: invoiceCustomer(inv), vehicle: vehicle(j?.vehicle_id), payments: pays, settings: settings.value });
+  const data = invoicePdfData({ invoice: inv, customer: invoiceCustomer(inv), vehicle: vehicle(j?.vehicle_id), km: j?.odometer_km, payments: pays, settings: settings.value });
   const send = async (kind: 'invoice' | 'payment_reminder') => {
     if (!inv.job_id) return;
     const r = await sendText(kind, inv.job_id, kind === 'invoice' && inv.status === 'paid' ? t('invoices.send.receiptSent') : undefined);
