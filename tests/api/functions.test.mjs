@@ -694,8 +694,10 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
   const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
   try {
     const a = await fn('ring', { action: 'link' }, ownerJwt);
-    assert.equal(a.text_url, `${a.url}&t=sms`, JSON.stringify(a));
-    const key = new URL(a.url).searchParams.get('k');
+    // an owner who is not the account marked for the calls gets the texts' address only
+    assert.match(a.text_url, /\/functions\/v1\/ring\?k=[\w-]{20,}&t=sms$/, JSON.stringify(a));
+    assert.equal(a.url, undefined);
+    const key = new URL(a.text_url).searchParams.get('k');
     const post = async (k, body, t = '&t=sms') => { const r = await fetch(`${API}/functions/v1/ring?k=${k}${t}`, { method: 'POST', headers: { apikey: K.anon, 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json()) }; };
     // GoHighLevel's « customer replied » body: the contact's fields flat, the words in message.body
     assert.equal((await post(key, { contact_id: 'abc', full_name: 'Nadia Roy', phone: '+14385550162', message: { type: 2, body: 'Avez-vous une place demain ?' } })).ok, true);
