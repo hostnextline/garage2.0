@@ -16,8 +16,9 @@ export const TABLES = [
 ] as const;
 // never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day),
 // incoming_calls (the calls of the day, for the « Appel entrant » banner), incoming_texts (the week's texts that wake the
-// « Texto entrant » bubble: the conversations themselves stay in GoHighLevel)
-export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incoming_texts'] as const;
+// « Texto entrant » bubble: the conversations themselves stay in GoHighLevel), push_subs (the devices that asked for the
+// alert while the app is closed: a device asks again)
+export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incoming_texts', 'push_subs'] as const;
 const KEY: Record<string, string> = { counters: 'name', op_log: 'op' };
 const PAGE: Record<string, number> = { attachments: 100 };
 

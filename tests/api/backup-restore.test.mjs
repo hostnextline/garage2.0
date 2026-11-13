@@ -34,7 +34,7 @@ test('backup at night, a mistake in the day, the restore brings back what was lo
   assert.ok(!readFileSync(join(dir, 'donnees', '_resume.json'), 'utf8').includes('secrets'));
   // every table of the garage is in the backup (the Coffre too, Part 24), except the ones that must never be
   const resume = JSON.parse(readFileSync(join(dir, 'donnees', '_resume.json'), 'utf8'));
-  const never = ['secrets', 'rate_limits', 'local_migrations', 'incoming_calls', 'incoming_texts'];
+  const never = ['secrets', 'rate_limits', 'local_migrations', 'incoming_calls', 'incoming_texts', 'push_subs'];
   const all = (await q(`select table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'`)).map((r) => r.table_name);
   assert.deepEqual(Object.keys(resume.tables).sort(), all.filter((t) => !never.includes(t)).sort(), 'a new table must be added to TABLES (backup) and ORDRE (restaurer.mjs), or to « never »');
   // the day after: a customer deleted for good, another one changed, a new one added

@@ -25,3 +25,26 @@ do $$ begin
     alter publication supabase_realtime add table public.incoming_texts;
   end if;
 end $$;
+
+-- The alert while the app is closed: each device that asked for it (« M'avertir quand l'app est fermée », same panel) keeps
+-- its address at the phone maker's notification service here. A person sees and removes only their own devices; only an
+-- owner adds one; the server (function « ring ») reads them to send the notification. Not backed up (a device asks again).
+create table if not exists public.push_subs (
+  id uuid primary key default gen_random_uuid(),
+  staff_id uuid not null default auth.uid() references public.staff(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subs_staff on public.push_subs (staff_id);
+alter table public.push_subs enable row level security;
+drop policy if exists push_subs_read on public.push_subs;
+create policy push_subs_read on public.push_subs for select to authenticated using (staff_id = auth.uid());
+drop policy if exists push_subs_add on public.push_subs;
+create policy push_subs_add on public.push_subs for insert to authenticated with check (staff_id = auth.uid() and public.is_owner());
+drop policy if exists push_subs_remove on public.push_subs;
+create policy push_subs_remove on public.push_subs for delete to authenticated using (staff_id = auth.uid());
+revoke all on public.push_subs from public, anon, authenticated;
+grant select, insert, delete on public.push_subs to authenticated;
+grant all on public.push_subs to service_role;

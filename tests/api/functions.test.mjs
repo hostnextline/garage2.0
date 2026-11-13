@@ -702,6 +702,35 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
     await q(`update public.staff set prefs = prefs || '{"texts": true}' where 'owner' = any(roles) or id = $1`, [mech]);
     assert.equal((await read(ownerJwt)).length, 3);
     assert.equal((await read(mechJwt)).length, 0);
+    // the alert while the app is closed: the garage's public key for the owner only; a device gives its address (its own
+    // row only, an owner only); a new text is then sent there encrypted and signed; a device that left is forgotten
+    assert.equal((await fn('ring', { action: 'push-key' }, mechJwt)).code, 'not_allowed');
+    const pk = await fn('ring', { action: 'push-key' }, ownerJwt);
+    assert.match(pk.key, /^[\w-]{80,}$/, JSON.stringify(pk));
+    assert.equal((await fn('ring', { action: 'push-key' }, ownerJwt)).key, pk.key, 'the same key the second time');
+    const dev = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+    const b64u = (b) => Buffer.from(b).toString('base64url');
+    const keys = { p256dh: b64u(await crypto.subtle.exportKey('raw', dev.publicKey)), auth: b64u(crypto.getRandomValues(new Uint8Array(16))) };
+    const add = async (jwt, endpoint) => (await fetch(`${API}/rest/v1/push_subs`, { method: 'POST', headers: { apikey: K.anon, authorization: `Bearer ${jwt}`, 'content-type': 'application/json' }, body: JSON.stringify({ endpoint, ...keys }) })).status;
+    assert.equal(await add(mechJwt, `${MOCK}/push/meca`), 403, 'only an owner asks for the alert');
+    assert.equal(await add(ownerJwt, `${MOCK}/push/phone-1`), 201);
+    assert.equal(await add(ownerJwt, `${MOCK}/push/gone`), 201);
+    const mine = async (jwt) => (await fetch(`${API}/rest/v1/push_subs?select=endpoint`, { headers: { apikey: K.anon, authorization: `Bearer ${jwt}` } })).json();
+    assert.equal((await mine(ownerJwt)).length, 2);
+    assert.equal((await mine(mechJwt)).length, 0, 'nobody sees another person’s devices');
+    await fetch(`${MOCK}/log/clear`);
+    assert.equal((await post(key, { full_name: 'Nadia Roy', phone: '+14385550162', message: { body: 'Finalement, après-midi ?' } })).ok, true);
+    const pushes = (await mockLog()).filter((x) => x.svc === 'push');
+    assert.deepEqual(pushes.map((x) => x.path).sort(), ['/gone', '/phone-1']);
+    assert.ok(pushes.every((x) => /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=/.test(x.auth) && x.auth.endsWith(pk.key) && x.encoding === 'aes128gcm' && x.bytes > 100), JSON.stringify(pushes));
+    assert.deepEqual((await q(`select endpoint from public.push_subs`)).map((r) => r.endpoint), [`${MOCK}/push/phone-1`], 'the device that left is forgotten');
+    // the owner stops taking the texts: no more alert
+    await q(`update public.staff set prefs = prefs - 'texts' where 'owner' = any(roles)`);
+    await fetch(`${MOCK}/log/clear`);
+    assert.equal((await post(key, { phone: '+14385550162', message: { body: 'Allo ?' } })).ok, true);
+    assert.equal((await mockLog()).filter((x) => x.svc === 'push').length, 0);
+    await q(`update public.staff set prefs = prefs || '{"texts": true}' where 'owner' = any(roles)`);
+    await q(`delete from public.incoming_texts where body in ('Finalement, après-midi ?', 'Allo ?')`);
     // « Essayer »: a pretend text
     assert.equal((await fn('ring', { action: 'test', kind: 'text' }, ownerJwt)).ok, true);
     assert.equal((await q(`select count(*)::int as n from public.incoming_texts where name = 'Client TEST' and body <> ''`))[0].n, 1);
@@ -722,6 +751,8 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
     assert.deepEqual(kept.map((r) => [r.body, r.status, r.customer_id]), [['Oui, demain matin.', 'sent', null]]);
   } finally {
     await q(`update public.staff set prefs = prefs - 'texts'`);
+    await q(`delete from public.push_subs`);
+    await q(`delete from public.secrets where key like 'vapid%'`);
     await q(`delete from public.messages where kind = 'chat' and to_addr = '+14385550162'`);
     await q(`delete from public.incoming_texts`);
     await q(`delete from public.secrets where key = 'call_hook'`);

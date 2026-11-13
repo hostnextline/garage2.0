@@ -84,3 +84,15 @@ describe('« Texto entrant » bubbles', () => {
     expect(lines(full, texts, make).map((m) => m.id)).toEqual(['g1', 'g2', 'g3']);
   });
 });
+
+import { pushAbility } from './push';
+describe('the alert while the app is closed: what a device can do', () => {
+  const base = { sw: true, push: true, notif: true, permission: 'default', ios: false, standalone: false };
+  it('ready, blocked, an iPhone that must install the app first, or a browser that cannot', () => {
+    expect(pushAbility(base)).toBe('ok');
+    expect(pushAbility({ ...base, permission: 'denied' })).toBe('denied');
+    expect(pushAbility({ ...base, push: false, notif: false, ios: true })).toBe('install');
+    expect(pushAbility({ ...base, ios: true, standalone: true })).toBe('ok');
+    expect(pushAbility({ ...base, push: false })).toBe('unsupported');
+  });
+});

@@ -5,10 +5,15 @@
 //                  → the text is noted in « incoming_texts » (the owner's app opens the conversation bubble).
 //   { action: 'link', renew? }  (the owner, signed in) → { url, text_url }: the addresses to paste in GoHighLevel (a new key with renew)
 //   { action: 'test', kind? }   (the owner) → a pretend call, to see the banner (kind 'text': a pretend text, to see the bubble)
+//   { action: 'push-key' }      (the owner) → { key }: the garage's public key a device needs to ask for the alert while the
+//                  app is closed. A text is then also sent as a notification to the devices (« push_subs ») of the owners who
+//                  take the texts (staff.prefs.texts): the name (ours when the number is on file) and the words.
 import { serve, json, body, fail, env } from '../_shared/http.ts';
 import { caller, secret, adminDb, setSecrets } from '../_shared/db.ts';
 import { newToken, safeEqual } from '../_shared/tokens.ts';
 import { e164 } from '../_shared/ghl.ts';
+import { makeVapid, sendPush, type Vapid } from '../_shared/webpush.ts';
+import { DEFAULT_BASES } from '../_shared/links.ts';
 
 async function brake(key: string, windowSec: number, max: number): Promise<boolean> {
   const { data, error } = await adminDb().rpc('rate_hit', { p_key: key, p_window_sec: windowSec, p_max: max });
@@ -38,6 +43,43 @@ async function noteText(phone: string, name: string | null, words: string) {
   // the conversation itself stays in GoHighLevel: a week here is plenty
   await db.from('incoming_texts').delete().lt('at', new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString());
 }
+/** the garage's signing keys for notifications: made the first time, kept in « secrets » */
+async function vapid(by: string | null): Promise<Vapid> {
+  const publicKey = await secret('vapid_public'), privateJwk = await secret('vapid_private');
+  if (publicKey && privateJwk) return { publicKey, privateJwk };
+  const v = await makeVapid();
+  await setSecrets({ vapid_public: v.publicKey, vapid_private: v.privateJwk }, by);
+  return v;
+}
+const nicePhone = (p: string) => { const d = p.replace(/\D/g, '').slice(-10); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}` : p; };
+/** the alert while the app is closed, on the devices of the owners who take the texts. Never an error for the caller:
+    the text is already noted, the bubble shows anyway. */
+async function alertText(phone: string, name: string | null, words: string): Promise<number> {
+  try {
+    const db = adminDb();
+    const { data: people } = await db.from('staff').select('id').contains('roles', ['owner']).eq('active', true).is('deleted_at', null).eq('prefs->>texts', 'true');
+    const ids = ((people || []) as { id: string }[]).map((x) => x.id);
+    if (!ids.length) return 0;
+    const { data: subs } = await db.from('push_subs').select('id, endpoint, p256dh, auth').in('staff_id', ids);
+    const list = (subs || []) as { id: string; endpoint: string; p256dh: string; auth: string }[];
+    if (!list.length) return 0;
+    const { data: known } = await db.from('customers').select('first_name, last_name').eq('phone_digits', phone.replace(/\D/g, '').slice(-10)).is('deleted_at', null).limit(1);
+    const k = ((known || []) as { first_name: string | null; last_name: string | null }[])[0];
+    const who = (k ? [k.first_name, k.last_name].filter(Boolean).join(' ') : '') || name || nicePhone(phone);
+    const payload = JSON.stringify({ title: who, body: words.slice(0, 300) || 'Nouveau texto', tag: `texto-${phone}` });
+    const v = await vapid(null);
+    const gone: string[] = [];
+    let sent = 0;
+    await Promise.all(list.map(async (s) => {
+      try {
+        const status = await sendPush(s, payload, v, DEFAULT_BASES[0]);
+        if (status === 404 || status === 410) gone.push(s.id); else if (status >= 200 && status < 300) sent++;
+      } catch { /* that device's service did not answer: the next text tries again */ }
+    }));
+    if (gone.length) await db.from('push_subs').delete().in('id', gone);
+    return sent;
+  } catch { return 0; }
+}
 async function note(phone: string, name: string | null) {
   const db = adminDb();
   const { error } = await db.from('incoming_calls').insert({ phone, name });
@@ -60,10 +102,15 @@ export const handler = serve(async (req) => {
       return json({ ok: true, url, text_url: `${url}&t=sms` });
     }
     if (b.action === 'test') {
-      if (b.kind === 'text') await noteText('+15145550100', 'Client TEST', 'Bonjour, avez-vous une place demain matin pour un changement d’huile ?');
-      else await note('+15145550100', 'Client TEST');
+      if (b.kind === 'text') {
+        const words = 'Bonjour, avez-vous une place demain matin pour un changement d’huile ?';
+        await noteText('+15145550100', 'Client TEST', words);
+        return json({ ok: true, alerted: await alertText('+15145550100', 'Client TEST', words) });
+      }
+      await note('+15145550100', 'Client TEST');
       return json({ ok: true });
     }
+    if (b.action === 'push-key') return json({ ok: true, key: (await vapid(c.id)).publicKey });
     fail('action', 'Action inconnue.');
   }
   const want = await secret('call_hook');
@@ -71,7 +118,7 @@ export const handler = serve(async (req) => {
   if (!(await brake(isText ? 'ring:text' : 'ring', 60, isText ? 60 : 30))) fail('busy', isText ? 'Trop de textos à la fois.' : 'Trop d’appels à la fois.', 429);
   const call = callOf(b);
   if (!call.phone) fail('no_phone', isText ? 'Aucun numéro dans ce texto.' : 'Aucun numéro dans cet appel.');
-  if (isText) await noteText(call.phone!, call.name, wordsOf(b));
+  if (isText) { const words = wordsOf(b); await noteText(call.phone!, call.name, words); await alertText(call.phone!, call.name, words); }
   else await note(call.phone!, call.name);
   return json({ ok: true });
 });

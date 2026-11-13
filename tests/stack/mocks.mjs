@@ -42,6 +42,12 @@ http.createServer(async (req, res) => {
   if (p === '/log/clear') { log.length = 0; return send(res, 200, { ok: true }); }
   if (p === '/control') { if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl'); return send(res, 200, state.ghl); }
 
+  // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
+  if (p.startsWith('/push/')) {
+    log.push({ svc: 'push', path: p.slice(5), auth: req.headers.authorization, encoding: req.headers['content-encoding'], ttl: req.headers.ttl, bytes: Buffer.byteLength(raw || '') });
+    return send(res, p === '/push/gone' ? 410 : 201, {});
+  }
+
   // ---- GoHighLevel ----
   if (p.startsWith('/ghl/')) {
     const body = raw ? JSON.parse(raw) : {};

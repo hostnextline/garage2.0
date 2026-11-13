@@ -219,6 +219,13 @@ end $do$;
   count of new texts, « Fermer » = gone until that number writes again (state per number on the device, `his-text-chats`). The window
   shows GoHighLevel's conversation (`conversation get`; by `phone` for a number with no file, owner only) and answers from the garage's
   number. Réglages → Branchements → « Textos entrants »: the address, the GoHighLevel steps, « Essayer » (`{ action: 'test', kind: 'text' }`).
+  The alert while the app is closed (same Part): « M’avertir quand l’app est fermée » (per device, `src/features/conversation/push.ts`)
+  asks the browser for a Web Push address and keeps it in `push_subs` (own rows only, an owner only, not backed up); `ring` sends each
+  new text there (`alertText`: the owners with `prefs.texts`; the name is ours when the number is on file) with
+  `_shared/webpush.ts` (RFC 8291 encryption and VAPID signature with the platform's crypto, no package; keys made once by
+  `{ action: 'push-key' }`, in `secrets.vapid_public` / `vapid_private`); a device answering 404 / 410 is forgotten. The service worker
+  shows it (`public/push-sw.js`, loaded with workbox `importScripts`); a tap opens the app. An iPhone must have the app on its home
+  screen first (the panel says so).
 - Oil always said (`CarFirst`, `OilHint`): the job card says what the oil change still needs (grade, quantity, filter: `oilLine().missing`)
   with « Compléter » (the car's « Fiche technique » `SpecPanel` in a sheet; without year/make/model, a link to the car); the booking
   screen shows the chosen car's oil under the car.

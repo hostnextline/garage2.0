@@ -70,6 +70,8 @@ export default defineConfig(({ mode }) => ({
         navigateFallbackDenylist: [/client\.html/],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         cleanupOutdatedCaches: true,
+        /* the alert while the app is closed (« Texto entrant »): public/push-sw.js */
+        importScripts: ['push-sw.js'],
         runtimeCaching: [
           { /* map tiles: kept a little while so the map still shows with weak signal */
             urlPattern: ({ url }) => /tile\.openstreetmap\.org$/.test(url.hostname),
