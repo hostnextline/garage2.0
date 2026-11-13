@@ -355,8 +355,12 @@ end $do$;
   `{ action: 'contact', customer_id }` (`syncContact`): the customer's name and number go to their GoHighLevel contact (made, or the
   name put on a number already there); the app asks it by itself once a new customer, or a changed name / number, has reached the
   server (`sentHooks.customer` in `sync.ts`, set in `api.ts`). Deployed on live 2026-11-12; the app side is not published yet.
-- The end-to-end step « Changer de camion » fails when the suite runs after 16 h Montréal (seen 2026-11-12, on code that passed at 13 h
-  too): the click on the other truck does nothing in the test; `move_job` itself works on live in both directions.
+- The end-to-end step « Changer de camion » was red from 2026-11-12 to 2026-11-13 for two reasons that were the test's own, not the
+  app's (`move_job` and the sheet were fine): it looked where the appointment was BEFORE opening the other truck's day, and opening
+  a day re-plans the block, so the planner could put the appointment on the truck just opened (the test then clicked the line of the
+  truck it was already on, which is not a button); and on a Friday « tomorrow » is the Saturday an earlier step gives to Voiture for
+  10 h to 12 h only (`on conflict do nothing` kept it closed in the afternoon). The step now opens both trucks first, writing over
+  the hours, then reads where the appointment is.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
 

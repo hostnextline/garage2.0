@@ -1243,12 +1243,18 @@ step('Clients: right-click (computer) or long press (iPhone) on a customer: the 
 });
 
 step('« Changer de camion »: an appointment booked on the wrong truck goes to another one, same day and block; then the app picks again', async () => {
-  // tomorrow afternoon: Karim Laval's appointment (Addresses step) is on one truck (the planner chose it: it depends on
-  // the hour the tests run); the other truck works then too
+  // tomorrow afternoon: Karim Laval's appointment (Addresses step). Both trucks are made to work that whole day FIRST, and only
+  // then the test looks where the appointment is: opening a truck's day re-plans the block, and the planner may put the
+  // appointment on the truck just opened (then « the other truck » was the one it is already on, and its line is not a button).
+  // The hours are written over what is there: on a Friday « tomorrow » is the Saturday an earlier step gave to Voiture for
+  // 10 h to 12 h only, which left it closed in the afternoon and out of the list.
+  const day = h.sql(`select day from public.jobs where id = '${jobLaval}'`);
+  for (const tr of [T.complet, T.voiture]) {
+    h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${tr}', '${day}', '[[480,1200]]', 'e2e') on conflict (truck_id, day) do update set ranges = excluded.ranges, deleted_at = null`);
+  }
   const before = h.sql(`select day || '|' || block || '|' || truck_id from public.jobs where id = '${jobLaval}'`).split('|');
   assert.ok([T.complet, T.voiture].includes(before[2]), 'on one of the trucks');
   const other = before[2] === T.complet ? T.voiture : T.complet;
-  h.sql(`insert into public.truck_days (truck_id, day, ranges, note) values ('${other}', '${before[0]}', '[[480,1200]]', 'e2e') on conflict do nothing`);
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + `#/job/${jobLaval}`);
@@ -1256,6 +1262,8 @@ step('« Changer de camion »: an appointment booked on the wrong truck goes to 
   await page.getByTestId('menu-truck').click();
   await page.getByTestId('truck-sheet').waitFor({ timeout: 15000 });
   await h.shot(page, 'e2e-truck-sheet');
+  // both trucks are offered; the one the appointment is on says « Actuel » and is not a button
+  await page.getByTestId(`truck-pick-${before[2]}`).getByText('Actuel').waitFor({ timeout: 15000 });
   await page.getByTestId(`truck-pick-${other}`).click();
   // a refusal says why (the toast), instead of a sheet that just stays open
   const refused = await Promise.race([
