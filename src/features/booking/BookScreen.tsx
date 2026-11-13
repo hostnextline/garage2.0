@@ -1,4 +1,4 @@
-/* Réserver — one page, not a wizard: the customer, the car and the address, the services, the problem, the block,
+/* Réserver (also « Appel entrant ») — one page, not a wizard: the customer, the car and the address, the services, the problem, the block,
    then « Réserver ». The server picks the truck and the order of the stops.
    #/book?customer=ID · ?day=YYYY-MM-DD&block=am · ?quote=ID (an estimate becomes a job) · ?walkin=1 (the job starts now)
    · ?copy=JOB (« Coller » in the agenda: the same customer, car, address, work, problem and notes, in the block chosen)
