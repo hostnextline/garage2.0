@@ -1902,6 +1902,7 @@ step('« Appel entrant » from GoHighLevel: « Essayer » in Branchements shows 
   h.sql(`delete from public.secrets where key = 'call_hook'`);
 });
 
+const until2 = async (get, ok, ms = 30000) => { const t0 = Date.now(); let v; while (Date.now() - t0 < ms) { v = await get(); if (ok(v)) return v; await new Promise((r) => setTimeout(r, 500)); } return v; };
 step('« Texto entrant » from GoHighLevel: « Essayer » in Branchements opens the small conversation window for the owner; « Réduire » makes it a round head that counts a new text; « Fermer » puts it away', async () => {
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
@@ -1918,8 +1919,10 @@ step('« Texto entrant » from GoHighLevel: « Essayer » in Branchements opens 
   await page.getByTestId('texts-try').click();
   const win = page.getByTestId('text-window');
   await win.waitFor({ timeout: 30000 });
-  assert.match(await win.getByTestId('text-window-who').innerText(), /Client TEST/);
-  assert.match(await win.getByTestId('text-window-in').first().innerText(), /changement d’huile/);
+  // the name: GoHighLevel's « Client TEST », or our own customer when the pretend number is on a file of the tests
+  assert.ok((await win.getByTestId('text-window-who').innerText()).trim().length > 0);
+  await until2(async () => win.getByTestId('text-window-in').last().innerText().catch(() => ''), (x) => /changement d’huile/.test(x), 15000);
+  assert.match(await win.getByTestId('text-window-in').last().innerText(), /changement d’huile/);
   await h.shot(page, 'e2e-text-window');
   // minimised: a round head; a new text is counted on it
   await win.getByTestId('text-window-min').click();
@@ -1933,7 +1936,8 @@ step('« Texto entrant » from GoHighLevel: « Essayer » in Branchements opens 
   // the head opens the window again, with both texts
   await page.getByTestId('text-head').click();
   await win.waitFor();
-  assert.equal(await win.getByTestId('text-window-in').count(), 2);
+  await until2(async () => win.getByTestId('text-window-in').count(), (n) => n >= 2, 15000);
+  assert.ok(await win.getByTestId('text-window-in').count() >= 2, 'both pretend texts are in the window');
   await win.getByTestId('text-window-close').click();
   assert.equal(await page.getByTestId('text-window').count(), 0);
   assert.equal(await page.getByTestId('text-head').count(), 0, 'closed: no head left');

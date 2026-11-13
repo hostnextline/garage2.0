@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextChats, openChat, minimiseChat, closeChat, unread, heads, phoneId, KEEP_MS, type Chat, type IncomingText } from './texts';
+import { nextChats, openChat, minimiseChat, closeChat, unread, heads, phoneId, lines, KEEP_MS, type Chat, type IncomingText } from './texts';
 
 const t0 = Date.parse('2026-11-12T15:00:00Z');
 const iso = (min: number) => new Date(t0 + min * 60000).toISOString();
@@ -67,5 +67,20 @@ describe('« Texto entrant » bubbles', () => {
     const texts = [text('a', A, 1), text('b', B, 2)];
     const chats = nextChats([], texts, iso(0), false, t0);
     expect(heads(chats, texts).map((c) => c.phone)).toEqual([B, A]);
+  });
+
+  it('the window: GoHighLevel’s conversation, plus the texts it does not have yet', () => {
+    const make = (x: IncomingText) => ({ id: x.id, at: x.at, dir: 'in' as const, body: x.body });
+    const texts = [text('a', A, 1, null, 'Bonjour'), text('b', A, 5, null, 'Demain matin ?')];
+    // GoHighLevel does not answer: everything that arrived here
+    expect(lines(null, texts, make).map((m) => m.body)).toEqual(['Bonjour', 'Demain matin ?']);
+    // it has the first text and our answer: only the newest one is added, never twice
+    const conv = [{ id: 'g1', at: iso(1), dir: 'in' as const, body: 'Bonjour' }, { id: 'g2', at: iso(3), dir: 'out' as const, body: 'Oui ?' }];
+    expect(lines(conv, texts, make).map((m) => m.body)).toEqual(['Bonjour', 'Oui ?', 'Demain matin ?']);
+    // an answer sent after a text GoHighLevel does not have: the text stays, in its place
+    expect(lines([{ id: 'g9', at: iso(7), dir: 'out' as const, body: 'On arrive' }], [text('z', A, 8, null, 'Merci')], make).map((m) => m.body)).toEqual(['On arrive', 'Merci']);
+    expect(lines([{ id: 'g9', at: iso(3), dir: 'out' as const, body: 'Oui ?' }], texts, make).map((m) => m.body)).toEqual(['Bonjour', 'Oui ?', 'Demain matin ?']);
+    const full = [...conv, { id: 'g3', at: iso(5), dir: 'in' as const, body: 'Demain matin ?' }];
+    expect(lines(full, texts, make).map((m) => m.id)).toEqual(['g1', 'g2', 'g3']);
   });
 });

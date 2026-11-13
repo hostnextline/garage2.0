@@ -71,3 +71,15 @@ export function closeChat(chats: Chat[], phone: string, texts: IncomingText[], n
 export function heads(chats: Chat[], texts: IncomingText[]): Chat[] {
   return chats.filter((c) => c.state === 'min').sort((a, b) => latest(texts, b.phone, b.seenAt).localeCompare(latest(texts, a.phone, a.seenAt)));
 }
+
+export interface Line { id: string; at: string | null; dir: 'in' | 'out'; body: string }
+/** what the window shows: GoHighLevel's conversation, plus the texts that arrived here and are not in it yet (the newest
+    one, told to us before GoHighLevel's list has it; or everything while GoHighLevel does not answer) */
+export function lines<T extends Line>(conv: T[] | null, texts: IncomingText[], make: (x: IncomingText) => T): T[] {
+  const list = conv || [];
+  // a long conversation: GoHighLevel gives its last messages only, so nothing older than those is added
+  const firstAt = list.length < 50 ? '' : list.reduce((m, x) => (x.at && (!m || x.at < m) ? x.at : m), '');
+  const has = new Set(list.filter((m) => m.dir === 'in').map((m) => m.body.trim()));
+  const extra = texts.filter((x) => x.at >= firstAt && !(x.body.trim() && has.has(x.body.trim()))).map(make);
+  return extra.length ? [...list, ...extra].sort((a, b) => String(a.at).localeCompare(String(b.at))) : list;
+}
