@@ -3,6 +3,7 @@ export const today: typeof fr = {
   title: 'Today',
   mine: 'My day',
   team: 'The day',
+  views: { label: 'Which day', owner: 'Owner view', office: 'Office view', mechanic: 'Mechanic view' },
   shift: {
     notStarted: 'Your day has not started',
     notStartedSub: 'The office sees your position only during your day.',

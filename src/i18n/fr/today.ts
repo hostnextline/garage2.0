@@ -3,6 +3,7 @@ export const today = {
   title: 'Aujourd’hui',
   mine: 'Ma journée',
   team: 'La journée',
+  views: { label: 'Quelle journée', owner: 'Vue propriétaire', office: 'Vue bureau', mechanic: 'Vue mécano' },
   /* the mechanic's day */
   shift: {
     notStarted: 'Ta journée n’est pas commencée',

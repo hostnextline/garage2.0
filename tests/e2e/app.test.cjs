@@ -1953,3 +1953,26 @@ step('« Texto entrant » from GoHighLevel: « Essayer » in Branchements opens 
   h.sql(`delete from public.secrets where key = 'call_hook'`);
 });
 
+step('« Vue propriétaire » / « Vue mécano »: a mechanic who is also an owner picks the day he sees on Aujourd’hui; the phone remembers', async () => {
+  h.sql(`update public.staff set roles = array['owner','mechanic'] where id = '${who.saleh.id}'`);
+  const { page, ctx } = await h.openW({ kind: 'phone' });
+  await h.signIn(page, who.saleh.email, PW);
+  await page.getByTestId('today-screen').waitFor();
+  const views = page.getByTestId('today-views');
+  await views.waitFor({ timeout: 20000 });
+  // the owner's day first
+  assert.equal(await views.getByRole('tab', { name: 'Vue propriétaire' }).getAttribute('aria-selected'), 'true');
+  await page.getByRole('heading', { name: 'La journée', exact: true }).waitFor();
+  await views.getByRole('tab', { name: 'Vue mécano' }).click();
+  await page.getByRole('heading', { name: 'Ma journée', exact: true }).waitFor();
+  await h.shot(page, 'e2e-vue-mecano');
+  // kept on the phone
+  await page.reload();
+  await page.getByTestId('today-views').waitFor({ timeout: 20000 });
+  await page.getByRole('heading', { name: 'Ma journée', exact: true }).waitFor();
+  await page.getByTestId('today-views').getByRole('tab', { name: 'Vue propriétaire' }).click();
+  await page.getByRole('heading', { name: 'La journée', exact: true }).waitFor();
+  noErrors(page);
+  await ctx.close();
+  h.sql(`update public.staff set roles = array['mechanic'] where id = '${who.saleh.id}'`);
+});

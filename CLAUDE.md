@@ -275,6 +275,9 @@ end $do$;
   nobody's own (Hassan: mechanics switch during the day). On, `my_truck_ids()` gives every vehicle to every mechanic, so each sees
   every route and may move any job forward; « Ma journée » gets « La route que je fais » (Les deux / Voiture / Camion, kept on the
   phone: `myRoute` in `today/select.ts`).
+- « Vue propriétaire » / « Vue mécano » (no server change): someone who is owner (or office) AND mechanic gets two tabs on top of
+  Aujourd'hui (`today-views`; `dayView`, `hasTwoViews`, `pickDay` in `today/select.ts`), kept on the phone (`his.dayView`). Only the
+  day shown changes: the rights stay the owner's.
 - « Réservé par » (no server change, `src/features/jobs/bookedBy.ts`): the « Le rendez-vous » panel says who booked the appointment
   and when (`jobs.created_by`, `created_at`, `source`: on the spot, from an estimate, « Le client, en ligne »).
 - « Retour à la Centrale » (Part 24 ter, `20261108000160_retour_centrale.sql`): when a mechanic's last job of the day is done,
