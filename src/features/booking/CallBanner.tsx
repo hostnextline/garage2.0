@@ -66,7 +66,7 @@ export function CallHost() {
         <span data-testid="call-banner-who">{[who, formatPhone(call.phone)].filter(Boolean).join(', ')}</span>
         {known && <span class="small muted">{t('booking.ring.known')}</span>}
       </span>
-      <Button variant="primary" size="sm" onClick={() => { close(); navigate(known ? `/call?phone=${encodeURIComponent(call.phone.replace(/\D/g, '').slice(-10))}` : callLink(call)); }} data-testid="call-banner-open">{t('booking.ring.open')}</Button>
+      <Button variant="primary" size="sm" onClick={() => { close(); navigate(callLink(call)); }} data-testid="call-banner-open">{t('booking.ring.open')}</Button>
       <IconButton icon={<X />} label={t('common.close')} onClick={close} data-testid="call-banner-close" />
     </div>
   );
