@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextChats, openChat, minimiseChat, closeChat, unread, heads, phoneId, lines, KEEP_MS, type Chat, type IncomingText } from './texts';
+import { nextChats, openChat, minimiseChat, closeChat, unread, heads, phoneId, lines, KEEP_MS, type Chat, type IncomingText, type Line } from './texts';
 
 const t0 = Date.parse('2026-11-12T15:00:00Z');
 const iso = (min: number) => new Date(t0 + min * 60000).toISOString();
@@ -70,7 +70,7 @@ describe('« Texto entrant » bubbles', () => {
   });
 
   it('the window: GoHighLevel’s conversation, plus the texts it does not have yet', () => {
-    const make = (x: IncomingText) => ({ id: x.id, at: x.at, dir: 'in' as const, body: x.body });
+    const make = (x: IncomingText): Line => ({ id: x.id, at: x.at, dir: 'in', body: x.body });
     const texts = [text('a', A, 1, null, 'Bonjour'), text('b', A, 5, null, 'Demain matin ?')];
     // GoHighLevel does not answer: everything that arrived here
     expect(lines(null, texts, make).map((m) => m.body)).toEqual(['Bonjour', 'Demain matin ?']);
