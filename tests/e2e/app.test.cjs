@@ -1831,6 +1831,9 @@ step('« Voiture ou camion »: the switch above the moments offered; mounting ti
 step('« La voiture ferme »: closing the car on a day that has an appointment asks to move it to the truck, lists it, shows the new route, and moves it', async () => {
   const car = h.sql(`insert into public.trucks (name, active, sort, color, tire_machine) values ('Voiture ferme', true, 9, '#2F6FD0', false) returning id`);
   h.sql(`insert into public.truck_week (truck_id, dow, ranges) select '${car}', d, '[[480,720]]'::jsonb from generate_series(0, 6) d`);
+  // a truck (with the tire machine) open every day, all day: the appointment has somewhere to go
+  const big = h.sql(`insert into public.trucks (name, active, sort, color, tire_machine) values ('Camion ouvert', true, 8, '#D3000E', true) returning id`);
+  h.sql(`insert into public.truck_week (truck_id, dow, ranges) select '${big}', d, '[[480,1200]]'::jsonb from generate_series(0, 6) d`);
   const day = h.sql(`select d::date::text from generate_series(public.local_today() + 2, public.local_today() + 9, interval '1 day') d where extract(dow from d) between 1 and 5 limit 1`);
   const dowOf = h.sql(`select extract(dow from '${day}'::date)::int`);
   const job = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order) values ('${julie}', '${day}', 'am', 'booked', '${car}', 45, 1) returning id`);
@@ -1868,6 +1871,5 @@ step('« La voiture ferme »: closing the car on a day that has an appointment a
   noErrors(page);
   await ctx.close();
   h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
-  h.sql(`update public.trucks set active = false where id = '${car}'`);
+  h.sql(`update public.trucks set active = false where id in ('${car}', '${big}')`);
 });
-
