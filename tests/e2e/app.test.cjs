@@ -522,7 +522,7 @@ step('Plus: a tile for each part the person may open, the filters, today in numb
   await page.getByTestId('tab-more').click();
   await page.getByTestId('more-screen').waitFor();
   // the owner opens everything: one tile per part of the app, my account in the header
-  for (const k of ['today', 'agenda', 'map', 'customers', 'quotes', 'invoices', 'treasury', 'dashboard', 'hours', 'inventory', 'team', 'settings', 'guide']) {
+  for (const k of ['today', 'agenda', 'map', 'customers', 'oil', 'quotes', 'invoices', 'treasury', 'dashboard', 'hours', 'inventory', 'team', 'settings', 'guide']) {
     await page.getByTestId(`more-${k}`).waitFor();
   }
   await page.getByTestId('more-account').waitFor();
@@ -540,7 +540,7 @@ step('Plus: a tile for each part the person may open, the filters, today in numb
   // « Bureau »: only the office's parts, in the order of the menu
   await page.getByTestId('more-filter-office').click();
   const keys = await page.getByTestId('more-grid').locator('a').evaluateAll((l) => l.map((a) => a.dataset.testid));
-  assert.deepEqual(keys, ['more-customers', 'more-quotes', 'more-invoices', 'more-treasury', 'more-dashboard']);
+  assert.deepEqual(keys, ['more-customers', 'more-oil', 'more-quotes', 'more-invoices', 'more-treasury', 'more-dashboard']);
   await h.shot(page, 'e2e-10-plus-office');
   await page.getByTestId('more-filter-all').click();
   // the first steps still to do: the ring leads to « Par où commencer »
