@@ -15,6 +15,7 @@ import { exportSignature, type Stroke } from './signature';
 import { plannedParts, type UsedPart } from './parts';
 import { confirmParts } from './PartsSheet';
 import { askCar, saveCar } from './CarCheckSheet';
+import { vinNeeded, vinSkips } from './vinStep';
 import { getRow } from '../../data/store';
 
 const customerOf = (j: Job) => customerRow(j.customer_id);
@@ -182,11 +183,21 @@ function outcomeClosed(): Promise<void> {
 }
 /** once there: the km on the dashboard, and the VIN when the car has none (« La voiture »; « Plus tard » skips it) */
 async function carAtArrival(j: Job): Promise<void> {
-  const car = j.vehicle_id ? getRow<Vehicle>('vehicles', j.vehicle_id) : null;
-  if (!car || car.deleted_at || j.odometer_km != null) return;
+  const found = j.vehicle_id ? getRow<Vehicle>('vehicles', j.vehicle_id) : null;
+  const car = found && !found.deleted_at ? found : null;
+  // the VIN is asked before the work starts (the red button stays « Le NIV de l’auto » until it is given or said unreadable)
+  const need = vinNeeded({ id: j.id, status: 'on_site', vehicle_id: j.vehicle_id }, car, vinSkips.value);
+  if (!need && (!car || j.odometer_km != null)) return;
   // the text to send by hand (texts not connected) comes first: one sheet at a time
   await outcomeClosed();
-  const a = await askCar(j, car);
+  const a = await askCar(j, car, need);
+  if (a) await saveCar(j, car, a);
+}
+/** the red button « Le NIV de l’auto »: scan it, type it, or pick a car of the customer that has one */
+export async function doVin(j: Job): Promise<void> {
+  const found = j.vehicle_id ? getRow<Vehicle>('vehicles', j.vehicle_id) : null;
+  const car = found && !found.deleted_at ? found : null;
+  const a = await askCar(j, car, true);
   if (a) await saveCar(j, car, a);
 }
 

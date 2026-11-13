@@ -126,7 +126,7 @@ function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }) {
   const answerItem = answerFor ? getRow<JobItem>('job_items', answerFor) : undefined;
   const openItem = itemFor ? itemsOf(j.id).find((i) => i.id === itemFor) : undefined;
   const back = may.agenda() && !rights.mine ? `/agenda/${j.day}` : '/';
-  const pressable = ['leave', 'arrive', 'waiver', 'answer', 'work', 'invoice', 'pay', 'finish', 'blocked'].includes(step.kind);
+  const pressable = ['leave', 'arrive', 'vin', 'waiver', 'answer', 'work', 'invoice', 'pay', 'finish', 'blocked'].includes(step.kind);
 
   return (
     <Page title={title} back={back} data-testid="job-screen"

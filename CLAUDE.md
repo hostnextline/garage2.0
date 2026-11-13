@@ -185,6 +185,18 @@ end $do$;
   characters (`VinField`, so the add sheet, the new customer's car and « Modifier » the car) « Déjà venu chez nous : N visites » +
   « Voir l'historique » (`VinSeen`); the car's screen shows « Historique du véhicule » from the server (`useVinHistory`, asked
   before any early return), the local job tickets when there is no VIN or no network. Live had only 2 VINs of 35 cars (2026-11-11).
+- « Le NIV de l’auto » before the work starts (no server change; `src/features/jobs/vinStep.ts`, `CarCheckSheet.tsx`, `nextStep.ts`): once
+  on site, while the job's car has no VIN (or the job has no car), the red button is the step `vin` (before the signature, for
+  whoever may act; a walk-in too). Its sheet (the same `car-check`, opened by itself after « Je suis arrivé », `need`): scan or type
+  the VIN, or pick one of the customer's cars that already has one (`car-check-pick` → `jobs.vehicle_id`), the km still optional; no
+  « Plus tard » there, but « NIV illisible » (two taps, `car-check-skip`): the job goes on, remembered on that device only
+  (`his-vin-skip`). `vinPlan`: a VIN the customer's other car already has → that car becomes the job's; else it goes on the job's car
+  (with what the VIN says where the file is empty); a job with no car gets a new car made from the VIN. Only in the app: the server
+  does not refuse a signature or an invoice without VIN.
+- « Historique de l’auto » (`src/features/customers/CarHistory.tsx`, `CarHistoryButton`): on the job's car card (`CarFirst`), beside each
+  car of the customer's file, and on the car's file. With a VIN of 17 characters: `vin_history` (every visit with us, whoever owned
+  the car; « Autre propriétaire » on the others, never their name or prices); without VIN, without network, or when the server has
+  nothing: the visits of that car's own file from the phone.
 - « La voiture » à l’arrivée (Part 24 duodecies, `20261112000100_km_visite.sql`; `src/features/jobs/CarCheckSheet.tsx`): right after
   « Je suis arrivé » (after the « text to send by hand » sheet, `outcomeClosed`), a sheet asks the km on the dashboard and the VIN when
   the car has none (scan); « Plus tard » skips it. `jobs.odometer_km` (column grant like the notes; `jobs_upd` decides who); trigger

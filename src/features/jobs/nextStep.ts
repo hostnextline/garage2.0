@@ -3,14 +3,14 @@
 
    booked    → Je pars (not before the day; not while this truck has an unpaid job on site: the server refuses it)
    en_route  → Je suis arrivé
-   on_site   → the next missing piece, in order: the signed authorization, the customer's answer to proposed work,
+   on_site   → the next missing piece, in order: the car's VIN (scanned, typed, or a car of the customer that has one), the signed authorization, the customer's answer to proposed work,
                some work to bill, the invoice, the payment, then « Terminer la job »
    done      → nothing to press (the PAYÉ stamp; what is left to collect)
    cancelled, no_show → closed */
 import type { Job, JobItem, Invoice } from '../../data/types';
 
 export type StepKind =
-  | 'leave' | 'arrive' | 'waiver' | 'answer' | 'work' | 'invoice' | 'pay' | 'finish'
+  | 'leave' | 'arrive' | 'vin' | 'waiver' | 'answer' | 'work' | 'invoice' | 'pay' | 'finish'
   | 'blocked' | 'later' | 'done' | 'closed' | 'none';
 
 export interface StepRights {
@@ -26,6 +26,8 @@ export interface StepContext {
   today: string;
   /** another job of this truck that is on site and not paid: leaving is refused until it is */
   blockedBy?: string | null;
+  /** on site, and the job's car is not known by a VIN yet (vinStep.ts) */
+  needVin?: boolean;
 }
 export interface NextStep {
   kind: StepKind;
@@ -88,6 +90,7 @@ export function nextStep(job: JobLike, items: ItemLike[], invoice: InvoiceLike |
       return rights.act ? { kind: 'arrive' } : { kind: 'none' };
     case 'on_site': {
       if (!rights.act) return { kind: 'none' };
+      if (ctx.needVin) return { kind: 'vin' };
       if (!job.waiver_signed_at) return { kind: 'waiver' };
       if (paid) return { kind: 'finish' };
       // « payer plus tard » was granted (the job came back from done): an issued invoice is enough

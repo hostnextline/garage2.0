@@ -36,6 +36,7 @@ import type { Suggestion } from './photon';
 import { oneLine, directionsUrl } from './address';
 import { Flags, Plate, Bit, carName, stampDay, dayOfIso, dateShort } from './bits';
 import { lastOil } from '../oil/select';
+import { CarHistoryButton } from './CarHistory';
 import { km } from './vehicleText';
 import './customers.css';
 
@@ -248,8 +249,11 @@ function CarsPanel(p: { c: Customer; cars: Vehicle[]; canEdit: boolean; adding: 
       action={p.canEdit && <Button icon={<Plus size={18} />} onClick={() => setAdding(true)} data-testid="car-add">{t('common.add')}</Button>}>
       {p.cars.length
         ? <Rows>{p.cars.map((v) => (
-            <RowItem key={v.id} href={`#/vehicle/${v.id}`} chevron start={<span class="customers-car-icon"><Car size={20} aria-hidden="true" /></span>} title={carName(v)} data-testid="car-row"
+            <div key={v.id} class="customers-car-wrap" role="listitem">
+              <RowItem href={`#/vehicle/${v.id}`} chevron start={<span class="customers-car-icon"><Car size={20} aria-hidden="true" /></span>} title={carName(v)} data-testid="car-row"
               sub={<span class="customers-line"><Plate plate={v.plate} />{v.engine && <Bit>{v.engine}</Bit>}{v.odometer_km != null && <Bit icon={<Gauge size={14} aria-hidden="true" />}>{km(v.odometer_km, lang.value)}</Bit>}<CarOil v={v} /></span>} />
+              <CarHistoryButton car={v} size="sm" variant="ghost" />
+            </div>
           ))}</Rows>
         : <p class="customers-panel-empty muted">{t('customers.cars.none')}</p>}
       {adding && <VehicleAddSheet customerId={p.c.id} onClose={() => setAdding(false)} onAdded={() => setAdding(false)} />}

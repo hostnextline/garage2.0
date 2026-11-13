@@ -183,3 +183,12 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-oilhint { display: flex; gap: 6px; align-items: flex-start; margin: 0; color: var(--ink-2); }
 .jobs-oilhint svg { flex: none; margin-top: 2px; }
 .jobs-oilhint.is-missing { color: var(--warn-ink, var(--ink-2)); }
+
+/* « Historique de l’auto » on the car card */
+.jobs-cf-history { margin-left: auto; flex: none; align-self: center; }
+.jobs-carfirst .jobs-cf-history svg { width: 18px; height: 18px; margin-top: 0; color: inherit; }
+@media (max-width: 520px) {
+  .jobs-carfirst > .jobs-cf-car { flex-wrap: wrap; }
+  .jobs-cf-car > div { flex: 1 1 calc(100% - 40px); }
+  .jobs-cf-history { margin-left: 38px; }
+}

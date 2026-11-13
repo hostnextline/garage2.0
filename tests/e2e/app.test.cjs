@@ -65,6 +65,15 @@ const step = (name, fn) => test(name, async () => {
   }
 });
 const dismissSheets = async (page) => { for (let i = 0; i < 3; i++) { if (await page.locator('[role=dialog]').count()) await page.keyboard.press('Escape'); await page.waitForTimeout(200); } };
+/** « Le NIV de l’auto », once on site with a car that has no VIN: the sheet opens by itself after « Je suis arrivé »; when
+    it was closed (or has not opened yet), the red button opens it */
+const openVin = async (page) => {
+  const sheet = page.getByTestId('car-check');
+  for (let i = 0; i < 10 && !(await sheet.isVisible()); i++) await page.waitForTimeout(300);
+  if (!(await sheet.isVisible())) await page.getByTestId('step-vin').click({ timeout: 15000 });
+  await sheet.waitFor({ timeout: 10000 });
+  await page.getByTestId('car-check-skip').waitFor();
+};
 h.openW = async (o) => { const r = await h.open(o); watch(r.page); return r; };
 const noErrors = (page) => assert.deepEqual(page.errors, [], 'no page errors');
 /* a signature with the mouse: hover() first, so Playwright waits for the pad to be still (a sheet rising) and in view before
@@ -153,6 +162,12 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
   assert.match(await page.getByTestId('text-outcome-message').innerText(), /Votre facture : [\d ,]+\$ taxes incluses/);
   await dismissSheets(page);
+  // before the work starts: the car's VIN (the red button stays on it until it is given)
+  await openVin(page);
+  assert.equal(await page.getByTestId('car-check-save').isDisabled(), true, 'nothing given yet: no saving');
+  await page.getByTestId('vin-input').fill('2HGFC2F59KH512345');
+  await page.getByTestId('car-check-save').click();
+  await page.getByTestId('car-check').waitFor({ state: 'detached', timeout: 10000 });
   await page.getByTestId('step-waiver').click();
   await page.getByTestId('waiver-sheet').waitFor();
   await draw(page, 'waiver-pad');
@@ -408,6 +423,11 @@ step('the estimate signed online from the confirmation link; at the door nothing
   await m.page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
   assert.match(await m.page.getByTestId('text-outcome-message').innerText(), /^Bonjour Karim, Saleh de Mécanique Mobile H\.I\.S( \(test\))? est arrivé\. Votre facture : 229,94 \$ taxes incluses\. Détails : http/);
   await dismissSheets(m.page);
+  // « NIV illisible » (two taps): the job goes on without it
+  await openVin(m.page);
+  await m.page.getByTestId('car-check-skip').click();
+  await m.page.getByTestId('car-check-skip').click();
+  await m.page.getByTestId('car-check').waitFor({ state: 'detached', timeout: 10000 });
   await m.page.getByTestId('step-invoice').waitFor({ timeout: 15000 });
   assert.equal(await m.page.getByTestId('step-waiver').count(), 0, 'already signed online: no signature at the door');
   await h.shot(m.page, 'e2e-7-mechanic-arrived');

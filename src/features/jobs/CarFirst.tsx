@@ -6,6 +6,7 @@ import { Car, Droplet, Wrench, Pencil } from 'lucide-preact';
 import { Button, Sheet, Banner } from '../../ui';
 import { isField } from '../../app/routes';
 import { SpecPanel } from '../customers/SpecPanel';
+import { CarHistoryButton } from '../customers/CarHistory';
 import { t, lang } from '../../lib/i18n';
 import { vehicle as vehicleRow, specByKey, itemsOf } from '../../data/select';
 import type { Job } from '../../data/types';
@@ -32,6 +33,7 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
           <b class="jobs-cf-name" data-testid="carfirst-car">{car.name || t('jobs.head.noCar')}</b>
           {(car.detail || v?.plate) && <span class="jobs-cf-detail">{[car.detail, v?.plate].filter(Boolean).join(', ')}</span>}
         </div>
+        {v && <CarHistoryButton car={v} size="sm" class="jobs-cf-history" />}
       </div>
       <div class={`jobs-cf-oil${oil.known ? '' : ' is-unknown'}`} data-testid="carfirst-oil">
         <Droplet aria-hidden="true" />

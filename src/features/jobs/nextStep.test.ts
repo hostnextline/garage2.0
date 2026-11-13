@@ -42,6 +42,16 @@ describe('nextStep: one answer for each state', () => {
     expect(nextStep(job('en_route'), work, null, RIGHTS.mechanic, ctx).kind).toBe('arrive');
     expect(nextStep(job('en_route'), work, null, RIGHTS.viewer, ctx).kind).toBe('none');
   });
+  it('on site: the car’s VIN comes before everything else, for whoever may act', () => {
+    const need = { ...ctx, needVin: true };
+    for (const inv of Object.values(INVOICES)) expect(nextStep(job('on_site'), work, inv, RIGHTS.mechanic, need).kind).toBe('vin');
+    expect(nextStep(job('on_site', { waiver: true }), work, INVOICES.paid, RIGHTS.office, need).kind).toBe('vin');
+    expect(nextStep(job('on_site'), work, null, RIGHTS.viewer, need).kind).toBe('none');
+    // not before arriving, not once the job is done
+    expect(nextStep(job('en_route'), work, null, RIGHTS.mechanic, need).kind).toBe('arrive');
+    expect(nextStep(job('booked'), work, null, RIGHTS.mechanic, need).kind).toBe('leave');
+    expect(nextStep(job('done'), work, INVOICES.paid, RIGHTS.mechanic, need).kind).toBe('done');
+  });
   it('on site: the authorization comes first, whatever the invoice', () => {
     for (const inv of Object.values(INVOICES)) expect(nextStep(job('on_site'), work, inv, RIGHTS.mechanic, ctx).kind).toBe('waiver');
   });

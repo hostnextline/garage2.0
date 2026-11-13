@@ -175,6 +175,7 @@ export const vehicles: typeof fr = {
     seen: { one: 'Already came to us: 1 visit', other: 'Already came to us: {n} visits' },
     last: 'The last one: {day} ({work}).',
     see: 'See the history',
+    button: 'Car history',
     none: 'No visit for this VIN.',
     offline: 'No signal: only this customer’s visits.',
     noVin: 'Add the VIN to also see visits with another owner.'

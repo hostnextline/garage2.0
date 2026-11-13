@@ -175,6 +175,7 @@ export const vehicles = {
     seen: { one: 'Déjà venu chez nous : 1 visite', other: 'Déjà venu chez nous : {n} visites' },
     last: 'La dernière : le {day} ({work}).',
     see: 'Voir l’historique',
+    button: 'Historique de l’auto',
     none: 'Aucune visite pour ce NIV.',
     offline: 'Pas de réseau : seulement les visites de ce client.',
     noVin: 'Ajoute le NIV pour voir aussi les visites avec un autre propriétaire.'

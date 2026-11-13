@@ -23,6 +23,7 @@ import { dateShort } from './bits';
 import { today, isValidDay } from '../../lib/dates';
 import { CarPicker } from './CarPicker';
 import { useVinHistory, VinVisits } from './VinHistory';
+import { CarHistoryButton } from './CarHistory';
 import { specKeyOf } from './engineRef';
 import { km, parseKm, engineLine, sampleNumber } from './vehicleText';
 import { Plate, carName } from './bits';
@@ -84,7 +85,7 @@ export default function VehicleScreen({ params }: ScreenProps) {
   return (
     <Page class="customers-page" title={carName(v)} back={owner ? `/customer/${owner.id}` : '/customers'} data-testid="vehicle-screen"
       sub={<span class="customers-line">{owner && <a class="customers-link customers-owner" href={`#/customer/${owner.id}`}><UserRound size={16} aria-hidden="true" />{customerName(owner)}</a>}<Plate plate={v.plate} /></span>}
-      actions={canEdit && <Button icon={<Pencil size={18} />} onClick={() => setEditing(true)} data-testid="vehicle-edit">{t('common.edit')}</Button>}>
+      actions={<div class="row"><CarHistoryButton car={v} />{canEdit && <Button icon={<Pencil size={18} />} onClick={() => setEditing(true)} data-testid="vehicle-edit">{t('common.edit')}</Button>}</div>}>
       <div class="customers-file">
         <div class="customers-side">
           <Panel title={t('vehicles.screen.details')} data-testid="vehicle-details"

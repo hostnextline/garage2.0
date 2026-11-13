@@ -4,10 +4,11 @@ import { signal } from '@preact/signals';
 import type { Job, JobItem, Customer, JobStatus } from '../../data/types';
 import { net } from '../../data/sync';
 import { me, can, hasRole, isOwner, myTrucks } from '../../data/auth';
-import { customer, customerName, itemsOf, invoiceOf, jobsOn, blockOfKey, truck, staffName, messagesOf, settings } from '../../data/select';
+import { vehicle as vehicleRow, customer, customerName, itemsOf, invoiceOf, jobsOn, blockOfKey, truck, staffName, messagesOf, settings } from '../../data/select';
 import { today, addDays, longDay, shortDate, clock, clockRange } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { nextStep, BILLABLE, type NextStep, type StepRights } from './nextStep';
+import { vinNeeded, vinSkips } from './vinStep';
 
 export interface JobRights extends StepRights {
   /** the person drives this job's truck: they are the one at the customer's door */
@@ -50,7 +51,8 @@ export function blockingJob(j: Job): Job | undefined {
 /** the one next step of a job, for the person on screen (with the steps still waiting on this phone) */
 export function stepOf(raw: Job): NextStep {
   const j = seen(raw);
-  return nextStep(j, itemsOf(j.id), invoiceOf(j.id), jobRights(j), { today: today(), blockedBy: j.status === 'booked' ? blockingJob(j)?.id ?? null : null });
+  return nextStep(j, itemsOf(j.id), invoiceOf(j.id), jobRights(j), { today: today(), blockedBy: j.status === 'booked' ? blockingJob(j)?.id ?? null : null,
+    needVin: vinNeeded(j, vehicleRow(j.vehicle_id), vinSkips.value) });
 }
 
 /* ---------- steps kept on the phone (no signal) ----------

@@ -214,3 +214,10 @@
 /* « Historique du véhicule » (by the VIN) */
 .customers-vin-visit { align-items: flex-start; text-decoration: none; color: inherit; }
 .customers-vin-visit-body { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+
+/* a car of the customer: its line (opens the car's file) and « Historique de l’auto » beside it */
+.customers-car-wrap { display: flex; align-items: center; gap: var(--sp-2); padding-right: var(--sp-4); }
+.customers-car-wrap + .customers-car-wrap { border-top: 1px solid var(--glass-line); }
+.customers-car-wrap > .row-item { flex: 1 1 auto; min-width: 0; width: auto; }
+.customers-car-wrap > .btn { flex: none; }
+@media (max-width: 520px) { .customers-car-wrap { flex-wrap: wrap; padding-bottom: var(--sp-3); } .customers-car-wrap > .row-item { flex-basis: 100%; } .customers-car-wrap > .btn { margin-left: var(--sp-5); } }

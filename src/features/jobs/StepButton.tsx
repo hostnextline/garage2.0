@@ -1,7 +1,7 @@
 /* The red button of a job: its one next step, in the same words on « Ma journée » and on the job sheet.
    Je pars, Je suis arrivé and Terminer la job happen right here. The steps that need the job sheet (the signature, the
    customer's answer, the invoice, the payment) open the sheet ready for it (#/job/ID?do=…), or call onUi there. */
-import { type LucideIcon, Truck, MapPinCheck, Signature, PenLine, Wrench, ReceiptText, HandCoins, CircleCheckBig } from 'lucide-preact';
+import { type LucideIcon, Truck, MapPinCheck, ScanLine, Signature, PenLine, Wrench, ReceiptText, HandCoins, CircleCheckBig } from 'lucide-preact';
 import type { Job, JobItem } from '../../data/types';
 import { BigStep } from '../../ui';
 import { t, lang } from '../../lib/i18n';
@@ -12,13 +12,13 @@ import { me } from '../../data/auth';
 import { job as jobById } from '../../data/select';
 import type { NextStep, StepKind } from './nextStep';
 import { jobFirstName, customerGetsTexts, type JobRights } from './select';
-import { doLeave, doArrive, doFinish } from './flow';
+import { doLeave, doArrive, doFinish, doVin } from './flow';
 
 const ICONS: Partial<Record<StepKind, LucideIcon>> = {
-  leave: Truck, arrive: MapPinCheck, waiver: Signature, answer: PenLine, work: Wrench, invoice: ReceiptText, pay: HandCoins, finish: CircleCheckBig, blocked: HandCoins
+  leave: Truck, arrive: MapPinCheck, vin: ScanLine, waiver: Signature, answer: PenLine, work: Wrench, invoice: ReceiptText, pay: HandCoins, finish: CircleCheckBig, blocked: HandCoins
 };
 /** the steps that are a button (the others are a state: done, closed, later, none) */
-export const PRESSABLE: StepKind[] = ['leave', 'arrive', 'waiver', 'answer', 'work', 'invoice', 'pay', 'finish', 'blocked'];
+export const PRESSABLE: StepKind[] = ['leave', 'arrive', 'vin', 'waiver', 'answer', 'work', 'invoice', 'pay', 'finish', 'blocked'];
 /** the steps that need the job sheet's own pieces */
 export const ON_SHEET: StepKind[] = ['waiver', 'answer', 'work', 'invoice', 'pay'];
 
@@ -31,6 +31,7 @@ export function stepWords(j: Job, s: NextStep): { label: string; sub: string } {
       return { label: t('jobs.step.leave'), sub };
     }
     case 'arrive': return { label: t('jobs.step.arrive'), sub: t('jobs.step.arriveSub', { name: jobFirstName(j) }) };
+    case 'vin': return { label: t('jobs.step.vin'), sub: t('jobs.step.vinSub') };
     case 'waiver': return { label: t('jobs.step.waiver'), sub: t('jobs.step.waiverSub') };
     case 'answer': {
       const it = getRow<JobItem>('job_items', s.itemId);
@@ -66,6 +67,6 @@ export function StepButton(p: StepButtonProps) {
     if (p.onUi) return <BigStep {...common} onClick={() => p.onUi!(s)} />;
     return <BigStep {...common} href={`#/job/${j.id}?do=${s.kind}${s.itemId ? `&item=${s.itemId}` : ''}`} />;
   }
-  const act = s.kind === 'leave' ? () => doLeave(j) : s.kind === 'arrive' ? () => doArrive(j) : () => doFinish(j, p.rights);
+  const act = s.kind === 'leave' ? () => doLeave(j) : s.kind === 'arrive' ? () => doArrive(j) : s.kind === 'vin' ? () => doVin(j) : () => doFinish(j, p.rights);
   return <BigStep {...common} onClick={act} />;
 }
