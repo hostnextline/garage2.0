@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261112000400_texto_entrant.sql` (Part 24 quindecies, applied 2026-11-13 from commit `4142fac`;
+- Applied on live: every migration up to `20261113000100_suivi_huile.sql` (Part 24 sedecies, applied 2026-11-13 from commit `06851dd`;
+  before it: `20261112000400_texto_entrant.sql`, Part 24 quindecies, applied 2026-11-13 from commit `4142fac`;
   Part 24 quaterdecies applied 2026-11-12 from commit `665ba06`;
   Part 24 terdecies applied 2026-11-12 from commit `502e7a3`,
   BEFORE its app is published: neutral while every vehicle has `tire_machine = true` and `shared_routes` is off;
@@ -227,7 +228,7 @@ end $do$;
   `{ action: 'push-key' }`, in `secrets.vapid_public` / `vapid_private`); a device answering 404 / 410 is forgotten. The service worker
   shows it (`public/push-sw.js`, loaded with workbox `importScripts`); a tap opens the app. An iPhone must have the app on its home
   screen first (the panel says so).
-- « Rappels d’huile » (`#/oil`, Part 24 sedecies, `20261113000100_suivi_huile.sql`, NOT applied on live yet; `src/features/oil/`): the cars
+- « Rappels d’huile » (`#/oil`, Part 24 sedecies, `20261113000100_suivi_huile.sql`, applied on live 2026-11-13 from commit `06851dd` with the sha256 check; `src/features/oil/`): the cars
   due for an oil change, for the owner or the office to call (`may.oil`; a mechanic only holds his own truck's visits). Hassan's rule
   (`due.ts`, pure, tested): the last finished visit had an oil change → call 6 months after it; it had none → 3 months after that visit
   (never before 6 months after the last oil change). The last oil change = the latest of our own (a line whose service uses oil,
