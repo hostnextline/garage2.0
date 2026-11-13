@@ -164,6 +164,15 @@ export async function sendChat(customerId: string, message: string) {
   return callFn<{ status: string; error?: string }>('conversation', { action: 'send', customer_id: customerId, message }, 20000);
 }
 
+/** the same with a number that has no file yet (somebody new who texted the garage): the owner only */
+export async function conversationPhone(phone: string) {
+  return callFn<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }>('conversation', { action: 'get', phone }, 20000);
+}
+export async function sendChatPhone(phone: string, message: string) {
+  guard();
+  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', phone, message }, 20000);
+}
+
 /* ---------- « Coffre » (family and friends, Part 20): no invoice, no taxes, its own register (owner) ---------- */
 export async function coffreAdd(jobIds: string[], amountCents: number, note: string | null, day: string | null = null) {
   guard();

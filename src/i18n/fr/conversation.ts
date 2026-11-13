@@ -11,6 +11,19 @@ export const conversation = {
   them: 'Client',
   us: 'Garage',
   smsOff: 'Ce client ne veut pas de textos.',
+  bubble: {
+    title: 'Conversation avec {name}',
+    open: 'Ouvrir la conversation avec {name}',
+    unread: { one: '{n} nouveau texto', other: '{n} nouveaux textos' },
+    min: 'Réduire',
+    close: 'Fermer la conversation',
+    file: 'Sa fiche',
+    book: 'Réserver pour ce numéro',
+    noFile: 'Pas encore de fiche',
+    noWords: '(un texto sans mots)',
+    off: 'Les textos ne sont pas branchés (Réglages, Branchements) : tu vois ce qui est arrivé, sans pouvoir répondre d’ici.',
+    error: 'Le service de textos n’a pas répondu : voici ce qui est arrivé. La suite revient dans un instant.'
+  },
   status: {
     ok: '',
     off: 'Les textos automatiques ne sont pas branchés (Réglages, Branchements).',

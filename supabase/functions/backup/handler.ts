@@ -15,8 +15,9 @@ export const TABLES = [
   'coffre', 'positions', 'position_log', 'op_log', 'stripe_events', 'hermes_questions'
 ] as const;
 // never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day),
-// incoming_calls (the calls of the day, for the « Appel entrant » banner)
-export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls'] as const;
+// incoming_calls (the calls of the day, for the « Appel entrant » banner), incoming_texts (the week's texts that wake the
+// « Texto entrant » bubble: the conversations themselves stay in GoHighLevel)
+export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incoming_texts'] as const;
 const KEY: Record<string, string> = { counters: 'name', op_log: 'op' };
 const PAGE: Record<string, number> = { attachments: 100 };
 

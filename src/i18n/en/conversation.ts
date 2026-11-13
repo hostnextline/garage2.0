@@ -11,6 +11,19 @@ export const conversation: typeof fr = {
   them: 'Customer',
   us: 'Garage',
   smsOff: 'This customer does not want texts.',
+  bubble: {
+    title: 'Conversation with {name}',
+    open: 'Open the conversation with {name}',
+    unread: { one: '{n} new text', other: '{n} new texts' },
+    min: 'Minimise',
+    close: 'Close the conversation',
+    file: 'Their file',
+    book: 'Book for this number',
+    noFile: 'No file yet',
+    noWords: '(a text with no words)',
+    off: 'Texts are not connected (Settings, Connections): you see what came in, but cannot answer from here.',
+    error: 'The texting service did not answer: here is what came in. The rest comes back in a moment.'
+  },
   status: {
     ok: '',
     off: 'Automatic texts are not connected (Settings, Connections).',

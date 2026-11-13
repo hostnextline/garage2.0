@@ -31,8 +31,8 @@ and `docs/DESIGN.md` (the look and the writing rules) before changing anything. 
 | Types | `npx tsc --noEmit` | anywhere |
 | Calculations and screens (~860) | `npm test` | anywhere |
 | Local copy of the server | `bash tests/stack/start.sh` (new migrations: `bash tests/stack/migrate.sh`, rebuild: `bash tests/stack/reset.sh`) | Linux x86_64 only (Postgres 16 in `/usr/lib/postgresql`, Linux GoTrue and PostgREST binaries) |
-| Database rules and server functions (44) | `node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs` | needs the local copy |
-| The whole app (16 steps, production build, real sign-in) | `node --test tests/e2e/app.test.cjs` (one step: `--test-name-pattern="…"`) | needs the local copy; puts the database back at the end; pictures in `tests/out/` |
+| Database rules and server functions (45) | `node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs` | needs the local copy |
+| The whole app (17 steps, production build, real sign-in) | `node --test tests/e2e/app.test.cjs` (one step: `--test-name-pattern="…"`) | needs the local copy; puts the database back at the end; pictures in `tests/out/` |
 
 On a Mac only the first two rows work as-is: run the others in a Claude Code cloud session (`claude --cloud "…"`
 or claude.ai/code), which is Linux. Photon (addresses) is mocked in the end-to-end test with `ctx.route`.
@@ -210,6 +210,14 @@ end $do$;
   owner's app (`CallHost` in the shell: realtime + asked every 10 s) shows a banner with the number and the name (our customer's if the
   number is on file) for 3 minutes; « Ouvrir » → `#/call?phone=…&name=…` (the name pre-fills a new caller). Réglages → Branchements →
   « Appels entrants »: the address, the GoHighLevel steps, « Essayer » (`{ action: 'test' }`: a pretend call from « Client TEST »).
+- « Texto entrant » from GoHighLevel (Part 24 quindecies, `20261112000400_texto_entrant.sql`; functions `ring`, `conversation`;
+  `src/features/conversation/TextHost.tsx`, rules in `texts.ts`): a GoHighLevel automation (« Customer Replied », SMS → Webhook POST)
+  calls `ring?k=<key>&t=sms` (the calls' key), which notes the text in `incoming_texts` (phone, name, body; owner-only read, not backed
+  up, a week kept). The owner's app (`TextHost` in the shell: realtime + asked every 15 s) shows a messenger-like bubble beside 🤖:
+  on a computer the small window opens (one at a time), on a phone a round head with a few words; « Réduire » = round head with the
+  count of new texts, « Fermer » = gone until that number writes again (state per number on the device, `his-text-chats`). The window
+  shows GoHighLevel's conversation (`conversation get`; by `phone` for a number with no file, owner only) and answers from the garage's
+  number. Réglages → Branchements → « Textos entrants »: the address, the GoHighLevel steps, « Essayer » (`{ action: 'test', kind: 'text' }`).
 - Oil always said (`CarFirst`, `OilHint`): the job card says what the oil change still needs (grade, quantity, filter: `oilLine().missing`)
   with « Compléter » (the car's « Fiche technique » `SpecPanel` in a sheet; without year/make/model, a link to the car); the booking
   screen shows the chosen car's oil under the car.

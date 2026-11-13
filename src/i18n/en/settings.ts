@@ -284,6 +284,11 @@ export const settings: typeof fr = {
     current: 'Chosen'
   },
   connect: {
+    texts: 'Incoming texts (GoHighLevel)',
+    textsText: 'When somebody texts the garage’s number, a small conversation bubble opens in the app, at the bottom of the screen. You can answer, minimise it or close it. For you only, for now.',
+    textsUrl: 'Address to paste in GoHighLevel (texts)',
+    textsSteps: 'In GoHighLevel: Automation, Create Workflow. Trigger: “Customer Replied”, channel SMS. Action: “Webhook”, method POST, and paste this address. Publish. It is not the same address as for the calls.',
+    textsTried: 'A pretend text was sent: the bubble shows in a few seconds.',
     ring: 'Incoming calls (GoHighLevel)',
     ringText: 'When a call comes in on the garage’s number, the app shows “Incoming call” with the number and the name. For you only, for now.',
     ringGet: 'Get the address to paste',
@@ -295,7 +300,7 @@ export const settings: typeof fr = {
     ringTry: 'Try it',
     ringTried: 'A pretend call was sent: the banner shows in a few seconds.',
     ringRenew: 'Change the address',
-    ringRenewed: 'New address: the old one no longer works. Paste the new one in GoHighLevel.',
+    ringRenewed: 'New address: the old one no longer works. Paste the new one in GoHighLevel, for the calls and for the texts.',
     lead: 'The outside services that work for the app. The keys stay on the server: nobody can read them back, not even here.',
     loading: 'Checking what is connected…',
     error: 'The connections can’t be shown.',

@@ -1902,3 +1902,44 @@ step('« Appel entrant » from GoHighLevel: « Essayer » in Branchements shows 
   h.sql(`delete from public.secrets where key = 'call_hook'`);
 });
 
+step('« Texto entrant » from GoHighLevel: « Essayer » in Branchements opens the small conversation window for the owner; « Réduire » makes it a round head that counts a new text; « Fermer » puts it away', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/settings/connect');
+  await page.getByTestId('connect-texts').waitFor({ timeout: 20000 });
+  await page.getByTestId('texts-get').click();
+  await page.getByTestId('texts-url').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('texts-url').inputValue(), /\/functions\/v1\/ring\?k=[\w-]+&t=sms$/);
+  await page.getByTestId('texts-try').click();
+  const win = page.getByTestId('text-window');
+  await win.waitFor({ timeout: 30000 });
+  assert.match(await win.getByTestId('text-window-who').innerText(), /Client TEST/);
+  assert.match(await win.getByTestId('text-window-in').first().innerText(), /changement d’huile/);
+  await h.shot(page, 'e2e-text-window');
+  // minimised: a round head; a new text is counted on it
+  await win.getByTestId('text-window-min').click();
+  await page.getByTestId('text-head').waitFor();
+  assert.equal(await page.getByTestId('text-window').count(), 0);
+  assert.equal(await page.getByTestId('text-head-count').count(), 0, 'everything was read');
+  await page.getByTestId('texts-try').click();
+  await page.getByTestId('text-head-count').waitFor({ timeout: 30000 });
+  assert.equal((await page.getByTestId('text-head-count').innerText()).trim(), '1');
+  await h.shot(page, 'e2e-text-head');
+  // the head opens the window again, with both texts
+  await page.getByTestId('text-head').click();
+  await win.waitFor();
+  assert.equal(await win.getByTestId('text-window-in').count(), 2);
+  await win.getByTestId('text-window-close').click();
+  assert.equal(await page.getByTestId('text-window').count(), 0);
+  assert.equal(await page.getByTestId('text-head').count(), 0, 'closed: no head left');
+  // it stays closed after the texts are read again
+  await page.reload();
+  await page.getByTestId('connect-texts').waitFor({ timeout: 20000 });
+  await page.waitForTimeout(3000);
+  assert.equal(await page.getByTestId('text-window').count() + await page.getByTestId('text-head').count(), 0);
+  noErrors(page);
+  await ctx.close();
+  h.sql(`delete from public.incoming_texts`);
+  h.sql(`delete from public.secrets where key = 'call_hook'`);
+});
+

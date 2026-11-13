@@ -284,6 +284,11 @@ export const settings = {
     current: 'Choisi'
   },
   connect: {
+    texts: 'Textos entrants (GoHighLevel)',
+    textsText: 'Quand quelqu’un texte le numéro du garage, une petite bulle de conversation s’ouvre dans l’app, en bas de l’écran. Tu peux répondre, la réduire ou la fermer. Pour toi seulement, pour l’instant.',
+    textsUrl: 'Adresse à coller dans GoHighLevel (textos)',
+    textsSteps: 'Dans GoHighLevel : Automation, Create Workflow. Déclencheur : « Customer Replied », canal SMS. Action : « Webhook », méthode POST, et colle cette adresse. Publie. Ce n’est pas la même adresse que pour les appels.',
+    textsTried: 'Un faux texto est parti : la bulle s’affiche dans quelques secondes.',
     ring: 'Appels entrants (GoHighLevel)',
     ringText: 'Quand un appel arrive sur le numéro du garage, l’app t’affiche « Appel entrant » avec le numéro et le nom. Pour toi seulement, pour l’instant.',
     ringGet: 'Obtenir l’adresse à coller',
@@ -295,7 +300,7 @@ export const settings = {
     ringTry: 'Essayer',
     ringTried: 'Un faux appel est parti : la bannière s’affiche dans quelques secondes.',
     ringRenew: 'Changer l’adresse',
-    ringRenewed: 'Nouvelle adresse : l’ancienne ne marche plus. Colle la nouvelle dans GoHighLevel.',
+    ringRenewed: 'Nouvelle adresse : l’ancienne ne marche plus. Colle la nouvelle dans GoHighLevel, pour les appels et pour les textos.',
     lead: 'Les services extérieurs qui travaillent pour l’app. Les clés restent sur le serveur : personne ne peut les relire, même ici.',
     loading: 'Je regarde ce qui est branché…',
     error: 'Les branchements ne s’affichent pas.',

@@ -676,3 +676,47 @@ test('« Appel entrant » from GoHighLevel: the owner gets the address; a call p
   }
 });
 
+test('« Texto entrant » from GoHighLevel: a text posted at the address with « &t=sms » is noted with the number, the name and the words; only the owner reads it and answers a number with no file', async () => {
+  const email = `meca-${randomUUID().slice(0, 6)}@test.local`;
+  const mech = await adminUser(email, 'motdepasse-2');
+  await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Saleh', 'Saleh', '{mechanic}', $2)`, [mech, email]);
+  const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
+  try {
+    const a = await fn('ring', { action: 'link' }, ownerJwt);
+    assert.equal(a.text_url, `${a.url}&t=sms`, JSON.stringify(a));
+    const key = new URL(a.url).searchParams.get('k');
+    const post = async (k, body, t = '&t=sms') => { const r = await fetch(`${API}/functions/v1/ring?k=${k}${t}`, { method: 'POST', headers: { apikey: K.anon, 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json()) }; };
+    // GoHighLevel's « customer replied » body: the contact's fields flat, the words in message.body
+    assert.equal((await post(key, { contact_id: 'abc', full_name: 'Nadia Roy', phone: '+14385550162', message: { type: 2, body: 'Avez-vous une place demain ?' } })).ok, true);
+    // the words given as custom data, and a text with no words at all (the app reads the conversation itself)
+    assert.equal((await post(key, { phone: '+14385550163', customData: { message: 'Bonjour' } })).ok, true);
+    assert.equal((await post(key, { phone: '+14385550164' })).ok, true);
+    assert.equal((await post('wrong-key-wrong-key-wrong-key', { phone: '+14385550162', message: { body: 'x' } })).code, 'bad_key');
+    assert.equal((await post(key, { message: { body: 'sans numéro' } })).code, 'no_phone');
+    const rows = await q(`select phone, name, body from public.incoming_texts order by phone`);
+    assert.deepEqual(rows.map((r) => [r.phone, r.name, r.body]), [['+14385550162', 'Nadia Roy', 'Avez-vous une place demain ?'], ['+14385550163', null, 'Bonjour'], ['+14385550164', null, '']]);
+    assert.equal((await q(`select count(*)::int as n from public.incoming_calls`))[0].n, 0, 'a text is not a call');
+    // the owner's app reads them; a mechanic's does not
+    const read = async (jwt) => (await fetch(`${API}/rest/v1/incoming_texts?select=phone,body`, { headers: { apikey: K.anon, authorization: `Bearer ${jwt}` } })).json();
+    assert.equal((await read(ownerJwt)).length, 3);
+    assert.equal((await read(mechJwt)).length, 0);
+    // « Essayer »: a pretend text
+    assert.equal((await fn('ring', { action: 'test', kind: 'text' }, ownerJwt)).ok, true);
+    assert.equal((await q(`select count(*)::int as n from public.incoming_texts where name = 'Client TEST' and body <> ''`))[0].n, 1);
+    // the conversation with a number that has no file: the owner only (texts are not connected in the tests: « off »)
+    assert.equal((await fn('conversation', { action: 'get', phone: '+14385550162' }, mechJwt)).code, 'not_allowed');
+    assert.equal((await fn('conversation', { action: 'send', phone: '+14385550162', message: 'Oui' }, mechJwt)).code, 'not_allowed');
+    assert.equal((await fn('conversation', { action: 'get', phone: '438555' }, ownerJwt)).code, 'no_phone');
+    assert.equal((await fn('conversation', { action: 'get', phone: '+14385550162' }, ownerJwt)).status, 'off');
+    assert.equal((await fn('conversation', { action: 'send', phone: '+14385550162', message: '' }, ownerJwt)).code, 'empty');
+    assert.equal((await fn('conversation', { action: 'send', phone: '438 555-0162', message: 'Oui, demain matin.' }, ownerJwt)).status, 'off');
+    const kept = await q(`select to_addr, body, status, customer_id from public.messages where kind = 'chat' and to_addr = '+14385550162'`);
+    assert.deepEqual(kept.map((r) => [r.body, r.status, r.customer_id]), [['Oui, demain matin.', 'skipped', null]]);
+  } finally {
+    await q(`delete from public.messages where kind = 'chat' and to_addr = '+14385550162'`);
+    await q(`delete from public.incoming_texts`);
+    await q(`delete from public.secrets where key = 'call_hook'`);
+    await q(`delete from public.rate_limits where key in ('ring', 'ring:text')`);
+  }
+});
+
