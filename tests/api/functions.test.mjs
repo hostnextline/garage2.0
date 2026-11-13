@@ -696,8 +696,10 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
     const rows = await q(`select phone, name, body from public.incoming_texts order by phone`);
     assert.deepEqual(rows.map((r) => [r.phone, r.name, r.body]), [['+14385550162', 'Nadia Roy', 'Avez-vous une place demain ?'], ['+14385550163', null, 'Bonjour'], ['+14385550164', null, '']]);
     assert.equal((await q(`select count(*)::int as n from public.incoming_calls`))[0].n, 0, 'a text is not a call');
-    // the owner's app reads them; a mechanic's does not
+    // only an owner who switched the texts on for their own account reads them; a mechanic never does, even with the switch
     const read = async (jwt) => (await fetch(`${API}/rest/v1/incoming_texts?select=phone,body`, { headers: { apikey: K.anon, authorization: `Bearer ${jwt}` } })).json();
+    assert.equal((await read(ownerJwt)).length, 0, 'an owner who did not ask for the texts sees none');
+    await q(`update public.staff set prefs = prefs || '{"texts": true}' where 'owner' = any(roles) or id = $1`, [mech]);
     assert.equal((await read(ownerJwt)).length, 3);
     assert.equal((await read(mechJwt)).length, 0);
     // « Essayer »: a pretend text
@@ -713,6 +715,7 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
     const kept = await q(`select to_addr, body, status, customer_id from public.messages where kind = 'chat' and to_addr = '+14385550162'`);
     assert.deepEqual(kept.map((r) => [r.body, r.status, r.customer_id]), [['Oui, demain matin.', 'skipped', null]]);
   } finally {
+    await q(`update public.staff set prefs = prefs - 'texts'`);
     await q(`delete from public.messages where kind = 'chat' and to_addr = '+14385550162'`);
     await q(`delete from public.incoming_texts`);
     await q(`delete from public.secrets where key = 'call_hook'`);

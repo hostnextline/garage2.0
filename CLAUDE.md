@@ -212,8 +212,9 @@ end $do$;
   « Appels entrants »: the address, the GoHighLevel steps, « Essayer » (`{ action: 'test' }`: a pretend call from « Client TEST »).
 - « Texto entrant » from GoHighLevel (Part 24 quindecies, `20261112000400_texto_entrant.sql`; functions `ring`, `conversation`;
   `src/features/conversation/TextHost.tsx`, rules in `texts.ts`): a GoHighLevel automation (« Customer Replied », SMS → Webhook POST)
-  calls `ring?k=<key>&t=sms` (the calls' key), which notes the text in `incoming_texts` (phone, name, body; owner-only read, not backed
-  up, a week kept). The owner's app (`TextHost` in the shell: realtime + asked every 15 s) shows a messenger-like bubble beside 🤖:
+  calls `ring?k=<key>&t=sms` (the calls' key), which notes the text in `incoming_texts` (phone, name, body; read only by an owner who switched it on for their own account,
+  `staff.prefs.texts = true`, the switch « Recevoir les textos dans mon compte »: live has two owners, only Hassan takes the texts; not
+  backed up, a week kept). That account's app (`TextHost` in the shell: realtime + asked every 15 s) shows a messenger-like bubble beside 🤖:
   on a computer the small window opens (one at a time), on a phone a round head with a few words; « Réduire » = round head with the
   count of new texts, « Fermer » = gone until that number writes again (state per number on the device, `his-text-chats`). The window
   shows GoHighLevel's conversation (`conversation get`; by `phone` for a number with no file, owner only) and answers from the garage's

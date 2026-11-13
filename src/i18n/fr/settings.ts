@@ -285,7 +285,11 @@ export const settings = {
   },
   connect: {
     texts: 'Textos entrants (GoHighLevel)',
-    textsText: 'Quand quelqu’un texte le numéro du garage, une petite bulle de conversation s’ouvre dans l’app, en bas de l’écran. Tu peux répondre, la réduire ou la fermer. Pour toi seulement, pour l’instant.',
+    textsText: 'Quand quelqu’un texte le numéro du garage, une petite bulle de conversation s’ouvre dans l’app, en bas de l’écran. Tu peux répondre, la réduire ou la fermer.',
+    textsMine: 'Recevoir les textos dans mon compte',
+    textsMineHint: 'Seulement ce compte-ci voit la bulle. Personne d’autre dans l’équipe.',
+    textsMineOn: 'Les textos arrivent maintenant dans ton compte.',
+    textsMineOff: 'Tu ne reçois plus les textos dans ton compte.',
     textsUrl: 'Adresse à coller dans GoHighLevel (textos)',
     textsSteps: 'Dans GoHighLevel : Automation, Create Workflow. Déclencheur : « Customer Replied », canal SMS. Action : « Webhook », méthode POST, et colle cette adresse. Publie. Ce n’est pas la même adresse que pour les appels.',
     textsTried: 'Un faux texto est parti : la bulle s’affiche dans quelques secondes.',

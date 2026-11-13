@@ -1907,6 +1907,11 @@ step('« Texto entrant » from GoHighLevel: « Essayer » in Branchements opens 
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + '#/settings/connect');
   await page.getByTestId('connect-texts').waitFor({ timeout: 20000 });
+  // off until this account asks for the texts
+  assert.equal(await page.getByTestId('texts-mine').getAttribute('aria-checked'), 'false');
+  assert.equal(await page.getByTestId('texts-try').isDisabled(), true);
+  await page.getByTestId('texts-mine').click();
+  await page.locator('[data-testid="texts-mine"][aria-checked="true"]').waitFor({ timeout: 15000 });
   await page.getByTestId('texts-get').click();
   await page.getByTestId('texts-url').waitFor({ timeout: 15000 });
   assert.match(await page.getByTestId('texts-url').inputValue(), /\/functions\/v1\/ring\?k=[\w-]+&t=sms$/);
@@ -1940,6 +1945,7 @@ step('« Texto entrant » from GoHighLevel: « Essayer » in Branchements opens 
   noErrors(page);
   await ctx.close();
   h.sql(`delete from public.incoming_texts`);
+  h.sql(`update public.staff set prefs = prefs - 'texts'`);
   h.sql(`delete from public.secrets where key = 'call_hook'`);
 });
 

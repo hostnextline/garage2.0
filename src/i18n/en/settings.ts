@@ -285,7 +285,11 @@ export const settings: typeof fr = {
   },
   connect: {
     texts: 'Incoming texts (GoHighLevel)',
-    textsText: 'When somebody texts the garage’s number, a small conversation bubble opens in the app, at the bottom of the screen. You can answer, minimise it or close it. For you only, for now.',
+    textsText: 'When somebody texts the garage’s number, a small conversation bubble opens in the app, at the bottom of the screen. You can answer, minimise it or close it.',
+    textsMine: 'Get the texts in my account',
+    textsMineHint: 'Only this account sees the bubble. Nobody else on the team.',
+    textsMineOn: 'Texts now come to your account.',
+    textsMineOff: 'You no longer get the texts in your account.',
     textsUrl: 'Address to paste in GoHighLevel (texts)',
     textsSteps: 'In GoHighLevel: Automation, Create Workflow. Trigger: “Customer Replied”, channel SMS. Action: “Webhook”, method POST, and paste this address. Publish. It is not the same address as for the calls.',
     textsTried: 'A pretend text was sent: the bubble shows in a few seconds.',

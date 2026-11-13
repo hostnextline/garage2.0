@@ -4,11 +4,11 @@ import { useEffect, useState } from 'preact/hooks';
 import { MessageSquareText, MessageCircle, CreditCard, Send, Unplug, PhoneCall, Copy } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { phoneDigits } from '../../lib/text';
-import { access, callFn } from '../../data/auth';
+import { access, callFn, refreshAccess } from '../../data/auth';
 import { checkCalls } from '../booking/CallBanner';
-import { checkTexts } from '../conversation/TextHost';
-import { team, errorMessage } from '../../data/api';
-import { Panel, Field, Input, PhoneInput, Button, Pill, Banner, Skeleton, toast } from '../../ui';
+import { checkTexts, textsOn } from '../conversation/TextHost';
+import { team, errorMessage, updateMe } from '../../data/api';
+import { Panel, Field, Input, PhoneInput, Button, Pill, Banner, Skeleton, Switch, toast } from '../../ui';
 import { teamDo } from '../team/teamApi';
 
 interface Secrets { ghl: { on: boolean; token_end: string | null; location: string | null }; stripe: { on: boolean; test: boolean; end: string | null; webhook: boolean } }
@@ -160,6 +160,12 @@ function RingPanel() {
 /** « Textos entrants »: the address GoHighLevel calls when somebody texts the garage's number (the calls' key, « &t=sms ») */
 function TextsPanel() {
   const [url, setUrl] = useState('');
+  const mine = textsOn();
+  const setMine = async (v: boolean) => {
+    await updateMe({ prefs: { texts: v } });
+    await refreshAccess();
+    toast(t(v ? 'settings.connect.textsMineOn' : 'settings.connect.textsMineOff'), { kind: 'ok' });
+  };
   const link = async () => {
     try {
       const r = await callFn<{ text_url?: string }>('ring', { action: 'link' }, 20000);
@@ -183,6 +189,7 @@ function TextsPanel() {
     <Panel title={t('settings.connect.texts')} data-testid="connect-texts">
       <div class="stack">
         <p class="muted" style={{ margin: 0 }}><MessageCircle size={16} aria-hidden="true" /> {t('settings.connect.textsText')}</p>
+        <Switch checked={mine} onChange={(v) => void setMine(v)} label={t('settings.connect.textsMine')} hint={t('settings.connect.textsMineHint')} data-testid="texts-mine" />
         {!url ? <div><Button variant="primary" onClick={link} data-testid="texts-get">{t('settings.connect.ringGet')}</Button></div> : (
           <>
             <Field label={t('settings.connect.textsUrl')}>
@@ -194,7 +201,7 @@ function TextsPanel() {
             </div>
           </>
         )}
-        <div><Button icon={<Send size={18} />} onClick={tryIt} data-testid="texts-try">{t('settings.connect.ringTry')}</Button></div>
+        <div><Button icon={<Send size={18} />} onClick={tryIt} disabled={!mine} data-testid="texts-try">{t('settings.connect.ringTry')}</Button></div>
       </div>
     </Panel>
   );

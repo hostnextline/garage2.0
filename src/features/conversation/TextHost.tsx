@@ -1,4 +1,4 @@
-/* « Texto entrant » (owner only for now): when somebody texts the garage's number, a small conversation bubble shows
+/* « Texto entrant » (an owner who switched it on for their own account: `prefs.texts`): when somebody texts the garage's number, a small conversation bubble shows
    at the bottom of every screen, like a messenger on the web: a small window (the texts both ways, an answer), « Réduire »
    makes it a round head with the count of new texts, « Fermer » puts it away until that number writes again. On a computer
    a new text opens the small window; on a phone it arrives as a round head with a few words (never over the work in hand).
@@ -10,7 +10,7 @@ import { Minus, X, Send, UserRound, CalendarPlus, MessageCircle } from 'lucide-p
 import { t, lang } from '../../lib/i18n';
 import { stamp } from '../../lib/dates';
 import { formatPhone } from '../../lib/text';
-import { sb, isOwner, preview } from '../../data/auth';
+import { sb, isOwner, preview, access } from '../../data/auth';
 import { customersList, customerName } from '../../data/select';
 import { conversation, conversationPhone, sendChat, sendChatPhone, errorMessage, type ChatMessage } from '../../data/api';
 import { wide } from '../../app/media';
@@ -50,8 +50,11 @@ let ask: (() => void) | null = null;
 /** look now (after « Essayer » in Réglages) */
 export const checkTexts = () => ask?.();
 
+/** the texts come to this account: an owner who switched them on for themself (Réglages → Branchements) */
+export function textsOn(): boolean { return isOwner() && !preview.value && access.value?.prefs?.texts === true; }
+
 export function TextHost() {
-  const on = isOwner() && !preview.value;
+  const on = textsOn();
   const [texts, setTexts] = useState<IncomingText[]>([]);
   useEffect(() => {
     if (!on) return;
