@@ -141,4 +141,6 @@ export interface Access {
   prefs: Record<string, unknown>; color: string | null; rights: Record<Right, boolean>; trucks: string[];
   /** the card payment link (Stripe) and the automatic texts (GoHighLevel) are switched on */
   card_online?: boolean; texts_online?: boolean;
+  /** this account gets the incoming calls of the GoHighLevel number (one account, set on the server) */
+  calls?: boolean;
 }

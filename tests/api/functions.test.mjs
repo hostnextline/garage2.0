@@ -640,13 +640,23 @@ test('🤖 Hermes plugged in by the Hermes server itself: a one-time code (only 
   }
 });
 
-test('« Appel entrant » from GoHighLevel: the owner gets the address; a call posted there is noted with the number and the name; only the owner reads it', async () => {
+test('« Appel entrant » from GoHighLevel: the owner gets the address; a call posted there is noted with the number and the name; only the account marked for the calls reads it (not the owner role)', async () => {
   const email = `meca-${randomUUID().slice(0, 6)}@test.local`;
   const mech = await adminUser(email, 'motdepasse-2');
-  await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Saleh', 'Saleh', '{mechanic}', $2)`, [mech, email]);
+  await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Saleh', 'Saleh', '{owner,mechanic}', $2)`, [mech, email]);
   const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
   try {
-    assert.equal((await fn('ring', { action: 'link' }, mechJwt)).code, 'not_allowed');
+    // nobody is marked yet: not even an owner
+    assert.equal((await fn('ring', { action: 'link' }, ownerJwt)).url, undefined, 'no calls address for an owner who is not marked');
+    assert.equal((await fn('ring', { action: 'test' }, ownerJwt)).code, 'not_allowed');
+    // an owner cannot mark himself from the app
+    const self = await fetch(`${API}/rest/v1/staff?id=eq.${mech}`, { method: 'PATCH', headers: { apikey: K.anon, authorization: `Bearer ${mechJwt}`, 'content-type': 'application/json', prefer: 'return=representation' }, body: JSON.stringify({ sees_calls: true }) });
+    assert.ok(self.status >= 400, 'marking oneself is refused: ' + self.status);
+    assert.equal((await q(`select sees_calls from public.staff where id = $1`, [mech]))[0].sees_calls, false);
+    // the server marks one account; the other owner stays out
+    await q(`update public.staff set sees_calls = true where id = $1`, [owner]);
+    assert.equal((await fn('ring', { action: 'link' }, mechJwt)).url, undefined);
+    assert.equal((await fn('ring', { action: 'test' }, mechJwt)).code, 'not_allowed');
     const a = await fn('ring', { action: 'link' }, ownerJwt);
     assert.match(a.url, /\/functions\/v1\/ring\?k=[\w-]{20,}$/, JSON.stringify(a));
     assert.equal((await fn('ring', { action: 'link' }, ownerJwt)).url, a.url, 'the same address the second time');
@@ -658,7 +668,7 @@ test('« Appel entrant » from GoHighLevel: the owner gets the address; a call p
     assert.equal((await post(key, { first_name: 'Sans', last_name: 'Numéro' })).code, 'no_phone');
     const rows = await q(`select phone, name from public.incoming_calls order by at desc`);
     assert.deepEqual(rows.map((r) => [r.phone, r.name]), [['+14385550162', 'Nadia Roy']]);
-    // the owner's app reads it; a mechanic's does not
+    // the marked account's app reads it; another owner's does not
     const read = async (jwt) => (await fetch(`${API}/rest/v1/incoming_calls?select=phone,name`, { headers: { apikey: K.anon, authorization: `Bearer ${jwt}` } })).json();
     assert.equal((await read(ownerJwt)).length, 1);
     assert.equal((await read(mechJwt)).length, 0);
@@ -673,6 +683,7 @@ test('« Appel entrant » from GoHighLevel: the owner gets the address; a call p
     await q(`delete from public.incoming_calls`);
     await q(`delete from public.secrets where key = 'call_hook'`);
     await q(`delete from public.rate_limits where key = 'ring'`);
+    await q(`update public.staff set sees_calls = false where id = $1`, [owner]);
   }
 });
 

@@ -1875,6 +1875,8 @@ step('« La voiture ferme »: closing the car on a day that has an appointment a
 });
 
 step('« Appel entrant » from GoHighLevel: « Essayer » in Branchements shows the banner (number and name) to the owner; « Ouvrir » opens Appel entrant with the number', async () => {
+  // the calls are for one account (staff.sees_calls), set on the server
+  h.sql(`update public.staff set sees_calls = true where id = '${who.owner.id}'`);
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + '#/settings/connect');

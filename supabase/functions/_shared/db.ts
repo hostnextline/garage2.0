@@ -16,7 +16,7 @@ export function userDb(jwt: string): SupabaseClient {
 }
 export interface Caller {
   id: string; jwt: string; db: SupabaseClient;
-  access: { id: string; full_name: string; short_name: string | null; roles: string[]; owner: boolean; rights: Record<string, boolean>; trucks: string[]; lang: string };
+  access: { id: string; full_name: string; short_name: string | null; roles: string[]; owner: boolean; rights: Record<string, boolean>; trucks: string[]; lang: string; calls?: boolean };
 }
 /** the signed-in person (or a refusal) */
 export async function caller(req: Request): Promise<Caller> {

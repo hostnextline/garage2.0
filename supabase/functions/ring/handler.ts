@@ -1,4 +1,4 @@
-// « Appel entrant » from GoHighLevel: a call that comes in on the garage's number shows in the owner's app.
+// « Appel entrant » from GoHighLevel: a call that comes in on the garage's number shows in the app of the one account that answers them (`staff.sees_calls`, my_access « calls »).
 //   POST ?k=<key>  (GoHighLevel's automation « inbound call → webhook »; its usual body: phone, full_name, first_name, last_name…)
 //                  → the call is noted in « incoming_calls » (the owner's app shows it). The key is in the address, made here.
 //   POST ?k=<key>&t=sms  (GoHighLevel's automation « customer replied → webhook »; the same body with message: { body })
@@ -94,23 +94,29 @@ export const handler = serve(async (req) => {
   const b = await body<Record<string, any>>(req);
   if (!k) {
     const c = await caller(req);
-    if (!c.access.owner) fail('not_allowed', 'Seul le propriétaire branche les appels entrants.', 403);
+    // the calls: the one account marked for them (staff.sees_calls, my_access « calls »); the texts: the owners
+    const calls = c.access.calls === true, owner = c.access.owner === true;
+    const noCalls = () => fail('not_allowed', 'Les appels entrants ne sont pas branchés sur ton compte.', 403);
+    const noTexts = () => fail('not_allowed', 'Seul le propriétaire branche les textos entrants.', 403);
+    if (!calls && !owner) noCalls();
     if (b.action === 'link') {
       let key = await secret('call_hook');
       if (!key || b.renew === true) { key = newToken(24); await setSecrets({ call_hook: key }, c.id); }
       const url = `${env('SUPABASE_URL').replace(/\/+$/, '')}/functions/v1/ring?k=${key}`;
-      return json({ ok: true, url, text_url: `${url}&t=sms` });
+      return json({ ok: true, ...(calls ? { url } : {}), ...(owner ? { text_url: `${url}&t=sms` } : {}) });
     }
     if (b.action === 'test') {
       if (b.kind === 'text') {
+        if (!owner) noTexts();
         const words = 'Bonjour, avez-vous une place demain matin pour un changement d’huile ?';
         await noteText('+15145550100', 'Client TEST', words);
         return json({ ok: true, alerted: await alertText('+15145550100', 'Client TEST', words) });
       }
+      if (!calls) noCalls();
       await note('+15145550100', 'Client TEST');
       return json({ ok: true });
     }
-    if (b.action === 'push-key') return json({ ok: true, key: (await vapid(c.id)).publicKey });
+    if (b.action === 'push-key') { if (!owner) noTexts(); return json({ ok: true, key: (await vapid(c.id)).publicKey }); }
     fail('action', 'Action inconnue.');
   }
   const want = await secret('call_hook');

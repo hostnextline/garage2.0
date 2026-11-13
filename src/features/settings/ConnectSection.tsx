@@ -33,7 +33,7 @@ export function ConnectSection() {
       {state === 'loading' && !s && <Panel><Skeleton h={18} lines={3} /><p class="small muted" style={{ margin: 'var(--sp-3) 0 0' }}>{t('settings.connect.loading')}</p></Panel>}
       {state === 'error' && <Banner kind="warn" title={t('settings.connect.error')} action={<Button size="sm" onClick={() => void load()}>{t('common.retry')}</Button>}>{error}</Banner>}
       {s && <GhlPanel s={s} onChanged={load} />}
-      {s && <RingPanel />}
+      {s && access.value?.calls && <RingPanel />}
       {s && <TextsPanel />}
       {s && <StripePanel s={s} onChanged={load} />}
     </div>

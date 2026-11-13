@@ -275,6 +275,10 @@ end $do$;
   nobody's own (Hassan: mechanics switch during the day). On, `my_truck_ids()` gives every vehicle to every mechanic, so each sees
   every route and may move any job forward; « Ma journée » gets « La route que je fais » (Les deux / Voiture / Camion, kept on the
   phone: `myRoute` in `today/select.ts`).
+- « Appel entrant » is for ONE account, not the owner role (Part 24 quindecies, `20261113000100_appels_un_compte.sql`): `staff.sees_calls`
+  (set by SQL on the server only; the trigger `staff_calls_guard` refuses it from any signed-in person), `sees_calls()`, my_access
+  « calls ». The banner, « Appels entrants » in Branchements, the `incoming_calls` policy and the function `ring` all ask it.
+  Live: Hassan's account only (Hassan's choice, « for now »).
 - « Vue propriétaire » / « Vue mécano » (no server change): someone who is owner (or office) AND mechanic gets two tabs on top of
   Aujourd'hui (`today-views`; `dayView`, `hasTwoViews`, `pickDay` in `today/select.ts`), kept on the phone (`his.dayView`). Only the
   day shown changes: the rights stay the owner's.
