@@ -1,8 +1,17 @@
 /* DEV ONLY — a pretend conversation with a customer (the real one comes from GoHighLevel: supabase/functions/conversation). */
-import { registerFn, put } from '../fake-server';
+import { registerFn, put, find } from '../fake-server';
 
 const chats = new Map<string, { id: string; at: string; dir: 'in' | 'out'; body: string; kind: string; status: string | null }[]>();
 export function load() {
+  // ?demo&texto : an example of « Texto entrant » without touching Réglages: the texts come to the owner's account, Lara
+  // writes a few seconds after the app opens, then again a little later
+  if (/[?&]texto\b/.test(location.search)) {
+    const me = find('staff', 'u-hassan');
+    if (me) put('staff', { id: 'u-hassan', prefs: { ...((me.prefs as object) || {}), texts: true } });
+    const lara = (body: string) => put('incoming_texts', { phone: '+15145550177', name: 'Lara', body, at: new Date().toISOString() });
+    setTimeout(() => lara('Bonjour, c’est Lara. Avez-vous une place demain matin pour un changement d’huile ?'), 4000);
+    setTimeout(() => lara('C’est une Honda Civic 2019.'), 25000);
+  }
   registerFn('conversation', (b) => {
     const id = String(b.customer_id || b.phone || '');
     if (!chats.has(id)) chats.set(id, b.phone ? [] : [
