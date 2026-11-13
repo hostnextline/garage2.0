@@ -4,7 +4,7 @@
    and the estimates. Changes are made in a sheet; the duplicate check warns when the phone is already on a file. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Phone, MessageSquareText, MessagesSquare, Navigation, CalendarPlus, Pencil, Plus, Car, Trash2, UserPlus, MapPin, Gauge, Users } from 'lucide-preact';
+import { Phone, MessageSquareText, MessagesSquare, Navigation, CalendarPlus, Pencil, Plus, Car, Trash2, UserPlus, MapPin, Gauge, Users, Droplet } from 'lucide-preact';
 import { ConversationSheet } from '../conversation/ConversationSheet';
 import type { ScreenProps } from '../../app/routes';
 import { may, isField } from '../../app/routes';
@@ -34,7 +34,8 @@ import { locate } from './locate';
 import { spreadToJobs } from '../../app/locator';
 import type { Suggestion } from './photon';
 import { oneLine, directionsUrl } from './address';
-import { Flags, Plate, Bit, carName, stampDay, dayOfIso } from './bits';
+import { Flags, Plate, Bit, carName, stampDay, dayOfIso, dateShort } from './bits';
+import { lastOil } from '../oil/select';
 import { km } from './vehicleText';
 import './customers.css';
 
@@ -248,7 +249,7 @@ function CarsPanel(p: { c: Customer; cars: Vehicle[]; canEdit: boolean; adding: 
       {p.cars.length
         ? <Rows>{p.cars.map((v) => (
             <RowItem key={v.id} href={`#/vehicle/${v.id}`} chevron start={<span class="customers-car-icon"><Car size={20} aria-hidden="true" /></span>} title={carName(v)} data-testid="car-row"
-              sub={<span class="customers-line"><Plate plate={v.plate} />{v.engine && <Bit>{v.engine}</Bit>}{v.odometer_km != null && <Bit icon={<Gauge size={14} aria-hidden="true" />}>{km(v.odometer_km, lang.value)}</Bit>}</span>} />
+              sub={<span class="customers-line"><Plate plate={v.plate} />{v.engine && <Bit>{v.engine}</Bit>}{v.odometer_km != null && <Bit icon={<Gauge size={14} aria-hidden="true" />}>{km(v.odometer_km, lang.value)}</Bit>}<CarOil v={v} /></span>} />
           ))}</Rows>
         : <p class="customers-panel-empty muted">{t('customers.cars.none')}</p>}
       {adding && <VehicleAddSheet customerId={p.c.id} onClose={() => setAdding(false)} onAdded={() => setAdding(false)} />}
@@ -384,4 +385,10 @@ function DeleteZone(p: { c: Customer; onDeleted: () => void }) {
         onClick={async () => { if (await attempt(() => deleteCustomer(p.c.id), { ok: t('customers.file.deleted') })) p.onDeleted(); }}>{t('customers.file.delete')}</Button>
     </div>
   );
+}
+
+/** « Huile : 12 mai » on a car's line: its last oil change (ours, or the day the customer gave) */
+function CarOil(p: { v: Vehicle }) {
+  const o = lastOil(p.v);
+  return o ? <Bit icon={<Droplet size={14} aria-hidden="true" />}>{t('vehicles.fields.lastOilShort', { day: dateShort(o.day) })}</Bit> : null;
 }

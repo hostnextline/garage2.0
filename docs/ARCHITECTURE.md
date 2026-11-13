@@ -87,7 +87,7 @@ the content itself changes (week vs day); otherwise CSS.
 
 Query conventions used across sections: `#/book?customer=ID`, `#/book?walkin=1`, `#/book?quote=ID`,
 `#/book?day=YYYY-MM-DD&block=am`, `#/customer/new`, `#/quote/new`, `#/treasury?add=1`, `#/agenda/YYYY-MM-DD?view=week`,
-`#/hours/TRUCK_ID`, `#/settings/<section>`.
+`#/hours/TRUCK_ID`, `#/settings/<section>`, `#/book?customer=ID&vehicle=ID` (the car already chosen), `#/oil?show=soon|all` (« Rappels d’huile »).
 
 ## The design kit (`src/ui`)
 

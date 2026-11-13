@@ -1,5 +1,5 @@
 /* The menu: what each person sees depends on their rights (the server checks every action again). */
-import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen, PhoneIncoming } from 'lucide-preact';
+import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen, PhoneIncoming, Droplet } from 'lucide-preact';
 import { may, type NavKey } from './routes';
 import { t } from '../lib/i18n';
 
@@ -10,6 +10,7 @@ export const NAV: NavItem[] = [
   { key: 'agenda', href: '#/agenda', icon: CalendarDays, show: may.agenda, group: 'day' },
   { key: 'map', href: '#/map', icon: MapIcon, show: may.map, group: 'day' },
   { key: 'customers', href: '#/customers', icon: Users, show: may.customers, group: 'office' },
+  { key: 'oil', href: '#/oil', icon: Droplet, show: may.oil, group: 'office' },
   { key: 'quotes', href: '#/quotes', icon: ClipboardList, show: may.quotes, group: 'office' },
   { key: 'invoices', href: '#/invoices', icon: Receipt, show: may.invoices, group: 'office' },
   { key: 'treasury', href: '#/treasury', icon: Wallet, show: may.treasury, group: 'office' },

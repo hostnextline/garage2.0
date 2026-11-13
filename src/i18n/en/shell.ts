@@ -3,7 +3,7 @@ export const shell: typeof fr = {
   nav: {
     today: 'Today', agenda: 'Schedule', customers: 'Customers', invoices: 'Invoices', quotes: 'Estimates', map: 'Map', overview: 'Overview',
     hours: 'Hours', treasury: 'Treasury', inventory: 'Inventory', dashboard: 'Numbers', team: 'Team', settings: 'Settings',
-    guide: 'Where to start', info: 'Info', account: 'My account', more: 'More'
+    oil: 'Oil reminders', guide: 'Where to start', info: 'Info', account: 'My account', more: 'More'
   },
   groups: { day: 'The day', office: 'The office', garage: 'The garage' },
   more: {
@@ -14,7 +14,8 @@ export const shell: typeof fr = {
     badges: {
       today: { one: '{n} job to do today', other: '{n} jobs to do today' },
       invoices: { one: '{n} invoice to collect', other: '{n} invoices to collect' },
-      inventory: { one: '{n} part to order', other: '{n} parts to order' }
+      inventory: { one: '{n} part to order', other: '{n} parts to order' },
+      oil: { one: '{n} customer to call for an oil change', other: '{n} customers to call for an oil change' }
     }
   },
   book: 'Book',

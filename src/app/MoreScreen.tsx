@@ -15,6 +15,7 @@ import { Button, Avatar, Banner } from '../ui';
 import { computeChecklist, nextStep, progress, mainRole, type Role } from '../features/guide/checklist';
 import { guideInput, nextJobId, refreshChecks } from '../features/guide/guide-data';
 import { TILE_HUE, filtersFor, tilesFor, dayCounts, dueCents, unpaidCount, ratio, type MoreFilter } from './more';
+import { callCount } from '../features/oil/select';
 import './more.css';
 
 const FILTER_KEY = 'his.more.filter';
@@ -36,6 +37,10 @@ function badgeOf(key: string): { n: number; label: string } | null {
   if (key === 'inventory') {
     const n = lowStock.value.length;
     return n ? { n, label: t('shell.more.badges.inventory', { n }) } : null;
+  }
+  if (key === 'oil') {
+    const n = callCount.value;
+    return n ? { n, label: t('shell.more.badges.oil', { n }) } : null;
   }
   return null;
 }

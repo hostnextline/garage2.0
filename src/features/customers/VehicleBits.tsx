@@ -4,11 +4,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ScanLine, Flashlight, FlashlightOff, CarFront, Check, Camera } from 'lucide-preact';
 import { t } from '../../lib/i18n';
+import { today, isValidDay } from '../../lib/dates';
 import { cleanVin, vinCheck, vinYear } from '../../lib/text';
 import { decodeVin, errorMessage, saveVehicle } from '../../data/api';
 import { isNetworkError } from '../../data/sync';
 import type { Vehicle } from '../../data/types';
-import { Button, Field, InputWithButton, IconButton, Sheet, Seg, Banner, Spinner, run } from '../../ui';
+import { Button, Field, DateInput, InputWithButton, IconButton, Sheet, Seg, Banner, Spinner, run } from '../../ui';
 import { engineLine, vinFromCode } from './vehicleText';
 import { barcodeReader, hasCamera, readVinPhoto, type VinReading } from './vinScan';
 import { CarPicker } from './CarPicker';
@@ -253,7 +254,9 @@ export function yearOk(s: string): boolean {
 }
 
 /* ---------- « Ajouter un véhicule » ---------- */
-export interface AddDraft { year: string; make: string; model: string; vin: string; extra: Partial<CarFields> }
+export interface AddDraft { year: string; make: string; model: string; vin: string; extra: Partial<CarFields>;
+  /** « Dernier changement d’huile »: the day the customer says (for « Rappels d’huile ») */
+  lastOil?: string }
 export type AddMode = 'ymm' | 'vin';
 export const EMPTY_CAR: AddDraft = { year: '', make: '', model: '', vin: '', extra: {} };
 /** nothing typed yet (the car is optional on a new customer) */
@@ -268,7 +271,8 @@ export function carErrors(d: AddDraft, mode: AddMode): { year: string | null; mo
 }
 /** the car to save for a customer */
 export function carRow(d: AddDraft, customerId: string): Partial<Vehicle> {
-  return { ...d.extra, customer_id: customerId, year: d.year.trim() ? Number(d.year) : null, make: d.make.trim() || null, model: d.model.trim() || null, vin: d.vin || null };
+  return { ...d.extra, customer_id: customerId, year: d.year.trim() ? Number(d.year) : null, make: d.make.trim() || null, model: d.model.trim() || null, vin: d.vin || null,
+    ...(d.lastOil && isValidDay(d.lastOil) && d.lastOil <= today() ? { last_oil_on: d.lastOil } : {}) };
 }
 /** the car's fields: year → make → model from the lists, or the VIN (typed or scanned).
     `onPatch` merges into the latest draft (the parent's setState with a function): the VIN's decoding arrives a moment after
@@ -290,7 +294,17 @@ export function CarForm(p: { value: AddDraft; onPatch: (patch: Partial<AddDraft>
           errors={{ year: p.tried ? e.year : null, make: p.tried && e.model && !d.make.trim() ? e.model : null, model: p.tried && e.model && d.make.trim() && !d.model.trim() ? e.model : null }} />
       )}
       {p.mode === 'ymm' && <p class="small muted" style={{ margin: 0 }}>{t('vehicles.add.later')}</p>}
+      <LastOilField value={d.lastOil || ''} onValue={(lastOil) => set({ lastOil })} />
     </div>
+  );
+}
+
+/** « Dernier changement d’huile »: the day the customer says their oil was last changed; « Rappels d’huile » counts 6 months from it */
+export function LastOilField(p: { value: string; onValue: (v: string) => void }) {
+  return (
+    <Field label={t('vehicles.fields.lastOil')} hint={t('vehicles.fields.lastOilHint')} optional>
+      <span data-testid="car-last-oil"><DateInput value={p.value} onValue={p.onValue} max={today()} aria-label={t('vehicles.fields.lastOil')} /></span>
+    </Field>
   );
 }
 

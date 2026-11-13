@@ -17,7 +17,10 @@ import { Page, Panel, Kv, Button, Sheet, Field, Input, Select, Textarea, Banner,
 import { JobTicket } from '../jobs/JobTicket';
 import { jobOrder } from './facts';
 import { SpecPanel } from './SpecPanel';
-import { VinField, VinScanSheet, canScan, readVin, vinSavable, yearOk, type CarFields } from './VehicleBits';
+import { VinField, VinScanSheet, LastOilField, canScan, readVin, vinSavable, yearOk, type CarFields } from './VehicleBits';
+import { lastOil } from '../oil/select';
+import { dateShort } from './bits';
+import { today, isValidDay } from '../../lib/dates';
 import { CarPicker } from './CarPicker';
 import { useVinHistory, VinVisits } from './VinHistory';
 import { specKeyOf } from './engineRef';
@@ -56,6 +59,7 @@ export default function VehicleScreen({ params }: ScreenProps) {
   const jobs = allJobs.value.filter((j) => j.vehicle_id === v.id).sort((a, b) => jobOrder(b, a));
   const check = v.vin && v.vin.length === 17 ? vinCheck(v.vin) : null;
   const engine = v.engine || engineLine({ displacement: v.displacement, cylinders: v.cylinders });
+  const oil = lastOil(v);
   const items: [ComponentChildren, ComponentChildren][] = [
     [t('vehicles.fields.trim'), v.trim],
     [t('vehicles.fields.engine'), engine || null],
@@ -63,6 +67,7 @@ export default function VehicleScreen({ params }: ScreenProps) {
     [t('vehicles.fields.drive'), word('drive', v.drive)],
     [t('vehicles.fields.vin'), v.vin && <span class="row-wrap"><span class="customers-vin-text">{v.vin}</span>{check === 'bad' && <Pill tone="warn" dot={false}>{t('vehicles.vin.check')}</Pill>}</span>],
     [t('vehicles.fields.odometer'), v.odometer_km != null ? km(v.odometer_km, lang.value) : null],
+    [t('vehicles.fields.lastOil'), oil && <span data-testid="vehicle-last-oil">{oil.ours ? t('vehicles.fields.lastOilOurs', { day: dateShort(oil.day) }) : dateShort(oil.day)}</span>],
     [t('vehicles.fields.color'), v.color],
     [t('vehicles.fields.tires'), v.tire_size],
     [t('vehicles.fields.notes'), v.notes && <span class="customers-prewrap">{v.notes}</span>]
@@ -113,11 +118,11 @@ export default function VehicleScreen({ params }: ScreenProps) {
 }
 
 /* ---------- « Modifier » ---------- */
-interface VDraft { year: string; make: string; model: string; trim: string; engine: string; displacement: string; cylinders: string; fuel: string; drive: string; vin: string; plate: string; odometer: string; color: string; tire_size: string; notes: string }
+interface VDraft { year: string; make: string; model: string; trim: string; engine: string; displacement: string; cylinders: string; fuel: string; drive: string; vin: string; plate: string; odometer: string; color: string; tire_size: string; notes: string; lastOil: string }
 const s = (x: unknown) => (x == null ? '' : String(x));
 function draftOf(v: Vehicle): VDraft {
   return { year: s(v.year), make: s(v.make), model: s(v.model), trim: s(v.trim), engine: s(v.engine), displacement: v.displacement ? Number(v.displacement).toFixed(1) : '', cylinders: s(v.cylinders),
-    fuel: s(v.fuel), drive: s(v.drive), vin: s(v.vin), plate: s(v.plate), odometer: s(v.odometer_km), color: s(v.color), tire_size: s(v.tire_size), notes: s(v.notes) };
+    fuel: s(v.fuel), drive: s(v.drive), vin: s(v.vin), plate: s(v.plate), odometer: s(v.odometer_km), color: s(v.color), tire_size: s(v.tire_size), notes: s(v.notes), lastOil: s(v.last_oil_on) };
 }
 function patchOf(d: VDraft): Partial<Vehicle> {
   const txt = (x: string) => x.trim() || null;
@@ -126,7 +131,8 @@ function patchOf(d: VDraft): Partial<Vehicle> {
     year: d.year.trim() ? Number(d.year) : null, make: txt(d.make), model: txt(d.model), trim: txt(d.trim), engine: txt(d.engine),
     displacement: d.displacement.trim() && Number.isFinite(disp) ? Math.round(disp * 10) / 10 : null, cylinders: d.cylinders.trim() ? Number(d.cylinders) : null,
     fuel: txt(d.fuel), drive: txt(d.drive), vin: txt(d.vin), plate: d.plate.trim() ? d.plate.trim().toUpperCase().replace(/\s+/g, ' ') : null,
-    odometer_km: parseKm(d.odometer), color: txt(d.color), tire_size: d.tire_size.trim() ? d.tire_size.trim().toUpperCase() : null, notes: txt(d.notes)
+    odometer_km: parseKm(d.odometer), color: txt(d.color), tire_size: d.tire_size.trim() ? d.tire_size.trim().toUpperCase() : null, notes: txt(d.notes),
+    last_oil_on: isValidDay(d.lastOil) && d.lastOil <= today() ? d.lastOil : null
   };
 }
 function errorsOf(d: VDraft) {
@@ -219,6 +225,7 @@ function VehicleEditSheet(p: { v: Vehicle; onClose: () => void; onRemoved: () =>
             <Field label={t('vehicles.fields.color')} optional><Input value={d.color} onValue={(color) => set({ color })} autoComplete="off" /></Field>
             <Field label={t('vehicles.fields.tires')} optional><Input value={d.tire_size} onValue={(tire_size) => set({ tire_size })} autoComplete="off" placeholder={t('vehicles.fields.tiresPlaceholder')} /></Field>
           </div>
+          <LastOilField value={d.lastOil} onValue={(lastOil) => set({ lastOil })} />
           <Field label={t('vehicles.fields.notes')} optional><Textarea value={d.notes} onValue={(notes) => set({ notes })} rows={2} /></Field>
         </section>
         <div class="customers-danger">

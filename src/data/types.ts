@@ -53,7 +53,13 @@ export interface Vehicle extends Base {
   customer_id: string | null; year: number | null; make: string | null; model: string | null; trim: string | null; engine: string | null;
   displacement: number | null; cylinders: number | null; fuel: string | null; drive: string | null; vin: string | null; plate: string | null;
   odometer_km: number | null; color: string | null; tire_size: string | null; spec_key: string | null; notes: string | null;
+  /** « Rappels d’huile »: what was said at the last follow-up call for this car (Part 24 sedecies); a newer visit makes it old */
+  oil_followup?: OilMark | null;
+  /** the last oil change the customer told us about (done elsewhere, or before the app); ours are read from the visits */
+  last_oil_on?: string | null;
 }
+/** `at`: when the call was noted, `by`: who; `again_on`: call back that day; `stop`: do not call for this car any more */
+export interface OilMark { at: string; by?: string | null; again_on?: string | null; stop?: boolean }
 export interface EngineSpec extends Base { key: string; year: number | null; make: string | null; model: string | null; engine: string | null; data: SpecData; confirmed_by: string | null; confirmed_at: string | null }
 export interface SpecData {
   oil_l?: number | null; oil_visc?: string; oil_filter?: string; drain_torque?: string; air_filter?: string; cabin_filter?: string; plugs?: string;

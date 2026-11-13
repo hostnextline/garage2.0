@@ -74,7 +74,8 @@ function BookForm({ query }: ScreenProps) {
   const [callTried, setCallTried] = useState(false);
   const [searchKnown, setSearchKnown] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(() => (customerRow(qCustomer) ? qCustomer : null));
-  const [vehicleId, setVehicleId] = useState<string | null>(() => (isCall && !customerRow(qCustomer) ? cars[0].id : null));
+  // `vehicle=`: the car already chosen (« Rappels d’huile »), when it is that customer's
+  const [vehicleId, setVehicleId] = useState<string | null>(() => (isCall && !customerRow(qCustomer) ? cars[0].id : qCustomer && vehicleRow(query.get('vehicle'))?.customer_id === qCustomer ? query.get('vehicle') : null));
   const [place, setPlace] = useState<PlaceValue>(() => placeOf(qCustomer));
   const [placeOwner, setPlaceOwner] = useState<string | null>(() => (customerRow(qCustomer) ? qCustomer : null));
   const [items, setItems] = useState<ItemDraft[]>([]);

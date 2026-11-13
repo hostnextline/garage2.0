@@ -227,6 +227,18 @@ end $do$;
   `{ action: 'push-key' }`, in `secrets.vapid_public` / `vapid_private`); a device answering 404 / 410 is forgotten. The service worker
   shows it (`public/push-sw.js`, loaded with workbox `importScripts`); a tap opens the app. An iPhone must have the app on its home
   screen first (the panel says so).
+- « Rappels d’huile » (`#/oil`, Part 24 sedecies, `20261113000100_suivi_huile.sql`, NOT applied on live yet; `src/features/oil/`): the cars
+  due for an oil change, for the owner or the office to call (`may.oil`; a mechanic only holds his own truck's visits). Hassan's rule
+  (`due.ts`, pure, tested): the last finished visit had an oil change → call 6 months after it; it had none → 3 months after that visit
+  (never before 6 months after the last oil change). The last oil change = the latest of our own (a line whose service uses oil,
+  `needsOf`, else its words) and `vehicles.last_oil_on`, the day the customer gives: the box « Dernier changement d’huile » of the car
+  form (`LastOilField` in `CarForm`: new customer, new caller in the booking, « Ajouter un véhicule ») and of « Modifier » the car;
+  a car with that day is listed even before its first visit. The car's file and the customer's car line show it (`lastOil`). A car
+  with a coming appointment that has an oil change is not listed; one without says so. Tabs « À appeler » / « Bientôt » (30 days) /
+  « Tous »; the number to call is on the « Plus » tile. A line's sheet: call, text, book (`#/book?customer=&vehicle=`: the car already
+  chosen), and after the call « Rappeler dans 1 semaine / 1 mois / 3 mois » or « Ne plus appeler pour cette auto », kept on the car
+  (`vehicles.oil_followup` { at, by, again_on | stop }; a visit finished after `at` makes it old). Worked out on the device from the
+  synced visits: nothing on the server but those two columns.
 - Oil always said (`CarFirst`, `OilHint`): the job card says what the oil change still needs (grade, quantity, filter: `oilLine().missing`)
   with « Compléter » (the car's « Fiche technique » `SpecPanel` in a sheet; without year/make/model, a link to the car); the booking
   screen shows the chosen car's oil under the car.

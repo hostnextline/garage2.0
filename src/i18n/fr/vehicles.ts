@@ -18,6 +18,7 @@ export const vehicles = {
     vin: 'NIV (numéro de série)',
     plate: 'Plaque',
     odometer: 'Kilométrage',
+    lastOil: 'Dernier changement d’huile', lastOilHint: 'Ce que le client dit, même si c’était ailleurs. On le rappelle 6 mois après.', lastOilOurs: '{day} (chez nous)', lastOilShort: 'Huile : {day}',
     color: 'Couleur',
     tires: 'Pneus',
     tiresPlaceholder: 'Ex. : 225/65R17',

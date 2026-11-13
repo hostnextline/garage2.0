@@ -21,6 +21,14 @@ export function addDays(day: Day, n: number): Day {
   d.setDate(d.getDate() + n);
   return dayOf(d);
 }
+/** the same day n months later (31 jan. + 1 month = 28 or 29 feb.) */
+export function addMonths(day: Day, n: number): Day {
+  const [y, m, d] = day.split('-').map(Number);
+  const first = new Date(y, m - 1 + n, 1, 12);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0, 12).getDate();
+  first.setDate(Math.min(d, last));
+  return dayOf(first);
+}
 export function dow(day: Day): number { return parseDay(day).getDay(); } // 0 = Sunday
 export function weekStart(day: Day): Day { return addDays(day, -dow(day)); }
 export function weekDays(day: Day): Day[] { const s = weekStart(day); return Array.from({ length: 7 }, (_, i) => addDays(s, i)); }

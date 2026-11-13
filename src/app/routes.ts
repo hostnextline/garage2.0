@@ -13,7 +13,7 @@ export interface RouteDef {
   /** the menu entry it belongs to (highlighted in the menu) */
   nav?: NavKey;
 }
-export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
+export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'oil' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
 
 export const isField = () => hasRole('owner') || hasRole('office') || hasRole('mechanic');
 export const may = {
@@ -21,6 +21,8 @@ export const may = {
   agenda: () => can('agenda') || hasRole('mechanic'),
   book: () => can('book'),
   customers: () => can('clients') || isField(),
+  // « Rappels d’huile »: the people who see every visit and call customers (a mechanic only holds his own truck's visits)
+  oil: () => isOwner() || (hasRole('office') && can('agenda') && can('clients')),
   invoices: () => can('invoices'),
   quotes: () => isField() || can('invoices'),
   map: () => can('map'),
@@ -50,6 +52,7 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/customers', load: () => import('../features/customers/CustomersScreen'), allow: may.customers, nav: 'customers' },
   { pattern: '/customer/:id', load: () => import('../features/customers/CustomerScreen'), allow: may.customers, nav: 'customers' },
   { pattern: '/vehicle/:id', load: () => import('../features/customers/VehicleScreen'), allow: may.customers, nav: 'customers' },
+  { pattern: '/oil', load: () => import('../features/oil/OilScreen'), allow: may.oil, nav: 'oil' },
   { pattern: '/job/:id', load: () => import('../features/jobs/JobScreen'), nav: 'today' },
   { pattern: '/invoices', load: () => import('../features/invoices/InvoicesScreen'), allow: may.invoices, nav: 'invoices' },
   { pattern: '/invoice/:id', load: () => import('../features/invoices/InvoiceScreen'), nav: 'invoices' },

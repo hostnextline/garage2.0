@@ -18,6 +18,7 @@ export const vehicles: typeof fr = {
     vin: 'VIN (serial number)',
     plate: 'Plate',
     odometer: 'Odometer',
+    lastOil: 'Last oil change', lastOilHint: 'What the customer says, even if it was done elsewhere. We call back 6 months later.', lastOilOurs: '{day} (with us)', lastOilShort: 'Oil: {day}',
     color: 'Colour',
     tires: 'Tires',
     tiresPlaceholder: 'E.g. 225/65R17',

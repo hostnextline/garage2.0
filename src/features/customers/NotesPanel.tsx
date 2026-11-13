@@ -3,7 +3,7 @@
 import { useState } from 'preact/hooks';
 import { Check, Trash2, BellRing, Bell, RotateCcw, StickyNote } from 'lucide-preact';
 import { t } from '../../lib/i18n';
-import { today, addDays } from '../../lib/dates';
+import { today, addDays, addMonths } from '../../lib/dates';
 import { notesOf, staffName } from '../../data/select';
 import { saveNote } from '../../data/api';
 import type { CustomerNote } from '../../data/types';
@@ -11,14 +11,7 @@ import { Panel, Button, IconButton, Textarea, DateInput, Field, Pill, attempt } 
 import { dateShort, stampDay } from './bits';
 import './customers.css';
 
-/** the same day n months later (31 jan. + 1 month = 28 or 29 feb.) */
-export function addMonths(day: string, n: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  const first = new Date(y, m - 1 + n, 1, 12);
-  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0, 12).getDate();
-  first.setDate(Math.min(d, last));
-  return `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(first.getDate()).padStart(2, '0')}`;
-}
+export { addMonths };
 /** the next time it is that month and day (spring: tires off; fall: winter tires on) */
 export function nextOn(day: string, month: number, date: number): string {
   const y = Number(day.slice(0, 4));

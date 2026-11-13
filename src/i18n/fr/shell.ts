@@ -3,7 +3,7 @@ export const shell = {
   nav: {
     today: 'Aujourd’hui', agenda: 'Agenda', customers: 'Clients', invoices: 'Factures', quotes: 'Estimations', map: 'Carte', overview: 'Vue d’ensemble',
     hours: 'Horaires', treasury: 'Trésorerie', inventory: 'Inventaire', dashboard: 'Chiffres', team: 'Équipe', settings: 'Réglages',
-    guide: 'Par où commencer', info: 'Info', account: 'Mon compte', more: 'Plus'
+    oil: 'Rappels d’huile', guide: 'Par où commencer', info: 'Info', account: 'Mon compte', more: 'Plus'
   },
   groups: { day: 'La journée', office: 'Le bureau', garage: 'Le garage' },
   more: {
@@ -14,7 +14,8 @@ export const shell = {
     badges: {
       today: { one: '{n} job à faire aujourd’hui', other: '{n} jobs à faire aujourd’hui' },
       invoices: { one: '{n} facture à encaisser', other: '{n} factures à encaisser' },
-      inventory: { one: '{n} pièce à commander', other: '{n} pièces à commander' }
+      inventory: { one: '{n} pièce à commander', other: '{n} pièces à commander' },
+      oil: { one: '{n} client à appeler pour son huile', other: '{n} clients à appeler pour leur huile' }
     }
   },
   book: 'Réserver',
