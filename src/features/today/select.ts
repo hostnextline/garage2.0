@@ -13,7 +13,8 @@ const live = (j: Job) => j.status !== 'cancelled' && j.status !== 'no_show';
 
 /** which « Aujourd'hui »: the mechanic's own day, the team's day (owner, office), or the money (treasurer only) */
 export type TodayRole = 'mechanic' | 'office' | 'treasurer';
-/** an owner (or the office) who is also a mechanic picks the day they look at: the team's or their own (kept on the phone) */
+/** an owner (or the office) who is also a mechanic picks the day they look at: the team's or their own (kept on the phone).
+    Only the day shown changes: the rights stay the same in both views. */
 export type DayView = 'office' | 'mechanic';
 const VIEW_KEY = 'his.dayView';
 export const dayView = signal<DayView>((() => { try { return localStorage.getItem(VIEW_KEY) === 'mechanic' ? 'mechanic' : 'office'; } catch { return 'office'; } })());
