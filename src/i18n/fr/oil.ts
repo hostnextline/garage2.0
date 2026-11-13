@@ -1,7 +1,7 @@
 /* « Rappels d’huile » : les autos dues pour un changement d’huile, à appeler. */
 export const oil = {
   title: 'Rappels d’huile',
-  help: 'Les autos dues pour un changement d’huile. On appelle le client 6 mois après son dernier changement d’huile : celui fait chez nous, ou la date qu’il a donnée (« Dernier changement d’huile » sur la fiche de l’auto). Si la dernière visite n’avait pas de changement d’huile, on l’appelle 3 mois après cette visite. Une auto qui a déjà un rendez-vous avec un changement d’huile sort de la liste toute seule.',
+  help: 'Les autos dues pour un changement d’huile. On appelle le client 6 mois après son dernier changement d’huile : celui fait chez nous, ou la date qu’il a donnée (« Dernier changement d’huile » sur la fiche de l’auto). Si la dernière visite n’avait pas de changement d’huile, on l’appelle 3 mois après cette visite. Une auto qui a déjà un rendez-vous avec un changement d’huile sort de la liste toute seule. L’app reconnaît un changement d’huile par le service, par les mots de la job (huile, vidange, lube, 5W-30…) ou par l’huile sortie de l’inventaire ; si elle en manque un, ouvre la ligne et touche « L’huile a été changée à cette visite ».',
   sub: { one: '{n} client à appeler', other: '{n} clients à appeler', zero: 'Personne à appeler aujourd’hui' },
   loading: 'Chargement des visites',
   tabs: { label: 'Afficher', call: 'À appeler', soon: 'Bientôt', all: 'Tous' },
@@ -36,7 +36,9 @@ export const oil = {
     in1w: 'Rappeler dans 1 semaine', in1m: 'Rappeler dans 1 mois', in3m: 'Rappeler dans 3 mois',
     stop: 'Ne plus appeler pour cette auto', stopConfirm: 'Toucher encore pour ne plus l’appeler',
     clear: 'Remettre dans la liste',
+    missedHint: 'L’app n’a pas vu de changement d’huile à la visite du {day}. Si l’huile a été changée ce jour-là, dis-le ici.',
+    missedFix: 'L’huile a été changée à cette visite',
     needCar: 'Cette visite n’a pas d’auto : ajoute l’auto à la fiche du client pour noter un rappel.'
   },
-  toast: { again: 'Noté : rappeler le {day}', stop: 'Noté : on ne l’appelle plus pour cette auto', clear: 'Remis dans la liste' }
+  toast: { again: 'Noté : rappeler le {day}', stop: 'Noté : on ne l’appelle plus pour cette auto', clear: 'Remis dans la liste', fixed: 'Noté : prochain rappel le {day}' }
 };

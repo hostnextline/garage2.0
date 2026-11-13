@@ -99,6 +99,12 @@ function OilSheet(p: { row: OilRow | null; onClose: () => void }) {
     if (done) p.onClose();
   };
   const again = (day: Day) => note({ at: new Date().toISOString(), by: me.value?.id || null, again_on: day }, t('oil.toast.again', { day: dateShort(day) }));
+  // the app read the last visit as « no oil change »: one tap says it had one (a line worded in a way the app did not know)
+  const missed = r.vehicleId && r.lastVisit && (!r.lastOil || r.lastOil < r.lastVisit) ? r.lastVisit : null;
+  const fix = async (day: Day) => {
+    const done = await attempt(() => saveVehicle({ id: r.vehicleId as string, last_oil_on: day }), { ok: t('oil.toast.fixed', { day: dateShort(addMonths(day, 6)) }) });
+    if (done) p.onClose();
+  };
   const m = r.mark;
   const who = m ? staffName(m.by) : '';
   const said = !m ? null
@@ -117,6 +123,12 @@ function OilSheet(p: { row: OilRow | null; onClose: () => void }) {
           [t('oil.sheet.said'), said]
         ]} />
         {r.next && <Banner kind="info">{t('oil.sheet.nextHint')}</Banner>}
+        {missed && (
+          <div class="oil-missed" data-testid="oil-missed">
+            <p class="small muted" style={{ margin: 0 }}>{t('oil.sheet.missedHint', { day: dateShort(missed) })}</p>
+            <Button icon={<Droplet size={18} />} onClick={() => fix(missed)} data-testid="oil-missed-fix">{t('oil.sheet.missedFix')}</Button>
+          </div>
+        )}
         <div class="oil-actions">
           {tel && <Button variant="primary" icon={<Phone size={18} />} href={`tel:${tel}`} data-testid="oil-call">{t('oil.sheet.call')}</Button>}
           {tel && may.customers() && <Button icon={<MessageSquareText size={18} />} href={`#/customer/${r.customerId}?do=text`} data-testid="oil-text">{t('oil.sheet.text')}</Button>}

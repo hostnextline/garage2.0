@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { dueDay, isOilItem, lastOilOf, oilRows, toCall, type OilInput } from './due';
+import { dueDay, isOilItem, isOilStock, lastOilOf, oilJobIds, oilRows, oilWords, toCall, type OilInput } from './due';
+import type { InventoryItem, InventoryMove } from '../../data/types';
 import type { Customer, Job, JobItem, Service, Vehicle } from '../../data/types';
 
 const TODAY = '2027-06-15';
@@ -21,10 +22,44 @@ describe('isOilItem', () => {
     expect(isOilItem(item('j', 's-tires'), m)).toBe(false);
     expect(isOilItem(item('j', 's-none'), m)).toBe(false);
     expect(isOilItem(item('j', null, 'Fuite d’huile : diagnostic'), m)).toBe(false);
+    // a service line reworded by hand, a service whose name does not say it
+    expect(isOilItem(item('j', 's-tires', 'Pneus + vidange'), m)).toBe(true);
+    expect(isOilItem(item('j', 's-none', 'Vidange'), m)).toBe(false);
   });
   it('does not count work refused, taken off or only proposed', () => {
     for (const s of ['declined', 'removed', 'proposed'] as const) expect(isOilItem(item('j', 's-oil', '', s), m)).toBe(false);
     expect(isOilItem(item('j', 's-oil', '', 'planned'), m)).toBe(true);
+  });
+});
+
+describe('oilWords', () => {
+  it('an oil change, however it is worded', () => {
+    for (const w of ['Changement d’huile (5 L)', 'changement d\'huile', 'Vidange', 'Vidange d’huile et filtre', 'Vidange moteur', 'Huile et filtre', 'Huile synthétique', 'Oil change', 'Oil & filter', 'OIL CHANGE + FILTER',
+      'Lube, oil and filter', 'LOF', 'Lube', '5W-30 synthétique 5 L', '0w20', 'Synthetic 5 qt', 'Full synthetic service', 'Pneus + huile', 'Promo : pneus non montés + huile + inspection',
+      'Fuite de transmission + changement d’huile', 'Brakes and oil change', 'Entretien : vidange, filtre à air']) expect(oilWords(w), w).toBe(true);
+  });
+  it('not another fluid, a leak, a part or other work', () => {
+    for (const w of ['Vidange de transmission', 'Huile à transmission', 'Transmission oil change', 'Vidange du liquide de frein', 'Brake fluid flush', 'Vidange du liquide de refroidissement', 'Coolant flush',
+      'Fuite d’huile : diagnostic', 'Oil leak diagnostic', 'Oil pan gasket', 'Joint de carter d’huile', 'Capteur de pression d’huile', 'Oil pressure sensor', 'Huile de différentiel', 'Power steering oil',
+      'Changement de pneus (déjà montés)', 'Freins avant', 'Diagnostic (30 min)', 'Top up des liquides', 'Inspection', 'Installation', 'Toile d’essuie-glace', '']) expect(oilWords(w), w).toBe(false);
+  });
+});
+
+describe('the stock', () => {
+  const stock = [{ id: 'i-oil', name: 'Huile 5W-30 synthétique', category: 'Huile' }, { id: 'i-oil2', name: '0W-20 Castrol', category: null }, { id: 'i-fil', name: 'Filtre à l’huile PH7317', category: 'Filtres' },
+    { id: 'i-atf', name: 'Huile à transmission ATF', category: 'Huile' }, { id: 'i-pad', name: 'Plaquettes avant', category: 'Freins' }] as unknown as InventoryItem[];
+  const move = (job_id: string, item_id: string, delta = -5, reason = 'used') => ({ id: `${job_id}-${item_id}`, job_id, item_id, delta, reason }) as InventoryMove;
+  it('knows engine oil among the parts', () => {
+    expect(stock.map((s) => isOilStock(s))).toEqual([true, true, false, false, false]);
+  });
+  it('a job that took engine oil from the stock had an oil change, whatever its lines say', () => {
+    const items = [item('j1', null, 'Entretien complet'), item('j2', null, 'Entretien complet'), item('j3', null, 'Freins'), item('j4', null, 'Entretien')];
+    const ids = oilJobIds(items, SERVICES, [move('j1', 'i-oil'), move('j2', 'i-atf'), move('j3', 'i-pad'), move('j4', 'i-oil', 5, 'restock')], stock);
+    expect([...ids]).toEqual(['j1']);
+    const sold = oilJobIds([{ ...item('j5', null, 'Bidon'), kind: 'part', item_id: 'i-oil2' } as never], SERVICES, [], stock);
+    expect([...sold]).toEqual(['j5']);
+    const rows = oilRows(input({ jobs: [job('j1', 'v1', '2027-03-01')], items: [items[0]], moves: [move('j1', 'i-oil')], stock }));
+    expect(rows[0]).toMatchObject({ lastOil: '2027-03-01', due: '2027-09-01' });
   });
 });
 

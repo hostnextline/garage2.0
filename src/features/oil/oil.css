@@ -7,6 +7,8 @@
 .oil-next { display: inline-flex; align-items: center; gap: 4px; }
 .oil-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
 .oil-actions .btn { flex: 1 1 140px; min-height: 48px; }
+.oil-missed { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+.oil-missed .btn { min-height: 44px; }
 .oil-after { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .oil-after .btn { min-height: 44px; }
 @media (max-width: 520px) {

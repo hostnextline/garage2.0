@@ -5,8 +5,7 @@
    the car (`vehicles.oil_followup`): call back on a day, or stop calling for this car; a newer visit makes it old.
    Pure: no screen, no server (tested in due.test.ts). */
 import { addDays, addMonths, daysBetween, type BlockKey, type Day } from '../../lib/dates';
-import type { Customer, Job, JobItem, OilMark, Service, Vehicle } from '../../data/types';
-import { guessNeeds, needsOf } from '../inventory/needs';
+import type { Customer, InventoryItem, InventoryMove, Job, JobItem, OilMark, Service, Vehicle } from '../../data/types';
 
 export const AFTER_OIL_MONTHS = 6;
 export const AFTER_VISIT_MONTHS = 3;
@@ -37,15 +36,39 @@ export interface OilRow {
 export interface OilInput {
   today: Day;
   jobs: Job[]; items: JobItem[]; services: Service[]; vehicles: Vehicle[]; customers: Customer[];
+  /** the stock taken by the jobs (« Pièces utilisées »): a job that used engine oil had an oil change, whatever its lines say */
+  moves?: InventoryMove[]; stock?: InventoryItem[];
 }
 
 const COUNTED = new Set(['planned', 'done', 'approved']);
-/** a line of work that is an oil change: its service says it uses oil (or its name does), else the words of the line */
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[’']/g, ' ');
+/* another fluid or another job that also says « huile », « oil » or « vidange » */
+const OTHER = /transmission|boite|differentiel|differential|transfert|transfer case|direction|steering|hydraulique|hydraulic|frein|brake|refroidissement|coolant|antigel|antifreeze|prestone|radiateur|radiator|fuite|leak|suintement|pression d huile|oil pressure|temoin|voyant|sensor|capteur|sonde|pan gasket|joint|carter|oil pan|pompe a huile|oil pump|cooler|refroidisseur/;
+/* an oil change said in words: « changement d’huile », « vidange », « huile et filtre », « oil change », « lube », « LOF », « oil service »,
+   « entretien A » is NOT one (too vague); an engine oil grade alone (« 5W-30 synthétique, 5 L ») is one */
+const OIL = /\bhuile\b|\bhuiles\b|\boil\b|\bvidange\b|\blube\b|\blof\b|\bl\.o\.f\b|\bsynthetique\b|\bsynthetic\b|\b\d{1,2}\s?w\s?-?\s?\d{2}\b/;
+/** the words of a line or of a service say an oil change of the engine. Each piece (split on « + », « , », « et », « and », « / »)
+    is read alone, so « Fuite de transmission + changement d’huile » is one, « Vidange de transmission » is not */
+export function oilWords(text: string | null | undefined): boolean {
+  return fold(String(text || '')).split(/\s*(?:\+|,|;|\/|&|\bet\b|\band\b|\bavec\b|\bwith\b|\||:)\s*/).some((part) => OIL.test(part) && !OTHER.test(part));
+}
+/** a service is an oil change: said in its settings (« Ce que ça prend »), else its name and what it includes */
+export function isOilService(s: Pick<Service, 'name_fr' | 'name_en' | 'includes' | 'needs'>): boolean {
+  if (Array.isArray(s.needs)) return s.needs.some((n) => n.kind === 'oil');
+  return [s.name_fr, s.name_en, ...(s.includes || []).flatMap((i) => [i.fr, i.en])].some((x) => oilWords(x));
+}
+/** a line of work that is an oil change: its service is one, or its own words say so (a line reworded by hand, a custom line) */
 export function isOilItem(i: Pick<JobItem, 'kind' | 'status' | 'service_id' | 'description'>, services: Map<string, Service>): boolean {
   if (!COUNTED.has(i.status) || i.kind === 'discount' || i.kind === 'fee') return false;
   const s = i.service_id ? services.get(i.service_id) : undefined;
-  if (s) return needsOf(s).needs.some((n) => n.kind === 'oil');
-  return guessNeeds({ name_fr: i.description || '', name_en: null, includes: [] }).some((n) => n.kind === 'oil');
+  if (s && Array.isArray(s.needs)) return isOilService(s);
+  return (!!s && isOilService(s)) || oilWords(i.description);
+}
+/** a part of the stock that is engine oil (« Huile 5W-30 synthétique », category « Huile ») */
+export function isOilStock(it: Pick<InventoryItem, 'name' | 'category'>): boolean {
+  const name = fold(it.name || ''), cat = fold(it.category || '');
+  if (/filtre|filter/.test(name)) return false;
+  return (OIL.test(name) || /\bhuile|\boil/.test(cat)) && !OTHER.test(name);
 }
 
 function localDay(iso: string | null | undefined): Day | null {
@@ -64,15 +87,18 @@ export function dueDay(lastVisit: Day, lastOil: Day | null): Day {
 }
 
 /** the appointments (finished or not) that have an oil change */
-export function oilJobIds(items: JobItem[], services: Service[]): Set<string> {
+export function oilJobIds(items: JobItem[], services: Service[], moves: InventoryMove[] = [], stock: InventoryItem[] = []): Set<string> {
   const map = new Map(services.map((s) => [s.id, s]));
   const out = new Set<string>();
-  for (const i of items) if (!i.deleted_at && isOilItem(i, map)) out.add(i.job_id);
+  // engine oil of the stock on the job (a line that sells it, or « Pièces utilisées »): an oil change, whatever its lines are called
+  const oil = new Set(stock.filter((it) => !it.deleted_at && isOilStock(it)).map((it) => it.id));
+  for (const i of items) if (!i.deleted_at && (isOilItem(i, map) || (!!i.item_id && oil.has(i.item_id) && COUNTED.has(i.status)))) out.add(i.job_id);
+  for (const m of moves) if (!m.deleted_at && m.job_id && m.reason === 'used' && Number(m.delta) < 0 && oil.has(m.item_id)) out.add(m.job_id);
   return out;
 }
 /** a car's last oil change: the latest of our finished visits with one and the day its owner gave; `ours`: it was us */
-export function lastOilOf(v: Pick<Vehicle, 'id' | 'last_oil_on'>, input: Pick<OilInput, 'today' | 'jobs' | 'items' | 'services'>): { day: Day; ours: boolean } | null {
-  const oil = oilJobIds(input.items, input.services);
+export function lastOilOf(v: Pick<Vehicle, 'id' | 'last_oil_on'>, input: Pick<OilInput, 'today' | 'jobs' | 'items' | 'services' | 'moves' | 'stock'>): { day: Day; ours: boolean } | null {
+  const oil = oilJobIds(input.items, input.services, input.moves, input.stock);
   let mine: Day | null = null;
   for (const j of input.jobs) if (!j.deleted_at && j.status === 'done' && j.vehicle_id === v.id && oil.has(j.id) && (!mine || j.day > mine)) mine = j.day;
   const said = v.last_oil_on && v.last_oil_on <= input.today ? v.last_oil_on : null;
@@ -83,7 +109,7 @@ export function lastOilOf(v: Pick<Vehicle, 'id' | 'last_oil_on'>, input: Pick<Oi
 export function oilRows(input: OilInput): OilRow[] {
   const vehicles = new Map(input.vehicles.map((v) => [v.id, v]));
   const customers = new Map(input.customers.map((c) => [c.id, c]));
-  const oilJobs = oilJobIds(input.items, input.services);
+  const oilJobs = oilJobIds(input.items, input.services, input.moves, input.stock);
 
   interface Acc { customerId: string; vehicleId: string | null; lastOil: Day | null; lastVisit: Day | null; next: Job | null; nextOil: boolean }
   const accs = new Map<string, Acc>();

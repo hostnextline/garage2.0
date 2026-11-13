@@ -231,8 +231,11 @@ end $do$;
 - « Rappels d’huile » (`#/oil`, Part 24 sedecies, `20261113000100_suivi_huile.sql`, applied on live 2026-11-13 from commit `06851dd` with the sha256 check; `src/features/oil/`): the cars
   due for an oil change, for the owner or the office to call (`may.oil`; a mechanic only holds his own truck's visits). Hassan's rule
   (`due.ts`, pure, tested): the last finished visit had an oil change → call 6 months after it; it had none → 3 months after that visit
-  (never before 6 months after the last oil change). The last oil change = the latest of our own (a line whose service uses oil,
-  `needsOf`, else its words) and `vehicles.last_oil_on`, the day the customer gives: the box « Dernier changement d’huile » of the car
+  (never before 6 months after the last oil change). The last oil change = the latest of our own and the day the customer gives. Ours
+  (`oilJobIds`): a line whose service uses oil (its `needs`, else its name: `isOilService`), a line whose own words say it (`oilWords`:
+  huile, oil, vidange, lube, LOF, synthétique, a grade like 5W-30; each piece of the line read alone, and never another fluid, a leak
+  or a part: `OTHER`), or engine oil of the stock on the job (a line that sells it, or « Pièces utilisées »: `isOilStock`). A miss is
+  fixed in one tap in the line's sheet (« L’huile a été changée à cette visite » sets `last_oil_on` to that visit). The customer's day: `vehicles.last_oil_on`, the box « Dernier changement d’huile » of the car
   form (`LastOilField` in `CarForm`: new customer, new caller in the booking, « Ajouter un véhicule ») and of « Modifier » the car;
   a car with that day is listed even before its first visit. The car's file and the customer's car line show it (`lastOil`). A car
   with a coming appointment that has an oil change is not listed; one without says so. Tabs « À appeler » / « Bientôt » (30 days) /
