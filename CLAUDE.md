@@ -78,7 +78,7 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `notify`, `book` at `408de6c`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
+  `notify`, `book` at `408de6c`; `conversation` at `2f7e0cb`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
   the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
@@ -295,7 +295,7 @@ end $do$;
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
   `{ action: 'contact', customer_id }` (`syncContact`): the customer's name and number go to their GoHighLevel contact (made, or the
   name put on a number already there); the app asks it by itself once a new customer, or a changed name / number, has reached the
-  server (`sentHooks.customer` in `sync.ts`, set in `api.ts`). NOT deployed on live yet (needs `conversation` redeployed).
+  server (`sentHooks.customer` in `sync.ts`, set in `api.ts`). Deployed on live 2026-11-12; the app side is not published yet.
 - The end-to-end step « Changer de camion » fails when the suite runs after 16 h Montréal (seen 2026-11-12, on code that passed at 13 h
   too): the click on the other truck does nothing in the test; `move_job` itself works on live in both directions.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,

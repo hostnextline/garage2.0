@@ -1843,7 +1843,7 @@ step('« La voiture ferme »: closing the car on a day that has an appointment a
   await page.locator('[data-testid="hours-apply"] input[type=date]').fill(day);
   // erase that morning: a drag that starts on a lit cell turns the cells off
   const a = page.locator(`[data-testid="hours-grid"] [data-d="${dowOf}"][data-u="480"]`);
-  const z = page.locator(`[data-testid="hours-grid"] [data-d="${dowOf}"][data-u="705"]`);
+  const z = page.locator(`[data-testid="hours-grid"] [data-d="${dowOf}"][data-u="690"]`);
   await a.scrollIntoViewIfNeeded();
   const ab = await a.boundingBox(), zb = await z.boundingBox();
   await page.mouse.move(ab.x + ab.width / 2, ab.y + ab.height / 2);
