@@ -1,4 +1,4 @@
-/* « Appel entrant » from GoHighLevel (one account for now: the one marked `staff.sees_calls` on the server, my_access « calls »; not the owner role): a call that comes in on the garage's number shows here, on
+/* « Appel entrant » from GoHighLevel (an owner who switched it on for their own account: `prefs.calls`, « Recevoir les appels dans mon compte »): a call that comes in on the garage's number shows here, on
    every screen, with the number and the name GoHighLevel knows (or our own customer's). « Ouvrir » opens Appel entrant with
    the number already typed. A banner, never a jump: the screen in use stays. The calls are noted by the server function
    « ring » in incoming_calls: told at once (realtime), and asked every 10 s while the app is in view. */
@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { PhoneCall, X } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { formatPhone } from '../../lib/text';
-import { sb, access, preview } from '../../data/auth';
+import { sb, access, isOwner, preview } from '../../data/auth';
 import { customersList, customerName } from '../../data/select';
 import { navigate } from '../../app/router';
 import { REALTIME } from '../../lib/config';
@@ -31,8 +31,11 @@ let ask: (() => void) | null = null;
 /** look now (after « Essayer » in Réglages) */
 export const checkCalls = () => ask?.();
 
+/** this account gets the incoming calls: an owner who switched them on */
+export function callsOn(): boolean { return isOwner() && !preview.value && access.value?.prefs?.calls === true; }
+
 export function CallHost() {
-  const on = !!access.value?.calls && !preview.value;
+  const on = callsOn();
   const [calls, setCalls] = useState<IncomingCall[]>([]);
   const [, setTick] = useState(0);
   const closed = useRef(new Set<string>());

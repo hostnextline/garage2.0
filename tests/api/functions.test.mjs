@@ -640,23 +640,17 @@ test('🤖 Hermes plugged in by the Hermes server itself: a one-time code (only 
   }
 });
 
-test('« Appel entrant » from GoHighLevel: the owner gets the address; a call posted there is noted with the number and the name; only the account marked for the calls reads it (not the owner role)', async () => {
+test('« Appel entrant » from GoHighLevel: the owner gets the address; a call posted there is noted with the number and the name; only an owner who switched the calls on for their account reads it', async () => {
   const email = `meca-${randomUUID().slice(0, 6)}@test.local`;
   const mech = await adminUser(email, 'motdepasse-2');
   await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Saleh', 'Saleh', '{owner,mechanic}', $2)`, [mech, email]);
   const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
   try {
-    // nobody is marked yet: not even an owner
-    assert.equal((await fn('ring', { action: 'link' }, ownerJwt)).url, undefined, 'no calls address for an owner who is not marked');
-    assert.equal((await fn('ring', { action: 'test' }, ownerJwt)).code, 'not_allowed');
-    // an owner cannot mark himself from the app
-    const self = await fetch(`${API}/rest/v1/staff?id=eq.${mech}`, { method: 'PATCH', headers: { apikey: K.anon, authorization: `Bearer ${mechJwt}`, 'content-type': 'application/json', prefer: 'return=representation' }, body: JSON.stringify({ sees_calls: true }) });
-    assert.ok(self.status >= 400, 'marking oneself is refused: ' + self.status);
-    assert.equal((await q(`select sees_calls from public.staff where id = $1`, [mech]))[0].sees_calls, false);
-    // the server marks one account; the other owner stays out
-    await q(`update public.staff set sees_calls = true where id = $1`, [owner]);
-    assert.equal((await fn('ring', { action: 'link' }, mechJwt)).url, undefined);
-    assert.equal((await fn('ring', { action: 'test' }, mechJwt)).code, 'not_allowed');
+    // a mechanic does not branch the calls
+    const plain = `meca-${randomUUID().slice(0, 6)}@test.local`;
+    const plainId = await adminUser(plain, 'motdepasse-3');
+    await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Adam', 'Adam', '{mechanic}', $2)`, [plainId, plain]);
+    assert.equal((await fn('ring', { action: 'link' }, (await signIn(plain, 'motdepasse-3')).access_token)).code, 'not_allowed');
     const a = await fn('ring', { action: 'link' }, ownerJwt);
     assert.match(a.url, /\/functions\/v1\/ring\?k=[\w-]{20,}$/, JSON.stringify(a));
     assert.equal((await fn('ring', { action: 'link' }, ownerJwt)).url, a.url, 'the same address the second time');
@@ -668,8 +662,12 @@ test('« Appel entrant » from GoHighLevel: the owner gets the address; a call p
     assert.equal((await post(key, { first_name: 'Sans', last_name: 'Numéro' })).code, 'no_phone');
     const rows = await q(`select phone, name from public.incoming_calls order by at desc`);
     assert.deepEqual(rows.map((r) => [r.phone, r.name]), [['+14385550162', 'Nadia Roy']]);
-    // the marked account's app reads it; another owner's does not
+    // nobody switched the calls on: no owner reads them. The owner switches them on for his account (« Recevoir les appels dans
+    // mon compte »): he reads them; the other owner still does not
     const read = async (jwt) => (await fetch(`${API}/rest/v1/incoming_calls?select=phone,name`, { headers: { apikey: K.anon, authorization: `Bearer ${jwt}` } })).json();
+    assert.equal((await read(ownerJwt)).length, 0);
+    const on = await fetch(`${API}/rest/v1/rpc/update_me`, { method: 'POST', headers: { apikey: K.anon, authorization: `Bearer ${ownerJwt}`, 'content-type': 'application/json' }, body: JSON.stringify({ p_patch: { prefs: { calls: true } } }) });
+    assert.ok(on.ok, 'update_me: ' + on.status + ' ' + (await on.clone().text()));
     assert.equal((await read(ownerJwt)).length, 1);
     assert.equal((await read(mechJwt)).length, 0);
     // a new address: the old one stops working
@@ -683,7 +681,7 @@ test('« Appel entrant » from GoHighLevel: the owner gets the address; a call p
     await q(`delete from public.incoming_calls`);
     await q(`delete from public.secrets where key = 'call_hook'`);
     await q(`delete from public.rate_limits where key = 'ring'`);
-    await q(`update public.staff set sees_calls = false where id = $1`, [owner]);
+    await q(`update public.staff set prefs = prefs - 'calls' where id = $1`, [owner]);
   }
 });
 
@@ -694,10 +692,8 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
   const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
   try {
     const a = await fn('ring', { action: 'link' }, ownerJwt);
-    // an owner who is not the account marked for the calls gets the texts' address only
-    assert.match(a.text_url, /\/functions\/v1\/ring\?k=[\w-]{20,}&t=sms$/, JSON.stringify(a));
-    assert.equal(a.url, undefined);
-    const key = new URL(a.text_url).searchParams.get('k');
+    assert.equal(a.text_url, `${a.url}&t=sms`, JSON.stringify(a));
+    const key = new URL(a.url).searchParams.get('k');
     const post = async (k, body, t = '&t=sms') => { const r = await fetch(`${API}/functions/v1/ring?k=${k}${t}`, { method: 'POST', headers: { apikey: K.anon, 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json()) }; };
     // GoHighLevel's « customer replied » body: the contact's fields flat, the words in message.body
     assert.equal((await post(key, { contact_id: 'abc', full_name: 'Nadia Roy', phone: '+14385550162', message: { type: 2, body: 'Avez-vous une place demain ?' } })).ok, true);

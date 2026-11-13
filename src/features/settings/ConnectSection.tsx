@@ -5,7 +5,7 @@ import { MessageSquareText, MessageCircle, CreditCard, Send, Unplug, PhoneCall, 
 import { t, lang } from '../../lib/i18n';
 import { phoneDigits } from '../../lib/text';
 import { access, callFn, refreshAccess } from '../../data/auth';
-import { checkCalls } from '../booking/CallBanner';
+import { checkCalls, callsOn } from '../booking/CallBanner';
 import { checkTexts, textsOn } from '../conversation/TextHost';
 import { pushState, pushOn, pushOff, type PushState } from '../conversation/push';
 import { team, errorMessage, updateMe } from '../../data/api';
@@ -33,7 +33,7 @@ export function ConnectSection() {
       {state === 'loading' && !s && <Panel><Skeleton h={18} lines={3} /><p class="small muted" style={{ margin: 'var(--sp-3) 0 0' }}>{t('settings.connect.loading')}</p></Panel>}
       {state === 'error' && <Banner kind="warn" title={t('settings.connect.error')} action={<Button size="sm" onClick={() => void load()}>{t('common.retry')}</Button>}>{error}</Banner>}
       {s && <GhlPanel s={s} onChanged={load} />}
-      {s && access.value?.calls && <RingPanel />}
+      {s && <RingPanel />}
       {s && <TextsPanel />}
       {s && <StripePanel s={s} onChanged={load} />}
     </div>
@@ -116,6 +116,12 @@ function GhlPanel(p: { s: Secrets; onChanged: () => Promise<void> }) {
 /** « Appels entrants »: the address GoHighLevel calls when the garage's number rings (made on the server, shown to the owner) */
 function RingPanel() {
   const [url, setUrl] = useState('');
+  const mine = callsOn();
+  const setMine = async (v: boolean) => {
+    await updateMe({ prefs: { calls: v } });
+    await refreshAccess();
+    toast(t(v ? 'settings.connect.callsMineOn' : 'settings.connect.callsMineOff'), { kind: 'ok' });
+  };
   const link = async (renew = false) => {
     try {
       const r = await callFn<{ url?: string }>('ring', { action: 'link', renew }, 20000);
@@ -140,6 +146,7 @@ function RingPanel() {
     <Panel title={t('settings.connect.ring')} data-testid="connect-ring">
       <div class="stack">
         <p class="muted" style={{ margin: 0 }}><PhoneCall size={16} aria-hidden="true" /> {t('settings.connect.ringText')}</p>
+        <Switch checked={mine} onChange={(v) => void setMine(v)} label={t('settings.connect.callsMine')} hint={t('settings.connect.callsMineHint')} data-testid="calls-mine" />
         {!url ? <div><Button variant="primary" onClick={() => link()} data-testid="ring-get">{t('settings.connect.ringGet')}</Button></div> : (
           <>
             <Field label={t('settings.connect.ringUrl')}>

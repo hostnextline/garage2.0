@@ -1875,12 +1875,14 @@ step('« La voiture ferme »: closing the car on a day that has an appointment a
 });
 
 step('« Appel entrant » from GoHighLevel: « Essayer » in Branchements shows the banner (number and name) to the owner; « Ouvrir » opens Appel entrant with the number', async () => {
-  // the calls are for one account (staff.sees_calls), set on the server
-  h.sql(`update public.staff set sees_calls = true where id = '${who.owner.id}'`);
   const { page, ctx } = await h.openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + '#/settings/connect');
   await page.getByTestId('connect-ring').waitFor({ timeout: 20000 });
+  // each owner switches the calls on for their own account
+  assert.equal(await page.getByTestId('calls-mine').getAttribute('aria-checked'), 'false');
+  await page.getByTestId('calls-mine').click();
+  await page.locator('[data-testid="calls-mine"][aria-checked="true"]').waitFor({ timeout: 15000 });
   await page.getByTestId('ring-get').click();
   await page.getByTestId('ring-url').waitFor({ timeout: 15000 });
   assert.match(await page.getByTestId('ring-url').inputValue(), /\/functions\/v1\/ring\?k=/);
@@ -1901,6 +1903,7 @@ step('« Appel entrant » from GoHighLevel: « Essayer » in Branchements shows 
   noErrors(page);
   await ctx.close();
   h.sql(`delete from public.incoming_calls`);
+  h.sql(`update public.staff set prefs = prefs - 'calls' where id = '${who.owner.id}'`);
   h.sql(`delete from public.secrets where key = 'call_hook'`);
 });
 
