@@ -705,15 +705,21 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
     // « Essayer »: a pretend text
     assert.equal((await fn('ring', { action: 'test', kind: 'text' }, ownerJwt)).ok, true);
     assert.equal((await q(`select count(*)::int as n from public.incoming_texts where name = 'Client TEST' and body <> ''`))[0].n, 1);
-    // the conversation with a number that has no file: the owner only (texts are not connected in the tests: « off »)
+    // the conversation with a number that has no file: the owner only (GoHighLevel is the tests' pretend one)
+    await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678' }, ownerJwt);
     assert.equal((await fn('conversation', { action: 'get', phone: '+14385550162' }, mechJwt)).code, 'not_allowed');
     assert.equal((await fn('conversation', { action: 'send', phone: '+14385550162', message: 'Oui' }, mechJwt)).code, 'not_allowed');
     assert.equal((await fn('conversation', { action: 'get', phone: '438555' }, ownerJwt)).code, 'no_phone');
-    assert.equal((await fn('conversation', { action: 'get', phone: '+14385550162' }, ownerJwt)).status, 'off');
+    const got = await fn('conversation', { action: 'get', phone: '+14385550162' }, ownerJwt);
+    assert.equal(got.status, 'ok', JSON.stringify(got));
+    assert.ok(Array.isArray(got.messages));
     assert.equal((await fn('conversation', { action: 'send', phone: '+14385550162', message: '' }, ownerJwt)).code, 'empty');
-    assert.equal((await fn('conversation', { action: 'send', phone: '438 555-0162', message: 'Oui, demain matin.' }, ownerJwt)).status, 'off');
+    assert.equal((await fn('conversation', { action: 'send', phone: '438 555-0162', message: 'Oui, demain matin.' }, ownerJwt)).status, 'sent');
+    const log = await mockLog();
+    assert.ok(log.some((x) => x.svc === 'ghl' && x.path === '/contacts/upsert' && /4385550162/.test(String(x.body?.phone))), 'the number goes to GoHighLevel');
+    assert.equal(log.filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').pop()?.body?.message, 'Oui, demain matin.');
     const kept = await q(`select to_addr, body, status, customer_id from public.messages where kind = 'chat' and to_addr = '+14385550162'`);
-    assert.deepEqual(kept.map((r) => [r.body, r.status, r.customer_id]), [['Oui, demain matin.', 'skipped', null]]);
+    assert.deepEqual(kept.map((r) => [r.body, r.status, r.customer_id]), [['Oui, demain matin.', 'sent', null]]);
   } finally {
     await q(`update public.staff set prefs = prefs - 'texts'`);
     await q(`delete from public.messages where kind = 'chat' and to_addr = '+14385550162'`);
