@@ -9,6 +9,7 @@ import { customer as customerRow, customerName } from '../../data/select';
 import { conversation, sendChat, errorMessage, type ChatMessage } from '../../data/api';
 import { net } from '../../data/sync';
 import { Sheet, Button, IconButton, Textarea, Banner, Skeleton, toast } from '../../ui';
+import { Attachments } from './Attachments';
 import './conversation.css';
 
 const REFRESH_MS = 20000;
@@ -74,7 +75,8 @@ function Open(p: { customerId: string; onClose: () => void }) {
         <div class="conv-list" role="log" aria-live="polite" data-testid="conversation-list">
           {msgs.map((m) => (
             <div key={m.id} class={`conv-msg is-${m.dir}`} data-testid={`conversation-${m.dir}`}>
-              <p>{m.body}</p>
+              <Attachments files={m.files} />
+              {m.body.trim() && <p>{m.body}</p>}
               <span class="conv-meta">{m.dir === 'in' ? t('conversation.them') : t('conversation.us')}{m.at ? `, ${stamp(m.at, l)}` : ''}</span>
             </div>
           ))}

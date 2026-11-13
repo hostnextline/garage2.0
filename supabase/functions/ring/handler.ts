@@ -2,7 +2,8 @@
 //   POST ?k=<key>  (GoHighLevel's automation « inbound call → webhook »; its usual body: phone, full_name, first_name, last_name…)
 //                  → the call is noted in « incoming_calls » (the owner's app shows it). The key is in the address, made here.
 //   POST ?k=<key>&t=sms  (GoHighLevel's automation « customer replied → webhook »; the same body with message: { body })
-//                  → the text is noted in « incoming_texts » (the owner's app opens the conversation bubble).
+//                  → the text is noted in « incoming_texts » (the owner's app opens the conversation bubble). A picture or a
+//                  document comes with no words, or with some: the app shows it from GoHighLevel's conversation.
 //   { action: 'link' }  (the owner, signed in) → { url, text_url }: the addresses to paste in GoHighLevel. The key is made once;
 //                  nobody changes it from the app (Hassan's rule): a new one is made on the server, on request.
 //   { action: 'test', kind? }   (the owner) → a pretend call, to see the banner (kind 'text': a pretend text, to see the bubble)
@@ -12,7 +13,7 @@
 import { serve, json, body, fail, env } from '../_shared/http.ts';
 import { caller, secret, adminDb, setSecrets } from '../_shared/db.ts';
 import { newToken, safeEqual } from '../_shared/tokens.ts';
-import { e164 } from '../_shared/ghl.ts';
+import { e164, filesOf } from '../_shared/ghl.ts';
 import { makeVapid, sendPush, type Vapid } from '../_shared/webpush.ts';
 import { DEFAULT_BASES } from '../_shared/links.ts';
 
@@ -37,6 +38,11 @@ export function wordsOf(b: Record<string, any>): string {
   const m = b.message && typeof b.message === 'object' ? (b.message as Record<string, any>).body : b.message;
   return ([d.message, d.body, m, b.body, b.text, b.sms].map(text).find(Boolean) || '').slice(0, 2000);
 }
+/** a text that carries a picture or a document (the app shows it from GoHighLevel's conversation) */
+export function hasFiles(b: Record<string, any>): boolean {
+  const d = (b.customData && typeof b.customData === 'object' ? b.customData : {}) as Record<string, any>;
+  return [b.message, d, b].some((x) => filesOf(x).length > 0);
+}
 async function noteText(phone: string, name: string | null, words: string) {
   const db = adminDb();
   const { error } = await db.from('incoming_texts').insert({ phone, name, body: words });
@@ -55,7 +61,7 @@ async function vapid(by: string | null): Promise<Vapid> {
 const nicePhone = (p: string) => { const d = p.replace(/\D/g, '').slice(-10); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}` : p; };
 /** the alert while the app is closed, on the devices of the owners who take the texts. Never an error for the caller:
     the text is already noted, the bubble shows anyway. */
-async function alertText(phone: string, name: string | null, words: string): Promise<number> {
+async function alertText(phone: string, name: string | null, words: string, files = false): Promise<number> {
   try {
     const db = adminDb();
     const { data: people } = await db.from('staff').select('id').contains('roles', ['owner']).eq('active', true).is('deleted_at', null).eq('prefs->>texts', 'true');
@@ -67,7 +73,7 @@ async function alertText(phone: string, name: string | null, words: string): Pro
     const { data: known } = await db.from('customers').select('first_name, last_name').eq('phone_digits', phone.replace(/\D/g, '').slice(-10)).is('deleted_at', null).limit(1);
     const k = ((known || []) as { first_name: string | null; last_name: string | null }[])[0];
     const who = (k ? [k.first_name, k.last_name].filter(Boolean).join(' ') : '') || name || nicePhone(phone);
-    const payload = JSON.stringify({ title: who, body: words.slice(0, 300) || 'Nouveau texto', tag: `texto-${phone}` });
+    const payload = JSON.stringify({ title: who, body: words.slice(0, 300) || (files ? '📎 Photo ou document' : 'Nouveau texto'), tag: `texto-${phone}` });
     const v = await vapid(null);
     const gone: string[] = [];
     let sent = 0;
@@ -121,7 +127,7 @@ export const handler = serve(async (req) => {
   if (!(await brake(isText ? 'ring:text' : 'ring', 60, isText ? 60 : 30))) fail('busy', isText ? 'Trop de textos à la fois.' : 'Trop d’appels à la fois.', 429);
   const call = callOf(b);
   if (!call.phone) fail('no_phone', isText ? 'Aucun numéro dans ce texto.' : 'Aucun numéro dans cet appel.');
-  if (isText) { const words = wordsOf(b); await noteText(call.phone!, call.name, words); await alertText(call.phone!, call.name, words); }
+  if (isText) { const words = wordsOf(b); await noteText(call.phone!, call.name, words); await alertText(call.phone!, call.name, words, hasFiles(b)); }
   else await note(call.phone!, call.name);
   return json({ ok: true });
 });

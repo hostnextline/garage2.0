@@ -74,8 +74,8 @@ http.createServer(async (req, res) => {
       const list = (state.chats.get(cm[1]) || []).slice().reverse();
       return send(res, 200, { messages: { lastMessageId: list[0]?.id || null, nextPage: false, messages: list } });
     }
-    // the customer answers (the tests): POST /ghl/_reply { contactId, body }
-    if (p === '/ghl/_reply') { chat(body.contactId).push({ id: 'msg_' + (++state.n), direction: 'inbound', body: body.body, messageType: 'TYPE_SMS', dateAdded: new Date(Date.now() + state.n).toISOString() }); return send(res, 200, { ok: true }); }
+    // the customer answers (the tests): POST /ghl/_reply { contactId, body, attachments? }
+    if (p === '/ghl/_reply') { chat(body.contactId).push({ id: 'msg_' + (++state.n), direction: 'inbound', body: body.body || '', attachments: body.attachments || [], messageType: 'TYPE_SMS', dateAdded: new Date(Date.now() + state.n).toISOString() }); return send(res, 200, { ok: true }); }
     return send(res, 404, { message: 'no route' });
   }
 

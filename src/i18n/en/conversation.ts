@@ -11,6 +11,7 @@ export const conversation: typeof fr = {
   them: 'Customer',
   us: 'Garage',
   smsOff: 'This customer does not want texts.',
+  file: { photo: 'Photo', openPhoto: 'Open the photo full size', video: 'Video', audio: 'Voice message', doc: 'Document', open: 'Open' },
   bubble: {
     title: 'Conversation with {name}',
     open: 'Open the conversation with {name}',
@@ -20,7 +21,7 @@ export const conversation: typeof fr = {
     file: 'Their file',
     book: 'Book for this number',
     noFile: 'No file yet',
-    noWords: '(a text with no words)',
+    noWords: '📎 Photo or document',
     off: 'Texts are not connected (Settings, Connections): you see what came in, but cannot answer from here.',
     error: 'The texting service did not answer: here is what came in. The rest comes back in a moment.'
   },

@@ -155,7 +155,8 @@ export async function setStopOrder(truckId: string, day: string, block: string, 
 }
 
 /* ---------- the conversation with a customer (GoHighLevel, both ways) ---------- */
-export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null }
+/** `files`: the web addresses of the pictures and documents that came with the message */
+export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null; files?: string[] }
 export async function conversation(customerId: string) {
   return callFn<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }>('conversation', { action: 'get', customer_id: customerId }, 20000);
 }

@@ -1,6 +1,8 @@
 // Texts and emails to customers and team members, through the garage's GoHighLevel account.
 import { env, withTimeout } from './http.ts';
 import { secret } from './db.ts';
+import { filesOf } from './files.ts';
+export { filesOf };
 
 const base = () => env('GHL_API_BASE', 'https://services.leadconnectorhq.com');
 export type SendStatus = 'sent' | 'off' | 'no_phone' | 'no_email' | 'error';
@@ -76,7 +78,7 @@ async function get(path: string, version: string, token: string) {
   if (!r.ok) throw new Error(`GoHighLevel ${r.status}: ${(data && (data.message || data.error)) || text.slice(0, 160)}`);
   return data;
 }
-export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null }
+export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null; files: string[] }
 /** the last messages with this person (oldest first): none when GoHighLevel does not know the number yet */
 export async function readConversation(p: Person, limit = 60): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }> {
   const cfg = await ghlReady();
@@ -95,8 +97,9 @@ export async function readConversation(p: Person, limit = 60): Promise<{ status:
     const list: any[] = Array.isArray(m?.messages) ? m.messages : Array.isArray(m?.messages?.messages) ? m.messages.messages : [];
     const messages = list
       .map((x) => ({ id: String(x.id ?? ''), at: x.dateAdded ? String(x.dateAdded) : null, dir: (x.direction === 'inbound' ? 'in' : 'out') as 'in' | 'out',
-        body: String(x.body ?? x.message ?? '').slice(0, 4000), kind: String(x.messageType ?? x.type ?? 'SMS'), status: x.status ? String(x.status) : null }))
-      .filter((x) => x.body.trim())
+        body: String(x.body ?? x.message ?? '').slice(0, 4000), kind: String(x.messageType ?? x.type ?? 'SMS'), status: x.status ? String(x.status) : null, files: filesOf(x) }))
+      // a picture or a document with no words is a message too
+      .filter((x) => x.body.trim() || x.files.length)
       .sort((a, b) => String(a.at).localeCompare(String(b.at)));
     return { status: 'ok', messages };
   } catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }

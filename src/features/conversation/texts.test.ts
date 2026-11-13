@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { nextChats, openChat, minimiseChat, closeChat, unread, heads, phoneId, lines, KEEP_MS, type Chat, type IncomingText, type Line } from './texts';
+import { nextChats, openChat, minimiseChat, closeChat, unread, heads, phoneId, lines, fileKind, fileName, safeFiles, KEEP_MS, type Chat, type IncomingText, type Line } from './texts';
+import { filesOf } from '../../../supabase/functions/_shared/files';
 
 const t0 = Date.parse('2026-11-12T15:00:00Z');
 const iso = (min: number) => new Date(t0 + min * 60000).toISOString();
@@ -75,13 +76,61 @@ describe('« Texto entrant » bubbles', () => {
     // GoHighLevel does not answer: everything that arrived here
     expect(lines(null, texts, make).map((m) => m.body)).toEqual(['Bonjour', 'Demain matin ?']);
     // it has the first text and our answer: only the newest one is added, never twice
-    const conv = [{ id: 'g1', at: iso(1), dir: 'in' as const, body: 'Bonjour' }, { id: 'g2', at: iso(3), dir: 'out' as const, body: 'Oui ?' }];
+    const conv: Line[] = [{ id: 'g1', at: iso(1), dir: 'in', body: 'Bonjour' }, { id: 'g2', at: iso(3), dir: 'out', body: 'Oui ?' }];
     expect(lines(conv, texts, make).map((m) => m.body)).toEqual(['Bonjour', 'Oui ?', 'Demain matin ?']);
     // an answer sent after a text GoHighLevel does not have: the text stays, in its place
     expect(lines([{ id: 'g9', at: iso(7), dir: 'out' as const, body: 'On arrive' }], [text('z', A, 8, null, 'Merci')], make).map((m) => m.body)).toEqual(['On arrive', 'Merci']);
     expect(lines([{ id: 'g9', at: iso(3), dir: 'out' as const, body: 'Oui ?' }], texts, make).map((m) => m.body)).toEqual(['Bonjour', 'Oui ?', 'Demain matin ?']);
     const full = [...conv, { id: 'g3', at: iso(5), dir: 'in' as const, body: 'Demain matin ?' }];
     expect(lines(full, texts, make).map((m) => m.id)).toEqual(['g1', 'g2', 'g3']);
+  });
+
+  it('a picture with no words: shown once, from GoHighLevel as soon as it has it', () => {
+    const make = (x: IncomingText): Line => ({ id: x.id, at: x.at, dir: 'in', body: x.body || '📎' });
+    const pic = [text('p', A, 5, null, '')];
+    // GoHighLevel does not have it yet: the text that arrived here holds its place
+    expect(lines([{ id: 'g1', at: iso(1), dir: 'in' as const, body: 'Bonjour' }], pic, make).map((m) => m.id)).toEqual(['g1', 'p']);
+    // it has it (a few seconds apart): only GoHighLevel's message, with the picture
+    const conv: Line[] = [{ id: 'g1', at: iso(1), dir: 'in', body: 'Bonjour' }, { id: 'g2', at: iso(4.9), dir: 'in', body: '', files: ['https://x.test/a.jpg'] }];
+    expect(lines(conv, pic, make).map((m) => m.id)).toEqual(['g1', 'g2']);
+    // a picture of another day, or one the garage sent, is not this text
+    expect(lines([{ id: 'g0', at: iso(-600), dir: 'in', body: '', files: ['https://x.test/b.jpg'] }], pic, make).map((m) => m.id)).toEqual(['g0', 'p']);
+    expect(lines([{ id: 'g3', at: iso(5), dir: 'out', body: '', files: ['https://x.test/c.jpg'] }], pic, make).map((m) => m.id)).toEqual(['g3', 'p']);
+    // a picture WITH words is known by its words, as before
+    expect(lines([{ id: 'g4', at: iso(5), dir: 'in', body: 'Voici le pneu', files: ['https://x.test/d.jpg'] }], [text('q', A, 5, null, 'Voici le pneu')], make).map((m) => m.id)).toEqual(['g4']);
+  });
+});
+
+describe('pictures and documents of a text', () => {
+  it('how each one is shown, from the end of its name', () => {
+    expect(fileKind('https://storage.test/msgsndr/LOC/media/abc.JPEG')).toBe('image');
+    expect(fileKind('https://x.test/a/photo.png?v=2#top')).toBe('image');
+    expect(fileKind('https://x.test/clip.mov')).toBe('video');
+    expect(fileKind('https://x.test/note.amr')).toBe('audio');
+    expect(fileKind('https://x.test/Facture%20123.pdf')).toBe('file');
+    expect(fileKind('https://x.test/IMG_0042.HEIC')).toBe('file');   // browsers do not draw it: a link
+    expect(fileKind('https://x.test/thing.xyz')).toBe('file');
+    expect(fileKind('https://x.test/media/8f2c91')).toBe('unknown'); // tried as a picture, else a link
+    expect(fileKind('')).toBe('unknown');
+  });
+  it('the name shown on a document', () => {
+    expect(fileName('https://x.test/a/Facture%20123.pdf?token=1')).toBe('Facture 123.pdf');
+    expect(fileName('https://x.test/')).toBe('');
+    expect(fileName('pas une adresse')).toBe('pas une adresse');
+  });
+  it('only web addresses are shown', () => {
+    expect(safeFiles(['https://x.test/a.jpg', 'javascript:alert(1)', 'data:text/html,x', 7 as unknown as string])).toEqual(['https://x.test/a.jpg']);
+    expect(safeFiles(undefined)).toEqual([]);
+  });
+  it('the server finds them wherever GoHighLevel put them', () => {
+    expect(filesOf({ attachments: ['https://x.test/a.jpg', 'https://x.test/a.jpg', ' https://x.test/b.pdf '] })).toEqual(['https://x.test/a.jpg', 'https://x.test/b.pdf']);
+    expect(filesOf({ attachments: [{ url: 'https://x.test/c.png' }, { nothing: 1 }, null] })).toEqual(['https://x.test/c.png']);
+    expect(filesOf({ attachment: 'https://x.test/d.jpg' })).toEqual(['https://x.test/d.jpg']);
+    expect(filesOf({ attachments: ['javascript:alert(1)', 'ftp://x.test/a', 'https://x.test/a b', ''] })).toEqual([]);
+    expect(filesOf({ attachments: Array.from({ length: 30 }, (_, i) => `https://x.test/${i}.jpg`) })).toHaveLength(10);
+    expect(filesOf({ body: 'Bonjour' })).toEqual([]);
+    expect(filesOf(null)).toEqual([]);
+    expect(filesOf('https://x.test/a.jpg')).toEqual([]);
   });
 });
 

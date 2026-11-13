@@ -11,6 +11,7 @@ export const conversation = {
   them: 'Client',
   us: 'Garage',
   smsOff: 'Ce client ne veut pas de textos.',
+  file: { photo: 'Photo', openPhoto: 'Ouvrir la photo en grand', video: 'Vidéo', audio: 'Message vocal', doc: 'Document', open: 'Ouvrir' },
   bubble: {
     title: 'Conversation avec {name}',
     open: 'Ouvrir la conversation avec {name}',
@@ -20,7 +21,7 @@ export const conversation = {
     file: 'Sa fiche',
     book: 'Réserver pour ce numéro',
     noFile: 'Pas encore de fiche',
-    noWords: '(un texto sans mots)',
+    noWords: '📎 Photo ou document',
     off: 'Les textos ne sont pas branchés (Réglages, Branchements) : tu vois ce qui est arrivé, sans pouvoir répondre d’ici.',
     error: 'Le service de textos n’a pas répondu : voici ce qui est arrivé. La suite revient dans un instant.'
   },

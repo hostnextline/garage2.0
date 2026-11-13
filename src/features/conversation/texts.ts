@@ -72,7 +72,9 @@ export function heads(chats: Chat[], texts: IncomingText[]): Chat[] {
   return chats.filter((c) => c.state === 'min').sort((a, b) => latest(texts, b.phone, b.seenAt).localeCompare(latest(texts, a.phone, a.seenAt)));
 }
 
-export interface Line { id: string; at: string | null; dir: 'in' | 'out'; body: string }
+export interface Line { id: string; at: string | null; dir: 'in' | 'out'; body: string; files?: string[] }
+/** a text with no words and GoHighLevel's message that carries its picture are the same one when this close in time */
+export const SAME_MS = 10 * 60 * 1000;
 /** what the window shows: GoHighLevel's conversation, plus the texts that arrived here and are not in it yet (the newest
     one, told to us before GoHighLevel's list has it; or everything while GoHighLevel does not answer) */
 export function lines<T extends Line>(conv: T[] | null, texts: IncomingText[], make: (x: IncomingText) => T): T[] {
@@ -80,6 +82,33 @@ export function lines<T extends Line>(conv: T[] | null, texts: IncomingText[], m
   // a long conversation: GoHighLevel gives its last messages only, so nothing older than those is added
   const firstAt = list.length < 50 ? '' : list.reduce((m, x) => (x.at && (!m || x.at < m) ? x.at : m), '');
   const has = new Set(list.filter((m) => m.dir === 'in').map((m) => m.body.trim()));
-  const extra = texts.filter((x) => x.at >= firstAt && !(x.body.trim() && has.has(x.body.trim()))).map(make);
+  // a text with no words is a picture or a document: GoHighLevel's list has it once it shows one that came at that time
+  const pics = list.filter((m) => m.dir === 'in' && !m.body.trim() && m.files?.length && m.at).map((m) => Date.parse(m.at!));
+  const there = (x: IncomingText) => (x.body.trim() ? has.has(x.body.trim()) : pics.some((at) => Math.abs(at - Date.parse(x.at)) < SAME_MS));
+  const extra = texts.filter((x) => x.at >= firstAt && !there(x)).map(make);
   return extra.length ? [...list, ...extra].sort((a, b) => String(a.at).localeCompare(String(b.at))) : list;
 }
+
+/* ---------- pictures and documents ---------- */
+export type FileKind = 'image' | 'video' | 'audio' | 'file' | 'unknown';
+const KINDS: Record<Exclude<FileKind, 'unknown'>, string[]> = {
+  image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'svg'],
+  video: ['mp4', 'm4v', 'mov', 'webm', '3gp', '3gpp'],
+  audio: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga', 'amr', 'opus'],
+  file: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'rtf', 'ppt', 'pptx', 'zip', 'vcf', 'heic', 'heif', 'tif', 'tiff', 'pages', 'numbers']
+};
+/** the name at the end of a web address (« facture.pdf »): empty when there is none */
+export function fileName(url: string): string {
+  let path = String(url || '').split(/[?#]/)[0];
+  try { path = new URL(url).pathname; } catch { /* not a full address */ }
+  const last = path.split('/').filter(Boolean).pop() || '';
+  try { return decodeURIComponent(last).slice(0, 80); } catch { return last.slice(0, 80); }
+}
+/** how an attachment is shown, from the end of its name; « unknown » (no ending): tried as a picture, else a link */
+export function fileKind(url: string): FileKind {
+  const ext = /\.([a-z0-9]{2,7})$/i.exec(fileName(url))?.[1]?.toLowerCase();
+  if (!ext) return 'unknown';
+  return (Object.keys(KINDS) as (keyof typeof KINDS)[]).find((k) => KINDS[k].includes(ext)) || 'file';
+}
+/** only a web address is ever opened or shown */
+export const safeFiles = (files: string[] | null | undefined): string[] => (Array.isArray(files) ? files : []).filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u));

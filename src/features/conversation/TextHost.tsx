@@ -20,6 +20,7 @@ import { phoneOwners } from '../customers/dupes';
 import { callLink } from '../booking/CallBanner';
 import { hermesOpen, setHermesOpen } from '../hermes/host';
 import { nextChats, openChat, minimiseChat, closeChat, unread, heads, textsOf, phoneId, lines, FRESH_MS, type Chat, type IncomingText } from './texts';
+import { Attachments } from './Attachments';
 import './conversation.css';
 
 const LS_CHATS = 'his-text-chats', LS_SINCE = 'his-text-since';
@@ -139,7 +140,7 @@ function ChatWindow(p: { chat: Chat; texts: IncomingText[]; who: string | null; 
   }, [p.chat.phone, p.customerId, newest]);
   // GoHighLevel's conversation, plus the texts that arrived here and are not in it yet (see lines())
   const shown: ChatMessage[] = lines(msgs, p.texts, (x) => ({ id: x.id, at: x.at, dir: 'in' as const, body: x.body || t('conversation.bubble.noWords'), kind: 'SMS', status: null }));
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [shown.length, shown[shown.length - 1]?.id]);
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [shown.length, shown[shown.length - 1]?.id, shown[shown.length - 1]?.files?.length]);
 
   const send = async () => {
     const m = text.trim();
@@ -168,7 +169,8 @@ function ChatWindow(p: { chat: Chat; texts: IncomingText[]; who: string | null; 
       <div class="conv-win-body" role="log" aria-live="polite" data-testid="text-window-list">
         {shown.map((m) => (
           <div key={m.id} class={`conv-msg is-${m.dir}`} data-testid={`text-window-${m.dir}`}>
-            <p>{m.body}</p>
+            <Attachments files={m.files} />
+            {m.body.trim() && <p>{m.body}</p>}
             <span class="conv-meta">{m.at ? stamp(m.at, l) : ''}</span>
           </div>
         ))}

@@ -431,6 +431,13 @@ test('the conversation with a customer: the texts both ways from GoHighLevel, an
   await fetch(`${MOCK}/ghl/_reply`, { method: 'POST', headers: { authorization: 'Bearer pit-x', 'content-type': 'application/json' }, body: JSON.stringify({ contactId: `ct_1438555${four}`, body: 'Parfait, merci!' }) });
   c = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
   assert.deepEqual(c.messages.map((m) => [m.dir, m.body]), [['out', 'Bonjour Rima, on passe demain matin.'], ['in', 'Parfait, merci!']]);
+  assert.deepEqual(c.messages.map((m) => m.files), [[], []]);
+  // the customer sends a picture with no words, then a document with some: both are in the conversation, with their addresses
+  const reply = (b) => fetch(`${MOCK}/ghl/_reply`, { method: 'POST', headers: { authorization: 'Bearer pit-x', 'content-type': 'application/json' }, body: JSON.stringify({ contactId: `ct_1438555${four}`, ...b }) });
+  await reply({ attachments: ['https://storage.test/media/pneu.jpg'] });
+  await reply({ body: 'Voici la facture', attachments: ['https://storage.test/media/facture.pdf', 'javascript:alert(1)'] });
+  c = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
+  assert.deepEqual(c.messages.slice(2).map((m) => [m.dir, m.body, m.files]), [['in', '', ['https://storage.test/media/pneu.jpg']], ['in', 'Voici la facture', ['https://storage.test/media/facture.pdf']]]);
   // kept in the app's own log
   assert.equal((await q(`select count(*)::int n from public.messages where customer_id = $1 and kind = 'chat' and status = 'sent'`, [cust]))[0].n, 1);
   // empty or too long: refused

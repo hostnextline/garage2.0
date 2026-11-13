@@ -352,6 +352,12 @@ end $do$;
   report), a garage item by the Trésorerie or « Rien » (`bad_from` otherwise). `coffre_report.stock_cents` = the Coffre stock's value
   at cost, shown on the Coffre screen with a link to that stock. Coffre items have no selling price.
 - Server function `conversation` (get/send): the customer's texts both ways through GoHighLevel.
+  Pictures and documents (MMS): each message carries `files` (the web addresses GoHighLevel gives in `attachments`, read by
+  `_shared/files.ts` `filesOf`; https only, 10 at most), and a message with a file and no words is kept. The app draws them in both
+  conversations (`src/features/conversation/Attachments.tsx`, rules `fileKind` / `fileName` in `texts.ts`): a picture in place (a tap
+  opens it), a video or voice note plays, anything else is a link. The files stay at GoHighLevel, nothing is copied to our server. A
+  text with no words in `incoming_texts` is shown as « 📎 Photo ou document » until GoHighLevel's list has its message (`lines`, 10 min).
+  Sending a picture from the app is not done.
   `{ action: 'contact', customer_id }` (`syncContact`): the customer's name and number go to their GoHighLevel contact (made, or the
   name put on a number already there); the app asks it by itself once a new customer, or a changed name / number, has reached the
   server (`sentHooks.customer` in `sync.ts`, set in `api.ts`). Deployed on live 2026-11-12; the app side is not published yet.

@@ -1,5 +1,5 @@
 // The conversation with a customer (the texts both ways, through the garage's GoHighLevel number):
-//   { action: 'get', customer_id }            → { status: ok|off|no_phone|error, messages: [{ id, at, dir: in|out, body, kind, status }] }
+//   { action: 'get', customer_id }            → { status: ok|off|no_phone|error, messages: [{ id, at, dir: in|out, body, kind, status, files: [the web addresses of its pictures and documents] }] }
 //   { action: 'send', customer_id, message }  → { status: sent|off|no_phone|error } (sent from the garage's number, kept in « messages »)
 //   { action: 'contact', customer_id }        → { status: ok|off|no_phone|error }: the customer's name and number go to their GoHighLevel
 //     contact (made when the number is new there, completed when it was there without the name); the app asks it when a file is
