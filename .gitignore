@@ -1,4 +1,5 @@
-node_modules/
+# no trailing slash: also the link to the main folder's packages that a worktree uses (it was committed once by accident)
+node_modules
 dist/
 coverage/
 *.log
