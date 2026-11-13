@@ -43,9 +43,14 @@ export async function pushState(): Promise<PushState> {
 }
 /** asks the permission, then tells the server where to alert this device. Throws { code: 'denied' | 'unsupported' } */
 export async function pushOn(): Promise<void> {
+  const can = ability();
+  if (can === 'unsupported' || can === 'install') throw Object.assign(new Error('unsupported'), { code: 'unsupported' });
+  // asked FIRST, before anything is awaited: Safari (Mac and iPhone) only shows the question while it still knows the
+  // person just pressed something; after a wait it refuses without asking
+  const asked = Notification.requestPermission();
   const reg = await registration();
-  if (ability() === 'unsupported' || ability() === 'install' || !reg) throw Object.assign(new Error('unsupported'), { code: 'unsupported' });
-  if ((await Notification.requestPermission()) !== 'granted') throw Object.assign(new Error('denied'), { code: 'denied' });
+  if ((await asked) !== 'granted') throw Object.assign(new Error('denied'), { code: 'denied' });
+  if (!reg) throw Object.assign(new Error('unsupported'), { code: 'unsupported' });
   const r = await callFn<{ key?: string }>('ring', { action: 'push-key' }, 20000);
   if (!r.ok || !r.key) throw new Error(r.error || 'push-key');
   const ask = () => reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes(r.key!) });

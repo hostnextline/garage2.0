@@ -163,7 +163,7 @@ function TextsPanel() {
   const [url, setUrl] = useState('');
   const mine = textsOn();
   const [alert, setAlert] = useState<PushState | null>(null);
-  useEffect(() => { let alive = true; void pushState().then((s) => { if (alive) setAlert(s); }).catch(() => undefined); return () => { alive = false; }; }, [mine]);
+  useEffect(() => { let alive = true; void pushState().catch(() => 'unsupported' as const).then((s) => { if (alive) setAlert(s); }); return () => { alive = false; }; }, [mine]);
   const setPush = async (v: boolean) => {
     try {
       if (v) await pushOn(); else await pushOff();
