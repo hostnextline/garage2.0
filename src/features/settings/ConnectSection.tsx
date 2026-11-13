@@ -1,10 +1,11 @@
 /* Branchements (owner): GoHighLevel (automatic texts and team invitations) and Stripe (« Payer » by card on invoices).
    The keys are written here once and kept on the server; the screen only learns whether each one is set. */
 import { useEffect, useState } from 'preact/hooks';
-import { MessageSquareText, CreditCard, Send, Unplug } from 'lucide-preact';
+import { MessageSquareText, CreditCard, Send, Unplug, PhoneCall, Copy } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { phoneDigits } from '../../lib/text';
-import { access } from '../../data/auth';
+import { access, callFn } from '../../data/auth';
+import { checkCalls } from '../booking/CallBanner';
 import { team, errorMessage } from '../../data/api';
 import { Panel, Field, Input, PhoneInput, Button, Pill, Banner, Skeleton, toast } from '../../ui';
 import { teamDo } from '../team/teamApi';
@@ -30,6 +31,7 @@ export function ConnectSection() {
       {state === 'loading' && !s && <Panel><Skeleton h={18} lines={3} /><p class="small muted" style={{ margin: 'var(--sp-3) 0 0' }}>{t('settings.connect.loading')}</p></Panel>}
       {state === 'error' && <Banner kind="warn" title={t('settings.connect.error')} action={<Button size="sm" onClick={() => void load()}>{t('common.retry')}</Button>}>{error}</Banner>}
       {s && <GhlPanel s={s} onChanged={load} />}
+      {s && <RingPanel />}
       {s && <StripePanel s={s} onChanged={load} />}
     </div>
   );
@@ -103,6 +105,51 @@ function GhlPanel(p: { s: Secrets; onChanged: () => Promise<void> }) {
           </Field>
           <Button icon={<Send size={18} />} onClick={test} data-testid="ghl-test">{t('settings.connect.test')}</Button>
         </div>
+      </div>
+    </Panel>
+  );
+}
+
+/** « Appels entrants »: the address GoHighLevel calls when the garage's number rings (made on the server, shown to the owner) */
+function RingPanel() {
+  const [url, setUrl] = useState('');
+  const link = async (renew = false) => {
+    try {
+      const r = await callFn<{ url?: string }>('ring', { action: 'link', renew }, 20000);
+      if (!r.ok || !r.url) throw new Error(r.error || '');
+      setUrl(r.url);
+      if (renew) toast(t('settings.connect.ringRenewed'), { kind: 'ok' });
+    } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); toast(t('settings.connect.ringCopied')); }
+    catch { toast(t('settings.connect.ringCopyFail'), { kind: 'bad' }); }
+  };
+  const tryIt = async () => {
+    try {
+      const r = await callFn('ring', { action: 'test' }, 20000);
+      if (!r.ok) throw new Error(r.error || '');
+      toast(t('settings.connect.ringTried'));
+      setTimeout(checkCalls, 800);
+    } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
+  };
+  return (
+    <Panel title={t('settings.connect.ring')} data-testid="connect-ring">
+      <div class="stack">
+        <p class="muted" style={{ margin: 0 }}><PhoneCall size={16} aria-hidden="true" /> {t('settings.connect.ringText')}</p>
+        {!url ? <div><Button variant="primary" onClick={() => link()} data-testid="ring-get">{t('settings.connect.ringGet')}</Button></div> : (
+          <>
+            <Field label={t('settings.connect.ringUrl')}>
+              <Input value={url} onValue={() => undefined} readOnly data-testid="ring-url" />
+            </Field>
+            <p class="small muted" style={{ margin: 0 }}>{t('settings.connect.ringSteps')}</p>
+            <div class="row-wrap">
+              <Button variant="primary" icon={<Copy size={18} />} onClick={copy} data-testid="ring-copy">{t('settings.connect.ringCopy')}</Button>
+              <Button variant="ghost" onClick={() => link(true)} data-testid="ring-renew">{t('settings.connect.ringRenew')}</Button>
+            </div>
+          </>
+        )}
+        <div><Button icon={<Send size={18} />} onClick={tryIt} data-testid="ring-try">{t('settings.connect.ringTry')}</Button></div>
       </div>
     </Panel>
   );

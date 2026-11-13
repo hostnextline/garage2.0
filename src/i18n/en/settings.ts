@@ -284,6 +284,18 @@ export const settings: typeof fr = {
     current: 'Chosen'
   },
   connect: {
+    ring: 'Incoming calls (GoHighLevel)',
+    ringText: 'When a call comes in on the garage’s number, the app shows “Incoming call” with the number and the name. For you only, for now.',
+    ringGet: 'Get the address to paste',
+    ringUrl: 'Address to paste in GoHighLevel',
+    ringSteps: 'In GoHighLevel: Automation, Create Workflow. Trigger: an inbound call (“Call Details” or “Call Status”, direction Inbound). Action: “Webhook”, method POST, and paste this address. Publish.',
+    ringCopy: 'Copy',
+    ringCopied: 'Address copied.',
+    ringCopyFail: 'Could not copy: select the address by hand.',
+    ringTry: 'Try it',
+    ringTried: 'A pretend call was sent: the banner shows in a few seconds.',
+    ringRenew: 'Change the address',
+    ringRenewed: 'New address: the old one no longer works. Paste the new one in GoHighLevel.',
     lead: 'The outside services that work for the app. The keys stay on the server: nobody can read them back, not even here.',
     loading: 'Checking what is connected…',
     error: 'The connections can’t be shown.',

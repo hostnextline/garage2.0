@@ -2,12 +2,12 @@
    their next appointment) with « Réserver pour … », their file, their appointment. Somebody new: « Par quoi on commence ? »
    L'adresse (when can we be in their area), La voiture, or La job (what it costs, how long): the booking screen opens in
    that order, the number already typed, the name asked last (#/book?call=1&start=…&phone=…). */
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { MapPin, Car, Wrench, CalendarPlus, UserRound, CalendarClock } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
 import { t, lang } from '../../lib/i18n';
 import { today, shortDate } from '../../lib/dates';
-import { phoneDigits } from '../../lib/text';
+import { phoneDigits, formatPhone } from '../../lib/text';
 import { customerName, vehiclesOf, vehicleLabel, jobsOfCustomer } from '../../data/select';
 import type { Customer } from '../../data/types';
 import { Page, Panel, Field, PhoneInput, Button, Avatar } from '../../ui';
@@ -19,7 +19,7 @@ import './booking.css';
 export type CallStart = 'address' | 'car' | 'job';
 export const CALL_STARTS: CallStart[] = ['address', 'car', 'job'];
 /** the booking screen for a new caller, starting with what they talk about first */
-export const callHref = (start: CallStart, phone: string) => `#/book?call=1&start=${start}${phone.trim() ? `&phone=${encodeURIComponent(phone.trim())}` : ''}`;
+export const callHref = (start: CallStart, phone: string, name = '') => `#/book?call=1&start=${start}${phone.trim() ? `&phone=${encodeURIComponent(phone.trim())}` : ''}${name.trim() ? `&name=${encodeURIComponent(name.trim())}` : ''}`;
 
 /** the customers whose number has these digits (3 at least), the best first */
 export function callMatches(all: Customer[], typed: string, docOf: (c: Customer) => SearchDoc | undefined): Customer[] {
@@ -27,8 +27,12 @@ export function callMatches(all: Customer[], typed: string, docOf: (c: Customer)
   return d.length >= 3 ? searchList(all, d, docOf).slice(0, 5) : [];
 }
 
-export default function CallScreen(_p: ScreenProps) {
-  const [phone, setPhone] = useState('');
+export default function CallScreen(p: ScreenProps) {
+  // #/call?phone=…&name=… (the « Appel entrant » banner of a call on the GoHighLevel number): the number already typed
+  const qPhone = p.query.get('phone') || '';
+  const name = p.query.get('name') || '';
+  const [phone, setPhone] = useState(() => (qPhone ? formatPhone(qPhone) : ''));
+  useEffect(() => { if (qPhone) setPhone(formatPhone(qPhone)); }, [qPhone]);
   const found = useMemo(() => callMatches(recentFirst.value, phone, (c) => searchIndex.value.get(c.id)), [phone, recentFirst.value, searchIndex.value]);
   const ICON = { address: MapPin, car: Car, job: Wrench };
   return (
@@ -48,12 +52,12 @@ export default function CallScreen(_p: ScreenProps) {
           </Panel>
         )}
 
-        <Panel title={found.length ? t('booking.call.notThem') : t('booking.call.newTitle')} sub={t('booking.call.newSub')}>
+        <Panel title={found.length ? t('booking.call.notThem') : t('booking.call.newTitle')} sub={name && !found.length ? t('booking.ring.newNamed', { name }) : t('booking.call.newSub')}>
           <div class="call-starts">
             {CALL_STARTS.map((s) => {
               const Icon = ICON[s];
               return (
-                <a key={s} class="call-start" href={callHref(s, phone)} data-testid={`call-start-${s}`}>
+                <a key={s} class="call-start" href={callHref(s, phone, name)} data-testid={`call-start-${s}`}>
                   <span class="call-start-icon" aria-hidden="true"><Icon size={26} /></span>
                   <span class="call-start-txt"><b>{t(`booking.call.start.${s}`)}</b><span>{t(`booking.call.start.${s}Sub`)}</span></span>
                 </a>

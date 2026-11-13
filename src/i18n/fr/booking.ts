@@ -107,6 +107,12 @@ export const booking = {
     noTruck: 'Aucun camion ne travaille ce jour-là pour l’instant : le rendez-vous est seul sur la carte.',
     note: 'Une estimation : l’app choisit l’ordre final des arrêts quand tu réserves.'
   },
+  ring: {
+    title: 'Appel entrant',
+    known: 'Un client qu’on connaît',
+    open: 'Ouvrir',
+    newNamed: 'GoHighLevel dit : {name}. Par quoi on commence ?'
+  },
   call: {
     title: 'Appel entrant',
     sub: 'Le numéro trouve le client. Quelqu’un de nouveau : commence par ce dont il parle.',

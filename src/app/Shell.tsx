@@ -22,6 +22,7 @@ import { CoffreHost } from '../features/coffre/host';
 import { startLocator } from './locator';
 import { ContextMenuHost } from '../features/agenda/ContextMenu';
 import { HermesHost } from '../features/hermes/host';
+import { CallHost } from '../features/booking/CallBanner';
 
 /* ---------- the screen for the current address ---------- */
 const loaded = new Map<string, ComponentType<ScreenProps>>();
@@ -263,6 +264,7 @@ export function Shell() {
       <CoffreHost />
       <ContextMenuHost />
       <HermesHost />
+      <CallHost />
     </div>
   );
 }

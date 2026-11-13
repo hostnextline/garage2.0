@@ -639,3 +639,40 @@ test('🤖 Hermes plugged in by the Hermes server itself: a one-time code (only 
     await q(`delete from public.rate_limits where key = 'hermes:pair'`);
   }
 });
+
+test('« Appel entrant » from GoHighLevel: the owner gets the address; a call posted there is noted with the number and the name; only the owner reads it', async () => {
+  const email = `meca-${randomUUID().slice(0, 6)}@test.local`;
+  const mech = await adminUser(email, 'motdepasse-2');
+  await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, 'Saleh', 'Saleh', '{mechanic}', $2)`, [mech, email]);
+  const mechJwt = (await signIn(email, 'motdepasse-2')).access_token;
+  try {
+    assert.equal((await fn('ring', { action: 'link' }, mechJwt)).code, 'not_allowed');
+    const a = await fn('ring', { action: 'link' }, ownerJwt);
+    assert.match(a.url, /\/functions\/v1\/ring\?k=[\w-]{20,}$/, JSON.stringify(a));
+    assert.equal((await fn('ring', { action: 'link' }, ownerJwt)).url, a.url, 'the same address the second time');
+    const key = new URL(a.url).searchParams.get('k');
+    const post = async (k, body) => { const r = await fetch(`${API}/functions/v1/ring?k=${k}`, { method: 'POST', headers: { apikey: K.anon, 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json()) }; };
+    // GoHighLevel's usual body: the contact's fields flat
+    assert.equal((await post(key, { contact_id: 'abc', first_name: 'Nadia', last_name: 'Roy', phone: '+14385550162' })).ok, true);
+    assert.equal((await post('wrong-key-wrong-key-wrong-key', { phone: '+14385550162' })).code, 'bad_key');
+    assert.equal((await post(key, { first_name: 'Sans', last_name: 'Numéro' })).code, 'no_phone');
+    const rows = await q(`select phone, name from public.incoming_calls order by at desc`);
+    assert.deepEqual(rows.map((r) => [r.phone, r.name]), [['+14385550162', 'Nadia Roy']]);
+    // the owner's app reads it; a mechanic's does not
+    const read = async (jwt) => (await fetch(`${API}/rest/v1/incoming_calls?select=phone,name`, { headers: { apikey: K.anon, authorization: `Bearer ${jwt}` } })).json();
+    assert.equal((await read(ownerJwt)).length, 1);
+    assert.equal((await read(mechJwt)).length, 0);
+    // a new address: the old one stops working
+    const b = await fn('ring', { action: 'link', renew: true }, ownerJwt);
+    assert.notEqual(b.url, a.url);
+    assert.equal((await post(key, { phone: '+14385550162' })).code, 'bad_key');
+    // « Essayer »: a pretend call
+    assert.equal((await fn('ring', { action: 'test' }, ownerJwt)).ok, true);
+    assert.equal((await q(`select count(*)::int as n from public.incoming_calls where name = 'Client TEST'`))[0].n, 1);
+  } finally {
+    await q(`delete from public.incoming_calls`);
+    await q(`delete from public.secrets where key = 'call_hook'`);
+    await q(`delete from public.rate_limits where key = 'ring'`);
+  }
+});
+

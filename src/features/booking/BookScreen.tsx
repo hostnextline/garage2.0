@@ -67,7 +67,8 @@ function BookForm({ query }: ScreenProps) {
   /* « Appel entrant »: a new caller, the panels in the order of the call */
   const isCall = query.get('call') === '1';
   const callStart = (['address', 'car', 'job'].includes(query.get('start') || '') ? query.get('start') : 'address') as CallStart;
-  const [caller, setCaller] = useState(() => ({ first: '', last: '', phone: query.get('phone') || '' }));
+  // the name GoHighLevel knows for this number (the « Appel entrant » banner): first word = first name
+  const [caller, setCaller] = useState(() => { const n = (query.get('name') || '').trim().split(/\s+/).filter(Boolean); return { first: n[0] || '', last: n.slice(1).join(' '), phone: query.get('phone') || '' }; });
   // the caller's cars (one, or several with « Ajouter une autre voiture »): each has its own work, like a known customer's cars
   const [cars, setCars] = useState<CallCar[]>(() => [{ id: uuid(), draft: EMPTY_CAR, mode: 'ymm' }]);
   const [callTried, setCallTried] = useState(false);

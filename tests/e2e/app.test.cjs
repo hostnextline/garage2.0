@@ -1873,3 +1873,32 @@ step('« La voiture ferme »: closing the car on a day that has an appointment a
   h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
   h.sql(`update public.trucks set active = false where id in ('${car}', '${big}')`);
 });
+
+step('« Appel entrant » from GoHighLevel: « Essayer » in Branchements shows the banner (number and name) to the owner; « Ouvrir » opens Appel entrant with the number', async () => {
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.owner.email, PW);
+  await page.goto(h.APP + '#/settings/connect');
+  await page.getByTestId('connect-ring').waitFor({ timeout: 20000 });
+  await page.getByTestId('ring-get').click();
+  await page.getByTestId('ring-url').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('ring-url').inputValue(), /\/functions\/v1\/ring\?k=/);
+  await page.getByTestId('ring-try').click();
+  const banner = page.getByTestId('call-banner');
+  await banner.waitFor({ timeout: 20000 });
+  assert.match(await banner.getByTestId('call-banner-who').innerText(), /Client TEST.*514 555-0100|514 555-0100/);
+  await h.shot(page, 'e2e-call-banner');
+  await banner.getByTestId('call-banner-open').click();
+  await page.getByTestId('call-screen').waitFor();
+  assert.match(await page.locator('[data-testid="call-screen"] input[type=tel]').inputValue(), /514.?555.?0100/);
+  assert.equal(await page.getByTestId('call-banner').count(), 0, 'the banner is closed once opened');
+  // somebody new: the name GoHighLevel knows is already in the booking
+  await page.getByTestId('call-start-job').click();
+  await page.getByTestId('book-screen').waitFor();
+  assert.equal(await page.getByTestId('call-first').inputValue(), 'Client');
+  assert.equal(await page.getByTestId('call-last').inputValue(), 'TEST');
+  noErrors(page);
+  await ctx.close();
+  h.sql(`delete from public.incoming_calls`);
+  h.sql(`delete from public.secrets where key = 'call_hook'`);
+});
+

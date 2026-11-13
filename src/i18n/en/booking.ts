@@ -107,6 +107,12 @@ export const booking: typeof fr = {
     noTruck: 'No truck works that day yet: the appointment is alone on the map.',
     note: 'An estimate: the app sets the final order of the stops when you book.'
   },
+  ring: {
+    title: 'Incoming call',
+    known: 'A customer we know',
+    open: 'Open',
+    newNamed: 'GoHighLevel says: {name}. Where do we start?'
+  },
   call: {
     title: 'Incoming call',
     sub: 'The number finds the customer. Someone new: start with what they talk about.',

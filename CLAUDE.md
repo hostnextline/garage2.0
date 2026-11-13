@@ -203,6 +203,12 @@ end $do$;
   Several cars for a new caller (`cars` in BookScreen, « Ajouter une autre voiture » `call-car-add`, tabs `call-car-tab-N`): each car
   typed has the id its file will get, so the per-car work (`carts`, `chooseVehicle`) and `bookCars` work as for a known customer's
   cars: one appointment per car, same block. With several cars, a car that has work must be described (`carBad`).
+- « Appel entrant » from GoHighLevel (Part 24 quaterdecies, `20261112000300_appel_ghl.sql`; function `ring`; `src/features/booking/CallBanner.tsx`):
+  a GoHighLevel automation (inbound call → Webhook POST) calls `ring?k=<key>` (the key is made by `{ action: 'link' }`, owner only, kept in
+  `secrets.call_hook`; `renew` changes it), which notes the call in `incoming_calls` (owner-only read, not backed up, a day kept). The
+  owner's app (`CallHost` in the shell: realtime + asked every 10 s) shows a banner with the number and the name (our customer's if the
+  number is on file) for 3 minutes; « Ouvrir » → `#/call?phone=…&name=…` (the name pre-fills a new caller). Réglages → Branchements →
+  « Appels entrants »: the address, the GoHighLevel steps, « Essayer » (`{ action: 'test' }`: a pretend call from « Client TEST »).
 - Oil always said (`CarFirst`, `OilHint`): the job card says what the oil change still needs (grade, quantity, filter: `oilLine().missing`)
   with « Compléter » (the car's « Fiche technique » `SpecPanel` in a sheet; without year/make/model, a link to the car); the booking
   screen shows the chosen car's oil under the car.
