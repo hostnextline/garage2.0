@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261112000200_voiture_camion.sql` (Part 24 terdecies, applied 2026-11-12 from commit `502e7a3`,
+- Applied on live: every migration up to `20261112000300_appel_ghl.sql` (Part 24 quaterdecies, applied 2026-11-12 from commit `665ba06`;
+  Part 24 terdecies applied 2026-11-12 from commit `502e7a3`,
   BEFORE its app is published: neutral while every vehicle has `tire_machine = true` and `shared_routes` is off;
   Part 24 duodecies applied 2026-11-12 from commit `a5d1edf`;
   Part 24 undecies applied 2026-11-11 from commit `2f75cc5`;
@@ -78,7 +79,7 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `notify`, `book` at `408de6c`; `conversation` at `2f7e0cb`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
+  `notify`, `book` at `408de6c`; `conversation` at `2f7e0cb`; `ring` at `665ba06`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
   the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
