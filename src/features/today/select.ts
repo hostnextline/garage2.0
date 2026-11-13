@@ -13,11 +13,24 @@ const live = (j: Job) => j.status !== 'cancelled' && j.status !== 'no_show';
 
 /** which « Aujourd'hui »: the mechanic's own day, the team's day (owner, office), or the money (treasurer only) */
 export type TodayRole = 'mechanic' | 'office' | 'treasurer';
+/** an owner (or the office) who is also a mechanic picks the day they look at: the team's or their own (kept on the phone) */
+export type DayView = 'office' | 'mechanic';
+const VIEW_KEY = 'his.dayView';
+export const dayView = signal<DayView>((() => { try { return localStorage.getItem(VIEW_KEY) === 'mechanic' ? 'mechanic' : 'office'; } catch { return 'office'; } })());
+export function setDayView(v: DayView) {
+  dayView.value = v;
+  try { localStorage.setItem(VIEW_KEY, v); } catch { /* private window */ }
+}
+export const hasTwoViews = () => (isOwner() || hasRole('office')) && hasRole('mechanic');
+/** pure: which day, from who the person is and the view picked */
+export function pickDay(x: { owner: boolean; office: boolean; mechanic: boolean; treasurer: boolean; agenda: boolean }, view: DayView): TodayRole {
+  if (x.owner || x.office) return x.mechanic && view === 'mechanic' ? 'mechanic' : 'office';
+  if (x.mechanic) return 'mechanic';
+  if (x.treasurer) return 'treasurer';
+  return x.agenda ? 'office' : 'treasurer';
+}
 export function todayRole(): TodayRole {
-  if (isOwner() || hasRole('office')) return 'office';
-  if (hasRole('mechanic')) return 'mechanic';
-  if (hasRole('treasurer')) return 'treasurer';
-  return can('agenda') ? 'office' : 'treasurer';
+  return pickDay({ owner: isOwner(), office: hasRole('office'), mechanic: hasRole('mechanic'), treasurer: hasRole('treasurer'), agenda: can('agenda') }, dayView.value);
 }
 
 /** re-draws every `ms` (time worked, « il y a 2 min ») */
