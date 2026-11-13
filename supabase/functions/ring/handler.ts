@@ -3,7 +3,8 @@
 //                  → the call is noted in « incoming_calls » (the owner's app shows it). The key is in the address, made here.
 //   POST ?k=<key>&t=sms  (GoHighLevel's automation « customer replied → webhook »; the same body with message: { body })
 //                  → the text is noted in « incoming_texts » (the owner's app opens the conversation bubble).
-//   { action: 'link', renew? }  (the owner, signed in) → { url, text_url }: the addresses to paste in GoHighLevel (a new key with renew)
+//   { action: 'link' }  (the owner, signed in) → { url, text_url }: the addresses to paste in GoHighLevel. The key is made once;
+//                  nobody changes it from the app (Hassan's rule): a new one is made on the server, on request.
 //   { action: 'test', kind? }   (the owner) → a pretend call, to see the banner (kind 'text': a pretend text, to see the bubble)
 //   { action: 'push-key' }      (the owner) → { key }: the garage's public key a device needs to ask for the alert while the
 //                  app is closed. A text is then also sent as a notification to the devices (« push_subs ») of the owners who
@@ -98,7 +99,8 @@ export const handler = serve(async (req) => {
     if (!c.access.owner) fail('not_allowed', 'Seul le propriétaire branche les appels entrants.', 403);
     if (b.action === 'link') {
       let key = await secret('call_hook');
-      if (!key || b.renew === true) { key = newToken(24); await setSecrets({ call_hook: key }, c.id); }
+      if (b.renew === true) fail('not_allowed', 'L’adresse ne se change pas depuis l’app.', 403);
+      if (!key) { key = newToken(24); await setSecrets({ call_hook: key }, c.id); }
       const url = `${env('SUPABASE_URL').replace(/\/+$/, '')}/functions/v1/ring?k=${key}`;
       return json({ ok: true, url, text_url: `${url}&t=sms` });
     }

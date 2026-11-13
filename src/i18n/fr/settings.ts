@@ -316,8 +316,6 @@ export const settings = {
     ringCopyFail: 'Copie impossible : sélectionne l’adresse à la main.',
     ringTry: 'Essayer',
     ringTried: 'Un faux appel est parti : la bannière s’affiche dans quelques secondes.',
-    ringRenew: 'Changer l’adresse',
-    ringRenewed: 'Nouvelle adresse : l’ancienne ne marche plus. Colle la nouvelle dans GoHighLevel, pour les appels et pour les textos.',
     lead: 'Les services extérieurs qui travaillent pour l’app. Les clés restent sur le serveur : personne ne peut les relire, même ici.',
     loading: 'Je regarde ce qui est branché…',
     error: 'Les branchements ne s’affichent pas.',

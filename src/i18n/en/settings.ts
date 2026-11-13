@@ -316,8 +316,6 @@ export const settings: typeof fr = {
     ringCopyFail: 'Could not copy: select the address by hand.',
     ringTry: 'Try it',
     ringTried: 'A pretend call was sent: the banner shows in a few seconds.',
-    ringRenew: 'Change the address',
-    ringRenewed: 'New address: the old one no longer works. Paste the new one in GoHighLevel, for the calls and for the texts.',
     lead: 'The outside services that work for the app. The keys stay on the server: nobody can read them back, not even here.',
     loading: 'Checking what is connected…',
     error: 'The connections can’t be shown.',

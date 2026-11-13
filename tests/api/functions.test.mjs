@@ -670,10 +670,9 @@ test('« Appel entrant » from GoHighLevel: the owner gets the address; a call p
     assert.ok(on.ok, 'update_me: ' + on.status + ' ' + (await on.clone().text()));
     assert.equal((await read(ownerJwt)).length, 1);
     assert.equal((await read(mechJwt)).length, 0);
-    // a new address: the old one stops working
-    const b = await fn('ring', { action: 'link', renew: true }, ownerJwt);
-    assert.notEqual(b.url, a.url);
-    assert.equal((await post(key, { phone: '+14385550162' })).code, 'bad_key');
+    // nobody changes the address from the app: it stays the same
+    assert.equal((await fn('ring', { action: 'link', renew: true }, ownerJwt)).code, 'not_allowed');
+    assert.equal((await fn('ring', { action: 'link' }, ownerJwt)).url, a.url);
     // « Essayer »: a pretend call
     assert.equal((await fn('ring', { action: 'test' }, ownerJwt)).ok, true);
     assert.equal((await q(`select count(*)::int as n from public.incoming_calls where name = 'Client TEST'`))[0].n, 1);

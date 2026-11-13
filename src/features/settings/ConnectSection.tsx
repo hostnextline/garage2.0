@@ -122,12 +122,11 @@ function RingPanel() {
     await refreshAccess();
     toast(t(v ? 'settings.connect.callsMineOn' : 'settings.connect.callsMineOff'), { kind: 'ok' });
   };
-  const link = async (renew = false) => {
+  const link = async () => {
     try {
-      const r = await callFn<{ url?: string }>('ring', { action: 'link', renew }, 20000);
+      const r = await callFn<{ url?: string }>('ring', { action: 'link' }, 20000);
       if (!r.ok || !r.url) throw new Error(r.error || '');
       setUrl(r.url);
-      if (renew) toast(t('settings.connect.ringRenewed'), { kind: 'ok' });
     } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
   };
   const copy = async () => {
@@ -155,7 +154,6 @@ function RingPanel() {
             <p class="small muted" style={{ margin: 0 }}>{t('settings.connect.ringSteps')}</p>
             <div class="row-wrap">
               <Button variant="primary" icon={<Copy size={18} />} onClick={copy} data-testid="ring-copy">{t('settings.connect.ringCopy')}</Button>
-              <Button variant="ghost" onClick={() => link(true)} data-testid="ring-renew">{t('settings.connect.ringRenew')}</Button>
             </div>
           </>
         )}
