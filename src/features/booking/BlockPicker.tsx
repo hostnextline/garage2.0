@@ -1,19 +1,21 @@
 /* Choose the day and block: the best suggestions near the address first (they need the network), then a two-week
    calendar coloured by the room left (works with the copy on the phone). Shared: booking, moving a job. */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon, Car, Truck, ListOrdered } from 'lucide-preact';
+import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon, Car, Truck, ListOrdered, Route } from 'lucide-preact';
 import { today as todayOf, addDays, daysBetween, tinyDay, longDay, duration, clockRange, isValidDay, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { blocks, blockLoad, settings, job as jobRow, activeTrucks } from '../../data/select';
 import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
-import { cellState, type CellState } from './logic';
+import { cellState, isFar, farLimits, farInfo, momentsByKey, offered, betterMoments, betterText, roadWords, type CellState, type FarInfo } from './logic';
 import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
+import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';
 import { fromDevice } from '../map/device';
 import { blockPhrase, blockPhraseWithHours, spanEnds } from './when';
+export type { FarInfo };
 import './booking.css';
 
 export interface BlockChoice { day: string; block: BlockKey; truck_id?: string | null }
@@ -34,6 +36,9 @@ export interface BlockPickerProps {
   /** the vehicle asked for, and the switch « Peu importe / Voiture / Camion » (shown when the garage has both) */
   kind?: VehicleKind;
   onKind?: (k: VehicleKind) => void;
+  /** « garde-route »: the moment chosen puts too much road in the truck's day (the warning in words), or null; said
+      again whenever it changes, also for a choice that came from outside once the suggestions are there */
+  onFar?: (far: FarInfo | null) => void;
 }
 export type VehicleKind = 'car' | 'truck' | null;
 
@@ -55,12 +60,15 @@ export function BlockPicker(p: BlockPickerProps) {
   const [sugg, setSugg] = useState<SuggState>({ status: 'loading', list: [] });
   /* which stop of its route the appointment would be at each moment offered (the phone's copy of the day, the same
      estimate as « Voir sur la carte ») */
-  const ranks = useMemo(() => sugg.list.map((s) => {
+  /* every moment of the page is kept (the calendar marks the far ones); only the good ones are offered */
+  const shown = useMemo(() => offered(sugg.list, 6), [sugg.list]);
+  const moments = useMemo(() => momentsByKey(sugg.list), [sugg.list]);
+  const ranks = useMemo(() => shown.map((s) => {
     if (p.lat == null || p.lng == null) return null;
     const day = fromDevice(s.day);
     const base = p.excludeJob ? { ...day, jobs: day.jobs.filter((j) => j.id !== p.excludeJob) } : day;
     return stopRank(base, { day: s.day, block: s.block, truckId: s.truck, lat: p.lat, lng: p.lng, name: '', address: '' });
-  }), [sugg.list, p.lat, p.lng, p.excludeJob]);
+  }), [shown, p.lat, p.lng, p.excludeJob]);
   const [retry, setRetry] = useState(0);
   const online = net.value.online;
   useEffect(() => {
@@ -72,7 +80,7 @@ export function BlockPicker(p: BlockPickerProps) {
         const list = await suggestBlocks(p.lat, p.lng, dur, today, PAGE, p.excludeJob ?? null, !!p.need, p.need ? null : p.kind ?? null);
         if (!alive) return;
         const mine = p.truckId ? list.filter((x) => !x.truck || x.truck === p.truckId) : list;
-        setSugg({ status: 'ok', list: mine.filter((x) => isValidDay(String(x.day))).slice(0, 6) });
+        setSugg({ status: 'ok', list: mine.filter((x) => isValidDay(String(x.day))) });
       } catch (e) {
         if (alive) setSugg({ status: isNetworkError(e) ? 'offline' : 'error', list: [] });
       }
@@ -110,6 +118,13 @@ export function BlockPicker(p: BlockPickerProps) {
     const load = blockLoad(p.value.day, p.value.block);
     return cellState(load, dur, drive, { truckId: p.truckId, exclude: p.excludeJob, unknownMin: drive });
   })() : null;
+
+  /* « garde-route »: the moment chosen is far from the truck's other stops that day (the server's score) */
+  const limits = farLimits(settings.value.booking);
+  const pickedMoment = p.value && sugg.status !== 'offline' && sugg.status !== 'error' ? moments.get(keyOf(p.value.day, p.value.block)) : undefined;
+  const far = farInfo(pickedMoment, limits, l);
+  const better = far && pickedMoment ? betterMoments(pickedMoment, sugg.list, 2) : [];
+  useEffect(() => { p.onFar?.(far); }, [far?.day, far?.block, far?.text]);
 
   /* the selection is said out loud */
   const [said, setSaid] = useState('');
@@ -180,6 +195,24 @@ export function BlockPicker(p: BlockPickerProps) {
       {preview && <RoutePreview ask={preview} onClose={() => setPreview(null)} onPick={() => pick(preview.day, preview.block as BlockKey)} />}
       {p.value && pickedCell?.state === 'full' && <Banner kind="warn">{t('booking.picker.fullWarn')}</Banner>}
       {p.value && pickedCell?.state === 'tight' && <Banner kind="info">{t('booking.picker.tightWarn')}</Banner>}
+      {far && (
+        <Banner kind="bad" data-testid="bp-far-warn">
+          <span>{far.text}</span>
+          {better.length > 0 && (
+            <span class="bp-far-better">
+              {better.map((b) => (
+                <Button key={keyOf(b.moment.day, b.moment.block)} size="sm" onClick={() => pick(b.moment.day, b.moment.block)} data-testid="bp-far-better">{betterText(b, today, l)}</Button>
+              ))}
+            </span>
+          )}
+        </Banner>
+      )}
+
+      {/* the map first: the days, the appointments around, the day's routes with the new stop (needs a position) */}
+      {p.lat != null && p.lng != null && (
+        <MomentMap lat={p.lat} lng={p.lng} address={p.address || ''} cells={cells} list={sugg.status === 'offline' || sugg.status === 'error' ? [] : sugg.list}
+          value={p.value} onPick={pick} excludeJob={p.excludeJob} truckId={p.truckId} />
+      )}
 
       {/* suggestions */}
       <section class="bp-sugg" aria-labelledby="bp-sugg-title">
@@ -199,16 +232,16 @@ export function BlockPicker(p: BlockPickerProps) {
           </div>
         )}
         {sugg.status === 'ok' && (p.lat == null || p.lng == null) && <p class="faint small bp-note"><MapPin size={14} aria-hidden="true" /> {t('booking.picker.noPosition')}</p>}
-        {sugg.status === 'loading' && !sugg.list.length && <div class="bp-sugg-skel" aria-busy="true"><span class="sr-only">{t('booking.picker.loading')}</span><Skeleton h={52} lines={3} /></div>}
+        {sugg.status === 'loading' && !shown.length && <div class="bp-sugg-skel" aria-busy="true"><span class="sr-only">{t('booking.picker.loading')}</span><Skeleton h={52} lines={3} /></div>}
         {sugg.status === 'offline' && <p class="muted small bp-note">{t('booking.picker.offline')}</p>}
         {sugg.status === 'error' && <p class="muted small bp-note">{t('booking.picker.error')}</p>}
-        {sugg.status === 'ok' && !sugg.list.length && <p class="muted small bp-note">{t('booking.picker.none', { d: duration(dur, l) })}</p>}
-        {sugg.list.length > 0 && sugg.status !== 'offline' && sugg.status !== 'error' && (
+        {sugg.status === 'ok' && !shown.length && <p class="muted small bp-note">{t('booking.picker.none', { d: duration(dur, l) })}</p>}
+        {shown.length > 0 && sugg.status !== 'offline' && sugg.status !== 'error' && (
           <div class={`bp-sugg-list${sugg.status === 'loading' ? ' is-stale' : ''}`} role="group" aria-label={t('booking.picker.title')}>
-            {sugg.list.map((s, i) => {
+            {shown.map((s, i) => {
               const on = isPicked(s.day, s.block);
               const bits = [
-                p.lat != null && p.lng != null ? (s.drive_min <= 2 ? t('booking.picker.noDrive') : t('booking.picker.drive', { d: duration(s.drive_min, l) })) : '',
+                p.lat != null && p.lng != null ? roadWords(s, l) : '',
                 t('booking.picker.near', { n: s.near }),
                 s.left != null && s.left > 0 ? t('booking.picker.free', { d: duration(s.left, l) }) : ''
               ].filter(Boolean);
@@ -258,14 +291,17 @@ export function BlockPicker(p: BlockPickerProps) {
                     const on = isPicked(r.day, c.key);
                     const off = c.state === 'closed' || c.state === 'started';
                     const cur = isCurrent(r.day, c.key);
-                    const label = t('booking.picker.cellLabel', { day: longDay(r.day, l), block: t(`common.blocks.${c.key}`).toLowerCase(), state: stateWords(c.state, c.left) }) + (cur ? ` (${t('booking.picker.current').toLowerCase()})` : '');
+                    // far from the truck's other stops that day: marked, still pickable (never said of the block the job is in now)
+                    const farCell = !off && !cur && sugg.status !== 'offline' && sugg.status !== 'error' && isFar(moments.get(k));
+                    const label = t('booking.picker.cellLabel', { day: longDay(r.day, l), block: t(`common.blocks.${c.key}`).toLowerCase(), state: stateWords(c.state, c.left) }) + (farCell ? `, ${t('booking.far.cell')}` : '') + (cur ? ` (${t('booking.picker.current').toLowerCase()})` : '');
                     return (
                       <td key={c.key}>
-                        <button type="button" class={`bp-cell is-${c.state}${on ? ' is-on' : ''}${cur ? ' is-current' : ''}`} data-k={k} tabIndex={k === currentKey ? 0 : -1}
+                        <button type="button" class={`bp-cell is-${c.state}${on ? ' is-on' : ''}${cur ? ' is-current' : ''}${farCell ? ' is-far' : ''}`} data-k={k} tabIndex={k === currentKey ? 0 : -1}
                           aria-pressed={on} aria-disabled={off || undefined} aria-label={label} title={label}
                           onClick={() => { setFocusKey(k); if (!off) pick(r.day, c.key); }} {...(off ? {} : menuProps(r.day, c.key))} data-testid={`bp-cell-${r.day}-${c.key}`}>
                           {on && <Check size={16} aria-hidden="true" />}
                           <span>{t(`booking.picker.state.${c.state}`, { d: duration(c.left, l) })}</span>
+                          {farCell && <Route class="bp-far-mark" size={13} aria-hidden="true" />}
                         </button>
                       </td>
                     );
@@ -279,6 +315,7 @@ export function BlockPicker(p: BlockPickerProps) {
         <div class="bp-foot">
           <ul class="bp-legend" aria-hidden="true">
             {(['ok', 'tight', 'full', 'closed'] as const).map((s) => <li key={s}><span class={`bp-swatch is-${s}`} />{t(`booking.picker.legend.${s}`)}</li>)}
+            {[...moments.values()].some(isFar) && <li data-testid="bp-legend-far"><span class="bp-swatch is-far"><Route size={11} /></span>{t('booking.far.legend')}</li>}
           </ul>
           <span class="row">
             {page > 0 && <Button size="sm" icon={<ChevronLeft />} onClick={() => setPage(page - 1)} data-testid="bp-earlier">{t('booking.picker.earlier')}</Button>}

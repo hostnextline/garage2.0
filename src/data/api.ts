@@ -264,9 +264,14 @@ function inTime<T>(p: PromiseLike<T>, ms = 15000): Promise<T> {
   });
 }
 export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
-  const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 6, p_need: need, p_kind: kind }));
+  const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 60, p_need: need, p_kind: kind }));
   if (error) throw error;
-  return (data || []) as { day: string; block: BlockKey; drive_min: number; near: number; truck: string | null; left: number }[];
+  /* every moment of the page, the best first. « Garde-route » (optional: an older server does not send them): what the
+     job adds to the truck's whole day (add_min, add_km), the day's driving with it (day_min), the longest drive to a
+     neighbouring customer that day (hop_min, null without another stop), the truck's other stops (stops), and
+     far = 'hop' | 'day' when a limit of the settings is passed (null = fine) */
+  return (data || []) as { day: string; block: BlockKey; pos?: number; drive_min: number; near: number; truck: string | null; left: number;
+    add_min?: number; add_km?: number; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null }[];
 }
 export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
   const { data, error } = await inTime(sb.rpc(name, args), ms);

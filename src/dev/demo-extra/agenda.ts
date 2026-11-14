@@ -116,7 +116,20 @@ function registerOps() {
     const days = Math.max(1, Math.min(60, Number(a.p_days || 14)));
     const dur = Number(a.p_duration) || 60, exclude = (a.p_exclude as string) || null, limit = Math.max(1, Number(a.p_limit || 6));
     const here = a.p_lat != null && a.p_lng != null ? { lat: Number(a.p_lat), lng: Number(a.p_lng) } : null;
-    const out: { day: string; block: string; pos: number; drive_min: number; near: number; truck: string; left: number }[] = [];
+    // « garde-route »: the two limits of the settings
+    const bk = (find('settings', '1')?.booking || {}) as { max_hop_min?: number; max_day_drive_min?: number };
+    const maxHop = Number(bk.max_hop_min) || 35, maxDay = Number(bk.max_day_drive_min) || 105;
+    const mins = (k: number) => Math.ceil((k * 1.3) / 35 * 60);
+    type P = { lat: number; lng: number };
+    /** the minutes and km of a day's route, in a straight line with the detour: the start, each stop, back to the start */
+    const route = (stops: P[]) => {
+      let m = 0, k = 0;
+      const all = stops.length ? [HOME, ...stops, HOME] : [];
+      for (let i = 1; i < all.length; i++) { const d = km(all[i - 1], all[i]); m += mins(d); k += d * 1.3; }
+      return { m, k };
+    };
+    const out: { day: string; block: string; pos: number; drive_min: number; near: number; truck: string; left: number;
+      add_min: number; add_km: number; day_min: number; hop_min: number | null; stops: number; far: 'hop' | 'day' | null }[] = [];
     for (let i = 0; i < days; i++) {
       const day = addDays(from, i);
       for (const block of ['am', 'pm', 'eve']) {
@@ -124,14 +137,31 @@ function registerOps() {
         const p = placeIn(day, block, dur, null, exclude);
         if ('refusal' in p) continue;
         const others = table('jobs').filter((j) => j.day === day && j.block === block && j.id !== exclude && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status)));
-        const pts = others.map(pointOf).filter(Boolean) as { lat: number; lng: number }[];
+        const pts = others.map(pointOf).filter(Boolean) as P[];
         const nearest = here ? Math.min(km(HOME, here), ...pts.map((q) => km(q, here))) : 0;
         const drive = here ? Math.ceil((nearest * 1.3) / 35 * 60) : 20;
         const near = here ? pts.filter((q) => km(q, here) <= 5).length : 0;
-        out.push({ day, block, pos: POS[block], drive_min: drive, near, truck: p.truck, left: Math.max(0, p.left) });
+        /* the whole day of that truck (every block, in order): its other stops, the job put where it adds the least
+           among the stops of its own block */
+        const mine = table('jobs').filter((j) => j.truck_id === p.truck && j.day === day && j.id !== exclude && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status)))
+          .sort((x, y) => POS[String(x.block)] - POS[String(y.block)] || Number(x.stop_order ?? 99) - Number(y.stop_order ?? 99));
+        const placed = mine.map((j) => ({ pos: POS[String(j.block)], at: pointOf(j) })).filter((x) => x.at) as { pos: number; at: P }[];
+        const line = placed.map((x) => x.at);
+        const base = route(line);
+        let add_min = drive, add_km = 0, day_min = base.m + drive, hop_min: number | null = null;
+        if (here) {
+          const lo = placed.filter((x) => x.pos < POS[block]).length, hi = placed.filter((x) => x.pos <= POS[block]).length;
+          let best = { m: Infinity, k: 0 };
+          for (let at = lo; at <= hi; at++) { const r = route([...line.slice(0, at), here, ...line.slice(at)]); if (r.m < best.m) best = r; }
+          day_min = best.m; add_min = Math.max(0, best.m - base.m); add_km = Math.round(Math.max(0, best.k - base.k) * 10) / 10;
+          if (line.length) hop_min = mins(Math.min(...line.map((q) => km(q, here))));
+        }
+        const far = hop_min != null && hop_min > maxHop ? 'hop' as const : mine.length > 0 && day_min > maxDay ? 'day' as const : null;
+        out.push({ day, block, pos: POS[block], drive_min: drive, near, truck: p.truck, left: Math.max(0, p.left), add_min, add_km, day_min, hop_min, stops: mine.length, far });
       }
     }
-    out.sort((x, y) => x.drive_min - y.drive_min || y.near - x.near || x.day.localeCompare(y.day) || x.pos - y.pos);
+    // the server's order: the good moments first, then what the job adds to the day
+    out.sort((x, y) => Number(!!x.far) - Number(!!y.far) || x.add_min - y.add_min || y.near - x.near || x.day.localeCompare(y.day) || x.pos - y.pos);
     return out.slice(0, limit);
   });
 

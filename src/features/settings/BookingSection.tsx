@@ -19,6 +19,8 @@ interface Booking {
   blocks: { key: BlockKey; start: number; end: number }[];
   horizon_days: number | null; speed_kmh: number | null; detour_pct: number | null; stop_min: number | null; unknown_min: number | null;
   min_block_min: number | null; near_km: number | null;
+  /** « garde-route »: past these, a moment is said « loin des autres arrêts » when booking (no re-plan) */
+  max_hop_min: number | null; max_day_drive_min: number | null;
   home: { label: string; address: string; lat: number | null; lng: number | null };
   /** the number texted when a mechanic heads back after the last job (arrival time, live map) */
   return_phone: string;
@@ -32,9 +34,11 @@ const NUMS: { k: keyof Booking; min: number; max: number; unit: 'days' | 'kmh' |
   { k: 'stop_min', min: 0, max: 60, unit: 'min' },
   { k: 'unknown_min', min: 5, max: 120, unit: 'min' },
   { k: 'min_block_min', min: 15, max: 240, unit: 'min' },
-  { k: 'near_km', min: 1, max: 50, unit: 'km', decimals: true }
+  { k: 'near_km', min: 1, max: 50, unit: 'km', decimals: true },
+  { k: 'max_hop_min', min: 10, max: 120, unit: 'min' },
+  { k: 'max_day_drive_min', min: 30, max: 480, unit: 'min' }
 ];
-const LABEL: Record<string, string> = { horizon_days: 'horizon', speed_kmh: 'speed', detour_pct: 'detour', stop_min: 'stop', unknown_min: 'unknown', min_block_min: 'minBlock', near_km: 'near' };
+const LABEL: Record<string, string> = { horizon_days: 'horizon', speed_kmh: 'speed', detour_pct: 'detour', stop_min: 'stop', unknown_min: 'unknown', min_block_min: 'minBlock', near_km: 'near', max_hop_min: 'maxHop', max_day_drive_min: 'maxDay' };
 /** what the planner counts: when one of these changes, the coming appointments are planned again */
 const planOf = (x: Pick<Booking, 'blocks' | 'speed_kmh' | 'detour_pct' | 'stop_min' | 'unknown_min' | 'min_block_min' | 'home'>) =>
   JSON.stringify([x.home.lat, x.home.lng, x.speed_kmh, x.detour_pct, x.stop_min, x.unknown_min, x.min_block_min, x.blocks.map((b) => [b.key, b.start, b.end])]);
@@ -46,6 +50,7 @@ export function BookingSection() {
     blocks: (['am', 'pm', 'eve'] as BlockKey[]).map((k) => blocksSaved.find((x) => x.key === k) || DEFAULT_BLOCKS.find((x) => x.key === k)!),
     horizon_days: b.horizon_days, speed_kmh: b.speed_kmh, detour_pct: Math.round(((Number(b.detour) || 1.3) - 1) * 100), stop_min: b.stop_min,
     unknown_min: b.unknown_min, min_block_min: b.min_block_min, near_km: b.near_km,
+    max_hop_min: Number(b.max_hop_min) || 35, max_day_drive_min: Number(b.max_day_drive_min) || 105,
     home: { label: b.home?.label || 'Centrale', address: b.home?.address || '', lat: b.home?.lat ?? null, lng: b.home?.lng ?? null },
     return_phone: b.return_phone || '',
     shared_routes: !!(b as { shared_routes?: boolean }).shared_routes
@@ -73,6 +78,7 @@ export function BookingSection() {
     const ok = await attempt(() => saveSettings('booking', {
       ...settings.value.booking, blocks: d.blocks, horizon_days: Math.round(d.horizon_days!), speed_kmh: d.speed_kmh, detour: Math.round(100 + d.detour_pct!) / 100,
       stop_min: Math.round(d.stop_min!), unknown_min: Math.round(d.unknown_min!), min_block_min: Math.round(d.min_block_min!), near_km: d.near_km, home,
+      max_hop_min: Math.round(d.max_hop_min!), max_day_drive_min: Math.round(d.max_day_drive_min!),
       return_phone: d.return_phone.trim() || null, shared_routes: d.shared_routes
     }), { ok: replan ? t(moved ? 'settings.booking.startMoved' : 'settings.booking.replanned') : t('settings.saved') });
     if (!ok) return;

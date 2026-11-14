@@ -15,7 +15,7 @@ export function loadDemoData() {
     id: '1',
     company: { name: 'Mécanique Mobile H.I.S', legal_name: 'Mécanique Mobile H.I.S', phone: '438 901-6606', email: 'host.nextline@gmail.com', address: '8255 av. Mountain Sights, Montréal, QC H4P 2B5', tps_no: '775958648 RT0001', tvq_no: '1234321141 TQ0001', footer_fr: 'Merci de votre confiance !', footer_en: 'Thank you for your trust!' },
     taxes: { enabled: true, tps: 0.05, tvq: 0.09975 },
-    booking: { blocks: [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }], horizon_days: 120, speed_kmh: 35, detour: 1.3, stop_min: 5, unknown_min: 20, min_block_min: 45, near_km: 5,
+    booking: { blocks: [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }], horizon_days: 120, speed_kmh: 35, detour: 1.3, stop_min: 5, unknown_min: 20, min_block_min: 45, near_km: 5, max_hop_min: 35, max_day_drive_min: 105,
       home: { label: 'Centrale', address: '8255 av. Mountain Sights, Montréal, QC H4P 2B5', lat: 45.5005053, lng: -73.6577429 } },
     billing: { invoice_prefix: 'F-', pad: 4, due_days: 0, hourly_cents: 11500, travel: { cents: 0, free_over_cents: null }, goal_cents: 2500000 },
     messages: { on: { booking: true, moved: true, en_route: true, invoice: true, extras: true, reminder: false }, fr: { booking: 'Bonjour {prenom}, votre rendez-vous avec {garage} est confirmé : {jour}, entre {debut} et {fin}. Détails : {lien}' }, en: { booking: 'Hello {prenom}, your appointment with {garage} is confirmed: {jour}, between {debut} and {fin}. Details: {lien}' } },
