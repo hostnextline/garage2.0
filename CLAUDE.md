@@ -81,7 +81,7 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `notify`, `book` at `408de6c`; `conversation`, `ring` at `4142fac`; `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
+  `notify`, `book` at `408de6c`; `conversation`, `ring` at `5f6640b` (2026-11-13, pictures and documents; before: `4142fac`); `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
   the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
