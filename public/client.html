@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr-CA" data-theme="his">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Mécanique Mobile H.I.S</title>
+    <meta name="description" content="Votre rendez-vous, votre facture et le suivi du camion de Mécanique Mobile H.I.S." />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="theme-color" content="#E7EAEE" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/png" href="./icons/favicon-64.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="preload" as="image" href="./logo-his.png" imagesrcset="./icons/icon-192.png 192w, ./logo-his.png 320w" imagesizes="48px" />
+    <script>
+      /* the phone's light or dark before anything shows (no white flash at night) */
+      try {
+        var dark = matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.mode = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#E7EAEE';
+        if (/[#&]l=en\b/.test(location.hash)) document.documentElement.lang = 'en-CA';
+        /* the build adds the team app's manifest to every page: a customer's page is not an app to install */
+        var noManifest = function () { var l = document.querySelector('link[rel="manifest"]'); if (l) l.parentNode.removeChild(l); };
+        var mo = new MutationObserver(noManifest);
+        mo.observe(document.head, { childList: true });
+        addEventListener('DOMContentLoaded', function () { mo.disconnect(); noManifest(); });
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="./assets/client-C5Pok3Sw.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/locate-9wxWxD0z.js">
+    <link rel="modulepreload" crossorigin href="./assets/phone-DiZE2fH6.js">
+    <link rel="modulepreload" crossorigin href="./assets/map-pin-CVR53xyS.js">
+    <link rel="modulepreload" crossorigin href="./assets/mail-Dh9nWmQA.js">
+    <link rel="modulepreload" crossorigin href="./assets/signature-CSZvjqb4.js">
+    <link rel="modulepreload" crossorigin href="./assets/SignaturePad-2I4lVkzZ.js">
+    <link rel="modulepreload" crossorigin href="./assets/credit-card-Ceea4ojE.js">
+    <link rel="modulepreload" crossorigin href="./assets/pen-line-BeX6EsUI.js">
+    <link rel="modulepreload" crossorigin href="./assets/sparkles-C7MIE8fx.js">
+    <link rel="stylesheet" crossorigin href="./assets/locate-CM2zjfPw.css">
+    <link rel="stylesheet" crossorigin href="./assets/client-L_O7M7_1.css">
+  <link rel="manifest" href="./manifest.webmanifest"></head>
+  <body>
+    <div id="client"></div>
+    <noscript>Cette page a besoin de JavaScript. Appelez le garage. / This page needs JavaScript. Please call the garage.</noscript>
+  </body>
+</html>
