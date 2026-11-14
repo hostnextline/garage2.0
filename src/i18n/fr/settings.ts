@@ -288,12 +288,12 @@ export const settings = {
     textsText: 'Quand quelqu’un texte le numéro du garage, une petite bulle de conversation s’ouvre dans l’app, en bas de l’écran. Tu peux répondre, la réduire ou la fermer.',
     alert: 'M’avertir quand l’app est fermée',
     alertHint: {
-      off: 'Une notification sur cet appareil-ci à chaque texto. À refaire sur chaque téléphone ou ordinateur où tu veux être averti.',
+      off: 'Une notification sur cet appareil-ci à chaque texto ou appel que ton compte reçoit. À refaire sur chaque téléphone ou ordinateur où tu veux être averti.',
       denied: 'Les notifications sont bloquées pour l’app sur cet appareil. Permets-les dans les réglages de l’appareil, puis reviens ici.',
       install: 'Sur iPhone : ajoute d’abord l’app à l’écran d’accueil (bouton Partager, « Sur l’écran d’accueil »), ouvre-la de là, puis reviens ici.',
       unsupported: 'Ce navigateur ne peut pas recevoir de notifications. Essaie avec l’app installée, ou avec Chrome ou Safari.'
     },
-    alertOn: 'Cet appareil t’avertira à chaque texto, même l’app fermée.',
+    alertOn: 'Cet appareil t’avertira à chaque texto ou appel que ton compte reçoit, même l’app fermée.',
     alertOff: 'Cet appareil ne t’avertira plus.',
     textsMine: 'Recevoir les textos dans mon compte',
     textsMineHint: 'Seulement ce compte-ci voit la bulle. Personne d’autre dans l’équipe.',

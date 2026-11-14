@@ -287,6 +287,9 @@ end $do$;
   nobody's own (Hassan: mechanics switch during the day). On, `my_truck_ids()` gives every vehicle to every mechanic, so each sees
   every route and may move any job forward; « Ma journée » gets « La route que je fais » (Les deux / Voiture / Camion, kept on the
   phone: `myRoute` in `today/select.ts`).
+- A call is also a phone notification (« Appel entrant », name and number) on the devices (`push_subs`) of the owners with
+  `prefs.calls`: `alertText(phone, name, null)` in `ring`. The device's alert switch is ONE for texts and calls (« M'avertir quand
+  l'app est fermée », shown in both panels; switching off texts or calls keeps the device while the other is on).
 - « Appel entrant » is a switch in each owner's own account (Part 24 septdecies, `20261113000300_appels_reglage.sql`, like the texts):
   « Recevoir les appels dans mon compte » (Réglages → Branchements, `calls-mine`) = `staff.prefs.calls` (`update_me`). `sees_calls()`,
   my_access « calls », the `incoming_calls` policy and `callsOn()` (CallBanner) all ask: owner AND the switch. Any owner branches

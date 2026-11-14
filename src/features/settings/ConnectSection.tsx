@@ -117,7 +117,21 @@ function GhlPanel(p: { s: Secrets; onChanged: () => Promise<void> }) {
 function RingPanel() {
   const [url, setUrl] = useState('');
   const mine = callsOn();
+  // the alert while the app is closed: this device's, the same one as the texts'
+  const [alert, setAlert] = useState<PushState | null>(null);
+  useEffect(() => { let alive = true; void pushState().catch(() => 'unsupported' as const).then((s) => { if (alive) setAlert(s); }); return () => { alive = false; }; }, [mine]);
+  const setPush = async (v: boolean) => {
+    try {
+      if (v) await pushOn(); else await pushOff();
+      toast(t(v ? 'settings.connect.alertOn' : 'settings.connect.alertOff'), { kind: 'ok' });
+    } catch (e) {
+      const code = String((e as { code?: string }).code || '');
+      toast(code === 'denied' || code === 'unsupported' ? t(`settings.connect.alertHint.${code}`) : errorMessage(e), { kind: 'bad' });
+    }
+    setAlert(await pushState().catch(() => 'off' as const));
+  };
   const setMine = async (v: boolean) => {
+    if (!v && !textsOn()) await pushOff().catch(() => undefined);
     await updateMe({ prefs: { calls: v } });
     await refreshAccess();
     toast(t(v ? 'settings.connect.callsMineOn' : 'settings.connect.callsMineOff'), { kind: 'ok' });
@@ -146,6 +160,8 @@ function RingPanel() {
       <div class="stack">
         <p class="muted" style={{ margin: 0 }}><PhoneCall size={16} aria-hidden="true" /> {t('settings.connect.ringText')}</p>
         <Switch checked={mine} onChange={(v) => void setMine(v)} label={t('settings.connect.callsMine')} hint={t('settings.connect.callsMineHint')} data-testid="calls-mine" />
+        {mine && alert && <Switch checked={alert === 'on'} onChange={(v) => void setPush(v)} disabled={alert !== 'on' && alert !== 'off'} label={t('settings.connect.alert')}
+          hint={t(`settings.connect.alertHint.${alert === 'on' ? 'off' : alert}`)} data-testid="calls-alert" />}
         {!url ? <div><Button variant="primary" onClick={() => link()} data-testid="ring-get">{t('settings.connect.ringGet')}</Button></div> : (
           <>
             <Field label={t('settings.connect.ringUrl')}>
@@ -180,7 +196,7 @@ function TextsPanel() {
     setAlert(await pushState().catch(() => 'off' as const));
   };
   const setMine = async (v: boolean) => {
-    if (!v) await pushOff().catch(() => undefined);
+    if (!v && !callsOn()) await pushOff().catch(() => undefined);
     await updateMe({ prefs: { texts: v } });
     await refreshAccess();
     toast(t(v ? 'settings.connect.textsMineOn' : 'settings.connect.textsMineOff'), { kind: 'ok' });

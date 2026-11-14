@@ -1,6 +1,7 @@
 // « Appel entrant » from GoHighLevel: a call that comes in on the garage's number shows in the app of the owners who switched it on for their account (`staff.prefs.calls`, my_access « calls »).
 //   POST ?k=<key>  (GoHighLevel's automation « inbound call → webhook »; its usual body: phone, full_name, first_name, last_name…)
-//                  → the call is noted in « incoming_calls » (the owner's app shows it). The key is in the address, made here.
+//                  → the call is noted in « incoming_calls » (the owner's app shows it) and sent as a notification to the devices
+//                  (« push_subs ») of the owners who take the calls (staff.prefs.calls). The key is in the address, made here.
 //   POST ?k=<key>&t=sms  (GoHighLevel's automation « customer replied → webhook »; the same body with message: { body })
 //                  → the text is noted in « incoming_texts » (the owner's app opens the conversation bubble).
 //   { action: 'link' }  (the owner, signed in) → { url, text_url }: the addresses to paste in GoHighLevel. The key is made once;
@@ -53,12 +54,13 @@ async function vapid(by: string | null): Promise<Vapid> {
   return v;
 }
 const nicePhone = (p: string) => { const d = p.replace(/\D/g, '').slice(-10); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}` : p; };
-/** the alert while the app is closed, on the devices of the owners who take the texts. Never an error for the caller:
-    the text is already noted, the bubble shows anyway. */
-async function alertText(phone: string, name: string | null, words: string): Promise<number> {
+/** the alert while the app is closed, on the devices of the owners who take the texts (or the calls: `words` null). Never an
+    error for the caller: the text or the call is already noted, the bubble or the banner shows anyway. */
+async function alertText(phone: string, name: string | null, words: string | null): Promise<number> {
   try {
     const db = adminDb();
-    const { data: people } = await db.from('staff').select('id').contains('roles', ['owner']).eq('active', true).is('deleted_at', null).eq('prefs->>texts', 'true');
+    const isCall = words == null;
+    const { data: people } = await db.from('staff').select('id').contains('roles', ['owner']).eq('active', true).is('deleted_at', null).eq(isCall ? 'prefs->>calls' : 'prefs->>texts', 'true');
     const ids = ((people || []) as { id: string }[]).map((x) => x.id);
     if (!ids.length) return 0;
     const { data: subs } = await db.from('push_subs').select('id, endpoint, p256dh, auth').in('staff_id', ids);
@@ -67,7 +69,9 @@ async function alertText(phone: string, name: string | null, words: string): Pro
     const { data: known } = await db.from('customers').select('first_name, last_name').eq('phone_digits', phone.replace(/\D/g, '').slice(-10)).is('deleted_at', null).limit(1);
     const k = ((known || []) as { first_name: string | null; last_name: string | null }[])[0];
     const who = (k ? [k.first_name, k.last_name].filter(Boolean).join(' ') : '') || name || nicePhone(phone);
-    const payload = JSON.stringify({ title: who, body: words.slice(0, 300) || 'Nouveau texto', tag: `texto-${phone}` });
+    const payload = isCall
+      ? JSON.stringify({ title: 'Appel entrant', body: who === nicePhone(phone) ? who : `${who}, ${nicePhone(phone)}`, tag: `appel-${phone}` })
+      : JSON.stringify({ title: who, body: words!.slice(0, 300) || 'Nouveau texto', tag: `texto-${phone}` });
     const v = await vapid(null);
     const gone: string[] = [];
     let sent = 0;
@@ -111,7 +115,7 @@ export const handler = serve(async (req) => {
         return json({ ok: true, alerted: await alertText('+15145550100', 'Client TEST', words) });
       }
       await note('+15145550100', 'Client TEST');
-      return json({ ok: true });
+      return json({ ok: true, alerted: await alertText('+15145550100', 'Client TEST', null) });
     }
     if (b.action === 'push-key') return json({ ok: true, key: (await vapid(c.id)).publicKey });
     fail('action', 'Action inconnue.');
@@ -122,6 +126,6 @@ export const handler = serve(async (req) => {
   const call = callOf(b);
   if (!call.phone) fail('no_phone', isText ? 'Aucun numéro dans ce texto.' : 'Aucun numéro dans cet appel.');
   if (isText) { const words = wordsOf(b); await noteText(call.phone!, call.name, words); await alertText(call.phone!, call.name, words); }
-  else await note(call.phone!, call.name);
+  else { await note(call.phone!, call.name); await alertText(call.phone!, call.name, null); }
   return json({ ok: true });
 });

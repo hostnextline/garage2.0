@@ -737,6 +737,15 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
     await fetch(`${MOCK}/log/clear`);
     assert.equal((await post(key, { phone: '+14385550162', message: { body: 'Allo ?' } })).ok, true);
     assert.equal((await mockLog()).filter((x) => x.svc === 'push').length, 0);
+    // a call: no alert for an owner who does not take the calls; with « Recevoir les appels dans mon compte », the device is told
+    assert.equal((await post(key, { full_name: 'Nadia Roy', phone: '+14385550162' }, '')).ok, true);
+    assert.equal((await mockLog()).filter((x) => x.svc === 'push').length, 0);
+    await q(`update public.staff set prefs = prefs || '{"calls": true}' where id = $1`, [owner]);
+    assert.equal((await post(key, { full_name: 'Nadia Roy', phone: '+14385550162' }, '')).ok, true);
+    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'push').map((x) => x.path), ['/phone-1']);
+    await q(`update public.staff set prefs = prefs - 'calls' where id = $1`, [owner]);
+    await q(`delete from public.incoming_calls`);
+    await q(`delete from public.rate_limits where key = 'ring'`);
     await q(`update public.staff set prefs = prefs || '{"texts": true}' where 'owner' = any(roles)`);
     await q(`delete from public.incoming_texts where body in ('Finalement, après-midi ?', 'Allo ?')`);
     // « Essayer »: a pretend text

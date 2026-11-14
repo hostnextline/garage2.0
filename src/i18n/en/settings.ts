@@ -288,12 +288,12 @@ export const settings: typeof fr = {
     textsText: 'When somebody texts the garage’s number, a small conversation bubble opens in the app, at the bottom of the screen. You can answer, minimise it or close it.',
     alert: 'Alert me when the app is closed',
     alertHint: {
-      off: 'A notification on this device for each text. Do it again on each phone or computer where you want to be alerted.',
+      off: 'A notification on this device for each text or call your account gets. Do it again on each phone or computer where you want to be alerted.',
       denied: 'Notifications are blocked for the app on this device. Allow them in the device’s settings, then come back here.',
       install: 'On iPhone: first add the app to the home screen (Share button, “Add to Home Screen”), open it from there, then come back here.',
       unsupported: 'This browser cannot receive notifications. Try with the installed app, or with Chrome or Safari.'
     },
-    alertOn: 'This device will alert you for each text, even with the app closed.',
+    alertOn: 'This device will alert you for each text or call your account gets, even with the app closed.',
     alertOff: 'This device will no longer alert you.',
     textsMine: 'Get the texts in my account',
     textsMineHint: 'Only this account sees the bubble. Nobody else on the team.',
