@@ -1,62 +1,26 @@
 /* The week on a computer: days in columns (Sunday → Saturday), blocks in rows. Each cell shows how full each truck
    is and its jobs as small tickets; a booked job dragged onto another cell is moved (after a question).
-   « Plages d'arrivée »: a day of windows is ONE cell for the whole column (each job with its window); a week that has
-   both kinds (right after the switch) keeps the block rows, and the days of windows span them. */
+   « Plages d'arrivée »: a week that has a day booked by arrival windows is drawn as ONE time grid, 15 minutes per unit
+   (WeekTime.tsx); a week of blocks only keeps the block rows below. */
 import { useRef, useState } from 'preact/hooks';
 import { Plus, TriangleAlert, ClipboardPaste } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
-import { clockRange, duration, longDay, parseDay, today as todayOf, type BlockKey, type Day } from '../../lib/dates';
-import { blocks, blockOfKey, windowsOn, truckColor, truckLabel, itemsOf, customer as customerRow, truck as truckRow, staffName, activeTrucks } from '../../data/select';
+import { clockRange, today as todayOf, type BlockKey, type Day } from '../../lib/dates';
+import { blocks, windowsOn, truckColor, truckLabel } from '../../data/select';
 import type { Job } from '../../data/types';
 import { may } from '../../app/routes';
 import { href } from '../../app/router';
-import { jobStatusWord, toast } from '../../ui';
-import { dropRefusal, freeWords, weekOfDay, weekTitle, winInfo, winShort, type DropRefusal } from './layout';
-import { dayPlan, dayJobs, isOff, laneShown, type BlockView } from './select';
-import { etaWord } from '../jobs/select';
+import { toast } from '../../ui';
+import { dropRefusal, freeWords, weekOfDay, weekTitle, type DropRefusal } from './layout';
+import { dayPlan, type BlockView } from './select';
 import { Meter } from './DayView';
-import { moveFlow, jobPerson } from './move';
-import { jobMenu, blockMenu, mayPaste, jobPress, blockPress, placeWords } from './actions';
+import { moveFlow } from './move';
+import { blockMenu, mayPaste, blockPress, placeWords } from './actions';
 import { pasteHref } from './copy';
+import { Chip } from './Chip';
+import { WeekTimeGrid, DayHdButton, TruckLegend, shortTruck } from './WeekTime';
 
 const cellKey = (day: Day, block: BlockKey) => `${day}|${block}`;
-/** a short name for a truck in a small cell: its driver (« Saleh »), or the first word of its name */
-function shortTruck(id: string): string {
-  const tr = truckRow(id);
-  if (!tr) return '';
-  return staffName(tr.driver_id) || tr.name.split(/\s+/)[0];
-}
-
-/** a job as a small ticket: the stop number on the stub, the person and the work */
-function Chip(p: { job: Job; unplaced?: boolean; draggable: boolean; dragging: boolean; onDragStart: (j: Job, e: DragEvent) => void; onDragEnd: () => void }) {
-  const j = p.job;
-  const l = lang.value;
-  const name = jobPerson(j) || customerRow(j.customer_id)?.phone || `#${j.number}`;
-  const first = itemsOf(j.id).find((i) => i.status !== 'removed' && i.status !== 'declined');
-  const work = j.status !== 'booked' ? jobStatusWord(j.status, l) : first?.description || j.problem || '';
-  const stub = p.unplaced ? '?' : j.stop_order ?? '–';
-  // « Plages d'arrivée »: the window told to the customer, « Flexible », « Hors plage »
-  const w = isOff(j) ? null : winInfo(j);
-  const winWords = w ? [w.win ? winShort(w.win, l) : w.flex ? t('agenda.win.flex') : '', w.win && j.status === 'booked' ? etaWord(j.eta_min, l) : '', w.late ? t('common.window.late') : ''].filter(Boolean) : [];
-  const label = [p.unplaced ? t('agenda.lane.unplaced') : j.stop_order ? t('agenda.lane.stop', { n: j.stop_order }) : '', name, work, ...winWords, jobStatusWord(j.status, l), duration(j.duration_min, l)].filter(Boolean).join(', ');
-  return (
-    <a href={`#/job/${j.id}`} class={`agenda-chip st-${j.status}${p.unplaced ? ' is-unplaced' : ''}${p.dragging ? ' is-dragging' : ''}${p.draggable ? ' can-drag' : ''}`}
-      style={{ '--tc': p.unplaced ? 'var(--warn)' : truckColor(j.truck_id) }} draggable={p.draggable} aria-label={label} title={label}
-      onDragStart={(e) => p.onDragStart(j, e as DragEvent)} onDragEnd={p.onDragEnd} onContextMenu={(e) => jobMenu(e as MouseEvent, j)} {...jobPress(j)} data-testid={`chip-${j.id}`}>
-      <span class="agenda-chip-stub" aria-hidden="true">{stub}</span>
-      <span class="agenda-chip-body" aria-hidden="true">
-        <span class="agenda-chip-name">{name}</span>
-        {work && <span class="agenda-chip-sub">{work}</span>}
-        {w && (w.win || w.flex) && (
-          <span class={`agenda-chip-win${w.late ? ' is-late' : ''}${w.flex ? ' is-flex' : ''}`} data-testid={`chip-win-${j.id}`}>
-            {w.late && <TriangleAlert size={12} aria-hidden="true" />}{w.win ? winShort(w.win, l) : t('agenda.win.flex')}
-          </span>
-        )}
-      </span>
-    </a>
-  );
-}
-
 function Cell(p: { day: Day; v: BlockView; extra?: BlockView[]; rowSpan?: number; isToday: boolean; drag: Job | null; over: string | null; setOver: (k: string | null) => void; setRefused: (r: DropRefusal, whole: boolean) => void; startDrag: (j: Job, e: DragEvent) => void; endDrag: () => void; drop: (to: { day: Day; block: BlockKey }) => void }) {
   const l = lang.value;
   const { v, day } = p;
@@ -137,35 +101,23 @@ export function WeekGrid(p: { day: Day; onOpenDay: (d: Day) => void }) {
     endDrag();
     if (j) void moveFlow(j, to);
   };
-  const wd = new Intl.DateTimeFormat(l === 'en' ? 'en-CA' : 'fr-CA', { weekday: 'long' });
   const plans = days.map((d) => dayPlan(d, todayDay));
-  // every day by windows: one row for the day; else the blocks in rows, and a day of windows spans them
-  const allDay = plans.every((x) => x.window);
-  const rows = allDay ? [blockOfKey('day')] : bl;
-  const shownTrucks = activeTrucks.value.filter((tr) => laneShown(tr.id));
+  // a day booked by arrival windows in the week: the whole week as one time grid (15 minutes per unit)
+  if (plans.some((x) => x.window)) return <WeekTimeGrid day={p.day} days={days} plans={plans} onOpenDay={p.onOpenDay} />;
+  const rows = bl;
   return (
     <div class="agenda-weekwrap glass" data-tour="agenda-week" data-testid="agenda-week">
-      {shownTrucks.length > 0 && (
-        <ul class="agenda-legend" aria-label={t('hours.trucks')}>
-          {shownTrucks.map((tr) => <li key={tr.id} style={{ '--tc': truckColor(tr.id) }}><span class="agenda-dot" aria-hidden="true" />{truckLabel(tr.id)}</li>)}
-          <li class="agenda-legend-unplaced"><TriangleAlert size={14} aria-hidden="true" />{t('agenda.lane.unplaced')}</li>
-        </ul>
-      )}
+      <TruckLegend />
       <table class={`agenda-week${drag ? ' is-dragging' : ''}`}>
         <caption class="sr-only">{weekTitle(p.day, l)}</caption>
         <thead>
           <tr>
             <th scope="col" class="agenda-corner"><span class="sr-only">{t('booking.block.title')}</span></th>
             {days.map((d) => {
-              const n = dayJobs(d).filter((j) => !isOff(j)).length;
               const isToday = d === todayDay;
               return (
                 <th scope="col" key={d} class={`agenda-dayhd${isToday ? ' is-today' : ''}${d < todayDay ? ' is-past' : ''}`} aria-current={isToday ? 'date' : undefined}>
-                  <button type="button" class="agenda-dayhd-btn" onClick={() => p.onOpenDay(d)} aria-label={t('agenda.week.openDay', { day: longDay(d, l) })} data-testid={`dayhd-${d}`}>
-                    <span class="agenda-dayhd-wd">{wd.format(parseDay(d))}</span>
-                    <span class="agenda-dayhd-num">{parseDay(d).getDate()}</span>
-                    <span class="agenda-dayhd-n">{isToday ? t('common.today') : t('agenda.week.jobs', { n })}</span>
-                  </button>
+                  <DayHdButton day={d} onOpenDay={p.onOpenDay} />
                 </th>
               );
             })}

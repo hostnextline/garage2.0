@@ -94,6 +94,10 @@ type Planned = { stop_order: number | null; eta_min: number | null; number: numb
 export function byPlan(a: Planned, b: Planned): number {
   return ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || ((a.eta_min ?? 9999) - (b.eta_min ?? 9999)) || (a.number - b.number);
 }
+/** the stops by the hour: the planned arrival first (none: last), then the stop number (the list of a phone) */
+export function byArrival(a: Planned, b: Planned): number {
+  return ((a.eta_min ?? 9999) - (b.eta_min ?? 9999)) || ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || (a.number - b.number);
+}
 export interface WinInfo { win: Range | null; flex: boolean; late: boolean }
 type Windowed = { block: BlockKey; win_start?: number | null; win_end?: number | null; win_flex?: boolean; eta_min: number | null; status: string };
 /** what to say of a job booked for « the day »: its window, « flexible » (no window yet), « hors plage » (the arrival
@@ -107,6 +111,16 @@ export function winInfo(j: Windowed): WinInfo | null {
 }
 /** « 14 h – 18 h » / « 2 p.m. – 6 p.m. »: a window, short enough for a small ticket */
 export function winShort(win: Range, l: Lang): string { return `${clock(win[0], l)} – ${clock(win[1], l)}`; }
+/** the same, as short as it gets, for a narrow block of the week's grid: « 14–18 h » / “2–6 p.m.” (the hour or the half
+    of the day said once when both ends share it) */
+export function winTiny(win: Range, l: Lang): string {
+  const a = clock(win[0], l), b = clock(win[1], l);
+  if (l === 'en') {
+    const m = /^(.*) ([ap]\.m\.)$/.exec(a);
+    return m && b.endsWith(m[2]) ? `${m[1]}–${b}` : `${a}–${b}`;
+  }
+  return win[0] % 60 === 0 && win[1] % 60 === 0 ? `${win[0] / 60}–${b}` : `${a}–${b}`;
+}
 
 /** « Demain », « Jeudi », « Jeudi 19 novembre »: a day in words, for a title */
 export function dayWords(day: Day, todayDay: Day, l: Lang): string {

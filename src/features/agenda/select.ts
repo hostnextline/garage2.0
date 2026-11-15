@@ -4,7 +4,7 @@ import { can, me, myTrucks } from '../../data/auth';
 import { jobsOn, blockLoad, activeTrucks, blocks, blockOfKey, settings, windowsOn, type TruckBlock } from '../../data/select';
 import type { Job, Truck } from '../../data/types';
 import { nowMinute, type BlockKey, type Day } from '../../lib/dates';
-import { byPlan, dayState, isWindowDay } from './layout';
+import { byArrival, dayState, isWindowDay } from './layout';
 
 export function seesAll(): boolean { return can('agenda'); }
 export function laneShown(truckId: string): boolean { return seesAll() || myTrucks().includes(truckId); }
@@ -27,8 +27,8 @@ export interface BlockView {
 export function blockView(day: Day, b: { key: BlockKey; start: number; end: number }, todayDay: Day): BlockView {
   const load = blockLoad(day, b.key);
   const whole = b.key === 'day';
-  // a whole day: its stops in the order planned
-  const lanes = load.trucks.filter((x) => laneShown(x.truck.id)).map((x) => (whole ? { ...x, jobs: [...x.jobs].sort(byPlan) } : x));
+  // a whole day: its stops by the hour (the planned arrival, then the stop number)
+  const lanes = load.trucks.filter((x) => laneShown(x.truck.id)).map((x) => (whole ? { ...x, jobs: [...x.jobs].sort(byArrival) } : x));
   // a whole day is over at its last hour, not when it starts (a block is « commencé » at its first minute)
   const st = whole ? dayState(day, todayDay, nowMinute(), [b.start, b.end], load.trucks.map((x) => x.cap), settings.value.booking.min_block_min) : load;
   const unplaced = load.unplaced.filter(jobShown);

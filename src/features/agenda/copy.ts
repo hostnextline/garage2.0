@@ -22,7 +22,11 @@ export function clearCopy() {
   try { sessionStorage.removeItem(KEY); } catch { /* nothing kept */ }
 }
 /** the booking screen, with the copy and the block chosen (« Plages d'arrivée »: the day, block 'day'; the window is
-    chosen there) */
-export function pasteHref(day: Day, block: BlockKey, id: string | null = copiedJob.value): string {
-  return href('/book', { copy: id, day, block });
+    chosen there, or already said with `win`: the start of the window of the unit clicked on the time grid) */
+export function pasteHref(day: Day, block: BlockKey, id: string | null = copiedJob.value, win: number | null = null): string {
+  return href('/book', { copy: id, day, block, win: win == null ? null : String(win) });
+}
+/** the booking screen for a place of the agenda (`win`: the window that goes with the time clicked on the grid) */
+export function bookHref(day: Day, block: BlockKey, win: number | null = null): string {
+  return href('/book', { day, block, win: win == null ? null : String(win) });
 }

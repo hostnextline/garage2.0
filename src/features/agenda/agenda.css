@@ -135,13 +135,10 @@
 /* ---------- « Plages d'arrivée »: a day in one piece, each job with its window ---------- */
 @media (min-width: 960px) {
   .agenda-blocks.is-day { grid-template-columns: minmax(0, 1fr); }
-  .agenda-block.is-day .agenda-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
-  .agenda-block.is-day .agenda-closed-text, .agenda-block.is-day .agenda-empty-block { grid-column: 1 / -1; }
 }
 .agenda-chip-win { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-stretch: var(--w-num); font-weight: 560; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agenda-chip-win.is-flex { color: var(--accent-ink); }
 .agenda-chip-win.is-late { color: var(--warn); }
-.agenda-cell.is-day .agenda-cell-in { height: 100%; }
 /* the windows offered when a job is dropped on a day */
 .agenda-winlist { display: flex; flex-direction: column; gap: var(--sp-2); }
 .agenda-winwait { display: flex; align-items: center; gap: var(--sp-2); margin: 0; }
@@ -157,3 +154,87 @@
 .agenda-winpick-sub { font-size: var(--t-xs); color: var(--ink-2); }
 .agenda-winpick-tag { flex: none; padding: 2px 8px; border-radius: 999px; font-size: var(--t-xs); font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); }
 .agenda-winpick-tag.is-current { color: var(--ink-2); background: var(--sunken); }
+
+/* ---------- « Plages d'arrivée », from 760 px: the time grid (one unit = 15 minutes = --u) ---------- */
+.agenda-grid { --u: 16px; --time: 58px; display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.agenda-grid.is-week { --time: 52px; gap: 0; }
+.agenda-grid-head { display: grid; grid-template-columns: var(--time) repeat(var(--cols), minmax(0, 1fr)); overflow-y: hidden; scrollbar-gutter: stable; }
+.agenda-grid-corner { display: block; }
+.agenda-grid-colhd { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0 10px 2px; border-left: 3px solid var(--tc, var(--ink-3)); }
+.agenda-grid-colname { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.agenda-grid-colfill { display: grid; gap: 3px; min-width: 0; }
+.agenda-grid-scroll { overflow-y: auto; scrollbar-gutter: stable; max-height: max(380px, calc(100vh - 470px)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.agenda-grid.is-week .agenda-grid-scroll { max-height: max(380px, calc(100vh - 420px)); }
+.agenda-grid-body { display: grid; grid-template-columns: var(--time) minmax(0, 1fr); padding: 10px 0 12px; }
+.agenda-grid-axis { position: relative; height: calc(var(--u) * var(--units)); }
+.agenda-grid-hour { position: absolute; right: 8px; transform: translateY(-50%); font-size: 11.5px; font-weight: 520; font-stretch: var(--w-num); color: var(--ink-2); white-space: nowrap; line-height: 1; }
+.agenda-grid-cols { position: relative; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+.agenda-grid-col { position: relative; height: calc(var(--u) * var(--units)); border-left: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); }
+.agenda-grid-col:last-of-type { border-right: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); }
+.agenda-grid.is-week .agenda-grid-col.is-today { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+/* a unit: a strong line on the hour, a lighter one on the half hour, the lightest on the quarters */
+.agenda-unit { position: relative; display: block; box-sizing: border-box; height: var(--u); border-top: 1px solid color-mix(in srgb, var(--ink) 9%, transparent); text-decoration: none; color: inherit; }
+.agenda-unit.is-half { border-top-color: color-mix(in srgb, var(--ink) 15%, transparent); }
+.agenda-unit.is-hour { border-top-color: color-mix(in srgb, var(--ink) 30%, transparent); }
+.agenda-unit.is-off { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.agenda-unit.is-past:not(.is-off) { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.agenda-unit.is-free { cursor: pointer; }
+@media (hover: hover) {
+  .agenda-unit.is-free:hover { z-index: 1; background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 3px; }
+  .agenda-unit.is-free:hover::after { content: '+ ' attr(data-time); position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 600; font-stretch: var(--w-num); line-height: 1; color: var(--accent-ink); white-space: nowrap; }
+}
+.agenda-unit:focus-visible { outline: 3px solid var(--focus); outline-offset: -1px; z-index: 5; }
+/* a job: a block at its arrival, as tall as its work, in its truck's colour */
+.agenda-gjob { position: absolute; z-index: 2; box-sizing: border-box; padding: 1px 3px 1px 2px; text-decoration: none; color: inherit; }
+.agenda-gjob-in { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; padding: 0 6px 0 6px; border-radius: 6px; overflow: hidden; font-size: 11.5px; line-height: 13px;
+  background: color-mix(in srgb, var(--tc) 13%, var(--solid)); border: 1px solid color-mix(in srgb, var(--tc) 45%, var(--solid)); border-left: 4px solid var(--tc); }
+.agenda-gjob:hover { z-index: 3; }
+.agenda-gjob:hover .agenda-gjob-in { border-color: var(--tc); box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 16%, transparent); }
+.agenda-gjob:focus-visible { outline: none; }
+.agenda-gjob:focus-visible .agenda-gjob-in { outline: 3px solid var(--focus); outline-offset: 1px; }
+.agenda-gjob-top { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.agenda-gjob-stop { flex: none; font-weight: 650; font-stretch: var(--w-num); color: color-mix(in srgb, var(--tc) 62%, var(--ink)); }
+.agenda-gjob-name { flex: 1; min-width: 0; font-weight: 580; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-gjob-eta { flex: none; font-stretch: var(--w-num); font-weight: 520; color: var(--ink-2); }
+.agenda-gjob-win { display: flex; align-items: center; gap: 3px; min-width: 0; font-stretch: var(--w-num); font-weight: 520; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agenda-gjob-win svg { flex: none; }
+.agenda-gjob-win.is-flex { color: var(--accent-ink); }
+.agenda-gjob-win.is-late { color: var(--warn); font-weight: 600; }
+.agenda-gjob-sub { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agenda-gjob.is-compact .agenda-gjob-in { padding: 0 4px; font-size: 11px; border-left-width: 3px; }
+.agenda-gjob.is-late .agenda-gjob-in { border-top-color: var(--warn); border-right-color: var(--warn); border-bottom-color: var(--warn); border-style: dashed; border-left-style: solid; }
+.agenda-gjob.st-done .agenda-gjob-in { opacity: 0.6; }
+.agenda-gjob.st-en_route .agenda-gjob-in { box-shadow: inset 0 0 0 1.5px var(--st-route); }
+.agenda-gjob.st-on_site .agenda-gjob-in { box-shadow: inset 0 0 0 1.5px var(--st-site); }
+.agenda-gjob.st-en_route .agenda-gjob-win { color: var(--st-route); font-weight: 600; }
+.agenda-gjob.st-on_site .agenda-gjob-win { color: var(--st-site); font-weight: 600; }
+.agenda-gjob.st-done .agenda-gjob-win { color: var(--st-done); }
+.agenda-gjob.can-drag { cursor: grab; }
+.agenda-gjob.can-drag:active { cursor: grabbing; }
+.agenda-gjob.is-dragging { opacity: 0.35; }
+/* where a dragged job would go */
+.agenda-grid-ghost { position: absolute; left: 2px; right: 3px; z-index: 4; display: flex; align-items: baseline; gap: 6px; box-sizing: border-box; padding: 0 6px; border-radius: 6px; overflow: hidden; pointer-events: none;
+  border: 2px dashed var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-size: 11.5px; line-height: 13px; font-stretch: var(--w-num); white-space: nowrap; }
+.agenda-grid-ghost.is-no { border-color: var(--ink-3); background: var(--sunken); color: var(--ink-2); }
+/* now */
+.agenda-grid-now { position: absolute; left: 0; right: 0; z-index: 4; height: 0; border-top: 2px solid var(--bad); pointer-events: none; }
+.agenda-grid-now::before { content: ''; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }
+/* the day view: the jobs with no place on the grid, the trucks that do not work */
+.agenda-grid-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.agenda-lane.is-notime { border-left-color: var(--ink-3); background: var(--sunken); border-radius: 0 var(--r-md) var(--r-md) 0; padding: var(--sp-3); }
+.agenda-grid-idle { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); list-style: none; margin: 0; padding: 0; font-size: var(--t-sm); font-weight: 520; color: var(--ink-2); }
+.agenda-grid-idle li { display: inline-flex; align-items: center; gap: 6px; }
+.agenda-grid .agenda-hint { margin: 0; }
+/* the week: above each day, how full each truck is, the jobs « À placer », paste and book */
+.agenda-grid-head.is-tops { border-top: 1px solid var(--glass-line); }
+.agenda-grid-top { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 44px; padding: 6px 5px 6px; border-left: 1px solid var(--glass-line); transition: background var(--dur) var(--ease); }
+.agenda-grid-top.is-today { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.agenda-grid-top.is-closed { background: repeating-linear-gradient(135deg, var(--sunken) 0 8px, transparent 8px 16px); }
+.agenda-grid-topacts { display: flex; align-items: center; gap: 6px; margin-top: auto; }
+.agenda-grid-topbook { display: grid; place-items: center; width: 28px; height: 28px; margin-left: auto; border-radius: 50%; color: var(--ink-3); border: 1px dashed var(--line); text-decoration: none; }
+.agenda-grid-topbook:hover, .agenda-grid-topbook:focus-visible { color: var(--accent-ink); background: var(--accent-soft); border-style: solid; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.agenda-grid.is-dragging .agenda-grid-top.is-target { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+.agenda-grid.is-dragging .agenda-grid-top.is-refused { opacity: 0.4; }
+.agenda-grid-top.is-over { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent) !important; }
+.agenda-grid-topdrop { text-align: center; font-size: var(--t-xs); font-weight: 600; color: var(--accent-ink); }
+.agenda-gjob, .agenda-unit, .agenda-grid-top { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

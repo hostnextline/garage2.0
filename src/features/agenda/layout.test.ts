@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { weekOfDay, shiftWeek, sameWeek, weekTitle, fillOf, freeWords, moveQuestion, dropRefusal, isWindowDay, dayState, byPlan, winInfo, winShort, dayWords, moveDayTitle, windowChoices } from './layout';
+import { weekOfDay, shiftWeek, sameWeek, weekTitle, fillOf, freeWords, moveQuestion, dropRefusal, isWindowDay, dayState, byPlan, byArrival, winInfo, winShort, winTiny, dayWords, moveDayTitle, windowChoices } from './layout';
 import { agenda as fr } from '../../i18n/fr/agenda';
 import { agenda as en } from '../../i18n/en/agenda';
 import { sameShape } from '../booking/dict-check';
@@ -146,5 +146,21 @@ describe('« Plages d’arrivée »', () => {
 describe('words', () => {
   it('French and English have the same keys and the same {placeholders}', () => {
     expect(sameShape(fr, en)).toEqual([]);
+  });
+});
+
+describe('the time grid: order on a phone, short windows', () => {
+  it('lists the stops by the hour planned, the ones with no hour last', () => {
+    const js = [
+      { number: 1, stop_order: 2, eta_min: 700 }, { number: 2, stop_order: 1, eta_min: 540 },
+      { number: 3, stop_order: null, eta_min: null }, { number: 4, stop_order: 3, eta_min: 700 }
+    ];
+    expect([...js].sort(byArrival).map((j) => j.number)).toEqual([2, 1, 4, 3]);
+  });
+  it('says a window in very few letters', () => {
+    expect(winTiny([840, 1080], 'fr')).toBe('14–18 h');
+    expect(winTiny([510, 750], 'fr')).toBe('8 h 30–12 h 30');
+    expect(winTiny([840, 1080], 'en')).toBe('2–6 p.m.');
+    expect(winTiny([600, 840], 'en')).toBe('10 a.m.–2 p.m.');
   });
 });

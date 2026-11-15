@@ -1,11 +1,12 @@
 /* One day: the day in words, the week strip, then the three blocks with each truck as a lane (how full it is, its
    jobs in stop order), the jobs « À placer », and the cancelled / no-show jobs apart.
-   « Plages d'arrivée »: the day is ONE panel (each truck's stops in the order planned, each with its window). */
+   « Plages d'arrivée »: the day is ONE panel. On a phone: each truck's stops by the hour, each with its window. From
+   760 px: a time grid, 15 minutes per unit, a column per truck, each job a block at its planned arrival (TimeGrid.tsx). */
 import { useRef } from 'preact/hooks';
 import { ChevronLeft, ChevronRight, CalendarSearch, Plus, TriangleAlert, Clock, ClipboardPaste } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
-import { addDays, longDay, clockRange, isValidDay, parseDay, today as todayOf, type Day } from '../../lib/dates';
-import { truckLabel, truckColor } from '../../data/select';
+import { addDays, longDay, clockRange, isValidDay, parseDay, today as todayOf, type Day, type Range } from '../../lib/dates';
+import { truckLabel, truckColor, truckRanges, blocks } from '../../data/select';
 import { may } from '../../app/routes';
 import { href, navigate } from '../../app/router';
 import { Panel, Button, IconButton, Empty } from '../../ui';
@@ -18,6 +19,9 @@ import { focusAfterNav } from './focus';
 import { jobMenu, blockMenu, mayPaste, jobPress, blockPress } from './actions';
 import { pasteHref } from './copy';
 import type { Job } from '../../data/types';
+import { roomy } from './screen';
+import { unitCount, workedUnits, jobMinute } from './grid';
+import { GridColumn, NowLine, TimeAxis, useGridDrag, useOpeningScroll, type Place } from './TimeGrid';
 
 /** a ticket with its right-click menu (copy, open); the ticket itself says the window told to the customer, « Flexible »
     and « Hors plage » (JobTicket) */
@@ -112,6 +116,81 @@ function Lane(p: { lane: TruckBlock; started: boolean; whole?: boolean }) {
   );
 }
 
+/* ---------- « Plages d'arrivée », from 760 px: the day as a time grid (15 minutes per unit, a column per truck) ---------- */
+function DayGrid(p: { day: Day; v: BlockView }) {
+  const l = lang.value;
+  const { v, day } = p;
+  const span: Range = [v.start, v.end];
+  const drag = useGridDrag();
+  const place: Place = { block: 'day', v };
+  const minute = (j: Job) => jobMinute(j, blocks.value);
+  // a job with no arrival planned and no window has no place on the grid: listed above it
+  const noTime = v.lanes.flatMap((x) => x.jobs.filter((j) => minute(j) == null));
+  const first = v.lanes.flatMap((x) => x.jobs.map(minute)).reduce<number | null>((a, m) => (m == null ? a : a == null ? m : Math.min(a, m)), null);
+  const scroll = useOpeningScroll(span, day, first, day === todayOf());
+  const closed = !v.open && !v.started;
+  return (
+    <div class={`agenda-grid is-dayview${drag.job ? ' is-dragging' : ''}`} style={{ '--cols': Math.max(1, v.lanes.length), '--units': unitCount(span) }} role="group" aria-label={t('agenda.grid.day')} data-testid="grid-day">
+      {v.unplaced.length > 0 && (
+        <div class="agenda-lane is-unplaced" data-testid="lane-unplaced">
+          <div class="agenda-lane-head">
+            <TriangleAlert size={18} aria-hidden="true" class="agenda-warn-icon" />
+            <span class="agenda-lane-name">{t('agenda.lane.unplaced')}</span>
+          </div>
+          <p class="agenda-unplaced-text">{t('agenda.lane.unplacedText')}</p>
+          <div class="agenda-tickets agenda-grid-strip">{v.unplaced.map((j) => <Ticketed key={j.id} job={j} />)}</div>
+        </div>
+      )}
+      {noTime.length > 0 && (
+        <div class="agenda-lane is-notime" data-testid="lane-notime">
+          <div class="agenda-lane-head"><Clock size={18} aria-hidden="true" /><span class="agenda-lane-name">{t('agenda.grid.noTime')}</span></div>
+          <p class="agenda-unplaced-text">{t('agenda.grid.noTimeText')}</p>
+          <div class="agenda-tickets agenda-grid-strip">{noTime.map((j) => <Ticketed key={j.id} job={j} />)}</div>
+        </div>
+      )}
+      {closed && !v.lanes.length && !v.unplaced.length && <p class="muted small agenda-closed-text">{t('agenda.whole.closedText')}</p>}
+      {v.lanes.length > 0 && (
+        <>
+          <div class="agenda-grid-head" onContextMenu={(e) => blockMenu(e as MouseEvent, day, v.key, v)}>
+            <span class="agenda-grid-corner"><span class="sr-only">{t('agenda.grid.hours')}</span></span>
+            {v.lanes.map(({ truck, cap, used }) => (
+              <div key={truck.id} class="agenda-grid-colhd" style={{ '--tc': truckColor(truck.id) }} data-testid={`lane-${truck.id}`}>
+                <span class="agenda-grid-colname"><span class="agenda-dot" aria-hidden="true" /><span class="agenda-lane-name">{truckLabel(truck.id)}</span></span>
+                {!v.started && (
+                  <span class="agenda-grid-colfill">
+                    {cap > 0 && <Meter used={used} cap={cap} label={truckLabel(truck.id)} small />}
+                    <span class={`agenda-cell-free${cap - used <= 0 ? ' is-full' : ''}`}>{freeWords(used, cap, l, false, true)}</span>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <div class="agenda-grid-scroll" ref={scroll}>
+            <div class="agenda-grid-body">
+              <TimeAxis span={span} />
+              <div class="agenda-grid-cols">
+                {v.lanes.map(({ truck, jobs }) => (
+                  <GridColumn key={truck.id} day={day} span={span} truckId={truck.id} on={workedUnits(truckRanges(truck.id, day), span)} placeOf={() => place}
+                    jobs={jobs.filter((j) => minute(j) != null)} compact={false} drag={drag} />
+                ))}
+                <NowLine span={span} day={day} />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      {!v.started && !closed && v.idle.length > 0 && (
+        <ul class="agenda-grid-idle">
+          {v.idle.map((tr) => (
+            <li key={tr.id} style={{ '--tc': truckColor(tr.id) }} data-testid={`lane-idle-${tr.id}`}><span class="agenda-dot" aria-hidden="true" />{truckLabel(tr.id)} <span class="agenda-idle">{t('agenda.lane.closed')}</span></li>
+          ))}
+        </ul>
+      )}
+      {may.book() && v.open && !v.started && v.lanes.length > 0 && <p class="faint small agenda-hint">{t('agenda.grid.hint')}</p>}
+    </div>
+  );
+}
+
 /* ---------- a block of the day ---------- */
 function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
   const l = lang.value;
@@ -125,6 +204,7 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
     <Panel class={`agenda-block${whole ? ' is-day' : ''}${v.started ? ' is-started' : ''}${closed ? ' is-closed' : ''}`} data-tour={p.first ? 'agenda-block' : undefined} data-testid={`block-${v.key}`}
       title={whole ? t('agenda.whole.title', { hours: clockRange(v.start, v.end, l) }) : t('agenda.block.title', { block: t(`common.blocks.${v.key}`), hours: clockRange(v.start, v.end, l) })}
       action={status ? <span class={`agenda-status${closed ? ' is-closed' : ''}${full && !v.started ? ' is-full' : ''}`}>{v.started && <Clock size={14} aria-hidden="true" />}{status}</span> : undefined}>
+      {whole && roomy.value ? <DayGrid day={p.day} v={v} /> : (
       <div class="agenda-lanes" onContextMenu={(e) => blockMenu(e as MouseEvent, p.day, v.key, v)} {...blockPress(p.day, v.key, v)}>
         {closed && !v.lanes.length && !v.unplaced.length && <p class="muted small agenda-closed-text">{t(whole ? 'agenda.whole.closedText' : 'agenda.block.closedText')}</p>}
         {v.lanes.map((lane) => <Lane key={lane.truck.id} lane={lane} started={v.started} whole={whole} />)}
@@ -149,6 +229,7 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
         )}
         {!closed && v.jobs === 0 && <p class="faint small agenda-empty-block">{t(whole ? 'agenda.whole.empty' : 'agenda.block.empty')}</p>}
       </div>
+      )}
       {(canBook || mayPaste(v)) && (
         <div class="agenda-block-foot">
           {mayPaste(v) && <Button size="sm" variant="primary" icon={<ClipboardPaste />} href={pasteHref(p.day, v.key)} data-testid={`paste-${v.key}`}>{t('agenda.copy.pasteHere')}</Button>}

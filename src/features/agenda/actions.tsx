@@ -4,12 +4,12 @@
    Each shortcut shows only to the people who may use it (the screen it opens checks again, as always). */
 import { Copy, ClipboardPaste, ExternalLink, CalendarPlus, CalendarClock, ReceiptText, CalendarDays, Map as MapIcon, Truck, Pencil } from 'lucide-preact';
 import type { Job } from '../../data/types';
-import type { BlockKey, Day } from '../../lib/dates';
+import { clock, type BlockKey, type Day } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { may } from '../../app/routes';
 import { navigate, href } from '../../app/router';
 import { wide } from '../../app/media';
-import { customer as customerRow, invoiceOf, windowsOn } from '../../data/select';
+import { customer as customerRow, invoiceOf, windowsOn, windowOf } from '../../data/select';
 import { toast } from '../../ui';
 import { blockPhrase } from '../booking/when';
 import { dayWords } from './layout';
@@ -19,7 +19,8 @@ import { jobRights } from '../jobs/select';
 import { mayChangeTruck } from '../jobs/JobParts';
 import { mayEditJob } from '../jobs/JobEdit';
 import { jobPerson } from './move';
-import { copiedJob, copyJob, pasteHref } from './copy';
+import { copiedJob, copyJob, pasteHref, bookHref } from './copy';
+import { dropWindowStart } from './grid';
 import { openMenu, openMenuAt, pressProps, type MenuAction } from './ContextMenu';
 
 /** a block takes a paste when it has not started and is open (a full block: the booking screen offers « quand même ») */
@@ -69,11 +70,20 @@ export function jobPress(j: Job) {
   return pressProps((x, y) => { const m = jobActions(j); openMenuAt(x, y, m.actions, m.title); });
 }
 
-/** the shortcuts of a block (or of a whole day, block 'day', with « Plages d'arrivée »): paste, book here, the day, its map */
-export function blockActions(day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }): MenuAction[] {
+/** the window that goes with a time of the grid, as the booking screen reads it (`&win=`); a day of blocks has none */
+export function unitWin(block: BlockKey, minute: number): number | null {
+  return block === 'day' ? dropWindowStart(minute, windowOf) : null;
+}
+/** the booking screen for a unit of the time grid: that day, the window that goes with that arrival time */
+export function unitBookHref(day: Day, block: BlockKey, minute: number): string { return bookHref(day, block, unitWin(block, minute)); }
+/** the shortcuts of a block (or of a whole day, block 'day', with « Plages d'arrivée »): paste, book here, the day, its map.
+    `at`: a unit of the time grid (minutes of the day): paste and book go with the window of that arrival time. */
+export function blockActions(day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }, at: number | null = null): MenuAction[] {
   const a: MenuAction[] = [];
-  if (mayPaste(v)) a.push({ key: 'paste', label: t('agenda.copy.paste'), icon: icon(ClipboardPaste), testid: 'menu-paste', run: go(pasteHref(day, block).slice(1)) });
-  if (may.book() && v.open && !v.started) a.push({ key: 'bookHere', label: t(block === 'day' ? 'agenda.menu.bookDay' : 'agenda.menu.bookHere'), icon: icon(CalendarPlus), testid: 'menu-book-here', run: go(href('/book', { day, block }).slice(1)) });
+  const win = at == null ? null : unitWin(block, at);
+  const time = at == null ? '' : clock(at, lang.value);
+  if (mayPaste(v)) a.push({ key: 'paste', label: at == null ? t('agenda.copy.paste') : t('agenda.menu.pasteAt', { time }), icon: icon(ClipboardPaste), testid: 'menu-paste', run: go(pasteHref(day, block, undefined, win).slice(1)) });
+  if (may.book() && v.open && !v.started) a.push({ key: 'bookHere', label: at != null ? t('agenda.menu.bookAt', { time }) : t(block === 'day' ? 'agenda.menu.bookDay' : 'agenda.menu.bookHere'), icon: icon(CalendarPlus), testid: 'menu-book-here', run: go(bookHref(day, block, win).slice(1)) });
   // on the computer's week: the day on its own; everywhere: the day's map
   if (wide.value) a.push({ key: 'day', label: t('agenda.menu.day'), icon: icon(CalendarDays), sep: a.length > 0, testid: 'menu-day', run: go(href(`/agenda/${day}`, { view: 'day' }).slice(1)) });
   if (may.map()) a.push({ key: 'map', label: t('agenda.menu.map'), icon: icon(MapIcon), sep: a.length > 0 && !wide.value, testid: 'menu-map', run: go(href('/map', { day }).slice(1)) });
@@ -85,6 +95,10 @@ export function placeWords(day: Day, block: BlockKey): string {
 }
 export function blockMenu(e: MouseEvent, day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }) {
   openMenu(e, blockActions(day, block, v), placeWords(day, block));   // nothing to offer: the browser's own menu
+}
+/** right-click on a unit of the time grid: « Coller ici », « Réserver ici » at that time, the day, its map */
+export function unitMenu(e: MouseEvent, day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }, minute: number) {
+  openMenu(e, blockActions(day, block, v, minute), `${placeWords(day, block)}, ${clock(minute, lang.value)}`);
 }
 /** the long press on a block (phone) */
 export function blockPress(day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }) {

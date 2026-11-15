@@ -4,7 +4,7 @@ export const agenda = {
   titleMine: 'Mon horaire',
   help: 'Les rendez-vous par bloc (matin, après-midi, soir) et par camion. La barre montre le temps pris par les jobs et la route; le reste est libre.\nSur l’ordinateur, glisse une job réservée vers un autre bloc pour la déplacer.',
   helpMine: 'Tes jobs par bloc, dans l’ordre des arrêts. La barre montre le temps pris par les jobs et la route; le reste est libre.',
-  helpDay: 'Les rendez-vous de la journée par camion, dans l’ordre des arrêts, chacun avec la plage d’arrivée dite au client. La barre montre le temps pris par les jobs et la route; le reste est libre.\nSur l’ordinateur, glisse une job réservée vers un autre jour pour la déplacer : l’app te propose les plages possibles.',
+  helpDay: 'Les rendez-vous de la journée par camion, chacun avec la plage d’arrivée dite au client. La barre montre le temps pris par les jobs et la route; le reste est libre.\nSur l’ordinateur, le calendrier est découpé en cases de 15 minutes : chaque job est placée à son heure d’arrivée prévue. Clique une case libre pour réserver à cette heure-là; glisse une job réservée vers une autre heure, un autre camion ou un autre jour pour la déplacer.',
   helpMineDay: 'Tes jobs de la journée, dans l’ordre des arrêts, chacune avec la plage d’arrivée dite au client. La barre montre le temps pris par les jobs et la route; le reste est libre.',
   day: {
     prev: 'Jour d’avant',
@@ -33,6 +33,8 @@ export const agenda = {
     invoice: 'Voir la facture',
     bookHere: 'Réserver dans ce bloc',
     bookDay: 'Réserver ce jour-là',
+    bookAt: 'Réserver ici, vers {time}',
+    pasteAt: 'Coller ici, vers {time}',
     day: 'Voir cette journée',
     map: 'Carte de la journée'
   },
@@ -87,6 +89,19 @@ export const agenda = {
   win: {
     flex: 'Flexible'
   },
+  grid: {
+    day: 'La journée par cases de 15 minutes, un camion par colonne',
+    week: 'La semaine par cases de 15 minutes, un jour par colonne',
+    hours: 'Heures',
+    unit: 'Réserver : {when}, vers {time}',
+    now: 'Maintenant, {time}',
+    noTime: 'Sans heure prévue',
+    noTimeText: 'L’app n’a pas encore d’heure d’arrivée pour ces jobs.',
+    trucks: 'Camions et jobs à placer',
+    eta: 'arrivée prévue à {time}',
+    hint: 'Une case = 15 minutes; les cases grises sont hors des heures du camion. Clique une case libre pour réserver à cette heure-là. Glisse une job réservée vers une autre heure ou un autre camion pour la déplacer.',
+    hintWeek: 'Une case = 15 minutes. Clique une case libre pour réserver ce jour-là à cette heure-là. Glisse une job réservée vers un autre jour ou une autre heure pour la déplacer, ou ouvre-la et touche « Déplacer ».'
+  },
   lane: {
     free: '{d} de libre',
     full: 'Complet',
@@ -124,6 +139,11 @@ export const agenda = {
     winEta: 'Arrivée vers {time}',
     winBest: 'Meilleur choix',
     winCurrent: 'Plage actuelle',
-    winFlexText: 'Le client est libre toute la journée : la plage de 4 heures est confirmée la veille.'
+    winFlexText: 'Le client est libre toute la journée : la plage de 4 heures est confirmée la veille.',
+    timeQuestion: 'Déplacer la job de {name} : {when} ?',
+    timeText: 'L’app place l’arrêt dans cette plage et choisit l’heure exacte d’arrivée selon la route.',
+    timeFull: 'Ça ne rentre pas à cette heure-là. Choisis parmi les plages encore possibles.',
+    sameWin: '{name} a déjà cette plage ({win}). L’heure exacte d’arrivée, c’est l’app qui la choisit selon la route.',
+    pastTime: 'Cette heure est déjà passée : choisis une heure à venir.'
   }
 };

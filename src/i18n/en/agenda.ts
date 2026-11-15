@@ -4,7 +4,7 @@ export const agenda: typeof fr = {
   titleMine: 'My schedule',
   help: 'Appointments by block (morning, afternoon, evening) and by truck. The bar shows the time taken by the jobs and the driving; the rest is free.\nOn a computer, drag a booked job to another block to move it.',
   helpMine: 'Your jobs by block, in the order of the stops. The bar shows the time taken by the jobs and the driving; the rest is free.',
-  helpDay: 'The day’s appointments by truck, in the order of the stops, each with the arrival window told to the customer. The bar shows the time taken by the jobs and the driving; the rest is free.\nOn a computer, drag a booked job to another day to move it: the app offers the windows that fit.',
+  helpDay: 'The day’s appointments by truck, each with the arrival window told to the customer. The bar shows the time taken by the jobs and the driving; the rest is free.\nOn a computer, the calendar is cut in 15-minute units: each job sits at its planned arrival time. Click a free unit to book at that time; drag a booked job to another time, truck or day to move it.',
   helpMineDay: 'Your jobs of the day, in the order of the stops, each with the arrival window told to the customer. The bar shows the time taken by the jobs and the driving; the rest is free.',
   day: {
     prev: 'Previous day',
@@ -33,6 +33,8 @@ export const agenda: typeof fr = {
     invoice: 'See the invoice',
     bookHere: 'Book in this block',
     bookDay: 'Book that day',
+    bookAt: 'Book here, around {time}',
+    pasteAt: 'Paste here, around {time}',
     day: 'See this day',
     map: 'Map of the day'
   },
@@ -87,6 +89,19 @@ export const agenda: typeof fr = {
   win: {
     flex: 'Flexible'
   },
+  grid: {
+    day: 'The day in 15-minute units, one truck per column',
+    week: 'The week in 15-minute units, one day per column',
+    hours: 'Hours',
+    unit: 'Book: {when}, around {time}',
+    now: 'Now, {time}',
+    noTime: 'No planned time',
+    noTimeText: 'The app has no arrival time for these jobs yet.',
+    trucks: 'Trucks and jobs to place',
+    eta: 'planned arrival at {time}',
+    hint: 'One unit = 15 minutes; grey units are outside the truck’s hours. Click a free unit to book at that time. Drag a booked job to another time or truck to move it.',
+    hintWeek: 'One unit = 15 minutes. Click a free unit to book that day at that time. Drag a booked job to another day or time to move it, or open it and tap “Move”.'
+  },
   lane: {
     free: '{d} free',
     full: 'Full',
@@ -124,6 +139,11 @@ export const agenda: typeof fr = {
     winEta: 'Arrival around {time}',
     winBest: 'Best choice',
     winCurrent: 'Current window',
-    winFlexText: 'The customer is free all day: the 4-hour window is confirmed the evening before.'
+    winFlexText: 'The customer is free all day: the 4-hour window is confirmed the evening before.',
+    timeQuestion: 'Move {name}’s job: {when}?',
+    timeText: 'The app puts the stop in this window and picks the exact arrival time from the route.',
+    timeFull: 'It does not fit at that time. Pick one of the windows still possible.',
+    sameWin: '{name} already has this window ({win}). The app picks the exact arrival time from the route.',
+    pastTime: 'That time has already passed: pick a time to come.'
   }
 };
