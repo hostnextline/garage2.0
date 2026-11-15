@@ -1,24 +1,26 @@
 /* One day: the day in words, the week strip, then the three blocks with each truck as a lane (how full it is, its
-   jobs in stop order), the jobs « À placer », and the cancelled / no-show jobs apart. */
+   jobs in stop order), the jobs « À placer », and the cancelled / no-show jobs apart.
+   « Plages d'arrivée »: the day is ONE panel (each truck's stops in the order planned, each with its window). */
 import { useRef } from 'preact/hooks';
 import { ChevronLeft, ChevronRight, CalendarSearch, Plus, TriangleAlert, Clock, ClipboardPaste } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { addDays, longDay, clockRange, isValidDay, parseDay, today as todayOf, type Day } from '../../lib/dates';
-import { blocks, truckLabel, truckColor } from '../../data/select';
+import { truckLabel, truckColor } from '../../data/select';
 import { may } from '../../app/routes';
 import { href, navigate } from '../../app/router';
 import { Panel, Button, IconButton, Empty } from '../../ui';
 import { JobTicket } from '../jobs/JobTicket';
 import { relativeDay } from '../booking/when';
 import { fillOf, freeWords, fillWords, weekOfDay } from './layout';
-import { blockView, dayJobs, isOff, type BlockView } from './select';
+import { dayPlan, dayJobs, isOff, type BlockView } from './select';
 import type { TruckBlock } from '../../data/select';
 import { focusAfterNav } from './focus';
 import { jobMenu, blockMenu, mayPaste, jobPress, blockPress } from './actions';
 import { pasteHref } from './copy';
 import type { Job } from '../../data/types';
 
-/** a ticket with its right-click menu (copy, open) */
+/** a ticket with its right-click menu (copy, open); the ticket itself says the window told to the customer, « Flexible »
+    and « Hors plage » (JobTicket) */
 function Ticketed(p: { job: Job }) {
   return <div class="agenda-ticketwrap" onContextMenu={(e) => jobMenu(e as MouseEvent, p.job)} {...jobPress(p.job)}><JobTicket job={p.job} /></div>;
 }
@@ -89,7 +91,7 @@ export function Meter(p: { used: number; cap: number; label: string; small?: boo
     </span>
   );
 }
-function Lane(p: { lane: TruckBlock; started: boolean }) {
+function Lane(p: { lane: TruckBlock; started: boolean; whole?: boolean }) {
   const l = lang.value;
   const { truck, cap, used, jobs } = p.lane;
   const name = truckLabel(truck.id);
@@ -102,7 +104,7 @@ function Lane(p: { lane: TruckBlock; started: boolean }) {
       {!p.started && (
         <div class="agenda-lane-fill">
           {cap > 0 && <Meter used={used} cap={cap} label={name} />}
-          <span class={`agenda-free${cap - used <= 0 ? ' is-full' : ''}`}>{freeWords(used, cap, l)}</span>
+          <span class={`agenda-free${cap - used <= 0 ? ' is-full' : ''}`}>{freeWords(used, cap, l, false, p.whole)}</span>
         </div>
       )}
       {jobs.length > 0 && <div class="agenda-tickets">{jobs.map((j) => <Ticketed key={j.id} job={j} />)}</div>}
@@ -114,17 +116,18 @@ function Lane(p: { lane: TruckBlock; started: boolean }) {
 function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
   const l = lang.value;
   const { v } = p;
+  const whole = v.key === 'day';
   const closed = !v.open && !v.started;
   const full = v.open && !v.room;
-  const status = v.past ? t('agenda.block.past') : v.started ? t('agenda.block.started') : closed ? t('agenda.block.closed') : full ? t('agenda.lane.full') : '';
+  const status = v.past ? t('agenda.block.past') : v.started ? t(whole ? 'agenda.whole.over' : 'agenda.block.started') : closed ? t('agenda.block.closed') : full ? t('agenda.lane.full') : '';
   const canBook = may.book() && v.open && v.room;
   return (
-    <Panel class={`agenda-block${v.started ? ' is-started' : ''}${closed ? ' is-closed' : ''}`} data-tour={p.first ? 'agenda-block' : undefined} data-testid={`block-${v.key}`}
-      title={t('agenda.block.title', { block: t(`common.blocks.${v.key}`), hours: clockRange(v.start, v.end, l) })}
+    <Panel class={`agenda-block${whole ? ' is-day' : ''}${v.started ? ' is-started' : ''}${closed ? ' is-closed' : ''}`} data-tour={p.first ? 'agenda-block' : undefined} data-testid={`block-${v.key}`}
+      title={whole ? t('agenda.whole.title', { hours: clockRange(v.start, v.end, l) }) : t('agenda.block.title', { block: t(`common.blocks.${v.key}`), hours: clockRange(v.start, v.end, l) })}
       action={status ? <span class={`agenda-status${closed ? ' is-closed' : ''}${full && !v.started ? ' is-full' : ''}`}>{v.started && <Clock size={14} aria-hidden="true" />}{status}</span> : undefined}>
       <div class="agenda-lanes" onContextMenu={(e) => blockMenu(e as MouseEvent, p.day, v.key, v)} {...blockPress(p.day, v.key, v)}>
-        {closed && !v.lanes.length && !v.unplaced.length && <p class="muted small agenda-closed-text">{t('agenda.block.closedText')}</p>}
-        {v.lanes.map((lane) => <Lane key={lane.truck.id} lane={lane} started={v.started} />)}
+        {closed && !v.lanes.length && !v.unplaced.length && <p class="muted small agenda-closed-text">{t(whole ? 'agenda.whole.closedText' : 'agenda.block.closedText')}</p>}
+        {v.lanes.map((lane) => <Lane key={lane.truck.id} lane={lane} started={v.started} whole={whole} />)}
         {!v.started && !closed && v.idle.map((tr) => (
           <div key={tr.id} class="agenda-lane is-idle" style={{ '--tc': truckColor(tr.id) }} data-testid={`lane-idle-${tr.id}`}>
             <div class="agenda-lane-head">
@@ -144,12 +147,12 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
             <div class="agenda-tickets">{v.unplaced.map((j) => <Ticketed key={j.id} job={j} />)}</div>
           </div>
         )}
-        {!closed && v.jobs === 0 && <p class="faint small agenda-empty-block">{t('agenda.block.empty')}</p>}
+        {!closed && v.jobs === 0 && <p class="faint small agenda-empty-block">{t(whole ? 'agenda.whole.empty' : 'agenda.block.empty')}</p>}
       </div>
       {(canBook || mayPaste(v)) && (
         <div class="agenda-block-foot">
           {mayPaste(v) && <Button size="sm" variant="primary" icon={<ClipboardPaste />} href={pasteHref(p.day, v.key)} data-testid={`paste-${v.key}`}>{t('agenda.copy.pasteHere')}</Button>}
-          {canBook && <Button size="sm" variant="secondary" icon={<Plus />} href={href('/book', { day: p.day, block: v.key })} data-testid={`book-${v.key}`}>{t('agenda.block.book')}</Button>}
+          {canBook && <Button size="sm" variant="secondary" icon={<Plus />} href={href('/book', { day: p.day, block: v.key })} data-testid={`book-${v.key}`}>{t(whole ? 'agenda.whole.book' : 'agenda.block.book')}</Button>}
         </div>
       )}
     </Panel>
@@ -159,7 +162,8 @@ function BlockPanel(p: { day: Day; v: BlockView; first: boolean }) {
 /* ---------- the day ---------- */
 export function DayView(p: { day: Day; onDay: (d: Day) => void }) {
   const todayDay = todayOf();
-  const views = blocks.value.map((b) => blockView(p.day, b, todayDay));
+  const plan = dayPlan(p.day, todayDay);
+  const views = plan.views;
   const all = dayJobs(p.day);
   const off = all.filter(isOff);
   const active = all.length - off.length;
@@ -174,7 +178,7 @@ export function DayView(p: { day: Day; onDay: (d: Day) => void }) {
             action={may.hours() ? <Button href="#/hours" variant="secondary">{t('agenda.day.hours')}</Button> : undefined} />
         </Panel>
       ) : (
-        <div class="agenda-blocks">
+        <div class={`agenda-blocks${plan.window ? ' is-day' : ''}`}>
           {views.map((v, i) => <BlockPanel key={v.key} day={p.day} v={v} first={i === 0} />)}
         </div>
       )}

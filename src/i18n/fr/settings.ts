@@ -212,7 +212,40 @@ export const settings = {
     mapLabel: 'Le départ des camions sur la carte',
     replanNote: 'En enregistrant, les tournées des rendez-vous à venir sont recalculées (ordre des arrêts, camion, heures d’arrivée). Les blocs déjà commencés ne bougent pas.',
     startMoved: 'Départ des camions changé. Les tournées à venir sont ré-optimisées.',
-    replanned: 'Réglages enregistrés. Les tournées à venir sont recalculées.'
+    replanned: 'Réglages enregistrés. Les tournées à venir sont recalculées.',
+    win: {
+      title: 'Plages d’arrivée de 4 heures',
+      help: 'L’app estime l’heure où le mécano peut arriver chez le client, puis dit au client une plage de 4 heures autour de cette heure : par défaut 1 heure avant et 3 heures après.',
+      lead: 'Au lieu d’un bloc fixe (matin, après-midi, soir), le client se fait dire une plage de 4 heures autour de l’heure où le mécano devrait arriver. L’app peut changer l’ordre des arrêts tant que chaque client est servi dans sa plage.',
+      switch: 'Réserver par plages d’arrivée',
+      onHint: 'Allumé : les nouveaux rendez-vous reçoivent une plage de 4 heures.',
+      offHint: 'Éteint : les rendez-vous se prennent par blocs, comme avant.',
+      ownerOnly: 'Seul le propriétaire peut changer ce choix.',
+      askOn: 'Passer aux plages d’arrivée ?',
+      askOnText: 'Les rendez-vous à venir gardent les heures déjà dites aux clients : leur ancien bloc devient leur plage. Les nouveaux rendez-vous reçoivent une plage de 4 heures. Tu peux revenir aux blocs quand tu veux.',
+      askOnOk: 'Passer aux plages',
+      askOffText: 'Les rendez-vous à venir retournent dans le bloc (matin, après-midi ou soir) où leur arrivée est prévue. Les clients qui ont reçu une plage qui ne suit pas un bloc gardent leur texto : vérifie avec eux au besoin. Tu peux revenir aux plages quand tu veux.',
+      askOff: 'Revenir aux blocs ?',
+      askOffOk: 'Revenir aux blocs',
+      onDone: { zero: 'Plages d’arrivée allumées.', one: 'Plages d’arrivée allumées : {n} rendez-vous à venir converti.', other: 'Plages d’arrivée allumées : {n} rendez-vous à venir convertis.' },
+      offDone: { zero: 'Retour aux blocs.', one: 'Retour aux blocs : {n} rendez-vous à venir converti.', other: 'Retour aux blocs : {n} rendez-vous à venir convertis.' },
+      before: 'Avant l’heure estimée',
+      beforeHelp: 'La plage commence ces minutes avant l’heure où le mécano devrait arriver.',
+      after: 'Après l’heure estimée',
+      afterHelp: 'La plage finit ces minutes après l’heure où le mécano devrait arriver. Plus c’est long, plus l’app a de jeu pour replacer la route.',
+      round: 'Arrondi',
+      roundHelp: 'Les plages commencent à l’heure juste, ou aussi à la demie.',
+      round60: 'À l’heure',
+      round30: 'À la demi-heure',
+      example: 'Arrivée estimée à {eta} → plage dite au client : entre {from} et {to}',
+      day: 'Heures de la journée',
+      dayHelp: 'Aucune plage ne commence avant la première heure ni ne finit après la dernière.',
+      dayShort: 'La journée est plus courte qu’une plage : allonge la journée ou raccourcis la plage.',
+      flexHelp: 'Un client libre toute la journée peut être réservé « flexible » : pas de plage tout de suite, l’app le place où ça aide la route, et sa plage est fixée la veille (il reçoit un texto).',
+      lock: 'Fixer les plages de demain',
+      locked: { one: '{n} plage fixée pour demain.', other: '{n} plages fixées pour demain.' },
+      lockedNone: 'Aucun rendez-vous flexible à fixer pour demain.'
+    }
   },
   texts: {
     lead: 'Les textos que l’app envoie aux clients. Les mots entre accolades, comme {prenom}, sont remplacés pour chaque client.',
@@ -242,17 +275,18 @@ export const settings = {
       invoice: { title: 'Facture', when: 'Quand la facture est envoyée, avec le bouton « Payer ».' },
       payment_reminder: { title: 'Rappel de paiement', when: 'Quand tu relances une facture pas payée.' },
       return_trip: { title: 'Retour au point de départ', when: 'Quand le mécano repart vers la Centrale après sa dernière job (au numéro de retour, Réservations).' },
-      reminder: { title: 'Rappel la veille', when: 'La veille du rendez-vous.' }
+      reminder: { title: 'Rappel la veille', when: 'La veille du rendez-vous.' },
+      window: { title: 'Plage confirmée', when: 'Quand la plage d’un rendez-vous flexible est fixée, la veille.' }
     },
     vars: {
       prenom: 'Prénom du client', garage: 'Nom du garage', jour: 'Jour du rendez-vous', debut: 'Début du bloc', fin: 'Fin du bloc',
       total: 'Total', lien: 'Lien vers sa page', mecano: 'Prénom du mécano', heure: 'Heure d’arrivée', minutes: 'Minutes de route',
       services: 'Les services et leur prix (une ligne chacun)', soustotal: 'Total avant taxes, avec « + tx »',
       vehicule: 'Son véhicule', montant: 'Montant', numero: 'Numéro de facture', date: 'Date de la facture', telephone: 'Téléphone du garage', lieu: 'Point de départ (Centrale)',
-      bloc: 'Bloc (le matin, l’après-midi, le soir)', payer: '« et la payer maintenant » (quand le paiement par carte est branché)'
+      bloc: 'Bloc (le matin, l’après-midi, le soir)', plage: 'Plage d’arrivée (entre 14 h et 18 h)', payer: '« et la payer maintenant » (quand le paiement par carte est branché)'
     },
     example: {
-      prenom: 'Julie', mecano: 'Saleh', vehicule: 'Honda Civic 2019', bloc: 'le matin', payer: ' (et la payer maintenant si vous le voulez)'
+      prenom: 'Julie', mecano: 'Saleh', vehicule: 'Honda Civic 2019', bloc: 'le matin', blocDay: 'dans la journée', payer: ' (et la payer maintenant si vous le voulez)'
     }
   },
   waiver: {

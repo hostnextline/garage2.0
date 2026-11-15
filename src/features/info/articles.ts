@@ -164,7 +164,7 @@ export const ARTICLES: InfoArticle[] = [
         'Le client n’est pas averti automatiquement : appelle-le.'
       ],
       example: 'Saleh arrive chez Ola : personne, pas de réponse au téléphone après 10 minutes. Il touche « … » → « Client absent » → « Personne, pas de réponse ». Il passe au client suivant.',
-      tips: ['Erreur ? Le bureau peut « Rouvrir la job » : elle revient à l’agenda, au même bloc.'],
+      tips: ['Erreur ? Le bureau peut « Rouvrir la job » : elle revient à l’agenda, au même bloc (ou le même jour, avec les plages d’arrivée).'],
       keys: 'annuler absent no show personne rouvrir annulation'
     },
     en: {
@@ -172,7 +172,7 @@ export const ARTICLES: InfoArticle[] = [
       short: 'The job’s « … » menu: « Cancel the job » frees the block; « No-show » records the absence on their file.',
       steps: ['Open the job, tap « … » at the top right.', '« Cancel the job » (before the work): say why. The block frees up.', 'Or « No-show »: nobody there. It counts on their file.', 'The customer is not told automatically: call them.'],
       example: 'Saleh gets to Ola’s: nobody, no answer after 10 minutes. He taps « … » → « No-show » → « Nobody, no answer ». On to the next customer.',
-      tips: ['A mistake? The office can « Reopen the job »: it goes back on the agenda, same block.'],
+      tips: ['A mistake? The office can « Reopen the job »: it goes back on the agenda, same block (or same day, with arrival windows).'],
       keys: 'cancel no show absent nobody reopen'
     }
   },
@@ -214,7 +214,7 @@ export const ARTICLES: InfoArticle[] = [
         'Touche « Réserver ». Le client reçoit un texto de confirmation.'
       ],
       example: 'Andre appelle pour un changement d’huile demain après-midi. Le bureau tape « Andre », choisit sa Sienna, coche « Changement d’huile », choisit « Demain, après-midi » et réserve. Andre reçoit : « Rendez-vous demain entre 12 h et 16 h, total prévu 103,47 $ ».',
-      tips: ['L’heure exacte est calculée par l’app (la route la plus courte). Le client a le bloc ; il reçoit l’heure le jour même avec « Je pars ».'],
+      tips: ['L’heure exacte est calculée par l’app (la route la plus courte). Le client a le bloc ; il reçoit l’heure le jour même avec « Je pars ».', 'Si le garage réserve par plages d’arrivée (voir « Plages d’arrivée de 4 heures »), tu choisis une plage de 4 heures au lieu d’un bloc : « entre 14 h et 18 h ». Le reste est pareil.'],
       keys: 'reserver rendez-vous rdv booking bloc matin apres-midi soir camion nouveau prendre'
     },
     en: {
@@ -222,7 +222,7 @@ export const ARTICLES: InfoArticle[] = [
       short: '« + » → « Book an appointment »: the customer, their car, the services, then a block (morning, afternoon or evening). The app puts them on a truck and works out the time.',
       steps: ['Tap the red « + » → « Book an appointment ».', 'Find the customer (or create them).', 'Pick their car (or add it).', 'Tick the services. The length is worked out; you can change it.', 'Pick a block: the app suggests the best (where a truck already drives nearby).', 'Tap « Book ». The customer gets a confirmation text.'],
       example: 'Andre calls for an oil change tomorrow afternoon. The office types « Andre », picks his Sienna, ticks « Oil change », picks « Tomorrow, afternoon » and books. Andre gets: « Appointment tomorrow between 12 and 4 p.m., expected total $103.47 ».',
-      tips: ['The exact time is worked out by the app (the shortest route). The customer gets the block; the exact time comes on the day with « I’m leaving ».'],
+      tips: ['The exact time is worked out by the app (the shortest route). The customer gets the block; the exact time comes on the day with « I’m leaving ».', 'If the garage books by arrival windows (see « 4-hour arrival windows »), you pick a 4-hour window instead of a block: « between 2 and 6 p.m. ». The rest is the same.'],
       keys: 'book appointment booking block morning afternoon evening truck new'
     }
   },
@@ -239,6 +239,7 @@ export const ARTICLES: InfoArticle[] = [
         'Réserve : un rendez-vous par voiture, dans le même bloc.'
       ],
       example: 'Mahdi a une Corolla et une Sienna. Corolla : changement d’huile. Sienna : pneus d’hiver. Un seul bloc « samedi matin », deux rendez-vous, un pour chaque voiture.',
+      tips: ['Avec les plages d’arrivée : les deux rendez-vous ont le même jour et la même plage.'],
       keys: 'plusieurs voitures vehicules deux autos famille corolla sienna'
     },
     en: {
@@ -246,6 +247,7 @@ export const ARTICLES: InfoArticle[] = [
       short: 'In « Book », each of the customer’s cars has its own list of work. Pick a car, tick its work, then go to the other.',
       steps: ['In « Book », pick the customer.', 'Pick the first car and tick its work.', 'Pick the second car: the list starts empty, tick its work.', 'Going back to the first car brings its work back.', 'Book: one appointment per car, in the same block.'],
       example: 'Mahdi has a Corolla and a Sienna. Corolla: oil change. Sienna: winter tires. One block « Saturday morning », two appointments, one per car.',
+      tips: ['With arrival windows: both appointments get the same day and the same window.'],
       keys: 'several cars vehicles two family'
     }
   },
@@ -261,7 +263,7 @@ export const ARTICLES: InfoArticle[] = [
         'Le client va à la fin de la route du camion ; la journée finit plus tard.'
       ],
       example: 'Samedi matin est plein. Un bon client insiste. Hassan touche « Réserver quand même » : il passe en 5e, après les 4 autres, vers 12 h 10.',
-      tips: ['Seuls le propriétaire et le bureau peuvent le faire.'],
+      tips: ['Seuls le propriétaire et le bureau peuvent le faire.', 'Avec les plages d’arrivée, c’est la journée qui est pleine : le client forcé passe à la fin de la route et peut être servi en dehors de sa plage. L’app l’indique « Hors plage ».'],
       keys: 'complet plein forcer quand meme surbooking bloc'
     },
     en: {
@@ -269,7 +271,7 @@ export const ARTICLES: InfoArticle[] = [
       short: 'A block is full but you want the customer anyway? After the warning, « Book anyway » puts them at the end of the route. Nobody loses their place.',
       steps: ['Book as usual.', 'The app says the block is full.', 'Tap « Book anyway » and confirm.', 'The customer goes at the end of the truck’s route; the day ends later.'],
       example: 'Saturday morning is full. A good customer insists. Hassan taps « Book anyway »: they go 5th, after the other 4, around 12:10.',
-      tips: ['Only the owner and the office can do it.'],
+      tips: ['Only the owner and the office can do it.', 'With arrival windows, it is the day that is full: the forced customer goes at the end of the route and may be reached outside their window. The app shows « Outside the window ».'],
       keys: 'full force anyway overbook block'
     }
   },
@@ -285,6 +287,7 @@ export const ARTICLES: InfoArticle[] = [
         'Confirme. Si les textos sont activés, le client est averti.'
       ],
       example: 'Amro ne peut plus samedi. Le bureau ouvre sa job → « Déplacer le rendez-vous » → lundi matin. Amro reçoit le texto du changement.',
+      tips: ['Avec les plages d’arrivée, tu choisis le nouveau jour et une plage de 4 heures (ou « Flexible ») au lieu d’un bloc.'],
       keys: 'deplacer changer date jour reporter remettre bloc'
     },
     en: {
@@ -292,7 +295,49 @@ export const ARTICLES: InfoArticle[] = [
       short: 'On the job: « Move the appointment », pick another day or block. The customer can get a text.',
       steps: ['Open the job (not started yet).', 'Tap « Move the appointment » (or the « … » menu).', 'Pick the new day and block.', 'Confirm. If texts are on, the customer is told.'],
       example: 'Amro can’t make Saturday. The office opens his job → « Move the appointment » → Monday morning. Amro gets the text.',
+      tips: ['With arrival windows, you pick the new day and a 4-hour window (or « Flexible ») instead of a block.'],
       keys: 'move change date day reschedule block'
+    }
+  },
+  {
+    id: 'windows', topic: 'booking', roles: ['owner', 'office', 'mechanic'], link: '#/settings',
+    fr: {
+      title: 'Plages d’arrivée de 4 heures',
+      short: 'Au lieu d’un bloc (matin, après-midi, soir), le client reçoit une plage de 4 heures autour de l’heure où l’app pense arriver : 1 heure avant, 3 heures après.',
+      steps: [
+        'Le propriétaire l’allume dans Réglages → Réservations → « Plages d’arrivée de 4 heures » (« Réserver par plages d’arrivée »). Éteint, l’app garde les blocs.',
+        'Quand tu réserves, l’app propose des plages : « entre 14 h et 18 h ». Choisis-en une.',
+        'Le client est libre toute la journée ? Choisis « Flexible » : sa plage lui est confirmée la veille.',
+        'Sur la job, « Ma journée » et la carte, tu vois l’heure prévue et la plage dite au client.',
+        '« Hors plage » : l’arrivée prévue sort de la plage. Appelle le client ou change l’ordre des arrêts.'
+      ],
+      example: 'L’app pense arriver chez Andre vers 15 h. Elle propose « entre 14 h et 18 h ». Le lendemain, un client s’ajoute : la route est refaite, Andre passe à 16 h 20, toujours dans sa plage. Il n’y a rien à lui dire.',
+      tips: [
+        'L’app tient chaque plage promise quand elle réorganise une route : elle ne déplace un arrêt que si tout le monde reste dans sa plage.',
+        'La plage est large exprès (1 h avant, 3 h après) : ça laisse de la place pour réorganiser.',
+        'Les rendez-vous « Flexible » se placent n’importe quand dans la journée : ils aident à mettre plus de rendez-vous dans une journée.',
+        'Un arrêt mis à la main dans « Ordre des arrêts », ou réservé « quand même », peut sortir de sa plage.'
+      ],
+      keys: 'plage plages arrivee fenetre 4 heures entre flexible hors plage veille bloc blocs promesse'
+    },
+    en: {
+      title: '4-hour arrival windows',
+      short: 'Instead of a block (morning, afternoon, evening), the customer gets a 4-hour window around the time the app expects to arrive: 1 hour before, 3 hours after.',
+      steps: [
+        'The owner turns it on in Settings → Bookings → « 4-hour arrival windows » (« Book by arrival windows »). Off, the app keeps the blocks.',
+        'When you book, the app offers windows: « between 2 and 6 p.m. ». Pick one.',
+        'The customer is free all day? Pick « Flexible »: their window is confirmed the day before.',
+        'On the job, « My day » and the map, you see the planned time and the window the customer was told.',
+        '« Outside the window »: the planned arrival is outside the window. Call the customer or change the order of the stops.'
+      ],
+      example: 'The app expects to reach Andre around 3 p.m. It offers « between 2 and 6 p.m. ». The next day another customer is added: the route is redone, Andre moves to 4:20, still inside his window. Nothing to tell him.',
+      tips: [
+        'The app keeps every promised window when it reorders a route: it only moves a stop if everyone stays inside their window.',
+        'The window is wide on purpose (1 h before, 3 h after): it leaves room to reorder.',
+        '« Flexible » appointments fit anywhere in the day: they help fit more appointments in a day.',
+        'A stop ordered by hand in « Order of the stops », or booked « anyway », can end up outside its window.'
+      ],
+      keys: 'window windows arrival 4 hours between flexible outside day before block blocks promise'
     }
   },
   {
@@ -308,7 +353,7 @@ export const ARTICLES: InfoArticle[] = [
         'Pour revenir à l’ordre de l’app : « Ordre des arrêts » → « Laisser l’app choisir ».'
       ],
       example: 'Mahdi est urgent. Hassan ouvre sa job → « … » → « Mettre en premier ». Mahdi passe 1er vers 15 h 03, Amro passe 2e vers 16 h 08.',
-      tips: ['Ceux qui sont en route ou sur place restent toujours en premier.', 'Le propriétaire, le bureau et le mécano du camion peuvent le faire.'],
+      tips: ['Ceux qui sont en route ou sur place restent toujours en premier.', 'Le propriétaire, le bureau et le mécano du camion peuvent le faire.', 'Avec les plages d’arrivée, l’ordre se choisit pour toute la journée du camion. Attention : un ordre choisi à la main peut faire arriver le camion en dehors de la plage dite à un client. L’app avertit avant d’enregistrer et marque l’arrêt « Hors plage ».'],
       keys: 'ordre premier urgent prioriser avant changer ordre arrets route trier'
     },
     en: {
@@ -316,7 +361,7 @@ export const ARTICLES: InfoArticle[] = [
       short: 'The app picks the order that drives the least. To put a customer first: their job’s « … » menu → « Put first ». Or « Order of the stops » to reorder everything.',
       steps: ['Open the customer’s job.', 'Quick: « … » → « Put first ». Done.', 'Or: « Order of the stops » → arrows ⇈ (first), ↑, ↓ → « Save the order ».', 'Everybody’s arrival time is worked out again.', 'Back to the app’s order: « Order of the stops » → « Let the app choose ».'],
       example: 'Mahdi is urgent. Hassan opens his job → « … » → « Put first ». Mahdi goes 1st around 3:03, Amro 2nd around 4:08.',
-      tips: ['Those on the way or on site always stay first.', 'The owner, the office and the truck’s mechanic can do it.'],
+      tips: ['Those on the way or on site always stay first.', 'The owner, the office and the truck’s mechanic can do it.', 'With arrival windows, the order is chosen for the truck’s whole day. Careful: an order chosen by hand can make the truck arrive outside the window a customer was told. The app warns before saving and marks the stop « Outside the window ».'],
       keys: 'order first urgent priority before stops route sort'
     }
   },
@@ -545,7 +590,7 @@ export const ARTICLES: InfoArticle[] = [
         'Enregistre. Les rendez-vous à venir sont replanifiés à partir de ce point.'
       ],
       example: 'Saleh part de chez lui à Laval. Hassan met « Départ de ce camion : 300 boul. Saint-Martin, Laval ». Le premier client du matin devient celui le plus proche de Laval.',
-      tips: ['L’après-midi part du dernier client du matin ; chaque bloc essaie de finir près du premier client du bloc suivant.'],
+      tips: ['L’après-midi part du dernier client du matin ; chaque bloc essaie de finir près du premier client du bloc suivant.', 'Avec les plages d’arrivée, il n’y a qu’une route par jour : elle part d’ici le matin.'],
       keys: 'depart point camion maison centrale adresse route horaires'
     },
     en: {
@@ -553,7 +598,7 @@ export const ARTICLES: InfoArticle[] = [
       short: 'Each truck leaves from the Centrale, or from its own start (e.g. the mechanic’s home). Routes are redone by themselves.',
       steps: ['Open « Hours » → the truck → « Where this truck leaves from ».', 'Pick the address in the list.', 'Save. Coming appointments are re-planned from there.'],
       example: 'Saleh leaves from home in Laval. Hassan sets « 300 boul. Saint-Martin, Laval ». The first morning customer becomes the one closest to Laval.',
-      tips: ['The afternoon leaves from the last morning customer; each block tries to end near the first customer of the next block.'],
+      tips: ['The afternoon leaves from the last morning customer; each block tries to end near the first customer of the next block.', 'With arrival windows, there is one route a day: it leaves from here in the morning.'],
       keys: 'start point truck home centrale address route hours'
     }
   },

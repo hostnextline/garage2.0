@@ -18,7 +18,9 @@ export interface InvoiceV {
 export interface JobView {
   ok: true; kind: 'job'; garage: Garage; lang: string;
   customer: { first: string };
-  job: { number: number; day: string; day_label_fr?: string; day_label_en?: string; block: 'am' | 'pm' | 'eve' | string; start: number | null; end: number | null;
+  job: { number: number; day: string; day_label_fr?: string; day_label_en?: string; block: 'am' | 'pm' | 'eve' | 'day' | string; start: number | null; end: number | null;
+    /** « Plages d’arrivée »: a 'day' appointment without its window yet (start and end are the window when it has one) */
+    flex?: boolean;
     status: JobStatus; tracking: boolean; vehicle: string | null; waiver_signed: boolean };
   items: JobItemV[]; extras: ExtraV[]; expected: Sums; prepaid_cents: number; invoice: InvoiceV | null;
   /** the estimate the customer signs (with the conditions of the work) */

@@ -172,6 +172,8 @@ function AppointmentPanel(p: { v: JobView; l: CLang; printable: boolean; token: 
   const rel = relDay(j.day);
   const slot = slotText(j.start, j.end, l);
   const block = ['am', 'pm', 'eve'].includes(j.block) ? ct(l, `blocks.${j.block}`) : null;
+  // « Plages d’arrivée »: a 'day' appointment shows its window (start, end); without one yet, « Dans la journée »
+  const flex = j.block === 'day' && !slot;
   const closed = j.status === 'cancelled' || j.status === 'no_show';
   // the appointment's own link also opens the live trip (same secret), so the link is always there
   const trackToken = j.status === 'en_route' && j.tracking ? (recall('suivi') || p.token) : null;
@@ -185,8 +187,9 @@ function AppointmentPanel(p: { v: JobView; l: CLang; printable: boolean; token: 
       <div class={closed ? 'cl-closed' : undefined}>
         <h2 class="cl-day" id="cl-appt">{dayTitle(j.day, l)}</h2>
         {(slot || block) && (
-          <p class="cl-slot">{slot && <b>{slot}</b>}{block && <span>{block}</span>}</p>
+          <p class="cl-slot" data-testid="client-slot">{slot && <b>{slot}</b>}{block && <span>{block}</span>}</p>
         )}
+        {flex && <p class="cl-slot" data-testid="client-flex"><b>{ct(l, 'flex')}</b>{!closed && <span>{ct(l, 'flexNote')}</span>}</p>}
       </div>
       <p class="cl-explain">{explain}</p>
       {trackToken && (

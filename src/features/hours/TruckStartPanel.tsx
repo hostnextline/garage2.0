@@ -4,7 +4,7 @@
    (set_truck_start); the phone brings them back at once. */
 import { useEffect, useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
-import { settings, truck as truckRow } from '../../data/select';
+import { settings, truck as truckRow, windowsOn } from '../../data/select';
 import { setTruckStart } from '../../data/api';
 import { flush, pull } from '../../data/sync';
 import type { TruckStart } from '../../data/types';
@@ -58,7 +58,7 @@ export function TruckStartPanel(p: { truckId: string; canEdit: boolean }) {
 
   if (!p.canEdit) {
     return (
-      <Panel title={t('hours.start.title')} help={t('hours.start.help')} data-testid="truck-start-panel">
+      <Panel title={t('hours.start.title')} help={t(windowsOn.value ? 'hours.win.startHelp' : 'hours.start.help')} data-testid="truck-start-panel">
         <p class="small" style={{ margin: 0 }} data-testid="truck-start-words">{startWords(saved)}</p>
       </Panel>
     );
@@ -66,7 +66,7 @@ export function TruckStartPanel(p: { truckId: string; canEdit: boolean }) {
 
   const place: PlaceValue = { address: d.address, unit: null, postal_code: null, lat: d.lat, lng: d.lng };
   return (
-    <Panel title={t('hours.start.title')} sub={t('hours.start.sub')} help={t('hours.start.help')} data-testid="truck-start-panel">
+    <Panel title={t('hours.start.title')} sub={t(windowsOn.value ? 'hours.win.startSub' : 'hours.start.sub')} help={t(windowsOn.value ? 'hours.win.startHelp' : 'hours.start.help')} data-testid="truck-start-panel">
       <div class="stack">
         <Field label={t('hours.start.mode')} group>
           <Seg<Mode> value={d.mode} onValue={(m) => { setD((x) => ({ ...x, mode: m })); setErr(null); }} label={t('hours.start.mode')} data-testid="truck-start-mode"
@@ -88,7 +88,7 @@ export function TruckStartPanel(p: { truckId: string; canEdit: boolean }) {
             </Field>
           </>
         )}
-        {dirty && <p class="small muted" style={{ margin: 0 }} data-testid="truck-start-note">{t('hours.start.replanNote')}</p>}
+        {dirty && <p class="small muted" style={{ margin: 0 }} data-testid="truck-start-note">{t(windowsOn.value ? 'hours.win.replanNote' : 'hours.start.replanNote')}</p>}
         {dirty && (
           <div class="row-wrap">
             <Button variant="primary" onClick={save} data-testid="truck-start-save">{t('common.save')}</Button>

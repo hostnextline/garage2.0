@@ -212,7 +212,40 @@ export const settings: typeof fr = {
     mapLabel: 'Where the trucks leave from, on the map',
     replanNote: 'When you save, the routes of the coming appointments are computed again (order of the stops, truck, arrival times). Blocks already started do not move.',
     startMoved: 'Starting point changed. The coming routes are re-optimized.',
-    replanned: 'Settings saved. The coming routes are computed again.'
+    replanned: 'Settings saved. The coming routes are computed again.',
+    win: {
+      title: '4-hour arrival windows',
+      help: 'The app estimates when the mechanic can reach the customer, then tells the customer a 4-hour window around that time: by default 1 hour before and 3 hours after.',
+      lead: 'Instead of a fixed block (morning, afternoon, evening), the customer is told a 4-hour window around the time the mechanic should arrive. The app may change the order of the stops as long as every customer is served inside their window.',
+      switch: 'Book by arrival windows',
+      onHint: 'On: new appointments get a 4-hour window.',
+      offHint: 'Off: appointments are booked by blocks, as before.',
+      ownerOnly: 'Only the owner can change this.',
+      askOn: 'Switch to arrival windows?',
+      askOnText: 'The coming appointments keep the hours their customers were told: their old block becomes their window. New appointments get a 4-hour window. You can go back to blocks whenever you want.',
+      askOnOk: 'Switch to windows',
+      askOffText: 'The coming appointments go back to the block (morning, afternoon or evening) where their arrival is planned. Customers who were told a window that does not follow a block keep their text: check with them if needed. You can come back to windows whenever you want.',
+      askOff: 'Go back to blocks?',
+      askOffOk: 'Go back to blocks',
+      onDone: { zero: 'Arrival windows switched on.', one: 'Arrival windows switched on: {n} coming appointment converted.', other: 'Arrival windows switched on: {n} coming appointments converted.' },
+      offDone: { zero: 'Back to blocks.', one: 'Back to blocks: {n} coming appointment converted.', other: 'Back to blocks: {n} coming appointments converted.' },
+      before: 'Before the estimated time',
+      beforeHelp: 'The window starts this many minutes before the time the mechanic should arrive.',
+      after: 'After the estimated time',
+      afterHelp: 'The window ends this many minutes after the time the mechanic should arrive. The longer it is, the more room the app has to rearrange the route.',
+      round: 'Rounding',
+      roundHelp: 'Windows start on the hour, or on the half hour too.',
+      round60: 'On the hour',
+      round30: 'On the half hour',
+      example: 'Estimated arrival at {eta} → window told to the customer: between {from} and {to}',
+      day: 'Hours of the day',
+      dayHelp: 'No window starts before the first hour or ends after the last one.',
+      dayShort: 'The day is shorter than one window: make the day longer or the window shorter.',
+      flexHelp: 'A customer who is free all day can be booked “flexible”: no window right away, the app places them where it helps the route, and their window is fixed the day before (they get a text).',
+      lock: 'Fix tomorrow’s windows',
+      locked: { one: '{n} window fixed for tomorrow.', other: '{n} windows fixed for tomorrow.' },
+      lockedNone: 'No flexible appointment to fix for tomorrow.'
+    }
   },
   texts: {
     lead: 'The texts the app sends to customers. Words in braces, like {prenom}, are replaced for each customer.',
@@ -242,17 +275,18 @@ export const settings: typeof fr = {
       invoice: { title: 'Invoice', when: 'When the invoice is sent, with the « Pay » button.' },
       payment_reminder: { title: 'Payment reminder', when: 'When you follow up on an unpaid invoice.' },
       return_trip: { title: 'Back to the starting point', when: 'When the mechanic heads back to the Centrale after the last job (to the return number, Bookings).' },
-      reminder: { title: 'Day-before reminder', when: 'The day before the appointment.' }
+      reminder: { title: 'Day-before reminder', when: 'The day before the appointment.' },
+      window: { title: 'Window confirmed', when: 'When the window of a flexible appointment is fixed, the day before.' }
     },
     vars: {
       prenom: 'Customer’s first name', garage: 'Garage name', jour: 'Appointment day', debut: 'Block start', fin: 'Block end',
       total: 'Total', lien: 'Link to their page', mecano: 'Mechanic’s first name', heure: 'Arrival time', minutes: 'Drive minutes',
       services: 'The services and their price (one line each)', soustotal: 'Total before taxes, with “+ tx”',
       vehicule: 'Their vehicle', montant: 'Amount', numero: 'Invoice number', date: 'Invoice date', telephone: 'Garage phone', lieu: 'Starting point (Centrale)',
-      bloc: 'Block (in the morning, afternoon, evening)', payer: '« and pay now » (when card payment is connected)'
+      bloc: 'Block (in the morning, afternoon, evening)', plage: 'Arrival window (between 2 p.m. and 6 p.m.)', payer: '« and pay now » (when card payment is connected)'
     },
     example: {
-      prenom: 'Kevin', mecano: 'Saleh', vehicule: '2019 Honda Civic', bloc: 'in the morning', payer: ' (and pay now if you wish)'
+      prenom: 'Kevin', mecano: 'Saleh', vehicule: '2019 Honda Civic', bloc: 'in the morning', blocDay: 'during the day', payer: ' (and pay now if you wish)'
     }
   },
   waiver: {

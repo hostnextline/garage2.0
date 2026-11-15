@@ -1,9 +1,11 @@
 /* DEV ONLY — the demo: npm run dev, then open http://localhost:5173/?demo (owner), ?demo=mechanic (Saleh),
-   ?demo=office, ?demo=treasurer. Add &l=en for English. The whole data layer runs as usual against the pretend
+   ?demo=office, ?demo=treasurer. Add &l=en for English, &fenetres=1 for « Plages d'arrivée » already switched on
+   (demo-windows.ts). The whole data layer runs as usual against the pretend
    server in fake-server.ts (changes made in the demo are lost when the page reloads). */
 import { installFakeServer, db, find, registerRpc } from './fake-server';
 import { loadDemoData, ME } from './demo-data';
 import './demo-rpc';
+import { installWindows } from './demo-windows';
 import { sb, access, authState, session } from '../data/auth';
 import { startSync, syncOptions } from '../data/sync';
 import { RIGHTS, type Access, type Right, type Role } from '../data/types';
@@ -32,6 +34,8 @@ export async function startDemo() {
   loadDemoData();
   const extras = import.meta.glob('./demo-extra/*.ts', { eager: true }) as Record<string, { load?: () => void }>;
   for (const m of Object.values(extras)) m.load?.();
+  // « Plages d'arrivée »: wraps the booking operations registered above (the block demo is unchanged while the mode is off)
+  try { installWindows(); } catch (e) { console.warn('demo: fenêtres', e); }
   const who = (/[?&]demo=(\w+)/.exec(location.search)?.[1] || 'owner') as 'owner' | 'mechanic' | 'office' | 'treasurer' | 'adam';
   const id = who === 'mechanic' ? ME.saleh : who === 'adam' ? ME.adam : who === 'office' ? ME.office : who === 'treasurer' ? ME.treasurer : ME.owner;
   registerRpc('my_access', () => accessOf(id));

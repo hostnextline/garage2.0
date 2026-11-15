@@ -23,6 +23,7 @@ import { assemble, normalize, minuteOf, UNPLACED_COLOR, type TeamMapAnswer, type
 import type { JobStatus } from '../../data/types';
 import { fromDevice } from './device';
 import { MapDay } from './MapDay';
+import { windowWords } from '../booking/when';
 import { useRoads, roadOf, roadTotal } from './useRoads';
 import { ago, minutesSince } from './ago';
 import './map.css';
@@ -417,7 +418,7 @@ function StopList(p: { m: Assembled; focus: Focus; selected: string | null; onCh
                 <span class="map-n" style={{ '--c': g.color }} aria-label={t('map.stop.number', { n: s.n })}>{s.done ? <Check size={16} strokeWidth={3} /> : g.id === 'unplaced' ? '?' : s.n}</span>
                 <span class="row-main">
                   <span class="row-title">{s.name}</span>
-                  <span class="row-sub">{s.hasPos ? whenOf(s) : t('map.stops.noPos')}</span>
+                  <span class="row-sub">{s.hasPos ? whenOf(s) : t('map.stops.noPos')}{lateStop(s) && <> <Pill tone="warn" data-testid={`stop-late-${s.id}`}>{t('common.window.late')}</Pill></>}</span>
                 </span>
                 <span class="row-end"><StatusPill status={s.status as JobStatus} /></span>
               </button>
@@ -452,6 +453,7 @@ function StopCard(p: { stop: Stop & { color: string; truckName: string }; truck:
         {etaMin != null
           ? (trip!.km != null ? t('map.stop.etaKm', { time: clock(etaMin, lang.value), km: fmtKm(trip!.km) }) : t('map.stop.eta', { time: clock(etaMin, lang.value) }))
           : whenOf(s)}
+        {lateStop(s) && <> <Pill tone="warn">{t('common.window.late')}</Pill></>}
       </p>
       <div class="row-wrap">
         <Button variant="primary" href={`#/job/${encodeURIComponent(s.id)}`} data-testid="map-open-job">{t('map.stop.open')}</Button>
@@ -461,8 +463,20 @@ function StopCard(p: { stop: Stop & { color: string; truckName: string }; truck:
   );
 }
 
+/** the window told to the customer of a stop booked by arrival window: the server's, else the phone's copy of the job */
+function winOf(s: Stop): [number, number] | null {
+  if (s.win) return s.win;
+  const row = jobRow(s.id);
+  return row && row.win_start != null && row.win_end != null ? [row.win_start, row.win_end] : null;
+}
+/** « Hors plage »: a coming stop whose planned arrival is outside its window */
+function lateStop(s: Stop): boolean {
+  const w = s.block === 'day' ? winOf(s) : null;
+  return !!w && s.status === 'booked' && s.etaMin != null && (s.etaMin < w[0] || s.etaMin > w[1]);
+}
 function whenOf(s: Stop): string {
-  const block = t(`common.blocks.${s.block}`);
+  // a job is shown by what it is: its block, or the window told to the customer
+  const block = s.block === 'day' ? cap(windowWords(winOf(s), lang.value)) : t(`common.blocks.${s.block}`);
   return s.etaMin != null ? t('map.stops.when', { block, time: clock(s.etaMin, lang.value) }) : block;
 }
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);

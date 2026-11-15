@@ -10,7 +10,7 @@ import { sha256hex } from '../_shared/tokens.ts';
 import { baseOf } from '../_shared/links.ts';
 import { stripeCall } from '../_shared/stripe.ts';
 import { applyCheckout } from '../_shared/payments.ts';
-import { longDay, first, money } from '../_shared/texts.ts';
+import { longDay, first, money, jobWindow } from '../_shared/texts.ts';
 
 type Row = Record<string, any>;
 
@@ -57,7 +57,9 @@ async function view(l: Row) {
     db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').maybeSingle()
   ]);
   const its = (items || []) as Row[];
-  const block = (s.booking?.blocks || []).find((b: Row) => b.key === j.block) || {};
+  // a block job: its block's hours; a 'day' job (« Plages d’arrivée »): the window promised, or « flexible » (no hours yet)
+  const win = jobWindow(j as never);
+  const block = j.block === 'day' ? (win ? { start: win[0], end: win[1] } : {}) : (s.booking?.blocks || []).find((b: Row) => b.key === j.block) || {};
   const v = inv as Row | null;
   const issued = v && v.status !== 'draft';
   // the invoice being made (from the mechanic's arrival): its own lines, rebates and taxes are what is due
@@ -78,7 +80,7 @@ async function view(l: Row) {
     ok: true, kind: 'job', garage, lang: (cust as Row | null)?.lang || 'fr',
     customer: { first: first((cust as Row | null)?.first_name) },
     job: { number: j.number, day: j.day, day_label_fr: longDay(j.day, 'fr'), day_label_en: longDay(j.day, 'en'), block: j.block,
-      start: block.start ?? null, end: block.end ?? null, status: j.status, tracking: !!trip,
+      start: block.start ?? null, end: block.end ?? null, flex: j.block === 'day' && !win, status: j.status, tracking: !!trip,
       vehicle: veh ? [(veh as Row).year, (veh as Row).make, (veh as Row).model].filter(Boolean).join(' ') : null, waiver_signed: !!j.waiver_signed_at },
     estimate: { signed_at: j.estimate_signed_at || null, signer: j.estimate_signer || null, cents: j.estimate_cents ?? null,
       changed, can_sign: open && !issued && planned.length > 0 && (!signed || changed) },

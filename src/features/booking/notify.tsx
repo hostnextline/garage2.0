@@ -6,12 +6,16 @@ import { signal } from '@preact/signals';
 import { MessageSquare, Copy, Share2 } from 'lucide-preact';
 import { notify, errorMessage } from '../../data/api';
 import { job as jobRow, customer as customerRow, settings } from '../../data/select';
+import { choiceWords } from './choice';
 import { t } from '../../lib/i18n';
 import { e164 } from '../../lib/text';
+import type { Job } from '../../data/types';
 import { Sheet, Button, toast } from '../../ui';
 
 export type NotifyKind = 'booking' | 'moved';
-interface Msg { name: string; phone: string | null; message: string; link: string | null }
+/** `when`: « Plages d'arrivée »: the window the customer was told (« Demain, entre 14 h et 18 h »), said above the text so
+    the person sending it by hand sees the two agree */
+interface Msg { name: string; phone: string | null; message: string; link: string | null; when?: string | null }
 const msg = signal<Msg | null>(null);
 let host: HTMLElement | null = null;
 function ensureHost() {
@@ -31,13 +35,20 @@ export function wantsText(kind: NotifyKind, jobId: string): boolean {
 }
 
 /** sends the customer's text and says what happened (never throws) */
-export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { customerId?: string | null } = {}): Promise<void> {
+/** the window of an appointment booked by window, in words (a block appointment: nothing, its text says the block) */
+export function windowSaid(j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_end' | 'win_flex'> | null | undefined): string | null {
+  if (!j || j.block !== 'day') return null;
+  return choiceWords({ day: j.day, block: 'day', win_start: j.win_start ?? null, win_end: j.win_end ?? null, win_flex: !!j.win_flex && j.win_start == null });
+}
+
+export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { customerId?: string | null; when?: string | null } = {}): Promise<void> {
   const c = customerRow(opts.customerId ?? jobRow(jobId)?.customer_id);
   const name = c ? (c.first_name || c.company || c.last_name || '') : '';
   try {
     const r = await notify(kind, jobId);
     const status = String(r?.status || (r?.ok === false ? 'error' : ''));
-    const open = () => openMessage({ name, phone: r?.phone ?? c?.phone ?? null, message: r?.message || '', link: r?.link || null });
+    // the window as the server has it now (the job's row), else the one just chosen on the screen
+    const open = () => openMessage({ name, phone: r?.phone ?? c?.phone ?? null, message: r?.message || '', link: r?.link || null, when: windowSaid(jobRow(jobId)) ?? opts.when ?? null });
     if (status === 'sent') toast(t(`booking.sms.sent.${kind}`), { kind: 'ok' });
     else if (status === 'already') toast(t('booking.sms.already'));
     else if (status === 'no_phone') toast(t('booking.sms.noPhone'));
@@ -67,6 +78,7 @@ function MessageHost() {
     <Sheet open onClose={close} title={t('booking.sms.title', { name: m.name || '' }).trim()} sub={t('booking.sms.lead')} data-testid="sms-sheet"
       footer={<Button variant="primary" block icon={<MessageSquare />} href={smsHref}>{t('booking.sms.open')}</Button>}>
       <div class="stack">
+        {m.when && <p class="small muted" style={{ margin: 0 }} data-testid="sms-when">{t('booking.win.smsWhen', { when: m.when })}</p>}
         <p class="sms-bubble" data-testid="sms-text">{body}</p>
         <div class="row-wrap">
           <Button icon={<Copy />} onClick={copy}>{t('booking.sms.copy')}</Button>

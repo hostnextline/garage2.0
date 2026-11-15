@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { chosenMinutes, chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots, stepNumber, serviceName,
-  EMPTY_CONTACT, type WebService } from './book-state';
+  EMPTY_CONTACT, windowMode, dayOffers, flexSlot, slotWindow, slotKey, bookWhen, type WebService, type WebSlot } from './book-state';
 import { parseLink } from './link';
 import { ct } from './i18n';
 import { onTypedStreet } from './book-state';
@@ -102,5 +102,50 @@ describe('Réserver en ligne: the address', () => {
     expect(onTypedStreet([bell], '1250 rue Graham').map((s) => s.label)).toEqual(['1250 rue Graham-Bell']);   // no town typed: offered, the customer sees the town
     expect(onTypedStreet([{ ...place('144 58e Avenue', '58e Avenue'), areas: ['Laval'] }], '144 58e av., Laval')).toHaveLength(1);
     expect(onTypedStreet([place('4521 rue Fabre', 'Rue Fabre', null)], '4521 rue Fabre')).toEqual([]);   // no position: not offered
+  });
+});
+
+describe('Réserver en ligne: « Plages d’arrivée »', () => {
+  const w = (day: string, a: number, near = false): WebSlot => ({ day, block: 'day', near, win_start: a, win_end: a + 240 });
+  it('the page offers windows when the garage says so, or when the moments are windows', () => {
+    expect(windowMode({ windows: true }, [])).toBe(true);
+    expect(windowMode({}, [w('2026-11-19', 540)])).toBe(true);
+    expect(windowMode({ windows: false }, [{ day: '2026-11-19', block: 'am', near: false }])).toBe(false);
+    expect(windowMode(null, null)).toBe(false);
+  });
+  it('by day, the first window is the best; the others are « Voir d’autres heures »', () => {
+    const d = dayOffers([w('2026-11-19', 540, true), w('2026-11-20', 720), w('2026-11-19', 840), w('2026-11-19', 540), w('2026-11-19', 840)]);
+    expect(d.map((x) => x.day)).toEqual(['2026-11-19', '2026-11-20']);
+    expect(d[0].best.win_start).toBe(540);
+    expect(d[0].near).toBe(true);
+    expect(d[0].others.map((x) => x.win_start)).toEqual([840]);
+    expect(d[1].others).toEqual([]);
+  });
+  it('« Voir d’autres dates » keeps two windows of the same day apart, never twice the same', () => {
+    expect(mergeSlots([w('2026-11-19', 540)], [w('2026-11-19', 540), w('2026-11-19', 600), w('2026-12-03', 540)]).map(slotKey))
+      .toEqual(['2026-11-19|day|540', '2026-11-19|day|600', '2026-12-03|day|540']);
+    expect(slotKey({ day: '2026-11-19', block: 'am', near: false })).toBe('2026-11-19|am');
+  });
+  it('what is booked: a block as always, a window by its start, or flexible', () => {
+    expect(bookWhen({ day: '2026-11-19', block: 'pm', near: true })).toEqual({ day: '2026-11-19', block: 'pm' });
+    expect(bookWhen(w('2026-11-19', 540))).toEqual({ day: '2026-11-19', block: 'day', win_start: 540 });
+    expect(bookWhen(flexSlot(w('2026-11-19', 540, true)))).toEqual({ day: '2026-11-19', block: 'day', win_flex: true });
+    expect(flexSlot(w('2026-11-19', 540, true))).toEqual({ day: '2026-11-19', block: 'day', near: true, flex: true });
+    expect(slotWindow(w('2026-11-19', 540))).toEqual([540, 780]);
+    expect(slotWindow(flexSlot(w('2026-11-19', 540)))).toBe(null);
+    expect(slotWindow({ block: 'am', win_start: 540, win_end: 780 })).toBe(null);
+  });
+  it('a window just taken: back to the windows, with clear words in both languages', () => {
+    expect(stepOfError('window_full')).toBe('slots');
+    expect(errorKey('window_full')).toBe('book.slots.windowTaken');
+    expect(ct('fr', 'book.slots.windowTaken')).toMatch(/plage/);
+    expect(ct('en', 'book.slots.windowTaken')).toMatch(/window/);
+  });
+  it('the words of the windows exist in both languages', () => {
+    for (const k of ['flex', 'flexNote', 'book.slots.subWindows', 'book.slots.otherHours', 'book.slots.fewerHours', 'book.slots.flex', 'book.slots.flexNote', 'book.done.leadFlex']) {
+      for (const l of ['fr', 'en'] as const) expect(ct(l, k)).not.toBe(k);
+    }
+    expect(ct('fr', 'book.slots.flex')).toBe('Je suis disponible toute la journée');
+    expect(ct('fr', 'book.slots.otherHours')).toBe('Voir d’autres heures');
   });
 });

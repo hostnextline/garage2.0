@@ -1,6 +1,9 @@
 // « Réserver en ligne » (client.html#reserver): one public link, no account.
 //   info   the garage, whether online booking is open, the services offered, the blocks
 //   slots  the best blocks for an address and the services chosen (where a truck already goes nearby, soonest)
+//          « Plages d’arrivée » (settings.booking.windows_on): each slot is a day with its 4-hour window (block 'day',
+//          win_start, win_end); the customer books that window, or « flexible » (free all day: win_flex, the window is
+//          confirmed the day before). A window that can no longer be kept is refused with `window_full`.
 //   book   books one of them: the customer (found by phone, else created), the car, the job and its link in one
 //          transaction (web_book); then the usual confirmation text. A failure after the booking never hides it:
 //          the page still gets « ok » and the link (text: 'error'); the same booking sent again gets the same job.
@@ -10,7 +13,7 @@ import { adminDb, settings, secret } from '../_shared/db.ts';
 import { sha256hex, newToken } from '../_shared/tokens.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
-import { money, clock, longDay, fill, first, blockWords, payNowWords, type Lang, servicesList, subtotalWords } from '../_shared/texts.ts';
+import { money, fill, first, type Lang, servicesList, subtotalWords, whenText, jobWindow } from '../_shared/texts.ts';
 
 type Row = Record<string, any>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,7 +59,7 @@ async function info() {
   const blocks = ((s.booking?.blocks?.length ? s.booking.blocks : [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }]) as Row[])
     .map((b) => ({ key: b.key, start: b.start, end: b.end }));
   const tx = s.taxes?.enabled !== false;
-  return { ok: true, garage: garageOf(s), on, services: on ? await rpc('web_services', {}) : [], blocks, taxes: tx,
+  return { ok: true, garage: garageOf(s), on, windows: s.booking?.windows_on === true, services: on ? await rpc('web_services', {}) : [], blocks, taxes: tx,
     horizon_days: Number(s.booking?.horizon_days || 120) };
 }
 
@@ -71,7 +74,9 @@ async function slots(req: Request, b: Row) {
   const days = Math.max(1, Math.min(14, Number(b.days) || 14));
   const list = await rpc('web_suggest', { p_lat: lat, p_lng: lng, p_services: ids, p_from: from, p_days: days, p_limit: 6 }) as Row[];
   // the customer sees the day, the block and whether a truck is already nearby; never the trucks or the minutes
-  return { ok: true, from, days, slots: (list || []).map((x) => ({ day: x.day, block: x.block, near: Number(x.near) > 0 })) };
+  // (window mode: the day and its window, « entre 14 h et 18 h »)
+  return { ok: true, from, days, slots: (list || []).map((x) => ({ day: x.day, block: x.block, near: Number(x.near) > 0,
+    ...(x.block === 'day' && num(x.win_start) !== null && num(x.win_end) !== null ? { win_start: Number(x.win_start), win_end: Number(x.win_end) } : {}) })) };
 }
 
 async function book(req: Request, b: Row) {
@@ -91,31 +96,43 @@ async function book(req: Request, b: Row) {
     first_name: b.first_name, last_name: b.last_name, phone: b.phone, email: b.email, lang,
     address: b.address, unit: b.unit, city: b.city, postal_code: b.postal_code, lat: num(b.lat), lng: num(b.lng),
     vehicle: { year: b.vehicle?.year ?? null, make: b.vehicle?.make ?? null, model: b.vehicle?.model ?? null },
-    services: services(b.services), day: b.day, block: b.block, problem: b.problem, ip, token_hash: await sha256hex(token)
+    services: services(b.services), day: b.day, block: b.block, problem: b.problem, ip, token_hash: await sha256hex(token),
+    // the window chosen, or « free all day » (only said for a 'day' booking: a block booking is sent as always)
+    ...(b.block === 'day' ? (b.win_flex === true ? { win_flex: true } : num(b.win_start) !== null ? { win_start: num(b.win_start) } : {}) : {})
   } }) as Row;
   const link = clientLink(baseOf(b.base), token, lang);
   const jobId = String(res.job_id);
   const again = res.again === true;
   const db = adminDb();
+  // a 'day' booking: what was promised is on the job (the server sets the end of the window; a flexible one has none yet)
+  let when: Row = { day: String(res.day), block: String(res.block), win_start: res.win_start ?? null, win_end: res.win_end ?? null, win_flex: res.win_flex === true };
+  if (when.block === 'day') {
+    try {
+      const { data: jb } = await db.from('jobs').select('*').eq('id', jobId).maybeSingle();
+      if (jb) when = { day: String((jb as Row).day), block: String((jb as Row).block), win_start: (jb as Row).win_start ?? null, win_end: (jb as Row).win_end ?? null, win_flex: (jb as Row).win_flex === true };
+    } catch { /* the answer of web_book is used */ }
+  }
+  const win = jobWindow(when as never);
+  const extra = when.block === 'day' ? { win_start: win ? win[0] : null, win_end: win ? win[1] : null, flex: !win } : {};
 
   // the usual confirmation text; whatever happens here, the booking is made and the page gets its link
   let text = 'off';
   try {
     if (again) {
       const { data: prev } = await db.from('messages').select('id').eq('job_id', jobId).eq('kind', 'booking').eq('status', 'sent').limit(1);
-      if (prev?.length) return { ok: true, link, day: res.day, block: res.block, text: 'already', again };
+      if (prev?.length) return { ok: true, link, day: res.day, block: res.block, ...extra, text: 'already', again };
     }
     const s = await settings();
     const { data: cust } = await db.from('customers').select('*').eq('id', res.customer_id).maybeSingle();
     const cu = (cust || {}) as Row;
     const tpl = String(s.messages?.[lang]?.booking || s.messages?.fr?.booking || '');
     if (tpl) {
-      const blk = ((s.booking?.blocks || []) as Row[]).find((x) => x.key === res.block) || { start: 480, end: 720 };
+      const w = whenText(tpl, when as never, s.booking?.blocks, lang);
       const { data: items } = await db.from('job_items').select('description, kind, qty, unit_cents, taxable, status, sort').eq('job_id', jobId).is('deleted_at', null).order('sort');
       const cardOn = !!(await secret('stripe_key'));
-      const message = fill(tpl, {
+      const message = fill(w.tpl, {
         prenom: first(cu.first_name || b.first_name) || '', garage: s.company?.name || 'Mécanique Mobile H.I.S', telephone: s.company?.phone || '',
-        jour: longDay(String(res.day), lang), debut: clock(blk.start, lang), fin: clock(blk.end, lang), bloc: blockWords(String(res.block), lang),
+        ...w.vars,
         payer: '', total: money(taxed((items || []) as Row[], s), lang), lien: link,
         services: servicesList((items || []) as never, lang), soustotal: subtotalWords((items || []) as never, lang)
       });
@@ -135,7 +152,7 @@ async function book(req: Request, b: Row) {
         body: 'Texto de confirmation non envoyé : erreur du serveur après la réservation.', status: 'failed', error: String((e as Error)?.message || e).slice(0, 200), created_by: null });
     } catch { /* the booking itself is safe */ }
   }
-  return { ok: true, link, day: res.day, block: res.block, text, again };
+  return { ok: true, link, day: res.day, block: res.block, ...extra, text, again };
 }
 
 export const handler = serve(async (req) => {

@@ -22,7 +22,7 @@ export const shell = {
   quick: {
     title: 'Ajouter',
     call: 'Appel entrant', callSub: 'Le numéro trouve le client ; sinon, on commence par l’adresse, la voiture ou la job',
-    book: 'Réserver un rendez-vous', bookSub: 'Le client, les services, le bloc',
+    book: 'Réserver un rendez-vous', bookSub: 'Le client, les services, le bloc', bookSubWin: 'Le client, les services, la plage d’arrivée',
     walkIn: 'Client sans rendez-vous', walkInSub: 'La job commence maintenant, ici',
     quote: 'Estimation', quoteSub: 'Un prix sur place, sans fiche client',
     customer: 'Nouveau client', customerSub: 'Seulement la fiche',

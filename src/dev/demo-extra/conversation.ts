@@ -1,6 +1,9 @@
 /* DEV ONLY — a pretend conversation with a customer (the real one comes from GoHighLevel: supabase/functions/conversation). */
 import { registerFn, put, find } from '../fake-server';
 
+/** « Plages d'arrivée » switched on in the pretend settings: the example says a window, never a block */
+const windowsOn = () => (find('settings', '1')?.booking as { windows_on?: boolean } | undefined)?.windows_on === true;
+
 const chats = new Map<string, { id: string; at: string; dir: 'in' | 'out'; body: string; kind: string; status: string | null }[]>();
 export function load() {
   // ?demo&texto : an example of « Texto entrant » without touching Réglages: the texts come to the owner's account, Lara
@@ -15,7 +18,7 @@ export function load() {
   registerFn('conversation', (b) => {
     const id = String(b.customer_id || b.phone || '');
     if (!chats.has(id)) chats.set(id, b.phone ? [] : [
-      { id: 'm1', at: new Date(Date.now() - 86400000).toISOString(), dir: 'out', body: 'Bonjour, votre rendez-vous est confirmé demain matin.', kind: 'SMS', status: 'delivered' },
+      { id: 'm1', at: new Date(Date.now() - 86400000).toISOString(), dir: 'out', body: windowsOn() ? 'Bonjour, votre rendez-vous est confirmé demain, entre 8 h et 12 h.' : 'Bonjour, votre rendez-vous est confirmé demain matin.', kind: 'SMS', status: 'delivered' },
       { id: 'm2', at: new Date(Date.now() - 80000000).toISOString(), dir: 'in', body: 'Parfait, merci! La voiture sera dans l’entrée.', kind: 'SMS', status: null }
     ]);
     const list = chats.get(id)!;

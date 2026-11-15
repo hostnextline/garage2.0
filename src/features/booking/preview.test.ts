@@ -66,3 +66,27 @@ describe('« La voiture ferme »: its appointments on the other vehicle', () => 
     expect(moveStops(day, ['far'], 'T2')).toEqual(day);
   });
 });
+
+describe('« Plages d’arrivée »: a day booked by windows is one block', () => {
+  const dj = (id: string, order: number, lng: number, eta: number | null) => ({ ...job(id, 'T1', 'day', order, lng), eta_min: eta });
+  const d: TeamMapAnswer = { ...day, jobs: [dj('d1', 1, -73.68, 540), dj('d2', 2, -73.60, 660), dj('d3', 3, -73.50, 840)] };
+  const spot = { day: '2026-11-17', block: 'day', truckId: 'T1', lat: 45.5, lng: -73.64, name: '', address: '' };
+  it('with the moment’s estimated arrival, the stop goes after the stops planned before that time', () => {
+    expect(stopRank(d, { ...spot, eta: 900 })).toEqual({ n: 4, total: 4 });
+    expect(stopRank(d, { ...spot, eta: 700 })).toEqual({ n: 3, total: 4 });
+    expect(stopRank(d, { ...spot, eta: 500 })).toEqual({ n: 1, total: 4 });
+    const p = placeNewStop(d, { ...spot, eta: 700 });
+    expect(p.after.jobs.filter((j) => j.truck_id === 'T1').sort((a, b) => a.order! - b.order!).map((j) => j.id)).toEqual(['d1', 'd2', NEW_STOP, 'd3']);
+    expect(p.after.jobs.find((j) => j.id === NEW_STOP)?.eta_min).toBe(700);
+  });
+  it('without it (or before the day is planned), where it adds the least driving, anywhere in the day', () => {
+    expect(stopRank(d, spot)).toEqual({ n: 2, total: 4 });
+    const unplanned = { ...d, jobs: d.jobs.map((j) => ({ ...j, eta_min: null })) };
+    expect(stopRank(unplanned, { ...spot, eta: 900 })).toEqual({ n: 2, total: 4 });
+  });
+  it('« La voiture ferme »: a stop of a day moves to the other vehicle at its cheapest place', () => {
+    const two: TeamMapAnswer = { ...d, jobs: [...d.jobs, { ...job('x9', 'T2', 'day', 1, -73.55), eta_min: 600 }] };
+    const r = moveStops(two, ['x9'], 'T1');
+    expect(r.jobs.filter((j) => j.truck_id === 'T1').sort((a, b) => a.order! - b.order!).map((j) => j.id)).toEqual(['d1', 'd2', 'x9', 'd3']);
+  });
+});

@@ -8,7 +8,7 @@ import { t, lang } from '../../lib/i18n';
 import { e164, formatPhone } from '../../lib/text';
 import { duration, stamp, clock } from '../../lib/dates';
 import { money } from '../../lib/money';
-import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals, blockLoad, staffName } from '../../data/select';
+import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals, blockLoad, staffName, windowsOn } from '../../data/select';
 import { freeWords } from '../agenda/layout';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../app/routes';
@@ -16,9 +16,11 @@ import { ConversationSheet } from '../conversation/ConversationSheet';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
+import { windowWords } from '../booking/when';
+import { sameMoment, moveWindow, choiceWindow } from '../booking/logic';
 import type { NextStep } from './nextStep';
 import { bookedBy } from './bookedBy';
-import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, type JobRights } from './select';
+import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, isWindowJob, momentWord, outsideWindow, wt, capFirst, keepWindow, type JobRights } from './select';
 import { stopFirst } from './StopOrderSheet';
 import { sendText, sendTracking, trackingSent, doBack, doCancel, doNoShow, doReopen } from './flow';
 import { signedWhen } from './WaiverSheet';
@@ -240,7 +242,7 @@ export function StepState(p: { job: Job; step: NextStep; rights: JobRights; onCo
         <CalendarClock class="jobs-state-icon" aria-hidden="true" />
         <div class="grow">
           <h2 class="jobs-state-title">{t('jobs.step.later', { when: dayInSentence(j.day) })}</h2>
-          <p class="muted" style={{ margin: 0 }}>{blockRange(j)}. {t('jobs.step.laterSub')}</p>
+          <p class="muted" style={{ margin: 0 }}>{capFirst(blockRange(j))}. {t('jobs.step.laterSub')}</p>
         </div>
       </section>
     );
@@ -282,12 +284,15 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
   const byWho = bookedBy(j, staffName(j.created_by), l);
   const stop = j.stop_order != null && !['cancelled', 'no_show'].includes(j.status)
     ? (j.eta_min != null && booked ? t('jobs.moment.stopValue', { n: j.stop_order, time: clock(j.eta_min, l) }) : String(j.stop_order)) : null;
+  const late = outsideWindow(j);
   return (
-    <Panel title={t('jobs.moment.title')} help={booked && rights.duration ? t('jobs.moment.help') : undefined} class="jobs-moment" data-testid="job-moment">
+    <Panel title={t('jobs.moment.title')} help={booked && rights.duration ? wt(j, 'jobs.moment.help') : undefined} class="jobs-moment" data-testid="job-moment">
       <div class="stack">
         <Kv items={[
           [t('jobs.moment.day'), dayWord(j.day)],
-          [t('jobs.moment.block'), t('jobs.moment.blockValue', { block: t(`common.blocks.${j.block}`), range: blockRange(j) })],
+          isWindowJob(j)
+            ? [t('jobs.win.label'), <span data-testid="job-window">{capFirst(blockRange(j))}{late && <> <Pill tone="warn" data-testid="job-window-late">{t('common.window.late')}</Pill></>}</span>]
+            : [t('jobs.moment.block'), t('jobs.moment.blockValue', { block: t(`common.blocks.${j.block}`), range: blockRange(j) })],
           [t('jobs.moment.stop'), stop],
           [t('jobs.moment.truck'), truckLabel(j.truck_id) || null],
           [t('jobs.moment.duration'), booked && rights.duration ? null : duration(j.duration_min, l)],
@@ -296,6 +301,7 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
           [t('jobs.moment.finished'), clockOf(j.finished_at) || null],
           [t('jobs.moment.booked'), byWho ? <span data-testid="job-booked-by">{byWho}</span> : null]
         ]} />
+        {late && <Banner kind="warn" data-testid="job-late">{t('jobs.win.lateText', { time: clock(j.eta_min!, l), window: blockRange(j) })}</Banner>}
         {booked && rights.duration && <DurationEditor job={j} />}
         {booked && (rights.move || (rights.order && !!j.truck_id)) && (
           <div class="row-wrap">
@@ -313,15 +319,23 @@ export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   useEffect(() => { if (p.open) setChoice(null); }, [p.open]);
   const c = jobCustomer(j);
   const textOn = !!settings.value.messages?.on?.moved;
-  const same = !!choice && choice.day === j.day && choice.block === j.block && !choice.truck_id;
+  // « Plages d'arrivée »: the picker's choice carries the window chosen (or « flexible »)
+  const same = !!choice && sameMoment(choice, j) && !choice.truck_id;
+  const movedWhen = (c: BlockChoice): string => {
+    if (c.block !== 'day') return `${dayInSentence(c.day)}, ${t(`common.blocks.${c.block}`).toLowerCase()}`;
+    const b = settings.value.booking;
+    const w = choiceWindow(c, (b.win_before_min ?? 60) + (b.win_after_min ?? 180));
+    // neither a window nor « flexible »: the server gives the window, only the day is sure
+    return w || c.win_flex ? `${dayInSentence(c.day)}, ${windowWords(w, lang.value)}` : dayInSentence(c.day);
+  };
   const move = async () => {
     if (!choice) return;
     try {
-      const r = await moveJob(j.id, choice.day, choice.block, choice.truck_id ?? null);
+      const r = await moveJob(j.id, choice.day, choice.block, choice.truck_id ?? null, moveWindow(choice));
       const d = r.data as { changed?: boolean; unchanged?: boolean } | undefined;
       if (r.queued) toast(t('shell.queued'));
       else if (d?.unchanged) toast(t('jobs.moment.same'));
-      else toast(t('jobs.moment.moved', { when: `${dayInSentence(choice.day)}, ${t(`common.blocks.${choice.block}`).toLowerCase()}` }), { kind: 'ok' });
+      else toast(t('jobs.moment.moved', { when: movedWhen(choice) }), { kind: 'ok' });
       p.onClose();
       if (!r.queued && !d?.unchanged && textOn) afterSheet(() => { void sendText('moved', j); });
     } catch (e) {
@@ -329,14 +343,14 @@ export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
     }
   };
   return (
-    <Sheet open={p.open} onClose={p.onClose} title={t('jobs.moment.moveTitle')} sub={textOn ? t('jobs.moment.moveLeadText') : t('jobs.moment.moveLead')} wide data-testid="move-sheet"
+    <Sheet open={p.open} onClose={p.onClose} title={t('jobs.moment.moveTitle')} sub={wt({ block: windowsOn.value ? 'day' : 'am' }, textOn ? 'jobs.moment.moveLeadText' : 'jobs.moment.moveLead')} wide data-testid="move-sheet"
       footer={<><Button onClick={p.onClose}>{t('common.cancel')}</Button><Button variant="primary" disabled={!choice || same} onClick={move} data-testid="move-ok">{t('jobs.moment.moveOk')}</Button></>}>
       <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} address={j.address || c?.address || null} duration={j.duration_min} excludeJob={j.id} value={choice} onPick={setChoice} />
     </Sheet>
   );
 }
 
-/* ---------- « Changer de camion »: the same day and block, another truck (booked by mistake on the wrong one) ---------- */
+/* ---------- « Changer de camion »: the same day and block (or arrival window), another truck (booked by mistake on the wrong one) ---------- */
 /** may this appointment change truck now: booked, its block not started, the person may move appointments */
 export function mayChangeTruck(j: Job, rights: Pick<JobRights, 'move'>): boolean {
   return j.status === 'booked' && rights.move && !blockLoad(j.day, j.block).started;
@@ -352,7 +366,8 @@ export function TruckSheet(p: { job: Job; open: boolean; onClose: () => void }) 
   const pick = async (truckId: string | null) => {
     setBusy(truckId || 'auto');
     try {
-      const r = await moveJob(j.id, j.day, j.block, truckId);
+      // a job booked by arrival window keeps the window told to the customer
+      const r = await moveJob(j.id, j.day, j.block, truckId, keepWindow(j));
       const d = r.data as { unchanged?: boolean } | undefined;
       if (r.queued) toast(t('shell.queued'));
       else if (d?.unchanged) toast(t('jobs.truck.same'));
@@ -363,7 +378,7 @@ export function TruckSheet(p: { job: Job; open: boolean; onClose: () => void }) 
     } finally { setBusy(null); }
   };
   return (
-    <Sheet open onClose={p.onClose} title={t('jobs.truck.title')} sub={t('jobs.truck.sub', { when: `${dayInSentence(j.day)}, ${t(`common.blocks.${j.block}`).toLowerCase()}` })} data-testid="truck-sheet"
+    <Sheet open onClose={p.onClose} title={t('jobs.truck.title')} sub={t('jobs.truck.sub', { when: `${dayInSentence(j.day)}, ${momentWord(j)}` })} data-testid="truck-sheet"
       footer={<Button onClick={p.onClose}>{t('common.cancel')}</Button>}>
       <div class="stack">
         <p class="small muted" style={{ margin: 0 }}>{t('jobs.truck.noText')}</p>
@@ -376,12 +391,12 @@ export function TruckSheet(p: { job: Job; open: boolean; onClose: () => void }) 
                 <RowItem key={x.truck.id} data-testid={`truck-pick-${x.truck.id}`}
                   start={<span class="jobs-truck-dot" style={{ '--tc': truckColor(x.truck.id) }} aria-hidden="true"><Truck size={18} /></span>}
                   title={<>{truckLabel(x.truck.id)}{mine && <Pill tone="booked">{t('jobs.truck.current')}</Pill>}</>}
-                  sub={x.cap > 0 ? `${freeWords(x.used, x.cap, l)}${fits || mine ? '' : `. ${t('jobs.truck.tight', { d: duration(j.duration_min, l) })}`}` : t('jobs.truck.off')}
+                  sub={x.cap > 0 ? `${freeWords(x.used, x.cap, l)}${fits || mine ? '' : `. ${t('jobs.truck.tight', { d: duration(j.duration_min, l) })}`}` : wt(j, 'jobs.truck.off')}
                   onClick={mine || busy ? undefined : () => void pick(x.truck.id)} />
               );
             })}
           </Rows>
-        ) : <p class="muted">{t('jobs.truck.none')}</p>}
+        ) : <p class="muted">{wt(j, 'jobs.truck.none')}</p>}
         {j.truck_pinned && <Button block onClick={() => void pick(null)} busy={busy === 'auto'} data-testid="truck-auto">{t('jobs.truck.auto')}</Button>}
       </div>
     </Sheet>
@@ -450,20 +465,20 @@ export function MenuSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
   const canBack = (s === 'en_route' || s === 'on_site') ? rights.act : s === 'done' ? rights.backFromDone : false;
   const items = [
     p.onEdit && <RowItem key="e" start={<span class="quick-icon"><Pencil size={20} /></span>} title={t('jobs.edit.menu')} sub={t('jobs.edit.menuSub')} onClick={then(p.onEdit)} data-testid="menu-edit" />,
-    s === 'booked' && rights.text && <RowItem key="b" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.resendBooking')} sub={t('jobs.menu.resendBookingSub')} onClick={then(() => sendText('booking', j, { resend: true }))} data-testid="menu-resend" />,
+    s === 'booked' && rights.text && <RowItem key="b" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.resendBooking')} sub={wt(j, 'jobs.menu.resendBookingSub')} onClick={then(() => sendText('booking', j, { resend: true }))} data-testid="menu-resend" />,
     s === 'en_route' && rights.act && <RowItem key="t" start={<span class="quick-icon"><Navigation size={20} /></span>} title={t('jobs.menu.sendTracking')} sub={t('jobs.menu.sendTrackingSub')} onClick={then(() => sendTracking(j, { resend: true }))} />,
     s === 'on_site' && rights.act && !invoiceIssued(j.id) && <RowItem key="a" start={<span class="quick-icon"><Send size={20} /></span>} title={t('jobs.menu.sendArrived')} sub={t('jobs.menu.sendArrivedSub')} onClick={then(() => sendText('arrived', j, { resend: true, okText: t('jobs.did.arriveInvoice', { name: jobName(j) }) }))} data-testid="menu-send-arrived" />,
     link && <RowItem key="l" start={<span class="quick-icon"><Link2 size={20} /></span>} title={t('jobs.menu.copyLink')} sub={t('jobs.menu.copyLinkSub')}
       onClick={async () => { const ok = await copyText(link); toast(ok ? t('jobs.text.linkCopied') : t('jobs.text.copyFail'), { kind: ok ? 'ok' : 'bad' }); if (ok) p.onClose(); }} data-testid="menu-link" />,
-    s === 'booked' && rights.order && !!j.truck_id && <RowItem key="f" start={<span class="quick-icon"><ChevronsUp size={20} /></span>} title={t('jobs.order.firstMenu')} sub={t('jobs.order.firstMenuSub')} onClick={then(() => { void stopFirst(j); })} data-testid="menu-first" />,
+    s === 'booked' && rights.order && !!j.truck_id && <RowItem key="f" start={<span class="quick-icon"><ChevronsUp size={20} /></span>} title={t('jobs.order.firstMenu')} sub={wt(j, 'jobs.order.firstMenuSub')} onClick={then(() => { void stopFirst(j); })} data-testid="menu-first" />,
     s === 'booked' && rights.order && !!j.truck_id && <RowItem key="o" start={<span class="quick-icon"><ListOrdered size={20} /></span>} title={t('jobs.order.open')} sub={t('jobs.order.openSub')} onClick={then(p.onOrder)} data-testid="menu-order" />,
-    s === 'booked' && rights.move && <RowItem key="m" start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={t('jobs.menu.move')} sub={t('jobs.menu.moveSub')} onClick={then(p.onMove)} />,
-    p.onTruck && mayChangeTruck(j, rights) && <RowItem key="tk" start={<span class="quick-icon"><Truck size={20} /></span>} title={t('jobs.truck.menu')} sub={t('jobs.truck.menuSub', { truck: truckLabel(j.truck_id) || t('jobs.truck.noneYet') })} onClick={then(p.onTruck)} data-testid="menu-truck" />,
+    s === 'booked' && rights.move && <RowItem key="m" start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={t('jobs.menu.move')} sub={wt({ block: windowsOn.value ? 'day' : 'am' }, 'jobs.menu.moveSub')} onClick={then(p.onMove)} />,
+    p.onTruck && mayChangeTruck(j, rights) && <RowItem key="tk" start={<span class="quick-icon"><Truck size={20} /></span>} title={t('jobs.truck.menu')} sub={wt(j, 'jobs.truck.menuSub', { truck: truckLabel(j.truck_id) || t('jobs.truck.noneYet') })} onClick={then(p.onTruck)} data-testid="menu-truck" />,
     canBack && backTo && <RowItem key="u" start={<span class="quick-icon"><Undo2 size={20} /></span>} title={t('jobs.menu.back')} sub={t('jobs.menu.backSub', { status: jobStatusWord(backTo as Job['status']) })} onClick={then(() => doBack(j))} data-testid="menu-back" />,
     (s === 'booked' || s === 'en_route' || s === 'on_site') && rights.act && <RowItem key="n" class="jobs-danger" start={<span class="quick-icon"><UserX size={20} /></span>} title={t('jobs.menu.noShow')} sub={t('jobs.menu.noShowSub')} onClick={then(() => doNoShow(j))} data-testid="menu-noshow" />,
-    (s === 'booked' || s === 'en_route') && rights.act && <RowItem key="c" class="jobs-danger" start={<span class="quick-icon"><Ban size={20} /></span>} title={t('jobs.menu.cancel')} sub={t('jobs.menu.cancelSub')} onClick={then(() => doCancel(j))} data-testid="menu-cancel" />,
+    (s === 'booked' || s === 'en_route') && rights.act && <RowItem key="c" class="jobs-danger" start={<span class="quick-icon"><Ban size={20} /></span>} title={t('jobs.menu.cancel')} sub={wt(j, 'jobs.menu.cancelSub')} onClick={then(() => doCancel(j))} data-testid="menu-cancel" />,
     p.onCoffre && !j.coffre_id && s !== 'cancelled' && s !== 'no_show' && invoiceOf(j.id)?.status !== 'paid' && <RowItem key="k" start={<span class="quick-icon"><Vault size={20} /></span>} title={t('coffre.job.menu')} sub={t('coffre.job.menuSub')} onClick={then(p.onCoffre)} data-testid="menu-coffre" />,
-    (s === 'cancelled' || s === 'no_show') && rights.reopen && <RowItem key="r" start={<span class="quick-icon"><RotateCcw size={20} /></span>} title={t('jobs.menu.reopen')} sub={t('jobs.menu.reopenSub')} onClick={then(() => doReopen(j))} data-testid="menu-reopen" />
+    (s === 'cancelled' || s === 'no_show') && rights.reopen && <RowItem key="r" start={<span class="quick-icon"><RotateCcw size={20} /></span>} title={t('jobs.menu.reopen')} sub={wt(j, 'jobs.menu.reopenSub')} onClick={then(() => doReopen(j))} data-testid="menu-reopen" />
   ].filter(Boolean);
   return (
     <Sheet open={p.open} onClose={p.onClose} title={t('jobs.menu.title')} sub={jobName(j)} data-testid="job-menu-sheet">

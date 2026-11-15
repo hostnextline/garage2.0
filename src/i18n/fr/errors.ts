@@ -7,6 +7,7 @@ export const errors = {
   bad_block: 'Choisis la date et le bloc : matin, après-midi ou soir.',
   block_closed: 'Ce bloc est fermé ce jour-là : aucun camion ne travaille.',
   block_full: 'Ce bloc est complet. Choisis un autre bloc.',
+  window_full: 'Cette plage n’est plus libre : choisis-en une autre.',
   block_started: 'Ce bloc est déjà commencé. Choisis un autre bloc.',
   truck_full: 'Ce camion n’a plus de place dans ce bloc.',
   too_far: 'Cette date est trop loin.',

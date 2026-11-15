@@ -8,17 +8,18 @@ import { navigate, href } from '../../app/router';
 import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { isValidDay, today as todayOf, type Day } from '../../lib/dates';
-import { blocks, allJobs, job as jobRow } from '../../data/select';
+import { allJobs, windowsOn, job as jobRow } from '../../data/select';
 import { may } from '../../app/routes';
 import { net } from '../../data/sync';
 import { Page, Banner, Button, IconButton, Seg, Skeleton, Panel } from '../../ui';
 import { DayView, DatePick } from './DayView';
 import { WeekGrid } from './WeekGrid';
 import { shiftWeek, weekTitle, sameWeek } from './layout';
-import { blockView, dayJobs, isOff, seesAll } from './select';
+import { dayPlan, dayJobs, isOff, seesAll } from './select';
 import { focusAfterNav, restoreFocus } from './focus';
 import { copiedJob, clearCopy } from './copy';
 import { jobPerson } from './move';
+import { MoveWindowHost } from './MoveWindowSheet';
 import './agenda.css';
 
 /** redraw every minute: blocks start, the day changes */
@@ -42,7 +43,7 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
   const loading = !net.value.ready && allJobs.value.length === 0;
   const jobsToday = dayJobs(day).filter((j) => !isOff(j));
   // the trucks that work that day (on a past day: the ones that had jobs)
-  const working = new Set(blocks.value.flatMap((b) => blockView(day, b, todayDay).lanes.filter((x) => x.cap > 0 || x.jobs.length > 0).map((x) => x.truck.id))).size;
+  const working = new Set(dayPlan(day, todayDay).views.flatMap((v) => v.lanes.filter((x) => x.cap > 0 || x.jobs.length > 0).map((x) => x.truck.id))).size;
   const sub = view === 'week' ? weekTitle(day, l) : t('agenda.day.summary', { jobs: t('agenda.day.count', { n: jobsToday.length }), trucks: t('agenda.day.trucks', { n: working }) });
 
   const viewSeg = isWide ? (
@@ -66,7 +67,7 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
   );
 
   return (
-    <Page title={mine ? t('agenda.titleMine') : t('agenda.title')} sub={sub} help={mine ? t('agenda.helpMine') : t('agenda.help')} actions={actions}
+    <Page title={mine ? t('agenda.titleMine') : t('agenda.title')} sub={sub} help={windowsOn.value ? (mine ? t('agenda.helpMineDay') : t('agenda.helpDay')) : mine ? t('agenda.helpMine') : t('agenda.help')} actions={actions}
       wide={isWide && view === 'week'} data-testid="agenda-screen">
       {!net.value.online && <Banner kind="warn">{t('agenda.offline')}</Banner>}
       {may.book() && copiedJob.value && (() => {
@@ -74,7 +75,7 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
         return (
           <Banner kind="info" title={t('agenda.copy.bannerTitle', { name: cj ? jobPerson(cj) || `#${cj.number}` : '' })}
             action={<Button size="sm" icon={<ClipboardCopy size={16} />} onClick={clearCopy} data-testid="copy-clear">{t('agenda.copy.clear')}</Button>} data-testid="copy-banner">
-            {t('agenda.copy.bannerText')}
+            {t(windowsOn.value ? 'agenda.copy.bannerTextDay' : 'agenda.copy.bannerText')}
           </Banner>
         );
       })()}
@@ -85,6 +86,7 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
       ) : (
         <DayView day={day} onDay={(d) => go(d)} />
       )}
+      <MoveWindowHost />
     </Page>
   );
 }

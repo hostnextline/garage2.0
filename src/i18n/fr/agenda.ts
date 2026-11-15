@@ -4,6 +4,8 @@ export const agenda = {
   titleMine: 'Mon horaire',
   help: 'Les rendez-vous par bloc (matin, après-midi, soir) et par camion. La barre montre le temps pris par les jobs et la route; le reste est libre.\nSur l’ordinateur, glisse une job réservée vers un autre bloc pour la déplacer.',
   helpMine: 'Tes jobs par bloc, dans l’ordre des arrêts. La barre montre le temps pris par les jobs et la route; le reste est libre.',
+  helpDay: 'Les rendez-vous de la journée par camion, dans l’ordre des arrêts, chacun avec la plage d’arrivée dite au client. La barre montre le temps pris par les jobs et la route; le reste est libre.\nSur l’ordinateur, glisse une job réservée vers un autre jour pour la déplacer : l’app te propose les plages possibles.',
+  helpMineDay: 'Tes jobs de la journée, dans l’ordre des arrêts, chacune avec la plage d’arrivée dite au client. La barre montre le temps pris par les jobs et la route; le reste est libre.',
   day: {
     prev: 'Jour d’avant',
     next: 'Jour d’après',
@@ -30,6 +32,7 @@ export const agenda = {
     book: 'Nouveau rendez-vous pour ce client',
     invoice: 'Voir la facture',
     bookHere: 'Réserver dans ce bloc',
+    bookDay: 'Réserver ce jour-là',
     day: 'Voir cette journée',
     map: 'Carte de la journée'
   },
@@ -44,7 +47,10 @@ export const agenda = {
     bannerTitle: 'Rendez-vous copié : {name}',
     bannerText: 'Clic droit (ou appui long) sur un bloc, ou touche « Coller ici », pour en faire un nouveau rendez-vous. Tu vérifies tout avant de réserver.',
     clear: 'Oublier la copie',
-    hint: 'Clic droit (sur le téléphone : appui long) sur une job pour la copier, puis sur un bloc pour la coller.'
+    hint: 'Clic droit (sur le téléphone : appui long) sur une job pour la copier, puis sur un bloc pour la coller.',
+    copiedDay: 'Rendez-vous de {name} copié. Clic droit (ou appui long) sur une journée, ou « Coller ici ».',
+    bannerTextDay: 'Clic droit (ou appui long) sur une journée, ou touche « Coller ici », pour en faire un nouveau rendez-vous. Tu vérifies tout avant de réserver.',
+    hintDay: 'Clic droit (sur le téléphone : appui long) sur une job pour la copier, puis sur une journée pour la coller.'
   },
   week: {
     title: 'Semaine du {from} au {to}',
@@ -58,6 +64,8 @@ export const agenda = {
     dragHint: 'Glisse une job réservée vers un autre bloc pour la déplacer, ou ouvre-la et touche « Déplacer ».',
     book: 'Réserver : {when}',
     drop: 'Déposer ici',
+    dropSame: 'Changer la plage',
+    dragHintDay: 'Glisse une job réservée vers un autre jour pour la déplacer (l’app te propose les plages possibles), ou ouvre-la et touche « Déplacer ».',
     jobs: { zero: 'aucune job', one: '{n} job', other: '{n} jobs' }
   },
   block: {
@@ -69,12 +77,23 @@ export const agenda = {
     book: 'Réserver dans ce bloc',
     empty: 'Aucune job dans ce bloc.'
   },
+  whole: {
+    title: 'La journée, {hours}',
+    over: 'Terminée',
+    closedText: 'Aucun camion ne travaille ce jour-là.',
+    book: 'Réserver ce jour-là',
+    empty: 'Aucune job ce jour-là.'
+  },
+  win: {
+    flex: 'Flexible'
+  },
   lane: {
     free: '{d} de libre',
     full: 'Complet',
     over: 'Complet, {d} de trop',
     closed: 'Ne travaille pas',
     offShift: 'Ne travaille plus dans ce bloc',
+    offShiftDay: 'A fini sa journée',
     meter: '{used} prises sur {cap}',
     unplaced: 'À placer',
     unplacedText: 'Ne rentre dans aucun camion. Déplace la job ou change les horaires.',
@@ -92,6 +111,19 @@ export const agenda = {
     done: 'Job déplacée',
     started: 'Ce bloc est déjà commencé : choisis un bloc à venir.',
     closed: 'Ce bloc est fermé : aucun camion ne travaille.',
-    notBooked: 'Seule une job réservée, pas encore partie, se déplace.'
+    notBooked: 'Seule une job réservée, pas encore partie, se déplace.',
+    startedDay: 'Cette journée est finie : choisis un jour à venir.',
+    closedDay: 'Cette journée est fermée : aucun camion ne travaille.',
+    winTitle: 'Déplacer la job de {name} : {day}',
+    winTitleSame: 'Changer la plage de {name} : {day}',
+    winLead: 'Choisis la plage d’arrivée à dire au client. La meilleure est en premier.',
+    winLoading: 'Je cherche les plages possibles…',
+    winNone: 'Aucune plage de 4 heures ne rentre ce jour-là. Essaie « Flexible » ou un autre jour.',
+    winError: 'Je n’ai pas pu trouver les plages. {msg}',
+    winRetry: 'Réessayer',
+    winEta: 'Arrivée vers {time}',
+    winBest: 'Meilleur choix',
+    winCurrent: 'Plage actuelle',
+    winFlexText: 'Le client est libre toute la journée : la plage de 4 heures est confirmée la veille.'
   }
 };

@@ -52,6 +52,67 @@ export function blockWords(key: string, lang: Lang): string {
   const en: Record<string, string> = { am: 'in the morning', pm: 'in the afternoon', eve: 'in the evening' };
   return (lang === 'en' ? en : fr)[key] || '';
 }
+/* ---------- « Plages d’arrivée »: a job of the block 'day' is told its 4-hour window, or « flexible » ---------- */
+export interface WhenJob { day: string; block: string; win_start?: number | string | null; win_end?: number | string | null; win_flex?: boolean | null }
+/** the window promised to the customer ([start, end] in minutes of the day); null for a block job and for a job without one yet */
+export function jobWindow(j: WhenJob): [number, number] | null {
+  if (j.block !== 'day' || j.win_start == null || j.win_end == null) return null;
+  const a = Number(j.win_start), z = Number(j.win_end);
+  return Number.isFinite(a) && Number.isFinite(z) ? [a, z] : null;
+}
+/** « entre 14 h et 18 h » / “between 2 p.m. and 6 p.m.” */
+export function betweenWords(start: number, end: number, lang: Lang): string {
+  return lang === 'en' ? `between ${clock(start, lang)} and ${clock(end, lang)}` : `entre ${clock(start, lang)} et ${clock(end, lang)}`;
+}
+/** a flexible booking: no window yet */
+export function flexWords(lang: Lang): string {
+  return lang === 'en' ? 'during the day; we confirm a 4-hour window the day before' : 'dans la journée ; nous vous confirmons la veille une plage de 4 heures';
+}
+/** the moment of a job in a sentence: « le matin » (block), « entre 14 h et 18 h » (window), « dans la journée ; … » (flexible) */
+export function momentWords(j: WhenJob, lang: Lang): string {
+  if (j.block !== 'day') return blockWords(j.block, lang);
+  const w = jobWindow(j);
+  return w ? betweenWords(w[0], w[1], lang) : flexWords(lang);
+}
+/** the text sent when a flexible booking gets its window (kind « window »), when the settings have no text for it */
+export const WINDOW_TEXT: Record<Lang, string> = {
+  fr: 'Bonjour {prenom}, votre plage d’arrivée est confirmée : {garage} vient {jour}, {plage}. Pour changer : {telephone}',
+  en: 'Hello {prenom}, your arrival window is confirmed: {garage} comes on {jour}, {plage}. To change: {telephone}'
+};
+const BLOC_AT = /[ \t]*,?[ \t]*\{bloc\}/g;
+/** The words of the day and the hours of a job ({jour}, {bloc}, {debut}, {fin}, {plage}) and the text they go in.
+    {plage} is the hours in words whatever the job: « entre 12 h et 16 h » (a block's or a window's), or the flexible words.
+    A block job (am / pm / eve): the text as it is and the block's words and hours, as always.
+    A 'day' job: the same texts must say the window instead of a block, so the text is adapted:
+      window    « {jour}, {bloc} (entre {debut} et {fin}) » → « {jour}, entre {debut} et {fin} »
+                (a text that never says the hours: {bloc} = « entre 14 h et 18 h »)
+      flexible  « {bloc} (entre {debut} et {fin}) » and « entre {debut} et {fin} » → « dans la journée ; nous vous
+                confirmons la veille une plage de 4 heures » */
+export function whenText(tpl: string, j: WhenJob, blocks: { key: string; start: number; end: number }[] | null | undefined, lang: Lang):
+  { tpl: string; vars: { jour: string; bloc: string; debut: string; fin: string; plage: string } } {
+  const jour = longDay(j.day, lang);
+  if (j.block !== 'day') {
+    const b = (blocks || []).find((x) => x.key === j.block) || { start: 480, end: 720 };
+    return { tpl, vars: { jour, bloc: blockWords(j.block, lang), debut: clock(b.start, lang), fin: clock(b.end, lang), plage: betweenWords(b.start, b.end, lang) } };
+  }
+  // « {bloc} (entre {debut} et {fin}) »: the hours come out of the brackets
+  let t = tpl.replace(/\{bloc\}\s*\(([^()]*\{debut\}[^()]*\{fin\}[^()]*)\)/g, '$1');
+  const tidy = (x: string) => x.replace(/^[ \t]*,[ \t]*/gm, '');
+  const w = jobWindow(j);
+  if (w) {
+    const hours = t.includes('{debut}') && t.includes('{fin}');
+    if (hours) t = tidy(t.replace(BLOC_AT, ''));
+    // “… and 6 p.m.” already ends with a period: the sentence's own is not written twice
+    if (lang === 'en') t = t.replace(/\{(fin|plage|bloc)\}\.(?![\w.])/g, '{$1}');
+    const between = betweenWords(w[0], w[1], lang);
+    return { tpl: t, vars: { jour, bloc: hours ? '' : between, debut: clock(w[0], lang), fin: clock(w[1], lang), plage: between } };
+  }
+  t = t.replace(/(?:\b(?:entre|between|de|from)\s+)?\{debut\}[^{}\n]{0,12}\{fin\}/gi, '{bloc}');
+  // said once
+  let said = false;
+  t = tidy(t.replace(BLOC_AT, (m) => { if (said) return ''; said = true; return m; }));
+  return { tpl: t, vars: { jour, bloc: flexWords(lang), debut: '', fin: '', plage: flexWords(lang) } };
+}
 /** « pay now » in the confirmation, only when card payment is on */
 export function payNowWords(on: boolean, lang: Lang): string {
   return on ? (lang === 'en' ? ' (and pay now if you wish)' : ' (et la payer maintenant si vous le voulez)') : '';

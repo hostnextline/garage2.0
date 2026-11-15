@@ -3,6 +3,7 @@ import { DICTS, t, lang } from '../../lib/i18n';
 import { clockRange } from '../../lib/dates';
 import { blocks } from '../../data/select';
 import { Panel, Tabs } from '../../ui';
+import { gt } from './words';
 
 export type Topic = 'book' | 'blocks' | 'offline' | 'texts' | 'payments' | 'rights';
 export const TOPICS: Topic[] = ['book', 'blocks', 'offline', 'texts', 'payments', 'rights'];
@@ -15,12 +16,12 @@ export function HelpCenter(p: { topic: Topic; onTopic: (t: Topic) => void; onOpe
   const vars = { am: b.am || '', pm: b.pm || '', eve: b.eve || '' };
   return (
     <Panel title={t('guide.faq.title')} sub={t('guide.faq.lead')} id="guide-faq" data-testid="guide-faq">
-      <Tabs value={p.topic} onValue={p.onTopic} label={t('guide.faq.title')} tabs={TOPICS.map((x) => ({ value: x, label: t(`guide.faq.topics.${x}`) }))} />
+      <Tabs value={p.topic} onValue={p.onTopic} label={t('guide.faq.title')} tabs={TOPICS.map((x) => ({ value: x, label: gt(`guide.faq.topics.${x}`) }))} />
       <div class="guide-faq" role="tabpanel" key={p.topic}>
         {ids.map((id) => (
           <details key={id} onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) p.onOpen?.(p.topic, id); }} data-testid={`faq-${p.topic}-${id}`}>
-            <summary>{t(`guide.faq.qa.${p.topic}.${id}.q`)}</summary>
-            <p>{t(`guide.faq.qa.${p.topic}.${id}.a`, vars)}</p>
+            <summary>{gt(`guide.faq.qa.${p.topic}.${id}.q`)}</summary>
+            <p>{gt(`guide.faq.qa.${p.topic}.${id}.a`, vars)}</p>
           </details>
         ))}
       </div>

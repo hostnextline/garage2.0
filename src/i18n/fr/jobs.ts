@@ -339,6 +339,44 @@ export const jobs = {
     payFirstMechanic: 'Paiement requis avant de partir. Seul le bureau peut laisser partir sans paiement : appelle-le.',
     callOffice: 'Appeler le bureau'
   },
+  /* « Plages d’arrivée » (a job booked by window, block 'day'): the same texts as above without the word « bloc » (same paths under win) */
+  win: {
+    label: 'Plage d’arrivée',
+    flexShort: 'Flexible',
+    lateText: 'L’arrivée prévue (vers {time}) est en dehors de la plage dite au client ({window}). Appelle le client, ou change l’ordre des arrêts.',
+    did: { cancel: 'Job annulée. Sa place est libérée.' },
+    work: { longerHint: 'Le camion garde le temps qu’il faut dans sa journée.' },
+    moment: {
+      moveLead: 'Choisis un autre jour ou une autre plage d’arrivée.',
+      moveLeadText: 'Choisis un autre jour ou une autre plage d’arrivée. Le client reçoit un texto avec le nouveau moment.',
+      help: 'La durée sert au camion pour placer les arrêts dans sa journée. Si la job ne rentre plus, déplace-la.'
+    },
+    order: {
+      firstMenuSub: 'Ce client passe avant les autres de la journée',
+      wholeDay: 'toute la journée',
+      told: 'client : {window}',
+      note: 'Un ordre choisi à la main peut faire arriver le camion en dehors de la plage dite à un client. L’app l’indique alors « Hors plage ».',
+      breaks: { one: 'Avec cet ordre, {names} serait probablement servi en dehors de sa plage d’arrivée. Avertis ce client si tu enregistres.', other: 'Avec cet ordre, ces clients seraient probablement servis en dehors de leur plage d’arrivée : {names}. Avertis-les si tu enregistres.' },
+      about: 'environ {time}',
+      saveAnyway: 'Enregistrer quand même'
+    },
+    menu: {
+      resendBookingSub: 'Le jour, la plage d’arrivée et le total prévu',
+      cancelSub: 'Sa place se libère',
+      reopenSub: 'Elle revient à l’agenda, le même jour',
+      moveSub: 'Un autre jour ou une autre plage d’arrivée'
+    },
+    ask: {
+      cancelText: 'Sa place se libère pour un autre client. Le client n’est pas averti automatiquement : appelle-le.',
+      reopenText: 'Elle revient à l’agenda, le même jour, s’il reste de la place.'
+    },
+    edit: { when: 'Date et plage d’arrivée' },
+    truck: {
+      menuSub: 'Maintenant : {truck}. Même jour, même plage d’arrivée.',
+      off: 'Ne travaille pas ce jour-là',
+      none: 'Aucun camion ne travaille ce jour-là.'
+    }
+  },
   /* texts to the customer */
   edit: {
     title: 'Modifier le rendez-vous',

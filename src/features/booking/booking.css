@@ -130,6 +130,18 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
   .bp-th-hours { display: none; }
 }
 
+/* « Plages d'arrivée »: the day opened (flexible, its windows), and the days to choose by hand */
+.bp-dayp { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--solid); }
+.bp-dayp .bp-head { margin-bottom: 0; }
+.bp-dayp .bp-title { color: var(--ink); font-size: var(--t-md); }
+.bp-dayp-sub { margin: var(--sp-2) 0 var(--sp-2); font-size: var(--t-sm); font-weight: 560; color: var(--ink-2); }
+.bp-dayp-more { margin-top: var(--sp-2); }
+.bp-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.bp-daycell { flex-direction: column; gap: 1px; min-height: 56px; padding: 4px 6px; }
+.bp-daycell-name { font-weight: 600; text-transform: capitalize; }
+.bp-daycell-state { font-size: 11.5px; font-weight: 500; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.bp-daycell.is-current:not(.is-on)::after { display: none; }
+
 /* ---------- the customer's text, to send by hand ---------- */
 .sms-bubble { margin: 0; padding: var(--sp-3) var(--sp-4); border-radius: 18px 18px 18px 6px; background: var(--sunken); border: 1px solid var(--line);
   white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-size: var(--t-md); line-height: var(--lh); }

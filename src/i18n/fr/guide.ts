@@ -138,6 +138,40 @@ export const guide = {
     copied: 'Adresse copiée'
   },
 
+  /* « Plages d’arrivée » (the garage books by arrival window): the texts above that speak of blocks, said for windows.
+     Same paths as above; a text missing here is the one above (words.ts). */
+  win: {
+    steps: {
+      trucks: { text: 'Chaque camion, son mécano et ses heures de travail. Les plages d’arrivée offertes aux clients suivent ces heures.' },
+      book: { text: 'Le client, ses services, puis une plage d’arrivée proposée. Le camion et l’ordre des arrêts se font tout seuls.' },
+      agenda: { text: 'Les rendez-vous de la semaine, jour par jour.' }
+    },
+    tour: {
+      steps: {
+        agenda: { text: 'Les rendez-vous jour par jour, avec la plage d’arrivée dite à chaque client.' },
+        agendaBlock: { title: 'Une journée', text: 'Chaque journée montre la place qui reste. Touche une journée libre pour y réserver.' },
+        book: { text: 'Le client, ses services, puis une plage d’arrivée proposée. Le serveur choisit le camion et l’ordre des arrêts.' },
+        bookBlock: { title: 'La plage d’arrivée', text: 'L’app propose des plages de 4 heures là où un camion passe tout près. Choisis-en une, puis réserve.' },
+        hours: { text: 'Les heures de travail de chaque camion. Ce sont elles qui décident des plages offertes aux clients.' }
+      }
+    },
+    faq: {
+      topics: { blocks: 'Les plages' },
+      qa: {
+        book: {
+          how: { a: 'Touche «\u00a0+\u00a0», puis «\u00a0Réserver un rendez-vous\u00a0». Choisis le client, son auto et les services, puis une des plages d’arrivée proposées. Touche «\u00a0Réserver\u00a0»\u00a0: le client reçoit sa confirmation par texto.' },
+          change: { a: 'Ouvre le rendez-vous depuis l’agenda. Tu peux le déplacer à un autre jour ou une autre plage d’arrivée, ou l’annuler en écrivant la raison. Si le jour ou la plage change, le client reçoit un texto.' }
+        },
+        blocks: {
+          what: { q: 'C’est quoi, une plage d’arrivée\u00a0?', a: 'Quatre heures autour de l’heure où l’app pense arriver\u00a0: 1\u00a0heure avant, 3\u00a0heures après. Si l’app pense arriver à 15\u00a0h, le client entend «\u00a0entre 14\u00a0h et 18\u00a0h\u00a0». On promet une plage, pas une heure exacte.' },
+          full: { q: 'Pourquoi une journée est pleine\u00a0?', a: 'Chaque camion a ses heures de travail. Quand les jobs et la route remplissent ces heures, ou qu’on ne peut plus arriver chez chacun dans sa plage, la journée est pleine. Choisis un autre jour, propose «\u00a0Flexible\u00a0», ou ajoute des heures au camion dans Horaires.' }
+        },
+        offline: {
+          needs: { a: 'Les plages d’arrivée proposées quand on réserve, la carte en direct, les textos aux clients et le paiement par carte en ligne.' }
+        }
+      }
+    }
+  },
   faq: {
     title: 'Questions fréquentes',
     lead: 'Des réponses courtes, par sujet.',
@@ -152,7 +186,8 @@ export const guide = {
       blocks: {
         what: { q: 'C’est quoi, un bloc\u00a0?', a: 'La journée est coupée en trois blocs\u00a0: le matin ({am}), l’après-midi ({pm}) et le soir ({eve}). On promet au client un bloc, pas une heure exacte.' },
         who: { q: 'Qui choisit le camion et l’ordre des arrêts\u00a0?', a: 'Le serveur. Il place chaque job sur le camion le plus proche et met les arrêts dans le meilleur ordre de route.' },
-        full: { q: 'Pourquoi un bloc est plein\u00a0?', a: 'Chaque camion a ses heures de travail. Quand les jobs et la route remplissent ces heures, le bloc est plein. Choisis un autre bloc, ou ajoute des heures au camion dans Horaires.' }
+        full: { q: 'Pourquoi un bloc est plein\u00a0?', a: 'Chaque camion a ses heures de travail. Quand les jobs et la route remplissent ces heures, le bloc est plein. Choisis un autre bloc, ou ajoute des heures au camion dans Horaires.' },
+        windows: { q: 'Et les plages d’arrivée de 4\u00a0heures\u00a0?', a: 'Le garage peut réserver par plages au lieu des blocs (le propriétaire\u00a0: dans Réglages, puis Réservations, «\u00a0Réserver par plages d’arrivée\u00a0»). Le client reçoit une plage de 4\u00a0heures\u00a0: 1\u00a0heure avant l’heure où l’app pense arriver, 3\u00a0heures après. Quand l’app réorganise une route, elle tient chaque plage promise. Un client libre toute la journée peut être réservé «\u00a0Flexible\u00a0»\u00a0: sa plage est confirmée la veille, et ça aide à placer plus de rendez-vous.' }
       },
       offline: {
         works: { q: 'Qu’est-ce qui marche sans réseau\u00a0?', a: 'Presque tout\u00a0: voir ta journée, avancer une job, faire signer, faire la facture, encaisser. Tout reste sur le téléphone et part tout seul quand le réseau revient.' },

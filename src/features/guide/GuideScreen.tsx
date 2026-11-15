@@ -12,6 +12,7 @@ import { computeChecklist, progress, nextStep, type GuideStep, type Role, type D
 import { guideInput, myRoles, nextJobId, readLocal, markStep, refreshChecks, watchScreens } from './guide-data';
 import { startTour, openStep } from './tour';
 import { InstallPanel } from './Install';
+import { gt } from './words';
 import { HelpCenter, isTopic, type Topic } from './HelpCenter';
 import './guide.css';
 
@@ -34,7 +35,7 @@ export function Progress(p: { done: number; total: number }) {
 function StepRow(p: { s: GuideStep; n: number; next: boolean }) {
   const { s } = p;
   const state = s.done === true ? 'done' : s.done === null ? 'unknown' : 'todo';
-  const sub = s.done === null ? t('guide.detail.offline') : (s.done ? null : detailText(s.detail)) || t(`guide.steps.${s.id}.text`);
+  const sub = s.done === null ? t('guide.detail.offline') : (s.done ? null : detailText(s.detail)) || gt(`guide.steps.${s.id}.text`);
   const confirm = () => { markStep(s.id); toast(t('guide.confirmed'), { kind: 'ok' }); };
   return (
     <div class={`guide-step${state === 'done' ? ' is-done' : ''}${p.next ? ' is-next' : ''}`} role="listitem" data-testid={`guide-step-${s.id}`} data-state={state}>

@@ -194,6 +194,50 @@ export const booking = {
     legend: { ok: 'De la place', tight: 'Presque plein', full: 'Complet', closed: 'Fermé' },
     calendarHelp: 'Chaque case montre le temps libre du bloc. Les flèches du clavier passent d’une case à l’autre.'
   },
+  /* « Plages d’arrivée » (réservation par plage de 4 heures) : les mêmes textes sans le mot « bloc », et ceux des plages */
+  win: {
+    sub: 'Le client, les services, puis le moment. L’app choisit le camion et l’ordre des arrêts.',
+    help: 'Un rendez-vous se prend dans une plage d’arrivée de 4 heures, par exemple « entre 14 h et 18 h » : le mécano arrive dans ces heures-là. L’app propose la plage d’après la route de la journée.\n« Flexible » : le client est libre toute la journée et reçoit sa plage la veille au soir.\nLe texto de confirmation part tout seul quand les textos sont branchés.',
+    block: { title: 'Moment', sub: 'En premier : les jours où on passe déjà près du client.' },
+    options: {
+      durationHint: 'Calculée avec les services. Touche − ou + pour réserver plus ou moins de temps dans la journée.',
+      durationChanged: 'Changée à la main : c’est ce temps-là qui est réservé dans la journée.'
+    },
+    summary: { noBlock: 'Aucun moment choisi' },
+    missing: { block: 'Choisis le moment' },
+    cars: { partial: 'Réservé pour {n} véhicule(s) sur {total}. Choisis un autre moment pour les autres.' },
+    force: { title: 'Cette journée est pleine', cancel: 'Choisir un autre moment' },
+    queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si la journée est pleine, tu verras la raison).',
+    refusedBlock: 'Choisis un autre moment.',
+    full: 'Cette plage n’est plus possible : le mécano ne peut plus arriver dans ces heures-là. Choisis une autre plage.',
+    auto: 'plage donnée par l’app',
+    autoNote: 'Aucune plage choisie : l’app la donne à la réservation. Dis-la au client ensuite.',
+    flex: 'Flexible : n’importe quand ce jour-là',
+    flexHint: 'Le client reçoit sa plage de 4 heures la veille au soir. Les rendez-vous flexibles laissent l’app en placer plus dans une journée.',
+    others: 'Autres heures ce jour-là',
+    hours: 'Les heures possibles',
+    loadingDay: 'Recherche des heures possibles…',
+    noneDay: 'Aucune plage possible ce jour-là pour {d} de travail. Choisis un autre jour.',
+    offlineDay: 'Sans réseau, pas de plages à proposer. Tu peux choisir le jour : l’app donnera la plage à l’envoi.',
+    errorDay: 'Les plages ne répondent pas. Réessaie, ou choisis le jour : l’app donnera la plage.',
+    dayOnly: 'Choisir ce jour, sans plage',
+    copyGone: 'La plage du rendez-vous copié n’est plus possible ce jour-là. Choisis-en une autre.',
+    customTimeHint: 'Compte dans la journée. 0 pour une pièce seule.',
+    smsWhen: 'Rendez-vous : {when}',
+    picker: {
+      title: 'Les meilleurs moments',
+      current: 'Moment actuel',
+      loading: 'Recherche des meilleurs moments…',
+      offline: 'Sans réseau, pas de suggestions. Choisis un jour plus bas : l’app vérifiera la place à l’envoi.',
+      error: 'Les suggestions ne répondent pas. Choisis un jour plus bas.',
+      none: 'Aucune plage libre pour {d} de travail dans les 14 prochains jours. Regarde plus loin dans les jours.',
+      nothing: 'Aucun moment choisi',
+      fullWarn: 'Cette journée semble pleine : la réservation risque d’être refusée. Prends un jour avec de la place si tu peux.',
+      days: 'Choisir un autre jour',
+      dayLabel: '{day} : {state}',
+      dayHelp: 'Touche un jour pour voir ses heures possibles.'
+    }
+  },
   svc: {
     search: 'Chercher un service',
     promo: 'Promo jusqu’au {date}',

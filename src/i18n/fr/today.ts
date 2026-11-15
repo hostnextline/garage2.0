@@ -85,6 +85,12 @@ export const today = {
   /* the office */
   book: 'Réserver',
   bookSub: 'Un client au téléphone : trouve-lui un bloc',
+  /* « Plages d’arrivée »: the same without the word « bloc », and the window told to the customer */
+  win: {
+    bookSub: 'Un client au téléphone : trouve-lui une plage d’arrivée',
+    confirmHelp: 'Les rendez-vous de demain dont le client n’a pas reçu le texto de confirmation (le jour, la plage d’arrivée et le total prévu).',
+    told: 'Dit au client : {window}'
+  },
   agenda: 'Agenda',
   map: 'Carte',
   trucks: {

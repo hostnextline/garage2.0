@@ -18,7 +18,8 @@ export function fromDevice(day: string): TeamMapAnswer {
       return {
         id: j.id, number: j.number, truck_id: j.truck_id, order: j.stop_order, eta_min: j.eta_min, status: j.status, block: j.block,
         name: (c?.first_name || '').trim() || c?.company || '—', address: j.address || c?.address || null,
-        lat: j.lat ?? c?.lat ?? null, lng: j.lng ?? c?.lng ?? null
+        lat: j.lat ?? c?.lat ?? null, lng: j.lng ?? c?.lng ?? null,
+        ...(j.block === 'day' ? { win_start: j.win_start ?? null, win_end: j.win_end ?? null, win_flex: !!j.win_flex } : {})
       };
     }),
     people: rowsOf<Position>('positions')

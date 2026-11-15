@@ -8,7 +8,9 @@ export interface TeamMapAnswer {
   home: { lat: number | null; lng: number | null; label?: string | null; address?: string | null } | null;
   /** start: where this truck leaves from (Part 18); null = « Départ des camions » (home) */
   trucks: { id: string; name: string; color: string | null; driver_id: string | null; start?: { lat: number; lng: number; label: string | null; address: string | null } | null }[];
-  jobs: { id: string; number: number | null; truck_id: string | null; order: number | null; eta_min: number | null; status: string; block: string; name: string | null; address: string | null; lat: number | null; lng: number | null }[];
+  jobs: { id: string; number: number | null; truck_id: string | null; order: number | null; eta_min: number | null; status: string; block: string; name: string | null; address: string | null; lat: number | null; lng: number | null;
+    /** « Plages d'arrivée » (block 'day'): the window told to the customer; flexible: none yet. Absent in an older answer. */
+    win_start?: number | null; win_end?: number | null; win_flex?: boolean }[];
   people: { id: string; name: string | null; color: string | null; lat: number; lng: number; at: string | null; job_id: string | null }[];
   trips: { job_id: string; staff_id: string | null; eta_at: string | null; km: number | null; minutes: number | null; route: LatLng[] | null }[];
 }
@@ -18,6 +20,8 @@ export interface Stop {
   /** the stop number of the day for its truck (1, 2, 3…) */
   n: number;
   block: string; order: number | null; etaMin: number | null; status: string; name: string; address: string;
+  /** the window told to the customer of a job booked by arrival window (block 'day'); null: a block job, or no window yet */
+  win?: [number, number] | null;
   lat: number | null; lng: number | null; hasPos: boolean;
   done: boolean;
   /** the mechanic is on the way or there */
@@ -57,7 +61,9 @@ export interface Assembled {
 
 export const PALETTE = ['#D3000E', '#2F6FD0', '#1F8A53', '#B86E00', '#7347D1', '#0F7C82', '#C2185B', '#5D6B78'];
 export const UNPLACED_COLOR = '#5D6B78';
-const BLOCK_ORDER: Record<string, number> = { am: 0, pm: 1, eve: 2 };
+// a day of arrival windows (every job 'day'): the stop order, then the arrival. Blocks and 'day' jobs never share a day
+// after the switch; if they did, the 'day' ones come after the blocks.
+const BLOCK_ORDER: Record<string, number> = { am: 0, pm: 1, eve: 2, day: 3 };
 
 const num = (x: unknown): number | null => {
   if (x === null || x === undefined || x === '') return null;
@@ -89,7 +95,8 @@ export function normalize(raw: unknown): TeamMapAnswer {
     jobs: arr<Record<string, unknown>>(a.jobs).filter((j) => j && j.id != null).map((j) => ({
       id: String(j.id), number: num(j.number), truck_id: j.truck_id ? String(j.truck_id) : null, order: num(j.order), eta_min: num(j.eta_min),
       status: String(j.status ?? 'booked'), block: String(j.block ?? 'am'), name: j.name == null ? null : String(j.name), address: j.address == null ? null : String(j.address),
-      lat: num(j.lat), lng: num(j.lng)
+      lat: num(j.lat), lng: num(j.lng),
+      ...(j.win_start != null || j.win_end != null || j.win_flex != null ? { win_start: num(j.win_start), win_end: num(j.win_end), win_flex: j.win_flex === true } : {})
     })),
     people: arr<Record<string, unknown>>(a.people).filter((p) => p && p.id != null && okLat(num(p.lat)) && okLng(num(p.lng))).map((p) => ({
       id: String(p.id), name: p.name == null ? null : String(p.name), color: p.color ? String(p.color) : null, lat: num(p.lat)!, lng: num(p.lng)!,
@@ -139,7 +146,8 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
   const toStop = (j: TeamMapAnswer['jobs'][number]): Omit<Stop, 'n'> => ({
     id: j.id, number: j.number, truckId: j.truck_id, block: j.block, order: j.order, etaMin: j.eta_min, status: j.status,
     name: j.name || '', address: j.address || '', lat: okLat(j.lat) ? j.lat : null, lng: okLng(j.lng) ? j.lng : null,
-    hasPos: okLat(j.lat) && okLng(j.lng), done: j.status === 'done', live: j.status === 'en_route' || j.status === 'on_site'
+    hasPos: okLat(j.lat) && okLng(j.lng), done: j.status === 'done', live: j.status === 'en_route' || j.status === 'on_site',
+    ...(j.block === 'day' && j.win_start != null && j.win_end != null ? { win: [j.win_start, j.win_end] as [number, number] } : {})
   });
   const truckIds = new Set(a.trucks.map((t) => t.id));
   const peopleOn = new Set(a.people.map((p) => p.id));

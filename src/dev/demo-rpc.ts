@@ -185,7 +185,7 @@ registerRpc('team_map', (a) => {
     trucks: table('trucks').filter((t) => !t.deleted_at).map((t) => ({ id: t.id, name: t.name, color: t.color, driver_id: t.driver_id, start: t.start ?? null })),
     jobs: table('jobs').filter((j) => j.day === day && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status))).map((j) => {
       const c = find('customers', j.customer_id);
-      return { id: j.id, number: j.number, truck_id: j.truck_id, order: j.stop_order, eta_min: j.eta_min, status: j.status, block: j.block, name: c?.first_name || c?.company || '—', address: j.address || c?.address, lat: j.lat ?? c?.lat, lng: j.lng ?? c?.lng };
+      return { id: j.id, number: j.number, truck_id: j.truck_id, order: j.stop_order, eta_min: j.eta_min, status: j.status, block: j.block, win_start: j.win_start ?? null, win_end: j.win_end ?? null, win_flex: j.win_flex === true, name: c?.first_name || c?.company || '—', address: j.address || c?.address, lat: j.lat ?? c?.lat, lng: j.lng ?? c?.lng };
     }),
     people: table('positions').filter((p) => !p.deleted_at).map((p) => { const s = find('staff', p.id); return { id: p.id, name: s?.short_name || s?.full_name, color: s?.color, lat: p.lat, lng: p.lng, at: p.at, job_id: p.job_id }; }),
     trips: table('trips').filter((t) => t.status === 'active').map((t) => ({ job_id: t.job_id, staff_id: t.staff_id, eta_at: t.eta_at, km: t.km, minutes: t.minutes, route: t.route }))

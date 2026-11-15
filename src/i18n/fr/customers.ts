@@ -28,12 +28,14 @@ export const customers = {
     last: 'Dernière visite',
     today: { am: 'Ce matin', pm: 'Cet après-midi', eve: 'Ce soir' },
     tomorrow: { am: 'Demain matin', pm: 'Demain après-midi', eve: 'Demain soir' },
-    other: { am: '{day}, matin', pm: '{day}, après-midi', eve: '{day}, soir' }
+    other: { am: '{day}, matin', pm: '{day}, après-midi', eve: '{day}, soir' },
+    day: '{day}, {window}'
   },
   whenLine: {
     today: { am: 'Rendez-vous ce matin', pm: 'Rendez-vous cet après-midi', eve: 'Rendez-vous ce soir' },
     tomorrow: { am: 'Rendez-vous demain matin', pm: 'Rendez-vous demain après-midi', eve: 'Rendez-vous demain soir' },
     other: { am: 'Rendez-vous le {day}, matin', pm: 'Rendez-vous le {day}, après-midi', eve: 'Rendez-vous le {day}, soir' },
+    day: { near: 'Rendez-vous {day}, {window}', other: 'Rendez-vous le {day}, {window}' },
     last: 'Dernière visite : {day}'
   },
   flags: {

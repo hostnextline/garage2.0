@@ -11,6 +11,8 @@ const rpcs = new Map<string, Handler>();
 const fns = new Map<string, Handler>();
 /** a section's own pretend operation wins over the core's (core ones are registered with weak: true) */
 export function registerRpc(name: string, fn: Handler, o: { weak?: boolean } = {}) { if (o.weak && rpcs.has(name)) return; rpcs.set(name, fn); }
+/** the operation registered under a name right now (to wrap it: src/dev/demo-windows.ts) */
+export function rpcOf(name: string): Handler | undefined { return rpcs.get(name); }
 export function registerFn(name: string, fn: Handler, o: { weak?: boolean } = {}) { if (o.weak && fns.has(name)) return; fns.set(name, fn); }
 
 export const nowIso = () => new Date().toISOString();

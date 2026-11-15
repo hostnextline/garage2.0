@@ -14,7 +14,7 @@ import { stamp } from '../lib/dates';
 import { net, flush, pullAll, dismissFailed, outboxList } from '../data/sync';
 import type { OutboxEntry } from '../data/local';
 import { me, preview, viewAs, stopPreview } from '../data/auth';
-import { garageName } from '../data/select';
+import { garageName, windowsOn } from '../data/select';
 import { startPositionSharing } from '../features/today/position';
 import { Button, IconButton, Sheet, Banner, Avatar, Rows, RowItem, Empty, Skeleton } from '../ui';
 import { MovedBanner } from './moved';
@@ -132,7 +132,7 @@ function QuickSheet() {
         {items.map((q) => {
           const Icon = q.icon;
           return (
-            <RowItem key={q.key} start={<span class="quick-icon"><Icon size={22} /></span>} title={t(`shell.quick.${q.key}`)} sub={t(`shell.quick.${q.key}Sub`)} chevron
+            <RowItem key={q.key} start={<span class="quick-icon"><Icon size={22} /></span>} title={t(`shell.quick.${q.key}`)} sub={t(q.key === 'book' && windowsOn.value ? 'shell.quick.bookSubWin' : `shell.quick.${q.key}Sub`)} chevron
               data-testid={`quick-${q.key}`} onClick={() => { quickOpen.value = false; navigate(q.href.slice(1)); }} />
           );
         })}

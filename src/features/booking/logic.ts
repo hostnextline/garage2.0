@@ -77,10 +77,71 @@ export function draftsFromJob(items: Pick<JobItem, 'kind' | 'service_id' | 'item
 }
 
 /* ---------- the address of the address bar (#/book?day=…&block=…) ---------- */
-export function parseChoice(day: string | null, block: string | null): BlockChoice | null {
+/** blocks: `block` am / pm / eve. « Plages d'arrivée » (`windows`): the day (whatever block the address says) with the
+    window `win` (its start, minutes of the day) or `flex` = 1; the day alone when neither is said (the picker opens it) */
+export function parseChoice(day: string | null, block: string | null, opts: { windows?: boolean; win?: string | null; flex?: string | null; len?: number } = {}): BlockChoice | null {
   if (!day || !isValidDay(day)) return null;
+  if (opts.windows) {
+    if (block !== 'am' && block !== 'pm' && block !== 'eve' && block !== 'day') return null;
+    if (opts.flex === '1') return { day, block: 'day', win_flex: true };
+    const w = opts.win != null && /^\d{1,4}$/.test(opts.win) ? Number(opts.win) : null;
+    if (w != null && w >= 0 && w < 1440) return { day, block: 'day', win_start: w, win_end: w + (opts.len ?? WIN_LEN) };
+    return { day, block: 'day' };
+  }
   if (block !== 'am' && block !== 'pm' && block !== 'eve') return null;
   return { day, block };
+}
+
+/* ---------- « Plages d'arrivée » (Part 25): a day and a 4-hour window instead of a block ---------- */
+/** a window is 4 hours long unless the settings say otherwise (1 h before the estimated arrival, 3 h after) */
+export const WIN_LEN = 240;
+type Win = [number, number];
+/** the window of a moment offered: the server's, else the one its estimated arrival gives (`ofEta`), else none */
+export function suggWindow(s: { eta?: number | null; win_start?: number | null; win_end?: number | null }, ofEta: (eta: number) => Win, len = WIN_LEN): Win | null {
+  if (s.win_start != null) return [s.win_start, s.win_end != null && s.win_end > s.win_start ? s.win_end : s.win_start + len];
+  return s.eta != null ? ofEta(s.eta) : null;
+}
+/** the window of a choice (null: flexible, or left to the app) */
+export function choiceWindow(c: Pick<BlockChoice, 'win_start' | 'win_end' | 'win_flex'> | null, len = WIN_LEN): Win | null {
+  if (!c || c.win_flex || c.win_start == null) return null;
+  return [c.win_start, c.win_end != null && c.win_end > c.win_start ? c.win_end : c.win_start + len];
+}
+/** what a choice adds to the booking sent: day and block, and for a day its window's start, or « flexible »; neither:
+    the server gives the window itself. « Réserver quand même » (`force`): no window is asked, the server derives it. */
+export function choicePayload(c: BlockChoice, force = false): { day: string; block: BlockKey; win_start?: number; win_flex?: boolean } {
+  if (c.block !== 'day') return { day: c.day, block: c.block };
+  if (c.win_flex) return { day: c.day, block: 'day', win_flex: true };
+  if (c.win_start != null && !force) return { day: c.day, block: 'day', win_start: c.win_start };
+  return { day: c.day, block: 'day' };
+}
+/** the last argument of `moveJob` for a choice: the new window or « flexible » (null for a block: the old call) */
+export function moveWindow(c: BlockChoice): { start: number | null; flex: boolean } | null {
+  return c.block === 'day' ? { start: c.win_flex ? null : c.win_start ?? null, flex: !!c.win_flex } : null;
+}
+/** is this choice where the appointment already is (same day and block, and for a day the same window or both flexible) */
+export function sameMoment(c: BlockChoice, j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_flex'>): boolean {
+  if (c.day !== j.day || c.block !== j.block) return false;
+  if (c.block !== 'day') return true;
+  if (c.win_flex || j.win_flex) return !!c.win_flex && !!j.win_flex && j.win_start == null;
+  return c.win_start != null && c.win_start === j.win_start;
+}
+/** the windows of a day as the picker lists them: each start once (the first = the best), only those with hours */
+export function distinctWindows<T extends { eta?: number | null; win_start?: number | null; win_end?: number | null }>(rows: T[], ofEta: (eta: number) => Win, len = WIN_LEN): (T & { win: Win })[] {
+  const seen = new Set<number>();
+  const out: (T & { win: Win })[] = [];
+  for (const r of rows) {
+    const win = suggWindow(r, ofEta, len);
+    if (!win || seen.has(win[0])) continue;
+    seen.add(win[0]);
+    out.push({ ...r, win });
+  }
+  return out;
+}
+/** a whole day as one block: it has « started » only once it is past, or today with no time left to start a job
+    (a block has started as soon as its first hour comes; a day still takes bookings in the afternoon) */
+export function dayLoad<T extends LoadLike>(load: T, o: { past: boolean; isToday: boolean; now: number; dayEnd: number; minBlock: number }): T {
+  const started = o.past || (o.isToday && o.now > o.dayEnd - o.minBlock);
+  return { ...load, started, open: !started && load.trucks.some((x) => x.cap >= o.minBlock) };
 }
 
 /* ---------- how a block looks in the picker ---------- */
@@ -112,7 +173,7 @@ export function cellState(load: LoadLike, duration: number, drive: number, opts:
 }
 
 /** a booking refused because of the block: the person should pick another block */
-export const BLOCK_REFUSALS = ['block_full', 'block_closed', 'block_started', 'truck_full', 'too_far', 'bad_block'];
+export const BLOCK_REFUSALS = ['block_full', 'block_closed', 'block_started', 'truck_full', 'too_far', 'bad_block', 'window_full'];
 export function refusalCode(e: unknown): string {
   const err = e as { hint?: string; code?: string } | null;
   return String(err?.hint || (/^[a-z_]+$/.test(String(err?.code || '')) ? err?.code : '') || '');

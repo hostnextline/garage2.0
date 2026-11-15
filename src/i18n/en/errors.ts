@@ -6,6 +6,7 @@ export const errors: typeof fr = {
   bad_block: 'Pick the date and the block: morning, afternoon or evening.',
   block_closed: 'This block is closed that day: no truck is working.',
   block_full: 'This block is full. Pick another block.',
+  window_full: 'That window is no longer free: choose another one.',
   block_started: 'This block has already started. Pick another block.',
   truck_full: 'This truck has no room left in this block.',
   too_far: 'This date is too far ahead.',

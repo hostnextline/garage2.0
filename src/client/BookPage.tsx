@@ -1,7 +1,10 @@
 /* client.html#reserver: « Réserver en ligne ». Anyone books an appointment in 4 steps, one question per screen:
    1. the services   2. the address (chosen in the list: it gives the position)   3. one of the best moments (where a
    truck already goes nearby, soonest; « Voir d'autres dates » for the next two weeks)   4. name, phone, car → « Réserver ».
-   Then: booked, a confirmation text, the button to the customer's own page. */
+   Then: booked, a confirmation text, the button to the customer's own page.
+   « Plages d’arrivée » (info.windows): step 3 offers days with their 4-hour window (« Jeudi 19 novembre, entre 9 h et 13 h »),
+   « Voir d’autres heures » when a day has several, and « Je suis disponible toute la journée » (the window is confirmed
+   the day before). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ArrowLeft, Check, MapPin, Search, CalendarDays, Sparkles, CircleCheck, Users, CalendarX } from 'lucide-preact';
 import { Button } from '../ui/Button';
@@ -18,11 +21,21 @@ import type { Suggestion } from '../features/customers/photon';
 import { ErrorState } from './ViewPage';
 import {
   STEPS, stepNumber, serviceName, chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots,
-  onTypedStreet, EMPTY_CONTACT, type Step, type WebInfo, type WebSlot, type Contact, type ContactErrors, type Booked
+  onTypedStreet, EMPTY_CONTACT, windowMode, dayOffers, flexSlot, slotWindow, slotKey, bookWhen, type Step, type WebBlock, type WebInfo, type WebSlot, type Contact, type ContactErrors, type Booked
 } from './book-state';
 
 interface Place { address: string; unit: string; postal_code: string | null; city: string | null; lat: number; lng: number; exact: boolean }
 const PAGE_DAYS = 14;
+type When = { block: string; win_start?: number | null; win_end?: number | null; flex?: boolean };
+/** the hours of a moment: « Entre 12 h et 16 h » (a block's hours or a window), « Dans la journée » (flexible) */
+function whenWords(x: When, blocks: WebBlock[], l: CLang): string {
+  if (x.block === 'day') {
+    const w = slotWindow(x);
+    return (w && slotText(w[0], w[1], l)) || ct(l, 'flex');
+  }
+  const b = blocks.find((k) => k.key === x.block);
+  return (b && slotText(b.start, b.end, l)) || ct(l, `blocks.${x.block}`);
+}
 
 export function BookPage(p: { linkLang: CLang | null }) {
   const [l, setL] = useState<CLang>(() => pickLang(p.linkLang, null));
@@ -65,7 +78,7 @@ export function BookPage(p: { linkLang: CLang | null }) {
     setMsg(null);
     try {
       const r = await callBook<Booked>('book', {
-        lang: l, services: ids, day: slot.day, block: slot.block,
+        lang: l, services: ids, ...bookWhen(slot),
         first_name: contact.first.trim(), last_name: contact.last.trim(), phone: contact.phone, email: contact.email.trim(),
         address: place.address, unit: place.unit.trim(), postal_code: place.postal_code, city: place.city, lat: place.lat, lng: place.lng,
         vehicle: { year: contact.year || null, make: contact.make.trim(), model: contact.model.trim() }, problem: contact.problem.trim(),
@@ -87,7 +100,7 @@ export function BookPage(p: { linkLang: CLang | null }) {
       <CallUs garage={garage} l={l} />
     </section>
   );
-  else if (step === 'done' && done) body = <Done l={l} done={done} info={info} phone={contact.phone} onAgain={() => { setDone(null); setSlot(null); setIds([]); go('services'); }} />;
+  else if (step === 'done' && done) body = <Done l={l} done={done} slot={slot} info={info} phone={contact.phone} onAgain={() => { setDone(null); setSlot(null); setIds([]); go('services'); }} />;
   else {
     body = (
       <>
@@ -267,15 +280,63 @@ function Slots(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; value:
   };
   useEffect(() => { void ask(null); }, []);
   const blockOf = (k: string) => info.blocks.find((b) => b.key === k);
+  // « Plages d’arrivée »: days with their window, other hours of a day, « free all day »
+  const windows = windowMode(info, slots);
+  const [flex, setFlex] = useState(p.value?.flex === true);
+  const [open, setOpen] = useState<string | null>(null);
+  const offers = windows && slots ? dayOffers(slots) : [];
+  const dayName = (day: string) => { const rel = relDay(day); return rel ? `${ct(l, rel)}, ${longDay(day, l)}` : dayTitle(day, l); };
   return (
     <section class="cl-panel glass" aria-labelledby="bk-t3" data-testid="book-slots">
       <h1 id="bk-t3" class="bk-title" ref={p.titleRef} tabIndex={-1}>{ct(l, 'book.slots.title')}</h1>
-      <p class="cl-sub">{ct(l, 'book.slots.sub')}</p>
+      <p class="cl-sub">{ct(l, windows ? 'book.slots.subWindows' : 'book.slots.sub')}</p>
       {p.msg && <Note kind="warn">{p.msg}</Note>}
       {slots === null ? <p class="cl-muted" role="status">{ct(l, 'book.slots.loading')}</p> : (
         <>
           {slots.length === 0 && !busy && <div class="cl-stack"><Note kind="info">{ct(l, from && !end ? 'book.slots.none' : 'book.slots.noneMore')}</Note></div>}
-          <ul class="bk-slots">
+          {windows && offers.length > 0 && (
+            <label class={`bk-flex${flex ? ' is-on' : ''}`}>
+              <input type="checkbox" checked={flex} onChange={(e) => { setFlex((e.currentTarget as HTMLInputElement).checked); setOpen(null); }} data-testid="book-flex" />
+              <span><b>{ct(l, 'book.slots.flex')}</b><span class="cl-small cl-muted" data-testid="book-flex-note">{ct(l, 'book.slots.flexNote')}</span></span>
+            </label>
+          )}
+          {windows && (
+            <ul class="bk-slots" data-testid="book-days">
+              {offers.map((d, i) => (
+                <li key={d.day} data-testid="book-day">
+                  <button type="button" class={`bk-slot${i === 0 ? ' is-best' : ''}`} onClick={() => p.onPick(flex ? flexSlot(d.best) : d.best)} data-testid="book-slot">
+                    <span class="bk-slot-main">
+                      {i === 0 && <span class="bk-best"><Sparkles aria-hidden="true" />{ct(l, 'book.slots.best')}</span>}
+                      <b>{dayName(d.day)}</b>
+                      <span data-testid="book-slot-when">{whenWords(flex ? flexSlot(d.best) : d.best, info.blocks, l)}</span>
+                      {d.near && <span class="bk-near"><Users aria-hidden="true" />{ct(l, 'book.slots.near')}</span>}
+                    </span>
+                    <span class="bk-slot-go" aria-hidden="true">›</span>
+                  </button>
+                  {!flex && d.others.length > 0 && (
+                    <div class="bk-hours">
+                      <Button variant="ghost" size="sm" aria-expanded={open === d.day} onClick={() => setOpen(open === d.day ? null : d.day)} data-testid="book-other-hours">
+                        {ct(l, open === d.day ? 'book.slots.fewerHours' : 'book.slots.otherHours')}
+                      </Button>
+                      {open === d.day && (
+                        <ul class="bk-hours-list">
+                          {d.others.map((s) => (
+                            <li key={slotKey(s)}>
+                              <button type="button" class="bk-slot bk-slot-sm" onClick={() => p.onPick(s)} data-testid="book-slot-other">
+                                <span class="bk-slot-main"><span>{whenWords(s, info.blocks, l)}</span></span>
+                                <span class="bk-slot-go" aria-hidden="true">›</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!windows && <ul class="bk-slots">
             {slots.map((s, i) => {
               const b = blockOf(s.block);
               const rel = relDay(s.day);
@@ -294,7 +355,7 @@ function Slots(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; value:
                 </li>
               );
             })}
-          </ul>
+          </ul>}
           {err && <Note kind="bad">{err}</Note>}
           {end && slots.length > 0 && <Note kind="info">{ct(l, 'book.slots.noneMore')}</Note>}
           {(end || (slots.length === 0 && !busy)) && <CallUs garage={p.garage} l={l} primary={false} />}
@@ -323,7 +384,6 @@ function ContactStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; 
     if (Object.keys(e).length) { document.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus(); return; }
     await p.onSubmit();
   };
-  const b = info.blocks.find((x) => x.key === p.slot.block);
   const sum = chosenTotal(info.services, p.ids, info.taxes);
   const field = (k: keyof Contact, label: string, extra: Record<string, unknown> = {}) => {
     const e = err[k as keyof ContactErrors];
@@ -342,7 +402,8 @@ function ContactStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; 
       <div class="bk-summary" data-testid="book-summary">
         <span class="cl-small cl-muted">{ct(l, 'book.contact.summary')}</span>
         <b>{dayTitle(p.slot.day, l)}</b>
-        <span>{b ? slotText(b.start, b.end, l) : ct(l, `blocks.${p.slot.block}`)}</span>
+        <span data-testid="book-summary-when">{whenWords(p.slot, info.blocks, l)}</span>
+        {p.slot.flex && <span class="cl-small cl-muted">{ct(l, 'flexNote')}</span>}
         <span class="cl-small cl-muted">{p.place.address}{p.place.unit.trim() ? `, ${ct(l, 'book.address.unitIn', { unit: p.place.unit.trim() })}` : ''}</span>
         <span class="cl-small cl-muted">{info.services.filter((s) => p.ids.includes(s.id)).map((s) => serviceName(s, l)).join(', ')}</span>
         {sum.any && <span class="cl-small">{ct(l, 'book.services.totalIs', { amount: cad(sum.total, l) })}</span>}
@@ -385,9 +446,13 @@ function ContactStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Place; 
 }
 
 /* ---------- booked ---------- */
-function Done(p: { l: CLang; done: Booked; info: WebInfo; phone: string; onAgain: () => void }) {
+function Done(p: { l: CLang; done: Booked; slot: WebSlot | null; info: WebInfo; phone: string; onAgain: () => void }) {
   const { l, done } = p;
-  const b = p.info.blocks.find((x) => x.key === done.block);
+  // a 'day' booking: the window the server kept (its answer; the moment chosen when the answer does not say); none = flexible
+  const when: When = done.block !== 'day' ? done
+    : done.win_start != null && done.win_end != null ? { block: 'day', win_start: done.win_start, win_end: done.win_end }
+      : done.flex === undefined && p.slot && slotWindow(p.slot) ? p.slot : { block: 'day', flex: true };
+  const isFlex = when.block === 'day' && !slotWindow(when);
   const rel = relDay(done.day);
   const day = rel ? ct(l, rel).toLowerCase() : longDay(done.day, l);
   const sent = done.text === 'sent';
@@ -395,7 +460,7 @@ function Done(p: { l: CLang; done: Booked; info: WebInfo; phone: string; onAgain
     <section class="cl-panel glass cl-state" data-testid="book-done">
       <span class="cl-state-icon is-ok" aria-hidden="true"><CircleCheck /></span>
       <h1>{ct(l, 'book.done.title')}</h1>
-      <p class="bk-done-when">{ct(l, 'book.done.lead', { day, slot: (b ? slotText(b.start, b.end, l) : ct(l, `blocks.${done.block}`))?.toLowerCase() })}</p>
+      <p class="bk-done-when" data-testid="book-done-when">{isFlex ? ct(l, 'book.done.leadFlex', { day }) : ct(l, 'book.done.lead', { day, slot: whenWords(when, p.info.blocks, l).toLowerCase() })}</p>
       <p>{sent ? ct(l, 'book.done.text', { phone: formatPhone(p.phone).replace(/ /g, '\u00a0') }) : ct(l, 'book.done.noText')}</p>
       {done.link && <Button variant="primary" block href={done.link} data-testid="book-see">{ct(l, 'book.done.see')}</Button>}
       <Button variant="ghost" block onClick={p.onAgain} data-testid="book-again">{ct(l, 'book.done.again')}</Button>

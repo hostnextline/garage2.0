@@ -21,7 +21,8 @@ export interface CustomerFacts {
   activity: number;
 }
 const ACTIVE = new Set(['booked', 'en_route', 'on_site']);
-const BLOCK_ORDER: Record<string, number> = { am: 0, pm: 1, eve: 2 };
+// a job booked by arrival window ('day') on the same day as block jobs (only around the switch): in the middle, then by its arrival
+const BLOCK_ORDER: Record<string, number> = { am: 0, pm: 1, day: 1, eve: 2 };
 const ms = (iso: string | null | undefined): number => { const n = iso ? Date.parse(iso) : NaN; return Number.isFinite(n) ? n : 0; };
 const noon = (day: string): number => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, 12).getTime(); };
 
@@ -29,7 +30,7 @@ export function owedOn(v: Pick<Invoice, 'status' | 'total_cents' | 'paid_cents'>
   return v.status === 'issued' ? Math.max(0, Number(v.total_cents || 0) - Number(v.paid_cents || 0)) : 0;
 }
 export function isUpcoming(j: Job, day = today()): boolean { return ACTIVE.has(j.status) && j.day >= day; }
-export function jobOrder(a: Job, b: Job): number { return a.day.localeCompare(b.day) || (BLOCK_ORDER[a.block] ?? 9) - (BLOCK_ORDER[b.block] ?? 9) || (a.stop_order ?? 99) - (b.stop_order ?? 99); }
+export function jobOrder(a: Job, b: Job): number { return a.day.localeCompare(b.day) || (BLOCK_ORDER[a.block] ?? 9) - (BLOCK_ORDER[b.block] ?? 9) || (a.stop_order ?? 99) - (b.stop_order ?? 99) || (a.eta_min ?? 9999) - (b.eta_min ?? 9999); }
 
 export const factsMap = computed<Map<string, CustomerFacts>>(() => {
   const day = today();

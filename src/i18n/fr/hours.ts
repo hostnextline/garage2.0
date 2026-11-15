@@ -9,6 +9,14 @@ export const hours = {
   noTruckText: 'Ajoute le premier camion plus bas pour dessiner ses heures.',
   noTruckOther: 'Demande au propriétaire d’ajouter les camions.',
   readOnly: 'Tu vois cet horaire, mais tu ne peux pas le changer.',
+  /* « Plages d’arrivée » (the garage books by arrival window): the same texts without the blocks */
+  win: {
+    help: 'Chaque carreau, c’est 30 minutes. Allumé : le camion travaille. Glisse pour allumer ou éteindre plusieurs carreaux d’un coup : le premier carreau touché décide.\nLes lignes épaisses montrent le début et la fin de la journée de réservation.\nChoisis ensuite jusqu’à quand ça compte, puis touche « Appliquer ».',
+    tail: 'Les rendez-vous déjà pris restent; les journées touchées sont réorganisées en gardant la plage d’arrivée dite à chaque client.',
+    startSub: 'D’où il part au début de sa journée.',
+    startHelp: 'La route du camion commence ici au début de sa journée. Change-le si le mécano part de chez lui avec son camion.',
+    replanNote: 'Les rendez-vous à venir seront replacés à partir de ce départ. Les plages d’arrivée dites aux clients ne changent pas.'
+  },
   grid: {
     label: 'Heures de {truck}, semaine habituelle',
     usual: 'Semaine habituelle',

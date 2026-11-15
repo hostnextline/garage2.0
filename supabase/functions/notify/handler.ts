@@ -1,21 +1,19 @@
 // Texts to customers: appointment confirmed / moved (the block, the estimate to sign, « pay now » when card payment is on),
 // the mechanic arrived (the invoice to pay during the work), invoice (with « Payer »), extra work to approve, payment
-// reminder, the day-before reminder. Each text carries a secret link to the customer's own page.
+// reminder, the day-before reminder, the window of a flexible booking just fixed (« window »). Each text carries a secret link to the customer's own page.
 // When automatic texts are not set up, the app gets the text and the link back, to send them itself.
 import { serve, json, body, fail } from '../_shared/http.ts';
 import { adminDb, caller, settings, secret } from '../_shared/db.ts';
 import { newToken, sha256hex } from '../_shared/tokens.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
-import { money, clock, longDay, fill, first, blockWords, payNowWords, servicesList, subtotalWords, type Lang } from '../_shared/texts.ts';
+import { money, longDay, fill, first, payNowWords, servicesList, subtotalWords, whenText, jobWindow, WINDOW_TEXT, type Lang } from '../_shared/texts.ts';
 
-const KINDS = ['booking', 'moved', 'arrived', 'invoice', 'extras', 'payment_reminder', 'reminder'];
+const KINDS = ['booking', 'moved', 'arrived', 'invoice', 'extras', 'payment_reminder', 'reminder', 'window'];
 const LINK_DAYS = 90;
 
-function blockWindow(s: Record<string, any>, key: string): [number, number] {
-  const b = (s.booking?.blocks || []).find((x: { key: string }) => x.key === key) || { start: 480, end: 720 };
-  return [b.start, b.end];
-}
+/** a text without its links (each text carries a new one) */
+const bare = (x: unknown) => String(x || '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim();
 function taxed(lines: { qty: number; unit_cents: number; taxable: boolean }[], s: Record<string, any>): number {
   let sub = 0, tx = 0;
   for (const l of lines) { const t = Math.round(Number(l.qty || 1) * Number(l.unit_cents || 0)); sub += t; if (l.taxable !== false) tx += t; }
@@ -43,7 +41,7 @@ export const handler = serve(async (req) => {
   const j = job as Record<string, any>;
   const mine = c.access.trucks.includes(j.truck_id) || j.created_by === c.id;
   const r = c.access.rights;
-  if (['booking', 'moved', 'extras', 'reminder'].includes(kind) && !(r.book || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas texter ce client.', 403);
+  if (['booking', 'moved', 'extras', 'reminder', 'window'].includes(kind) && !(r.book || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas texter ce client.', 403);
   if (['invoice', 'payment_reminder', 'arrived'].includes(kind) && !(r.edit_invoices || r.invoices || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas envoyer cette facture.', 403);
 
   const s = await settings();
@@ -54,10 +52,13 @@ export const handler = serve(async (req) => {
   const cardOn = !!(await secret('stripe_key'));
   // « the mechanic arrived » says « pay online » only when card payment is on
   const tplKind = kind === 'arrived' && !cardOn ? 'arrived_no_pay' : kind;
-  const tpl = (s.messages?.[lang]?.[tplKind] || s.messages?.fr?.[tplKind] || '') as string;
+  // « window » has a text of its own even when the settings were never given one
+  const tpl = (s.messages?.[lang]?.[tplKind] || s.messages?.fr?.[tplKind] || (kind === 'window' ? WINDOW_TEXT[lang] : '')) as string;
   if (!tpl) fail('template', 'Ce texto n’a pas de modèle dans les réglages.');
   if (kind === 'booking' && j.confirm_sent_at && !b.resend) return json({ ok: true, status: 'already' });
-  if (['booking', 'moved', 'reminder'].includes(kind) && j.status !== 'booked') fail('not_booked', 'Ce rendez-vous n’est plus à venir.');
+  if (['booking', 'moved', 'reminder', 'window'].includes(kind) && j.status !== 'booked') fail('not_booked', 'Ce rendez-vous n’est plus à venir.');
+  // the window of a flexible booking was just fixed: only a job that has one
+  if (kind === 'window' && !jobWindow(j as never)) fail('no_window', 'Ce rendez-vous n’a pas encore de plage d’arrivée.');
   if (kind === 'arrived') {
     if (j.status !== 'on_site') fail('not_on_site', 'Le mécano n’est pas encore arrivé chez ce client.');
     if (!b.resend) {
@@ -67,8 +68,9 @@ export const handler = serve(async (req) => {
   }
 
   const vars: Record<string, string> = { prenom: first(cu.first_name) || '', garage, telephone: s.company?.phone || '' };
-  const [a, z] = blockWindow(s, j.block);
-  vars.jour = longDay(j.day, lang); vars.debut = clock(a, lang); vars.fin = clock(z, lang); vars.bloc = blockWords(j.block, lang);
+  // a block job: its block's words and hours; a 'day' job: its window (« entre 14 h et 18 h ») or « dans la journée ; … »
+  const when = whenText(tpl, j as never, s.booking?.blocks, lang);
+  Object.assign(vars, when.vars);
   vars.payer = payNowWords(cardOn, lang);
   const { data: items } = await db.from('job_items').select('*').eq('job_id', j.id).is('deleted_at', null);
   const its = (items || []) as Record<string, any>[];
@@ -114,8 +116,13 @@ export const handler = serve(async (req) => {
     vars.date = longDay(String(v.issued_at).slice(0, 10), lang);
     if (kind === 'payment_reminder' && v.status === 'paid') fail('paid', 'Cette facture est déjà payée.');
   }
+  if (kind === 'window' && !b.resend) {
+    // the same window is told once (asked twice, or the evening's lock run again); another window is a new text
+    const { data: prev } = await db.from('messages').select('body').eq('job_id', j.id).eq('kind', 'window').eq('status', 'sent').order('created_at', { ascending: false }).limit(1);
+    if (prev?.length && bare((prev[0] as Record<string, any>).body) === bare(fill(when.tpl, { ...vars, lien: '' }))) return json({ ok: true, status: 'already' });
+  }
   vars.lien = await makeLink(j.id, null, c.id, baseOf(b.base), lang);
-  const message = fill(tpl, vars);
+  const message = fill(when.tpl, vars);
 
   const quiet = cu.sms_ok === false || s.messages?.on?.[kind] === false;
   const res = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message);

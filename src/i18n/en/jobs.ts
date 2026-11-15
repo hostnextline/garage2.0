@@ -323,6 +323,44 @@ export const jobs: typeof fr = {
     payFirstMechanic: 'Payment is needed before leaving. Only the office can let a customer go without paying: call them.',
     callOffice: 'Call the office'
   },
+  /* arrival windows (a job booked by window, block 'day'): the same texts as above without the word “block” (same paths under win) */
+  win: {
+    label: 'Arrival window',
+    flexShort: 'Flexible',
+    lateText: 'The planned arrival (about {time}) is outside the window the customer was told ({window}). Call the customer, or change the order of the stops.',
+    did: { cancel: 'Job cancelled. Its place is free.' },
+    work: { longerHint: 'The truck keeps the time needed in its day.' },
+    moment: {
+      moveLead: 'Pick another day or another arrival window.',
+      moveLeadText: 'Pick another day or another arrival window. The customer gets a text with the new time.',
+      help: 'The length lets the truck fit the stops in its day. If the job no longer fits, move it.'
+    },
+    order: {
+      firstMenuSub: 'This customer goes before the others of the day',
+      wholeDay: 'the whole day',
+      told: 'customer: {window}',
+      note: 'An order chosen by hand can make the truck arrive outside the window a customer was told. The app then shows « Outside the window ».',
+      breaks: { one: 'With this order, {names} would probably be reached outside their arrival window. Tell this customer if you save.', other: 'With this order, these customers would probably be reached outside their arrival window: {names}. Tell them if you save.' },
+      about: 'about {time}',
+      saveAnyway: 'Save anyway'
+    },
+    menu: {
+      resendBookingSub: 'The day, the arrival window and the planned total',
+      cancelSub: 'Its place is freed',
+      reopenSub: 'It goes back on the agenda, same day',
+      moveSub: 'Another day or another arrival window'
+    },
+    ask: {
+      cancelText: 'Its place is freed for another customer. The customer is not told automatically: call them.',
+      reopenText: 'It goes back on the agenda, same day, if there is room left.'
+    },
+    edit: { when: 'Date and arrival window' },
+    truck: {
+      menuSub: 'Now: {truck}. Same day, same arrival window.',
+      off: 'Not working that day',
+      none: 'No truck works that day.'
+    }
+  },
   edit: {
     title: 'Edit the appointment',
     menu: 'Edit the appointment',

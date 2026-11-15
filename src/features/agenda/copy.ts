@@ -21,7 +21,8 @@ export function clearCopy() {
   copiedJob.value = null;
   try { sessionStorage.removeItem(KEY); } catch { /* nothing kept */ }
 }
-/** the booking screen, with the copy and the block chosen */
+/** the booking screen, with the copy and the block chosen (« Plages d'arrivée »: the day, block 'day'; the window is
+    chosen there) */
 export function pasteHref(day: Day, block: BlockKey, id: string | null = copiedJob.value): string {
   return href('/book', { copy: id, day, block });
 }

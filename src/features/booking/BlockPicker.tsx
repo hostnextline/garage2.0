@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CalendarCheck, Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, Sparkles, Map as MapIcon, Car, Truck, ListOrdered } from 'lucide-preact';
 import { today as todayOf, addDays, daysBetween, tinyDay, longDay, duration, clockRange, isValidDay, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { blocks, blockLoad, settings, job as jobRow, activeTrucks } from '../../data/select';
+import { blocks, blockLoad, settings, job as jobRow, activeTrucks, windowsOn } from '../../data/select';
 import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
@@ -13,36 +13,25 @@ import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
 import { stopRank } from './preview';
 import { fromDevice } from '../map/device';
-import { blockPhrase, blockPhraseWithHours, spanEnds } from './when';
+import { blockPhraseWithHours, spanEnds } from './when';
+import type { BlockPickerProps } from './choice';
+import { WindowPicker } from './WindowPicker';
 import './booking.css';
 
-export interface BlockChoice { day: string; block: BlockKey; truck_id?: string | null }
-export interface BlockPickerProps {
-  lat: number | null; lng: number | null;
-  /** minutes of work (driving is added by the planner) */
-  duration: number;
-  /** moving a job: leave it out of the counts */
-  excludeJob?: string | null;
-  value: BlockChoice | null;
-  onPick: (c: BlockChoice) => void;
-  /** optional: only this truck counts (a truck chosen by hand, a mechanic booking on his own truck) */
-  truckId?: string | null;
-  /** the address, for « Voir sur la carte » */
-  address?: string | null;
-  /** the work needs the tire machine: only the truck (the switch is locked on it) */
-  need?: boolean;
-  /** the vehicle asked for, and the switch « Peu importe / Voiture / Camion » (shown when the garage has both) */
-  kind?: VehicleKind;
-  onKind?: (k: VehicleKind) => void;
+export type { BlockChoice, BlockPickerProps, VehicleKind } from './choice';
+export { choiceWords } from './choice';
+
+/** the moment of an appointment: a block (matin, après-midi, soir), or with « Plages d'arrivée » a day and its window */
+export function BlockPicker(p: BlockPickerProps) {
+  return windowsOn.value ? <WindowPicker {...p} /> : <BlocksPicker {...p} />;
 }
-export type VehicleKind = 'car' | 'truck' | null;
 
 type Suggestion = Awaited<ReturnType<typeof suggestBlocks>>[number];
 type SuggState = { status: 'loading' | 'ok' | 'offline' | 'error'; list: Suggestion[] };
 const PAGE = 14;
 const keyOf = (day: string, block: string) => `${day}|${block}`;
 
-export function BlockPicker(p: BlockPickerProps) {
+function BlocksPicker(p: BlockPickerProps) {
   const l = lang.value;
   const today = todayOf();
   const horizon = Math.max(PAGE, Number(settings.value.booking.horizon_days) || 120);
@@ -288,11 +277,4 @@ export function BlockPicker(p: BlockPickerProps) {
       </section>
     </div>
   );
-}
-
-/** « Demain matin, 8 h à 12 h » for a choice (used by the summary of the screens that show a choice) */
-export function choiceWords(c: BlockChoice | null, l = lang.value): string {
-  if (!c) return '';
-  const b = blocks.value.find((x) => x.key === c.block);
-  return b ? blockPhraseWithHours(c.day, c.block, b.start, b.end, todayOf(), l) : blockPhrase(c.day, c.block, todayOf(), l);
 }

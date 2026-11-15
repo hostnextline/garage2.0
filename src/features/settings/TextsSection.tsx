@@ -6,11 +6,11 @@ import { t, lang, type Lang } from '../../lib/i18n';
 import { addDays, clock, longDay, today, nowMinute } from '../../lib/dates';
 import { money } from '../../lib/money';
 import { appBase } from '../../lib/config';
-import { settings, garageName, blockOfKey } from '../../data/select';
+import { settings, garageName, blockOfKey, windowsOn, windowOf } from '../../data/select';
 import { saveSettings } from '../../data/api';
 import { Panel, Button, Tabs, Textarea, Banner, Help, attempt } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
-import { MSG_KINDS, SWITCH_OF, DEFAULT_ON, DEFAULT_TEXTS, VARS_OF, previewParts, unknownVars, insertAt, type MsgKind } from './messages';
+import { kindsFor, momentVars, SWITCH_OF, DEFAULT_ON, DEFAULT_TEXTS, VARS_OF, previewParts, unknownVars, insertAt, type MsgKind } from './messages';
 
 interface Texts { on: Record<string, boolean>; fr: Record<string, string>; en: Record<string, string> }
 
@@ -18,10 +18,14 @@ interface Texts { on: Record<string, boolean>; fr: Record<string, string>; en: R
 export function exampleVars(l: Lang): Record<string, string> {
   const b = settings.value.billing;
   const am = blockOfKey('am');
+  // « Plages d'arrivée »: the example is an arrival estimated at 3 pm, so the text shows a window and never a block
+  const moment = momentVars({ window: windowsOn.value ? windowOf(15 * 60) : null, block: [am.start, am.end],
+    blockWords: t('settings.texts.example.bloc', undefined, l), dayWords: t('settings.texts.example.blocDay', undefined, l) }, l === 'en' ? 'en' : 'fr');
   return {
+    ...moment,
     prenom: t('settings.texts.example.prenom', undefined, l), garage: garageName.value, jour: longDay(addDays(today(), 1), l),
-    bloc: t('settings.texts.example.bloc', undefined, l), payer: t('settings.texts.example.payer', undefined, l),
-    debut: clock(am.start, l), fin: clock(am.end, l), total: money(17245, l), lien: `${appBase()}client.html#t=Ab3dE9xQ`,
+    payer: t('settings.texts.example.payer', undefined, l),
+    total: money(17245, l), lien: `${appBase()}client.html#t=Ab3dE9xQ`,
     mecano: t('settings.texts.example.mecano', undefined, l), heure: clock(Math.min(1435, Math.ceil((nowMinute() + 25) / 5) * 5), l), minutes: '25',
     vehicule: t('settings.texts.example.vehicule', undefined, l), montant: money(8000, l),
     numero: `${b.invoice_prefix ?? 'F-'}${String(43).padStart(Number(b.pad ?? 4), '0')}`, date: longDay(today(), l),
@@ -33,10 +37,12 @@ export function exampleVars(l: Lang): Record<string, string> {
 
 export function TextsSection() {
   const m = settings.value.messages || { on: {}, fr: {}, en: {} };
+  // the text « Plage confirmée » exists only while the garage books by arrival windows
+  const kinds = kindsFor(windowsOn.value);
   const saved: Texts = {
-    on: Object.fromEntries(Object.keys(DEFAULT_ON).map((k) => [k, typeof m.on?.[k] === 'boolean' ? m.on[k] : DEFAULT_ON[k]])),
-    fr: Object.fromEntries(MSG_KINDS.map((k) => [k, m.fr?.[k] ?? DEFAULT_TEXTS.fr[k]])),
-    en: Object.fromEntries(MSG_KINDS.map((k) => [k, m.en?.[k] ?? DEFAULT_TEXTS.en[k]]))
+    on: Object.fromEntries(Object.keys(DEFAULT_ON).filter((k) => kinds.some((x) => SWITCH_OF[x] === k)).map((k) => [k, typeof m.on?.[k] === 'boolean' ? m.on[k] : DEFAULT_ON[k]])),
+    fr: Object.fromEntries(kinds.map((k) => [k, m.fr?.[k] ?? DEFAULT_TEXTS.fr[k]])),
+    en: Object.fromEntries(kinds.map((k) => [k, m.en?.[k] ?? DEFAULT_TEXTS.en[k]]))
   };
   const { draft: d, set, dirty, reset } = useSectionDraft<Texts>('texts', saved);
   const [open, setOpen] = useState<MsgKind | null>(null);
@@ -55,7 +61,7 @@ export function TextsSection() {
           <span class="small muted">{t('settings.texts.auto')}</span>
         </div>
         <div class="rows" role="list">
-          {MSG_KINDS.map((k) => {
+          {kinds.map((k) => {
             const sw = SWITCH_OF[k];
             const own = sw === k;
             const on = d.on[sw] !== false;

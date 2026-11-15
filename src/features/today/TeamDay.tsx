@@ -2,19 +2,19 @@
    waiting for the customer, tomorrow's appointments to confirm (« Envoyer »).
    The treasurer: today's payments and the treasury. */
 import { CalendarPlus, CalendarDays, MapIcon, Send, Wallet } from 'lucide-preact';
-import { Panel, Rows, RowItem, Button, BigStep, Money, Avatar, Empty, Banner, Skeleton } from '../../ui';
+import { Panel, Rows, RowItem, Button, BigStep, Money, Avatar, Empty, Banner, Skeleton, Pill } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, clock } from '../../lib/dates';
 import { money } from '../../lib/money';
 import { formatPhone } from '../../lib/text';
-import { staff, staffName, truckColor, invoiceNumber, activeTrip } from '../../data/select';
+import { staff, staffName, truckColor, invoiceNumber, activeTrip, windowsOn } from '../../data/select';
 import { can, hasRole, myTrucks } from '../../data/auth';
 import { net } from '../../data/sync';
 import { may } from '../../app/routes';
 import { wide } from '../../app/media';
 import type { Job } from '../../data/types';
 import { sendText } from '../jobs/flow';
-import { jobName, jobFirstName, jobCustomer, shortDayWord, blockRange, clockOf, minuteOf } from '../jobs/select';
+import { jobName, jobFirstName, jobCustomer, shortDayWord, blockRange, clockOf, minuteOf, isWindowJob, outsideWindow } from '../jobs/select';
 import { agoText } from './position';
 import { trucksNow, unplacedOn, toCollect, proposalsWaiting, toConfirm, paymentsOn, useTick, type TruckNow } from './select';
 import { ShiftCard } from './MechanicDay';
@@ -42,6 +42,8 @@ function TruckCard(p: { x: TruckNow; now: number }) {
   const next = x.next && x.next.id !== x.current?.id
     ? (x.next.eta_min != null ? t('today.trucks.next', { name: jobFirstName(x.next), time: clock(x.next.eta_min, lang.value) }) : t('today.trucks.nextNoTime', { name: jobFirstName(x.next) }))
     : '';
+  // « Plages d'arrivée »: the window told to the next customer, beside the planned arrival
+  const told = x.next && isWindowJob(x.next) ? x.next : null;
   const inner = (
     <>
       <span class="today-truck-top">
@@ -61,6 +63,12 @@ function TruckCard(p: { x: TruckNow; now: number }) {
         <span class="today-truck-foot">
           {x.total > 0 && <span class="num">{t('today.trucks.progress', { done: x.done, total: x.total })}</span>}
           {next && <span class="ellipsis">{next}</span>}
+        </span>
+      )}
+      {told && (
+        <span class="small today-truck-win" data-testid="today-truck-window">
+          {t('today.win.told', { window: blockRange(told) })}
+          {outsideWindow(told) && <> <Pill tone="warn" data-testid="today-truck-late">{t('common.window.late')}</Pill></>}
         </span>
       )}
       <span class="small faint">{x.posAt ? t('today.trucks.position', { ago: agoText(x.posAt, p.now) }) : x.shiftOpen ? t('today.trucks.noPosition') : ''}</span>
@@ -112,7 +120,7 @@ function ConfirmPanel() {
   const day = addDays(today(), 1);
   const list = toConfirm(day);
   return (
-    <Panel title={t('today.confirm.title')} help={t('today.confirm.help')} flush data-testid="today-confirm">
+    <Panel title={t('today.confirm.title')} help={t(windowsOn.value ? 'today.win.confirmHelp' : 'today.confirm.help')} flush data-testid="today-confirm">
       {list.length ? (
         <Rows>
           {list.map((j: Job) => {
@@ -140,7 +148,7 @@ export function OfficeDay() {
     <div class="today-office">
       {drives && <ShiftCard compact />}
       <div class="today-quick">
-        {may.book() && !wide.value && <BigStep icon={<CalendarPlus size={24} />} label={t('today.book')} sub={t('today.bookSub')} href="#/book" data-testid="today-book" />}
+        {may.book() && !wide.value && <BigStep icon={<CalendarPlus size={24} />} label={t('today.book')} sub={t(windowsOn.value ? 'today.win.bookSub' : 'today.bookSub')} href="#/book" data-testid="today-book" />}
         <div class="today-quick-links">
           {may.book() && wide.value && <Button variant="primary" icon={<CalendarPlus />} href="#/book">{t('today.book')}</Button>}
           {may.agenda() && <Button icon={<CalendarDays />} href={`#/agenda/${today()}`}>{t('today.agenda')}</Button>}

@@ -194,6 +194,50 @@ export const booking: typeof fr = {
     legend: { ok: 'Room', tight: 'Almost full', full: 'Full', closed: 'Closed' },
     calendarHelp: 'Each box shows the free time of the block. The arrow keys move from box to box.'
   },
+  /* Arrival windows (booking by 4-hour window): the same texts without the word “block”, and the windows’ own */
+  win: {
+    sub: 'The customer, the services, then the time. The app picks the truck and the order of the stops.',
+    help: 'An appointment is booked in a 4-hour arrival window, for example “between 2 p.m. and 6 p.m.”: the mechanic arrives within those hours. The app offers the window from the day’s route.\n“Flexible”: the customer is free all day and gets the window the evening before.\nThe confirmation text goes out by itself when texts are connected.',
+    block: { title: 'Time', sub: 'First: the days when we already pass near the customer.' },
+    options: {
+      durationHint: 'Worked out from the services. Tap − or + to book more or less time in the day.',
+      durationChanged: 'Changed by hand: this is the time booked in the day.'
+    },
+    summary: { noBlock: 'No time chosen' },
+    missing: { block: 'Choose the time' },
+    cars: { partial: 'Booked for {n} of {total} vehicle(s). Choose another time for the others.' },
+    force: { title: 'This day is full', cancel: 'Choose another time' },
+    queued: 'Booking kept on the phone: it will be placed as soon as the network is back (if the day is full, you will see why).',
+    refusedBlock: 'Choose another time.',
+    full: 'This window is no longer possible: the mechanic can no longer arrive within those hours. Choose another window.',
+    auto: 'window given by the app',
+    autoNote: 'No window chosen: the app gives it when you book. Tell the customer afterwards.',
+    flex: 'Flexible: any time that day',
+    flexHint: 'The customer gets a 4-hour window the evening before. Flexible bookings let the app fit more appointments in a day.',
+    others: 'Other times that day',
+    hours: 'Possible times',
+    loadingDay: 'Looking for possible times…',
+    noneDay: 'No window possible that day for {d} of work. Choose another day.',
+    offlineDay: 'No network, no windows to offer. You can choose the day: the app will give the window when it is sent.',
+    errorDay: 'The windows are not answering. Try again, or choose the day: the app will give the window.',
+    dayOnly: 'Choose this day, no window',
+    copyGone: 'The copied appointment’s window is no longer possible that day. Choose another one.',
+    customTimeHint: 'Counts in the day. 0 for a part alone.',
+    smsWhen: 'Appointment: {when}',
+    picker: {
+      title: 'The best times',
+      current: 'Current time',
+      loading: 'Looking for the best times…',
+      offline: 'No network, no suggestions. Choose a day below: the app will check the room when it is sent.',
+      error: 'The suggestions are not answering. Choose a day below.',
+      none: 'No window free for {d} of work in the next 14 days. Look further in the days.',
+      nothing: 'No time chosen',
+      fullWarn: 'This day looks full: the booking may be refused. Take a day with room if you can.',
+      days: 'Choose another day',
+      dayLabel: '{day}: {state}',
+      dayHelp: 'Tap a day to see its possible times.'
+    }
+  },
   svc: {
     search: 'Search a service',
     promo: 'Promo until {date}',

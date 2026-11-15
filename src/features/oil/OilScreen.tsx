@@ -64,7 +64,7 @@ export default function OilScreen({ query }: ScreenProps) {
           {list.map((r) => (
             <RowItem key={r.key} class="oil-row" onClick={() => setOpenKey(r.key)} chevron data-testid="oil-row"
               title={customerName(customer(r.customerId))}
-              sub={<><span class="oil-car">{carOf(r)}</span><span>{lastWords(r)}</span>{r.next && <span class="oil-next"><CalendarClock size={14} aria-hidden="true" />{t('oil.row.next', { when: nextLine(r.next.day, r.next.block) })}</span>}</>}
+              sub={<><span class="oil-car">{carOf(r)}</span><span>{lastWords(r)}</span>{r.next && <span class="oil-next"><CalendarClock size={14} aria-hidden="true" />{t('oil.row.next', { when: nextLine(r.next.day, r.next.block, r.next) })}</span>}</>}
               end={<Pill tone={tone(r)} dot={false}>{dueWords(r)}</Pill>} />
           ))}
         </Rows>
@@ -119,7 +119,7 @@ function OilSheet(p: { row: OilRow | null; onClose: () => void }) {
           [t('oil.sheet.lastOil'), r.lastOil ? dateShort(r.lastOil) : t('oil.sheet.never')],
           [t('oil.sheet.lastVisit'), r.lastVisit && r.lastOil !== r.lastVisit ? dateShort(r.lastVisit) : null],
           [t('oil.sheet.due'), <Pill tone={tone(r)} dot={false}>{r.late >= 0 || r.state === 'stopped' ? `${dateShort(r.due)} (${dueWords(r).toLowerCase()})` : dateShort(r.due)}</Pill>],
-          [t('oil.sheet.next'), r.next ? <a href={`#/job/${r.next.jobId}`}>{whenText(r.next.day, r.next.block)}</a> : null],
+          [t('oil.sheet.next'), r.next ? <a href={`#/job/${r.next.jobId}`}>{whenText(r.next.day, r.next.block, r.next)}</a> : null],
           [t('oil.sheet.said'), said]
         ]} />
         {r.next && <Banner kind="info">{t('oil.sheet.nextHint')}</Banner>}

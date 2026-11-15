@@ -137,7 +137,7 @@ function CustomerRow(p: { c: Customer; f: CustomerFacts }) {
         <span class="customers-col">{c.phone ? <Bit icon={<Phone size={14} aria-hidden="true" />}>{c.phone}</Bit> : <span class="faint">{t('customers.noPhone')}</span>}</span>
         <span class="customers-col">{f.cars.length > 0 && <Bit icon={<Car size={14} aria-hidden="true" />}>{carName(f.cars[0])}{f.cars.length > 1 ? ` ${t('customers.carMore', { n: f.cars.length - 1 })}` : ''}</Bit>}</span>
         <span class="customers-col-flags">
-          {f.next ? <span class="customers-when-inline"><Pill tone="booked">{nextLine(f.next.day, f.next.block)}</Pill></span>
+          {f.next ? <span class="customers-when-inline"><Pill tone="booked">{nextLine(f.next.day, f.next.block, f.next)}</Pill></span>
             : f.last ? <span class="customers-when-inline faint">{lastLine(f.last.day)}</span> : null}
           <Flags c={c} owed={f.owed} />
         </span>
@@ -148,7 +148,7 @@ function CustomerRow(p: { c: Customer; f: CustomerFacts }) {
 
 export function When(p: { f: CustomerFacts }) {
   const { next, last } = p.f;
-  if (next) return <span class="customers-when is-next"><span>{t('customers.when.next')}</span><b>{whenText(next.day, next.block)}</b></span>;
+  if (next) return <span class="customers-when is-next"><span>{t('customers.when.next')}</span><b>{whenText(next.day, next.block, next)}</b></span>;
   if (last) return <span class="customers-when"><span>{t('customers.when.last')}</span><b>{dayWord(last.day)}</b></span>;
   return <span class="customers-when" />;
 }

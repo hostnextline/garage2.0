@@ -551,6 +551,117 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
   }
 });
 
+test('« Plages d’arrivée »: the texts and the customer’s page say the window (or « dans la journée »), the text « window », online booking by window', async (t) => {
+  // needs Part 25 (jobs.win_start…, windows_switch): skipped on a database without it
+  if (!(await q(`select count(*)::int n from information_schema.columns where table_schema = 'public' and table_name = 'jobs' and column_name = 'win_start'`))[0].n) { t.skip('Part 25 (fenêtres) is not in this database'); return; }
+  const dow = (await q(`select extract(dow from $1::date)::int d`, [day]))[0].d;
+  const truck = randomUUID(); made.trucks.push(truck);
+  await q(`insert into public.trucks (id, name, active) values ($1, 'Camion plages', true)`, [truck]);
+  await q(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, '[[480,1200]]') on conflict do nothing`, [truck, dow]);
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lat, lng, lang) values ($1, 'Jean', 'Plage', '514 555-4321', 45.52, -73.62, 'fr')`, [cust]);
+  const en = randomUUID(); made.customers.push(en);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lat, lng, lang) values ($1, 'Mary', 'Window', '514 555-4322', 45.521, -73.621, 'en')`, [en]);
+  const oil = (await q(`insert into public.services (name_fr, name_en, price_cents, duration_min) values ('Huile plages', 'Oil windows', 8000, 45) returning id`))[0].id;
+  const phone = `438 555-${String(Math.floor(1000 + Math.random() * 8999))}`;
+  const phone2 = `438 556-${String(Math.floor(1000 + Math.random() * 8999))}`;
+  const view = async (link) => fn('client', { action: 'view', token: tokenOf(link) });
+  const [{ messages: texts }] = await q(`select messages from public.settings where id = 1`);   // put back as they were at the end
+  try {
+    // block mode: nothing new in the answers
+    assert.notEqual((await fn('book', { action: 'info' })).windows, true, 'off: the page books blocks');
+    const sw = await rpc('windows_switch', { p_op: randomUUID(), p_on: true }, ownerJwt);
+    assert.equal(sw.ok, true, JSON.stringify(sw));
+
+    // 1. a job with a window: « entre 14 h et 18 h » in the booking text, the moved text and the reminder; never a block's words
+    const b = await rpc('book_job', { p_op: randomUUID(), p_job: { customer_id: cust, day, block: 'day', win_start: 840, duration_min: 60 }, p_items: [{ description: 'Vidange d’huile', unit_cents: 7999 }] }, ownerJwt);
+    const [jw] = await q(`select block, win_start, win_end, win_flex from public.jobs where id = $1`, [b.job_id]);
+    assert.deepEqual([jw.block, jw.win_start, jw.win_end, jw.win_flex], ['day', 840, 1080, false]);
+    const n = await fn('notify', { kind: 'booking', job_id: b.job_id, base: BASE }, ownerJwt);
+    assert.match(n.message, /^Bonjour Jean, votre rendez-vous avec .+ est confirmé : [^\n]+, entre 14 h et 18 h\.\n\nEstimation :\n• Vidange d’huile : 79,99 \$\nTotal : 79,99 \$ \+ tx\n/, n.message);
+    assert.doesNotMatch(n.message, /matin|après-midi|le soir|\(entre/);
+    const mv = await fn('notify', { kind: 'moved', job_id: b.job_id, base: BASE }, ownerJwt);
+    assert.match(mv.message, /a changé : [^\n]+, entre 14 h et 18 h\. Détails : /, mv.message);
+    const rm = await fn('notify', { kind: 'reminder', job_id: b.job_id, base: BASE }, ownerJwt);
+    assert.match(rm.message, /vient demain, [^\n]+, entre 14 h et 18 h\. Pour changer/, rm.message);
+    // the customer's page: the window as its hours, not flexible
+    const v = await view(n.link);
+    assert.deepEqual([v.job.block, v.job.start, v.job.end, v.job.flex], ['day', 840, 1080, false], JSON.stringify(v.job));
+    // in English
+    const be = await rpc('book_job', { p_op: randomUUID(), p_job: { customer_id: en, day, block: 'day', win_start: 840, duration_min: 30 }, p_items: [{ description: 'Oil change', unit_cents: 7999 }] }, ownerJwt);
+    const ne = await fn('notify', { kind: 'booking', job_id: be.job_id, base: BASE }, ownerJwt);
+    assert.match(ne.message, /is confirmed: [^\n]+, between 2 p\.m\. and 6 p\.m\.\n\nEstimate:/, ne.message);
+
+    // 2. a flexible job: « dans la journée ; … », no window text yet, the page says flexible
+    const f = await rpc('book_job', { p_op: randomUUID(), p_job: { customer_id: cust, day, block: 'day', win_flex: true, duration_min: 30 }, p_items: [{ description: 'Inspection', unit_cents: 4000 }] }, ownerJwt);
+    const [jf] = await q(`select block, win_start, win_end, win_flex from public.jobs where id = $1`, [f.job_id]);
+    assert.deepEqual([jf.block, jf.win_start, jf.win_end, jf.win_flex], ['day', null, null, true], 'two days ahead: no window yet');
+    const nf = await fn('notify', { kind: 'booking', job_id: f.job_id, base: BASE }, ownerJwt);
+    assert.match(nf.message, /est confirmé : [^\n]+, dans la journée ; nous vous confirmons la veille une plage de 4 heures\.\n\nEstimation :/, nf.message);
+    assert.equal((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt)).code, 'no_window');
+    const vf = await view(nf.link);
+    assert.deepEqual([vf.job.block, vf.job.start, vf.job.end, vf.job.flex], ['day', null, null, true], JSON.stringify(vf.job));
+
+    // 3. its window is fixed (what lock_windows does): the text « window », once for the same window, its own switch
+    await q(`update public.jobs set win_start = 600, win_end = 840 where id = $1`, [f.job_id]);
+    await q(`update public.settings set messages = messages #- '{fr,window}' #- '{en,window}' #- '{on,window}' where id = 1`);   // no text in the settings: the function's own
+    await clearLog();
+    const w = await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt);
+    assert.equal(w.message, 'Bonjour Jean, votre rendez-vous de demain avec Mécanique Mobile H.I.S est confirmé entre 10 h et 14 h.', JSON.stringify(w));
+    assert.equal(w.status, 'sent', JSON.stringify(w));
+    assert.equal((await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').length, 1);
+    assert.equal((await q(`select count(*)::int n from public.messages where job_id = $1 and kind = 'window' and status = 'sent'`, [f.job_id]))[0].n, 1);
+    assert.equal((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt)).status, 'already', 'the same window is told once');
+    assert.equal((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE, resend: true }, ownerJwt)).status, 'sent', 'unless asked again');
+    await q(`update public.jobs set win_start = 660, win_end = 900 where id = $1`, [f.job_id]);
+    assert.match((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt)).message, /entre 11 h et 15 h\.$/, 'another window is a new text');
+    // the garage's own text and words ({plage}, {jour}); switched off: written, not sent
+    await q(`update public.settings set messages = jsonb_set(jsonb_set(messages, '{fr,window}', '"Plage : {jour}, {plage}. {telephone}"'), '{on,window}', 'false') where id = 1`);
+    const wq = await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE, resend: true }, ownerJwt);
+    assert.equal(wq.status, 'quiet', JSON.stringify(wq));
+    assert.match(wq.message, /^Plage : .+, entre 11 h et 15 h\. 438 901-6606$/);
+    // a block's job has no window text; a stranger cannot ask
+    assert.equal((await fn('notify', { kind: 'window', job_id: randomUUID(), base: BASE }, ownerJwt)).ok, false);
+    assert.equal((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE })).ok, false, 'signed out: refused');
+
+    // 4. online booking by window
+    const info = await fn('book', { action: 'info' });
+    assert.equal(info.windows, true, JSON.stringify(info));
+    const sl = await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil], days: 14 });
+    assert.equal(sl.ok, true, JSON.stringify(sl));
+    const mine = sl.slots.find((s) => s.day === day);
+    assert.ok(mine, 'the truck’s day is offered: ' + JSON.stringify(sl.slots));
+    assert.deepEqual(Object.keys(mine).sort(), ['block', 'day', 'near', 'win_end', 'win_start'], 'the day and its window; never the trucks or the minutes');
+    assert.deepEqual([mine.block, mine.win_end - mine.win_start], ['day', 240]);
+    const form = { action: 'book', base: BASE, lang: 'fr', services: [oil], day, block: 'day', win_start: mine.win_start, first_name: 'Sophie', last_name: 'Plage', phone,
+      address: '1250 rue Graham, Mont-Royal', lat: 45.53, lng: -73.62, vehicle: { year: '2021', make: 'Toyota', model: 'RAV4' } };
+    const r = await fn('book', form);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual([r.block, r.win_start, r.win_end, r.flex], ['day', mine.win_start, mine.win_end, false], JSON.stringify(r));
+    const [c1] = await q(`select id from public.customers where phone_digits = $1`, [phone.replace(/\D/g, '')]); made.customers.push(c1.id);
+    const [m1] = await q(`select body from public.messages where customer_id = $1 and kind = 'booking' order by created_at desc limit 1`, [c1.id]);
+    assert.match(m1.body, /est confirmé : [^\n]+, entre \d+ h(?: \d\d)? et \d+ h(?: \d\d)?\.\n\nEstimation :/, m1.body);
+    // free all day
+    const rf = await fn('book', { ...form, win_start: undefined, win_flex: true, phone: phone2, first_name: 'Olivier' });
+    assert.equal(rf.ok, true, JSON.stringify(rf));
+    assert.deepEqual([rf.block, rf.win_start, rf.win_end, rf.flex], ['day', null, null, true], JSON.stringify(rf));
+    const [c2] = await q(`select id from public.customers where phone_digits = $1`, [phone2.replace(/\D/g, '')]); made.customers.push(c2.id);
+    const [j2] = await q(`select win_flex, win_start from public.jobs where customer_id = $1`, [c2.id]);
+    assert.deepEqual([j2.win_flex, j2.win_start], [true, null]);
+    const [m2] = await q(`select body from public.messages where customer_id = $1 and kind = 'booking' order by created_at desc limit 1`, [c2.id]);
+    assert.match(m2.body, /dans la journée ; nous vous confirmons la veille une plage de 4 heures\./, m2.body);
+    // a window that cannot be kept (a start outside every truck's day): `window_full`, nothing booked
+    // (the exact refusal is the database's: see tests/db; the function only passes its code on)
+  } finally {
+    await q(`delete from public.rate_limits`);
+    try { await rpc('windows_switch', { p_op: randomUUID(), p_on: false }, ownerJwt); } catch { await q(`update public.settings set booking = booking - 'windows_on' where id = 1`); }
+    await q(`update public.settings set messages = $1::jsonb where id = 1`, [JSON.stringify(texts)]);
+    await q(`delete from public.messages where customer_id = any($1)`, [made.customers]);
+    await q(`delete from public.job_items where service_id = $1`, [oil]);
+    await q(`delete from public.services where id = $1`, [oil]);
+  }
+});
+
 test('🤖 Hermes: the whole team; who is asking and their picture of the garage go to Hermes with the server’s key; 30 questions an hour each', async () => {
   try {
     // not plugged in yet: a plain « not yet »

@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Check, Plus, X, Tag } from 'lucide-preact';
 import type { ItemKind } from '../../data/types';
-import { activeServices, service as serviceRow, serviceName } from '../../data/select';
+import { activeServices, service as serviceRow, serviceName, windowsOn } from '../../data/select';
 import { t, lang as appLang } from '../../lib/i18n';
 import { duration, today } from '../../lib/dates';
 import { money } from '../../lib/money';
@@ -187,7 +187,7 @@ function CustomLine(p: { open: boolean; onClose: () => void; onAdd: (it: ItemDra
           <MoneyInput cents={price} onCents={setPrice} />
         </Field>
         <CheckBox checked={taxable} onChange={setTaxable} label={t('booking.svc.customTaxable')} />
-        <Field label={t('booking.svc.customTime')} hint={t('booking.svc.customTimeHint')} group>
+        <Field label={t('booking.svc.customTime')} hint={t(windowsOn.value ? 'booking.win.customTimeHint' : 'booking.svc.customTimeHint')} group>
           <Stepper value={mins} min={0} max={480} step={15} label={t('booking.svc.customTime')} format={(v) => (v ? duration(v, appLang.value) : '0')}
             onValue={(v) => { setMins(v); setMinsTouched(true); }} />
         </Field>

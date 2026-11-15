@@ -6,10 +6,10 @@ import { addDays, today, nowMinute, dow } from '../../lib/dates';
 
 const BLOCKS: Record<string, [number, number]> = { am: [480, 720], pm: [720, 960], eve: [960, 1200] };
 const POS: Record<string, number> = { am: 0, pm: 1, eve: 2 };
-const HOME = { lat: 45.5005053, lng: -73.6577429 };
+export const HOME = { lat: 45.5005053, lng: -73.6577429 };
 type R = [number, number];
 
-function rangesOf(truckId: string, day: string): R[] {
+export function rangesOf(truckId: string, day: string): R[] {
   const d = table('truck_days').find((x) => x.truck_id === truckId && x.day === day && !x.deleted_at);
   if (d) return (d.ranges as R[]) || [];
   const w = table('truck_week').find((x) => x.truck_id === truckId && Number(x.dow) === dow(day) && !x.deleted_at);
@@ -45,7 +45,7 @@ const WHY: Record<string, string> = {
   block_started: 'Ce bloc est déjà commencé : choisis un autre bloc.'
 };
 /** the stops of each truck in a block, in order: 1, 2, 3… */
-function renumber(day: string, block: string): DemoRow[] {
+export function renumber(day: string, block: string): DemoRow[] {
   const out: DemoRow[] = [];
   const js = table('jobs').filter((j) => j.day === day && j.block === block && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status)));
   for (const tid of new Set(js.map((j) => j.truck_id))) {
@@ -58,12 +58,12 @@ function renumber(day: string, block: string): DemoRow[] {
   }
   return out;
 }
-const km = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+export const km = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
   const r = (x: number) => (x * Math.PI) / 180;
   const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
 };
-function pointOf(j: DemoRow): { lat: number; lng: number } | null {
+export function pointOf(j: DemoRow): { lat: number; lng: number } | null {
   const c = find('customers', j.customer_id);
   const lat = Number(j.lat ?? c?.lat), lng = Number(j.lng ?? c?.lng);
   return Number.isFinite(lat) && Number.isFinite(lng) && (j.lat != null || c?.lat != null) ? { lat, lng } : null;

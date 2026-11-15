@@ -29,7 +29,8 @@ export interface OilRow {
   /** days since `callOn` (0 or less: not yet) */
   late: number;
   /** the car's coming appointment (it has no oil change, or the car would not be listed) */
-  next: { jobId: string; day: Day; block: BlockKey } | null;
+  /** the coming appointment; booked by arrival window (block 'day'): the window told to the customer */
+  next: { jobId: string; day: Day; block: BlockKey; win_start?: number | null; win_end?: number | null; win_flex?: boolean } | null;
   /** what was said at the last call, when it still counts */
   mark: OilMark | null;
 }
@@ -161,7 +162,7 @@ export function oilRows(input: OilInput): OilRow[] {
     const state: OilState = mark?.stop ? 'stopped' : callOn <= input.today ? 'call' : callOn <= addDays(input.today, SOON_DAYS) ? 'soon' : 'later';
     out.push({
       key, customerId: a.customerId, vehicleId: a.vehicleId, lastOil: a.lastOil, lastVisit: a.lastVisit, due, callOn, state,
-      late: daysBetween(callOn, input.today), next: a.next ? { jobId: a.next.id, day: a.next.day, block: a.next.block } : null, mark
+      late: daysBetween(callOn, input.today), next: a.next ? { jobId: a.next.id, day: a.next.day, block: a.next.block, ...(a.next.block === 'day' ? { win_start: a.next.win_start ?? null, win_end: a.next.win_end ?? null, win_flex: !!a.next.win_flex } : {}) } : null, mark
     });
   }
   // the one waiting the longest first

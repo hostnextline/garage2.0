@@ -4,7 +4,9 @@
    · ?copy=JOB (« Coller » in the agenda: the same customer, car, address, work, problem and notes, in the block chosen)
    · ?call=1&start=address|car|job&phone=… (« Appel entrant », somebody new: the panels in the order of the call, the name
    asked last; the customer and the car are made when « Réserver » is tapped, then the booking; « Ajouter une autre voiture »:
-   several cars, each with its own work, one appointment each in the same block). */
+   several cars, each with its own work, one appointment each in the same block).
+   « Plages d'arrivée » (the garage books by 4-hour windows): the block is 'day' and the choice carries the window, or
+   « flexible »; ?day=…&block=day opens that day in the picker (&win=840 or &flex=1: already chosen). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CalendarCheck, Wrench, RotateCcw, Search, UserPlus, Plus, Trash2 } from 'lucide-preact';
 import type { ScreenProps } from '../../app/routes';
@@ -13,9 +15,9 @@ import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { duration, today as todayOf } from '../../lib/dates';
 import { money } from '../../lib/money';
-import { job as jobRow, itemsOf, customer as customerRow, customerName, vehicle as vehicleRow, vehiclesOf, vehicleLabel, activeTrucks, truckLabel, truckColor, settings, service as serviceRow, blockLoad } from '../../data/select';
+import { job as jobRow, itemsOf, customer as customerRow, customerName, vehicle as vehicleRow, vehiclesOf, vehicleLabel, activeTrucks, truckLabel, truckColor, settings, service as serviceRow, blockLoad, windowsOn, windowOf, jobWindow } from '../../data/select';
 import { getRow } from '../../data/store';
-import { bookJob, walkIn as walkInJob, errorMessage, saveCustomer, saveVehicle, type BookInput } from '../../data/api';
+import { bookJob, walkIn as walkInJob, errorMessage, saveCustomer, saveVehicle, suggestWindows, type BookInput } from '../../data/api';
 import { uuid } from '../../data/sync';
 import { can, hasRole, isOwner, myTrucks } from '../../data/auth';
 import type { Quote } from '../../data/types';
@@ -32,7 +34,8 @@ import type { CallStart } from './CallScreen';
 import { OilHint } from '../jobs/CarFirst';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
 import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind } from './BlockPicker';
-import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, BLOCK_REFUSALS } from './logic';
+import { winLen } from './choice';
+import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, distinctWindows, BLOCK_REFUSALS } from './logic';
 import { blockPhrase } from './when';
 import { notifyCustomer, wantsText } from './notify';
 import { forgetRefusal, noLongWaitOffline } from './outbox';
@@ -61,6 +64,9 @@ function BookForm({ query }: ScreenProps) {
   const isWalkIn = query.get('walkin') === '1';
   const quoteId = query.get('quote');
   const l = lang.value;
+  /* « Plages d'arrivée »: a day and its window instead of a block; the same texts without the word « bloc » */
+  const wm = windowsOn.value;
+  const bt = (k: string, vars?: Record<string, string | number>) => t(`booking.${wm ? 'win.' : ''}${k}`, vars);
   const quote = quoteId ? getRow<Quote>('quotes', quoteId) : undefined;
 
   const qCustomer = query.get('customer');
@@ -83,9 +89,17 @@ function BookForm({ query }: ScreenProps) {
   const [notes, setNotes] = useState('');
   // a block from the address (« Réserver dans ce bloc »), unless it has started meanwhile
   const [choice, setChoice] = useState<BlockChoice | null>(() => {
-    const c = isWalkIn ? null : parseChoice(query.get('day'), query.get('block'));
-    return c && !blockLoad(c.day, c.block).started ? c : null;
+    const c = isWalkIn ? null : parseChoice(query.get('day'), query.get('block'), { windows: wm, win: query.get('win'), flex: query.get('flex'), len: winLen() });
+    if (!c) return null;
+    // a day (windows): chosen only when the address says its window, and never for a copy (its own window is checked
+    // first, below); the day alone opens in the picker
+    if (c.block === 'day') return c.day >= todayOf() && (c.win_start != null || c.win_flex) && !query.get('copy') ? c : null;
+    return !blockLoad(c.day, c.block).started ? c : null;
   });
+  // « Plages d'arrivée »: the day the address says, opened in the picker
+  const [openDay] = useState<string | null>(() => (wm && !isWalkIn ? parseChoice(query.get('day'), query.get('block'), { windows: true })?.day ?? null : null));
+  // asks the picker for its suggestions again (a window the server refused)
+  const [reload, setReload] = useState(0);
   const [truckId, setTruckId] = useState<string | null>(null);
   const [durOverride, setDurOverride] = useState<number | null>(null);
   const [card, setCard] = useState<boolean | null>(null);
@@ -154,6 +168,20 @@ function BookForm({ query }: ScreenProps) {
     if (copyOf.problem) setProblem(copyOf.problem);
     if (copyOf.notes) setNotes(copyOf.notes);
     setCard(!!copyOf.card_on_file);
+    /* « Plages d'arrivée »: pasted on a day, the copied appointment's own window is offered when that day can still
+       take it (a flexible one stays flexible); if not, the picker shows that day's hours */
+    if (!wm || !openDay || openDay < todayOf()) return;
+    if (copyOf.win_flex && copyOf.win_start == null) { setChoice((c) => c || { day: openDay, block: 'day', win_flex: true }); return; }
+    // an appointment of the block days: its block's hours are the window it had; a day with no window yet: the picker
+    if (copyOf.block === 'day' && copyOf.win_start == null) return;
+    const want = jobWindow(copyOf)[0];
+    const at = own ? { lat: copyOf.lat ?? null, lng: copyOf.lng ?? null } : placeOf(copyOf.customer_id);
+    const minutes = bookSummary(draftsFromJob(itemsOf(copyOf.id)), settings.value.taxes).minutes;
+    suggestWindows(at.lat, at.lng, minutes, openDay, null, !!copyOf.needs_machine, null).then((rows) => {
+      const hit = distinctWindows(rows, windowOf, winLen()).find((r) => r.win[0] === want);
+      if (hit) setChoice((c) => c || { day: openDay, block: 'day', win_start: hit.win[0], win_end: hit.win[1], eta: hit.eta ?? null });
+      else setBlockError((e) => e || t('booking.win.copyGone'));
+    }).catch(() => undefined);
   }, [copyOf?.id]);
 
   /* ---------- #/book?customer=ID: the row may arrive after the first drawing (first start, slow network) ---------- */
@@ -271,7 +299,7 @@ function BookForm({ query }: ScreenProps) {
       return;
     }
     const c = choice!;
-    await book({ ...base, day: c.day, block: c.block }, lines, c, false);
+    await book({ ...base, ...choicePayload(c) }, lines, c, false);
   };
   /** several cars: one appointment each (the car chosen now first, then the others), in the same block */
   const bookCars = async (base: Omit<BookInput, 'day' | 'block'>) => {
@@ -290,7 +318,8 @@ function BookForm({ query }: ScreenProps) {
           if (!r.queued) done.push(r.id);
         } else {
           const c = choice!;
-          const r = await bookOne({ ...job, day: c.day, block: c.block }, lines, c, false);
+          // the same day and the same window (or flexible) for each car
+          const r = await bookOne({ ...job, ...choicePayload(c) }, lines, c, false);
           if (!r) break;
           if (r !== 'queued') done.push(r);
         }
@@ -302,54 +331,78 @@ function BookForm({ query }: ScreenProps) {
     }
     const left = cars.length - done.length;
     if (!done.length && left) return;
-    toast(left ? t('booking.cars.partial', { n: done.length, total: cars.length }) : t('booking.cars.done', { n: done.length, when: isWalkIn ? '' : choiceWords(choice!, l) }), { kind: left ? 'bad' : 'ok', ms: 9000 });
-    for (const id of done) if (!isWalkIn && wantsText('booking', id)) void notifyCustomer('booking', id, { customerId: base.customer_id });
+    toast(left ? bt('cars.partial', { n: done.length, total: cars.length }) : t('booking.cars.done', { n: done.length, when: isWalkIn ? '' : choiceWords(choice!, l) }), { kind: left ? 'bad' : 'ok', ms: 9000 });
+    for (const id of done) if (!isWalkIn && wantsText('booking', id)) void notifyCustomer('booking', id, { customerId: base.customer_id, when: smsWhen(choice!) });
     if (!left) navigate(isWalkIn ? '/' : `/agenda/${choice!.day}`, { replace: true });
     // what was booked leaves the screen: the rest can be tried again in another block
     else { setCarts((cs) => { const n = { ...cs }; for (const car of cars) if (car.vehicleId && done.includes(idOf(car.vehicleId))) delete n[car.vehicleId]; return n; }); if (done.includes(jobId)) setItems([]); }
   };
+  /** « Réserver quand même »: no window is asked for (the server gives it from where the stop ends up) */
+  const forced = (job: BookInput, c: BlockChoice): BookInput => {
+    const { win_start: _w, ...rest } = job;
+    return { ...rest, ...choicePayload(c, true), force: true };
+  };
+  /** what is said after the booking: the window asked for; « Réserver quand même »: the day, the app gives the window */
+  const whenSaid = (c: BlockChoice, force = false) => choiceWords(force && c.block === 'day' && !c.win_flex ? { day: c.day, block: 'day' } : c, l);
+  /** the same above the text to send by hand, for a window only (a block: the sheet as before) */
+  const smsWhen = (c: BlockChoice, force = false) => (c.block === 'day' ? whenSaid(c, force) : null);
+  /** the window chosen can no longer be kept (`window_full`): said clearly, and the picker asks for that day's hours again */
+  const windowGone = () => {
+    const msg = t('booking.win.full');
+    toast(msg, { kind: 'bad' });
+    setChoice(null);
+    setBlockError(msg);
+    setReload((n) => n + 1);
+    blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   /** one car in a block; a full block: the owner and the office may book anyway (after a warning). The job id, 'queued', or null */
   const bookOne = async (job: BookInput, lines: ReturnType<typeof toItemInputs>, c: BlockChoice, force: boolean): Promise<string | 'queued' | null> => {
     try {
-      const r = await noLongWaitOffline(bookJob(force ? { ...job, force: true } : job, lines), { id: job.id! });
+      const r = await noLongWaitOffline(bookJob(force ? forced(job, c) : job, lines), { id: job.id! });
       return r.queued ? 'queued' : r.id;
     } catch (e) {
       const msg = errorMessage(e);
       const code = refusalCode(e);
       await forgetRefusal('book_job', (a) => (a.p_job as { id?: string })?.id === job.id);
+      if (code === 'window_full') { windowGone(); return null; }
       if (!force && FULL.includes(code) && mayForce) {
-        const yes = await ask({ title: t('booking.force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: t('booking.force.cancel'), danger: true });
+        const yes = await ask({ title: bt('force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: bt('force.cancel'), danger: true });
         if (yes) return bookOne(job, lines, c, true);
       } else toast(msg, { kind: 'bad' });
-      if (BLOCK_REFUSALS.includes(code)) { setBlockError(`${msg} ${t('booking.refusedBlock')}`); blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      if (BLOCK_REFUSALS.includes(code)) { setBlockError(`${msg} ${bt('refusedBlock')}`); blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
       return null;
     }
   };
   /** « Réserver »; a full block: the owner and the office may book anyway, after a warning */
   const book = async (job: BookInput, lines: ReturnType<typeof toItemInputs>, c: BlockChoice, force: boolean): Promise<void> => {
     try {
-      const r = await noLongWaitOffline(bookJob(force ? { ...job, force: true } : job, lines), { id: jobId });
-      if (r.queued) { toast(t('booking.queued'), { ms: 10000 }); navigate(`/agenda/${c.day}`, { replace: true }); return; }
-      const forced = !!r.data?.forced;
-      toast(forced ? t('booking.force.done', { when: choiceWords(c, l) }) : t('booking.done', { when: choiceWords(c, l) }), { kind: forced ? 'info' : 'ok', ms: forced ? 9000 : undefined });
+      const r = await noLongWaitOffline(bookJob(force ? forced(job, c) : job, lines), { id: jobId });
+      if (r.queued) { toast(bt('queued'), { ms: 10000 }); navigate(`/agenda/${c.day}`, { replace: true }); return; }
+      const wasForced = !!r.data?.forced;
+      toast(wasForced ? t('booking.force.done', { when: whenSaid(c, force) }) : t('booking.done', { when: whenSaid(c, force) }), { kind: wasForced ? 'info' : 'ok', ms: wasForced ? 9000 : undefined });
       navigate(`/job/${r.id}`, { replace: true });
-      if (wantsText('booking', r.id)) void notifyCustomer('booking', r.id, { customerId: job.customer_id });
+      if (wantsText('booking', r.id)) void notifyCustomer('booking', r.id, { customerId: job.customer_id, when: smsWhen(c, force) });
       // the texts are on, but this customer has no cell number: the office can ask for one
       else if (settings.value.messages?.on?.booking && cust && !cust.phone) toast(t('booking.sms.noPhone'));
     } catch (e) {
       const msg = errorMessage(e);
       const code = refusalCode(e);
+      if (code === 'window_full') {
+        await forgetRefusal('book_job', (a) => (a.p_job as { id?: string })?.id === jobId);
+        windowGone();
+        return;
+      }
       if (!force && FULL.includes(code) && mayForce) {
         await forgetRefusal('book_job', (a) => (a.p_job as { id?: string })?.id === jobId);
-        const yes = await ask({ title: t('booking.force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: t('booking.force.cancel'), danger: true });
+        const yes = await ask({ title: bt('force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: bt('force.cancel'), danger: true });
         if (yes) return book(job, lines, c, true);
-        setBlockError(`${msg} ${t('booking.refusedBlock')}`);
+        setBlockError(`${msg} ${bt('refusedBlock')}`);
         blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
       toast(msg, { kind: 'bad' });
       if (BLOCK_REFUSALS.includes(code)) {
-        const hint = t('booking.refusedBlock');
+        const hint = bt('refusedBlock');
         setBlockError(msg.toLowerCase().includes(hint.toLowerCase().replace(/\.$/, '')) ? msg : `${msg} ${hint}`);
         blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -361,9 +414,9 @@ function BookForm({ query }: ScreenProps) {
   const title = isWalkIn ? t('booking.titleWalkIn') : quote ? t('booking.titleQuote', { n: quote.number }) : isCall ? t('booking.call.title') : t('booking.title');
   const back = quote ? `/quote/${quote.id}` : qCustomer ? `/customer/${qCustomer}` : isWalkIn ? '/' : isCall ? '/call' : '/agenda';
   const totalWords = allTotal > 0 ? money(allTotal, l) : '';
-  const stepSub = miss ? (miss === 'customer' && needNew ? t(callerOk && !carOk ? 'booking.call.missingCar' : 'booking.call.missing') : t(`booking.missing.${miss}`))
+  const stepSub = miss ? (miss === 'customer' && needNew ? t(callerOk && !carOk ? 'booking.call.missingCar' : 'booking.call.missing') : miss === 'block' ? bt('missing.block') : t(`booking.missing.${miss}`))
     : isWalkIn ? [t('booking.walkInSub'), totalWords].filter(Boolean).join(', ')
-    : [blockPhrase(choice!.day, choice!.block, todayOf(), l), totalWords].filter(Boolean).join(', ');
+    : [choice!.block === 'day' ? choiceWords(choice, l) : blockPhrase(choice!.day, choice!.block, todayOf(), l), totalWords].filter(Boolean).join(', ');
   const step = (
     <BigStep icon={isWalkIn ? <Wrench /> : <CalendarCheck />} label={isWalkIn ? t('booking.confirmWalkIn') : t('booking.confirm')} sub={stepSub}
       disabled={!!miss} onClick={submit} data-tour="book-confirm" data-testid="book-confirm" />
@@ -416,7 +469,7 @@ function BookForm({ query }: ScreenProps) {
       {needNew && cars.length > 1 && <p class="book-for" data-testid="book-services-for">{t('booking.call.workFor', { car: carName(cur.id) })}</p>}
       <ServicePicker value={items} onValue={setItems} lang={custLang} allowCustom hideTotal />
       <div class="book-duration" data-testid="book-duration">
-        <Field label={t('booking.options.duration')} hint={durOverride != null ? t('booking.options.durationChanged') : t('booking.options.durationHint')} group>
+        <Field label={t('booking.options.duration')} hint={durOverride != null ? bt('options.durationChanged') : bt('options.durationHint')} group>
           <div class="row-wrap">
             <Stepper value={sum.minutes} min={15} max={720} step={15} label={t('booking.options.duration')} format={(v) => duration(v, l)} onValue={(v) => setDurOverride(clampDuration(v))} />
             {durOverride != null && <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => setDurOverride(null)} data-testid="book-duration-reset">{t('booking.options.durationReset')}</Button>}
@@ -459,11 +512,11 @@ function BookForm({ query }: ScreenProps) {
 
   const blockSection = !isWalkIn && (
     <div ref={blockPanel} class="book-block-anchor">
-      <Panel title={t('booking.block.title')} sub={t('booking.block.sub')} data-tour="book-block">
+      <Panel title={bt('block.title')} sub={bt('block.sub')} data-tour="book-block">
         {blockError && <div style={{ marginBottom: 'var(--sp-3)' }}><Banner kind="bad">{blockError}</Banner></div>}
         <BlockPicker lat={place.lat} lng={place.lng} address={place.address} duration={allMinutes} truckId={effTruck} value={choice}
           need={need} kind={kind} onKind={(k) => { setKind(k); setChoice(null); }}
-          onPick={(c) => { setChoice(c); setBlockError(null); }} />
+          onPick={(c) => { setChoice(c); setBlockError(null); }} onClear={() => setChoice(null)} openDay={openDay} reload={reload} />
       </Panel>
     </div>
   );
@@ -541,7 +594,7 @@ function BookForm({ query }: ScreenProps) {
     <Panel title={t('booking.summary.title')} class="book-summary">
       <Kv items={[
         [t('booking.summary.customer'), cust ? [customerName(cust), vehicleLabel(vehicleRow(vehicleId))].filter(Boolean).join(', ') : needNew && caller.first.trim() ? [`${caller.first} ${caller.last}`.trim(), carDraftLabel(cur.draft) || (cars.length > 1 ? carName(cur.id) : '')].filter(Boolean).join(', ') : null],
-        [t('booking.summary.when'), isWalkIn ? t('booking.walkInSub') : choice ? choiceWords(choice, l) : t('booking.summary.noBlock')],
+        [t('booking.summary.when'), isWalkIn ? t('booking.walkInSub') : choice ? choiceWords(choice, l) : bt('summary.noBlock')],
         [t('booking.services.title'), items.length ? `${t('booking.summary.services', { n: items.length })}, ${t('booking.summary.work', { d: duration(sum.minutes, l) })}` : problem.trim() ? t('booking.summary.problemOnly') : t('booking.summary.noWork')],
         ...others.map((o) => [carName(o.vehicleId), `${t('booking.summary.services', { n: o.items.length })}, ${t('booking.summary.work', { d: duration(o.sum.minutes, l) })}`] as [string, string]),
         [t('booking.summary.truckLabel'), effTruck ? truckLabel(effTruck) : null]
@@ -555,7 +608,7 @@ function BookForm({ query }: ScreenProps) {
   );
 
   return (
-    <Page title={title} sub={isWalkIn ? t('booking.subWalkIn') : t('booking.sub')} back={back} help={t('booking.help')} wide={isWide} data-testid="book-screen">
+    <Page title={title} sub={isWalkIn ? t('booking.subWalkIn') : bt('sub')} back={back} help={bt('help')} wide={isWide} data-testid="book-screen">
       {copyOf && <Banner kind="info" title={t('booking.copy.title', { n: copyOf.number })} data-testid="book-copy">{t('booking.copy.text')}</Banner>}
       {quote && (
         <Banner kind={quoteConverted ? 'warn' : 'info'} title={t('booking.quote.from', { n: quote.number })}

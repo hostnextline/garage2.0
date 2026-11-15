@@ -9,12 +9,20 @@ import { t, lang } from '../../lib/i18n';
 import { today, shortDate } from '../../lib/dates';
 import { phoneDigits, formatPhone } from '../../lib/text';
 import { customerName, vehiclesOf, vehicleLabel, jobsOfCustomer } from '../../data/select';
-import type { Customer } from '../../data/types';
+import type { Customer, Job } from '../../data/types';
 import { Page, Panel, Field, PhoneInput, Button, Avatar } from '../../ui';
 import { recentFirst, searchIndex } from '../customers/facts';
 import { searchList, type SearchDoc } from '../customers/search';
 import { Bit } from '../customers/bits';
+import { windowWords } from './when';
 import './booking.css';
+
+/** the block of an appointment in words; booked by window (« Plages d'arrivée »): its window, or flexible */
+function nextWhen(j: Pick<Job, 'block' | 'win_start' | 'win_end' | 'win_flex'>, l: 'fr' | 'en'): string {
+  if (j.block === 'day' && j.win_start != null && j.win_end != null) return windowWords([j.win_start, j.win_end], l);
+  if (j.block === 'day' && j.win_flex) return windowWords(null, l);
+  return t(`common.blocks.${j.block}`).toLowerCase();
+}
 
 export type CallStart = 'address' | 'car' | 'job';
 export const CALL_STARTS: CallStart[] = ['address', 'car', 'job'];
@@ -85,7 +93,7 @@ function Known(p: { c: Customer }) {
         <div>
           <b>{customerName(c)}</b>
           <p class="small muted" style={{ margin: 0 }}>{[c.phone, cars.map(vehicleLabel).filter(Boolean).join(', '), c.address].filter(Boolean).join(', ')}</p>
-          {next && <Bit icon={<CalendarClock size={14} aria-hidden="true" />}>{t('booking.call.next', { day: shortDate(next.day, l), block: t(`common.blocks.${next.block}`).toLowerCase() })}</Bit>}
+          {next && <Bit icon={<CalendarClock size={14} aria-hidden="true" />}>{t('booking.call.next', { day: shortDate(next.day, l), block: nextWhen(next, l) })}</Bit>}
         </div>
         <div class="row-wrap">
           <Button variant="primary" size="sm" icon={<CalendarPlus />} href={`#/book?customer=${c.id}`} data-testid="call-book">{t('booking.call.book', { name: first })}</Button>

@@ -19,7 +19,7 @@ import { SignaturePad } from './SignaturePad';
 import { hasEnoughInk, type Stroke } from './signature';
 import { answerBySignature, answerByVoice, sendText } from './flow';
 import { customerLang } from './WaiverSheet';
-import type { JobRights } from './select';
+import { wt, type JobRights } from './select';
 import { ReopenButton } from '../invoices/InvoicePanel';
 
 const OPEN_STATUSES = ['booked', 'en_route', 'on_site'];
@@ -222,7 +222,7 @@ export function AddWorkSheet(p: { job: Job; rights: JobRights; open: boolean; on
       <div class="stack">
         <ServicePicker value={drafts} onValue={setDrafts} lang={customerLang(j)} allowCustom />
         {minutes > 0 && !canLonger && <p class="small muted" style={{ margin: 0 }}>{t('jobs.work.addMinutes', { time: duration(minutes, lang.value) })}</p>}
-        {canLonger && <CheckBox checked={longer} onChange={setLonger} label={t('jobs.work.longer', { time: duration(minutes, lang.value) })} hint={t('jobs.work.longerHint')} />}
+        {canLonger && <CheckBox checked={longer} onChange={setLonger} label={t('jobs.work.longer', { time: duration(minutes, lang.value) })} hint={wt(p.job, 'jobs.work.longerHint')} />}
       </div>
     </Sheet>
   );

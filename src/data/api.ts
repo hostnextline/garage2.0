@@ -159,6 +159,18 @@ export async function setStopOrder(truckId: string, day: string, block: string, 
   return callRpc('set_stop_order', { p_truck: truckId, p_day: day, p_block: block, p_jobs: jobIds }, { label: t('log.stopOrder') });
 }
 
+/* ---------- « Plages d'arrivée » (Part 25): both need the network (never kept for later) ---------- */
+/** the garage books by 4-hour arrival windows (on) or by blocks (off): the server converts the coming appointments (owner) */
+export async function windowsSwitch(on: boolean) {
+  guard();
+  return (await callRpc<{ ok: boolean; converted: number }>('windows_switch', { p_on: on }, { label: t('log.settings'), queue: false })).data;
+}
+/** the « flexible » appointments of a day get their window now, from where the route puts them (owner, office) */
+export async function lockWindows(day: string) {
+  guard();
+  return (await callRpc<{ ok: boolean; fixed: number; jobs?: string[] }>('lock_windows', { p_day: day }, { label: t('log.settings'), queue: false })).data;
+}
+
 /* ---------- the conversation with a customer (GoHighLevel, both ways) ---------- */
 /** `files`: the web addresses of the pictures and documents that came with the message */
 export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null; files?: string[] }

@@ -4,6 +4,8 @@ export const agenda: typeof fr = {
   titleMine: 'My schedule',
   help: 'Appointments by block (morning, afternoon, evening) and by truck. The bar shows the time taken by the jobs and the driving; the rest is free.\nOn a computer, drag a booked job to another block to move it.',
   helpMine: 'Your jobs by block, in the order of the stops. The bar shows the time taken by the jobs and the driving; the rest is free.',
+  helpDay: 'The day’s appointments by truck, in the order of the stops, each with the arrival window told to the customer. The bar shows the time taken by the jobs and the driving; the rest is free.\nOn a computer, drag a booked job to another day to move it: the app offers the windows that fit.',
+  helpMineDay: 'Your jobs of the day, in the order of the stops, each with the arrival window told to the customer. The bar shows the time taken by the jobs and the driving; the rest is free.',
   day: {
     prev: 'Previous day',
     next: 'Next day',
@@ -30,6 +32,7 @@ export const agenda: typeof fr = {
     book: 'New appointment for this customer',
     invoice: 'See the invoice',
     bookHere: 'Book in this block',
+    bookDay: 'Book that day',
     day: 'See this day',
     map: 'Map of the day'
   },
@@ -44,7 +47,10 @@ export const agenda: typeof fr = {
     bannerTitle: 'Appointment copied: {name}',
     bannerText: 'Right-click (or press and hold) a block, or tap “Paste here”, to make it a new appointment. You check everything before booking.',
     clear: 'Forget the copy',
-    hint: 'Right-click (on a phone: press and hold) a job to copy it, then a block to paste it.'
+    hint: 'Right-click (on a phone: press and hold) a job to copy it, then a block to paste it.',
+    copiedDay: '{name}’s appointment copied. Right-click (or press and hold) a day, or “Paste here”.',
+    bannerTextDay: 'Right-click (or press and hold) a day, or tap “Paste here”, to make it a new appointment. You check everything before booking.',
+    hintDay: 'Right-click (on a phone: press and hold) a job to copy it, then a day to paste it.'
   },
   week: {
     title: 'Week of {from} to {to}',
@@ -58,6 +64,8 @@ export const agenda: typeof fr = {
     dragHint: 'Drag a booked job to another block to move it, or open it and tap “Move”.',
     book: 'Book: {when}',
     drop: 'Drop here',
+    dropSame: 'Change the window',
+    dragHintDay: 'Drag a booked job to another day to move it (the app offers the windows that fit), or open it and tap “Move”.',
     jobs: { zero: 'no jobs', one: '{n} job', other: '{n} jobs' }
   },
   block: {
@@ -69,12 +77,23 @@ export const agenda: typeof fr = {
     book: 'Book in this block',
     empty: 'No jobs in this block.'
   },
+  whole: {
+    title: 'The day, {hours}',
+    over: 'Over',
+    closedText: 'No truck works that day.',
+    book: 'Book that day',
+    empty: 'No jobs that day.'
+  },
+  win: {
+    flex: 'Flexible'
+  },
   lane: {
     free: '{d} free',
     full: 'Full',
     over: 'Full, {d} too much',
     closed: 'Not working',
     offShift: 'No longer works in this block',
+    offShiftDay: 'Done for the day',
     meter: '{used} taken out of {cap}',
     unplaced: 'To place',
     unplacedText: 'Fits on no truck. Move the job or change the hours.',
@@ -92,6 +111,19 @@ export const agenda: typeof fr = {
     done: 'Job moved',
     started: 'This block has already started: pick a block to come.',
     closed: 'This block is closed: no truck works.',
-    notBooked: 'Only a booked job that has not left yet can be moved.'
+    notBooked: 'Only a booked job that has not left yet can be moved.',
+    startedDay: 'This day is over: pick a day to come.',
+    closedDay: 'This day is closed: no truck works.',
+    winTitle: 'Move {name}’s job: {day}',
+    winTitleSame: 'Change {name}’s window: {day}',
+    winLead: 'Pick the arrival window to tell the customer. The best one comes first.',
+    winLoading: 'Looking for the windows that fit…',
+    winNone: 'No 4-hour window fits that day. Try “Flexible” or another day.',
+    winError: 'Could not find the windows. {msg}',
+    winRetry: 'Try again',
+    winEta: 'Arrival around {time}',
+    winBest: 'Best choice',
+    winCurrent: 'Current window',
+    winFlexText: 'The customer is free all day: the 4-hour window is confirmed the evening before.'
   }
 };

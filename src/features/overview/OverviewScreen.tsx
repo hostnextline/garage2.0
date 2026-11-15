@@ -13,7 +13,8 @@ import { today, longDay, clock } from '../../lib/dates';
 import { rpcNow } from '../../data/api';
 import { jobsOn, customer as customerRow, customerName, vehicle as vehicleRow, vehicleLabel, itemsOf, staffName } from '../../data/select';
 import type { JobStatus } from '../../data/types';
-import { Page, Panel, Rows, RowItem, Button, Empty, StatusPill } from '../../ui';
+import { Page, Panel, Rows, RowItem, Button, Empty, StatusPill, Pill } from '../../ui';
+import { isWindowJob, blockRange, outsideWindow } from '../jobs/select';
 import { useRoads, roadOf } from '../map/useRoads';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, normalize, UNPLACED_COLOR, type TeamMapAnswer } from '../map/assemble';
@@ -90,7 +91,8 @@ export default function OverviewScreen(_p: ScreenProps) {
       action={may.book() ? <Button variant="primary" icon={<CalendarPlus />} href="#/book">{t('overview.book')}</Button> : undefined} /></Panel>
   ) : (
     <>
-      {(['am', 'pm', 'eve'] as const).map((b) => {
+      {/* by block; the jobs booked by arrival window ('day') in one list, in the order of their arrival */}
+      {(['am', 'pm', 'eve', 'day'] as const).map((b) => {
         const inBlock = rows.filter((r) => r.job.block === b);
         if (!inBlock.length) return null;
         return (
@@ -127,7 +129,8 @@ function JobRow(p: { r: OverviewRow; on: boolean }) {
       <RowItem href={`#/job/${j.id}`} chevron data-testid={`overview-job-${j.id}`}
         start={<span class="overview-n" style={{ '--c': color }} aria-label={n != null ? t('overview.stop', { n }) : t('overview.unplaced')}>{j.status === 'done' ? '✓' : n ?? '?'}</span>}
         title={<><span class="num overview-time">{j.eta_min != null ? clock(j.eta_min, l) : '—'}</span> {customerName(c) || '—'}</>}
-        sub={<>{what && <span class="overview-what">{what}</span>}<span class="overview-truck">{truckName}</span></>}
+        sub={<>{what && <span class="overview-what">{what}</span>}<span class="overview-truck">{truckName}</span>
+          {isWindowJob(j) && <span class="overview-window" data-testid={`overview-window-${j.id}`}>{blockRange(j, l)}{outsideWindow(j) && <> <Pill tone="warn">{t('common.window.late')}</Pill></>}</span>}</>}
         end={<StatusPill status={j.status as JobStatus} />} />
     </div>
   );

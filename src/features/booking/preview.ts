@@ -5,10 +5,13 @@ import type { TeamMapAnswer } from '../map/assemble';
 import { metres } from '../customers/photon';
 
 export const NEW_STOP = 'new-stop';
-const BLOCKS: Record<string, number> = { am: 0, pm: 1, eve: 2 };
+/* « Plages d'arrivée »: a whole day is one block ('day'), its stops in the planner's order */
+const BLOCKS: Record<string, number> = { am: 0, pm: 1, eve: 2, day: 0 };
 type Job = TeamMapAnswer['jobs'][number];
 
-export interface Spot { day: string; block: string; truckId: string | null; lat: number; lng: number; name: string; address: string }
+export interface Spot { day: string; block: string; truckId: string | null; lat: number; lng: number; name: string; address: string;
+  /** « Plages d'arrivée » (block 'day'): the estimated arrival of the moment offered, minutes of the day */
+  eta?: number | null }
 export interface Placed {
   /** the day without the new appointment, then with it (the truck's stops numbered in their order) */
   before: TeamMapAnswer; after: TeamMapAnswer;
@@ -24,18 +27,31 @@ function dayOrder(jobs: Job[]): Job[] {
   return jobs.slice().sort((a, b) => ((BLOCKS[a.block] ?? 9) - (BLOCKS[b.block] ?? 9)) || ((a.order ?? 999) - (b.order ?? 999)) || ((a.number ?? 0) - (b.number ?? 0)));
 }
 
-/** the cheapest place for a stop in a truck's day: its index among the stops, and the extra km (straight line) */
-export function bestPlace(from: { lat: number; lng: number } | null, stops: Job[], spot: Pick<Spot, 'block' | 'lat' | 'lng'>): { index: number; extraKm: number } {
+/** the cheapest place for a stop in a truck's day: its index among the stops, and the extra km (straight line).
+    A day booked by windows (block 'day') has no blocks to stay inside: with the moment's estimated arrival (`eta`) the
+    stop goes after the stops planned before that time; without it, wherever it adds the least. */
+export function bestPlace(from: { lat: number; lng: number } | null, stops: Job[], spot: Pick<Spot, 'block' | 'lat' | 'lng' | 'eta'>): { index: number; extraKm: number } {
   const b = BLOCKS[spot.block] ?? 1;
-  const pts = stops.filter(has).map((s) => ({ lat: s.lat!, lng: s.lng!, b: BLOCKS[s.block] ?? 9 }));
+  const whole = spot.block === 'day';
+  const pts = stops.filter(has).map((s) => ({ lat: s.lat!, lng: s.lng!, b: BLOCKS[s.block] ?? 9, eta: s.eta_min }));
+  const added = (i: number) => {
+    const prev = i > 0 ? pts[i - 1] : null;
+    const next = i < pts.length ? pts[i] : null;
+    const p = prev || from;
+    return (p ? km(p, spot) : 0) + (next ? km(spot, next) : 0) - (p && next ? km(p, next) : 0);
+  };
+  if (whole && spot.eta != null && pts.some((p) => p.eta != null)) {
+    let index = 0;
+    pts.forEach((p, k) => { if (p.eta != null && p.eta <= spot.eta!) index = k + 1; });
+    return { index, extraKm: Math.max(0, added(index)) };
+  }
   let best = { index: pts.length, extraKm: Infinity };
   for (let i = 0; i <= pts.length; i++) {
     const prev = i > 0 ? pts[i - 1] : null;
     const next = i < pts.length ? pts[i] : null;
     // only inside its own block: after the stops of earlier blocks, before those of later blocks
-    if ((prev && prev.b > b) || (next && next.b < b)) continue;
-    const p = prev || from;
-    const add = (p ? km(p, spot) : 0) + (next ? km(spot, next) : 0) - (p && next ? km(p, next) : 0);
+    if (!whole && ((prev && prev.b > b) || (next && next.b < b))) continue;
+    const add = added(i);
     if (add < best.extraKm) best = { index: i, extraKm: add };
   }
   return { index: best.index, extraKm: Number.isFinite(best.extraKm) ? Math.max(0, best.extraKm) : 0 };
@@ -61,7 +77,7 @@ export function placeNewStop(a: TeamMapAnswer, spot: Spot): Placed {
   const located = mine.filter(has);
   // the place among the located stops → the place in the whole list (a stop without a position keeps its rank)
   const at = pick.index < located.length ? mine.indexOf(located[pick.index]) : mine.length;
-  const fresh: Job = { id: NEW_STOP, number: null, truck_id: pick.id, order: null, eta_min: null, status: 'booked', block: spot.block,
+  const fresh: Job = { id: NEW_STOP, number: null, truck_id: pick.id, order: null, eta_min: spot.eta ?? null, status: 'booked', block: spot.block,
     name: spot.name, address: spot.address, lat: spot.lat, lng: spot.lng };
   return {
     before: { ...a, jobs: [...others, ...renumber(mine)] },

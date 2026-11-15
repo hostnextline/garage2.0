@@ -142,3 +142,22 @@ describe('team map: a mechanic working at a customer stays on the map', () => {
     expect([adam.lat, adam.lng]).toEqual([45.5201, -73.6655]);
   });
 });
+
+describe('the map with « Plages d\'arrivée » (block \'day\')', () => {
+  it('a day of windows: each truck\'s stops by stop order, each with the window told to the customer', () => {
+    const m = assemble({
+      home: HOME, trucks: [{ id: 't1', name: 'Camion', color: null, driver_id: null }], people: [], trips: [],
+      jobs: [
+        { id: 'b', number: 2, truck_id: 't1', order: 2, eta_min: 900, status: 'booked', block: 'day', name: 'B', address: null, lat: 45.5, lng: -73.6, win_start: 840, win_end: 1080 },
+        { id: 'a', number: 1, truck_id: 't1', order: 1, eta_min: 560, status: 'booked', block: 'day', name: 'A', address: null, lat: 45.51, lng: -73.61, win_start: 480, win_end: 720 },
+        { id: 'c', number: 3, truck_id: 't1', order: 3, eta_min: 1000, status: 'booked', block: 'day', name: 'C', address: null, lat: 45.52, lng: -73.62, win_start: null, win_end: null, win_flex: true }
+      ]
+    });
+    const stops = m.trucks[0].stops;
+    expect(stops.map((s) => [s.id, s.n])).toEqual([['a', 1], ['b', 2], ['c', 3]]);
+    expect(stops.map((s) => s.win ?? null)).toEqual([[480, 720], [840, 1080], null]);
+  });
+  it('an answer without windows (blocks, or an older server) is read as before', () => {
+    expect(normalize(answer()).jobs.every((j) => !('win_start' in j))).toBe(true);
+  });
+});

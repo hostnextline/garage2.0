@@ -1,11 +1,12 @@
 /* « La fenêtre vitrée »: the usual week of a truck as panes of glass, 30 minutes each, from 6 h to 22 h.
    Paint with a finger or the mouse: the first pane touched decides (light up or put out), the rectangle between it and
    the pointer follows. Computer: the 7 days side by side. Phone: one day, one hour per row (two half-hour panes).
-   Keyboard: arrows move, Space or Enter lights a pane. The thick lines are the limits of the blocks. */
+   Keyboard: arrows move, Space or Enter lights a pane. The thick lines are the limits of the blocks
+   (« Plages d'arrivée »: of the booking day, with no block names on the side). */
 import { useRef, useState } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
 import { clock, parseDay, type Range } from '../../lib/dates';
-import { blocks } from '../../data/select';
+import { blocks, windowsOn, daySpan } from '../../data/select';
 import { UNITS, FROM, TO, STEP, DOWS, isOn, paintRect, togglePane, panesToRanges, type Panes } from './grid';
 import { rangesWords } from './words';
 
@@ -92,8 +93,9 @@ export function HoursGrid(p: HoursGridProps) {
   };
 
   /* ---------- drawing ---------- */
-  const bl = blocks.value;
-  const edges = new Set(bl.flatMap((b) => [b.start, b.end]));
+  // arrival windows: no blocks to show, only where the booking day starts and ends
+  const bl = windowsOn.value ? [] : blocks.value;
+  const edges = new Set(windowsOn.value ? daySpan.value : bl.flatMap((b) => [b.start, b.end]));
   const rowMinutes = p.week ? STEP : 60;
   const rows = UNITS.filter((u) => (u - FROM) % rowMinutes === 0);
   const paneLabel = (d: number, u: number, on: boolean) => t('hours.grid.pane', { day: weekdayName(d, l), from: clock(u, l), to: clock(u + STEP, l), state: on ? t('hours.grid.on') : t('hours.grid.off') });

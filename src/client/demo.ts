@@ -9,6 +9,8 @@
      client.html?demo#t=demo-paid       a paid invoice (PAYÉ)
      client.html?demo#t=demo-quote      an estimate        demo-cancelled, demo-expired, demo-gone, demo-bad, demo-offline: the other cases
      client.html?demo#reserver          « Réserver en ligne » (demo-book-closed in sessionStorage: closed)
+     client.html?demo#reserver&plages=1 the same with « Plages d’arrivée » (4-hour windows; last name « plein »: the window was just taken)
+     client.html?demo#t=demo-window     booked with a window (« Entre 14 h et 18 h »)        demo-flex: free all day, the window comes the day before
      client.html?demo#suivi=demo        the truck on the way (moves at each refresh)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
 import { SUPABASE_URL } from '../lib/config';
 import { totals } from '../lib/money';
@@ -20,12 +22,14 @@ const GARAGE = {
 };
 interface Item { id: string; description: string; qty: number; unit_cents: number; status: string; note?: string | null }
 interface DemoJob {
-  lang: 'fr' | 'en'; first: string; day: string; block: 'am' | 'pm' | 'eve'; status: string; tracking: boolean; vehicle: string; number: number;
+  lang: 'fr' | 'en'; first: string; day: string; block: 'am' | 'pm' | 'eve' | 'day'; status: string; tracking: boolean; vehicle: string; number: number;
   items: Item[]; extras: Item[]; invoiced: boolean; paid: number; prepaid: number; stripe: boolean; pending: boolean; checks?: number; paying?: boolean;
   /** the estimate signed online (name, moment, the total signed) */
   signed?: { name: string; at: string; cents: number } | null;
   /** the invoice being made (from the mechanic's arrival) */
   draft?: boolean;
+  /** « Plages d’arrivée » (block 'day'): the window promised; none = flexible */
+  win?: [number, number] | null;
 }
 const BLOCKS = { am: [480, 720], pm: [720, 960], eve: [960, 1200] } as const;
 const D = (n: number) => addDays(today(), n);
@@ -54,6 +58,10 @@ function fresh(): Record<string, DemoJob> {
     'demo-onsite': { lang: 'fr', first: 'Karim', day: D(0), block: 'pm', status: 'on_site', tracking: false, vehicle: '2015 Volkswagen Jetta', number: 1001,
       items: [{ id: 'i-promo', description: 'Promo : pneus non montés + huile + inspection', qty: 1, unit_cents: 19999, status: 'planned' }],
       extras: [], invoiced: false, paid: 0, prepaid: 0, stripe: true, pending: false, draft: true, signed: { name: 'Karim Haddad', at: new Date(Date.now() - 86400000).toISOString(), cents: 22994 } },
+    'demo-window': { lang: 'fr', first: 'Nadia', day: D(1), block: 'day', win: [840, 1080], status: 'booked', tracking: false, vehicle: '2022 Mazda CX-5', number: 124,
+      items: [oil], extras: [], invoiced: false, paid: 0, prepaid: 0, stripe: true, pending: false },
+    'demo-flex': { lang: 'fr', first: 'Olivier', day: D(3), block: 'day', win: null, status: 'booked', tracking: false, vehicle: '2016 Subaru Outback', number: 125,
+      items: [oil, top], extras: [], invoiced: false, paid: 0, prepaid: 0, stripe: true, pending: false },
     'demo-cancelled': { lang: 'fr', first: 'Émilie', day: D(2), block: 'eve', status: 'cancelled', tracking: false, vehicle: '2018 Kia Soul', number: 121,
       items: [oil], extras: [], invoiced: false, paid: 0, prepaid: 0, stripe: true, pending: false }
   };
@@ -79,10 +87,10 @@ function jobView(j: DemoJob) {
     subtotal_cents: expected.subtotal, tps_cents: expected.tps, tvq_cents: expected.tvq, total_cents: invTotal, paid_cents: paid, notes: null
   } : null;
   const balance = invoice ? Math.max(0, invoice.total_cents - invoice.paid_cents) : Math.max(0, expected.total - j.prepaid);
-  const [start, end] = BLOCKS[j.block];
+  const [start, end] = j.block === 'day' ? (j.win || [null, null]) : BLOCKS[j.block];
   return {
     ok: true, kind: 'job', garage: GARAGE, lang: j.lang, customer: { first: j.first },
-    job: { number: j.number, day: j.day, day_label_fr: longDay(j.day, 'fr'), day_label_en: longDay(j.day, 'en'), block: j.block, start, end, status: j.status,
+    job: { number: j.number, day: j.day, day_label_fr: longDay(j.day, 'fr'), day_label_en: longDay(j.day, 'en'), block: j.block, start, end, flex: j.block === 'day' && !j.win, status: j.status,
       tracking: j.tracking, vehicle: j.vehicle, waiver_signed: j.status !== 'booked' },
     items: planned.map((i) => ({ id: i.id, description: i.description, qty: i.qty, unit_cents: i.unit_cents, status: i.status })),
     extras: j.extras.map((x) => ({ id: x.id, description: x.description, qty: x.qty, unit_cents: x.unit_cents, total_cents: Math.round(x.qty * x.unit_cents), status: x.status, note: x.note ?? null, answered_via: x.status === 'proposed' ? null : 'link' })),
@@ -154,18 +162,30 @@ const WEB_SERVICES = [
   { id: '00000000-0000-4000-8000-00000000a004', name_fr: 'Freins avant (plaquettes et disques)', name_en: 'Front brakes (pads and rotors)', category: 'freins', price_cents: 34999, taxable: true, duration_min: 90, promo: false, promo_until: null, includes: [] },
   { id: '00000000-0000-4000-8000-00000000a005', name_fr: 'Diagnostic (voyant moteur, bruit)', name_en: 'Diagnostic (check engine light, noise)', category: 'diagnostic', price_cents: null, taxable: true, duration_min: 60, promo: false, promo_until: null, includes: [] }
 ];
+/** « Plages d’arrivée » in the pretend booking: asked once in the address (#reserver&plages=1), kept for the visit */
+let windowsAsked = false;
+function demoWindows(): boolean {
+  try { if (new URLSearchParams(location.hash.replace(/^#/, '')).has('plages')) windowsAsked = true; } catch { /* ignore */ }
+  return windowsAsked;
+}
 function bookAnswer(b: Record<string, unknown>): Answer {
   let closed = false;
   try { closed = sessionStorage.getItem('demo-book-closed') === '1'; } catch { /* ignore */ }
   const action = String(b.action || 'info');
   if (action === 'info') {
-    return { status: 200, body: { ok: true, garage: GARAGE, on: !closed, services: closed ? [] : WEB_SERVICES, taxes: true, horizon_days: 120,
+    return { status: 200, body: { ok: true, garage: GARAGE, on: !closed, windows: demoWindows(), services: closed ? [] : WEB_SERVICES, taxes: true, horizon_days: 120,
       blocks: [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }] } };
   }
   if (action === 'slots') {
     const from = typeof b.from === 'string' ? b.from : null;
     if (from && from > D(27)) return { status: 200, body: { ok: true, from, days: 14, slots: [] } };
     const base = from ? 14 : 0;
+    if (demoWindows()) {
+      // the best window of each day first; some days have other hours (« Voir d’autres heures »)
+      const wins: [number, number, boolean][] = from ? [[base + 1, 540, true], [base + 2, 720, false], [base + 4, 600, true]]
+        : [[1, 840, true], [2, 540, true], [1, 480, true], [1, 960, false], [3, 660, true], [5, 480, false], [3, 900, true], [6, 780, false]];
+      return { status: 200, body: { ok: true, from, days: 14, slots: wins.map(([n, a, near]) => ({ day: D(n), block: 'day', near, win_start: a, win_end: a + 240 })) } };
+    }
     const picks: [number, string, boolean][] = from ? [[base + 1, 'am', true], [base + 2, 'eve', false], [base + 4, 'pm', true]]
       : [[1, 'pm', true], [2, 'am', true], [1, 'eve', false], [3, 'pm', true], [5, 'am', false], [6, 'eve', false]];
     return { status: 200, body: { ok: true, from, days: 14, slots: picks.map(([n, block, near]) => ({ day: D(n), block, near })) } };
@@ -174,6 +194,12 @@ function bookAnswer(b: Record<string, unknown>): Answer {
     const digits = String(b.phone || '').replace(/\D/g, '');
     if (digits.length < 10) return refuse(400, 'phone', 'Écrivez un numéro de téléphone à 10 chiffres.');
     if (String(b.last_name || '').toLowerCase() === 'pris') return refuse(400, 'block_full', 'Ce moment vient d’être pris. Choisissez-en un autre.');
+    if (b.block === 'day') {
+      if (String(b.last_name || '').toLowerCase() === 'plein') return refuse(400, 'window_full', 'Cette plage vient d’être prise. Choisissez-en une autre.');
+      const a = b.win_flex === true ? null : Number(b.win_start);
+      return { status: 200, body: { ok: true, link: `${location.pathname}?demo#t=${a == null ? 'demo-flex' : 'demo-window'}${b.lang === 'en' ? '&l=en' : ''}`, day: b.day, block: 'day',
+        win_start: a, win_end: a == null ? null : a + 240, flex: a == null, text: 'sent' } };
+    }
     return { status: 200, body: { ok: true, link: `${location.pathname}?demo#t=demo-booked${b.lang === 'en' ? '&l=en' : ''}`, day: b.day, block: b.block, text: 'sent' } };
   }
   return refuse(400, 'action', 'Action inconnue.');
@@ -204,7 +230,8 @@ const LINKS: [string, string][] = [
   ['#t=demo-booked', 'Réservé'], ['#t=demo-onsite', 'Mécano arrivé (facture)'], ['#t=demo-extras', 'Travaux proposés'], ['#t=demo-route', 'En route'], ['#t=demo-unpaid', 'Facture à payer'],
   ['#t=demo-unpaid&l=en', 'Invoice (English)'], ['#t=demo-paid', 'Payée'], ['#t=demo-quote', 'Estimation'], ['#t=demo-cancelled', 'Annulé'],
   ['#t=demo-expired', 'Lien expiré'], ['#t=demo-bad', 'Mauvais lien'], ['#t=demo-offline', 'Sans réseau'],
-  ['#reserver', 'Réserver en ligne'], ['#reserver&l=en', 'Book online (English)'],
+  ['#reserver', 'Réserver en ligne'], ['#reserver&l=en', 'Book online (English)'], ['#reserver&plages=1', 'Réserver (plages d’arrivée)'],
+  ['#t=demo-window', 'Réservé, plage'], ['#t=demo-flex', 'Réservé, flexible'],
   ['#suivi=demo', 'Suivi en route'], ['#suivi=demo-nopos', 'Suivi sans position'], ['#suivi=demo-arrived', 'Arrivé'], ['#suivi=demo-cancelled', 'Suivi terminé'],
   ['#suivi=demo-expired', 'Suivi expiré'], ['#suivi=demo-bad', 'Mauvais suivi']
 ];

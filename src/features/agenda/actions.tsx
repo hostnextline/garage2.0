@@ -9,9 +9,10 @@ import { t, lang } from '../../lib/i18n';
 import { may } from '../../app/routes';
 import { navigate, href } from '../../app/router';
 import { wide } from '../../app/media';
-import { customer as customerRow, invoiceOf } from '../../data/select';
+import { customer as customerRow, invoiceOf, windowsOn } from '../../data/select';
 import { toast } from '../../ui';
 import { blockPhrase } from '../booking/when';
+import { dayWords } from './layout';
 import { today as todayOf } from '../../lib/dates';
 import { customerActions } from '../customers/shortcuts';
 import { jobRights } from '../jobs/select';
@@ -38,7 +39,7 @@ export function jobActions(j: Job): { title: string; actions: MenuAction[] } {
   // the appointment
   add({ key: 'open', label: t('agenda.menu.open'), icon: icon(ExternalLink), run: go(`/job/${j.id}`), testid: 'menu-open' });
   add(may.book() && !!j.customer_id && { key: 'copy', label: t('agenda.menu.copy'), icon: icon(Copy), testid: 'menu-copy-job',
-    run: () => { copyJob(j.id); toast(t('agenda.copy.copied', { name }), { kind: 'ok' }); } });
+    run: () => { copyJob(j.id); toast(t(windowsOn.value ? 'agenda.copy.copiedDay' : 'agenda.copy.copied', { name }), { kind: 'ok' }); } });
   add(mayEditJob(j, r) && { key: 'edit', label: t('jobs.edit.menu'), icon: icon(Pencil), run: go(`/job/${j.id}?do=edit`), testid: 'menu-edit' });
   add(j.status === 'booked' && r.move && { key: 'move', label: t('agenda.menu.move'), icon: icon(CalendarClock), run: go(`/job/${j.id}?do=move`), testid: 'menu-move' });
   add(mayChangeTruck(j, r) && { key: 'truck', label: t('jobs.truck.menu'), icon: icon(Truck), run: go(`/job/${j.id}?do=truck`), testid: 'menu-truck' });
@@ -68,24 +69,28 @@ export function jobPress(j: Job) {
   return pressProps((x, y) => { const m = jobActions(j); openMenuAt(x, y, m.actions, m.title); });
 }
 
-/** the shortcuts of a block: paste, book here, the day, its map */
+/** the shortcuts of a block (or of a whole day, block 'day', with « Plages d'arrivée »): paste, book here, the day, its map */
 export function blockActions(day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }): MenuAction[] {
   const a: MenuAction[] = [];
   if (mayPaste(v)) a.push({ key: 'paste', label: t('agenda.copy.paste'), icon: icon(ClipboardPaste), testid: 'menu-paste', run: go(pasteHref(day, block).slice(1)) });
-  if (may.book() && v.open && !v.started) a.push({ key: 'bookHere', label: t('agenda.menu.bookHere'), icon: icon(CalendarPlus), testid: 'menu-book-here', run: go(href('/book', { day, block }).slice(1)) });
+  if (may.book() && v.open && !v.started) a.push({ key: 'bookHere', label: t(block === 'day' ? 'agenda.menu.bookDay' : 'agenda.menu.bookHere'), icon: icon(CalendarPlus), testid: 'menu-book-here', run: go(href('/book', { day, block }).slice(1)) });
   // on the computer's week: the day on its own; everywhere: the day's map
   if (wide.value) a.push({ key: 'day', label: t('agenda.menu.day'), icon: icon(CalendarDays), sep: a.length > 0, testid: 'menu-day', run: go(href(`/agenda/${day}`, { view: 'day' }).slice(1)) });
   if (may.map()) a.push({ key: 'map', label: t('agenda.menu.map'), icon: icon(MapIcon), sep: a.length > 0 && !wide.value, testid: 'menu-map', run: go(href('/map', { day }).slice(1)) });
   return a;
 }
+/** the place in words: « Demain matin »; a whole day (« Plages d'arrivée »): « Demain », « Jeudi 19 novembre » */
+export function placeWords(day: Day, block: BlockKey): string {
+  return block === 'day' ? dayWords(day, todayOf(), lang.value) : blockPhrase(day, block, todayOf(), lang.value);
+}
 export function blockMenu(e: MouseEvent, day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }) {
-  openMenu(e, blockActions(day, block, v), blockPhrase(day, block, todayOf(), lang.value));   // nothing to offer: the browser's own menu
+  openMenu(e, blockActions(day, block, v), placeWords(day, block));   // nothing to offer: the browser's own menu
 }
 /** the long press on a block (phone) */
 export function blockPress(day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }) {
   return pressProps((x, y) => {
     const a = blockActions(day, block, v);
     if (!a.length) return false;
-    openMenuAt(x, y, a, blockPhrase(day, block, todayOf(), lang.value));
+    openMenuAt(x, y, a, placeWords(day, block));
   });
 }

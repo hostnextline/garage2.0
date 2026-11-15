@@ -82,6 +82,12 @@ export const today: typeof fr = {
   },
   book: 'Book',
   bookSub: 'A customer on the phone: find them a block',
+  /* arrival windows: the same without the word “block”, and the window the customer was told */
+  win: {
+    bookSub: 'A customer on the phone: find them an arrival window',
+    confirmHelp: 'Tomorrow’s appointments whose customer did not get the confirmation text (the day, the arrival window and the planned total).',
+    told: 'Customer was told: {window}'
+  },
   agenda: 'Schedule',
   map: 'Map',
   trucks: {

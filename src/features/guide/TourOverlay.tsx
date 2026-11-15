@@ -6,6 +6,7 @@ import { t } from '../../lib/i18n';
 import { Button } from '../../ui';
 import { tourRun, nextTourStep, prevTourStep, stopTour, relocate } from './tour';
 import { placeBubble } from './tour-steps';
+import { gt } from './words';
 import './guide.css';
 
 const PAD = 6;
@@ -79,8 +80,8 @@ export function TourOverlay() {
   if (r.kind === 'spot' && r.phase !== 'show') return null;
   const step = r.steps[r.index];
   const showing = r.phase === 'show' && !!box;
-  const head = r.kind === 'spot' ? r.title : t(`guide.tour.steps.${step.key}.title`);
-  const text = r.kind === 'spot' ? r.text : t(`guide.tour.steps.${step.key}.text`);
+  const head = r.kind === 'spot' ? r.title : gt(`guide.tour.steps.${step.key}.title`);
+  const text = r.kind === 'spot' ? r.text : gt(`guide.tour.steps.${step.key}.text`);
   const last = r.index >= r.steps.length - 1;
   return (
     <div class="tour" data-testid="tour">

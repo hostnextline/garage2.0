@@ -5,7 +5,7 @@
      makes the other texts come back « to send by hand ».
    Small on purpose; nothing here can stop the demo (every part is guarded). */
 import { registerFn, put, find, table, nowIso, type DemoRow } from '../fake-server';
-import { addDays, today, longDay } from '../../lib/dates';
+import { addDays, today, longDay, clock } from '../../lib/dates';
 
 const D = (n: number) => addDays(today(), n);
 const at = (day: string, min: number) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, Math.floor(min / 60), min % 60).toISOString(); };
@@ -67,7 +67,7 @@ function fns() {
     if (!j) return { ok: false, code: 'not_found', error: 'Cette job n’existe plus (ou tu n’y as pas accès).' };
     const kind = String(b.kind || '');
     if (kind === 'booking' && j.confirm_sent_at && !b.resend) return { ok: true, status: 'already' };
-    if (['booking', 'moved', 'reminder'].includes(kind) && j.status !== 'booked') return { ok: false, code: 'not_booked', error: 'Ce rendez-vous n’est plus à venir.' };
+    if (['booking', 'moved', 'reminder', 'window'].includes(kind) && j.status !== 'booked') return { ok: false, code: 'not_booked', error: 'Ce rendez-vous n’est plus à venir.' };
     if (kind === 'arrived' && j.status !== 'on_site') return { ok: false, code: 'not_on_site', error: 'Le mécano n’est pas encore arrivé chez ce client.' };
     const c = find('customers', j.customer_id);
     const link = `${LINK}#t=demo-${String(j.id)}${c?.lang === 'en' ? '&l=en' : ''}`;
@@ -77,7 +77,9 @@ function fns() {
       moved: `votre rendez-vous avec Mécanique Mobile H.I.S a été déplacé. Détails : ${link}`,
       extras: `votre mécano propose un travail sur votre véhicule. Acceptez ou refusez ici : ${link}`,
       invoice: `voici votre facture de Mécanique Mobile H.I.S. Pour payer : ${link}`,
-      payment_reminder: `petit rappel : votre facture de Mécanique Mobile H.I.S est à payer. ${link}`
+      payment_reminder: `petit rappel : votre facture de Mécanique Mobile H.I.S est à payer. ${link}`,
+      // « Plages d'arrivée »: the window of a flexible appointment, once fixed
+      window: `votre plage d’arrivée est confirmée : Mécanique Mobile H.I.S vient ${longDay(String(j.day), 'fr')}${j.win_start != null && j.win_end != null ? `, entre ${clock(Number(j.win_start))} et ${clock(Number(j.win_end))}` : ''}. Détails : ${link}`
     };
     const message = `Bonjour ${first(c)}, ${words[kind] || link}`;
     const status = textsOff() ? 'off' : c?.phone ? 'sent' : 'no_phone';

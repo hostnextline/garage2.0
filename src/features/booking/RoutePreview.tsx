@@ -24,7 +24,7 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?:
     // moving an appointment: it is not in its old place any more
     const base = a.exclude ? { ...day, jobs: day.jobs.filter((j) => j.id !== a.exclude) } : day;
     return placeNewStop(base, a);
-  }, [a.day, a.block, a.truckId, a.lat, a.lng, a.exclude]);
+  }, [a.day, a.block, a.truckId, a.lat, a.lng, a.exclude, a.eta]);
   const after = useMemo(() => assemble(placed.after, { nameOf: staffName }), [placed]);
   const before = useMemo(() => assemble(placed.before, { nameOf: staffName }), [placed]);
   const trA: TruckRoute | undefined = after.trucks.find((x) => x.id === placed.truckId);

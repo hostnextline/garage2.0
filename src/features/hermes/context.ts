@@ -12,8 +12,19 @@ import { expensesList } from '../../data/select';
 const STATUS: Record<string, string> = { booked: 'booked', en_route: 'on the way', on_site: 'on site', done: 'done', cancelled: 'cancelled', no_show: 'no-show' };
 const $ = (c: number) => money(c, 'en');
 
-const blockTime = (j: Job) => { const b = blockOfKey(j.block); return b ? `${hm(b.start)}-${hm(b.end)}` : j.block; };
-const blockStart = (j: Job) => blockOfKey(j.block)?.start ?? 0;
+/** what the customer was told: the block's hours; booked by arrival window (block 'day'): « window 14:00-18:00 », with the
+    planned arrival, « OUTSIDE its window » when that arrival misses it, or « flexible » while no window is fixed yet */
+export const blockTime = (j: Job): string => {
+  if (j.block === 'day') {
+    const eta = j.eta_min != null && j.status === 'booked' ? `, planned arrival ${hm(j.eta_min)}` : '';
+    if (j.win_start == null || j.win_end == null) return `flexible (any time that day, 4-hour arrival window fixed the evening before)${eta}`;
+    const out = eta && (j.eta_min! < j.win_start || j.eta_min! > j.win_end) ? ' OUTSIDE its window' : '';
+    return `arrival window ${hm(j.win_start)}-${hm(j.win_end)}${eta}${out}`;
+  }
+  const b = blockOfKey(j.block);
+  return b ? `${hm(b.start)}-${hm(b.end)}` : j.block;
+};
+const blockStart = (j: Job) => (j.block === 'day' ? j.eta_min ?? j.win_start ?? 0 : blockOfKey(j.block)?.start ?? 0);
 
 function jobLine(j: Job, prices: boolean): string {
   const c = customer(j.customer_id);

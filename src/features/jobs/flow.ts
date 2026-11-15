@@ -10,7 +10,7 @@ import { openShift, truck, invoiceOf, settings, customer as customerRow } from '
 import { toast, ask, askText, attempt, run, whenHistorySettled } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../today/position';
-import { jobFirstName, rememberLink, clockOf, keepAhead, type JobRights } from './select';
+import { jobFirstName, rememberLink, clockOf, keepAhead, wt, type JobRights } from './select';
 import { exportSignature, type Stroke } from './signature';
 import { plannedParts, type UsedPart } from './parts';
 import { confirmParts } from './PartsSheet';
@@ -238,9 +238,9 @@ export async function doFinish(j: Job, rights: Pick<JobRights, 'payLater'>): Pro
 }
 
 export async function doCancel(j: Job) {
-  const reason = await askText({ title: t('jobs.ask.cancelTitle'), text: t('jobs.ask.cancelText'), label: t('jobs.ask.cancelLabel'), ok: t('jobs.ask.cancelOk'), danger: true });
+  const reason = await askText({ title: t('jobs.ask.cancelTitle'), text: wt(j, 'jobs.ask.cancelText'), label: t('jobs.ask.cancelLabel'), ok: t('jobs.ask.cancelOk'), danger: true });
   if (reason == null) return false;
-  return stepKept(j, 'cancel', { reason }, t('jobs.did.cancel'), 'cancelled');
+  return stepKept(j, 'cancel', { reason }, wt(j, 'jobs.did.cancel'), 'cancelled');
 }
 export async function doNoShow(j: Job) {
   const reason = await askText({ title: t('jobs.ask.noShowTitle'), text: t('jobs.ask.noShowText'), label: t('jobs.ask.noShowLabel'), ok: t('jobs.ask.noShowOk'), danger: true });
@@ -254,7 +254,7 @@ export async function doBack(j: Job) {
   return stepKept(j, 'back', {}, t('jobs.did.back'), before);
 }
 export async function doReopen(j: Job) {
-  if (!(await ask({ title: t('jobs.ask.reopenTitle'), text: t('jobs.ask.reopenText'), ok: t('jobs.ask.reopenOk') }))) return false;
+  if (!(await ask({ title: t('jobs.ask.reopenTitle'), text: wt(j, 'jobs.ask.reopenText'), ok: t('jobs.ask.reopenOk') }))) return false;
   return attempt(() => jobStep(j.id, 'reopen'), { ok: t('jobs.did.reopen') });
 }
 

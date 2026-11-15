@@ -86,18 +86,19 @@ export interface TruckBlock { truck: Truck; cap: number; used: number; left: num
 export function blockLoad(day: Day, block: BlockKey, opts: { exclude?: string | null } = {}): { trucks: TruckBlock[]; unplaced: Job[]; open: boolean; left: number; started: boolean } {
   const b = blockOfKey(block);
   const isToday = day === today();
-  const started = day < today() || (isToday && nowMinute() >= b.start);
+  // a block has started at its first minute; a whole day of arrival windows (block 'day') stays open until too little of it is left
+  const minBlock = Math.min(settings.value.booking.min_block_min, b.end - b.start);
+  const started = day < today() || (isToday && nowMinute() >= (block === 'day' ? b.end - minBlock : b.start));
   const from = isToday ? Math.ceil(nowMinute() / 5) * 5 : 0;
   const js = jobsOn(day).filter((j) => j.block === block && !['cancelled', 'no_show'].includes(j.status) && j.id !== opts.exclude);
   const out: TruckBlock[] = [];
   for (const tr of activeTrucks.value) {
     const rs = truckRanges(tr.id, day).map(([a, z]) => [Math.max(a, from), z] as Range).filter(([a, z]) => z > a);
     const cap = day < today() ? 0 : overlapMinutes(rs, b.start, b.end);
-    const mine = js.filter((j) => j.truck_id === tr.id).sort((x, y) => (x.stop_order ?? 99) - (y.stop_order ?? 99));
+    const mine = js.filter((j) => j.truck_id === tr.id).sort((x, y) => ((x.stop_order ?? 99) - (y.stop_order ?? 99)) || ((x.eta_min ?? 9999) - (y.eta_min ?? 9999)));
     const used = mine.filter((j) => j.status !== 'done').reduce((n, j) => n + j.duration_min + (j.travel_min ?? settings.value.booking.unknown_min), 0);
     if (cap > 0 || mine.length) out.push({ truck: tr, cap, used, left: cap - used, jobs: mine });
   }
-  const minBlock = Math.min(settings.value.booking.min_block_min, b.end - b.start);
   const open = !started && out.some((x) => x.cap >= minBlock);
   return { trucks: out, unplaced: js.filter((j) => !j.truck_id), open, left: Math.max(0, ...out.map((x) => x.left)), started };
 }
@@ -118,9 +119,29 @@ export function specByKey(key: string | null | undefined): EngineSpec | undefine
 /* ---------- jobs ---------- */
 export const allJobs = computed(() => rowsOf<Job>('jobs').filter((j) => !j.deleted_at));
 export function job(id: string | null | undefined): Job | undefined { return getRow<Job>('jobs', id); }
+/** the day's jobs in order. Blocks: morning, afternoon, evening, then the stop. « Plages d'arrivée » (block 'day'): the stop,
+    then the planned arrival. A day holding both (never after the switch, kept safe): each 'day' job goes with the block its
+    arrival falls in, after that block's own jobs. */
 export function jobsOn(day: Day): Job[] {
-  const order: Record<string, number> = { am: 0, pm: 1, eve: 2 };
-  return allJobs.value.filter((j) => j.day === day).sort((a, b) => (order[a.block] - order[b.block]) || ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || a.number - b.number);
+  return allJobs.value.filter((j) => j.day === day).sort(dayOrder(blocks.value));
+}
+const BLOCK_RANK: Record<string, number> = { am: 0, pm: 1, eve: 2 };
+/** when a 'day' job is expected: its planned arrival, else the start of its window (none: last) */
+const dayMinute = (j: Pick<Job, 'eta_min' | 'win_start'>) => j.eta_min ?? j.win_start ?? 9999;
+export function dayOrder(bl: Block[] = DEFAULT_BLOCKS) {
+  const rank = (j: Pick<Job, 'block' | 'eta_min' | 'win_start'>): number => {
+    if (j.block !== 'day') return BLOCK_RANK[j.block] ?? 9;
+    const m = dayMinute(j);
+    const named = bl.filter((b) => b.key !== 'day').sort((x, y) => x.start - y.start);
+    let r = 0;
+    named.forEach((b) => { if (m >= b.start) r = BLOCK_RANK[b.key] ?? r; });
+    return m >= 9999 ? 9 : r;
+  };
+  return (a: Job, b: Job): number => {
+    if (a.block === 'day' && b.block === 'day') return ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || (dayMinute(a) - dayMinute(b)) || a.number - b.number;
+    if (a.block !== 'day' && b.block !== 'day') return ((BLOCK_RANK[a.block] ?? 9) - (BLOCK_RANK[b.block] ?? 9)) || ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || a.number - b.number;
+    return (rank(a) - rank(b)) || (a.block === 'day' ? 1 : -1);
+  };
 }
 export function jobsBetween(from: Day, to: Day): Job[] { return allJobs.value.filter((j) => j.day >= from && j.day <= to); }
 export function jobsOfCustomer(customerId: string): Job[] { return allJobs.value.filter((j) => j.customer_id === customerId).sort((a, b) => b.day.localeCompare(a.day)); }

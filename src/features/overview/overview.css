@@ -8,3 +8,5 @@
 .overview-what { display: block; }
 .overview-truck { display: block; color: var(--ink-2); }
 .overview-row.is-on { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-md); }
+/* « Plages d'arrivée »: the window told to the customer */
+.overview-window { display: block; color: var(--ink-2); }

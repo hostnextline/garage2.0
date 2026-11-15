@@ -137,6 +137,40 @@ export const guide: typeof fr = {
     copied: 'Address copied'
   },
 
+  /* arrival windows (the garage books by arrival window): the texts above that speak of time slots, said for windows.
+     Same paths as above; a text missing here is the one above (words.ts). */
+  win: {
+    steps: {
+      trucks: { text: 'Each truck, its mechanic and its working hours. The arrival windows offered to customers follow those hours.' },
+      book: { text: 'The customer, the services, then a suggested arrival window. The truck and the order of stops are set by themselves.' },
+      agenda: { text: 'The week’s appointments, day by day.' }
+    },
+    tour: {
+      steps: {
+        agenda: { text: 'Appointments day by day, with the arrival window each customer was told.' },
+        agendaBlock: { title: 'A day', text: 'Each day shows the room left. Tap a free day to book in it.' },
+        book: { text: 'The customer, the services, then a suggested arrival window. The server picks the truck and the order of stops.' },
+        bookBlock: { title: 'The arrival window', text: 'The app suggests 4-hour windows where a truck is close by. Pick one, then book.' },
+        hours: { text: 'Each truck’s working hours. They decide the windows offered to customers.' }
+      }
+    },
+    faq: {
+      topics: { blocks: 'Windows' },
+      qa: {
+        book: {
+          how: { a: 'Tap “+”, then “Book an appointment”. Choose the customer, their car and the services, then one of the suggested arrival windows. Tap “Book”: the customer gets a confirmation text.' },
+          change: { a: 'Open the appointment from the agenda. You can move it to another day or another arrival window, or cancel it and write the reason. If the day or the window changes, the customer gets a text.' }
+        },
+        blocks: {
+          what: { q: 'What is an arrival window?', a: 'Four hours around the time the app expects to arrive: 1 hour before, 3 hours after. If the app expects to arrive at 3 p.m., the customer hears “between 2 and 6 p.m.”. We promise a window, not an exact time.' },
+          full: { q: 'Why is a day full?', a: 'Each truck has its working hours. When jobs and driving fill those hours, or we can no longer reach everyone inside their window, the day is full. Pick another day, offer “Flexible”, or add hours to the truck in Hours.' }
+        },
+        offline: {
+          needs: { a: 'The suggested arrival windows when booking, the live map, texts to customers and online card payments.' }
+        }
+      }
+    }
+  },
   faq: {
     title: 'Common questions',
     lead: 'Short answers, by topic.',
@@ -151,7 +185,8 @@ export const guide: typeof fr = {
       blocks: {
         what: { q: 'What is a time slot?', a: 'The day is split into three slots: morning ({am}), afternoon ({pm}) and evening ({eve}). We promise the customer a slot, not an exact time.' },
         who: { q: 'Who picks the truck and the order of stops?', a: 'The server. It puts each job on the closest truck and sorts the stops in the best driving order.' },
-        full: { q: 'Why is a time slot full?', a: 'Each truck has its working hours. When jobs and driving fill those hours, the slot is full. Pick another slot, or add hours to the truck in Hours.' }
+        full: { q: 'Why is a time slot full?', a: 'Each truck has its working hours. When jobs and driving fill those hours, the slot is full. Pick another slot, or add hours to the truck in Hours.' },
+        windows: { q: 'And the 4-hour arrival windows?', a: 'The garage can book by windows instead of time slots (the owner: in Settings, then Bookings, “Book by arrival windows”). The customer gets a 4-hour window: 1 hour before the time the app expects to arrive, 3 hours after. When the app reorders a route, it keeps every promised window. A customer who is free all day can be booked “Flexible”: their window is confirmed the day before, and it helps fit more appointments.' }
       },
       offline: {
         works: { q: 'What works without a signal?', a: 'Almost everything: see your day, move a job forward, get it signed, make the invoice, collect. Everything stays on the phone and goes out by itself when the signal is back.' },

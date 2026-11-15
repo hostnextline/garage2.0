@@ -11,9 +11,12 @@ export interface WebService {
 }
 export interface WebBlock { key: string; start: number; end: number }
 export interface WebInfo { ok: true; garage: { name?: string | null; phone?: string | null; email?: string | null; address?: string | null }; on: boolean;
-  services: WebService[]; blocks: WebBlock[]; taxes: boolean; horizon_days: number }
-export interface WebSlot { day: string; block: string; near: boolean }
-export interface Booked { ok: true; link: string | null; day: string; block: string; text: string }
+  services: WebService[]; blocks: WebBlock[]; taxes: boolean; horizon_days: number;
+  /** « Plages d’arrivée »: the garage books 4-hour windows instead of blocks */
+  windows?: boolean }
+/** a moment offered: a block of a day, or (block 'day') a day with its 4-hour window; `flex`: the customer is free all day */
+export interface WebSlot { day: string; block: string; near: boolean; win_start?: number | null; win_end?: number | null; flex?: boolean }
+export interface Booked { ok: true; link: string | null; day: string; block: string; text: string; win_start?: number | null; win_end?: number | null; flex?: boolean }
 
 export type Step = 'services' | 'address' | 'slots' | 'contact' | 'done';
 export const STEPS: Step[] = ['services', 'address', 'slots', 'contact'];
@@ -56,7 +59,7 @@ export function years(now: Date = new Date()): number[] {
 
 /** where a refusal of the server sends the customer back */
 export function stepOfError(code: string): Step | null {
-  if (code === 'block_full' || code === 'bad_block') return 'slots';
+  if (code === 'block_full' || code === 'bad_block' || code === 'window_full') return 'slots';
   if (code === 'far') return 'address';
   if (code === 'no_service') return 'services';
   if (['name', 'phone', 'email'].includes(code)) return 'contact';
@@ -65,6 +68,8 @@ export function stepOfError(code: string): Step | null {
 /** the words of a refusal (codes the page knows, else « a problem on our side ») */
 export function errorKey(code: string): string {
   if (code === 'block_full' || code === 'bad_block') return 'book.slots.taken';
+  // the window can no longer be kept: the step is shown again with the windows still open
+  if (code === 'window_full') return 'book.slots.windowTaken';
   if (['far', 'too_many', 'busy', 'network'].includes(code)) return `book.errors.${code}`;
   if (code === 'phone') return 'book.contact.errPhone';
   if (code === 'name') return 'book.contact.errFirst';
@@ -81,8 +86,39 @@ export function nextFrom(from: string, days: number): string {
 }
 /** the slots of a new page added to the list, without twice the same */
 export function mergeSlots(a: WebSlot[], b: WebSlot[]): WebSlot[] {
-  const seen = new Set(a.map((s) => `${s.day}|${s.block}`));
-  return [...a, ...b.filter((s) => !seen.has(`${s.day}|${s.block}`))];
+  const seen = new Set(a.map(slotKey));
+  return [...a, ...b.filter((s) => !seen.has(slotKey(s)))];
+}
+
+/* ---------- « Plages d’arrivée » ---------- */
+/** what tells two moments apart: the day and the block, and the window's start for a 'day' moment */
+export function slotKey(s: WebSlot): string { return `${s.day}|${s.block}${s.block === 'day' && s.win_start != null ? `|${s.win_start}` : ''}`; }
+/** does the page offer windows? (the garage's switch, or the moments themselves) */
+export function windowMode(info: Pick<WebInfo, 'windows'> | null | undefined, slots: WebSlot[] | null | undefined): boolean {
+  return info?.windows === true || (slots || []).some((s) => s.block === 'day');
+}
+export interface DayOffer { day: string; near: boolean; best: WebSlot; others: WebSlot[] }
+/** the windows by day, in the order received (the first of a day is its best; the others are « Voir d’autres heures ») */
+export function dayOffers(slots: WebSlot[]): DayOffer[] {
+  const out: DayOffer[] = [];
+  for (const s of slots) {
+    const d = out.find((x) => x.day === s.day);
+    if (!d) out.push({ day: s.day, near: s.near, best: s, others: [] });
+    else if (slotKey(s) !== slotKey(d.best) && !d.others.some((o) => slotKey(o) === slotKey(s))) d.others.push(s);
+  }
+  return out;
+}
+/** the same day, the customer free all day (no window: it is confirmed the day before) */
+export function flexSlot(s: WebSlot): WebSlot { return { day: s.day, block: 'day', near: s.near, flex: true }; }
+/** the window of a moment, null for a block and for a flexible one */
+export function slotWindow(s: { block: string; win_start?: number | null; win_end?: number | null; flex?: boolean }): [number, number] | null {
+  return s.block === 'day' && !s.flex && s.win_start != null && s.win_end != null ? [s.win_start, s.win_end] : null;
+}
+/** what « book » is sent for the moment chosen: a block as always; a window (the server sets its end); or flexible */
+export function bookWhen(s: WebSlot): { day: string; block: string; win_start?: number; win_flex?: true } {
+  if (s.block !== 'day') return { day: s.day, block: s.block };
+  const w = slotWindow(s);
+  return w ? { day: s.day, block: 'day', win_start: w[0] } : { day: s.day, block: 'day', win_flex: true };
 }
 
 /** only the places on the street typed, with a position (Photon may answer another street with the same number:

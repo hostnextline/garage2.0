@@ -13,6 +13,7 @@ import { tourFor, resolveStep, locate, findAnchor, type TourStep, type TourEnv, 
 import { markStep, markTour, nextJobId } from './guide-data';
 import type { Role, GuideStep } from './checklist';
 import { TourOverlay } from './TourOverlay';
+import { gt } from './words';
 
 export interface TourRun {
   kind: 'tour' | 'spot';
@@ -152,5 +153,5 @@ export function openStep(s: GuideStep) {
   if (s.kind === 'tour') { startTour(s.role); return; }
   if (s.kind === 'read' || s.kind === 'visit') markStep(s.id);
   navigate(s.href);
-  if (s.anchor) showMe([s.anchor], t(`guide.steps.${s.id}.title`), t(`guide.steps.${s.id}.text`));
+  if (s.anchor) showMe([s.anchor], t(`guide.steps.${s.id}.title`), gt(`guide.steps.${s.id}.text`));
 }

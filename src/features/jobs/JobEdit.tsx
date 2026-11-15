@@ -13,7 +13,7 @@ import { may } from '../../app/routes';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { AddressField, EMPTY_PLACE, type PlaceValue } from '../customers/AddressField';
-import { jobCustomer, jobName, dayInSentence, type JobRights } from './select';
+import { jobCustomer, jobName, dayInSentence, momentWord, wt, type JobRights } from './select';
 import { mayChangeTruck } from './JobParts';
 
 type View = 'list' | 'customer' | 'car' | 'address';
@@ -81,7 +81,7 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
           {r.car && c && <RowItem start={<span class="quick-icon"><Car size={20} /></span>} title={t('jobs.edit.car')} sub={vehicleLabel(v) || t('jobs.head.noCar')} chevron onClick={() => setView('car')} data-testid="edit-car" />}
           {r.address && <RowItem start={<span class="quick-icon"><MapPin size={20} /></span>} title={t('jobs.edit.address')} sub={(j.address || c?.address || t('jobs.head.noAddress'))} chevron
             onClick={() => { setPlace({ ...EMPTY_PLACE, address: j.address || c?.address || '', unit: j.unit ?? c?.unit ?? null, postal_code: j.postal_code ?? c?.postal_code ?? null, lat: j.lat ?? c?.lat ?? null, lng: j.lng ?? c?.lng ?? null }); setView('address'); }} data-testid="edit-address" />}
-          {r.move && <RowItem start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={t('jobs.edit.when')} sub={`${dayInSentence(j.day)}, ${t(`common.blocks.${j.block}`).toLowerCase()}`} chevron onClick={go(p.onMove)} data-testid="edit-move" />}
+          {r.move && <RowItem start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={wt(j, 'jobs.edit.when')} sub={`${dayInSentence(j.day)}, ${momentWord(j)}`} chevron onClick={go(p.onMove)} data-testid="edit-move" />}
           {r.truck && <RowItem start={<span class="quick-icon"><Truck size={20} /></span>} title={t('jobs.edit.truck')} sub={truckLabel(j.truck_id) || t('jobs.truck.noneYet')} chevron onClick={go(p.onTruck)} data-testid="edit-truck" />}
           {r.work && <RowItem start={<span class="quick-icon"><Wrench size={20} /></span>} title={t('jobs.edit.work')} sub={items.length ? items.map((i) => i.description).join(', ') : t('jobs.edit.noWork')} chevron onClick={go(p.onWork)} data-testid="edit-work" />}
           {r.notes && <RowItem start={<span class="quick-icon"><NotebookPen size={20} /></span>} title={t('jobs.edit.notes')} sub={j.problem || t('jobs.problem.none')} chevron onClick={go(p.onNotes)} data-testid="edit-notes" />}

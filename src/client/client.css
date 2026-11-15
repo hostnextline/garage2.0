@@ -278,6 +278,13 @@
 .bk-best svg, .bk-near svg { width: 14px; height: 14px; }
 .bk-slot-go { flex: none; font-size: 1.6rem; color: var(--ink-3); line-height: 1; }
 .bk-slots { margin-bottom: var(--sp-4); }
+/* « Plages d’arrivée »: free all day, the other hours of a day */
+.bk-flex { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-3); margin-bottom: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md, 12px); cursor: pointer; }
+.bk-flex.is-on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.bk-flex input { flex: none; width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); }
+.bk-flex > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bk-hours { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); margin-top: 4px; }
+.bk-hours-list { list-style: none; margin: 0; padding: 0 0 0 var(--sp-4); width: 100%; display: flex; flex-direction: column; gap: var(--sp-2); }
 .bk-summary { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--sunken); margin-bottom: var(--sp-4); }
 .bk-two, .bk-three { display: grid; gap: var(--sp-3); grid-template-columns: 1fr; }
 @media (min-width: 520px) { .bk-two { grid-template-columns: 1fr 1fr; } .bk-three { grid-template-columns: 7rem 1fr 1fr; } }
@@ -291,3 +298,4 @@
 /* « Signer avec le doigt plutôt »: a quiet link */
 .cl-linkbtn { border: 0; padding: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 .cl-sign { display: grid; gap: var(--sp-3, 12px); }
+.bk-slot-sm { min-height: 48px; }

@@ -22,7 +22,7 @@ export const shell: typeof fr = {
   quick: {
     title: 'Add',
     call: 'Incoming call', callSub: 'The number finds the customer; if not, start with the address, the car or the job',
-    book: 'Book an appointment', bookSub: 'Customer, services, block',
+    book: 'Book an appointment', bookSub: 'Customer, services, block', bookSubWin: 'Customer, services, arrival window',
     walkIn: 'Walk-in customer', walkInSub: 'The job starts now, here',
     quote: 'Estimate', quoteSub: 'A price on site, no customer file',
     customer: 'New customer', customerSub: 'Just the file',

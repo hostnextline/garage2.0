@@ -9,6 +9,14 @@ export const hours: typeof fr = {
   noTruckText: 'Add the first truck below to draw its hours.',
   noTruckOther: 'Ask the owner to add the trucks.',
   readOnly: 'You can see these hours, but you can’t change them.',
+  /* arrival windows (the garage books by arrival window): the same texts without the blocks */
+  win: {
+    help: 'Each pane is 30 minutes. Lit: the truck works. Drag to light up or turn off several panes at once: the first pane you touch decides.\nThe thick lines show the start and the end of the booking day.\nThen pick until when it counts, and tap “Apply”.',
+    tail: 'Appointments already booked stay; the days touched are reorganized, keeping the arrival window each customer was told.',
+    startSub: 'Where it starts its day.',
+    startHelp: 'The truck’s route starts here at the beginning of its day. Change it if the mechanic leaves from home with his truck.',
+    replanNote: 'Coming appointments will be placed again from this start. The arrival windows customers were told do not change.'
+  },
   grid: {
     label: 'Hours of {truck}, usual week',
     usual: 'Usual week',

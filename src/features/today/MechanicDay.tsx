@@ -5,7 +5,7 @@ import { useState } from 'preact/hooks';
 import { Power, MapPin, LocateOff, ChevronDown, ChevronUp, CalendarDays, MapPinCheck, Truck } from 'lucide-preact';
 import { Panel, Button, Empty, Help, Banner, BigStep, toast, Seg } from '../../ui';
 import { t, lang } from '../../lib/i18n';
-import { today, addDays, duration } from '../../lib/dates';
+import { today, addDays, duration, clock } from '../../lib/dates';
 import { me, myTrucks } from '../../data/auth';
 import { openShift, positionOf, settings, truck as truckRow, activeReturnTrip } from '../../data/select';
 import { shiftStart, shiftEnd, errorMessage } from '../../data/api';
@@ -15,7 +15,7 @@ import type { Job } from '../../data/types';
 import { JobTicket } from '../jobs/JobTicket';
 import { CarFirst } from '../jobs/CarFirst';
 import { StepButton, PRESSABLE } from '../jobs/StepButton';
-import { stepOf, jobRights, dayWord, clockOf, seen } from '../jobs/select';
+import { stepOf, jobRights, dayWord, clockOf, seen, outsideWindow, blockRange } from '../jobs/select';
 import { doReturn, doReturnEnd } from '../jobs/flow';
 import { sharing, retryPosition, agoText } from './position';
 import { OPEN, myJobsOn, nextStopOf, summaryOf, nextWorkDay, shiftsOf, workedMinutes, useTick, myRoute, setMyRoute } from './select';
@@ -149,6 +149,8 @@ function NextStop(p: { list: Job[] }) {
       <div class="stack">
         <CarFirst job={next} compact />
         <JobTicket job={next} />
+        {/* « Plages d'arrivée »: the planned arrival is outside the window told to this customer */}
+        {outsideWindow(next) && <Banner kind="warn" data-testid="today-next-late">{t('jobs.win.lateText', { time: clock(next.eta_min!, lang.value), window: blockRange(next) })}</Banner>}
         {PRESSABLE.includes(step.kind)
           ? <StepButton job={next} step={step} rights={jobRights(next)} />
           : <Button href={`#/job/${next.id}`} block>{t('today.next.open')}</Button>}

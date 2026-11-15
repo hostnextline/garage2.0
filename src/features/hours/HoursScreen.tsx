@@ -9,11 +9,12 @@ import { navigate } from '../../app/router';
 import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { addDays, dow, longDay, parseDay, duration, today as todayOf, isValidDay, type Day } from '../../lib/dates';
-import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs, blockOfKey } from '../../data/select';
+import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs, blockOfKey, windowsOn } from '../../data/select';
 import { rowsOf } from '../../data/store';
 import { applyHours, moveJob } from '../../data/api';
 import { closedJobs, otherKind, movesFor, type Move } from './closing';
 import { CloseDaySheet } from './CloseDaySheet';
+import { keepWindow } from '../jobs/select';
 import { deleteRow, pull, net } from '../../data/sync';
 import { can, isOwner, myTrucks, preview } from '../../data/auth';
 import type { TruckDay } from '../../data/types';
@@ -86,7 +87,7 @@ export default function HoursScreen({ params }: ScreenProps) {
   const pickPhoneDay = (d: number) => { setPhoneDay(d); if (mode === 'day') setFrom(nextDow(today, d)); };
 
   /* ---------- « Appliquer » ---------- */
-  /* the new hours close a day (or a block) that has appointments, and the garage has the other kind of vehicle: ask first */
+  /* the new hours close a day (or a block; arrival windows: the hours of a window told to a customer) that has appointments, and the garage has the other kind of vehicle: ask first */
   const [closing, setClosing] = useState<Move[] | null>(null);
   const apply = async (asked = false) => {
     if (!truckId || plan.empty) return;
@@ -114,7 +115,8 @@ export default function HoursScreen({ params }: ScreenProps) {
     let moved = 0;
     if (move) for (const m of list) {
       if (!m.target) continue;
-      try { await moveJob(m.job.id, m.job.day, m.job.block, m.target); moved++; } catch { /* refused (full, started…): it stays, said below */ }
+      // same day, same block; booked by arrival window: the same window told to the customer
+      try { await moveJob(m.job.id, m.job.day, m.job.block, m.target, keepWindow(m.job)); moved++; } catch { /* refused (full, started…): it stays, said below */ }
     }
     await apply(true);
     if (move) {
@@ -137,14 +139,14 @@ export default function HoursScreen({ params }: ScreenProps) {
   /* ---------- the screen ---------- */
   if (!list.length && !net.value.ready) {
     return (
-      <Page title={t('hours.title')} sub={t('hours.sub')} help={t('hours.help')}>
+      <Page title={t('hours.title')} sub={t('hours.sub')} help={t(windowsOn.value ? 'hours.win.help' : 'hours.help')}>
         <Panel><div aria-busy="true"><span class="sr-only">{t('common.loading')}</span><Skeleton h={48} w="60%" /><div style={{ height: '16px' }} /><Skeleton h={20} lines={8} /></div></Panel>
       </Page>
     );
   }
   if (!list.length) {
     return (
-      <Page title={t('hours.title')} sub={t('hours.sub')} help={t('hours.help')}>
+      <Page title={t('hours.title')} sub={t('hours.sub')} help={t(windowsOn.value ? 'hours.win.help' : 'hours.help')}>
         <Panel><Empty icon={<TruckIcon />} title={t('hours.noTruck')} text={manage ? t('hours.noTruckText') : t('hours.noTruckOther')} /></Panel>
         {manage && <TrucksPanel onAdded={(id) => navigate(`/hours/${id}`, { replace: true })} />}
       </Page>
@@ -214,7 +216,7 @@ export default function HoursScreen({ params }: ScreenProps) {
             <>
               <p class="hours-effect-what">{effect}</p>
               {alwaysReplaces && <p>{t('hours.apply.effectAlwaysDays')}</p>}
-              <p>{t('hours.apply.tail')}</p>
+              <p>{t(windowsOn.value ? 'hours.win.tail' : 'hours.apply.tail')}</p>
               {jobsHit > 0 && <p class="hours-effect-jobs">{t('hours.apply.jobs', { n: jobsHit })}</p>}
             </>
           )}
@@ -242,7 +244,7 @@ export default function HoursScreen({ params }: ScreenProps) {
     </Panel>
   );
   return (
-    <Page title={t('hours.title')} sub={t('hours.sub')} help={t('hours.help')} wide={isWide} data-testid="hours-screen">
+    <Page title={t('hours.title')} sub={t('hours.sub')} help={t(windowsOn.value ? 'hours.win.help' : 'hours.help')} wide={isWide} data-testid="hours-screen">
       {truckChips}
       {!canEdit && truckId && <Banner kind="info">{t('hours.readOnly')}</Banner>}
       <div class={`hours-layout${isWide ? ' is-wide' : ''}`}>

@@ -3,17 +3,19 @@
    of the route estimate. Moving the start, or changing a number of the estimate, re-plans the coming appointments
    on the server (Part 17); the phone brings them back at once. */
 import { useState } from 'preact/hooks';
-import { t } from '../../lib/i18n';
-import { DEFAULT_BLOCKS, type BlockKey } from '../../lib/dates';
-import { settings } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { t, lang } from '../../lib/i18n';
+import { DEFAULT_BLOCKS, addDays, clock, today, type BlockKey } from '../../lib/dates';
+import { settings, windowsOn } from '../../data/select';
+import { saveSettings, windowsSwitch, lockWindows, notify } from '../../data/api';
 import { flush, pull } from '../../data/sync';
-import { Panel, Field, Input, PhoneInput, Banner, Button, Switch, attempt, toast } from '../../ui';
-import { Copy, Share2, ExternalLink } from 'lucide-preact';
+import { isOwner, hasRole } from '../../data/auth';
+import { Panel, Field, Input, PhoneInput, Banner, Button, Switch, Seg, ask, attempt, toast } from '../../ui';
+import { Copy, Share2, ExternalLink, CalendarCheck } from 'lucide-preact';
 import { appBase, movedTo } from '../../lib/config';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
 import { MapView } from '../map/MapView';
 import { useSectionDraft, SaveBar, Section, NumInput, TimeInput, rangeError } from './SectionFrame';
+import { WIN_DEFAULTS, WIN_LIMITS, spanOf, withDaySpan, exampleWindow, spanTooShort } from './windows';
 
 interface Booking {
   blocks: { key: BlockKey; start: number; end: number }[];
@@ -24,6 +26,8 @@ interface Booking {
   return_phone: string;
   /** every mechanic sees every route and may do any of its jobs (the vehicles are nobody's own) */
   shared_routes: boolean;
+  /** « Plages d'arrivée »: minutes before / after the estimated arrival, and the rounding (30 or 60) */
+  win_before_min: number | null; win_after_min: number | null; win_round_min: number | null;
 }
 const NUMS: { k: keyof Booking; min: number; max: number; unit: 'days' | 'kmh' | 'pct' | 'min' | 'km'; decimals?: boolean }[] = [
   { k: 'horizon_days', min: 7, max: 365, unit: 'days' },
@@ -48,8 +52,10 @@ export function BookingSection() {
     unknown_min: b.unknown_min, min_block_min: b.min_block_min, near_km: b.near_km,
     home: { label: b.home?.label || 'Centrale', address: b.home?.address || '', lat: b.home?.lat ?? null, lng: b.home?.lng ?? null },
     return_phone: b.return_phone || '',
-    shared_routes: !!(b as { shared_routes?: boolean }).shared_routes
+    shared_routes: !!(b as { shared_routes?: boolean }).shared_routes,
+    win_before_min: b.win_before_min ?? WIN_DEFAULTS.before, win_after_min: b.win_after_min ?? WIN_DEFAULTS.after, win_round_min: b.win_round_min === 30 ? 30 : WIN_DEFAULTS.round
   };
+  const winOn = windowsOn.value;
   const { draft: d, set, dirty, reset } = useSectionDraft<Booking>('booking', saved);
   const [err, setErr] = useState<Record<string, string | null>>({});
   const unit = (u: string) => (u === 'days' ? t('settings.booking.days') : u === 'kmh' ? 'km/h' : u === 'pct' ? '%' : u === 'km' ? 'km' : t('settings.booking.minutes'));
@@ -64,6 +70,11 @@ export function BookingSection() {
   const save = async () => {
     const e: Record<string, string | null> = {};
     for (const n of NUMS) e[n.k] = rangeError(d[n.k] as number | null, n.min, n.max);
+    if (winOn) {
+      e.win_before_min = rangeError(d.win_before_min, WIN_LIMITS.before[0], WIN_LIMITS.before[1]);
+      e.win_after_min = rangeError(d.win_after_min, WIN_LIMITS.after[0], WIN_LIMITS.after[1]);
+      if (!e.win_before_min && !e.win_after_min && spanTooShort(spanOf(d.blocks), win)) e.day = t('settings.booking.win.dayShort');
+    }
     const bad = d.blocks.some((_, i) => blockErr(i));
     setErr(e);
     if (bad || Object.values(e).some(Boolean)) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
@@ -73,12 +84,50 @@ export function BookingSection() {
     const ok = await attempt(() => saveSettings('booking', {
       ...settings.value.booking, blocks: d.blocks, horizon_days: Math.round(d.horizon_days!), speed_kmh: d.speed_kmh, detour: Math.round(100 + d.detour_pct!) / 100,
       stop_min: Math.round(d.stop_min!), unknown_min: Math.round(d.unknown_min!), min_block_min: Math.round(d.min_block_min!), near_km: d.near_km, home,
-      return_phone: d.return_phone.trim() || null, shared_routes: d.shared_routes
+      return_phone: d.return_phone.trim() || null, shared_routes: d.shared_routes,
+      // the numbers of the windows are written only once the garage books by windows (nothing new in the settings before)
+      ...(winOn ? { win_before_min: Math.round(d.win_before_min!), win_after_min: Math.round(d.win_after_min!), win_round_min: d.win_round_min === 30 ? 30 : 60 } : {})
     }), { ok: replan ? t(moved ? 'settings.booking.startMoved' : 'settings.booking.replanned') : t('settings.saved') });
     if (!ok) return;
     reset();
     // the server planned the coming appointments again: bring them now (realtime brings them too, a bit later)
     if (replan) void flush().then(() => pull('jobs')).catch(() => undefined);
+  };
+
+  /* ---------- « Plages d'arrivée » ---------- */
+  const win = { before: d.win_before_min, after: d.win_after_min, round: d.win_round_min };
+  const span = spanOf(d.blocks);
+  const example = exampleWindow(15 * 60, win, span);
+  const [busy, setBusy] = useState(false);
+  const mayLock = isOwner() || hasRole('office');
+  const turn = async (on: boolean) => {
+    if (busy) return;
+    const yes = await ask({ title: t(on ? 'settings.booking.win.askOn' : 'settings.booking.win.askOff'), text: t(on ? 'settings.booking.win.askOnText' : 'settings.booking.win.askOffText'),
+      ok: t(on ? 'settings.booking.win.askOnOk' : 'settings.booking.win.askOffOk') });
+    if (!yes) return;
+    setBusy(true);
+    try {
+      let n = 0;
+      const ok = await attempt(async () => { n = (await windowsSwitch(on))?.converted ?? 0; });
+      if (!ok) return;
+      // the server changed the setting and the coming appointments: bring both now
+      await Promise.all([pull('settings'), pull('jobs')]).catch(() => undefined);
+      toast(t(on ? 'settings.booking.win.onDone' : 'settings.booking.win.offDone', { n }), { kind: 'ok' });
+    } finally { setBusy(false); }
+  };
+  const lock = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      let n = 0;
+      let ids: string[] = [];
+      const ok = await attempt(async () => { const r = await lockWindows(addDays(today(), 1)); n = r?.fixed ?? 0; ids = r?.jobs ?? []; });
+      if (!ok) return;
+      // each customer whose window was just fixed is told (the text « Plage confirmée », if it is switched on)
+      await Promise.all(ids.map((id) => notify('window', id).catch(() => undefined)));
+      await pull('jobs').catch(() => undefined);
+      toast(n ? t('settings.booking.win.locked', { n }) : t('settings.booking.win.lockedNone'), { kind: 'ok' });
+    } finally { setBusy(false); }
   };
 
   const place: PlaceValue = { address: d.home.address, unit: null, postal_code: null, lat: d.home.lat, lng: d.home.lng };
@@ -113,7 +162,50 @@ export function BookingSection() {
       </Panel>
       {/* « Réservation en ligne »: put aside on 2026-11-09 (switched off on the server, booking.web.on = false) until it is reworked */}
       {false && <WebBooking />}
-      <Panel title={t('settings.booking.blocks')} help={t('settings.booking.blocksHelp')}>
+      <Panel title={t('settings.booking.win.title')} help={t('settings.booking.win.help')} data-testid="booking-windows">
+        <div class="stack">
+          <p class="muted" style={{ margin: 0 }}>{t('settings.booking.win.lead')}</p>
+          <Switch checked={winOn} disabled={!isOwner() || busy} onChange={(v) => void turn(v)} label={t('settings.booking.win.switch')}
+            hint={t(!isOwner() ? 'settings.booking.win.ownerOnly' : winOn ? 'settings.booking.win.onHint' : 'settings.booking.win.offHint')} data-testid="windows-switch" />
+          {winOn && (
+            <>
+              <div class="settings-grid-3">
+                <Field label={t('settings.booking.win.before')} help={t('settings.booking.win.beforeHelp')} error={err.win_before_min}>
+                  <NumInput value={d.win_before_min} onValue={(v) => { set((x) => ({ ...x, win_before_min: v })); if (err.win_before_min) setErr({ ...err, win_before_min: null }); }}
+                    unit={t('settings.booking.minutes')} invalid={!!err.win_before_min} aria-label={t('settings.booking.win.before')} data-testid="windows-before" />
+                </Field>
+                <Field label={t('settings.booking.win.after')} help={t('settings.booking.win.afterHelp')} error={err.win_after_min}>
+                  <NumInput value={d.win_after_min} onValue={(v) => { set((x) => ({ ...x, win_after_min: v })); if (err.win_after_min) setErr({ ...err, win_after_min: null }); }}
+                    unit={t('settings.booking.minutes')} invalid={!!err.win_after_min} aria-label={t('settings.booking.win.after')} data-testid="windows-after" />
+                </Field>
+                <Field label={t('settings.booking.win.round')} help={t('settings.booking.win.roundHelp')}>
+                  <Seg value={d.win_round_min === 30 ? '30' : '60'} onValue={(v) => set((x) => ({ ...x, win_round_min: Number(v) }))} label={t('settings.booking.win.round')} data-testid="windows-round"
+                    options={[{ value: '60', label: t('settings.booking.win.round60') }, { value: '30', label: t('settings.booking.win.round30') }]} />
+                </Field>
+              </div>
+              <p class="settings-example" data-testid="windows-example" aria-live="polite">
+                {t('settings.booking.win.example', { eta: clock(15 * 60, lang.value), from: clock(example[0], lang.value), to: clock(example[1], lang.value) })}
+              </p>
+              <div class="settings-block" data-testid="windows-day">
+                <b class="settings-block-name">{t('settings.booking.win.day')}</b>
+                <label class="settings-block-time"><span class="small muted">{t('settings.booking.from')}</span>
+                  <TimeInput value={span[0]} onValue={(v) => { set((x) => ({ ...x, blocks: withDaySpan(x.blocks, v, spanOf(x.blocks)[1]) })); if (err.day) setErr({ ...err, day: null }); }}
+                    invalid={!!err.day} aria-label={`${t('settings.booking.win.day')}, ${t('settings.booking.from')}`} data-testid="windows-day-start" /></label>
+                <label class="settings-block-time"><span class="small muted">{t('settings.booking.to')}</span>
+                  <TimeInput value={span[1]} onValue={(v) => { set((x) => ({ ...x, blocks: withDaySpan(x.blocks, spanOf(x.blocks)[0], v) })); if (err.day) setErr({ ...err, day: null }); }}
+                    invalid={!!err.day} aria-label={`${t('settings.booking.win.day')}, ${t('settings.booking.to')}`} data-testid="windows-day-end" /></label>
+                {err.day && <span class="field-error settings-block-err" role="alert">{err.day}</span>}
+              </div>
+              <p class="small muted" style={{ margin: 0 }}>{t('settings.booking.win.dayHelp')}</p>
+              <div class="stack" data-testid="windows-flex">
+                <p class="small muted" style={{ margin: 0 }}>{t('settings.booking.win.flexHelp')}</p>
+                {mayLock && <div class="row-wrap"><Button icon={<CalendarCheck />} disabled={busy} onClick={() => void lock()} data-testid="windows-lock">{t('settings.booking.win.lock')}</Button></div>}
+              </div>
+            </>
+          )}
+        </div>
+      </Panel>
+      {!winOn && <Panel title={t('settings.booking.blocks')} help={t('settings.booking.blocksHelp')}>
         <div class="settings-blocks">
           {d.blocks.map((bl, i) => {
             const e = blockErr(i);
@@ -130,7 +222,7 @@ export function BookingSection() {
             );
           })}
         </div>
-      </Panel>
+      </Panel>}
       <Panel title={t('settings.booking.plan')} help={t('settings.booking.planHelp')}>
         <div class="settings-grid-3">
           {NUMS.map((n) => (

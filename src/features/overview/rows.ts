@@ -6,7 +6,8 @@ import { t } from '../../lib/i18n';
 
 export interface OverviewRow { job: Job; n: number | null; color: string; truckName: string }
 
-const ORDER: Record<string, number> = { am: 0, pm: 1, eve: 2 };
+// the jobs booked by arrival window ('day') come after the blocks (their own list on the screen), by arrival time
+const ORDER: Record<string, number> = { am: 0, pm: 1, eve: 2, day: 3 };
 
 /** in block order, then the arrival time; the number and colour are the ones of the map */
 export function overviewRows(jobs: Job[], m: Assembled): OverviewRow[] {

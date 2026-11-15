@@ -1,11 +1,12 @@
-/* A job as a ticket (a work order with its stub). Stub: the stop number (big) and the block (small), in the truck's
+/* A job as a ticket (a work order with its stub). Stub: the stop number (big) and the block (small; a job booked by arrival
+   window: its window, « 14 h–18 h »), in the truck's
    colour. Body: the customer, the car and the work, when (and which truck), the status in words.
    Used by Aujourd'hui, the agenda and the customer's file. */
 import type { Job } from '../../data/types';
 import { Ticket, StatusPill } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { truckColor, truckLabel, vehicle, vehicleLabel, invoiceOf } from '../../data/select';
-import { jobName, servicesText, shortDayWord, etaWord, clockOf, proposedOf, seen } from './select';
+import { jobName, servicesText, shortDayWord, etaWord, clockOf, proposedOf, seen, momentShort, outsideWindow, isWindowJob, blockRange } from './select';
 import './jobs.css';
 
 export interface JobTicketProps { job: Job; showDay?: boolean; showTruck?: boolean }
@@ -28,12 +29,16 @@ export function JobTicket({ job, showDay, showTruck }: JobTicketProps) {
   // one quiet flag at most: money to collect, or an answer the customer still owes
   const flag = j.status === 'done' && inv && inv.status === 'issued' ? t('jobs.ticket.toCollect')
     : !off && j.status !== 'done' && proposedOf(j.id).length ? t('jobs.ticket.waitingAnswer') : '';
-  const bits = [showDay ? shortDayWord(j.day, l) : '', off ? '' : timeWord(j, l), showTruck ? (truckLabel(j.truck_id) || t('jobs.ticket.noTruck')) : '', flag].filter(Boolean);
+  // « Hors plage »: the planned arrival is outside the window told to the customer
+  const late = outsideWindow(j) ? t('common.window.late') : '';
+  // the window told to the customer, in words beside the planned arrival, while the stop is still to come
+  const told = isWindowJob(j) && (j.status === 'booked' || j.status === 'en_route') ? blockRange(j, l) : '';
+  const bits = [showDay ? shortDayWord(j.day, l) : '', off ? '' : timeWord(j, l), off ? '' : told, showTruck ? (truckLabel(j.truck_id) || t('jobs.ticket.noTruck')) : '', late, flag].filter(Boolean);
   const meta = bits.length ? bits.map((b, i) => (i === 0 ? b.charAt(0).toUpperCase() + b.slice(1) : b)).join(', ') : undefined;
   return (
     <Ticket
       big={j.stop_order != null && !off ? j.stop_order : '—'}
-      small={t(`common.blocks.${j.block}`)}
+      small={momentShort(j, l)}
       color={j.truck_id ? truckColor(j.truck_id) : null}
       title={jobName(j)}
       sub={[car, work].filter(Boolean).join(', ') || undefined}
@@ -41,7 +46,7 @@ export function JobTicket({ job, showDay, showTruck }: JobTicketProps) {
       status={<StatusPill status={j.status} />}
       off={off}
       href={`#/job/${j.id}`}
-      class={`jobs-ticket${flag ? ' has-flag' : ''}`}
+      class={`jobs-ticket${flag || late ? ' has-flag' : ''}${late ? ' is-late' : ''}`}
       data-testid="job-ticket"
     />
   );

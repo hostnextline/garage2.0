@@ -13,6 +13,7 @@ import { fromDevice } from '../map/device';
 import { useRoads, roadOf, roadTotal } from '../map/useRoads';
 import { moveStops } from '../booking/preview';
 import type { Move } from './closing';
+import { momentWord } from '../jobs/select';
 
 const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
 const kindWord = (truckId: string | null, form: 'of' | 'to') => t(`hours.closing.${form}.${truckRow(truckId)?.tire_machine === false ? 'car' : 'truck'}`);
@@ -62,7 +63,7 @@ export function CloseDaySheet(p: { truckId: string; moves: Move[]; onMove: () =>
               <ul>
                 {p.moves.filter((m) => m.job.day === d).map((m) => (
                   <li key={m.job.id} data-testid="close-day-job">
-                    <span>{[m.job.number ? `#${m.job.number}` : '', customerName(customerRow(m.job.customer_id)), t(`common.blocks.${m.job.block}`).toLowerCase(), m.job.address || customerRow(m.job.customer_id)?.address || ''].filter(Boolean).join(', ')}</span>
+                    <span>{[m.job.number ? `#${m.job.number}` : '', customerName(customerRow(m.job.customer_id)), momentWord(m.job), m.job.address || customerRow(m.job.customer_id)?.address || ''].filter(Boolean).join(', ')}</span>
                     {m.target ? <Pill tone="ok" dot={false}>{t('hours.closing.goes', { to: kindWord(m.target, 'to') })}</Pill>
                       : <Pill tone="warn" dot={false}>{t(`hours.closing.stays.${m.why || 'closed'}`)}</Pill>}
                   </li>

@@ -28,12 +28,14 @@ export const customers: typeof fr = {
     last: 'Last visit',
     today: { am: 'This morning', pm: 'This afternoon', eve: 'This evening' },
     tomorrow: { am: 'Tomorrow morning', pm: 'Tomorrow afternoon', eve: 'Tomorrow evening' },
-    other: { am: '{day}, morning', pm: '{day}, afternoon', eve: '{day}, evening' }
+    other: { am: '{day}, morning', pm: '{day}, afternoon', eve: '{day}, evening' },
+    day: '{day}, {window}'
   },
   whenLine: {
     today: { am: 'Appointment this morning', pm: 'Appointment this afternoon', eve: 'Appointment this evening' },
     tomorrow: { am: 'Appointment tomorrow morning', pm: 'Appointment tomorrow afternoon', eve: 'Appointment tomorrow evening' },
     other: { am: 'Appointment {day}, morning', pm: 'Appointment {day}, afternoon', eve: 'Appointment {day}, evening' },
+    day: { near: 'Appointment {day}, {window}', other: 'Appointment {day}, {window}' },
     last: 'Last visit: {day}'
   },
   flags: {

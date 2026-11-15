@@ -169,3 +169,79 @@ describe('carDraftLabel', () => {
     expect(carDraftLabel({ year: '', make: '', model: '', vin: '' })).toBe('');
   });
 });
+
+import { suggWindow, choiceWindow, choicePayload, moveWindow, sameMoment, distinctWindows, dayLoad, BLOCK_REFUSALS, WIN_LEN } from './logic';
+import { choiceWords } from './choice';
+describe('« Plages d’arrivée »: a day and its 4-hour window', () => {
+  const ofEta = (eta: number): [number, number] => [Math.round(eta / 60) * 60 - 60, Math.round(eta / 60) * 60 + 180];
+  it('the address bar: blocks as before; with windows the day, and its window when said', () => {
+    expect(parseChoice('2026-11-05', 'day')).toBe(null);                       // blocks: « day » is not a block
+    expect(parseChoice('2026-11-05', 'pm')).toEqual({ day: '2026-11-05', block: 'pm' });
+    expect(parseChoice('2026-11-05', 'day', { windows: true })).toEqual({ day: '2026-11-05', block: 'day' });
+    expect(parseChoice('2026-11-05', 'pm', { windows: true })).toEqual({ day: '2026-11-05', block: 'day' });   // an old link
+    expect(parseChoice('2026-11-05', 'day', { windows: true, win: '840' })).toEqual({ day: '2026-11-05', block: 'day', win_start: 840, win_end: 1080 });
+    expect(parseChoice('2026-11-05', 'day', { windows: true, flex: '1', win: '840' })).toEqual({ day: '2026-11-05', block: 'day', win_flex: true });
+    expect(parseChoice('2026-11-05', 'day', { windows: true, win: '9h' })).toEqual({ day: '2026-11-05', block: 'day' });
+    expect(parseChoice('2026-02-30', 'day', { windows: true })).toBe(null);
+    expect(parseChoice('2026-11-05', null, { windows: true })).toBe(null);
+  });
+  it('the window of a moment offered: the server’s, else from its estimated arrival', () => {
+    expect(suggWindow({ win_start: 840, win_end: 1080, eta: 900 }, ofEta)).toEqual([840, 1080]);
+    expect(suggWindow({ win_start: 600 }, ofEta)).toEqual([600, 600 + WIN_LEN]);
+    expect(suggWindow({ eta: 900 }, ofEta)).toEqual([840, 1080]);               // 15 h → entre 14 h et 18 h
+    expect(suggWindow({}, ofEta)).toBe(null);
+  });
+  it('what is sent with the booking: the window’s start, or flexible, or nothing (the server gives it)', () => {
+    expect(choicePayload({ day: 'd', block: 'pm' })).toEqual({ day: 'd', block: 'pm' });
+    expect(choicePayload({ day: 'd', block: 'day', win_start: 840, win_end: 1080, eta: 900 })).toEqual({ day: 'd', block: 'day', win_start: 840 });
+    expect(choicePayload({ day: 'd', block: 'day', win_flex: true, win_start: 840 })).toEqual({ day: 'd', block: 'day', win_flex: true });
+    expect(choicePayload({ day: 'd', block: 'day' })).toEqual({ day: 'd', block: 'day' });
+    // « Réserver quand même »: no window asked; a flexible one stays flexible
+    expect(choicePayload({ day: 'd', block: 'day', win_start: 840 }, true)).toEqual({ day: 'd', block: 'day' });
+    expect(choicePayload({ day: 'd', block: 'day', win_flex: true }, true)).toEqual({ day: 'd', block: 'day', win_flex: true });
+  });
+  it('moving: the window goes with the move; a block move keeps the old call', () => {
+    expect(moveWindow({ day: 'd', block: 'am' })).toBe(null);
+    expect(moveWindow({ day: 'd', block: 'day', win_start: 600, win_end: 840 })).toEqual({ start: 600, flex: false });
+    expect(moveWindow({ day: 'd', block: 'day', win_flex: true })).toEqual({ start: null, flex: true });
+    expect(moveWindow({ day: 'd', block: 'day' })).toEqual({ start: null, flex: false });
+  });
+  it('the same moment as the appointment has: same day and window, or both flexible', () => {
+    const j = { day: 'd', block: 'day' as const, win_start: 600, win_flex: false };
+    expect(sameMoment({ day: 'd', block: 'day', win_start: 600 }, j)).toBe(true);
+    expect(sameMoment({ day: 'd', block: 'day', win_start: 660 }, j)).toBe(false);
+    expect(sameMoment({ day: 'd', block: 'day', win_flex: true }, j)).toBe(false);
+    expect(sameMoment({ day: 'd', block: 'day', win_flex: true }, { ...j, win_start: null, win_flex: true })).toBe(true);
+    expect(sameMoment({ day: 'e', block: 'day', win_start: 600 }, j)).toBe(false);
+    expect(sameMoment({ day: 'd', block: 'am' }, { day: 'd', block: 'am' })).toBe(true);
+  });
+  it('the hours of a day: each window once, the best first', () => {
+    const rows = [{ eta: 900, win_start: 840, win_end: 1080 }, { eta: 930, win_start: 840, win_end: 1080 }, { eta: 600 }, {}];
+    expect(distinctWindows(rows, ofEta).map((r) => r.win)).toEqual([[840, 1080], [540, 780]]);
+    expect(choiceWindow({ win_start: 840, win_end: 1080 })).toEqual([840, 1080]);
+    expect(choiceWindow({ win_start: 840 })).toEqual([840, 1080]);
+    expect(choiceWindow({ win_flex: true, win_start: 840 })).toBe(null);
+    expect(choiceWindow(null)).toBe(null);
+  });
+  it('a whole day is still open in the afternoon; past once there is no time left for a job', () => {
+    const lane = { truck: { id: 'a' }, cap: 300, used: 0, left: 300, jobs: [] };
+    const load: LoadLike = { trucks: [lane], open: false, started: true };       // what a block says after 8 h
+    const o = { past: false, isToday: true, dayEnd: 1200, minBlock: 45 };
+    expect(cellState(dayLoad(load, { ...o, now: 900 }), 60, 20).state).toBe('ok');
+    expect(cellState(dayLoad(load, { ...o, now: 1170 }), 60, 20).state).toBe('started');
+    expect(cellState(dayLoad(load, { ...o, past: true, isToday: false, now: 600 }), 60, 20).state).toBe('started');
+    expect(cellState(dayLoad({ ...load, trucks: [{ ...lane, cap: 0, left: 0 }] }, { ...o, isToday: false, now: 600 }), 60, 20).state).toBe('closed');
+  });
+  it('a window the server can no longer keep sends the person back to the picker', () => {
+    expect(BLOCK_REFUSALS).toContain('window_full');
+    expect(refusalCode({ hint: 'window_full', message: 'x' })).toBe('window_full');
+  });
+  it('the choice in words: never « matin / après-midi / soir / bloc »', () => {
+    const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    expect(choiceWords({ day: tomorrow, block: 'day', win_start: 840, win_end: 1080 }, 'fr')).toBe('Demain, entre 14 h et 18 h');
+    expect(choiceWords({ day: tomorrow, block: 'day', win_flex: true }, 'fr')).toBe('Demain, dans la journée (plage confirmée la veille)');
+    expect(choiceWords({ day: tomorrow, block: 'day' }, 'fr')).toBe('Demain, plage donnée par l’app');
+    expect(choiceWords({ day: tomorrow, block: 'day', win_start: 840 }, 'en')).toMatch(/^Tomorrow, between 2 p\.m\. and 6 p\.m\.$/);
+    expect(choiceWords({ day: tomorrow, block: 'pm' }, 'fr')).toBe('Demain après-midi, 12 h à 16 h');
+  });
+});
