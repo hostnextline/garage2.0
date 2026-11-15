@@ -1159,8 +1159,8 @@ drop trigger if exists settings_windows_guard on public.settings;
 create trigger settings_windows_guard before update of booking on public.settings for each row execute function public.settings_windows_guard();
 
 -- windows_switch(op, on): owner only. ON: today's and the coming jobs become jobs of the day, their window = the hours of the
--- block they were booked in (that is what those customers were told). OFF: each one goes back to the block of its planned
--- arrival (else of its window's start, else the first block), no window. Then the coming days are planned again; a day whose
+-- block they were booked in (that is what those customers were told). OFF: each one goes back to the block of its window's start (what the
+-- customer was told; else of its planned arrival, else the first block), no window. Then the coming days are planned again; a day whose
 -- new plan would throw an appointment to « À placer » stays as it was. Past days are never touched. Safe to call twice.
 create or replace function public.windows_switch(p_op uuid, p_on boolean) returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_done jsonb := public.op_done(p_op); v_today date := public.local_today(); n int := 0; d date; bk record; p jsonb;
@@ -1182,8 +1182,9 @@ begin
     select count(*) into n from public.jobs j where j.day >= v_today and j.block = 'day' and j.deleted_at is null;
     update public.jobs j set
       block = coalesce(
-        (select x.key from public.blocks_set() x where j.eta_min >= x.start_min and j.eta_min < x.end_min order by x.pos limit 1),
+        -- what the customer was told first (a job that came from a block goes back to that very block), then where it is planned
         (select x.key from public.blocks_set() x where j.win_start >= x.start_min and j.win_start < x.end_min order by x.pos limit 1),
+        (select x.key from public.blocks_set() x where j.eta_min >= x.start_min and j.eta_min < x.end_min order by x.pos limit 1),
         (select x.key from public.blocks_set() x order by x.pos limit 1), 'am'),
       win_start = null, win_end = null, win_flex = false
     where j.day >= v_today and j.block = 'day';

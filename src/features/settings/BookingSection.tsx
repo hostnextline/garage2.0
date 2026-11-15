@@ -5,7 +5,7 @@
 import { useState } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
 import { DEFAULT_BLOCKS, addDays, clock, today, type BlockKey } from '../../lib/dates';
-import { settings, windowsOn } from '../../data/select';
+import { settings, windowsOn, jobsOn } from '../../data/select';
 import { saveSettings, windowsSwitch, lockWindows, notify } from '../../data/api';
 import { flush, pull } from '../../data/sync';
 import { isOwner, hasRole } from '../../data/auth';
@@ -129,9 +129,12 @@ export function BookingSection() {
       let ids: string[] = [];
       const ok = await attempt(async () => { const r = await lockWindows(addDays(today(), 1)); n = r?.fixed ?? 0; ids = r?.jobs ?? []; });
       if (!ok) return;
-      // each customer whose window was just fixed is told (the text « Plage confirmée », if it is switched on)
-      await Promise.all(ids.map((id) => notify('window', id).catch(() => undefined)));
       await pull('jobs').catch(() => undefined);
+      // each flexible customer of tomorrow whose window is fixed is told (the text « Plage confirmée », if it is switched on):
+      // the ones just fixed, and the ones the server fixed by itself at 18 h (a customer already told is not texted twice)
+      const day = addDays(today(), 1);
+      const told = new Set<string>([...ids, ...jobsOn(day).filter((j) => j.block === 'day' && j.win_flex && j.win_start != null && j.status === 'booked').map((j) => j.id)]);
+      await Promise.all([...told].map((id) => notify('window', id).catch(() => undefined)));
       toast(n ? t('settings.booking.win.locked', { n }) : t('settings.booking.win.lockedNone'), { kind: 'ok' });
     } finally { setBusy(false); }
   };
