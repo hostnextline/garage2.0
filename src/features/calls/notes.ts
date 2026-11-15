@@ -10,12 +10,12 @@ export interface CallNote {
 }
 const COLS = 'id, message_id, phone, customer_id, dir, at, duration_sec, status, summary, told, todo, lang, error';
 
-/** the notes of one customer (by their file, or by their number while no file is linked), newest first */
+/** the notes of one customer (by their file; by a number when there is no file), newest first */
 export async function notesOf(customerId: string | null, phone: string | null, limit = 30): Promise<CallNote[]> {
   const digits = (phone || '').replace(/\D/g, '').slice(-10);
   let q = sb.from('call_notes').select(COLS).order('at', { ascending: false }).limit(limit);
-  if (customerId && digits.length === 10) q = q.or(`customer_id.eq.${customerId},phone_digits.eq.${digits}`);
-  else if (customerId) q = q.eq('customer_id', customerId);
+  // the server links each call to the file with its number (when the note is made, and when a file with that number appears)
+  if (customerId) q = q.eq('customer_id', customerId);
   else if (digits.length === 10) q = q.eq('phone_digits', digits);
   else return [];
   const { data, error } = await q;

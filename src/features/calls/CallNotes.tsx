@@ -60,7 +60,7 @@ export function NoteCard(p: { n: CallNote; who?: boolean; onChanged?: () => void
         <div class="call-note-body">
           {n.summary && <p data-testid="call-note-summary">{n.summary}</p>}
           {n.told && <p><b>{t('calls.told')}</b> {n.told}</p>}
-          {n.todo && <p class="call-note-todo" data-testid="call-note-todo"><ListChecks size={16} aria-hidden="true" /> <b>{t('calls.todo')}</b> {n.todo}</p>}
+          {n.todo && <p class="call-note-todo" data-testid="call-note-todo"><ListChecks size={16} aria-hidden="true" /><span><b>{t('calls.todo')}</b> {n.todo}</span></p>}
           <div class="row-wrap">
             <Button size="sm" variant="ghost" onClick={() => void showAll()} data-testid="call-note-all">{t(full != null ? 'calls.hideAll' : 'calls.showAll')}</Button>
             {p.who && c && <Button size="sm" variant="ghost" icon={<UserRound />} href={`#/customer/${c.id}`}>{t('calls.file')}</Button>}
@@ -113,6 +113,10 @@ export default function CallsScreen(_p: ScreenProps) {
     } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
     finally { setBusy(false); }
   };
+  // opening the screen looks for new calls by itself (quietly: the button says what happened), and again while notes are being written
+  const waiting = list ? pendingCount(list) : 0;
+  useEffect(() => { let on = true; void callsSync().then(() => { if (on) void again(); }, () => undefined); return () => { on = false; }; }, []);
+  useEffect(() => { if (!waiting) return; const id = setTimeout(() => void callsSync().then(() => again(), () => undefined), 30_000); return () => clearTimeout(id); }, [waiting, list]);
   const all = (list || []).filter((n) => n.status !== 'short' && n.status !== 'no_recording');
   const todo = withTodo(all);
   const shown = tab === 'todo' ? todo : all;
