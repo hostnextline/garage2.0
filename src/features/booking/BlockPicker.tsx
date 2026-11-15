@@ -10,7 +10,7 @@ import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
 import { cellState, isFar, farLimits, farInfo, momentsByKey, offered, betterMoments, betterText, roadWords, type CellState, type FarInfo } from './logic';
 import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
-import { RoutePreview, type PreviewAsk } from './RoutePreview';
+import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';
 import { fromDevice } from '../map/device';
@@ -139,8 +139,35 @@ export function BlockPicker(p: BlockPickerProps) {
   const [preview, setPreview] = useState<PreviewAsk | null>(null);
   const hasPos = p.lat != null && p.lng != null;
   const truckOf = (day: string, block: BlockKey) => p.truckId || sugg.list.find((s) => s.day === day && s.block === block)?.truck || null;
-  const see = (day: string, block: BlockKey) => setPreview({ day, block, truckId: truckOf(day, block), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
+  const askOf = (day: string, block: BlockKey): PreviewAsk => ({ day, block, truckId: truckOf(day, block), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
     when: phrase(day, block), exclude: p.excludeJob ?? null });
+  const see = (day: string, block: BlockKey) => setPreview(askOf(day, block));
+  /* on a computer, the mouse over a moment opens a small map of that day beside it (no scrolling to the big map) */
+  const canHover = useMemo(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(hover: hover) and (pointer: fine)').matches, []);
+  const [hover, setHover] = useState<{ day: string; block: BlockKey; at: DOMRect } | null>(null);
+  const hoverTm = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverWait = useRef<string | null>(null);
+  const hoverOff = () => { if (hoverTm.current) clearTimeout(hoverTm.current); hoverTm.current = null; hoverWait.current = null; setHover(null); };
+  // armed by any move of the mouse over the moment (not only when it comes in): after a scroll closed the window, or
+  // when the page scrolled under a mouse that did not move, the next small move opens it again
+  const hoverProps = (day: string, block: BlockKey) => (canHover && hasPos ? {
+    onMouseMove: (e: MouseEvent) => {
+      const k = keyOf(day, block);
+      if (hoverWait.current === k || (hover && hover.day === day && hover.block === block)) return;
+      const el = e.currentTarget as HTMLElement;
+      if (hoverTm.current) clearTimeout(hoverTm.current);
+      hoverWait.current = k;
+      hoverTm.current = setTimeout(() => { hoverWait.current = null; setHover({ day, block, at: el.getBoundingClientRect() }); }, 250);
+    },
+    onMouseLeave: hoverOff
+  } : {});
+  useEffect(() => {
+    if (!hover) return;
+    window.addEventListener('scroll', hoverOff, true);
+    return () => window.removeEventListener('scroll', hoverOff, true);
+  }, [hover]);
+  useEffect(() => () => { if (hoverTm.current) clearTimeout(hoverTm.current); }, []);
+  const hoverMoment = hover ? moments.get(keyOf(hover.day, hover.block)) : undefined;
   const actions = (day: string, block: BlockKey) => [
     { key: 'pick', label: t('booking.preview.pick'), icon: <Check size={18} />, run: () => pick(day, block), testid: 'menu-pick' },
     ...(hasPos ? [{ key: 'map', label: t('booking.preview.see'), icon: <MapIcon size={18} />, run: () => see(day, block), testid: 'menu-see-map' }] : [])
@@ -192,6 +219,7 @@ export function BlockPicker(p: BlockPickerProps) {
         </span>
         {p.value && hasPos && <Button size="sm" variant="ghost" icon={<MapIcon />} onClick={() => see(p.value!.day, p.value!.block)} data-testid="bp-see-map">{t('booking.preview.see')}</Button>}
       </div>
+      {hover && !preview && <RouteHover ask={askOf(hover.day, hover.block)} at={hover.at} road={hoverMoment ? roadWords(hoverMoment, l) : undefined} far={isFar(hoverMoment)} />}
       {preview && <RoutePreview ask={preview} onClose={() => setPreview(null)} onPick={() => pick(preview.day, preview.block as BlockKey)} />}
       {p.value && pickedCell?.state === 'full' && <Banner kind="warn">{t('booking.picker.fullWarn')}</Banner>}
       {p.value && pickedCell?.state === 'tight' && <Banner kind="info">{t('booking.picker.tightWarn')}</Banner>}
@@ -211,7 +239,7 @@ export function BlockPicker(p: BlockPickerProps) {
       {/* the map first: the days, the appointments around, the day's routes with the new stop (needs a position) */}
       {p.lat != null && p.lng != null && (
         <MomentMap lat={p.lat} lng={p.lng} address={p.address || ''} cells={cells} list={sugg.status === 'offline' || sugg.status === 'error' ? [] : sugg.list}
-          value={p.value} onPick={pick} excludeJob={p.excludeJob} truckId={p.truckId} />
+          value={p.value} onPick={pick} excludeJob={p.excludeJob} truckId={p.truckId} pop={canHover} hoverProps={hoverProps} />
       )}
 
       {/* suggestions */}
@@ -248,7 +276,7 @@ export function BlockPicker(p: BlockPickerProps) {
               if (bits[0]) bits[0] = bits[0].charAt(0).toUpperCase() + bits[0].slice(1);
               const rank = ranks[i];
               return (
-                <button key={keyOf(s.day, s.block)} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => pick(s.day, s.block)} {...menuProps(s.day, s.block)} data-testid="bp-sugg">
+                <button key={keyOf(s.day, s.block)} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => pick(s.day, s.block)} {...menuProps(s.day, s.block)} {...hoverProps(s.day, s.block)} data-testid="bp-sugg">
                   <span class="bp-sugg-main">
                     {isCurrent(s.day, s.block) ? <span class="bp-best"><Pill tone="muted" dot={false}>{t('booking.picker.current')}</Pill></span>
                       : i === 0 && <span class="bp-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
@@ -298,7 +326,7 @@ export function BlockPicker(p: BlockPickerProps) {
                       <td key={c.key}>
                         <button type="button" class={`bp-cell is-${c.state}${on ? ' is-on' : ''}${cur ? ' is-current' : ''}${farCell ? ' is-far' : ''}`} data-k={k} tabIndex={k === currentKey ? 0 : -1}
                           aria-pressed={on} aria-disabled={off || undefined} aria-label={label} title={label}
-                          onClick={() => { setFocusKey(k); if (!off) pick(r.day, c.key); }} {...(off ? {} : menuProps(r.day, c.key))} data-testid={`bp-cell-${r.day}-${c.key}`}>
+                          onClick={() => { setFocusKey(k); if (!off) pick(r.day, c.key); }} {...(off ? {} : menuProps(r.day, c.key))} {...(off ? {} : hoverProps(r.day, c.key))} data-testid={`bp-cell-${r.day}-${c.key}`}>
                           {on && <Check size={16} aria-hidden="true" />}
                           <span>{t(`booking.picker.state.${c.state}`, { d: duration(c.left, l) })}</span>
                           {farCell && <Route class="bp-far-mark" size={13} aria-hidden="true" />}

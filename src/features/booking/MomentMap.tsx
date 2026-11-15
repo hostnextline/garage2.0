@@ -15,6 +15,7 @@ import { assemble, UNPLACED_COLOR, type TruckRoute } from '../map/assemble';
 import { fromDevice } from '../map/device';
 import { useRoads, roadOf, roadTotal } from '../map/useRoads';
 import { placeNewStop, NEW_STOP } from './preview';
+import { MapHover } from './RoutePreview';
 import { isFar, momentsByKey, roadWords, type CellState, type Moment } from './logic';
 import { dayChips, defaultBlock, dayCounts, overviewPins } from './momentDays';
 
@@ -29,6 +30,10 @@ export interface MomentMapProps {
   /** moving a job: it is not drawn at its old place */
   excludeJob?: string | null;
   truckId?: string | null;
+  /** computers: no map in the page; it opens in a small window beside the day or the moment under the mouse.
+      `hoverProps` are the mouse handlers of a moment (BlockPicker owns that window) */
+  pop?: boolean;
+  hoverProps?: (day: string, block: BlockKey) => Record<string, unknown>;
 }
 
 const NEW_COLOR = '#111827';
@@ -49,7 +54,7 @@ export function MomentMap(p: MomentMapProps) {
   /* the appointments already there (the phone's copy) */
   const jobs = days.length ? jobsBetween(days[0], days[days.length - 1]) : [];
   const chips = dayChips(p.cells, p.list, dayCounts(jobs, days, p.excludeJob));
-  const pins = useMemo(() => (day ? [] : overviewPins(jobs, days, { exclude: p.excludeJob, posOf: (j) => customer(j.customer_id) })), [day, jobs, days.join('|'), p.excludeJob]);
+  const pins = useMemo(() => (day && !p.pop ? [] : overviewPins(jobs, days, { exclude: p.excludeJob, posOf: (j) => customer(j.customer_id) })), [day, p.pop, jobs, days.join('|'), p.excludeJob]);
 
   /* the strip follows the day shown (sideways only: the page does not jump) */
   const strip = useRef<HTMLDivElement>(null);
@@ -85,7 +90,7 @@ export function MomentMap(p: MomentMapProps) {
   const trA: TruckRoute | undefined = placed ? after?.trucks.find((x) => x.id === placed.truckId) : undefined;
   const trB: TruckRoute | undefined = placed ? before?.trucks.find((x) => x.id === placed.truckId) : undefined;
   // the streets: only for a day (the overview has no lines)
-  useRoads(day && after ? [...after.trucks, ...(trB ? [trB] : [])] : []);
+  useRoads(day && after && !p.pop ? [...after.trucks, ...(trB ? [trB] : [])] : []);
 
   /* ---------- what the map draws ---------- */
   const markers: MapMarker[] = [];
@@ -94,17 +99,26 @@ export function MomentMap(p: MomentMapProps) {
   const blockName = (b: string) => t(`common.blocks.${b}`);
   const newPin = (n: number | string | null, sub?: string): MapMarker => ({ id: NEW_STOP, kind: 'job', lat: p.lat, lng: p.lng, color: NEW_COLOR, number: n, active: true,
     label: t('booking.preview.newLabel'), sub, title: t('booking.preview.newLabel') });
-  if (!day || !after) {
+  const overview = (): MapMarker[] => {
     // the overview: the starts, every coming appointment, the new address
-    if (home && home.lat != null && home.lng != null) markers.push({ id: 'home', kind: 'home', lat: home.lat, lng: home.lng, label: home.label || t('booking.preview.start'), title: home.address || '' });
-    for (const tr of activeTrucks.value) if (tr.start) markers.push({ id: `start-${tr.id}`, kind: 'customer', lat: tr.start.lat, lng: tr.start.lng, color: truckColor(tr.id), label: tr.start.label || t('booking.preview.start'), title: tr.start.address || '' });
+    const out: MapMarker[] = [];
+    if (home && home.lat != null && home.lng != null) out.push({ id: 'home', kind: 'home', lat: home.lat, lng: home.lng, label: home.label || t('booking.preview.start'), title: home.address || '' });
+    for (const tr of activeTrucks.value) if (tr.start) out.push({ id: `start-${tr.id}`, kind: 'customer', lat: tr.start.lat, lng: tr.start.lng, color: truckColor(tr.id), label: tr.start.label || t('booking.preview.start'), title: tr.start.address || '' });
     for (const pin of pins) {
       const open = chips.find((c) => c.day === pin.day)?.open;
-      markers.push({ id: pin.id, kind: 'job', lat: pin.lat, lng: pin.lng, color: pin.truckId ? truckColor(pin.truckId) : UNPLACED_COLOR, number: Number(pin.day.slice(8)),
+      out.push({ id: pin.id, kind: 'job', lat: pin.lat, lng: pin.lng, color: pin.truckId ? truckColor(pin.truckId) : UNPLACED_COLOR, number: Number(pin.day.slice(8)),
         /* the date in the dot only: a label on every dot hid the map where appointments are close together */
-        title: `${tinyDay(pin.day, l)}, ${blockName(pin.block).toLowerCase()}`, onClick: open ? () => setSel(pin.day) : undefined });
+        title: `${tinyDay(pin.day, l)}, ${blockName(pin.block).toLowerCase()}`, onClick: open && !p.pop ? () => setSel(pin.day) : undefined });
     }
-    markers.push(newPin(null));
+    out.push(newPin(null));
+    return out;
+  };
+  /* computers: « Tous les jours » under the mouse opens the overview in a small window */
+  const [allAt, setAllAt] = useState<DOMRect | null>(null);
+  if (p.pop) {
+    // no map in the page: nothing to draw here
+  } else if (!day || !after) {
+    markers.push(...overview());
   } else {
     let homeDrawn = false;
     for (const tr of after.trucks) {
@@ -134,19 +148,27 @@ export function MomentMap(p: MomentMapProps) {
   const truckName = both ? t(kindOf(placed?.truckId) === 'car' ? 'booking.kind.ofCar' : 'booking.kind.ofTruck') : t('booking.kind.ofRoute');
 
   const dayWords = day ? longDay(day, l) : '';
+  // a day under the mouse: the window shows its best moment
+  const hoverDay = (d: string) => {
+    if (!p.pop || !p.hoverProps) return {};
+    const r = p.cells.find((c) => c.day === d);
+    const b = r ? (p.value && p.value.day === d ? p.value.block : defaultBlock(r.blocks, d, p.list)) : null;
+    return b ? p.hoverProps(d, b) : {};
+  };
   return (
     <section class="mm" aria-labelledby="mm-title" data-testid="moment-map">
       <div class="bp-head"><h3 id="mm-title" class="bp-title"><Route size={18} aria-hidden="true" />{t('booking.mm.title')}</h3></div>
 
       {/* the days of the calendar page */}
       <div class="mm-days" ref={strip} role="group" aria-label={t('booking.mm.days')} data-testid="mm-days">
-        <button type="button" class={`mm-day mm-day-all${day ? '' : ' is-on'}`} aria-pressed={!day} onClick={() => setSel(null)} data-testid="mm-day-all">
+        <button type="button" class={`mm-day mm-day-all${day ? '' : ' is-on'}`} aria-pressed={!day} onClick={() => setSel(null)} data-testid="mm-day-all"
+          {...(p.pop ? { onMouseMove: (e: MouseEvent) => { if (!allAt) setAllAt((e.currentTarget as HTMLElement).getBoundingClientRect()); }, onMouseLeave: () => setAllAt(null) } : {})}>
           <span class="mm-day-name">{t('booking.mm.all')}</span>
           <span class="mm-day-sub">{t('booking.mm.allSub')}</span>
         </button>
         {chips.map((c) => (
           <button key={c.day} type="button" class={`mm-day${c.day === day ? ' is-on' : ''}${c.far ? ' is-far' : ''}`} aria-pressed={c.day === day} disabled={!c.open && c.day !== day}
-            onClick={() => setSel(c.day)} data-testid={`mm-day-${c.day}`}>
+            onClick={() => setSel(c.day)} data-testid={`mm-day-${c.day}`} {...(c.open ? hoverDay(c.day) : {})}>
             <span class="mm-day-name">{tinyDay(c.day, l)}</span>
             <span class="mm-day-sub">{t('booking.mm.jobs', { n: c.jobs })}</span>
             {!c.open ? <span class="mm-day-sub">{t(`booking.picker.state.${c.shut === 'full' ? 'full' : 'closed'}`)}</span>
@@ -157,21 +179,30 @@ export function MomentMap(p: MomentMapProps) {
         ))}
       </div>
 
+      {p.pop ? (
+        <>
+          <p class="faint small mm-hint" data-testid="mm-hint">{t('booking.mm.hintHover')}</p>
+          {allAt && <MapHover at={allAt} title={t('booking.mm.mapAll')} markers={overview()} data-testid="mm-hover-all" />}
+        </>
+      ) : (
+        <>
       <MapView markers={markers} lines={lines} height={wide.value ? '420px' : '340px'} controls fitKey={day || 'all'}
-        label={day ? t('booking.mm.mapDay', { day: dayWords }) : t('booking.mm.mapAll')} data-testid="mm-map" />
+            label={day ? t('booking.mm.mapDay', { day: dayWords }) : t('booking.mm.mapAll')} data-testid="mm-map" />
 
-      {!day && <p class="faint small mm-hint" data-testid="mm-hint">{t('booking.mm.hintAll')}</p>}
+          {!day && <p class="faint small mm-hint" data-testid="mm-hint">{t('booking.mm.hintAll')}</p>}
 
-      {/* the moment highlighted, in a few facts */}
-      {day && placed && (
-        <ul class="bp-preview-facts" data-testid="mm-facts">
-          {trA && mine ? (
-            <>
-              <li><b>{t('booking.preview.stop', { n: mine.n, total: trA.total, truck: truckName })}</b></li>
-              {roadA && <li>{t('booking.preview.day', { km: fmtKm(roadA.km, l), d: duration(roadA.minutes, l) })}</li>}
-            </>
-          ) : <li>{t('booking.preview.noTruck')}</li>}
-        </ul>
+          {/* the moment highlighted, in a few facts */}
+          {day && placed && (
+            <ul class="bp-preview-facts" data-testid="mm-facts">
+              {trA && mine ? (
+                <>
+                  <li><b>{t('booking.preview.stop', { n: mine.n, total: trA.total, truck: truckName })}</b></li>
+                  {roadA && <li>{t('booking.preview.day', { km: fmtKm(roadA.km, l), d: duration(roadA.minutes, l) })}</li>}
+                </>
+              ) : <li>{t('booking.preview.noTruck')}</li>}
+            </ul>
+          )}
+        </>
       )}
 
       {/* the blocks of the day: a tap shows the route with the stop in that block, and chooses it */}
@@ -189,7 +220,7 @@ export function MomentMap(p: MomentMapProps) {
               : rank ? t('booking.mm.addsLine', { km: fmtKm(rank.extraKm, l) }) : '';
             return (
               <button key={c.key} type="button" class={`bp-sugg-row mm-block${on ? ' is-on' : ''}${hi === c.key ? ' is-hi' : ''}`} aria-pressed={on} disabled={off}
-                onClick={() => p.onPick(day, c.key)} data-testid={`mm-block-${c.key}`}>
+                onClick={() => p.onPick(day, c.key)} data-testid={`mm-block-${c.key}`} {...(p.pop && p.hoverProps && !off ? p.hoverProps(day, c.key) : {})}>
                 <span class="bp-sugg-main">
                   <span class="bp-sugg-title">{blockName(c.key)}, {clockRange(c.start, c.end, l)}</span>
                   {off || c.state === 'full' ? <span class="bp-sugg-sub">{t(`booking.picker.state.${c.state}`, { d: duration(c.left, l) })}</span> : (

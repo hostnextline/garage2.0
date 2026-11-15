@@ -176,6 +176,7 @@ export const booking: typeof fr = {
     mapAll: 'The coming appointments around the new address',
     mapDay: 'The routes of {day} with the new appointment',
     hintAll: 'Each dot is an appointment already booked, with its date inside. Tap a day, or a dot, to see the route of that day.',
+    hintHover: 'Move the mouse over a day or a moment: that day’s map opens beside it. A click chooses.',
     blocks: 'The times of {day}',
     noBlock: 'No free time that day.'
   },

@@ -224,6 +224,9 @@ export function load() {
     add('j-w8', 2, 'eve', { customer_id: 'c-sophie', truck_id: null, notes: 'Préfère après 18 h.' }, ['s-batterie', 'Remplacement de batterie', 4999, 30]);
     add('j-w9', 3, 'am', { customer_id: 'c-julie' }, ['s-promo', 'Promo hiver : huile + pneus', 16999, 90]);
     add('j-w11', 5, 'pm', { customer_id: 'c-kevin' }, ['s-refroid', 'Vidange du liquide de refroidissement', 14999, 60]);
+    // the same day on the other vehicle: a day with two routes (the map of a moment draws both)
+    add('j-w14', 5, 'am', { customer_id: 'c-sophie', truck_id: 't-voiture' }, ['s-huile', 'Changement d’huile et filtre', 8999, 45]);
+    add('j-w15', 5, 'pm', { customer_id: 'c-emilie', truck_id: 't-voiture' }, ['s-topup', 'Top up des liquides', 6000, 20]);
     add('j-w12', 6, 'am', { customer_id: 'c-flotte' }, ['s-huile', 'Changement d’huile et filtre', 8999, 45]);
     add('j-w13', 6, 'am', { customer_id: 'c-amira' }, ['s-freins-av', 'Freins avant (plaquettes et disques)', 34999, 90]);
     for (let n = 1; n <= 6; n++) for (const b of ['am', 'pm', 'eve']) renumber(D(n), b);

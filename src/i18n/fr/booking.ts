@@ -176,6 +176,7 @@ export const booking = {
     mapAll: 'Les rendez-vous à venir autour de la nouvelle adresse',
     mapDay: 'Les routes de {day} avec le nouveau rendez-vous',
     hintAll: 'Chaque point est un rendez-vous déjà pris, avec sa date dedans. Touche un jour, ou un point, pour voir la route de ce jour-là.',
+    hintHover: 'Passe la souris sur un jour ou sur un moment : la carte de ce jour-là s’ouvre à côté. Un clic choisit.',
     blocks: 'Les moments de {day}',
     noBlock: 'Aucun moment libre ce jour-là.'
   },
