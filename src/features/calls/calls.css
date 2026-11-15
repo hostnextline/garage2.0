@@ -1,0 +1,14 @@
+/* « Notes d'appels » */
+.call-notes { display: flex; flex-direction: column; gap: var(--sp-3); }
+.call-note { display: flex; flex-direction: column; gap: var(--sp-2); }
+.call-note + .call-note { padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.call-note-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px var(--sp-2); font-size: var(--t-sm); color: var(--ink-2); }
+.call-note-head svg { flex: none; }
+.call-note-who { font-weight: 620; color: var(--ink); }
+.call-note-dir { margin-left: auto; font-size: var(--t-xs); }
+.call-note-body { display: flex; flex-direction: column; gap: var(--sp-2); }
+.call-note-body p { margin: 0; }
+.call-note-todo { display: flex; align-items: flex-start; gap: 6px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--accent-soft); }
+.call-note-todo svg { flex: none; margin-top: 2px; color: var(--accent-ink); }
+.call-note-full { white-space: pre-wrap; font-size: var(--t-sm); color: var(--ink-2); padding: var(--sp-3); border-radius: var(--r-md); background: var(--sunken); max-height: 320px; overflow: auto; }
+.call-note-wait { margin: 0; }

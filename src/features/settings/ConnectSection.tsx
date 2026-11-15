@@ -1,7 +1,7 @@
 /* Branchements (owner): GoHighLevel (automatic texts and team invitations) and Stripe (« Payer » by card on invoices).
    The keys are written here once and kept on the server; the screen only learns whether each one is set. */
 import { useEffect, useState } from 'preact/hooks';
-import { MessageSquareText, MessageCircle, CreditCard, Send, Unplug, PhoneCall, Copy } from 'lucide-preact';
+import { MessageSquareText, MessageCircle, CreditCard, Send, Unplug, PhoneCall, Copy, NotebookPen, RefreshCw } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { phoneDigits } from '../../lib/text';
 import { access, callFn, refreshAccess } from '../../data/auth';
@@ -11,6 +11,7 @@ import { pushState, pushOn, pushOff, type PushState } from '../conversation/push
 import { team, errorMessage, updateMe } from '../../data/api';
 import { Panel, Field, Input, PhoneInput, Button, Pill, Banner, Skeleton, Switch, toast } from '../../ui';
 import { teamDo } from '../team/teamApi';
+import { callsStatus, callsSync, type CallsStatus } from '../calls/notes';
 
 interface Secrets { ghl: { on: boolean; token_end: string | null; location: string | null }; stripe: { on: boolean; test: boolean; end: string | null; webhook: boolean } }
 
@@ -35,6 +36,7 @@ export function ConnectSection() {
       {s && <GhlPanel s={s} onChanged={load} />}
       {s && <RingPanel />}
       {s && <TextsPanel />}
+      {s && <NotesPanel />}
       {s && <StripePanel s={s} onChanged={load} />}
     </div>
   );
@@ -223,6 +225,80 @@ function TextsPanel() {
           </>
         )}
         <div><Button icon={<Send size={18} />} onClick={tryIt} disabled={!mine} data-testid="texts-try">{t('settings.connect.ringTry')}</Button></div>
+      </div>
+    </Panel>
+  );
+}
+
+/** « Notes d'appels »: the OpenAI key (kept on the server, never shown again), the address GoHighLevel calls when a call ends,
+    and « Chercher les appels » */
+function NotesPanel() {
+  const [st, setSt] = useState<CallsStatus | null>(null);
+  const [key, setKey] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = async () => { try { setSt(await callsStatus()); } catch { setSt({ ok: false, key: false, ghl: false }); } };
+  useEffect(() => { void load(); }, []);
+  const save = async (value: string) => {
+    try {
+      await teamDo('secrets-set', { openai_key: value });
+      toast(t(value ? 'settings.connect.saved' : 'settings.connect.unplugged'), { kind: 'ok' });
+      setKey(''); setErr(null);
+      await load();
+    } catch (e) {
+      if (String((e as { code?: string }).code) === 'openai_key') setErr(errorMessage(e)); else toast(errorMessage(e), { kind: 'bad' });
+    }
+  };
+  // the calls' address with the same key as « Appels entrants », on the function that writes the notes
+  const link = async () => {
+    try {
+      const r = await callFn<{ url?: string }>('ring', { action: 'link' }, 20000);
+      if (!r.ok || !r.url) throw new Error(r.error || '');
+      setUrl(r.url.replace('/functions/v1/ring?', '/functions/v1/calls?'));
+    } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); toast(t('settings.connect.ringCopied')); }
+    catch { toast(t('settings.connect.ringCopyFail'), { kind: 'bad' }); }
+  };
+  const sync = async () => {
+    setBusy(true);
+    try {
+      const r = await callsSync();
+      if (!r.ok) throw Object.assign(new Error(r.error || ''), { code: r.code });
+      toast(r.errors?.includes('no_key') ? t('calls.noKey') : t('calls.synced', { n: r.done ?? 0, m: r.pending ?? 0 }), { kind: r.errors?.includes('no_key') ? 'bad' : 'ok' });
+      await load();
+    } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Panel title={t('settings.connect.notes')} data-testid="connect-notes">
+      <div class="stack">
+        <div class="row-wrap"><NotebookPen size={20} class="faint" aria-hidden="true" /><Status on={!!st?.key} /></div>
+        <p class="muted" style={{ margin: 0 }}>{t('settings.connect.notesText')}</p>
+        {st?.key && st.counts && <p class="small" style={{ margin: 0 }} data-testid="notes-counts">{t('settings.connect.notesCounts', { done: st.counts.done, pending: st.counts.pending, failed: st.counts.failed })}</p>}
+        {st && !st.ghl && <Banner kind="warn">{t('settings.connect.notesNeedGhl')}</Banner>}
+        <Field label={t('settings.connect.notesKey')} help={t('settings.connect.notesKeyHelp')} error={err}>
+          <Input type="password" value={key} onValue={(v) => { setKey(v); setErr(null); }} placeholder="sk-…" autoComplete="off" invalid={!!err} data-testid="notes-key" />
+        </Field>
+        <div class="row-wrap">
+          <Button variant="primary" onClick={() => void save(key.trim())} disabled={!key.trim()} data-testid="notes-save">{t('settings.connect.save')}</Button>
+          {st?.key && <Button variant="danger" icon={<Unplug size={18} />} confirm={t('settings.connect.unplugConfirm')} onClick={() => void save('')}>{t('settings.connect.unplug')}</Button>}
+        </div>
+        {!url ? <div><Button onClick={() => void link()} data-testid="notes-get">{t('settings.connect.ringGet')}</Button></div> : (
+          <>
+            <Field label={t('settings.connect.ringUrl')}>
+              <Input value={url} onValue={() => undefined} readOnly data-testid="notes-url" />
+            </Field>
+            <p class="small muted" style={{ margin: 0 }}>{t('settings.connect.notesSteps')}</p>
+            <div><Button variant="primary" icon={<Copy size={18} />} onClick={() => void copy()} data-testid="notes-copy">{t('settings.connect.ringCopy')}</Button></div>
+          </>
+        )}
+        <div class="row-wrap">
+          <Button icon={<RefreshCw size={18} />} disabled={busy} onClick={() => void sync()} data-testid="notes-sync">{t(busy ? 'calls.syncing' : 'calls.sync')}</Button>
+          <Button variant="ghost" href="#/calls">{t('settings.connect.notesOpen')}</Button>
+        </div>
       </div>
     </Panel>
   );

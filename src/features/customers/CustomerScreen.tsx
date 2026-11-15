@@ -28,6 +28,7 @@ import { factsOf, owedOn, isUpcoming, jobOrder } from './facts';
 import { draftFromQuery } from './search';
 import { CustomerFields, emptyDraft, draftOf, customerPatch, checkDraft, hasErrors, changed, type Draft, type DraftErrors } from './CustomerFields';
 import { NotesPanel } from './NotesPanel';
+import { CustomerCalls } from '../calls/CallNotes';
 import { VehicleAddSheet, CarForm, EMPTY_CAR, carIsEmpty, carErrors, carRow, type AddDraft, type AddMode } from './VehicleBits';
 import { searchPlaces } from './AddressField';
 import { locate } from './locate';
@@ -158,6 +159,7 @@ function CustomerFile(p: { id: string; wanted?: string | null }) {
           <ContactPanel c={c} canEdit={canEdit} />
           <CarsPanel c={c} cars={f.cars} canEdit={canEdit} adding={addCar} onAdding={setAddCar} />
           <NotesPanel customerId={c.id} canEdit={canEdit} />
+          <CustomerCalls customerId={c.id} phone={c.phone} />
         </div>
         <div class="customers-main">
           <JobsPanel c={c} />
