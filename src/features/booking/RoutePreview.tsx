@@ -68,7 +68,7 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?:
     return createPortal(
       <div class="bp-hover-map" style={floatStyle(p.float)} role="tooltip" data-testid="route-hover">
         <p class="bp-hover-when">{p.float.title || a.when}</p>
-        <MapView markers={markers} lines={lines} height="220px" label={t('booking.preview.mapLabel')} data-testid="route-hover-map" />
+        <MapView markers={markers} lines={lines} height="220px" controls={false} label={t('booking.preview.mapLabel')} data-testid="route-hover-map" />
         {trA && mine ? (
           <p class="bp-hover-facts" data-testid="route-hover-facts">
             <b>{t('booking.preview.stop', { n: mine.n, total: trA.total, truck: truckName })}</b>{' '}

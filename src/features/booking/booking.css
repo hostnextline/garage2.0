@@ -289,3 +289,9 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .bp-hover-map { position: fixed; z-index: 60; width: 360px; padding: var(--sp-3); border-radius: var(--r-lg); background: var(--solid); border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28); pointer-events: none; display: flex; flex-direction: column; gap: var(--sp-2); }
 .bp-hover-when { margin: 0; font-weight: 620; }
 .bp-hover-facts { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
+/* in the small hover map the stops are small dots (the big numbered ones hide the streets of a map this size) */
+.bp-hover-map .mv-num { transform: scale(0.6); transform-origin: center; font-size: 15px; }
+.bp-hover-map .mv-job.is-active .mv-num { transform: scale(0.74); box-shadow: 0 0 0 2px var(--solid), 0 0 0 4px var(--c); }
+.bp-hover-map .mv-badge { transform: scale(0.56); transform-origin: center; }
+.bp-hover-map .mv-pin { transform: scale(0.62); transform-origin: 50% 95%; }
+.bp-hover-map .mv-label { display: none; }
