@@ -60,7 +60,10 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261114000100_garde_route.sql` (Part 25, applied 2026-11-15 from commit `aabe852`;
+- Applied on live: every migration up to `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
+  check; INERT while `settings.booking.windows_on` is not true: the owner flips it in Réglages → Réservations, `windows_switch`, and back the
+  same way, nothing lost; functions `notify`, `book`, `client` deployed pinned to `6b978bd` the same day);
+  before it: `20261114000100_garde_route.sql` (Part 25, applied 2026-11-15 from commit `aabe852`;
   before it: `20261113000300_appels_reglage.sql`; `20261113000100_suivi_huile.sql`, Part 24 sedecies, applied 2026-11-13 from commit `06851dd`;
   before it: `20261112000400_texto_entrant.sql`, Part 24 quindecies, applied 2026-11-13 from commit `4142fac`;
   Part 24 quaterdecies applied 2026-11-12 from commit `665ba06`;

@@ -1,4 +1,5 @@
-/* « Plages d'arrivée » (Part 25): choose the day and the ARRIVAL TIME of an appointment on a time calendar.
+/* (On live since 2026-11-15 behind the switch « Plages d'arrivée de 4 heures », Réglages → Réservations: off = the blocks as before.)
+    « Plages d'arrivée » (Part 25): choose the day and the ARRIVAL TIME of an appointment on a time calendar.
    On top, the best moments near the address (one per day, from the server). Then the calendar, 15 minutes per unit:
    - a computer (≥ 760 px): a time grid, one column per day, with the appointments already booked that day and the
      units where this booking can arrive (PickGrid);
