@@ -59,6 +59,9 @@ export interface BookInput {
   force?: boolean;
   /** the vehicle asked for (the switch above the moments offered); nothing: the app chooses, the car first */
   vehicle_kind?: 'car' | 'truck' | null;
+  /** « Plages d'arrivée » (block 'day'): the window chosen (its start, minutes of the day; the server keeps the stop inside it), or
+      win_flex: any time that day, the window is fixed the evening before */
+  win_start?: number | null; win_flex?: boolean;
 }
 export type ItemInput = Partial<JobItem> & { description: string };
 export async function bookJob(job: BookInput, items: ItemInput[]) {
@@ -66,8 +69,10 @@ export async function bookJob(job: BookInput, items: ItemInput[]) {
   const id = job.id || uuid();
   return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: t('log.booking') }).then((r) => ({ ...r, id }));
 }
-export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null) {
+export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null) {
   guard();
+  // « Plages d'arrivée »: the new window (or flexible) goes with the move; the old call stays as it was for the blocks
+  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, { label: t('log.move') });
   return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, { label: t('log.move') });
 }
 export async function setJobDuration(jobId: string, minutes: number) {
@@ -266,7 +271,15 @@ function inTime<T>(p: PromiseLike<T>, ms = 15000): Promise<T> {
 export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
   const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 6, p_need: need, p_kind: kind }));
   if (error) throw error;
-  return (data || []) as { day: string; block: BlockKey; drive_min: number; near: number; truck: string | null; left: number }[];
+  return (data || []) as Suggestion[];
+}
+/** a moment offered. With « Plages d'arrivée »: block 'day', the estimated arrival and the window to tell the customer */
+export interface Suggestion { day: string; block: BlockKey; drive_min: number; near: number; truck: string | null; left: number; eta?: number | null; win_start?: number | null; win_end?: number | null }
+/** « Plages d'arrivée »: every window still possible on one day (the best first), for « Autres heures ce jour-là » */
+export async function suggestWindows(lat: number | null, lng: number | null, duration: number, day: string, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
+  const { data, error } = await inTime(sb.rpc('suggest_windows', { p_lat: lat, p_lng: lng, p_duration: duration, p_day: day, p_exclude: exclude, p_need: need, p_kind: kind }));
+  if (error) throw error;
+  return (data || []) as Suggestion[];
 }
 export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
   const { data, error } = await inTime(sb.rpc(name, args), ms);

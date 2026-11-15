@@ -19,7 +19,9 @@ export interface Settings extends Row {
   company: { name?: string; legal_name?: string; phone?: string; email?: string; address?: string; website?: string; tps_no?: string; tvq_no?: string; neq?: string; footer_fr?: string; footer_en?: string };
   taxes: { enabled: boolean; tps: number; tvq: number };
   booking: { blocks: { key: BlockKey; start: number; end: number }[]; horizon_days: number; speed_kmh: number; detour: number; stop_min: number;
-    unknown_min: number; min_block_min: number; near_km: number; home: { label: string; address: string; lat: number; lng: number };
+    unknown_min: number; min_block_min: number; near_km: number;
+    /** « Plages d'arrivée » (Part 25): bookings are 4-hour arrival windows, not blocks; minutes before / after the estimated arrival, rounding */
+    windows_on?: boolean; win_before_min?: number; win_after_min?: number; win_round_min?: number; home: { label: string; address: string; lat: number; lng: number };
     /** « Réserver en ligne » (Part 23): the public link client.html#reserver is open */
     web?: { on?: boolean; max_km?: number };
     /** « Retour à la Centrale »: the number texted (arrival time, live map) when a mechanic heads back after the last job */
@@ -97,6 +99,9 @@ export interface Job extends Base {
   odometer_km?: number | null;
   /** the work needs the tire machine; the vehicle asked when booking ('car' | 'truck', null: the app chooses) */
   needs_machine?: boolean; vehicle_kind?: 'car' | 'truck' | null;
+  /** the arrival window told to the customer, minutes of the day (Part 25); null with block 'day' = « flexible », any time that day
+      until its window is fixed the evening before (win_flex) */
+  win_start?: number | null; win_end?: number | null; win_flex?: boolean;
   /** its place in its truck's route chosen by hand (1 = first), or null: the planner decides (Part 21) */
   manual_order?: number | null;
   /** booked « quand même » in a full block: the route goes past the truck's hours (Part 19) */

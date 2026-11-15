@@ -103,13 +103,23 @@ export function stamp(iso: string | null | undefined, lang = 'fr'): string {
 }
 
 /* ---------- blocks ---------- */
-export type BlockKey = 'am' | 'pm' | 'eve';
+/** 'day': the whole day, when the garage books by 4-hour arrival windows (« plages d'arrivée », settings.booking.windows_on) */
+export type BlockKey = 'am' | 'pm' | 'eve' | 'day';
 export interface Block { key: BlockKey; start: Minute; end: Minute }
 export const DEFAULT_BLOCKS: Block[] = [
   { key: 'am', start: 8 * 60, end: 12 * 60 },
   { key: 'pm', start: 12 * 60, end: 16 * 60 },
   { key: 'eve', start: 16 * 60, end: 20 * 60 }
 ];
+/** the arrival window told to a customer for an estimated arrival: 1 h before, 3 h after, on the hour, 4 h long, inside the day
+    (3 pm → 2 pm to 6 pm; 8 am with a day that starts at 8 → 8 to noon). The server does the same (public.win_for). */
+export function windowFor(eta: Minute, o: { before?: number; after?: number; round?: number; dayStart?: number; dayEnd?: number } = {}): Range {
+  const before = o.before ?? 60, after = o.after ?? 180, round = o.round ?? 60, d0 = o.dayStart ?? 8 * 60, d1 = o.dayEnd ?? 20 * 60;
+  const len = before + after;
+  let s = Math.round(eta / round) * round - before;
+  s = Math.max(d0, Math.min(s, Math.max(d0, d1 - len)));
+  return [s, s + len];
+}
 export function blockOf(min: Minute, blocks: Block[] = DEFAULT_BLOCKS): Block | undefined {
   return blocks.find((b) => min >= b.start && min < b.end);
 }

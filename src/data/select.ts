@@ -3,7 +3,7 @@
 import { computed } from '@preact/signals';
 import { tableSignal, getRow, rowsOf } from './store';
 import type { Settings, Staff, Truck, TruckWeek, TruckDay, Customer, Vehicle, Job, JobItem, Invoice, Payment, Service, InventoryItem, Quote, Shift, Position, Trip, EngineSpec, CustomerNote, Expense, Message, ServicePart, InventoryMove } from './types';
-import { DEFAULT_BLOCKS, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today } from '../lib/dates';
+import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today } from '../lib/dates';
 import { totals, type Line } from '../lib/money';
 import { fullName, firstName } from '../lib/text';
 
@@ -21,7 +21,26 @@ export const settings = computed<Settings>(() => {
   return { ...DEFAULT_SETTINGS, ...s, booking: { ...DEFAULT_SETTINGS.booking, ...(s.booking || {}) }, billing: { ...DEFAULT_SETTINGS.billing, ...(s.billing || {}) }, taxes: { ...DEFAULT_SETTINGS.taxes, ...(s.taxes || {}) } };
 });
 export const blocks = computed<Block[]>(() => (settings.value.booking.blocks?.length ? settings.value.booking.blocks : DEFAULT_BLOCKS) as Block[]);
-export function blockOfKey(k: BlockKey): Block { return blocks.value.find((b) => b.key === k) || DEFAULT_BLOCKS.find((b) => b.key === k)!; }
+export function blockOfKey(k: BlockKey): Block {
+  if (k === 'day') return { key: 'day', start: Math.min(...blocks.value.map((b) => b.start)), end: Math.max(...blocks.value.map((b) => b.end)) };
+  return blocks.value.find((b) => b.key === k) || DEFAULT_BLOCKS.find((b) => b.key === k)!;
+}
+/** the garage books by 4-hour arrival windows (Part 25) */
+export const windowsOn = computed<boolean>(() => settings.value.booking.windows_on === true);
+/** the span of a booking day: first block's start → last block's end */
+export const daySpan = computed<Range>(() => [Math.min(...blocks.value.map((b) => b.start)), Math.max(...blocks.value.map((b) => b.end))]);
+/** the window told to this customer: its own (windows), else its block's hours; a « flexible » job: the whole day */
+export function jobWindow(j: Pick<Job, 'block' | 'win_start' | 'win_end'>): Range {
+  if (j.win_start != null && j.win_end != null) return [j.win_start, j.win_end];
+  if (j.block === 'day') return daySpan.value;
+  const b = blockOfKey(j.block);
+  return [b.start, b.end];
+}
+/** the window to offer for an estimated arrival, with the garage's settings */
+export function windowOf(eta: number): Range {
+  const b = settings.value.booking;
+  return windowFor(eta, { before: b.win_before_min, after: b.win_after_min, round: b.win_round_min, dayStart: daySpan.value[0], dayEnd: daySpan.value[1] });
+}
 export const garageName = computed(() => settings.value.company?.name || 'Mécanique Mobile H.I.S');
 
 /* ---------- team ---------- */

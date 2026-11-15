@@ -1,6 +1,6 @@
 /* Days and blocks in words, the way people say them on the phone: « Demain matin », « Ce soir », « Jeudi après-midi ».
    Shared by the block picker, the booking summary and the agenda (pure: the language and today are passed in). */
-import { daysBetween, longDay, clockRange, parseDay, type BlockKey, type Day } from '../../lib/dates';
+import { daysBetween, longDay, clock, clockRange, parseDay, type BlockKey, type Day } from '../../lib/dates';
 import { t, type Lang } from '../../lib/i18n';
 
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -51,4 +51,16 @@ export function relativeDay(day: Day, todayDay: Day, l: Lang): string {
   if (diff === 1) return t('common.tomorrow', undefined, l);
   if (diff === -1) return t('common.yesterday', undefined, l);
   return '';
+}
+
+/** « Plages d'arrivée »: « Demain, entre 14 h et 18 h » / « Jeudi 19 novembre, entre 9 h et 13 h » (capitalized, for a title).
+    `win` null: a flexible booking, « Demain, dans la journée (plage confirmée la veille) ». */
+export function windowPhrase(day: Day, win: [number, number] | null, todayDay: Day, l: Lang): string {
+  const diff = daysBetween(todayDay, day);
+  const d = diff >= 2 && diff <= 6 ? new Intl.DateTimeFormat(l === 'en' ? 'en-CA' : 'fr-CA', { weekday: 'long' }).format(parseDay(day)) : (relativeDay(day, todayDay, l) || longDay(day, l));
+  return `${cap(d)}, ${windowWords(win, l)}`;
+}
+/** « entre 14 h et 18 h » (null: « dans la journée (plage confirmée la veille) ») */
+export function windowWords(win: [number, number] | null, l: Lang): string {
+  return win ? t('common.window.between', { from: clock(win[0], l), to: clock(win[1], l) }, l) : t('common.window.flex', undefined, l);
 }
