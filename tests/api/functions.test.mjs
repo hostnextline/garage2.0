@@ -614,7 +614,7 @@ test('« Plages d’arrivée »: the texts and the customer’s page say the win
     assert.equal((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt)).status, 'already', 'the same window is told once');
     assert.equal((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE, resend: true }, ownerJwt)).status, 'sent', 'unless asked again');
     await q(`update public.jobs set win_start = 660, win_end = 900 where id = $1`, [f.job_id]);
-    assert.match((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt)).message, /entre 11 h et 15 h\.$/, 'another window is a new text');
+    assert.match((await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt)).message, /entre 11 h et 15 h\. Pour changer : /, 'another window is a new text');
     // the garage's own text and words ({plage}, {jour}); switched off: written, not sent
     await q(`update public.settings set messages = jsonb_set(jsonb_set(messages, '{fr,window}', '"Plage : {jour}, {plage}. {telephone}"'), '{on,window}', 'false') where id = 1`);
     const wq = await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE, resend: true }, ownerJwt);
