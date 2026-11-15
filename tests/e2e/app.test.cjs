@@ -560,7 +560,7 @@ step('Plus: a tile for each part the person may open, the filters, today in numb
   // « Bureau »: only the office's parts, in the order of the menu
   await page.getByTestId('more-filter-office').click();
   const keys = await page.getByTestId('more-grid').locator('a').evaluateAll((l) => l.map((a) => a.dataset.testid));
-  assert.deepEqual(keys, ['more-customers', 'more-oil', 'more-quotes', 'more-invoices', 'more-treasury', 'more-dashboard']);
+  assert.deepEqual(keys, ['more-customers', 'more-oil', 'more-calls', 'more-quotes', 'more-invoices', 'more-treasury', 'more-dashboard']);
   await h.shot(page, 'e2e-10-plus-office');
   await page.getByTestId('more-filter-all').click();
   // the first steps still to do: the ring leads to « Par où commencer »
