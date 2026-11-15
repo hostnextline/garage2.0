@@ -333,3 +333,33 @@ test('the order by hand, the length and a cancellation still work on a day of wi
   const o = await h.rpc('blocks_overview', { p_from: day, p_to: day });
   assert.equal(o.length, 1); assert.equal(o[0].block, 'day');
 }));
+
+test('the online booking in window mode: the windows offered, a window booked, a window no longer free', () => tx(async (h) => {
+  const { day, owner } = await setup(h);
+  await h.as(null);
+  await h.q(`update public.settings set booking = jsonb_set(booking, '{web}', coalesce(booking->'web', '{}'::jsonb) || '{"on": true}'::jsonb) where id = 1`);
+  const svc = await h.val(`insert into public.services (name_fr, price_cents, duration_min, active) values ('Vidange TEST', 7999, 180, true) returning id`);
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const at = [home.lat + 0.01, home.lng + 0.01];
+  const s = await h.val(`select public.web_suggest($1, $2, $3::uuid[], $4::date, 1, 6)`, [at[0], at[1], [svc], day]);
+  assert.equal(s.length, 1);
+  assert.deepEqual([s[0].block, s[0].win_start, s[0].win_end], ['day', 480, 720]);
+  const w = await h.val(`select public.web_windows($1, $2, $3::uuid[], $4::date)`, [at[0], at[1], [svc], day]);
+  assert.ok(w.length >= 5 && w.every((x) => x.win_end === x.win_start + 240));
+  const p = (phone, extra) => ({ first_name: 'Web', last_name: 'Test', phone, lang: 'fr', address: '10 rue du Test', lat: at[0], lng: at[1],
+    services: [svc], day, block: 'day', ...extra });
+  const web = (x) => h.val(`select public.web_book($1::jsonb)`, [JSON.stringify(x)]);
+  const a = await web(p('5145550101', { win_start: 480 }));
+  assert.deepEqual([a.ok, a.block, a.win_start, a.win_end, a.win_flex], [true, 'day', 480, 720, false]);
+  inside(await row(h, a.job_id), 'the online booking');
+  // nothing chosen: the window is cut around the planned arrival
+  const b = await web(p('5145550102', {}));
+  const jb = await row(h, b.job_id);
+  assert.deepEqual([b.win_start, b.win_end], [jb.win_start, jb.win_end]);
+  assert.ok(jb.win_start !== null); inside(jb, 'the second'); inside(await row(h, a.job_id), 'the first');
+  // two 3-hour jobs already: a third cannot be reached before noon
+  const e = await h.fails(() => web(p('5145550103', { win_start: 480 })));
+  assert.equal(e?.hint, 'window_full');
+  assert.equal((await h.fails(() => web(p('5145550104', { block: 'am' }))))?.hint, 'bad_block');
+  void owner;
+}));
