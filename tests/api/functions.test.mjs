@@ -607,7 +607,7 @@ test('« Plages d’arrivée »: the texts and the customer’s page say the win
     await q(`update public.settings set messages = messages #- '{fr,window}' #- '{en,window}' #- '{on,window}' where id = 1`);   // no text in the settings: the function's own
     await clearLog();
     const w = await fn('notify', { kind: 'window', job_id: f.job_id, base: BASE }, ownerJwt);
-    assert.equal(w.message, 'Bonjour Jean, votre rendez-vous de demain avec Mécanique Mobile H.I.S est confirmé entre 10 h et 14 h.', JSON.stringify(w));
+    assert.match(w.message, /^Bonjour Jean, votre plage d’arrivée est confirmée : Mécanique Mobile H\.I\.S vient [^\n]+, entre 10 h et 14 h\. Pour changer : /, JSON.stringify(w));
     assert.equal(w.status, 'sent', JSON.stringify(w));
     assert.equal((await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').length, 1);
     assert.equal((await q(`select count(*)::int n from public.messages where job_id = $1 and kind = 'window' and status = 'sent'`, [f.job_id]))[0].n, 1);
