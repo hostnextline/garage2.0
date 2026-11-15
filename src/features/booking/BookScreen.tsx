@@ -33,10 +33,10 @@ import { phoneDigits } from '../../lib/text';
 import type { CallStart } from './CallScreen';
 import { OilHint } from '../jobs/CarFirst';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
-import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind } from './BlockPicker';
+import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind, type FarInfo } from './BlockPicker';
 import { winLen } from './choice';
 import { broad } from './screen';
-import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, BLOCK_REFUSALS } from './logic';
+import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, farQuestion, BLOCK_REFUSALS } from './logic';
 import { blockPhrase } from './when';
 import { notifyCustomer, wantsText } from './notify';
 import { forgetRefusal, noLongWaitOffline } from './outbox';
@@ -116,6 +116,8 @@ function BookForm({ query }: ScreenProps) {
   const [durOverride, setDurOverride] = useState<number | null>(null);
   const [card, setCard] = useState<boolean | null>(null);
   const [blockError, setBlockError] = useState<string | null>(null);
+  // « garde-route »: the moment chosen puts too much road in the truck's day (said by the block picker)
+  const [far, setFar] = useState<FarInfo | null>(null);
   // the car or the truck (the switch above the moments offered); work for the tire machine is the truck's only
   const [kind, setKind] = useState<VehicleKind>(null);
   // one id for this booking: tapped twice after a lost answer, the server books it once
@@ -302,6 +304,9 @@ function BookForm({ query }: ScreenProps) {
     // a car to fix that is not the one on screen: show it
     if (needNew && callerOk && !carOk) { const bad = cars.find(carBad); if (bad && bad.id !== cur.id) chooseVehicle(bad.id); }
     if (miss) return;
+    // a moment far from the truck's other stops: asked first (« Choisir un autre moment » leaves the screen as it is)
+    const farAsk = isWalkIn ? null : farQuestion(far, choice, 'book');
+    if (farAsk && !(await ask(farAsk))) { blockPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     let cid = customerId;
     if (!cid) { const m = await makeCaller(); if (!m) return; cid = m.customer; }
     const vid = realCar(vehicleId);
@@ -544,7 +549,7 @@ function BookForm({ query }: ScreenProps) {
         {blockError && <div style={{ marginBottom: 'var(--sp-3)' }}><Banner kind="bad">{blockError}</Banner></div>}
         <BlockPicker lat={place.lat} lng={place.lng} address={place.address} duration={allMinutes} truckId={effTruck} value={choice}
           need={need} kind={kind} onKind={(k) => { setKind(k); setChoice(null); }}
-          onPick={(c) => { touched.current = true; setChoice(c); setBlockError(null); }} onClear={() => setChoice(null)} openDay={openDay} reload={reload} />
+          onPick={(c) => { touched.current = true; setChoice(c); setBlockError(null); }} onClear={() => setChoice(null)} openDay={openDay} reload={reload} onFar={setFar} />
       </Panel>
     </div>
   );

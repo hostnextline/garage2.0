@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Phone, MessageSquareText, Navigation, Car, MapPin, MapPinOff, Truck, Pencil, Signature, Eye, CalendarClock, Send, Link2, Undo2, UserX, Ban, RotateCcw, CircleCheckBig, Vault, MessagesSquare, ListOrdered, ChevronsUp, Gauge } from 'lucide-preact';
 import type { Job } from '../../data/types';
-import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, whenHistorySettled, jobStatusWord } from '../../ui';
+import { Panel, Button, IconButton, Sheet, Field, Textarea, Stepper, Kv, Rows, RowItem, Banner, Stamp, Pill, Help, attempt, toast, ask, whenHistorySettled, jobStatusWord } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { e164, formatPhone } from '../../lib/text';
 import { duration, stamp, clock } from '../../lib/dates';
@@ -15,9 +15,9 @@ import { may } from '../../app/routes';
 import { ConversationSheet } from '../conversation/ConversationSheet';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { locateMissing } from '../../app/locator';
-import { BlockPicker, type BlockChoice } from '../booking/BlockPicker';
+import { BlockPicker, type BlockChoice, type FarInfo } from '../booking/BlockPicker';
 import { windowWords } from '../booking/when';
-import { sameMoment, moveWindow, choiceWindow } from '../booking/logic';
+import { sameMoment, moveWindow, choiceWindow, farQuestion } from '../booking/logic';
 import type { NextStep } from './nextStep';
 import { bookedBy } from './bookedBy';
 import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, isWindowJob, momentWord, outsideWindow, wt, capFirst, keepWindow, type JobRights } from './select';
@@ -316,7 +316,9 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
 export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   const { job: j } = p;
   const [choice, setChoice] = useState<BlockChoice | null>(null);
-  useEffect(() => { if (p.open) setChoice(null); }, [p.open]);
+  // « garde-route »: the moment chosen puts too much road in the truck's day (said by the block picker)
+  const [far, setFar] = useState<FarInfo | null>(null);
+  useEffect(() => { if (p.open) { setChoice(null); setFar(null); } }, [p.open]);
   const c = jobCustomer(j);
   const textOn = !!settings.value.messages?.on?.moved;
   // « Plages d'arrivée »: the picker's choice carries the window chosen (or « flexible »)
@@ -330,6 +332,8 @@ export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   };
   const move = async () => {
     if (!choice) return;
+    const farAsk = farQuestion(far, choice, 'move');
+    if (farAsk && !(await ask(farAsk))) return;
     try {
       const r = await moveJob(j.id, choice.day, choice.block, choice.truck_id ?? null, moveWindow(choice));
       const d = r.data as { changed?: boolean; unchanged?: boolean } | undefined;
@@ -345,7 +349,7 @@ export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   return (
     <Sheet open={p.open} onClose={p.onClose} title={t('jobs.moment.moveTitle')} sub={wt({ block: windowsOn.value ? 'day' : 'am' }, textOn ? 'jobs.moment.moveLeadText' : 'jobs.moment.moveLead')} wide data-testid="move-sheet"
       footer={<><Button onClick={p.onClose}>{t('common.cancel')}</Button><Button variant="primary" disabled={!choice || same} onClick={move} data-testid="move-ok">{t('jobs.moment.moveOk')}</Button></>}>
-      <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} address={j.address || c?.address || null} duration={j.duration_min} excludeJob={j.id} value={choice} onPick={setChoice} />
+      <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} address={j.address || c?.address || null} duration={j.duration_min} excludeJob={j.id} value={choice} onPick={setChoice} onFar={setFar} />
     </Sheet>
   );
 }

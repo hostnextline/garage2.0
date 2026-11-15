@@ -21,7 +21,10 @@ export interface Settings extends Row {
   booking: { blocks: { key: BlockKey; start: number; end: number }[]; horizon_days: number; speed_kmh: number; detour: number; stop_min: number;
     unknown_min: number; min_block_min: number; near_km: number;
     /** « Plages d'arrivée » (Part 25): bookings are 4-hour arrival windows, not blocks; minutes before / after the estimated arrival, rounding */
-    windows_on?: boolean; win_before_min?: number; win_after_min?: number; win_round_min?: number; home: { label: string; address: string; lat: number; lng: number };
+    windows_on?: boolean; win_before_min?: number; win_after_min?: number; win_round_min?: number;
+    /** « garde-route »: the longest drive between two customers (min) and the most driving in a truck's day (min) before a moment is said « loin » */
+    max_hop_min?: number; max_day_drive_min?: number;
+    home: { label: string; address: string; lat: number; lng: number };
     /** « Réserver en ligne » (Part 23): the public link client.html#reserver is open */
     web?: { on?: boolean; max_km?: number };
     /** « Retour à la Centrale »: the number texted (arrival time, live map) when a mechanic heads back after the last job */

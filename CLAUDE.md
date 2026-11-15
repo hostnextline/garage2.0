@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261113000100_suivi_huile.sql` (Part 24 sedecies, applied 2026-11-13 from commit `06851dd`;
+- Applied on live: every migration up to `20261114000100_garde_route.sql` (Part 25, applied 2026-11-15 from commit `aabe852`;
+  before it: `20261113000300_appels_reglage.sql`; `20261113000100_suivi_huile.sql`, Part 24 sedecies, applied 2026-11-13 from commit `06851dd`;
   before it: `20261112000400_texto_entrant.sql`, Part 24 quindecies, applied 2026-11-13 from commit `4142fac`;
   Part 24 quaterdecies applied 2026-11-12 from commit `665ba06`;
   Part 24 terdecies applied 2026-11-12 from commit `502e7a3`,
@@ -367,6 +368,26 @@ end $do$;
   truck it was already on, which is not a button); and on a Friday « tomorrow » is the Saturday an earlier step gives to Voiture for
   10 h to 12 h only (`on conflict do nothing` kept it closed in the afternoon). The step now opens both trucks first, writing over
   the hours, then reads where the appointment is.
+- « Garde-route » (Part 25, `20261114000100_garde_route.sql`, applied on live 2026-11-15 from commit `aabe852` with the sha256 check;
+  `src/features/booking/logic.ts`, `MomentMap.tsx`, `momentDays.ts`, `RoutePreview.tsx`): made after Tuesday 2026-11-17, where a third stop
+  was booked at the other end of the island from the vehicle's two others (about 125 min and 94 km of real driving) without a word.
+  `day_drive(day, truck, plan, extra, exclude)` = one vehicle's driving over its whole day (start → stops block after block → start).
+  Each moment of `suggest_blocks` / `suggest_core` also says `add_min`, `add_km` (what the appointment adds over the day), `day_min`,
+  `hop_min` (the longest drive between it and the customer before or after it), `stops`, and `far`: 'hop' (over `booking.max_hop_min`,
+  35) or 'day' (over `booking.max_day_drive_min`, 105, on a day that already has stops); 0 switches a limit off (Réglages →
+  Réservations). Moments not far come first, then the least driving added. The server refuses nothing (`book_job`, `move_job`,
+  `plan_block` untouched) and an override is not recorded: the app marks a far moment in the calendar, never offers it in the
+  suggestions, warns with « Plutôt … » buttons when one is chosen (`bp-far-warn`), and asks « Beaucoup de route ce jour-là » before
+  booking (BookScreen) or moving (MoveSheet). `web_suggest` never offers a far moment.
+  « Choisir sur la carte » (`moment-map`, above the suggestions, in booking and in « Déplacer »): the days of the page in a strip
+  (appointments that day, the driving added, « Meilleur choix », « loin »), then the day's three blocks. On a phone the map is in
+  the page (overview « Tous les jours »: every coming appointment as a dot with its date; a day: its routes with the new stop). On a
+  computer (`(hover: hover) and (pointer: fine)`) there is no map in the page: the mouse over a day, a block, a suggestion or a
+  calendar cell opens a small window beside it (`route-hover`, `MapHover`; armed by `mousemove`, closed by a scroll; it never takes
+  the mouse) with every vehicle's route that day, small points without labels, the new stop in black.
+  Known limits: the driving is still the straight-line estimate (Tuesday's real driving was well over it); the planner still places
+  inside one block (it can put a job on an empty vehicle while another is already next door that day).
+  The dev demo (`?demo`) only runs in one browser tab at a time: a second tab stays blank while an older one is open.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
 - « Plages d’arrivée » (Part 25, `20261115000100_fenetres.sql`; database side only, NOT applied on live, tested in `tests/db/windows.test.mjs`):

@@ -647,3 +647,46 @@ test('« Routes partagées »: off, a mechanic has only the vehicle he drives; o
   await h.as(office);
   assert.deepEqual(await h.val(`select public.my_truck_ids()`), []);
 }));
+
+test('Part 25 « garde-route »: a moment far from the day’s other stops is marked and comes last; the whole day is counted', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h, 4, 2);
+  const week = {}; for (let d = 0; d < 7; d++) week[d] = DAY;
+  await h.truck('A', null, week);
+  const c = await h.customer('Laval', ...laval);
+  await h.as(owner);
+  await h.rpc('book_job', { p_op: uuid(), p_job: job(c, day, 'pm'), p_items: [] });
+  const ask = (pt) => h.rpc('suggest_blocks', { p_lat: pt[0], p_lng: pt[1], p_duration: 60, p_from: day, p_days: 2, p_exclude: null, p_limit: 60 });
+
+  // Longueuil the day the truck is in Laval: more than 35 minutes between the two customers
+  const s = await ask(longueuil);
+  const same = s.filter((x) => x.day === day), other = s.filter((x) => x.day !== day);
+  assert.ok(same.length >= 2 && other.length >= 2, 'both days are offered');
+  for (const x of same) {
+    assert.equal(x.far, 'hop', `${x.block}: far from the stop in Laval`);
+    assert.ok(x.hop_min > 35, 'the drive between the two customers: ' + x.hop_min);
+    assert.equal(x.stops, 1);
+    assert.ok(x.day_min > x.add_min, 'the day counts the stop already there');
+  }
+  for (const x of other) {
+    assert.equal(x.far, null, 'an empty day is never far');
+    assert.equal(x.stops, 0);
+    assert.equal(x.hop_min, null);
+    assert.equal(x.day_min, x.add_min, 'alone that day: there and back');
+    assert.ok(x.add_km > 0);
+  }
+  assert.equal(s[0].far, null, 'the first one offered is not far');
+  assert.ok(s.findIndex((x) => x.far) > s.map((x) => !x.far).lastIndexOf(true), 'the far moments come last');
+
+  // next door to the stop in Laval: that day is the best, and adds almost nothing over the whole day
+  const n = await ask([laval[0] + 0.002, laval[1]]);
+  assert.equal(n[0].day, day);
+  assert.equal(n[0].far, null);
+  assert.ok(n[0].add_min <= 3 && n[0].hop_min <= 3, `beside it: +${n[0].add_min} min`);
+
+  // a limit at 0 is switched off
+  await h.as(null);
+  await h.q(`update public.settings set booking = booking || '{"max_hop_min": 0, "max_day_drive_min": 0}'::jsonb where id = 1`);
+  await h.as(owner);
+  assert.ok((await ask(longueuil)).every((x) => x.far === null), 'no limit, nothing is far');
+}));

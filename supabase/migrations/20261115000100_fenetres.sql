@@ -847,6 +847,12 @@ declare d date; b record; v_from date := greatest(coalesce(p_from, public.local_
   -- the vehicle: what the work needs and what the person chose; moving a job, what the job already says
   v_need boolean := coalesce(p_need, false) or coalesce((select j.needs_machine from public.jobs j where j.id = p_exclude), false);
   v_kind text := coalesce(case when p_kind in ('car', 'truck') then p_kind end, (select j.vehicle_kind from public.jobs j where j.id = p_exclude));
+  -- the whole day (Part 25, « garde-route »)
+  v_maxhop numeric := public.bset('max_hop_min', 35);
+  v_maxday numeric := public.bset('max_day_drive_min', 105);
+  v_x jsonb := jsonb_build_object('id', x, 'lat', p_lat, 'lng', p_lng);
+  tk record; w0 jsonb; w1 jsonb; v_truck text; min0 int; min1 int; km0 numeric; km1 numeric; v_day int; v_hop int; v_stops int; v_far text;
+  -- « plages d'arrivée »
   v_wm boolean := public.windows_on(); wait0 int; wait1 int; v_eta int; v_row jsonb;
 begin
   for d in select generate_series(v_from, v_from + greatest(1, least(p_days, 60)) - 1, interval '1 day')::date loop
@@ -867,8 +873,23 @@ begin
         where j.day = d and j.block = b.key and j.deleted_at is null and j.status not in ('cancelled','no_show')
           and (p_exclude is null or j.id <> p_exclude)
           and public.km_between(p_lat, p_lng, coalesce(j.lat, c.lat), coalesce(j.lng, c.lng)) <= v_near;
+      -- the whole day of the vehicles of the block, without and with the appointment
+      v_truck := p1->'extra'->>'truck'; min0 := 0; min1 := 0; km0 := 0; km1 := 0; v_day := null; v_hop := null; v_stops := 0;
+      for tk in select (e->>'id')::uuid id from jsonb_array_elements(p1->'trucks') e loop
+        w0 := public.day_drive(d, tk.id, p0, null, p_exclude);
+        w1 := public.day_drive(d, tk.id, p1, v_x, p_exclude);
+        min0 := min0 + (w0->>'min')::int; min1 := min1 + (w1->>'min')::int;
+        km0 := km0 + (w0->>'km')::numeric; km1 := km1 + (w1->>'km')::numeric;
+        if tk.id::text = v_truck then
+          v_day := (w1->>'min')::int; v_hop := (w1->>'hop')::int; v_stops := greatest(0, (w1->>'stops')::int - 1);
+        end if;
+      end loop;
+      v_far := case when p_lat is null or p_lng is null or v_stops = 0 then null
+                    when v_maxhop > 0 and v_hop is not null and v_hop > v_maxhop then 'hop'
+                    when v_maxday > 0 and v_day > v_maxday then 'day' end;
       v_row := jsonb_build_object('day', d, 'block', b.key, 'pos', b.pos, 'drive_min', greatest(0, used1 - used0 - p_duration - (wait1 - wait0)),
-        'near', near, 'truck', p1->'extra'->>'truck', 'left', (select max((t->>'left')::int) from jsonb_array_elements(p1->'trucks') t));
+        'near', near, 'truck', v_truck, 'left', (select max((t->>'left')::int) from jsonb_array_elements(p1->'trucks') t),
+        'add_min', greatest(0, min1 - min0), 'add_km', greatest(0, round(km1 - km0, 1)), 'day_min', v_day, 'hop_min', v_hop, 'stops', v_stops, 'far', v_far);
       if v_wm then
         v_eta := (p1->'extra'->>'eta')::int;
         v_row := v_row || jsonb_build_object('eta', v_eta, 'wait_min', greatest(0, wait1 - wait0))
@@ -877,8 +898,10 @@ begin
       out := out || jsonb_build_array(v_row);
     end loop;
   end loop;
-  return coalesce((select jsonb_agg(e) from (select e from jsonb_array_elements(out) e
-    order by (e->>'drive_min')::int + coalesce((e->>'wait_min')::int, 0), (e->>'near')::int desc, e->>'day', (e->>'pos')::int limit greatest(1, p_limit)) q), '[]'::jsonb);
+  -- the moments that are not far first, then the least driving added over the day (and the least waiting, with windows)
+  return coalesce((select jsonb_agg(e order by o) from (select e, row_number() over (
+      order by (e->>'far' is not null), (e->>'add_min')::int + coalesce((e->>'wait_min')::int, 0), (e->>'near')::int desc, e->>'day', (e->>'pos')::int) o
+    from jsonb_array_elements(out) e) q where o <= greatest(1, p_limit)), '[]'::jsonb);
 end $$;
 
 -- every window still possible on one day: each start of the day, in steps of win_round_min, with the stop held inside it;

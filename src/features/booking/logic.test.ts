@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, type LoadLike } from './logic';
+import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, isFar, farLimits, farText, farInfo, momentsByKey, offered, betterMoments, betterText, farQuestion, roadWords, type LoadLike, type Moment } from './logic';
 import { blockPhrase, blockPhraseLower, relativeDay } from './when';
 import { QC_TAXES } from '../../lib/money';
 import type { ItemDraft } from './ServicePicker';
@@ -243,5 +243,83 @@ describe('« Plages d’arrivée »: a day and its 4-hour window', () => {
     expect(choiceWords({ day: tomorrow, block: 'day' }, 'fr')).toBe('Demain, plage donnée par l’app');
     expect(choiceWords({ day: tomorrow, block: 'day', win_start: 840 }, 'en')).toMatch(/^Tomorrow, between 2 p\.m\. and 6 p\.m\.$/);
     expect(choiceWords({ day: tomorrow, block: 'pm' }, 'fr')).toBe('Demain après-midi, 12 h à 16 h');
+  });
+});
+
+describe('« garde-route »: a moment far from the truck’s other stops', () => {
+  const lim = { hop: 35, day: 105 };
+  const m = (day: string, block: 'am' | 'pm' | 'eve', o: Partial<Moment> = {}): Moment & { drive_min: number } => ({ day, block, drive_min: 20, ...o });
+  // the server's order: the good ones first, then what they add
+  const list = [
+    m('2026-11-20', 'eve', { add_min: 12, add_km: 5.4, day_min: 60, hop_min: 10, stops: 2, far: null }),
+    m('2026-11-19', 'am', { add_min: 18, add_km: 8, day_min: 70, hop_min: 14, stops: 1, far: null }),
+    m('2026-11-21', 'pm', { add_min: 22, add_km: 10, day_min: 40, hop_min: null, stops: 0, far: null }),
+    m('2026-11-17', 'pm', { add_min: 25, add_km: 11.2, day_min: 120, hop_min: 55, stops: 2, far: 'hop' }),
+    m('2026-11-18', 'am', { add_min: 40, add_km: 19, day_min: 130, hop_min: 30, stops: 3, far: 'day' })
+  ];
+
+  it('reads the two limits of the settings, 35 and 105 min when they are not saved yet', () => {
+    expect(farLimits({})).toEqual({ hop: 35, day: 105 });
+    expect(farLimits(null)).toEqual({ hop: 35, day: 105 });
+    expect(farLimits({ max_hop_min: 45, max_day_drive_min: 150 })).toEqual({ hop: 45, day: 150 });
+  });
+  it('a far moment is never offered; the others keep the server’s order, six at most', () => {
+    expect(offered(list).map((x) => x.day)).toEqual(['2026-11-20', '2026-11-19', '2026-11-21']);
+    expect(offered(list.filter(isFar))).toEqual([]);
+    const many = Array.from({ length: 9 }, (_, i) => m(`2026-12-0${i + 1}`, 'am'));
+    expect(offered(many)).toHaveLength(6);
+  });
+  it('an older server sends no score: nothing is far, the first six are offered as before', () => {
+    const old = Array.from({ length: 8 }, (_, i) => m(`2026-12-0${i + 1}`, 'am'));
+    expect(old.some(isFar)).toBe(false);
+    expect(offered(old)).toEqual(old.slice(0, 6));
+    expect(farInfo(old[0], lim, 'fr')).toBe(null);
+    expect(farText(old[0], lim, 'fr')).toBe('');
+    expect(betterMoments(old[0], old)).toHaveLength(2);
+    expect(roadWords({ drive_min: 20 }, 'fr')).toBe('20 min de route');
+    expect(roadWords({ drive_min: 2 }, 'fr')).toBe('presque pas de route');
+  });
+  it('keeps every moment by day and block, the best first', () => {
+    const map = momentsByKey([...list, m('2026-11-20', 'eve', { far: 'hop' })]);
+    expect(map.size).toBe(5);
+    expect(isFar(map.get('2026-11-20|eve'))).toBe(false);
+    expect(isFar(map.get('2026-11-17|pm'))).toBe(true);
+    expect(isFar(map.get('2026-11-30|am'))).toBe(false);
+  });
+  it('says why in plain words', () => {
+    expect(farText(list[3], lim, 'fr')).toBe('Ce moment est loin des autres arrêts : le camion roulerait 55 min entre deux clients ce jour-là (limite : 35 min).');
+    expect(farText(list[4], lim, 'fr')).toBe('Ce moment met trop de route dans la journée : le camion roulerait 2 h 10 ce jour-là (limite : 1 h 45).');
+    expect(farText(list[4], lim, 'en')).toContain('2 h 10 min');
+    expect(farText(m('2026-11-17', 'pm', { far: 'hop' }), lim, 'fr')).toBe(fr.far.plain);
+    expect(farText(list[0], lim, 'fr')).toBe('');
+    expect(farInfo(list[3], lim, 'fr')).toEqual({ day: '2026-11-17', block: 'pm', kind: 'hop', text: farText(list[3], lim, 'fr') });
+    expect(farInfo(list[0], lim, 'fr')).toBe(null);
+    expect(farInfo(undefined, lim, 'fr')).toBe(null);
+  });
+  it('offers the two best moments that are not far, with the road saved', () => {
+    const b = betterMoments(list[3], list);
+    expect(b.map((x) => [x.moment.day, x.saved])).toEqual([['2026-11-20', 13], ['2026-11-19', 7]]);
+    expect(betterText(b[0], '2026-11-10', 'fr')).toBe('Plutôt vendredi 20 novembre, soir : 13 min de route en moins');
+    expect(betterText(b[0], '2026-11-19', 'fr')).toBe('Plutôt demain soir : 13 min de route en moins');
+    // nothing saved (or not said): the moment alone
+    const none = betterMoments(m('2026-11-17', 'pm', { add_min: 5, far: 'hop' }), list);
+    expect(none[0].saved).toBe(null);
+    expect(betterText(none[0], '2026-11-19', 'fr')).toBe('Plutôt demain soir');
+    // every moment far: nothing better to offer
+    expect(betterMoments(list[3], list.filter(isFar))).toEqual([]);
+  });
+  it('asks before booking or moving into it, only for the moment chosen', () => {
+    const far = farInfo(list[3], lim, 'fr')!;
+    expect(farQuestion(far, { day: '2026-11-17', block: 'pm' }, 'book', 'fr')).toEqual({ title: 'Beaucoup de route ce jour-là', text: far.text, ok: 'Réserver quand même', cancel: 'Choisir un autre moment', danger: true });
+    expect(farQuestion(far, { day: '2026-11-17', block: 'pm' }, 'move', 'fr')!.ok).toBe('Déplacer quand même');
+    expect(farQuestion(far, { day: '2026-11-18', block: 'pm' }, 'book', 'fr')).toBe(null);
+    expect(farQuestion(far, null, 'book', 'fr')).toBe(null);
+    expect(farQuestion(null, { day: '2026-11-17', block: 'pm' }, 'book', 'fr')).toBe(null);
+  });
+  it('a suggestion says what the job adds to the whole day, with the km', () => {
+    expect(roadWords({ drive_min: 30, add_min: 12, add_km: 5.4 }, 'fr')).toBe('12 min de route (5,4 km)');
+    expect(roadWords({ drive_min: 30, add_min: 12, add_km: 5.4 }, 'en')).toBe('12 min of driving (5.4 km)');
+    expect(roadWords({ drive_min: 30, add_min: 12 }, 'fr')).toBe('12 min de route');
+    expect(roadWords({ drive_min: 30, add_min: 1, add_km: 0.4 }, 'fr')).toBe('presque pas de route');
   });
 });

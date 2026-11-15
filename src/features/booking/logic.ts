@@ -1,7 +1,9 @@
 /* Booking: the pure rules behind the form (what is missing, what it costs, what the block picker shows).
    No signals here, so they are easy to test (logic.test.ts). */
 import { totals, type Line, type TaxRates, type Totals } from '../../lib/money';
-import { isValidDay, type BlockKey, type Day } from '../../lib/dates';
+import { isValidDay, duration, type BlockKey, type Day } from '../../lib/dates';
+import { t, type Lang } from '../../lib/i18n';
+import { blockPhraseLower } from './when';
 import type { Job, Quote, Service, JobItem } from '../../data/types';
 import type { ItemInput } from '../../data/api';
 import type { ItemDraft } from './ServicePicker';
@@ -191,4 +193,67 @@ export function needsMachine(items: { service_id?: string | null; description: s
 /** a car being typed, in a few words (« 2019 Honda Civic », else its VIN); '' when nothing is typed */
 export function carDraftLabel(d: { year: string; make: string; model: string; vin: string }): string {
   return [d.year, d.make, d.model].map((x) => x.trim()).filter(Boolean).join(' ') || d.vin.trim();
+}
+
+/* ---------- « garde-route »: a moment that puts too much road in the truck's day ---------- */
+/** what the server says of a bookable moment (suggest_blocks); the score is absent with an older server: never far then */
+export interface Moment {
+  day: string; block: BlockKey;
+  add_min?: number; add_km?: number; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null;
+}
+export interface FarLimits { hop: number; day: number }
+/** the moment chosen is far: which one, why, and the warning in plain words */
+export interface FarInfo { day: string; block: BlockKey; kind: 'hop' | 'day'; text: string }
+
+export const isFar = (m: Pick<Moment, 'far'> | null | undefined): boolean => m?.far === 'hop' || m?.far === 'day';
+/** the two limits of the settings (a settings row saved before them has none: 35 and 105 min) */
+export function farLimits(b: { max_hop_min?: number | null; max_day_drive_min?: number | null } | null | undefined): FarLimits {
+  return { hop: Number(b?.max_hop_min) || 35, day: Number(b?.max_day_drive_min) || 105 };
+}
+/** every moment by « day|block »; the first one wins (the server sends the best first) */
+export function momentsByKey<M extends Moment>(list: M[]): Map<string, M> {
+  const out = new Map<string, M>();
+  for (const m of list) { const k = `${m.day}|${m.block}`; if (!out.has(k)) out.set(k, m); }
+  return out;
+}
+/** the moments to offer: never a far one, the first `n` in the server's order */
+export function offered<M extends Moment>(list: M[], n = 6): M[] {
+  return list.filter((m) => !isFar(m)).slice(0, n);
+}
+/** why a far moment is far, in plain words; '' when it is fine */
+export function farText(m: Moment | null | undefined, lim: FarLimits, l: Lang): string {
+  if (!m || !isFar(m)) return '';
+  if (m.far === 'hop' && m.hop_min != null) return t('booking.far.hop', { d: duration(m.hop_min, l), max: duration(lim.hop, l) }, l);
+  if (m.far === 'day' && m.day_min != null) return t('booking.far.day', { d: duration(m.day_min, l), max: duration(lim.day, l) }, l);
+  return t('booking.far.plain', undefined, l);
+}
+export function farInfo(m: Moment | null | undefined, lim: FarLimits, l: Lang): FarInfo | null {
+  return m && isFar(m) ? { day: m.day, block: m.block, kind: m.far as 'hop' | 'day', text: farText(m, lim, l) } : null;
+}
+/** up to `n` better moments than the far one chosen: the best that are not far, with the minutes of road saved
+    (null when it cannot be said, or when nothing is saved) */
+export function betterMoments<M extends Moment>(picked: Moment, list: M[], n = 2): { moment: M; saved: number | null }[] {
+  return list.filter((m) => !isFar(m) && !(m.day === picked.day && m.block === picked.block)).slice(0, n).map((m) => {
+    const saved = picked.add_min != null && m.add_min != null ? Math.round(picked.add_min - m.add_min) : null;
+    return { moment: m, saved: saved != null && saved > 0 ? saved : null };
+  });
+}
+/** « Plutôt vendredi 20 novembre, soir : 13 min de route en moins » */
+export function betterText(b: { moment: Moment; saved: number | null }, todayDay: Day, l: Lang): string {
+  const when = blockPhraseLower(b.moment.day, b.moment.block, todayDay, l);
+  return b.saved != null ? t('booking.far.better', { when, d: duration(b.saved, l) }, l) : t('booking.far.betterPlain', { when }, l);
+}
+/** the question before booking (or moving) into a far moment; null: nothing to ask (not far, or the warning is of
+    another moment than the one chosen) */
+export function farQuestion(far: FarInfo | null | undefined, choice: { day: string; block: string } | null, mode: 'book' | 'move', l?: Lang): { title: string; text: string; ok: string; cancel: string; danger: true } | null {
+  if (!far || !choice || far.day !== choice.day || far.block !== choice.block) return null;
+  return { title: t('booking.far.title', undefined, l), text: far.text, ok: t(mode === 'move' ? 'booking.far.okMove' : 'booking.far.ok', undefined, l), cancel: t('booking.far.cancel', undefined, l), danger: true };
+}
+/** « 13 min de route (4,2 km) » of a suggestion: what the job adds to the whole day when the server says it, else the drive to it */
+export function roadWords(m: { drive_min: number; add_min?: number; add_km?: number }, l: Lang): string {
+  const min = m.add_min ?? m.drive_min;
+  if (min <= 2) return t('booking.picker.noDrive', undefined, l);
+  const d = duration(min, l);
+  if (m.add_min == null || m.add_km == null) return t('booking.picker.drive', { d }, l);
+  return t('booking.picker.driveKm', { d, km: m.add_km.toLocaleString(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }) }, l);
 }
