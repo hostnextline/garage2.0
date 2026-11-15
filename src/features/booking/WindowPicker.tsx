@@ -22,6 +22,7 @@ import { jobBox, jobMinute, overlapColumns, workedUnits, unitCount, unitMinutes,
 import { jobPerson } from '../agenda/move';
 import { roomy } from '../agenda/screen';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
+import { DayRoute } from './DayRoute';
 import { stopRank } from './preview';
 import { fromDevice } from '../map/device';
 import { spanEnds } from './when';
@@ -212,6 +213,20 @@ export function WindowPicker(p: BlockPickerProps) {
     { key: 'pick', label: t('booking.preview.pick'), icon: <Check size={18} />, run: () => pick(c), testid: 'menu-pick' },
     ...(hasPos ? [{ key: 'map', label: t('booking.preview.see'), icon: <MapIcon size={18} />, run: () => see(c), testid: 'menu-see-map' }] : [])
   ];
+  /* a right-click anywhere on a day of the calendar: « Voir sur la carte » (with the new stop at that time when the address
+     is known and a time is under the pointer, else the day's routes as they are); « Choisir ce moment » on a possible time */
+  const [dayMap, setDayMap] = useState<string | null>(null);
+  const dayMenu = (e: MouseEvent, d: string, m: number | null) => {
+    const open = m != null && !!modelOf(d)?.possible.has(m);
+    const c = m != null ? unitChoice(d, m) : null;
+    const day = longDay(d, l);
+    const title = `${day.charAt(0).toUpperCase()}${day.slice(1)}${m != null ? `, ${clock(m, l)}` : ''}`;
+    openMenu(e, [
+      ...(open && c ? [{ key: 'pick', label: t('booking.preview.pick'), icon: <Check size={18} />, run: () => pick(c), testid: 'menu-pick' }] : []),
+      { key: 'map', label: t('booking.preview.see'), icon: <MapIcon size={18} />, testid: 'menu-see-map',
+        run: () => { if (hasPos && c) setPreview({ choice: c, ask: askOf(c, t('booking.win.grid.around', { time: clock(m!, l) })) }); else setDayMap(d); } }
+    ], title);
+  };
   const menuProps = (c: BlockChoice) => ({
     onContextMenu: (e: MouseEvent) => openMenu(e, actions(c), choiceWords(c, l)),
     ...pressProps((x, y) => { openMenuAt(x, y, actions(c), choiceWords(c, l)); })
@@ -274,6 +289,7 @@ export function WindowPicker(p: BlockPickerProps) {
         {p.value && hasPos && <Button size="sm" variant="ghost" icon={<MapIcon />} onClick={() => see(p.value!)} data-testid="bp-see-map">{t('booking.preview.see')}</Button>}
       </div>
       {preview && <RoutePreview ask={preview.ask} onClose={() => setPreview(null)} onPick={() => pick(preview.choice)} />}
+      {dayMap && <DayRoute day={dayMap} exclude={p.excludeJob ?? null} onClose={() => setDayMap(null)} />}
       {hover && !preview && <RoutePreview ask={hover.ask} float={{ left: hover.left, top: hover.top }} onClose={() => setHover(null)} />}
       {(gone || (lost && !p.value)) && <Banner kind="warn" data-testid="win-gone">{t('booking.win.grid.gone')}</Banner>}
       {auto && modelOf(p.value!.day)?.kind === 'full' && <Banner kind="warn">{t('booking.win.picker.fullWarn')}</Banner>}
@@ -344,6 +360,7 @@ export function WindowPicker(p: BlockPickerProps) {
           ? <PickList days={models} today={today} selDay={shown} onDay={setDay} onTime={(d, m) => pick(unitChoice(d, m))} unitLabel={unitLabel} dayLabel={dayLabel}
               menuOf={(d, m) => menuProps(unitChoice(d, m))} currentM={sel?.currentM ?? null} {...nav} />
           : <PickGrid span={span} days={models} today={today} selDay={shown} onDay={setDay} labelOf={labelOf} unitLabel={unitLabel} dayLabel={dayLabel} winOf={(m) => windowOf(m) as Win}
+              onDayMenu={dayMenu}
               onUnit={(d, m, st) => { if (st === 'open') pick(unitChoice(d, m)); else if (st === 'no') void refused(d, m); }}
               askOf={(d, m) => (hasPos ? askOf(unitChoice(d, m), t('booking.win.grid.around', { time: clock(m, l) })) : null)}
               range={range} {...nav} goto={goto} openAt={chosenAt ?? (settled ? firstOpen ?? (days.includes(today) ? Math.max(span[0], now - 30) : span[0]) : null)} pageKey={`${days[0] || ''}|${per}`} hint={t('booking.win.grid.hint')} force={mayForce} />}

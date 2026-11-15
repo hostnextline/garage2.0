@@ -196,6 +196,7 @@ export const booking: typeof fr = {
   },
   /* Arrival windows (booking by 4-hour window): the same texts without the word “block”, and the windows’ own */
   win: {
+    dayMap: { title: 'That day’s routes', stops: { one: '{n} stop planned that day.', other: '{n} stops planned that day.' }, none: 'No appointment that day yet.', note: 'Choose the customer and their address to see where the new appointment fits in the route.' },
     sub: 'The customer, the services, then the time. The app picks the truck and the order of the stops.',
     help: 'An appointment is booked in a 4-hour arrival window, for example “between 2 p.m. and 6 p.m.”: the mechanic arrives within those hours. The app offers the window from the day’s route.\n“Flexible”: the customer is free all day and gets the window the evening before.\nThe confirmation text goes out by itself when texts are connected.',
     block: { title: 'Time', sub: 'The best days first, then the calendar: choose the arrival time.' },

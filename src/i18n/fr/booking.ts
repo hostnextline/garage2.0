@@ -196,6 +196,7 @@ export const booking = {
   },
   /* « Plages d’arrivée » (réservation par plage de 4 heures) : les mêmes textes sans le mot « bloc », et ceux des plages */
   win: {
+    dayMap: { title: 'Les routes de ce jour-là', stops: { one: '{n} arrêt prévu ce jour-là.', other: '{n} arrêts prévus ce jour-là.' }, none: 'Aucun rendez-vous ce jour-là pour l’instant.', note: 'Choisis le client et son adresse pour voir où le nouveau rendez-vous se place dans la route.' },
     sub: 'Le client, les services, puis le moment. L’app choisit le camion et l’ordre des arrêts.',
     help: 'Un rendez-vous se prend dans une plage d’arrivée de 4 heures, par exemple « entre 14 h et 18 h » : le mécano arrive dans ces heures-là. L’app propose la plage d’après la route de la journée.\n« Flexible » : le client est libre toute la journée et reçoit sa plage la veille au soir.\nLe texto de confirmation part tout seul quand les textos sont branchés.',
     block: { title: 'Moment', sub: 'Les meilleurs jours d’abord, puis le calendrier : choisis l’heure d’arrivée.' },

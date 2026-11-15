@@ -35,6 +35,8 @@ export interface PickGridProps {
   /** the day whose switch and buttons are under the calendar */
   selDay: Day | null; onDay: (d: Day) => void;
   onUnit: (d: Day, m: number, state: UnitState) => void;
+  /** a right-click anywhere on a day (a unit of any state, a booked stop, the day's name): the day and the time under the pointer */
+  onDayMenu?: (e: MouseEvent, d: Day, m: number | null) => void;
   /** « Arrivée vers 14 h 15 · dit au client : 13 h 15 à 17 h 15 » */
   labelOf: (m: number) => string;
   unitLabel: (d: Day, m: number, state: UnitState) => string;
@@ -187,7 +189,7 @@ export function PickGrid(p: PickGridProps) {
         <span />
         {days.map((d) => (
           <button key={d.day} type="button" class={`pk-dayhd is-${d.kind}${d.day === p.today ? ' is-today' : ''}${p.selDay === d.day ? ' is-sel' : ''}`} aria-pressed={p.selDay === d.day}
-            aria-label={p.dayLabel(d)} title={p.dayLabel(d)} onClick={() => p.onDay(d.day)} data-testid={`pick-day-${d.day}`}>
+            aria-label={p.dayLabel(d)} title={p.dayLabel(d)} onClick={() => p.onDay(d.day)} onContextMenu={(e) => p.onDayMenu?.(e, d.day, null)} data-testid={`pick-day-${d.day}`}>
             <span class="pk-dayhd-wd">{d.day === p.today ? t('common.today') : wd.format(parseDay(d.day))}</span>
             <span class="pk-dayhd-num">{parseDay(d.day).getDate()}</span>
             <span class="pk-dayhd-state">{d.kind === 'open' ? ' ' : d.kind === 'loading' ? <span class="pk-spin" aria-hidden="true" /> : t(`booking.win.grid.state.${d.kind}`)}</span>
@@ -200,6 +202,17 @@ export function PickGrid(p: PickGridProps) {
             {unitMinutes(span).map((m) => <span key={m} class={m % 60 === 0 ? 'is-hour' : ''}>{m % 60 === 0 ? clock(m, l) : `:${String(m % 60).padStart(2, '0')}`}</span>)}
           </div>
           <div class="pk-cols" ref={cols} role="group" aria-label={t('booking.win.grid.title')} aria-describedby="pk-help"
+            onContextMenu={(e) => {
+              if (!p.onDayMenu) return;
+              const col = (e.target as HTMLElement).closest<HTMLElement>('.pk-col[data-day]');
+              if (!col) return;
+              // the time under the pointer, whatever is drawn there (a closed unit, a booked stop, the band)
+              const r = col.getBoundingClientRect();
+              const n = Math.round((span[1] - span[0]) / 15);
+              const i = Math.max(0, Math.min(n - 1, Math.floor(((e.clientY - r.top) / Math.max(1, r.height)) * n)));
+              hide();
+              p.onDayMenu(e, col.dataset.day as Day, span[0] + i * 15);
+            }}
             onClick={(e) => { const u = unitOf(e.target); if (u) { setFocus({ day: u.day, m: u.m }); p.onUnit(u.day, u.m, u.state); } }}
             onMouseOver={(e) => { const u = unitOf(e.target); if (u && u.state === 'open') show(u, 'mouse'); else if (active?.by === 'mouse') hide(); }}
             onMouseLeave={() => { if (active?.by === 'mouse') hide(); }}
