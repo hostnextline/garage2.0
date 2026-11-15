@@ -15,7 +15,7 @@ import { appBase, movedTo } from '../../lib/config';
 import { AddressField, type PlaceValue } from '../customers/AddressField';
 import { MapView } from '../map/MapView';
 import { useSectionDraft, SaveBar, Section, NumInput, TimeInput, rangeError } from './SectionFrame';
-import { WIN_DEFAULTS, WIN_LIMITS, spanOf, withDaySpan, exampleWindow, spanTooShort } from './windows';
+import { WIN_DEFAULTS, WIN_LIMITS, spanOf, withDaySpan, exampleWindow, spanTooShort, winRound } from './windows';
 
 interface Booking {
   blocks: { key: BlockKey; start: number; end: number }[];
@@ -26,7 +26,7 @@ interface Booking {
   return_phone: string;
   /** every mechanic sees every route and may do any of its jobs (the vehicles are nobody's own) */
   shared_routes: boolean;
-  /** « Plages d'arrivée »: minutes before / after the estimated arrival, and the rounding (30 or 60) */
+  /** « Plages d'arrivée »: minutes before / after the estimated arrival, and the rounding (15, 30 or 60) */
   win_before_min: number | null; win_after_min: number | null; win_round_min: number | null;
 }
 const NUMS: { k: keyof Booking; min: number; max: number; unit: 'days' | 'kmh' | 'pct' | 'min' | 'km'; decimals?: boolean }[] = [
@@ -53,7 +53,7 @@ export function BookingSection() {
     home: { label: b.home?.label || 'Centrale', address: b.home?.address || '', lat: b.home?.lat ?? null, lng: b.home?.lng ?? null },
     return_phone: b.return_phone || '',
     shared_routes: !!(b as { shared_routes?: boolean }).shared_routes,
-    win_before_min: b.win_before_min ?? WIN_DEFAULTS.before, win_after_min: b.win_after_min ?? WIN_DEFAULTS.after, win_round_min: b.win_round_min === 30 ? 30 : WIN_DEFAULTS.round
+    win_before_min: b.win_before_min ?? WIN_DEFAULTS.before, win_after_min: b.win_after_min ?? WIN_DEFAULTS.after, win_round_min: winRound(b.win_round_min)
   };
   const winOn = windowsOn.value;
   const { draft: d, set, dirty, reset } = useSectionDraft<Booking>('booking', saved);
@@ -86,7 +86,7 @@ export function BookingSection() {
       stop_min: Math.round(d.stop_min!), unknown_min: Math.round(d.unknown_min!), min_block_min: Math.round(d.min_block_min!), near_km: d.near_km, home,
       return_phone: d.return_phone.trim() || null, shared_routes: d.shared_routes,
       // the numbers of the windows are written only once the garage books by windows (nothing new in the settings before)
-      ...(winOn ? { win_before_min: Math.round(d.win_before_min!), win_after_min: Math.round(d.win_after_min!), win_round_min: d.win_round_min === 30 ? 30 : 60 } : {})
+      ...(winOn ? { win_before_min: Math.round(d.win_before_min!), win_after_min: Math.round(d.win_after_min!), win_round_min: winRound(d.win_round_min) } : {})
     }), { ok: replan ? t(moved ? 'settings.booking.startMoved' : 'settings.booking.replanned') : t('settings.saved') });
     if (!ok) return;
     reset();
@@ -179,8 +179,8 @@ export function BookingSection() {
                     unit={t('settings.booking.minutes')} invalid={!!err.win_after_min} aria-label={t('settings.booking.win.after')} data-testid="windows-after" />
                 </Field>
                 <Field label={t('settings.booking.win.round')} help={t('settings.booking.win.roundHelp')}>
-                  <Seg value={d.win_round_min === 30 ? '30' : '60'} onValue={(v) => set((x) => ({ ...x, win_round_min: Number(v) }))} label={t('settings.booking.win.round')} data-testid="windows-round"
-                    options={[{ value: '60', label: t('settings.booking.win.round60') }, { value: '30', label: t('settings.booking.win.round30') }]} />
+                  <Seg value={String(winRound(d.win_round_min))} onValue={(v) => set((x) => ({ ...x, win_round_min: Number(v) }))} label={t('settings.booking.win.round')} data-testid="windows-round"
+                    options={[{ value: '60', label: t('settings.booking.win.round60') }, { value: '30', label: t('settings.booking.win.round30') }, { value: '15', label: t('settings.booking.win.round15') }]} />
                 </Field>
               </div>
               <p class="settings-example" data-testid="windows-example" aria-live="polite">

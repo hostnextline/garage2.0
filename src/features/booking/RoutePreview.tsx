@@ -18,7 +18,12 @@ export interface PreviewAsk extends Spot { when: string; exclude?: string | null
 const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
 
 /** `float`: the small window beside a moment hovered with a mouse (no buttons, nothing to close: it follows the pointer's row) */
-export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?: () => void; float?: { left: number; top: number } }) {
+export interface FloatAt { left?: number; right?: number; top: number;
+  /** the words above the map (else the moment's own words) */
+  title?: string }
+/** where a floating box goes, as a style (hugging the left or the right of what it is beside) */
+export const floatStyle = (f: FloatAt) => ({ top: `${f.top}px`, ...(f.right != null ? { right: `${f.right}px` } : { left: `${f.left ?? 8}px` }) });
+export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?: () => void; float?: FloatAt }) {
   const l = lang.value;
   const a = p.ask;
   const placed = useMemo(() => {
@@ -61,8 +66,8 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?:
   if (p.float) {
     // drawn on the page itself: inside a glass panel a fixed box is cut by the panel
     return createPortal(
-      <div class="bp-hover-map" style={{ left: `${p.float.left}px`, top: `${p.float.top}px` }} role="tooltip" data-testid="route-hover">
-        <p class="bp-hover-when">{a.when}</p>
+      <div class="bp-hover-map" style={floatStyle(p.float)} role="tooltip" data-testid="route-hover">
+        <p class="bp-hover-when">{p.float.title || a.when}</p>
         <MapView markers={markers} lines={lines} height="220px" label={t('booking.preview.mapLabel')} data-testid="route-hover-map" />
         {trA && mine ? (
           <p class="bp-hover-facts" data-testid="route-hover-facts">

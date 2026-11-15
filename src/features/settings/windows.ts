@@ -5,6 +5,10 @@ export interface BlockHours { key: BlockKey; start: number; end: number }
 export interface WinNums { before: number | null; after: number | null; round: number | null }
 export const WIN_DEFAULTS = { before: 60, after: 180, round: 60 } as const;
 export const WIN_LIMITS = { before: [0, 180], after: [30, 360] } as const;
+/** « Arrondi »: the windows start on the hour, the half hour or the quarter hour */
+export const WIN_ROUNDS = [60, 30, 15] as const;
+/** the rounding kept: one of the three choices, else the hour */
+export function winRound(v: unknown): number { const n = Number(v); return (WIN_ROUNDS as readonly number[]).includes(n) ? n : WIN_DEFAULTS.round; }
 
 /** first start → last end of the stored blocks */
 export function spanOf(blocks: BlockHours[]): Range {
@@ -23,7 +27,7 @@ export function withDaySpan(blocks: BlockHours[], start: number, end: number): B
 /** the window told for an estimated arrival, with the numbers being typed (the defaults when one is missing or wrong) */
 export function exampleWindow(eta: number, w: WinNums, span: Range): Range {
   const ok = (v: number | null, d: number) => (v != null && Number.isFinite(v) && v >= 0 ? v : d);
-  return windowFor(eta, { before: ok(w.before, WIN_DEFAULTS.before), after: ok(w.after, WIN_DEFAULTS.after), round: w.round === 30 ? 30 : 60, dayStart: span[0], dayEnd: span[1] });
+  return windowFor(eta, { before: ok(w.before, WIN_DEFAULTS.before), after: ok(w.after, WIN_DEFAULTS.after), round: winRound(w.round), dayStart: span[0], dayEnd: span[1] });
 }
 /** the day must be at least as long as one window */
 export function spanTooShort(span: Range, w: WinNums): boolean {

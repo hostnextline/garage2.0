@@ -13,6 +13,8 @@ export interface BlockChoice {
   win_start?: number | null; win_end?: number | null; win_flex?: boolean;
   /** the estimated arrival of the moment offered (for « Voir sur la carte ») */
   eta?: number | null;
+  /** the vehicle the server would send at that moment (for the map only: the booking leaves the choice to the app) */
+  truck?: string | null;
 }
 export type VehicleKind = 'car' | 'truck' | null;
 export interface BlockPickerProps {
@@ -38,6 +40,9 @@ export interface BlockPickerProps {
   openDay?: string | null;
   /** « Plages d'arrivée »: a new number asks the suggestions again (a window refused by the server: `window_full`) */
   reload?: number;
+  /** « Plages d'arrivée »: the calendar as a time grid (a computer) or as a list of times (a phone); by default the
+      screen's width decides (≥ 760 px: the grid) */
+  layout?: 'grid' | 'list';
 }
 
 /** how long a window is with the garage's settings (4 h: 1 h before the estimated arrival, 3 h after) */

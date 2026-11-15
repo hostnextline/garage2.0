@@ -15,9 +15,9 @@ import { wide } from '../../app/media';
 import { t, lang } from '../../lib/i18n';
 import { duration, today as todayOf } from '../../lib/dates';
 import { money } from '../../lib/money';
-import { job as jobRow, itemsOf, customer as customerRow, customerName, vehicle as vehicleRow, vehiclesOf, vehicleLabel, activeTrucks, truckLabel, truckColor, settings, service as serviceRow, blockLoad, windowsOn, windowOf, jobWindow } from '../../data/select';
+import { job as jobRow, itemsOf, customer as customerRow, customerName, vehicle as vehicleRow, vehiclesOf, vehicleLabel, activeTrucks, truckLabel, truckColor, settings, service as serviceRow, blockLoad, windowsOn, jobWindow } from '../../data/select';
 import { getRow } from '../../data/store';
-import { bookJob, walkIn as walkInJob, errorMessage, saveCustomer, saveVehicle, suggestWindows, type BookInput } from '../../data/api';
+import { bookJob, walkIn as walkInJob, errorMessage, saveCustomer, saveVehicle, type BookInput } from '../../data/api';
 import { uuid } from '../../data/sync';
 import { can, hasRole, isOwner, myTrucks } from '../../data/auth';
 import type { Quote } from '../../data/types';
@@ -35,7 +35,8 @@ import { OilHint } from '../jobs/CarFirst';
 import { ServicePicker, type ItemDraft } from './ServicePicker';
 import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind } from './BlockPicker';
 import { winLen } from './choice';
-import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, distinctWindows, BLOCK_REFUSALS } from './logic';
+import { broad } from './screen';
+import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, BLOCK_REFUSALS } from './logic';
 import { blockPhrase } from './when';
 import { notifyCustomer, wantsText } from './notify';
 import { forgetRefusal, noLongWaitOffline } from './outbox';
@@ -87,17 +88,28 @@ function BookForm({ query }: ScreenProps) {
   const [items, setItems] = useState<ItemDraft[]>([]);
   const [problem, setProblem] = useState('');
   const [notes, setNotes] = useState('');
-  // a block from the address (« Réserver dans ce bloc »), unless it has started meanwhile
-  const [choice, setChoice] = useState<BlockChoice | null>(() => {
-    const c = isWalkIn ? null : parseChoice(query.get('day'), query.get('block'), { windows: wm, win: query.get('win'), flex: query.get('flex'), len: winLen() });
+  /* the moment the address says: a block (« Réserver dans ce bloc »), unless it has started meanwhile; with « Plages
+     d'arrivée » a day and its window (&win=, a unit of the agenda's time grid) or « flexible ». A day alone, and a
+     copy (its window is decided below), open in the picker without a choice. */
+  const barChoice = (windows: boolean): BlockChoice | null => {
+    const c = isWalkIn ? null : parseChoice(query.get('day'), query.get('block'), { windows, win: query.get('win'), flex: query.get('flex'), len: winLen() });
     if (!c) return null;
-    // a day (windows): chosen only when the address says its window, and never for a copy (its own window is checked
-    // first, below); the day alone opens in the picker
     if (c.block === 'day') return c.day >= todayOf() && (c.win_start != null || c.win_flex) && !query.get('copy') ? c : null;
     return !blockLoad(c.day, c.block).started ? c : null;
-  });
+  };
+  const [choice, setChoice] = useState<BlockChoice | null>(() => barChoice(wm));
+  /* the garage's way of booking can be known a moment after the first drawing (the settings arrive, the demo switches
+     the windows on): the address is read again then. Before this, `&block=day&win=960` was read as a block, refused,
+     and the screen opened with nothing chosen (or with whatever was tapped next). */
+  const modeRead = useRef(wm);
+  const touched = useRef(false);
+  useEffect(() => {
+    if (modeRead.current === wm) return;
+    modeRead.current = wm;
+    if (!touched.current) setChoice(barChoice(wm));
+  }, [wm]);
   // « Plages d'arrivée »: the day the address says, opened in the picker
-  const [openDay] = useState<string | null>(() => (wm && !isWalkIn ? parseChoice(query.get('day'), query.get('block'), { windows: true })?.day ?? null : null));
+  const openDay = wm && !isWalkIn ? parseChoice(query.get('day'), query.get('block'), { windows: true })?.day ?? null : null;
   // asks the picker for its suggestions again (a window the server refused)
   const [reload, setReload] = useState(0);
   const [truckId, setTruckId] = useState<string | null>(null);
@@ -126,7 +138,8 @@ function BookForm({ query }: ScreenProps) {
   };
   const blockPanel = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLElement>(null);
-  const isWide = wide.value;
+  // two columns on a computer; with « Plages d'arrivée » only when the time calendar has room beside the form
+  const isWide = wide.value && (!wm || isWalkIn || broad.value);
   // computer: the right column stays in view; its height follows where it starts on the screen, so « Réserver » is
   // always visible (before the page scrolls, the column starts lower)
   useEffect(() => {
@@ -140,6 +153,20 @@ function BookForm({ query }: ScreenProps) {
     window.addEventListener('resize', later);
     return () => { window.removeEventListener('scroll', later); window.removeEventListener('resize', later); if (raf) cancelAnimationFrame(raf); };
   }, [isWide]);
+  /* « Plages d'arrivée » on a computer: the time calendar is taller than the screen can be, so the right column is as
+     tall as it needs and the page scrolls; it stays in view by its bottom (a column taller than the window sticks
+     where its last line shows, above the « Réserver » bar) */
+  const winWide = isWide && wm && !isWalkIn;
+  useEffect(() => {
+    const el = side.current;
+    if (!winWide || !el || typeof ResizeObserver !== 'function') return;
+    const fit = () => el.style.setProperty('--side-stick', `${Math.min(12, window.innerHeight - el.offsetHeight - 108)}px`);
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    window.addEventListener('resize', fit);
+    return () => { ro.disconnect(); window.removeEventListener('resize', fit); };
+  }, [winWide]);
 
   /* ---------- an estimate becomes a job (once its row is on the device) ---------- */
   const fromQuote = useRef(false);
@@ -168,21 +195,22 @@ function BookForm({ query }: ScreenProps) {
     if (copyOf.problem) setProblem(copyOf.problem);
     if (copyOf.notes) setNotes(copyOf.notes);
     setCard(!!copyOf.card_on_file);
-    /* « Plages d'arrivée »: pasted on a day, the copied appointment's own window is offered when that day can still
-       take it (a flexible one stays flexible); if not, the picker shows that day's hours */
-    if (!wm || !openDay || openDay < todayOf()) return;
+  }, [copyOf?.id]);
+  /* « Plages d'arrivée »: pasted on a time of the agenda's grid (&win=), that window; pasted on a day, the copied
+     appointment's own window (a flexible one stays flexible). The picker then checks it with the server for this
+     address and this work: a window no longer possible that day is taken off, and said. */
+  const copyWin = useRef(false);
+  useEffect(() => {
+    if (!copyOf || copyWin.current || !wm || !openDay || openDay < todayOf()) return;
+    copyWin.current = true;
+    const bar = parseChoice(openDay, 'day', { windows: true, win: query.get('win'), len: winLen() });
+    if (bar?.win_start != null) { setChoice((c) => c || bar); return; }
     if (copyOf.win_flex && copyOf.win_start == null) { setChoice((c) => c || { day: openDay, block: 'day', win_flex: true }); return; }
     // an appointment of the block days: its block's hours are the window it had; a day with no window yet: the picker
     if (copyOf.block === 'day' && copyOf.win_start == null) return;
     const want = jobWindow(copyOf)[0];
-    const at = own ? { lat: copyOf.lat ?? null, lng: copyOf.lng ?? null } : placeOf(copyOf.customer_id);
-    const minutes = bookSummary(draftsFromJob(itemsOf(copyOf.id)), settings.value.taxes).minutes;
-    suggestWindows(at.lat, at.lng, minutes, openDay, null, !!copyOf.needs_machine, null).then((rows) => {
-      const hit = distinctWindows(rows, windowOf, winLen()).find((r) => r.win[0] === want);
-      if (hit) setChoice((c) => c || { day: openDay, block: 'day', win_start: hit.win[0], win_end: hit.win[1], eta: hit.eta ?? null });
-      else setBlockError((e) => e || t('booking.win.copyGone'));
-    }).catch(() => undefined);
-  }, [copyOf?.id]);
+    setChoice((c) => c || { day: openDay, block: 'day', win_start: want, win_end: want + winLen() });
+  }, [copyOf?.id, wm, openDay]);
 
   /* ---------- #/book?customer=ID: the row may arrive after the first drawing (first start, slow network) ---------- */
   const qRow = customerRow(qCustomer);
@@ -512,11 +540,11 @@ function BookForm({ query }: ScreenProps) {
 
   const blockSection = !isWalkIn && (
     <div ref={blockPanel} class="book-block-anchor">
-      <Panel title={bt('block.title')} sub={bt('block.sub')} data-tour="book-block">
+      <Panel title={bt('block.title')} sub={winWide ? undefined : bt('block.sub')} data-tour="book-block">
         {blockError && <div style={{ marginBottom: 'var(--sp-3)' }}><Banner kind="bad">{blockError}</Banner></div>}
         <BlockPicker lat={place.lat} lng={place.lng} address={place.address} duration={allMinutes} truckId={effTruck} value={choice}
           need={need} kind={kind} onKind={(k) => { setKind(k); setChoice(null); }}
-          onPick={(c) => { setChoice(c); setBlockError(null); }} onClear={() => setChoice(null)} openDay={openDay} reload={reload} />
+          onPick={(c) => { touched.current = true; setChoice(c); setBlockError(null); }} onClear={() => setChoice(null)} openDay={openDay} reload={reload} />
       </Panel>
     </div>
   );
@@ -590,7 +618,7 @@ function BookForm({ query }: ScreenProps) {
     : callStart === 'job' ? [servicesPanel, callAddressPanel, block, callCarPanel, notesPanel, customerPanel]
     : [callAddressPanel, block, servicesPanel, callCarPanel, notesPanel, customerPanel];
 
-  const summaryPanel = (
+  const summaryPanel = (withStep: boolean) => (
     <Panel title={t('booking.summary.title')} class="book-summary">
       <Kv items={[
         [t('booking.summary.customer'), cust ? [customerName(cust), vehicleLabel(vehicleRow(vehicleId))].filter(Boolean).join(', ') : needNew && caller.first.trim() ? [`${caller.first} ${caller.last}`.trim(), carDraftLabel(cur.draft) || (cars.length > 1 ? carName(cur.id) : '')].filter(Boolean).join(', ') : null],
@@ -603,7 +631,7 @@ function BookForm({ query }: ScreenProps) {
         <Money cents={allTotal} large />
         <span class="muted small">{t('booking.summary.taxesLabel')}{sum.toConfirm ? `, ${t('booking.summary.toConfirm')}` : ''}</span>
       </div>
-      {step}
+      {withStep && step}
     </Panel>
   );
 
@@ -621,25 +649,26 @@ function BookForm({ query }: ScreenProps) {
       )}
       {quoteId && !quote && <Banner kind="warn">{t('booking.quote.missing')}</Banner>}
       {mechanicOnly && own && <Banner kind="info">{t('booking.mechanicTruck', { name: truckLabel(own) })}</Banner>}
-      <div class={`book${isWide ? ' book-wide' : ''}`}>
+      <div class={`book${isWide ? ' book-wide' : ''}${winWide ? ' is-win' : ''}`}>
         <div class="book-main">
-          {needNew ? <>{callOrder}{(showTruckChoice || !isWalkIn) && optionsPanel}</> : <>
+          {needNew ? <>{callOrder}{(showTruckChoice || !isWalkIn) && optionsPanel}{winWide && summaryPanel(false)}</> : <>
             {customerPanel}
             {vehiclePanel}
             {servicesPanel}
             {notesPanel}
             {(showTruckChoice || !isWalkIn) && optionsPanel}
             {!isWide && blockSection}
+            {winWide && summaryPanel(false)}
           </>}
         </div>
         {isWide && (
           <aside ref={side} class="book-side" aria-label={t('booking.summary.title')}>
             {blockSection}
-            {summaryPanel}
+            {!winWide && summaryPanel(true)}
           </aside>
         )}
       </div>
-      {!isWide && <div class="book-bar glass-strong glass-thin">{step}</div>}
+      {(!isWide || winWide) && <div class={`book-bar glass-strong glass-thin${wide.value ? ' is-wide' : ''}`}>{step}</div>}
     </Page>
   );
 }

@@ -86,6 +86,10 @@ describe('settings: « Plages d’arrivée »', () => {
     expect(exampleWindow(900, { before: 60, after: 180, round: 60 }, [480, 1020])).toEqual([780, 1020]);
     // a number missing or wrong while typing: the usual one
     expect(exampleWindow(900, { before: null, after: Number.NaN, round: 45 }, [480, 1200])).toEqual([840, 1080]);
+    // « Arrondi » on the quarter hour: an arrival at 14 h 15 is told 13 h 15 to 17 h 15 (14 h 20 too)
+    expect(exampleWindow(855, { before: 60, after: 180, round: 15 }, [480, 1200])).toEqual([795, 1035]);
+    expect(exampleWindow(860, { before: 60, after: 180, round: 15 }, [480, 1200])).toEqual([795, 1035]);
+    expect(exampleWindow(855, { before: 60, after: 180, round: 30 }, [480, 1200])).toEqual([810, 1050]);
   });
   it('« Heures de la journée » keeps the stored blocks and moves only the first start and the last end', () => {
     expect(spanOf(blocks)).toEqual([480, 1200]);
