@@ -369,7 +369,7 @@ end $do$;
   the hours, then reads where the appointment is.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
-- « Plages d’arrivée » (Part 25, `20261114000100_fenetres.sql`; database side only, NOT applied on live, tested in `tests/db/windows.test.mjs`):
+- « Plages d’arrivée » (Part 25, `20261115000100_fenetres.sql`; database side only, NOT applied on live, tested in `tests/db/windows.test.mjs`):
   a 4-hour arrival window (1 h before the estimated arrival, 3 h after) instead of the blocks. INERT while `settings.booking.windows_on`
   is not true (blocks, answers and errors are the ones of before). The switch is `windows_switch(op, on)` only (owner; a plain settings
   save never flips it: trigger `settings_windows_guard`): ON turns today's and the coming jobs into `block = 'day'` with
