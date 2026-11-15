@@ -369,6 +369,30 @@ end $do$;
   the hours, then reads where the appointment is.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
+- « Plages d’arrivée » (Part 25, `20261114000100_fenetres.sql`; database side only, NOT applied on live, tested in `tests/db/windows.test.mjs`):
+  a 4-hour arrival window (1 h before the estimated arrival, 3 h after) instead of the blocks. INERT while `settings.booking.windows_on`
+  is not true (blocks, answers and errors are the ones of before). The switch is `windows_switch(op, on)` only (owner; a plain settings
+  save never flips it: trigger `settings_windows_guard`): ON turns today's and the coming jobs into `block = 'day'` with
+  `win_start` / `win_end` = the hours of their old block, OFF puts each back in the block of its planned arrival; the coming days are
+  planned again, a day whose new plan would throw an appointment to « À placer » stays as it was; past days are never touched.
+  Window mode: `blocks()` = one block `('day', 480, 1200, 1)` (`blocks_set()` = the blocks written in the settings, `day_span()`);
+  `block_open` keeps today open until the day ends (same-day bookings); `win_for(eta)` cuts the window (`win_before_min` 60,
+  `win_after_min` 180, `win_round_min` 60). `plan_block`: a stop may carry `ws` / `we` (`jobs.win_start` / `win_end`, or the extra's);
+  `route_walk` walks a route (early = waiting until the window opens, which counts in `used` and in the cost like driving; after the
+  window = refused); the stop being added goes in last and only where every promised window still holds; `route_improve`'s order is
+  kept only when the windows hold; stops en route / on site, in order by hand or booked « quand même » are not held to theirs; an
+  appointment already booked is never thrown to « À placer » because of a window (placed late, listed in the plan's `late`). Today:
+  each truck counts from where it is (the stop it is at, else the last one finished), a job under way counts only the time it still
+  needs, and `apply_plan` never un-places an appointment on a day already started. `book_job` / `web_book`: `block: 'day'` with
+  `win_start` (refused `window_full` when it cannot be reached inside; `bad_window` outside the day), `win_flex` (no window), or
+  neither (window = `win_for` of the planned arrival); a block key is refused (`bad_block`). `move_job` has a 7-argument form
+  (`…, p_win_start, p_win_flex`); the 5-argument one keeps the window on the same day and cuts a new one on another day.
+  `suggest_blocks` rows gain `eta`, `win_start`, `win_end`, `wait_min` (one row per day); `suggest_windows(lat, lng, duration, day,
+  exclude, need, kind)` = every window still possible that day (`web_windows` for the online page). « Flexible » jobs get their window
+  from `lock_windows(op, day)` (owner / office → `{ fixed, jobs }`, activity `window_fixed`), from `lock_windows_due()` (pg_cron every
+  10 minutes when the database has it: today's, and tomorrow's from `win_lock_min` 1080 = 18:00), or at once when booked / moved into
+  a day already locked. Not done here: the texts to customers, `team_map` (it does not answer the windows), the app's screens.
+  The database tests run on a Mac too against any Postgres with the migrations (`GARAGE_DB_PORT`, see `tests/db/helpers.mjs`).
 
 ## Ideas not done yet
 

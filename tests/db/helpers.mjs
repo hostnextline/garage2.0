@@ -3,7 +3,7 @@
 import pg from '../stack/node_modules/pg/lib/index.js';
 import { randomUUID } from 'node:crypto';
 
-export const pool = new pg.Pool({ host: '127.0.0.1', port: 54332, user: 'postgres', database: 'postgres', max: 6 });
+export const pool = new pg.Pool({ host: '127.0.0.1', port: Number(process.env.GARAGE_DB_PORT || 54332), user: 'postgres', database: 'postgres', max: 6 });
 
 export async function tx(fn) {
   const c = await pool.connect();
