@@ -2,6 +2,7 @@
    truck's day by the streets with the new appointment in its place, its stop number, the day's route and what the new
    appointment adds to it. From the phone's copy of the day; the streets from the route planner (straight lines meanwhile). */
 import { useMemo } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
 import { t, lang } from '../../lib/i18n';
 import { duration } from '../../lib/dates';
 import { Sheet, Button, Banner } from '../../ui';
@@ -16,7 +17,8 @@ export interface PreviewAsk extends Spot { when: string; exclude?: string | null
 
 const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
 
-export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?: () => void }) {
+/** `float`: the small window beside a moment hovered with a mouse (no buttons, nothing to close: it follows the pointer's row) */
+export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?: () => void; float?: { left: number; top: number } }) {
   const l = lang.value;
   const a = p.ask;
   const placed = useMemo(() => {
@@ -56,6 +58,20 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?:
   const both = activeTrucks.value.some((x) => x.tire_machine === false) && activeTrucks.value.some((x) => x.tire_machine !== false);
   const isCar = activeTrucks.value.find((x) => x.id === placed.truckId)?.tire_machine === false;
   const truckName = both ? t(isCar ? 'booking.kind.ofCar' : 'booking.kind.ofTruck') : t('booking.kind.ofRoute');
+  if (p.float) {
+    // drawn on the page itself: inside a glass panel a fixed box is cut by the panel
+    return createPortal(
+      <div class="bp-hover-map" style={{ left: `${p.float.left}px`, top: `${p.float.top}px` }} role="tooltip" data-testid="route-hover">
+        <p class="bp-hover-when">{a.when}</p>
+        <MapView markers={markers} lines={lines} height="220px" label={t('booking.preview.mapLabel')} data-testid="route-hover-map" />
+        {trA && mine ? (
+          <p class="bp-hover-facts" data-testid="route-hover-facts">
+            <b>{t('booking.preview.stop', { n: mine.n, total: trA.total, truck: truckName })}</b>{' '}
+            {extra.road ? t('booking.preview.addsRoad', { km: fmtKm(extra.km, l), d: duration(extra.minutes!, l) }) : t('booking.preview.addsLine', { km: fmtKm(extra.km, l) })}
+          </p>
+        ) : <p class="bp-hover-facts">{t('booking.preview.noTruck')}</p>}
+      </div>, document.body);
+  }
   return (
     <Sheet open onClose={p.onClose} title={t('booking.preview.title')} sub={a.when} data-testid="route-preview"
       footer={<>

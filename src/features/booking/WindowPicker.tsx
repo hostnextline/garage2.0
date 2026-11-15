@@ -139,6 +139,24 @@ export function WindowPicker(p: BlockPickerProps) {
   const truckOf = (c: BlockChoice) => p.truckId || [...sugg.list, ...dayWins.list].find((s) => s.day === c.day && s.win[0] === c.win_start)?.truck || null;
   const see = (c: BlockChoice) => setPreview({ choice: c, ask: { day: c.day, block: 'day', truckId: truckOf(c), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
     when: choiceWords(c, l), exclude: p.excludeJob ?? null, eta: c.eta ?? null } });
+  /* the same map in a small window while the mouse rests on a moment (a computer only: a finger has the long press) */
+  const [hover, setHover] = useState<{ ask: PreviewAsk; left: number; top: number } | null>(null);
+  const hoverTimer = useRef<number | undefined>(undefined);
+  const hoverProps = (c: BlockChoice) => (!hasPos || typeof matchMedia !== 'function' || !matchMedia('(hover: hover) and (pointer: fine)').matches ? {} : {
+    onMouseEnter: (e: MouseEvent) => {
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = window.setTimeout(() => {
+        const w = 360, h = 330;
+        // beside the row: on its left when there is room, else on its right; kept inside the window
+        const left = r.left - w - 12 >= 8 ? r.left - w - 12 : Math.min(window.innerWidth - w - 8, r.right + 12);
+        const top = Math.max(8, Math.min(window.innerHeight - h - 8, r.top - 40));
+        setHover({ left, top, ask: { day: c.day, block: 'day', truckId: truckOf(c), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '', when: choiceWords(c, l), exclude: p.excludeJob ?? null, eta: c.eta ?? null } });
+      }, 350);
+    },
+    onMouseLeave: () => { clearTimeout(hoverTimer.current); setHover(null); }
+  });
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const actions = (c: BlockChoice) => [
     { key: 'pick', label: t('booking.preview.pick'), icon: <Check size={18} />, run: () => pick(c), testid: 'menu-pick' },
     { key: 'others', label: t('booking.win.others'), icon: <Clock size={18} />, run: () => openDay(c.day), testid: 'menu-win-others' },
@@ -179,7 +197,7 @@ export function WindowPicker(p: BlockPickerProps) {
     ].filter(Boolean);
     if (bits[0]) bits[0] = cap(bits[0]);
     return (
-      <button key={`${s.day}|${s.win[0]}`} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => { if (o.sugg) setListOpen(false); pick(c); }} {...menuProps(c)}
+      <button key={`${s.day}|${s.win[0]}`} type="button" class={`bp-sugg-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => { if (o.sugg) setListOpen(false); setHover(null); pick(c); }} {...menuProps(c)} {...hoverProps(c)}
         data-testid={o.testid} data-day={s.day} data-win={s.win[0]}>
         <span class="bp-sugg-main">
           {isCurrent(c) ? <span class="bp-best"><Pill tone="muted" dot={false}>{t('booking.win.picker.current')}</Pill></span>
@@ -211,6 +229,7 @@ export function WindowPicker(p: BlockPickerProps) {
         {p.value && hasPos && <Button size="sm" variant="ghost" icon={<MapIcon />} onClick={() => see(p.value!)} data-testid="bp-see-map">{t('booking.preview.see')}</Button>}
       </div>
       {preview && <RoutePreview ask={preview.ask} onClose={() => setPreview(null)} onPick={() => pick(preview.choice)} />}
+      {hover && !preview && <RoutePreview ask={hover.ask} float={{ left: hover.left, top: hover.top }} onClose={() => setHover(null)} />}
       {auto && pickedCell?.state === 'full' && <Banner kind="warn">{t('booking.win.picker.fullWarn')}</Banner>}
       {auto && pickedCell?.state !== 'full' && <Banner kind="info" data-testid="win-auto">{t('booking.win.autoNote')}</Banner>}
 

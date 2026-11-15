@@ -173,3 +173,7 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
   .bp-chosen-txt { flex: 1 1 60%; }
   .bp-chosen .btn { flex: 1 1 100%; justify-content: center; }
 }
+/* the map beside a moment hovered with a mouse */
+.bp-hover-map { position: fixed; z-index: 60; width: 360px; padding: var(--sp-3); border-radius: var(--r-lg); background: var(--solid); border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28); pointer-events: none; display: flex; flex-direction: column; gap: var(--sp-2); }
+.bp-hover-when { margin: 0; font-weight: 620; }
+.bp-hover-facts { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
