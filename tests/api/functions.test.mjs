@@ -775,3 +775,184 @@ test('« Texto entrant » from GoHighLevel: a text posted at the address with «
   }
 });
 
+
+test('« Notes d’appels »: the calls GoHighLevel recorded are written down (OpenAI) and kept for the owner: what the customer wanted, what we said, what is left; short calls are not; nothing twice', async () => {
+  const H = { authorization: 'Bearer pit-x', 'content-type': 'application/json' };
+  const four = String(1000 + Math.floor(Math.random() * 8999)), other = String(1000 + Math.floor(Math.random() * 8999));
+  const cid = `ct_1438556${four}`, cid2 = `ct_1514556${other}`;
+  const ring = async (contactId, o = {}) => (await (await fetch(`${MOCK}/ghl/_call`, { method: 'POST', headers: H, body: JSON.stringify({ contactId, ...o }) })).json()).id;
+  const sync = async () => { await q(`delete from public.rate_limits where key like 'calls:%'`); return fn('calls', { action: 'sync' }, ownerJwt); };
+  const redo = async (id, jwt = ownerJwt) => { await q(`delete from public.rate_limits where key like 'calls:%'`); return fn('calls', { action: 'redo', id }, jwt); };
+  const noteOf = async (mid) => (await q(`select * from public.call_notes where message_id = $1`, [mid]))[0];
+  const openai = async () => (await mockLog()).filter((x) => x.svc === 'openai');
+  const recordings = async () => (await mockLog()).filter((x) => x.svc === 'ghl' && /\/recording$/.test(x.path)).map((x) => x.path.split('/')[3]);
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lang) values ($1, 'Karim', 'Pneus', $2, 'fr')`, [cust, `438 556-${four}`]);
+  const people = {};
+  for (const [name, roles] of [['meca', '{mechanic}'], ['bureau', '{office}']]) {
+    const email = `${name}-${randomUUID().slice(0, 6)}@test.local`;
+    const id = await adminUser(email, 'motdepasse-2');
+    await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, $2, $2, $3, $4)`, [id, name, roles, email]);
+    people[name] = (await signIn(email, 'motdepasse-2')).access_token;
+  }
+  try {
+    await q(`delete from public.call_notes`); await q(`delete from public.secrets where key in ('openai_key', 'call_hook', 'calls_model')`);
+    await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678' }, ownerJwt);
+    // the OpenAI key: a wrong one is refused; none yet
+    const bad = await fn('team', { action: 'secrets-set', openai_key: 'pas-une-cle' }, ownerJwt);
+    assert.deepEqual([bad.ok, bad.code], [false, 'openai_key'], JSON.stringify(bad));
+    let st = await fn('calls', { action: 'status' }, ownerJwt);
+    assert.deepEqual([st.ok, st.key, st.ghl, st.counts, st.last_at], [true, false, true, { done: 0, pending: 0, failed: 0 }, null], JSON.stringify(st));
+    // two calls with Karim in GoHighLevel: 95 seconds (he called), 8 seconds (we called back, no answer worth a note)
+    const long = await ring(cid, { duration: 95, direction: 'inbound' });
+    const short = await ring(cid, { duration: 8, direction: 'outbound' });
+    // without the key the calls are noted, nothing is written down, and the answer says why
+    await clearLog();
+    let s = await sync();
+    assert.deepEqual([s.ok, s.found, s.added, s.done, s.pending, s.failed, s.errors], [true, 2, 2, 0, 1, 0, ['no_key']], JSON.stringify(s));
+    assert.equal((await openai()).length, 0); assert.deepEqual(await recordings(), []);
+    assert.equal((await redo((await noteOf(long)).id)).code, 'no_key');
+    // the key goes in through « team » (never shown again: only that it is there)
+    const ok = await fn('team', { action: 'secrets-set', openai_key: '  sk-test-abcdefghijklmnop1234 ' }, ownerJwt);
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+    const sec = await fn('team', { action: 'secrets' }, ownerJwt);
+    assert.deepEqual(sec.openai, { on: true, end: '1234' }, JSON.stringify(sec));
+    assert.ok(!JSON.stringify(sec).includes('sk-test-abcdefghijklmnop'), 'never the key itself');
+    st = await fn('calls', { action: 'status' }, ownerJwt);
+    assert.deepEqual([st.key, st.counts], [true, { done: 0, pending: 1, failed: 0 }], JSON.stringify(st));
+    // the long call is written down, tied to the customer who has that number; the short one stays « short »
+    s = await sync();
+    assert.deepEqual([s.ok, s.found, s.added, s.done, s.pending, s.failed, s.errors], [true, 2, 0, 1, 0, 0, []], JSON.stringify(s));
+    assert.ok(!('waiting' in s) && !('fresh' in s));
+    let n = await noteOf(long);
+    assert.deepEqual([n.status, n.summary, n.told, n.todo, n.lang, n.customer_id, n.dir, n.duration_sec, n.phone, n.phone_digits, n.contact_id, n.conversation_id, n.tries, n.error, n.busy_until],
+      ['done', 'Le client veut faire poser ses pneus d’hiver.', 'On lui a dit 60 dollars, mardi matin.', 'Réserver mardi matin.', 'fr', cust, 'in', 95, `+1438556${four}`, `438556${four}`, cid, `cv_${cid}`, 1, null, null], JSON.stringify(n));
+    assert.match(n.transcript, /pneus d’hiver… Oui, 60 dollars, mardi matin\./);
+    assert.ok(Math.abs(new Date(n.at).getTime() - Date.now()) < 120000, 'when the call happened');
+    const sh = await noteOf(short);
+    assert.deepEqual([sh.status, sh.dir, sh.duration_sec, sh.customer_id, sh.summary, sh.transcript, sh.tries], ['short', 'out', 8, cust, null, null, 0], JSON.stringify(sh));
+    // the recording was fetched once (the long call only), its words asked once, the note once, with the garage's key
+    assert.deepEqual(await recordings(), [long]);
+    let ai = await openai();
+    assert.deepEqual(ai.map((x) => [x.path, x.auth, x.model, x.format]), [['/audio/transcriptions', 'Bearer sk-test-abcdefghijklmnop1234', 'whisper-1', 'json'], ['/chat/completions', 'Bearer sk-test-abcdefghijklmnop1234', 'gpt-4o-mini', 'json_object']], JSON.stringify(ai));
+    assert.equal(ai[0].file, 'appel.wav'); assert.ok(ai[0].bytes > 40, 'the sound went');
+    assert.deepEqual(ai[1].messages.map((m) => m.role), ['system', 'user']);
+    assert.match(ai[1].messages[1].content, /Bonjour, je voudrais faire poser mes pneus d’hiver/);
+    st = await fn('calls', { action: 'status' }, ownerJwt);
+    assert.deepEqual([st.counts, st.last_at != null], [{ done: 1, pending: 0, failed: 0 }, true], JSON.stringify(st));
+    // looking again: nothing twice, nothing paid twice
+    await clearLog();
+    s = await sync();
+    assert.deepEqual([s.found, s.added, s.done, s.pending, s.errors], [2, 0, 0, 0, []], JSON.stringify(s));
+    assert.equal((await q(`select count(*)::int n from public.call_notes`))[0].n, 2);
+    assert.equal((await openai()).length, 0); assert.deepEqual(await recordings(), []);
+    // only an owner reads the notes or asks anything
+    const read = async (jwt) => (await fetch(`${API}/rest/v1/call_notes?select=id,summary`, { headers: { apikey: K.anon, authorization: `Bearer ${jwt}` } })).json();
+    assert.equal((await read(ownerJwt)).length, 2);
+    for (const who of ['meca', 'bureau']) {
+      assert.deepEqual(await read(people[who]), [], who + ' reads no note');
+      for (const b of [{ action: 'status' }, { action: 'sync' }, { action: 'redo', id: n.id }]) assert.equal((await fn('calls', b, people[who])).code, 'not_allowed', who + ' ' + b.action);
+    }
+    assert.equal((await fn('calls', { action: 'status' })).code, 'signin');
+    const write = await fetch(`${API}/rest/v1/call_notes?id=eq.${n.id}`, { method: 'PATCH', headers: { apikey: K.anon, authorization: `Bearer ${ownerJwt}`, 'content-type': 'application/json' }, body: JSON.stringify({ summary: 'autre' }) });
+    assert.ok(write.status === 401 || write.status === 403, 'even the owner does not write: ' + write.status);
+    assert.equal((await fn('calls', { action: 'nimporte' }, ownerJwt)).code, 'action');
+
+    // GoHighLevel's automation « call completed → webhook »: the calls' own address (the key of « Appel entrant »)
+    const post = async (k, body) => { const r = await fetch(`${API}/functions/v1/calls?k=${k}`, { method: 'POST', headers: { apikey: K.anon, 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json()) }; };
+    assert.equal((await post('wrong-key-wrong-key-wrong-key', { phone: '+14385550162' })).code, 'bad_key', 'no address made yet');
+    const key = new URL((await fn('ring', { action: 'link' }, ownerJwt)).url).searchParams.get('k');
+    assert.equal((await post('wrong-key-wrong-key-wrong-key', { phone: '+14385550162' })).code, 'bad_key');
+    // somebody with no file calls: 2 minutes. GoHighLevel tells the server, which writes the call down by itself
+    const fresh = await ring(cid2, { duration: 120 });
+    await clearLog();
+    let w = await post(key, { contact_id: cid2, first_name: 'Nadia', last_name: 'Roy', phone: `+1514556${other}` });
+    assert.deepEqual([w.status, w.ok], [200, true], JSON.stringify(w));
+    n = await noteOf(fresh);
+    assert.deepEqual([n.status, n.customer_id, n.phone, n.contact_id, n.duration_sec, !!n.summary], ['done', null, `+1514556${other}`, cid2, 120, true], JSON.stringify(n));
+    assert.deepEqual(await recordings(), [fresh]);
+    assert.equal((await mockLog()).filter((x) => x.svc === 'ghl' && /\/messages$/.test(x.path)).length, 1, 'only that contact’s conversation is read');
+    // her file is made after the call: the note finds it by the number
+    const nadia = randomUUID(); made.customers.push(nadia);
+    await q(`insert into public.customers (id, first_name, last_name, phone) values ($1, 'Nadia', 'Roy', $2)`, [nadia, `(514) 556-${other}`]);
+    assert.equal((await noteOf(fresh)).customer_id, nadia);
+    // the same automation with only the number; a number GoHighLevel does not know; no number at all: always « ok »
+    const second = await ring(cid2, { duration: 61, direction: 'outbound' });
+    w = await post(key, { phone: `514-556-${other}` });
+    assert.equal(w.ok, true, JSON.stringify(w));
+    n = await noteOf(second);
+    assert.deepEqual([n.status, n.customer_id, n.dir], ['done', nadia, 'out'], JSON.stringify(n));
+    assert.equal((await post(key, { phone: '+14385550000' })).ok, true);
+    assert.equal((await post(key, { first_name: 'Sans', last_name: 'Numéro' })).ok, true);
+    assert.equal((await q(`select count(*)::int n from public.call_notes`))[0].n, 4);
+
+    // no recording: GoHighLevel may need a moment after the call (the next look tries again, not counted); 45 minutes later there is none
+    const soon = await ring(cid, { duration: 70, recording: false });
+    const never = await ring(cid, { duration: 70, recording: false, ago_min: 45 });
+    s = await sync();
+    assert.deepEqual([s.added, s.done, s.pending, s.failed, s.errors], [2, 0, 1, 0, []], JSON.stringify(s));
+    n = await noteOf(soon);
+    assert.deepEqual([n.status, n.tries, n.busy_until], ['new', 0, null], JSON.stringify(n));
+    assert.equal((await noteOf(never)).status, 'no_recording');
+    // « redo »: tried again now, without waiting any longer
+    let r = await redo(n.id);
+    assert.deepEqual([r.ok, r.done, r.pending, r.failed, r.errors, r.status, r.note.id, r.note.status, 'transcript' in r.note], [true, 0, 0, 0, [], 'no_recording', n.id, 'no_recording', false], JSON.stringify(r));
+    // a call noted « short » that the owner wants anyway: written down
+    r = await redo(sh.id);
+    assert.deepEqual([r.done, r.status, r.note.summary], [1, 'done', 'Le client veut faire poser ses pneus d’hiver.'], JSON.stringify(r));
+    assert.equal((await redo(sh.id)).code, 'done');
+    assert.equal((await redo(randomUUID())).code, 'not_found');
+    assert.equal((await redo('pas-un-id')).code, 'not_found');
+
+    // OpenAI has a problem: the call waits with the reason (never the key), three tries, then « failed »; « redo » once it is back
+    await fetch(`${MOCK}/control?openai=fail`);
+    const hard = await ring(cid, { duration: 300 });
+    s = await sync();
+    assert.deepEqual([s.added, s.done, s.pending, s.failed], [1, 0, 1, 0], JSON.stringify(s));
+    assert.match(s.errors[0], /^OpenAI 500/);
+    n = await noteOf(hard);
+    assert.deepEqual([n.status, n.tries, n.busy_until], ['new', 1, null], JSON.stringify(n)); assert.match(n.error, /^OpenAI 500/);
+    s = await sync();
+    assert.deepEqual([s.failed, s.pending], [0, 1], JSON.stringify(s));
+    s = await sync();
+    assert.deepEqual([s.failed, s.pending, s.done], [1, 0, 0], JSON.stringify(s));
+    n = await noteOf(hard);
+    assert.deepEqual([n.status, n.tries], ['failed', 3], JSON.stringify(n));
+    st = await fn('calls', { action: 'status' }, ownerJwt);
+    assert.deepEqual(st.counts, { done: 4, pending: 0, failed: 1 }, JSON.stringify(st));
+    s = await sync();
+    assert.deepEqual([s.done, s.failed, s.errors], [0, 0, []], 'a failed call is not tried again by itself: ' + JSON.stringify(s));
+    await fetch(`${MOCK}/control?openai=ok`);
+    r = await redo(n.id);
+    assert.deepEqual([r.ok, r.done, r.status, r.note.error, r.note.tries], [true, 1, 'done', null, 1], JSON.stringify(r));
+    // a key OpenAI refuses: said in a few words, without the key
+    await q(`update public.secrets set value = 'pas-sk-du-tout' where key = 'openai_key'`);
+    const refused = await ring(cid, { duration: 44 });
+    s = await sync();
+    assert.match(s.errors[0], /^OpenAI 401/); assert.ok(!/sk-abc/.test(JSON.stringify(s)), JSON.stringify(s));
+    assert.match((await noteOf(refused)).error, /^OpenAI 401/);
+    // the model can be changed on the server (secrets.calls_model)
+    await q(`update public.secrets set value = 'sk-test-abcdefghijklmnop1234' where key = 'openai_key'`);
+    await q(`insert into public.secrets (key, value) values ('calls_model', 'gpt-4o')`);
+    await clearLog();
+    s = await sync();
+    assert.deepEqual([s.done, s.pending], [1, 0], JSON.stringify(s));
+    assert.equal((await openai()).find((x) => x.path === '/chat/completions').model, 'gpt-4o');
+    // the brake: 6 looks a minute
+    await q(`delete from public.rate_limits where key like 'calls:%'`);
+    for (let i = 0; i < 6; i++) assert.equal((await fn('calls', { action: 'sync' }, ownerJwt)).ok, true);
+    const seventh = await fn('calls', { action: 'sync' }, ownerJwt);
+    assert.deepEqual([seventh.status, seventh.code], [429, 'busy']);
+    // the key taken out: nothing more is written down
+    assert.equal((await fn('team', { action: 'secrets-set', openai_key: '' }, ownerJwt)).ok, true);
+    st = await fn('calls', { action: 'status' }, ownerJwt);
+    assert.equal(st.key, false);
+    assert.deepEqual((await fn('team', { action: 'secrets' }, ownerJwt)).openai, { on: false, end: null });
+  } finally {
+    await fetch(`${MOCK}/control?openai=ok`);
+    for (const c of [cid, cid2]) await fetch(`${MOCK}/ghl/_forget`, { method: 'POST', headers: H, body: JSON.stringify({ contactId: c }) });
+    await q(`delete from public.call_notes`);
+    await q(`delete from public.secrets where key in ('openai_key', 'call_hook', 'calls_model')`);
+    await q(`delete from public.rate_limits where key like 'calls:%' or key = 'ring'`);
+  }
+});

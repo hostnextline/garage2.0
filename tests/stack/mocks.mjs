@@ -1,6 +1,6 @@
-// Fake outside services for the tests (port 8021): GoHighLevel, Stripe, OSRM, NHTSA vPIC, Hermes. They answer like the real ones
+// Fake outside services for the tests (port 8021): GoHighLevel, Stripe, OSRM, NHTSA vPIC, Hermes, OpenAI. They answer like the real ones
 // and keep a log of every call (GET /log, POST /log/clear) so the tests can check what would have been sent.
-// GET /control?ghl=fail makes GoHighLevel refuse the next messages; ?ghl=ok puts it back.
+// GET /control?ghl=fail makes GoHighLevel refuse the next messages; ?ghl=ok puts it back (?openai=fail / ok: the same for OpenAI).
 import http from 'node:http';
 import { createHmac, generateKeyPairSync, createSign } from 'node:crypto';
 
@@ -17,7 +17,7 @@ function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'gar
   const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
   return `${head}.${body}.${sig}`;
 }
-const state = { ghl: 'ok', sessions: new Map(), hook: null, n: 0, chats: new Map() };
+const state = { ghl: 'ok', openai: 'ok', sessions: new Map(), hook: null, n: 0, chats: new Map() };
 const chat = (cid) => { if (!state.chats.has(cid)) state.chats.set(cid, []); return state.chats.get(cid); };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
@@ -40,7 +40,7 @@ http.createServer(async (req, res) => {
   const p = u.pathname;
   if (p === '/log') return send(res, 200, log);
   if (p === '/log/clear') { log.length = 0; return send(res, 200, { ok: true }); }
-  if (p === '/control') { if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl'); return send(res, 200, state.ghl); }
+  if (p === '/control') { if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl'); if (u.searchParams.get('openai')) state.openai = u.searchParams.get('openai'); return send(res, 200, state.ghl); }
 
   // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
   if (p.startsWith('/push/')) {
@@ -67,6 +67,12 @@ http.createServer(async (req, res) => {
     }
     if (p === '/ghl/conversations/search') {
       const cid = u.searchParams.get('contactId');
+      // no contact asked: the last conversations of the account (« Notes d'appels » looks there for calls)
+      if (!cid) {
+        const all = [...state.chats.entries()].filter(([, l]) => l.length).map(([id, l]) => ({ id: 'cv_' + id, contactId: id, phone: '+' + id.slice(3), lastMessageDate: Date.parse(l[l.length - 1].dateAdded) }))
+          .sort((a, b) => b.lastMessageDate - a.lastMessageDate).slice(0, Number(u.searchParams.get('limit')) || 20);
+        return send(res, 200, { conversations: all, total: all.length });
+      }
       return send(res, 200, { conversations: state.chats.has(cid) ? [{ id: 'cv_' + cid, contactId: cid }] : [], total: state.chats.has(cid) ? 1 : 0 });
     }
     const cm = /^\/ghl\/conversations\/cv_([^/]+)\/messages$/.exec(p);
@@ -74,6 +80,25 @@ http.createServer(async (req, res) => {
       const list = (state.chats.get(cm[1]) || []).slice().reverse();
       return send(res, 200, { messages: { lastMessageId: list[0]?.id || null, nextPage: false, messages: list } });
     }
+    // a phone call in a conversation (the tests): POST /ghl/_call { contactId, direction?, duration?, status?, ago_min?, recording? (false: none) }
+    if (p === '/ghl/_call') {
+      const id = 'call_' + (++state.n);
+      chat(body.contactId).push({ id, type: 1, messageType: 'TYPE_CALL', direction: body.direction || 'inbound', status: body.status || 'completed', contactId: body.contactId,
+        conversationId: 'cv_' + body.contactId, dateAdded: new Date(Date.now() - (Number(body.ago_min) || 0) * 60000 + state.n).toISOString(),
+        meta: { call: { duration: body.duration ?? 95, status: body.status || 'completed' } }, _recording: body.recording !== false });
+      return send(res, 200, { ok: true, id });
+    }
+    // the recording of a call: the sound itself (a few bytes here), 404 when GoHighLevel has none
+    const rec = /^\/ghl\/conversations\/messages\/([^/]+)\/locations\/([^/]+)\/recording$/.exec(p);
+    if (rec && req.method === 'GET') {
+      const m = [...state.chats.values()].flat().find((x) => x.id === rec[1]);
+      if (!m || !m._recording) return send(res, 404, { message: 'Recording not found' });
+      res.writeHead(200, { 'content-type': 'audio/x-wav' });
+      return res.end(Buffer.concat([Buffer.from('RIFF'), Buffer.from([36, 0, 0, 0]), Buffer.from('WAVEfmt '), Buffer.alloc(24, 1)]));
+    }
+    const ct = /^\/ghl\/contacts\/(ct_\w+)$/.exec(p);
+    if (ct && req.method === 'GET') return send(res, 200, { contact: { id: ct[1], phone: '+' + ct[1].slice(3) } });
+    if (p === '/ghl/_forget') { state.chats.delete(body.contactId); return send(res, 200, { ok: true }); }
     // the customer answers (the tests): POST /ghl/_reply { contactId, body, attachments? }
     if (p === '/ghl/_reply') { chat(body.contactId).push({ id: 'msg_' + (++state.n), direction: 'inbound', body: body.body || '', attachments: body.attachments || [], messageType: 'TYPE_SMS', dateAdded: new Date(Date.now() + state.n).toISOString() }); return send(res, 200, { ok: true }); }
     return send(res, 404, { message: 'no route' });
@@ -128,6 +153,22 @@ http.createServer(async (req, res) => {
     if (req.headers.authorization !== 'Bearer hk-test') return send(res, 401, { error: { message: 'Invalid API key' } });
     const last = [...(body.messages || [])].reverse().find((m) => m.role === 'user');
     return send(res, 200, { id: 'chatcmpl-' + (++state.n), object: 'chat.completion', model: body.model, choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Réponse à : ' + (last?.content || '') } }] });
+  }
+  // ---- OpenAI (« Notes d'appels »): the words of a recording, then the note made of them ----
+  if (p.startsWith('/openai/')) {
+    const multi = /^multipart\/form-data/.test(req.headers['content-type'] || '');
+    const field = (name) => (new RegExp(`name="${name}"\\r\\n\\r\\n([^\\r]*)`).exec(raw) || [])[1] || null;
+    const body = !multi && raw ? JSON.parse(raw) : null;
+    log.push({ svc: 'openai', path: p.slice(7), auth: req.headers.authorization, model: multi ? field('model') : body?.model, format: multi ? field('response_format') : body?.response_format?.type,
+      file: multi ? (/name="file"; filename="([^"]*)"/.exec(raw) || [])[1] || null : undefined, bytes: Buffer.byteLength(raw || ''), messages: body?.messages });
+    if (!/^Bearer sk-/.test(req.headers.authorization || '')) return send(res, 401, { error: { message: 'Incorrect API key provided: sk-abc***********wxyz.' } });
+    if (state.openai === 'fail') return send(res, 500, { error: { message: 'The server had an error while processing your request.' } });
+    if (p === '/openai/audio/transcriptions' && req.method === 'POST') return send(res, 200, { text: 'Bonjour, je voudrais faire poser mes pneus d’hiver… Oui, 60 dollars, mardi matin.' });
+    if (p === '/openai/chat/completions' && req.method === 'POST') {
+      const note = { lang: 'fr', summary: 'Le client veut faire poser ses pneus d’hiver.', told: 'On lui a dit 60 dollars, mardi matin.', todo: 'Réserver mardi matin.' };
+      return send(res, 200, { id: 'chatcmpl-' + (++state.n), object: 'chat.completion', model: body?.model, choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(note) } }] });
+    }
+    return send(res, 404, { error: { message: 'no route' } });
   }
   // ---- NHTSA vPIC ----
   if (p.startsWith('/vpic/api/vehicles/DecodeVinValues/')) {

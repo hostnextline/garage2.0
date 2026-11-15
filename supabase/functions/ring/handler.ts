@@ -13,7 +13,7 @@
 import { serve, json, body, fail, env } from '../_shared/http.ts';
 import { caller, secret, adminDb, setSecrets } from '../_shared/db.ts';
 import { newToken, safeEqual } from '../_shared/tokens.ts';
-import { e164, filesOf } from '../_shared/ghl.ts';
+import { callOf, filesOf } from '../_shared/ghl.ts';
 import { makeVapid, sendPush, type Vapid } from '../_shared/webpush.ts';
 import { DEFAULT_BASES } from '../_shared/links.ts';
 
@@ -23,15 +23,8 @@ async function brake(key: string, windowSec: number, max: number): Promise<boole
   return data === true;
 }
 const text = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim() : '');
-/** the caller's number and name, wherever GoHighLevel put them */
-export function callOf(b: Record<string, any>): { phone: string | null; name: string | null } {
-  const c = (b.contact && typeof b.contact === 'object' ? b.contact : {}) as Record<string, any>;
-  const d = (b.customData && typeof b.customData === 'object' ? b.customData : {}) as Record<string, any>;
-  const phone = [d.phone, b.phone, c.phone, b.from, b.caller, b.contact_phone].map((x) => e164(text(x))).find(Boolean) || null;
-  const full = [d.name, b.full_name, c.name, c.full_name, b.name, b.contact_name].map(text).find(Boolean)
-    || [text(b.first_name || c.first_name), text(b.last_name || c.last_name)].filter(Boolean).join(' ');
-  return { phone, name: full ? full.slice(0, 120) : null };
-}
+// the caller's number and name: shared with « calls » (the notes of the calls)
+export { callOf };
 /** the words of a text, wherever GoHighLevel put them (none is fine: the app reads the conversation itself) */
 export function wordsOf(b: Record<string, any>): string {
   const d = (b.customData && typeof b.customData === 'object' ? b.customData : {}) as Record<string, any>;

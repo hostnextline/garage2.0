@@ -205,10 +205,11 @@ export const handler = serve(async (req) => {
       return json({ ok: true });
     }
     case 'secrets': {
-      const [gt, gl, sk, wh] = await Promise.all([secret('ghl_token'), secret('ghl_location'), secret('stripe_key'), secret('stripe_webhook_id')]);
+      const [gt, gl, sk, wh, ok] = await Promise.all([secret('ghl_token'), secret('ghl_location'), secret('stripe_key'), secret('stripe_webhook_id'), secret('openai_key')]);
       return json({ ok: true,
         ghl: { on: !!(gt && gl), token_end: gt ? gt.slice(-4) : null, location: gl ? gl.slice(0, 4) + '…' : null },
-        stripe: { on: !!sk, test: !!sk && /_test_/.test(sk), end: sk ? sk.slice(-4) : null, webhook: !!wh } });
+        stripe: { on: !!sk, test: !!sk && /_test_/.test(sk), end: sk ? sk.slice(-4) : null, webhook: !!wh },
+        openai: { on: !!ok, end: ok ? ok.slice(-4) : null } });
     }
     case 'secrets-set': {
       if ('ghl_token' in b || 'ghl_location' in b) {
@@ -242,6 +243,15 @@ export const handler = serve(async (req) => {
           if (old && oldHook) { try { await stripeCall(old, 'DELETE', `/webhook_endpoints/${encodeURIComponent(oldHook)}`); } catch { /* already gone */ } }
           // the three together: never a key without its webhook secret
           await setSecrets({ stripe_key: k, stripe_webhook_secret: hook.secret, stripe_webhook_id: hook.id }, c.id);
+        }
+      }
+      // « Notes d’appels »: the OpenAI key that writes the calls down (function « calls »)
+      if ('openai_key' in b) {
+        const k = b.openai_key == null ? '' : String(b.openai_key).trim();
+        if (!k) await setSecret('openai_key', null, c.id);
+        else {
+          if (!/^sk-[A-Za-z0-9_-]{16,}$/.test(k)) fail('openai_key', 'La clé OpenAI commence par « sk- ».');
+          await setSecret('openai_key', k, c.id);
         }
       }
       return json({ ok: true });

@@ -23,7 +23,7 @@ if ! up 8011; then
   SECRET=$(node -e "console.log(require('./keys.json').secret)")
   (export SUPABASE_URL=http://127.0.0.1:54331 SUPABASE_ANON_KEY=$ANON SUPABASE_SERVICE_ROLE_KEY=$SERVICE JWT_SECRET=$SECRET \
      GHL_API_BASE=http://127.0.0.1:8021/ghl STRIPE_API_BASE=http://127.0.0.1:8021/stripe OSRM_BASE=http://127.0.0.1:8021/osrm \
-     VPIC_BASE=http://127.0.0.1:8021/vpic PHOTON_BASE=http://127.0.0.1:8021/photon GITHUB_OIDC_JWKS=http://127.0.0.1:8021/github/jwks \
+     VPIC_BASE=http://127.0.0.1:8021/vpic OPENAI_API_BASE=http://127.0.0.1:8021/openai PHOTON_BASE=http://127.0.0.1:8021/photon GITHUB_OIDC_JWKS=http://127.0.0.1:8021/github/jwks \
      APP_BASE_URLS=http://127.0.0.1:4173/ DENO_NO_UPDATE_CHECK=1;
    setsid nohup "$S/node_modules/.bin/deno" run --allow-net --allow-env --allow-read "$S/functions.ts" > "$RUN/functions.log" 2>&1 < /dev/null &)
 fi

@@ -367,6 +367,28 @@ end $do$;
   truck it was already on, which is not a button); and on a Friday « tomorrow » is the Saturday an earlier step gives to Voiture for
   10 h to 12 h only (`on conflict do nothing` kept it closed in the afternoon). The step now opens both trucks first, writing over
   the hours, then reads where the appointment is.
+- « Notes d’appels » (Part 26, `20261114000300_notes_appels.sql`; function `calls`; `src/features/calls/`; **not on live yet**: the
+  migration is not applied, `calls` is not deployed, `team` must be redeployed for the key): the calls GoHighLevel records are
+  written down by themselves, for the owners. `call_notes` = one row per call (GoHighLevel's message id, `message_id` unique): phone,
+  `customer_id` (the file with that number: set when the row is made, and when a file with that number appears later, triggers
+  `call_notes_match` / `customers_call_notes`, and `call_notes_link()` at each look), `dir`, `at`, `duration_sec`, `status`
+  (`new` waiting, `done`, `short` = under 20 s or not a talk, `no_recording`, `failed`), `summary` (what the customer wanted), `told`
+  (what we said: prices, day), `todo` (what is left), `lang`, `transcript`, `error`, `tries`, `busy_until`. Only the server writes;
+  only an owner reads (`is_owner()`); realtime; backed up (`TABLES`, `ORDRE`). Function `calls`: `POST ?k=<key>` = a GoHighLevel
+  automation « call completed → Webhook » at `…/functions/v1/calls?k=` + the SAME key as « Appel entrant » (`secrets.call_hook`): it
+  reads that contact's conversation, notes its calls and writes the new one down (on the real server it answers at once and goes on
+  in the background, looking again after 20 and 50 s for a recording not ready yet); `{ action: 'status' | 'sync' | 'redo' }` for an
+  owner (`sync`: the calls of GoHighLevel's last 20 conversations, 14 days; at most 2 recordings written down per request, the
+  oldest first; 6 a minute). A call: the recording from GoHighLevel (`recordingOf` in `_shared/ghl.ts`; none within 30 minutes of
+  the call = tried again at the next look, then `no_recording`; over 24 MB = `failed`), its words by OpenAI `whisper-1`, the note by
+  an OpenAI chat model (`secrets.calls_model`, else `gpt-4o-mini`; the prompt is `SYSTEM` in the handler: only what was said, amounts
+  and dates as said). An OpenAI or GoHighLevel error keeps the call waiting with the reason; 3 tries, then `failed` (« redo » tries
+  again). The OpenAI key lives only in `secrets.openai_key`, saved by `team` `secrets-set { openai_key }` (must start with « sk- »;
+  '' removes it; `secrets` answers `openai: { on, end }`). The recordings stay in GoHighLevel; the keys and the sound are never
+  logged. Not done: nothing looks at GoHighLevel by itself when no webhook comes and nobody opens the app (no schedule); a voicemail
+  is noted `short`; the two voices are not told apart; office and mechanics see nothing; the GoHighLevel answers (where the length
+  and the outcome of a call are, the recording address) were written from its documentation and the test's pretend GoHighLevel,
+  not yet checked on the real account.
 - `.github/workflows/tests-complets.yml`: every branch except main runs the whole suite (local server, database, API,
   end-to-end on Montréal time) on a GitHub Linux machine. Steps 2, 3, 7 (signature drawing) and 13 are flaky there.
 
