@@ -8,29 +8,18 @@ import { duration } from '../../lib/dates';
 import { Sheet, Button, Banner } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, UNPLACED_COLOR, type TruckRoute } from '../map/assemble';
-import { fromDevice } from '../map/device';
 import { useRoads, roadOf, roadTotal } from '../map/useRoads';
 import { staffName, activeTrucks } from '../../data/select';
-import { placeNewStop, NEW_STOP, type Spot } from './preview';
+import { placeNewStop, fmtKm, NEW_STOP, NEW_STOP_COLOR, type Spot } from './preview';
+import { dayOf } from './deviceDay';
+import { floatStyle, hoverBox, HOVER_W, type FloatAt, type Rect } from './place';
+import { bothKinds, kindOf } from './vehicles';
 
 export interface PreviewAsk extends Spot { when: string; exclude?: string | null }
 
-const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
-
-/** `float`: the small window beside a moment hovered with a mouse (no buttons, nothing to close: it follows the pointer's row) */
-export interface FloatAt { left?: number; right?: number; top: number;
-  /** the words above the map (else the moment's own words) */
-  title?: string }
-/** where a floating box goes, as a style (hugging the left or the right of what it is beside) */
-export const floatStyle = (f: FloatAt) => ({ top: `${f.top}px`, ...(f.right != null ? { right: `${f.right}px` } : { left: `${f.left ?? 8}px` }) });
 /** the day of the vehicle with the new stop in it: what the map draws and what is said under it */
 function useRouteDay(a: PreviewAsk, all = false) {
-  const placed = useMemo(() => {
-    const day = fromDevice(a.day);
-    // moving an appointment: it is not in its old place any more
-    const base = a.exclude ? { ...day, jobs: day.jobs.filter((j) => j.id !== a.exclude) } : day;
-    return placeNewStop(base, a);
-  }, [a.day, a.block, a.truckId, a.lat, a.lng, a.exclude, a.eta]);
+  const placed = useMemo(() => placeNewStop(dayOf(a.day, a.exclude), a), [a.day, a.block, a.truckId, a.lat, a.lng, a.exclude, a.eta]);
   const after = useMemo(() => assemble(placed.after, { nameOf: staffName }), [placed]);
   const before = useMemo(() => assemble(placed.before, { nameOf: staffName }), [placed]);
   const trA: TruckRoute | undefined = after.trucks.find((x) => x.id === placed.truckId);
@@ -43,7 +32,7 @@ function useRouteDay(a: PreviewAsk, all = false) {
 
   const markers: MapMarker[] = [];
   const lines: MapLine[] = [];
-  const newMk = (n: number | string): MapMarker => ({ id: NEW_STOP, kind: 'job', lat: a.lat, lng: a.lng, color: '#111827', number: n, active: true,
+  const newMk = (n: number | string): MapMarker => ({ id: NEW_STOP, kind: 'job', lat: a.lat, lng: a.lng, color: NEW_STOP_COLOR, number: n, active: true,
     label: t('booking.preview.newLabel'), sub: a.when, title: t('booking.preview.newLabel') });
   let homeDrawn = false;
   for (const tr of all ? after.trucks : trA ? [trA] : []) {
@@ -65,13 +54,14 @@ function useRouteDay(a: PreviewAsk, all = false) {
   // what it adds: by the streets once both routes are known, else the straight-line estimate
   const extra = roadA && roadB ? { km: Math.max(0, roadA.km - roadB.km), minutes: Math.max(0, roadA.minutes - roadB.minutes), road: true } : { km: placed.extraKm, minutes: null, road: false };
   // the route is the car's or the truck's: no vehicle or mechanic name
-  const both = activeTrucks.value.some((x) => x.tire_machine === false) && activeTrucks.value.some((x) => x.tire_machine !== false);
-  const isCar = activeTrucks.value.find((x) => x.id === placed.truckId)?.tire_machine === false;
-  const truckName = both ? t(isCar ? 'booking.kind.ofCar' : 'booking.kind.ofTruck') : t('booking.kind.ofRoute');
+  const trucks = activeTrucks.value;
+  const truckName = bothKinds(trucks) ? t(kindOf(trucks, placed.truckId) === 'car' ? 'booking.kind.ofCar' : 'booking.kind.ofTruck') : t('booking.kind.ofRoute');
   return { markers, lines, trA, mine, roadA, extra, truckName };
 }
 
-export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?: () => void; float?: FloatAt }) {
+/** « Voir sur la carte » in a sheet (`onPick`: « Choisir ce moment », only for a moment that can be chosen), or with
+    `float` the small window beside a moment hovered with a mouse (no buttons, nothing to close: it follows the pointer) */
+export function RoutePreview(p: { ask: PreviewAsk; onClose?: () => void; onPick?: () => void; float?: FloatAt }) {
   const l = lang.value;
   const a = p.ask;
   const { markers, lines, trA, mine, roadA, extra, truckName } = useRouteDay(a);
@@ -89,11 +79,12 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?:
         ) : <p class="bp-hover-facts">{t('booking.preview.noTruck')}</p>}
       </div>, document.body);
   }
+  const close = () => p.onClose?.();
   return (
-    <Sheet open onClose={p.onClose} title={t('booking.preview.title')} sub={a.when} data-testid="route-preview"
+    <Sheet open onClose={close} title={t('booking.preview.title')} sub={a.when} data-testid="route-preview"
       footer={<>
-        <Button onClick={p.onClose}>{t('common.close')}</Button>
-        {p.onPick && <Button variant="primary" onClick={() => { p.onPick!(); p.onClose(); }} data-testid="route-preview-pick">{t('booking.preview.pick')}</Button>}
+        <Button onClick={close}>{t('common.close')}</Button>
+        {p.onPick && <Button variant="primary" onClick={() => { p.onPick!(); close(); }} data-testid="route-preview-pick">{t('booking.preview.pick')}</Button>}
       </>}>
       <div class="stack">
         <MapView markers={markers} lines={lines} height="320px" label={t('booking.preview.mapLabel')} data-testid="route-preview-map" />
@@ -114,18 +105,10 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose: () => void; onPick?:
 
 /** the same map in a small window beside the moment the mouse is over (computers only): no scrolling to the big map.
     `at` is the moment's box on screen; the window never takes the mouse (a click still chooses the moment). */
-export type HoverBox = { left: number; right: number; top: number; bottom: number };
-/** a small window with a map beside a box of the screen; it never takes the mouse */
-export function MapHover(p: { at: HoverBox; title: string; markers: MapMarker[]; lines?: MapLine[]; facts?: string; far?: boolean; 'data-testid'?: string }) {
-  const W = 340, H = 352, GAP = 12;
-  const vw = window.innerWidth, vh = window.innerHeight;
-  // beside it (right, else left), else above or under it
-  const side = p.at.right + GAP + W <= vw - 8 ? p.at.right + GAP : p.at.left - GAP - W >= 8 ? p.at.left - GAP - W : null;
-  const left = side ?? Math.max(8, Math.min(vw - W - 8, p.at.left));
-  const top = side != null ? Math.max(8, Math.min(vh - H - 8, (p.at.top + p.at.bottom) / 2 - H / 2))
-    : p.at.top - GAP - H >= 8 ? p.at.top - GAP - H : Math.min(vh - H - 8, p.at.bottom + GAP);
+export function MapHover(p: { at: Rect; title: string; markers: MapMarker[]; lines?: MapLine[]; facts?: string; far?: boolean; 'data-testid'?: string }) {
+  const { left, top } = hoverBox(p.at, window.innerWidth, window.innerHeight);
   return createPortal(
-    <div class="bp-hover" style={{ left: `${left}px`, top: `${top}px`, width: `${W}px` }} aria-hidden="true" data-testid={p['data-testid'] || 'route-hover'}>
+    <div class="bp-hover" style={{ left: `${left}px`, top: `${top}px`, width: `${HOVER_W}px` }} aria-hidden="true" data-testid={p['data-testid'] || 'route-hover'}>
       <b class="bp-hover-when">{p.title}</b>
       <MapView markers={p.markers} lines={p.lines || []} height="220px" controls={false} fitPadding={[28, 28, 28, 28]} data-testid="route-hover-map" />
       <span class="bp-hover-key"><i />{t('booking.preview.newLabel')}</span>
@@ -134,7 +117,7 @@ export function MapHover(p: { at: HoverBox; title: string; markers: MapMarker[];
     </div>, document.body);
 }
 
-export function RouteHover(p: { ask: PreviewAsk; at: HoverBox; road?: string; far?: boolean }) {
+export function RouteHover(p: { ask: PreviewAsk; at: Rect; road?: string; far?: boolean }) {
   const { markers, lines, trA, mine, truckName } = useRouteDay(p.ask, true);
   const facts = (trA && mine ? t('booking.preview.stop', { n: mine.n, total: trA.total, truck: truckName }) : t('booking.preview.noTruck')) + (p.road ? ` · ${p.road}` : '');
   return <MapHover at={p.at} title={p.ask.when} markers={markers} lines={lines} facts={facts} far={p.far} />;

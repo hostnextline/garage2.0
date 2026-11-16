@@ -5,31 +5,18 @@
    map; a click chooses it. The maths is in units.ts and agenda/grid.ts; WindowPicker builds the days. */
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { createPortal, memo } from 'preact/compat';
-import { ChevronLeft, ChevronRight } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, Route } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clock, nowMinute, parseDay, type Day, type Range } from '../../lib/dates';
-import { unitCount, unitIndex, unitMinutes, unitsAt, type Box } from '../../domain/moment/grid';
+import { unitCount, unitIndex, unitMinutes, unitsAt } from '../../domain/moment/grid';
 import { moveFocus, type UnitState, type Win } from '../../domain/moment/units';
-import { RoutePreview, floatStyle, type FloatAt, type PreviewAsk } from './RoutePreview';
-import type { WinStatus } from './useDayWindows';
+import { RoutePreview, type PreviewAsk } from './RoutePreview';
+import { floatPlace, floatStyle, type FloatAt } from './place';
+import { useFinePointer } from './hooks';
+import type { GridDay } from './windowDays';
 
-export interface GridJob { id: string; top: number; height: number; col: number; cols: number; color: string; name: string; label: string }
-export type DayKind = 'open' | 'full' | 'closed' | 'past' | 'failed' | 'loading';
-export interface GridDay {
-  day: Day; status: WinStatus; stale: boolean; kind: DayKind;
-  states: UnitState[];
-  /** the arrival times this booking can take, in order */
-  open: number[];
-  /** how many different windows those times give (what the customer may be told) */
-  windows: number;
-  jobs: GridJob[];
-  /** moving an appointment: where it is now */
-  current: Box | null; currentM: number | null;
-  /** the unit chosen and its window (this day is the day chosen) */
-  chosen: number | null; band: Win | null;
-  /** the unit of the best moment the server offers that day */
-  best: number | null;
-}
+export type { GridDay, GridJob, DayKind } from './windowDays';
+export { floatPlace };
 export interface PickGridProps {
   span: Range; days: GridDay[]; today: Day;
   /** the day whose switch and buttons are under the calendar */
@@ -45,7 +32,7 @@ export interface PickGridProps {
   /** the day's route with the new stop at that time (null: no position, no map) */
   askOf: (d: Day, m: number) => PreviewAsk | null;
   range: string; canPrev: boolean; canNext: boolean; onPrev: () => void; onNext: () => void;
-  /** the unit to bring into view: asked for (`n` changes), else when the page's first answers arrive */
+  /** the unit to bring into view: asked for (`n` changes), else when the page's answers are in */
   goto: { m: number; n: number } | null; openAt: number | null; pageKey: string;
   hint: string;
   /** a refused unit may still be clicked (the owner, the office: the day anyway) */
@@ -55,15 +42,6 @@ export interface PickGridProps {
 const HOVER_MS = 350;
 /** the focus came from the keyboard (not from a click) */
 const byKeys = (el: HTMLElement) => { try { return el.matches(':focus-visible'); } catch { return false; } };
-const MAP_W = 360, MAP_H = 420;
-/** beside the column (its left when there is room, else its right), never over the unit pointed at */
-export function floatPlace(unit: { top: number; bottom: number }, col: { left: number; right: number }, vw: number, vh: number, h = MAP_H): FloatAt {
-  const top = Math.max(8, Math.min(vh - h - 8, unit.top - 10));
-  if (col.left - MAP_W - 12 >= 8) return { right: vw - col.left + 12, top };
-  if (col.right + 12 + MAP_W <= vw - 8) return { left: col.right + 12, top };
-  // no room beside: under the unit, else above it
-  return { left: Math.max(8, Math.min(vw - MAP_W - 8, col.left)), top: unit.bottom + 12 + h <= vh ? unit.bottom + 12 : Math.max(8, unit.top - h - 12) };
-}
 
 /* ---------- a day's column (drawn again only when the day changes, not at each move of the mouse) ---------- */
 const Column = memo(function Column(p: { d: GridDay; span: Range; today: Day; tab: number | null; force: boolean; unitLabel: PickGridProps['unitLabel'] }) {
@@ -103,6 +81,9 @@ export function PickGrid(p: PickGridProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const cols = useRef<HTMLDivElement>(null);
   const wd = new Intl.DateTimeFormat(l === 'en' ? 'en-CA' : 'fr-CA', { weekday: 'short' });
+  /* a touch screen wide enough for the grid (a tablet, a phone held sideways) sends mouse events after each tap: the words
+     and the map would open under the finger and stay. Only a mouse that hovers gets them. */
+  const mouse = useFinePointer(true);
 
   /* ---------- the unit under the mouse (or with the keyboard's focus): its words, its window, then the map ---------- */
   const [active, setActive] = useState<{ day: Day; m: number; at: FloatAt; by: 'mouse' | 'keys' } | null>(null);
@@ -188,7 +169,7 @@ export function PickGrid(p: PickGridProps) {
       <div class="pk-head">
         <span />
         {days.map((d) => (
-          <button key={d.day} type="button" class={`pk-dayhd is-${d.kind}${d.day === p.today ? ' is-today' : ''}${p.selDay === d.day ? ' is-sel' : ''}`} aria-pressed={p.selDay === d.day}
+          <button key={d.day} type="button" class={`pk-dayhd is-${d.kind}${d.day === p.today ? ' is-today' : ''}${p.selDay === d.day ? ' is-sel' : ''}${d.far ? ' is-far' : ''}`} aria-pressed={p.selDay === d.day}
             aria-label={p.dayLabel(d)} title={p.dayLabel(d)} onClick={() => p.onDay(d.day)} onContextMenu={(e) => p.onDayMenu?.(e, d.day, null)} data-testid={`pick-day-${d.day}`}>
             <span class="pk-dayhd-wd">{d.day === p.today ? t('common.today') : wd.format(parseDay(d.day))}</span>
             <span class="pk-dayhd-num">{parseDay(d.day).getDate()}</span>
@@ -214,8 +195,8 @@ export function PickGrid(p: PickGridProps) {
               p.onDayMenu(e, col.dataset.day as Day, span[0] + i * 15);
             }}
             onClick={(e) => { const u = unitOf(e.target); if (u) { setFocus({ day: u.day, m: u.m }); p.onUnit(u.day, u.m, u.state); } }}
-            onMouseOver={(e) => { const u = unitOf(e.target); if (u && u.state === 'open') show(u, 'mouse'); else if (active?.by === 'mouse') hide(); }}
-            onMouseLeave={() => { if (active?.by === 'mouse') hide(); }}
+            onMouseOver={mouse ? (e) => { const u = unitOf(e.target); if (u && u.state === 'open') show(u, 'mouse'); else if (active?.by === 'mouse') hide(); } : undefined}
+            onMouseLeave={mouse ? () => { if (active?.by === 'mouse') hide(); } : undefined}
             onFocusCapture={(e) => { const u = unitOf(e.target); if (u && u.state === 'open' && byKeys(u.el)) show(u, 'keys'); }}
             onBlurCapture={() => { if (active?.by === 'keys') hide(); }}
             onKeyDown={onKey}>
@@ -244,6 +225,7 @@ export function PickGrid(p: PickGridProps) {
         <li><span class="pk-sw is-job" />{t('booking.win.grid.legend.job')}</li>
         <li><span class="pk-sw is-off" />{t('booking.win.grid.legend.off')}</li>
         {days.some((d) => d.best != null) && <li><span class="pk-star">★</span>{t('booking.win.grid.best')}</li>}
+        {days.some((d) => d.far) && <li data-testid="pick-legend-far"><span class="bp-swatch is-far"><Route size={11} /></span>{t('booking.far.legend')}</li>}
       </ul>
       <p class="pk-hint">{p.hint}</p>
       {/* the words of the unit pointed at, then the day's route on a map: beside its column */}

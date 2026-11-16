@@ -5,6 +5,10 @@ import type { TeamMapAnswer } from '../map/assemble';
 import { metres } from '../places/photon';
 
 export const NEW_STOP = 'new-stop';
+/** the new appointment on every map of the pickers: black, whatever the vehicle */
+export const NEW_STOP_COLOR = '#111827';
+/** « 4,2 » km, one decimal at most, in the person's language */
+export const fmtKm = (n: number, l: string): string => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
 /* « Plages d'arrivée »: a whole day is one block ('day'), its stops in the planner's order */
 const BLOCKS: Record<string, number> = { am: 0, pm: 1, eve: 2, day: 0 };
 type Job = TeamMapAnswer['jobs'][number];
@@ -57,6 +61,18 @@ export function bestPlace(from: { lat: number; lng: number } | null, stops: Job[
   return { index: best.index, extraKm: Number.isFinite(best.extraKm) ? Math.max(0, best.extraKm) : 0 };
 }
 
+/** where a stop goes in a vehicle's whole list (`mine`, in day order) from its place among the LOCATED stops (`index`,
+    from bestPlace): before the located stop it goes before; after the last located one, still before the stops of a
+    later block that have no position (else « Arrêt 3 sur 3 » would be said of a morning stop that the map numbers 2) */
+export function listIndex(mine: readonly Job[], index: number, block: string): number {
+  const located = mine.filter(has);
+  if (index < located.length) return mine.indexOf(located[index]);
+  const b = BLOCKS[block] ?? 1;
+  let at = located.length ? mine.indexOf(located[located.length - 1]) + 1 : 0;
+  while (at < mine.length && (BLOCKS[mine[at].block] ?? 9) <= b) at++;
+  return at;
+}
+
 /** the truck's day with the new appointment in it; without a truck (no suggestion), the truck where it adds the least */
 export function placeNewStop(a: TeamMapAnswer, spot: Spot): Placed {
   const home = a.home && a.home.lat != null && a.home.lng != null ? { lat: a.home.lat, lng: a.home.lng } : null;
@@ -74,9 +90,8 @@ export function placeNewStop(a: TeamMapAnswer, spot: Spot): Placed {
   const renumber = (list: Job[]) => list.map((j, i) => ({ ...j, order: i + 1 }));
   const others = a.jobs.filter((j) => j.truck_id !== pick.id);
   const mine = pick.id ? live(pick.id) : [];
-  const located = mine.filter(has);
   // the place among the located stops → the place in the whole list (a stop without a position keeps its rank)
-  const at = pick.index < located.length ? mine.indexOf(located[pick.index]) : mine.length;
+  const at = listIndex(mine, pick.index, spot.block);
   const fresh: Job = { id: NEW_STOP, number: null, truck_id: pick.id, order: null, eta_min: spot.eta ?? null, status: 'booked', block: spot.block,
     name: spot.name, address: spot.address, lat: spot.lat, lng: spot.lng };
   return {
@@ -112,9 +127,8 @@ export function moveStops(a: TeamMapAnswer, ids: string[], truckId: string): Tea
     const mine = dayOrder(jobs.filter(live));
     let at: number;
     if (has(j)) {
-      const located = mine.filter(has);
       const r = bestPlace(from, mine, { block: j.block, lat: j.lat!, lng: j.lng! });
-      at = r.index < located.length ? mine.indexOf(located[r.index]) : mine.length;
+      at = listIndex(mine, r.index, j.block);
     } else {
       // no position: at the end of its block
       const b = BLOCKS[j.block] ?? 1;

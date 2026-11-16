@@ -6,16 +6,13 @@ import { longDay } from '../../lib/dates';
 import { Sheet, Button, Banner } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble } from '../map/assemble';
-import { fromDevice } from '../map/device';
 import { useRoads, roadOf } from '../map/useRoads';
 import { staffName } from '../../data/select';
+import { dayOf } from './deviceDay';
 
 export function DayRoute(p: { day: string; exclude?: string | null; onClose: () => void }) {
   const l = lang.value;
-  const view = useMemo(() => {
-    const day = fromDevice(p.day);
-    return assemble(p.exclude ? { ...day, jobs: day.jobs.filter((j) => j.id !== p.exclude) } : day, { nameOf: staffName });
-  }, [p.day, p.exclude]);
+  const view = useMemo(() => assemble(dayOf(p.day, p.exclude), { nameOf: staffName }), [p.day, p.exclude]);
   const routes = view.trucks.filter((tr) => tr.stops.some((s) => s.hasPos));
   useRoads(routes);
   const markers: MapMarker[] = [];
