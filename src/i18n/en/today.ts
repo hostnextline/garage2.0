@@ -121,8 +121,7 @@ export const today: typeof fr = {
   },
   collect: {
     title: 'To collect',
-    help: 'Finished jobs whose invoice is not (fully) paid, for example when the customer will pay later, and those with no invoice.',
-    noInvoice: 'No invoice',
+    help: 'Finished jobs whose invoice is not (fully) paid, for example when the customer will pay later.',
     none: 'Everything is paid.',
     later: 'Will pay later',
     laterReason: 'Will pay later: {reason}',

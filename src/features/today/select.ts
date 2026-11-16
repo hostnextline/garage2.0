@@ -5,7 +5,7 @@
 import { computed } from '@preact/signals';
 import type { Job, JobItem, Invoice, Payment, Shift, Truck } from '../../data/types';
 import { rowsOf, getRow } from '../../data/store';
-import { allJobs, jobsOn, activeTrucks, openShift, positionOf, invoicesList, jobTotals, customer, customerName, job as jobById } from '../../data/select';
+import { allJobs, jobsOn, activeTrucks, openShift, positionOf, invoicesList, customer, customerName, job as jobById } from '../../data/select';
 import { myTrucks, isOwner, hasRole, can } from '../../data/auth';
 import { today, addDays, dayOf } from '../../lib/dates';
 import { OPEN, isLive, pickDay, routeInUse, openBefore, collectList, invoicesByJob, type TodayRole, type Collect } from './rules';
@@ -74,9 +74,9 @@ export function unplacedOn(day = today()): Job[] { return jobsOn(day).filter((j)
 
 /** each job's invoice, indexed once per change of the invoices (not once per job per redraw) */
 const invoiceIndex = computed(() => invoicesByJob(invoicesList.value));
-/** finished jobs not (fully) paid, or not billed at all */
+/** finished jobs not (fully) paid */
 export function toCollect(): Collect[] {
-  return collectList(allJobs.value, invoiceIndex.value, (id) => jobTotals(id).total);
+  return collectList(allJobs.value, invoiceIndex.value);
 }
 /** proposed work waiting for the customer's answer, on jobs still open */
 export function proposalsWaiting(): { item: JobItem; job: Job }[] {

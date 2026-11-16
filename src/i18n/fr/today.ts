@@ -124,8 +124,7 @@ export const today = {
   },
   collect: {
     title: 'À encaisser',
-    help: 'Les jobs terminées dont la facture n’est pas (ou pas toute) payée, par exemple quand le client paiera plus tard, et celles qui n’ont pas de facture.',
-    noInvoice: 'Pas de facture',
+    help: 'Les jobs terminées dont la facture n’est pas (ou pas toute) payée, par exemple quand le client paiera plus tard.',
     none: 'Tout est payé.',
     later: 'Paiera plus tard',
     laterReason: 'Paiera plus tard : {reason}',

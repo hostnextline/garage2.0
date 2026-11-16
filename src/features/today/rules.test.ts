@@ -75,18 +75,18 @@ describe('the way back to the start (jobs-b-08)', () => {
 });
 
 describe('« À encaisser »', () => {
-  const total = () => 5000;
   it('lists an issued invoice with money still due, newest first', () => {
     const jobs = [job({ id: 'a', status: 'done', day: '2026-11-10' }), job({ id: 'b', status: 'done', day: '2026-11-12' }), job({ id: 'c', status: 'done' })];
     const map = invoicesByJob([inv({ id: '1', job_id: 'a', paid_cents: 4000 }), inv({ id: '2', job_id: 'b' }), inv({ id: '3', job_id: 'c', status: 'paid', paid_cents: 10000 })]);
-    expect(collectList(jobs, map, total).map((x) => [x.job.id, x.due])).toEqual([['b', 10000], ['a', 6000]]);
+    expect(collectList(jobs, map).map((x) => [x.job.id, x.due])).toEqual([['b', 10000], ['a', 6000]]);
   });
   it('lists « payer plus tard » without an invoice', () => {
-    expect(collectList([job({ status: 'done', pay_later: true })], new Map(), total)).toMatchObject([{ due: 0 }]);
+    expect(collectList([job({ status: 'done', pay_later: true })], new Map())).toMatchObject([{ due: 0 }]);
   });
-  it('lists work done with no invoice at all, not in the Coffre (x-money-11)', () => {
-    const list = collectList([job({ id: 'x', status: 'done' }), job({ id: 'coffre', status: 'done', coffre_id: 'k' }), job({ id: 'free', status: 'done' })], new Map(), (id) => (id === 'free' ? 0 : 5000));
-    expect(list.map((x) => [x.job.id, x.due, x.noInvoice])).toEqual([['x', 5000, true]]);
+  it('leaves out a paid invoice, a draft, and a finished job with no invoice that is not « payer plus tard »', () => {
+    const jobs = [job({ id: 'paid', status: 'done' }), job({ id: 'draft', status: 'done' }), job({ id: 'none', status: 'done' })];
+    const map = invoicesByJob([inv({ id: 'p', job_id: 'paid', status: 'paid', paid_cents: 10000 }), inv({ id: 'd', job_id: 'draft', status: 'draft' })]);
+    expect(collectList(jobs, map)).toEqual([]);
   });
   it('indexes each job’s invoice once, the void and deleted ones left out, the first one kept', () => {
     const map = invoicesByJob([inv({ id: 'v', status: 'void' }), inv({ id: 'd', deleted_at: '2026-11-01' }), inv({ id: 'first' }), inv({ id: 'second' })]);

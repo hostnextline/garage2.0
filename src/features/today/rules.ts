@@ -67,17 +67,16 @@ export function returnState(trips: readonly Trip[], staffId: string, todayDay: s
 }
 
 /* ---------- the money ---------- */
-export interface Collect { job: Job; invoice?: Invoice; due: number; noInvoice?: boolean }
+export interface Collect { job: Job; invoice?: Invoice; due: number }
 /** the invoice of each job (not void, not deleted; the first one of the table when there are several, as invoiceOf) */
 export function invoicesByJob(invoices: readonly Invoice[]): Map<string, Invoice> {
   const out = new Map<string, Invoice>();
   for (const v of invoices) if (v.job_id && v.status !== 'void' && !v.deleted_at && !out.has(v.job_id)) out.set(v.job_id, v);
   return out;
 }
-/** finished jobs not (fully) paid: an issued invoice with money still due, « payer plus tard », or work done with no
-    invoice at all (out of the Coffre again, or its invoice voided): never billed unless someone sees it.
+/** finished jobs not (fully) paid: an issued invoice with money still due, or « payer plus tard ».
     One pass over the jobs with the invoices indexed once (thousands of rows on a phone). Newest first. */
-export function collectList(jobs: readonly Job[], invoices: ReadonlyMap<string, Invoice>, workTotal: (jobId: string) => number): Collect[] {
+export function collectList(jobs: readonly Job[], invoices: ReadonlyMap<string, Invoice>): Collect[] {
   const out: Collect[] = [];
   for (const job of jobs) {
     if (job.status !== 'done') continue;
@@ -86,11 +85,6 @@ export function collectList(jobs: readonly Job[], invoices: ReadonlyMap<string, 
       const due = invoice.status === 'issued' ? Math.max(0, invoice.total_cents - invoice.paid_cents) : 0;
       if (invoice.status === 'issued' && due > 0) out.push({ job, invoice, due });
     } else if (job.pay_later) out.push({ job, due: 0 });
-    else if (!job.coffre_id) {
-      // nothing worth billing (a free check): nothing to collect either
-      const due = workTotal(job.id);
-      if (due > 0) out.push({ job, due, noInvoice: true });
-    }
   }
   return out.sort((a, b) => b.job.day.localeCompare(a.job.day) || b.job.number - a.job.number);
 }

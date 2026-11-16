@@ -12,10 +12,9 @@ import { jobName, jobCustomer, shortDayWord, blockRange } from '../../shared/job
 import { toCollect, proposalsWaiting, toConfirm } from './select';
 import type { Collect } from './rules';
 
-/** under a line to collect: « payer plus tard » (and why), else the invoice and the day; work never billed says so */
+/** under a line to collect: « payer plus tard » (and why), else the invoice and the day */
 function collectSub(x: Collect): string {
   if (x.job.pay_later) return x.job.pay_later_reason ? t('today.collect.laterReason', { reason: x.job.pay_later_reason }) : t('today.collect.later');
-  if (x.noInvoice) return [t('today.collect.noInvoice'), shortDayWord(x.job.day)].join(', ');
   return [x.invoice?.number != null ? t('today.collect.invoice', { number: invoiceNumber(x.invoice) }) : '', shortDayWord(x.job.day)].filter(Boolean).join(', ');
 }
 
