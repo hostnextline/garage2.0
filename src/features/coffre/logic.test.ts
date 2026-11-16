@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeCoffre, coffreSheet, coffreCsv, type CoffreLabels } from './logic';
+import { normalizeCoffre, coffreSheet, coffreCsv, mayRemoveEntry, type CoffreLabels } from './logic';
 import { coffreCandidates } from '../../domain/money/coffre';
 import { nextStep } from '../../domain/jobs/steps';
 import type { Job, Invoice } from '../../data/types';
@@ -46,8 +46,29 @@ describe('« Coffre »: the report apart', () => {
     expect(r).toMatchObject({ amount_cents: 10000, spent_cents: 5500, balance_cents: 4500 });
     expect(r.rows.map((x) => x.kind)).toEqual(['received', 'purchase']);
     const csv = coffreCsv(r, { sheet: 'C', title: 'C', period: 'P', day: 'D', customer: 'Cl', jobs: 'J', work: 'W', value: 'V', amount: 'A', note: 'N', by: 'B', total: 'T' }, 'fr');
-    expect(csv).toMatch(/-55,00/);
+    // amounts are numbers for a spreadsheet: a purchase is -55,00, never the text '-55,00 (it would drop out of a sum)
+    expect(csv.split('\r\n')[2]).toBe('2026-11-06;Filtre PH7317;;5 × Filtre PH7317;0,00;-55,00;;');
     expect(csv).toMatch(/T;;2;;250,00;45,00/);
+  });
+  it('more spent than received: the total is a negative number, in French and in English', () => {
+    const r = normalizeCoffre({ rows: [
+      { id: 'a', kind: 'received', day: '2026-11-02', customer: 'Karim', amount_cents: 1000, value_cents: 5000, job_numbers: [3] },
+      { id: 'p', kind: 'purchase', day: '2026-11-03', customer: 'Huile', amount_cents: 4500, value_cents: 0, work: 'Huile 5W-30', job_numbers: [] }
+    ] }, '2026-11-01', '2026-11-30');
+    const fr = coffreCsv(r, L, 'fr').split('\r\n');
+    expect(fr[2]).toBe('2026-11-03;Huile;;Huile 5W-30;0,00;-45,00;;');
+    expect(fr[3]).toBe('Total;;2;;50,00;-35,00;;');
+    const en = coffreCsv(r, L, 'en').split('\r\n');
+    expect(en[3]).toBe('Total,,2,,50.00,-35.00,,');
+  });
+  it('text that a spreadsheet would run stays text', () => {
+    const r = normalizeCoffre({ rows: [{ id: 'a', day: '2026-11-02', customer: '=HYPERLINK("x")', amount_cents: 100, value_cents: 0, job_numbers: [1], note: '-ok' }] }, '2026-11-01', '2026-11-30');
+    expect(coffreCsv(r, L, 'fr').split('\r\n')[1]).toBe(`2026-11-02;"'=HYPERLINK(""x"")";1;;0,00;1,00;'-ok;`);
+  });
+  it('« Retirer »: the owner, on money received only (a purchase also put stock in the Coffre)', () => {
+    expect(mayRemoveEntry({ kind: 'received' }, true)).toBe(true);
+    expect(mayRemoveEntry({ kind: 'purchase' }, true)).toBe(false);
+    expect(mayRemoveEntry({ kind: 'received' }, false)).toBe(false);
   });
   it('the Excel sheet: header, one line per entry, the totals', () => {
     const s = coffreSheet(r, L);

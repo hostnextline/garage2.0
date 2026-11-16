@@ -114,6 +114,20 @@ describe('dates on a receipt', () => {
     expect(receiptDate('Membre depuis 2024-04-01\nDate: 2026-10-28', TODAY)).toBe('2026-10-28');
   });
   it('no date: null', () => expect(receiptDate('TOTAL 12,00', TODAY)).toBeNull());
+  it('bug 08: entered weeks later, a past « returns until » or « next service » date is not the purchase date', () => {
+    const later = '2026-11-15';
+    expect(receiptDate('CANADIAN TIRE\n2026-10-03 11:02\nTOTAL 12,00\nRetours acceptés jusqu’au 2026-11-02', later)).toBe('2026-10-03');
+    expect(receiptDate('Date 2026-11-03\nTOTAL 49,99\nProchain entretien 2026-11-10', later)).toBe('2026-11-03');
+    expect(receiptDate('Returns accepted until 2026-11-02\nNov 1, 2026\nTOTAL 9,99', later)).toBe('2026-11-01');
+    expect(receiptDate('Garantie valide jusqu’au 2026-11-12', later)).toBeNull();
+  });
+  it('the date printed beside the time of the sale wins over another past date further down', () => {
+    expect(receiptDate('03/10/2026 14:32\nFacture du 2026-10-20', '2026-11-15')).toBe('2026-10-03');
+  });
+  it('x-time-20: an ambiguous date never becomes tomorrow when the other reading is in the past', () => {
+    // read on 10 December: 12 November (28 days ago), not 11 December (tomorrow)
+    expect(receiptDate('Date 12/11/2026', '2026-12-10')).toBe('2026-11-12');
+  });
 });
 
 describe('the vendor from the first lines', () => {
@@ -217,6 +231,18 @@ describe('the category proposed for a vendor', () => {
     expect(guessCategory('Petro-Canada', cats)).toBe('Carburant');
     expect(guessCategory('Lordco Auto Parts', cats)).toBe('Pièces');
     expect(guessCategory('Vidéotron', cats)).toBe('Téléphone et internet');
+  });
+  it('bug 26: whole words only (« esso » inside « accessoires », « meta » inside « métal »)', () => {
+    const all = [...cats, 'Publicité'];
+    expect(guessCategory('Pièces et Accessoires Laval', all)).toBe('Pièces');
+    expect(guessCategory('Accessoires d’auto Leblanc', all)).toBeNull();
+    expect(guessCategory('Métal Supermarchés', all)).toBeNull();
+    expect(guessCategory('Toolbox Café', all)).toBe('Repas');
+    expect(guessCategory('Meta (Facebook)', all)).toBe('Publicité');
+    expect(guessCategory('Lordco Pièces d’auto', all)).toBe('Pièces');
+    expect(guessCategory('Esso', all)).toBe('Carburant');
+    expect(guessCategory('Huiles Castrol', all)).toBe('Huile et liquides');
+    expect(guessCategory('McDonald’s', all)).toBe('Repas');
   });
   it('only a category of the garage’s own list', () => {
     expect(guessCategory('Petro-Canada', ['Autre'])).toBeNull();

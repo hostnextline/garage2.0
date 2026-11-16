@@ -19,6 +19,9 @@ export interface ExportInput {
   from: Day; to: Day; revenue: RevenueLine[]; expenses: ExpenseLine[];
   company?: { name?: string; tps_no?: string; tvq_no?: string };
   labels: ExportLabels;
+  /** the person does not see the invoices: the file holds the expenses only. Without this, a Taxes sheet with no
+      revenue would read as a tax refund and a loss to the accountant. */
+  expensesOnly?: boolean;
 }
 
 const sum = <T>(xs: T[], f: (x: T) => number) => xs.reduce((n, x) => n + (f(x) || 0), 0);
@@ -78,7 +81,7 @@ export function workbookSheets(x: ExportInput): SheetDef[] {
       [T.note]
     ]
   };
-  return [revenue, expenses, taxes];
+  return x.expensesOnly ? [expenses] : [revenue, expenses, taxes];
 }
 
 export function buildWorkbook(x: ExportInput): Uint8Array {
@@ -86,6 +89,9 @@ export function buildWorkbook(x: ExportInput): Uint8Array {
 }
 
 /* ---------- CSV ---------- */
+/** a CSV value: text, or money as { cents } (written as a number, never through the text guard below) */
+export type CsvValue = string | number | null | undefined | { cents: Cents };
+
 /** one CSV value: quoted when needed; text that a spreadsheet would run as a formula is kept as text */
 export function csvCell(v: string | number | null | undefined, sep: string): string {
   if (v == null) return '';
@@ -98,16 +104,25 @@ export function csvMoney(c: Cents, lang: string): string {
   const s = (Math.abs(c) / 100).toFixed(2);
   return (c < 0 ? '-' : '') + (lang === 'en' ? s : s.replace('.', ','));
 }
+/** the separator a spreadsheet in that language expects */
+export const csvSeparator = (lang: string) => (lang === 'en' ? ',' : ';');
+/** one CSV line. Money stays a number even when negative: with the formula guard a purchase would read « '-55,00 »,
+    a text that a spreadsheet leaves out of its sums. */
+export function csvLine(cells: CsvValue[], lang: string): string {
+  const sep = csvSeparator(lang);
+  return cells.map((c) => (c != null && typeof c === 'object' ? csvMoney(c.cents, lang) : csvCell(c, sep))).join(sep);
+}
+/** a whole CSV file: BOM (Excel then reads the accents right), Windows line ends */
+export function csvFile(lines: CsvValue[][], lang: string): string {
+  return '\uFEFF' + lines.map((l) => csvLine(l, lang)).join('\r\n') + '\r\n';
+}
 /** the period as one journal: revenue and expenses by date. French: « ; » and decimal comma (Excel in French). */
 export function buildCsv(x: ExportInput, lang: string): string {
-  const sep = lang === 'en' ? ',' : ';';
   const C = x.labels.csv;
-  const lines: (string | number | null)[][] = [[C.day, C.type, C.number, C.name, C.category, C.description, C.subtotal, C.tps, C.tvq, C.total, C.method]];
+  const m = (cents: Cents) => ({ cents });
   const all = [
-    ...x.revenue.map((r) => ({ day: r.day, row: [r.day, C.revenue, r.number, r.customer, '', '', csvMoney(r.subtotal, lang), csvMoney(r.tps, lang), csvMoney(r.tvq, lang), csvMoney(r.total, lang), ''] })),
-    ...x.expenses.map((e) => ({ day: e.day, row: [e.day, C.expense, '', e.vendor, e.category, e.description, csvMoney(e.subtotal, lang), csvMoney(e.tps, lang), csvMoney(e.tvq, lang), csvMoney(e.total, lang), e.method] }))
+    ...x.revenue.map((r) => ({ day: r.day, row: [r.day, C.revenue, r.number, r.customer, '', '', m(r.subtotal), m(r.tps), m(r.tvq), m(r.total), ''] as CsvValue[] })),
+    ...x.expenses.map((e) => ({ day: e.day, row: [e.day, C.expense, '', e.vendor, e.category, e.description, m(e.subtotal), m(e.tps), m(e.tvq), m(e.total), e.method] as CsvValue[] }))
   ].sort((a, z) => a.day.localeCompare(z.day));
-  for (const l of all) lines.push(l.row);
-  // amounts are numbers for a spreadsheet: never prefixed, even when negative
-  return '﻿' + lines.map((r, i) => r.map((v, j) => (i > 0 && j >= 6 && j <= 9 ? String(v) : csvCell(v, sep))).join(sep)).join('\r\n') + '\r\n';
+  return csvFile([[C.day, C.type, C.number, C.name, C.category, C.description, C.subtotal, C.tps, C.tvq, C.total, C.method], ...all.map((l) => l.row)], lang);
 }

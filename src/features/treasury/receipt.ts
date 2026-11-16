@@ -134,7 +134,10 @@ function datesIn(line: string, ref: Day): { day: Day; start: number; end: number
   const add = (m: RegExpMatchArray, options: (Day | null)[]) => {
     const ok = options.filter((d): d is Day => plausible(d, ref));
     if (!ok.length) return;
-    ok.sort((a, b) => Math.abs(daysBetween(a, ref)) - Math.abs(daysBetween(b, ref)));
+    // a receipt is from the past: a reading tomorrow never wins over one in the past (« 12/11/2026 » read on
+    // 10 December is 12 November, not 11 December), then the reading closest to today
+    const future = (d: Day) => (d > ref ? 1 : 0);
+    ok.sort((a, b) => future(a) - future(b) || Math.abs(daysBetween(a, ref)) - Math.abs(daysBetween(b, ref)));
     found.push({ day: ok[0], start: m.index!, end: m.index! + m[0].length });
   };
   const taken = (i: number) => found.some((f) => i >= f.start && i < f.end);
@@ -156,12 +159,26 @@ function datesIn(line: string, ref: Day): { day: Day; start: number; end: number
   }
   return found;
 }
-/** the date of the purchase: the latest plausible date on the receipt (a « member since » date is older,
-    a « returns until » date is in the future) */
+/* a date on such a line is not the day of the purchase: returns, warranty, next service, « valid until » */
+const NOT_PURCHASE = /\b(?:retours?|returns?|jusqu|until|valides?|valid|garanties?|warranty|expir\w*|prochain\w*|next|echeance|membre|member|depuis|since)\b/;
+const TIME = /\b\d{1,2}[:h]\d{2}\b/;
+/** the date of the purchase. A date on a line about returns, warranty, the next service or a membership is left
+    out (entered weeks later, a « retours jusqu'au » date is already past and used to win); among the others, the
+    date printed beside the time of the sale, else the latest one. */
 export function receiptDate(text: string, ref: Day): Day | null {
-  let best: Day | null = null;
-  for (const l of cleanText(text)) for (const d of datesIn(fold(l), ref)) if (!best || d.day > best) best = d.day;
-  return best;
+  let latest: Day | null = null;
+  for (const l of cleanText(text)) {
+    const f = fold(l);
+    if (NOT_PURCHASE.test(f)) continue;
+    const found = datesIn(f, ref);
+    if (!found.length) continue;
+    // the time is looked for outside the dates (« 2026/11/03 14:32:05 »)
+    let rest = f;
+    for (const d of found) rest = rest.slice(0, d.start) + ' '.repeat(d.end - d.start) + rest.slice(d.end);
+    if (TIME.test(rest)) return found[0].day;
+    for (const d of found) if (!latest || d.day > latest) latest = d.day;
+  }
+  return latest;
 }
 
 /* ---------- the labels of a receipt ---------- */
@@ -259,16 +276,17 @@ export function parseReceipt(text: string, ref: Day, rates: TaxRates = QC_TAXES)
 }
 
 /* ---------- the category ---------- */
+/* kinds of store, as whole words (« esso » inside « accessoires » made a parts store a gas station) */
 const RULES: [RegExp, string[]][] = [
-  [/petro|shell|esso|ultramar|irving|couche|sonic|crevier|harnois|pioneer|olco|essence|carburant|\bgaz\b|fuel/, ['carburant', 'fuel']],
-  [/lordco|napa|carquest|partsource|uni-?select|pieces|auto parts|princess auto|rockauto|pneus|tire/, ['pieces', 'parts']],
-  [/castrol|valvoline|mobil 1|huile|lave-glace|antigel|liquide/, ['huile et liquides', 'oil and fluids']],
-  [/home depot|rona|\bbmr\b|reno-depot|canac|snap-on|mac tools|matco|outil|tool/, ['outils et equipement', 'tools and equipment']],
-  [/\bbell\b|videotron|fizz|rogers|telus|koodo|virgin|freedom|cogeco|ebox/, ['telephone et internet', 'phone and internet']],
-  [/tim hortons|mcdonald|subway|a&w|restaurant|resto|cafe|pizza|st-hubert|bistro|starbucks|poulet/, ['repas', 'meals']],
-  [/assurance|insurance|intact|belair|promutuel|la capitale/, ['assurances', 'insurance']],
-  [/facebook|meta|google ads|kijiji|publicite|vistaprint|imprimerie/, ['publicite', 'advertising']],
-  [/frais bancaires|banque|bank fee/, ['frais bancaires', 'bank fees']]
+  [/\b(?:petro|shell|esso|ultramar|irving|couche[- ]?tard|sonic|crevier|harnois|pioneer|olco|essence|carburants?|gaz|fuel)\b/, ['carburant', 'fuel']],
+  [/\b(?:lordco|napa|carquest|partsource|uni-?select|pieces|auto parts|princess auto|rockauto|pneus?|tires?)\b/, ['pieces', 'parts']],
+  [/\b(?:castrol|valvoline|mobil 1|huiles?|lave-glace|antigel|liquides?)\b/, ['huile et liquides', 'oil and fluids']],
+  [/\b(?:home depot|rona|bmr|reno-depot|canac|snap-on|mac tools|matco|outils?|tools?)\b/, ['outils et equipement', 'tools and equipment']],
+  [/\b(?:bell|videotron|fizz|rogers|telus|koodo|virgin|freedom|cogeco|ebox)\b/, ['telephone et internet', 'phone and internet']],
+  [/\b(?:tim hortons|mcdonalds?|subway|a&w|restaurants?|resto|cafes?|pizzas?|pizzeria|st-hubert|bistro|starbucks|poulet)\b/, ['repas', 'meals']],
+  [/\b(?:assurances?|insurance|intact|belair|promutuel|la capitale)\b/, ['assurances', 'insurance']],
+  [/\b(?:facebook|meta|google ads|kijiji|publicite|vistaprint|imprimerie)\b/, ['publicite', 'advertising']],
+  [/\b(?:frais bancaires|banque|bank fees?)\b/, ['frais bancaires', 'bank fees']]
 ];
 /** the category to propose for a vendor: the one used last time for the same vendor, else a known kind of store.
     Only a category of the garage's own list is ever proposed. */
