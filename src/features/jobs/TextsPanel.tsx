@@ -12,6 +12,7 @@ import type { JobRights } from '../../domain/jobs/rights';
 import { jobName, clockOf } from '../../shared/jobs/select';
 import { pendingJobs } from '../../shared/jobs/pending';
 import { sendText, sendTracking, trackingSent } from '../../shared/jobs/texts';
+import { drives } from '../../shared/jobs/actions';
 
 /** a word of the dictionary, else the server's own value (a kind or a status the app does not know yet) */
 const word = (key: string, raw: string) => { const s = t(key); return s === key ? raw : s; };
@@ -42,7 +43,7 @@ export function TextsPanel(p: { job: Job; rights: JobRights }) {
           </div>
         )}
         {gaps.noTracking && (
-          <Banner kind="warn" action={<Button size="sm" icon={<Send />} onClick={() => sendTracking(j, { resend: true, driving: p.rights.mine })} data-testid="send-tracking">{t('jobs.text.sendTracking')}</Button>}>
+          <Banner kind="warn" action={<Button size="sm" icon={<Send />} onClick={() => sendTracking(j, { resend: true, driving: drives(j, p.rights) })} data-testid="send-tracking">{t('jobs.text.sendTracking')}</Button>}>
             {t('jobs.text.noTracking')}
           </Banner>
         )}

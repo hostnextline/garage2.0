@@ -8,8 +8,10 @@ import { useEffect, useState } from 'preact/hooks';
 
 const mounted = new Map<string, Signal<number[]>>();
 let next = 0;
-/** a moment to let the next screen mount its own host (a change of screen unmounts one and mounts the other) */
-const GRACE_MS = 250;
+/** a moment to let the next screen mount its own host (a change of screen unmounts one and mounts the other): long
+    enough for a screen opened for the first time, whose code is loaded meanwhile (« Aujourd'hui » → the job sheet on a
+    slow phone), so the text to send by hand is not lost on the way */
+export const GRACE_MS = 2500;
 
 function listOf(name: string): Signal<number[]> {
   let s = mounted.get(name);

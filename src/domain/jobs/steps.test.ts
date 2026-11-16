@@ -177,6 +177,24 @@ describe('nextStep: work added after the invoice is finished is never left unbil
   it('the « Coffre » has no invoice: nothing is missing from it', () => {
     expect(nextStep({ ...signed, coffre_id: 'c1' }, extra, null, RIGHTS.mechanic, ctx)).toEqual({ kind: 'finish' });
   });
+  it('work already there when the invoice was finished and left off it (the office took the line off the draft): « Encaisser », then « Terminer » (jobs-r3)', () => {
+    const at = '2026-11-04T15:00:00Z';
+    const issued = { ...INVOICES.issued!, issued_at: at };
+    const before = { ...item('i2', 'planned'), created_at: '2026-11-04T09:00:00Z' };
+    const done = { ...item('i1', 'done'), created_at: '2026-11-04T09:00:00Z' };
+    expect(nextStep(signed, [done, before], issued, RIGHTS.mechanic, ctx)).toEqual({ kind: 'pay', payLater: false, due: 11498 });
+    expect(nextStep(signed, [done, before], { ...INVOICES.paid!, issued_at: at }, RIGHTS.mechanic, ctx)).toEqual({ kind: 'finish' });
+    // added after it was finished: still first
+    const added = { ...item('i3', 'planned'), created_at: '2026-11-04T15:10:00Z' };
+    expect(nextStep(signed, [done, before, added], issued, RIGHTS.mechanic, ctx)).toEqual({ kind: 'unbilled', itemId: 'i3', count: 1, paid: false });
+    // proposed before, accepted after it was finished: still first
+    const accepted = { ...item('i4', 'approved'), created_at: '2026-11-04T10:00:00Z', answered_at: '2026-11-04T15:05:00.123456+00:00' };
+    expect(nextStep(signed, [done, accepted], issued, RIGHTS.mechanic, ctx)).toEqual({ kind: 'unbilled', itemId: 'i4', count: 1, paid: false });
+    // accepted on this phone, the answer still waiting (no time yet): first too
+    expect(nextStep(signed, [done, { ...accepted, answered_at: null }], issued, RIGHTS.mechanic, ctx).kind).toBe('unbilled');
+    // accepted before it was finished and left off: not in the way
+    expect(nextStep(signed, [done, { ...accepted, answered_at: '2026-11-04T14:00:00Z' }], issued, RIGHTS.mechanic, ctx).kind).toBe('pay');
+  });
 });
 
 describe('nextStep: a payment waiting on the phone is not asked twice (jobs-a-02)', () => {

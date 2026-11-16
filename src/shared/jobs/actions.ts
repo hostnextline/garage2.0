@@ -46,10 +46,14 @@ async function stepKept(j: Job, action: StepAction, data: Record<string, unknown
 }
 
 /* ---------- Je pars, Je suis arrivé ---------- */
-/** the person pressing drives this job's truck (its phone is where the truck is) */
-function drives(j: Job, rights: Pick<JobRights, 'mine'>): boolean {
+/** the person pressing drives this job's truck (its phone is where the truck is): the truck's driver, or, on a truck with
+    no driver, a mechanic of that truck. As the server (enroute: the trip is the driver's, else the presser's): with
+    « Routes partagées » every truck is every mechanic's, so being on the truck is not driving it. */
+export function drives(j: Job, rights: Pick<JobRights, 'mine'>): boolean {
   const mine = me.value?.id;
-  return !!mine && !preview.value && (truck(j.truck_id)?.driver_id === mine || (rights.mine && hasRole('mechanic')));
+  if (!mine || preview.value) return false;
+  const driver = truck(j.truck_id)?.driver_id;
+  return driver ? driver === mine : rights.mine && hasRole('mechanic');
 }
 /** « Je pars »: the job goes en route (kept on the phone without signal), the day of the one driving starts beside it if
     needed, then the customer gets the text with the arrival time (from where the driver's phone is) */

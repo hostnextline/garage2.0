@@ -9,8 +9,8 @@ export const BILLABLE = ['planned', 'done', 'approved'];
 const OPEN_STATUSES: readonly JobStatus[] = ['booked', 'en_route', 'on_site'];
 export const isOpen = (s: JobStatus): boolean => OPEN_STATUSES.includes(s);
 
-type ItemLike = Pick<JobItem, 'id' | 'status'> & { deleted_at?: string | null };
-type InvoiceLike = Pick<Invoice, 'status' | 'lines'> & { deleted_at?: string | null };
+type ItemLike = Pick<JobItem, 'id' | 'status'> & { deleted_at?: string | null; created_at?: string; answered_at?: string | null };
+type InvoiceLike = Pick<Invoice, 'status' | 'lines'> & { deleted_at?: string | null; issued_at?: string | null };
 
 /** the invoice that counts: not cancelled, not deleted */
 export function liveInvoice<T extends InvoiceLike>(v: T | null | undefined): T | null {
@@ -33,11 +33,25 @@ export function isBilled(v: InvoiceLike | null | undefined, itemId: string): boo
 export function billable<T extends ItemLike>(items: T[]): T[] {
   return items.filter((i) => !i.deleted_at && BILLABLE.includes(i.status));
 }
-/** work added or accepted after the invoice was finished: it is on no line of it, so nobody would pay for it */
+/** a time as a number (null when unknown) */
+const when = (s: string | null | undefined): number | null => { const n = s ? Date.parse(s) : NaN; return Number.isFinite(n) ? n : null; };
+/** this work came on the job, or the customer accepted it, after the invoice was finished (a time not known counts as
+    after: a line just added on this phone, an answer still waiting on it) */
+function cameAfter(i: ItemLike, issuedAt: number | null): boolean {
+  const added = when(i.created_at);
+  if (issuedAt == null || added == null || added > issuedAt) return true;
+  if (i.status !== 'approved') return false;
+  const accepted = when(i.answered_at);
+  return accepted == null || accepted > issuedAt;
+}
+/** work added or accepted after the invoice was finished: it is on no line of it, so nobody would pay for it. Work that
+    was already there when it was finished and is not on it was left off on purpose (a line taken off the draft by the
+    office): it does not stop the payment nor the end of the job. */
 export function unbilledWork<T extends ItemLike>(items: T[], v: InvoiceLike | null | undefined): T[] {
   if (!isFinished(v)) return [];
   const on = itemIdsOn(v!);
-  return billable(items).filter((i) => !on.has(i.id));
+  const issuedAt = when(v!.issued_at);
+  return billable(items).filter((i) => !on.has(i.id) && cameAfter(i, issuedAt));
 }
 /** a draft made before the work changed: a billable line is missing from it, or a line's work is gone */
 export function draftIsStale(v: InvoiceLike | null | undefined, items: ItemLike[]): boolean {

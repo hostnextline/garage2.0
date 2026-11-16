@@ -60,8 +60,8 @@ export interface NextStep {
 }
 
 type JobLike = Pick<Job, 'id' | 'status' | 'day' | 'waiver_signed_at' | 'pay_later'> & { coffre_id?: string | null };
-type ItemLike = Pick<JobItem, 'id' | 'status'> & { deleted_at?: string | null };
-type InvoiceLike = Pick<Invoice, 'status' | 'total_cents' | 'paid_cents' | 'lines'> & { deleted_at?: string | null };
+type ItemLike = Pick<JobItem, 'id' | 'status'> & { deleted_at?: string | null; created_at?: string; answered_at?: string | null };
+type InvoiceLike = Pick<Invoice, 'status' | 'total_cents' | 'paid_cents' | 'lines'> & { deleted_at?: string | null; issued_at?: string | null };
 
 export function nextStep(job: JobLike, items: ItemLike[], invoice: InvoiceLike | null | undefined, rights: StepRights, ctx: StepContext): NextStep {
   const inv = liveInvoice(invoice);
