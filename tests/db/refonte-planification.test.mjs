@@ -195,3 +195,73 @@ test('agenda-01: move_job says what really changed: a new window the same day is
   const d = await h.rpc('move_job', { p_op: uuid(), p_job: a.job_id, p_day: day2, p_block: 'day', p_truck: null, p_win_start: 600, p_win_flex: false });
   assert.deepEqual([d.changed, d.tell, d.now.day, d.now.win_start], [true, true, day2, 600]);
 }));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   Booking: the other mode, « Peu importe », an estimate booked once
+   ------------------------------------------------------------------------------------------------------------------ */
+
+test('x-dualmode-11: a booking kept on a phone in the other mode is converted, not refused', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near), c2 = await h.customer('Paul', ...near2);
+  await h.as(owner);
+  // blocks: a window chosen while the garage gave windows → the block of its arrival; what was told stays on the job
+  const a = await book(h, { customer_id: c, day, block: 'day', duration_min: 60, win_start: 660 });
+  let ja = await row(h, a.job_id);
+  assert.deepEqual([ja.block, ja.win_start, ja.win_end], ['pm', 660, 900], '11 h – 15 h: arrival around 12 h → the afternoon');
+  assert.ok(ja.truck_id);
+  const b = await book(h, { customer_id: c2, day, block: 'day', duration_min: 60, win_start: 480 });
+  ja = await row(h, b.job_id);
+  assert.deepEqual([ja.block, ja.win_start, ja.win_end], ['am', null, null], 'the hours of a block: the block itself');
+  // nothing chosen in window mode has no block to go to: still refused
+  assert.equal((await h.fails(() => book(h, { customer_id: c2, day, block: 'day', duration_min: 60 })))?.hint, 'bad_block');
+  // windows: a block chosen while the garage gave blocks → the window of its hours
+  await windowsOn(h, owner);
+  const e = await book(h, { customer_id: c2, day, block: 'eve', duration_min: 60 });
+  const je = await row(h, e.job_id);
+  assert.deepEqual([je.block, je.win_start, je.win_end, je.win_flex], ['day', 960, 1200, false]);
+  inside(je, 'the evening job');
+}));
+
+test('sql-planner-2-01: « Peu importe » goes on the truck when the car\'s own appointments fill it', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const car = await h.truck('Voiture', null, { [dow]: [[480, 720]] });
+  const truck = await h.truck('Camion', null, { [dow]: [[480, 720]] });
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const at = (km) => [home.lat + km / 111.2, home.lng];
+  const cs = [];
+  for (const km of [1, 5, 6, 8]) cs.push(await h.customer('Km' + km, ...at(km)));
+  await h.as(owner);
+  const ids = [];
+  for (const cu of cs.slice(0, 3)) ids.push((await book(h, job(cu, day, 'am'))).job_id);
+  for (const id of ids) assert.equal((await row(h, id)).truck_id, car, 'the car first');
+  const x = await book(h, job(cs[3], day, 'am'));
+  assert.equal(x.ok, true);
+  assert.equal(x.forced, false);
+  assert.equal(x.truck_id, truck, 'on the truck, which is empty');
+  for (const id of ids) assert.equal((await row(h, id)).truck_id, car, 'the car keeps its appointments');
+}));
+
+test('booking-a-08: an estimate already booked is not booked again', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  const q = await h.val(`insert into public.quotes (customer_id, status) values ($1, 'accepted') returning id`, [c]);
+  await h.as(owner);
+  const a = await book(h, job(c, day, 'am', { quote_id: q }));
+  assert.equal(await h.val(`select job_id from public.quotes where id = $1`, [q]), a.job_id);
+  const e = await h.fails(() => book(h, job(c, day, 'pm', { quote_id: q })));
+  assert.equal(e?.hint, 'quote_done');
+  assert.equal(await h.val(`select count(*)::int from public.jobs where quote_id = $1`, [q]), 1);
+  // its appointment cancelled: the estimate may be booked again
+  await h.rpc('job_step', { p_op: uuid(), p_job: a.job_id, p_action: 'cancel', p_data: {} });
+  const b = await book(h, job(c, day, 'pm', { quote_id: q }));
+  assert.equal(await h.val(`select job_id from public.quotes where id = $1`, [q]), b.job_id);
+}));

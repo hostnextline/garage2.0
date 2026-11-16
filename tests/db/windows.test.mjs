@@ -89,8 +89,9 @@ test('the switch: a coming morning job becomes a job of the day with 8–12, and
   const again = await h.rpc('windows_switch', { p_op: uuid(), p_on: true });
   assert.equal(again.converted, 0); assert.equal(again.unchanged, true);
   // a block is refused now, with words that say why
-  const e = await h.fails(() => h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: c, day, block: 'am', duration_min: 60 }, p_items: [] }));
-  assert.equal(e?.hint, 'bad_block'); assert.match(e.message, /plage/);
+  const e = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: c, day, block: 'am', duration_min: 60 }, p_items: [] });
+  assert.deepEqual([(await row(h, e.job_id)).block, (await row(h, e.job_id)).win_start], ['day', 480], 'a block kept on a phone: the window of its hours (Part 26)');
+  await h.rpc('job_step', { p_op: uuid(), p_job: e.job_id, p_action: 'cancel', p_data: {} });
   const off = await h.rpc('windows_switch', { p_op: uuid(), p_on: false });
   assert.ok(off.converted >= 2);
   ja = await row(h, a.job_id); jp = await row(h, p.job_id);
