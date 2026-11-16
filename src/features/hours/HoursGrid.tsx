@@ -2,13 +2,15 @@
    Paint with a finger or the mouse: the first pane touched decides (light up or put out), the rectangle between it and
    the pointer follows. Computer: the 7 days side by side. Phone: one day, one hour per row (two half-hour panes).
    Keyboard: arrows move, Space or Enter lights a pane. The thick lines are the limits of the blocks
-   (« Plages d'arrivée »: of the booking day, with no block names on the side). */
+   (« Plages d'arrivée »: of the booking day, with no block names on the side).
+   The days dimmed (« one day »: the other weekdays) cannot be painted: what is drawn there would never be applied. */
 import { useRef, useState } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
-import { clock, parseDay, type Range } from '../../lib/dates';
+import { clock, type Range } from '../../lib/dates';
 import { blocks, windowsOn, daySpan } from '../../data/select';
 import { UNITS, FROM, TO, STEP, DOWS, isOn, paintRect, togglePane, panesToRanges, type Panes } from './grid';
 import { rangesWords } from '../../domain/moment/words';
+import { weekdayName } from './dayNames';
 
 export interface HoursGridProps {
   panes: Panes;
@@ -26,13 +28,6 @@ export interface HoursGridProps {
   changed?: number[];
 }
 
-// a Sunday, to name the weekdays
-const SUNDAY = '2026-11-01';
-export function weekdayName(d: number, l: string, style: 'long' | 'short' = 'long'): string {
-  const day = parseDay(SUNDAY); day.setDate(day.getDate() + d);
-  return new Intl.DateTimeFormat(l === 'en' ? 'en-CA' : 'fr-CA', { weekday: style }).format(day).replace('.', '');
-}
-
 export function HoursGrid(p: HoursGridProps) {
   const l = lang.value;
   const cols = p.week ? DOWS : [p.day];
@@ -41,6 +36,8 @@ export function HoursGrid(p: HoursGridProps) {
   const last = useRef<string>('');
   const [focus, setFocus] = useState<{ d: number; u: number }>({ d: cols[0], u: 8 * 60 });
   const fd = cols.includes(focus.d) ? focus.d : cols[0];
+  // the columns a stroke may light: never a dimmed day
+  const live = cols.filter((d) => !p.dim?.includes(d));
 
   /* ---------- painting ---------- */
   const spotOf = (el: Element | null): { d: number; u: number } | null => {
@@ -51,24 +48,26 @@ export function HoursGrid(p: HoursGridProps) {
   const down = (e: PointerEvent) => {
     if (!p.editable || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const s = spotOf(e.target as Element);
-    if (!s) return;
+    if (!s || !live.includes(s.d)) return;
     e.preventDefault();
     const on = !isOn(p.panes, s.d, s.u);
     anchor.current = { ...s, on, base: p.panes };
     last.current = `${s.d}|${s.u}`;
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* the pointer is already gone: the stroke works without the capture */ }
     setFocus(s);
-    p.onPanes(paintRect(p.panes, s, s, on, cols));
+    p.onPanes(paintRect(p.panes, s, s, on, live));
   };
   const move = (e: PointerEvent) => {
     const a = anchor.current;
     if (!a) return;
-    const s = spotOf(document.elementFromPoint(e.clientX, e.clientY));
-    if (!s) return;
+    const hit = spotOf(document.elementFromPoint(e.clientX, e.clientY));
+    if (!hit) return;
+    // over a dimmed day the stroke stays on the days it may paint (the time still follows the pointer)
+    const s = live.includes(hit.d) ? hit : { d: a.d, u: hit.u };
     const k = `${s.d}|${s.u}`;
     if (k === last.current) return;
     last.current = k;
-    p.onPanes(paintRect(a.base, a, s, a.on, cols));
+    p.onPanes(paintRect(a.base, a, s, a.on, live));
   };
   const up = () => { anchor.current = null; last.current = ''; };
 
@@ -85,7 +84,7 @@ export function HoursGrid(p: HoursGridProps) {
     else if (e.key === 'ArrowLeft') { if (p.week) d = cols[Math.max(0, ci - 1)]; else u = Math.max(FROM, u - STEP); }
     else if (e.key === 'Home') u = FROM;
     else if (e.key === 'End') u = TO - STEP;
-    else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (p.editable) p.onPanes(togglePane(p.panes, d, u)); return; }
+    else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (p.editable && live.includes(d)) p.onPanes(togglePane(p.panes, d, u)); return; }
     else return;
     e.preventDefault();
     setFocus({ d, u });

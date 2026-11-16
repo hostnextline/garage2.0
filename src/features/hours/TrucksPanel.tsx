@@ -1,13 +1,17 @@
-/* The trucks (owner, or the « settings » right): where they leave from (« Départ des camions », changed in Réglages,
-   Réservations), then each truck: name, colour, driver, plate, in service. */
+/* The trucks (owner, or the « settings » right with « hours »): where they leave from (« Départ des camions », changed in
+   Réglages, Réservations), then each truck: name, colour, driver, plate, tire machine, in service.
+   Taking a truck out of service, or its tire machine away, while it has coming appointments asks first: the server
+   re-plans them (another vehicle, or « À placer »). */
 import { useEffect, useState } from 'preact/hooks';
 import { Plus, Check as CheckIcon } from 'lucide-preact';
 import { t } from '../../lib/i18n';
-import { trucks, truck as truckRow, staffList, staffName, truckColor, settings } from '../../data/select';
+import { trucks, truck as truckRow, staffList, staffName, truckColor, settings, allJobs } from '../../data/select';
 import { saveTruck } from '../../data/api';
-import { uuid } from '../../data/sync';
+import { uuid, flush, pull } from '../../data/sync';
+import { today } from '../../lib/dates';
 import type { Truck } from '../../data/types';
-import { Panel, Rows, RowItem, Button, Sheet, Field, Input, Select, Switch, attempt } from '../../ui';
+import { Panel, Rows, RowItem, Button, Sheet, Field, Input, Select, Switch, ask, attempt, run } from '../../ui';
+import { comingTouched } from './trucks';
 import { startWords } from '../../shared/places/TruckStartPanel';
 
 /** the 8 colours a truck can take (data, the same in every theme) */
@@ -65,10 +69,14 @@ function TruckSheet(p: { id: string | 'new' | null; onClose: () => void; onAdded
     const id = cur?.id || uuid();
     const row: Partial<Truck> = { id, name: name.trim().slice(0, 60), color, driver_id: driver || null, plate: plate.trim().toUpperCase() || null, active, tire_machine: machine };
     if (isNew) row.sort = Math.max(0, ...trucks.value.map((x) => x.sort || 0)) + 1;
+    const touched = cur ? comingTouched(allJobs.value, cur, { active, tire_machine: machine }, today()) : null;
+    if (touched && !(await ask({ title: t('hours.manage.askTitle', { n: touched.jobs.length }), text: t(touched.why === 'off' ? 'hours.manage.askOffText' : 'hours.manage.askMachineText'), ok: t('hours.manage.askOk'), danger: true }))) return;
     const ok = await attempt(() => saveTruck(row), { ok: isNew ? t('hours.manage.added') : t('hours.manage.saved') });
     if (!ok) return;
     p.onClose();
     if (isNew) p.onAdded?.(id);
+    // the server re-planned its coming appointments: bring them now
+    if (touched) await run(() => flush().then(() => pull('jobs')), { quiet: true });
   };
   return (
     <Sheet open={!!p.id} onClose={p.onClose} title={isNew ? t('hours.manage.newTitle') : t('hours.manage.edit')} data-testid="truck-sheet"

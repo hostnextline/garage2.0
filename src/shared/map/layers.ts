@@ -3,7 +3,7 @@
    (the stop chosen, the truck seen alone) changes what is faded and what is labelled. Pure: tested in layers.test.ts. */
 import { t, lang } from '../../lib/i18n';
 import { clock } from '../../lib/dates';
-import { minuteOf, UNPLACED_COLOR, type Assembled, type Leg, type LatLng } from './assemble';
+import { minuteOf, UNPLACED_COLOR, type Assembled, type TruckRoute, type Leg, type LatLng } from './assemble';
 import { ago, minutesSince } from './ago';
 import type { MapMarker, MapLine } from './markers';
 
@@ -102,3 +102,19 @@ export function fitIds(m: Assembled, ui: Pick<MapUi, 'focus' | 'pan'>): string[]
   if (p) ids.push(`p:${p.id}`);
   return ids.length ? ids : null;
 }
+
+/** one truck's day drawn alone (« La voiture ferme », a booking preview): its start, its stops numbered, its route; the
+    stops in `marked` stand out in black with their name (the appointments that would come to it) */
+export function routeLayers(route: TruckRoute, o: { marked?: Set<string>; startLabel: string; road: (leg: Leg) => LatLng[] }): { markers: MapMarker[]; lines: MapLine[] } {
+  const markers: MapMarker[] = [];
+  if (route.from) markers.push({ id: 'from', kind: route.start ? 'customer' : 'home', lat: route.from[0], lng: route.from[1], color: route.color, label: route.start?.label || o.startLabel });
+  for (const s of route.stops) {
+    if (!s.hasPos) continue;
+    const marked = !!o.marked?.has(s.id);
+    markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: marked ? MARKED_COLOR : route.color, number: s.n, done: s.done, active: marked, label: marked ? s.name : undefined, title: `${s.n}. ${s.name}` });
+  }
+  const lines: MapLine[] = route.legs.map((leg) => ({ points: o.road(leg), color: route.color, weight: 4, opacity: leg.kind === 'done' ? 0.32 : 0.85 }));
+  return { markers, lines };
+}
+/** the colour of a stop that stands out (the new appointment, the ones moved): the same in every theme */
+export const MARKED_COLOR = '#111827';
