@@ -265,3 +265,60 @@ test('booking-a-08: an estimate already booked is not booked again', () => tx(as
   const b = await book(h, job(c, day, 'pm', { quote_id: q }));
   assert.equal(await h.val(`select job_id from public.quotes where id = $1`, [q]), b.job_id);
 }));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   « Plages d'arrivée »: the flexible appointments (x-dualmode-02, sql-windows-06)
+   ------------------------------------------------------------------------------------------------------------------ */
+
+test('x-dualmode-02: the flexible windows are fixed without pg_cron by any member of the team, today too, and who is still to be told is listed', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']), office = await h.person('Bureau', ['office']), mech = await h.person('Saleh', ['mechanic']);
+  const day = await today(h), tomorrow = await h.val(`select (public.local_today() + 1)::text`);
+  const week = {}; for (let d = 0; d < 7; d++) week[d] = DAY;
+  const t1 = await h.truck('Camion', mech, week);
+  const c1 = await h.customer('Flex demain', ...near), c2 = await h.customer('Flex aujourd’hui', ...near2), c3 = await h.customer('Perdu', ...laval);
+  await windowsOn(h, owner);
+  await clock(h, owner, 600);                                  // 10 h: tomorrow is not locked yet
+  const f = await book(h, { customer_id: c1, day: tomorrow, block: 'day', duration_min: 60, win_flex: true });
+  assert.equal((await row(h, f.job_id)).win_start, null);
+  // a flexible job of today still without its window (booked before the switch, say), and one « À placer » tomorrow
+  const ft = await put(h, owner, { customer: c2, day, block: 'day', truck: t1, order: 1, eta: 700, flex: true });
+  const lost = await put(h, owner, { customer: c3, day: tomorrow, block: 'day', truck: null, flex: true, dur: 720 });   // longer than the truck's day: no room
+  // nobody signed in may not call it; a mechanic may (it only does what is due)
+  await h.as(mech);
+  let r = await h.rpc('lock_windows_due', {});
+  assert.deepEqual(r.jobs, [ft], 'today: fixed at once; tomorrow: not before the lock hour');
+  assert.equal((await row(h, f.job_id)).win_start, null);
+  await h.as(owner);
+  inside(await row(h, ft), 'today\'s flexible job');
+  // 18 h 30: tomorrow's is due
+  await clock(h, owner, 1110);
+  await h.as(mech);
+  r = await h.rpc('lock_windows_due', {});
+  assert.deepEqual(r.jobs, [f.job_id]);
+  assert.ok(r.untold.includes(f.job_id) && r.untold.includes(ft), 'both are still to be told');
+  await h.as(owner);
+  const jf = await row(h, f.job_id);
+  assert.ok(jf.win_start !== null); inside(jf, 'tomorrow\'s flexible job');
+  assert.equal((await row(h, lost)).win_start, null, 'the one « À placer » has no arrival: no window');
+  // again: nothing to do; once its text is sent it is no longer listed
+  await h.as(mech);
+  assert.equal((await h.rpc('lock_windows_due', {})).fixed, 0);
+  await server(h, owner, `insert into public.messages (job_id, kind, status, body) values ($1, 'window', 'sent', 'Plage confirmée')`, [f.job_id]);
+  await h.as(mech);
+  assert.deepEqual((await h.rpc('lock_windows_due', {})).untold, [ft]);
+  // the button of Réglages (tomorrow) also covers today
+  await h.as(owner);
+  await server(h, owner, `update public.jobs set win_start = null, win_end = null where id = $1`, [ft]);
+  await h.as(office);
+  const l = await h.rpc('lock_windows', { p_op: uuid(), p_day: tomorrow });
+  assert.deepEqual(l.jobs, [ft], 'today\'s flexible job fixed by the evening button');
+  assert.ok(l.untold.includes(ft));
+}));
+
+test('x-dualmode-02: lock_windows_due is not open to someone who is not on the team', () => tx(async (h) => {
+  const stranger = await h.person('Inconnu', ['mechanic']);
+  await h.q(`delete from public.staff where id = $1`, [stranger]);
+  await h.as(stranger);
+  const e = await h.fails(() => h.rpc('lock_windows_due', {}));
+  assert.ok(e && (e.hint === 'not_allowed' || /permission/.test(e.message)), 'refused: ' + e?.message);
+}));

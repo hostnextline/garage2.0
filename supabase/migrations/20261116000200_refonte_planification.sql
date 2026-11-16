@@ -729,3 +729,119 @@ begin
   end if;
   return public.op_save(p_op, 'book_job', v_res);
 end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 6. « Flexible » appointments: the window fixed with or without pg_cron, and who is still to be told
+-- ---------------------------------------------------------------------------------------------------------------------
+--
+-- The rule is the same as before: a flexible appointment gets its window today, and tomorrow's from `win_lock_min`
+-- (18:00). What changes:
+--   * lock_windows_due() may be called by ANY member of the team (and by the server: pg_cron, a service key). It is
+--     safe at any frequency: it does only what is due, never early (win_lock_due), and nothing when nothing is due
+--     (no lock taken, no re-plan: a flexible appointment « À placer » no longer re-plans the day every 10 minutes).
+--     Without pg_cron, the app calls  rpc('lock_windows_due')  (no argument) when it opens and every 10 minutes while
+--     it is open, and the server's nightly routine calls the same with the service key (see the report of Part 26).
+--   * lock_windows(op, day), the button of Réglages, also fixes TODAY's flexible appointments still without a window.
+--   * Both answer `untold`: the flexible appointments of those days whose window was fixed and whose « window » text
+--     was never sent (the server cannot text: the app, or a server function, sends notify('window') for them).
+--   * The day is planned again with the rule of the automatic re-plans: never an appointment thrown to « À placer ».
+
+-- the flexible appointments of a day whose window was fixed (activity window_fixed) and never told since (no « window »
+-- text sent after it)
+create or replace function public.windows_untold(p_day date) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(j.id order by j.eta_min, j.id), '[]'::jsonb)
+  from public.jobs j
+  where j.day = p_day and j.block = 'day' and j.status = 'booked' and j.deleted_at is null and j.win_flex and j.win_start is not null
+    and exists (select 1 from public.activity a where a.entity = 'job' and a.entity_id = j.id and a.action = 'window_fixed'
+                and not exists (select 1 from public.messages m where m.job_id = j.id and m.kind = 'window' and m.status = 'sent' and m.created_at >= a.at))
+$$;
+revoke all on function public.windows_untold(date) from public, anon, authenticated;
+grant execute on function public.windows_untold(date) to service_role;
+
+create or replace function public.lock_windows_core(p_day date)
+ returns jsonb
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare r record; v_ids jsonb := '[]'; n int := 0; w record;
+begin
+  if not public.windows_on() or p_day is null or p_day < public.local_today() then return jsonb_build_object('fixed', 0, 'jobs', '[]'::jsonb); end if;
+  -- nothing to fix (a flexible job « À placer » has no arrival to cut a window around): no lock, no re-plan
+  if not exists (select 1 from public.jobs j where j.day = p_day and j.block = 'day' and j.status = 'booked' and j.deleted_at is null and j.win_flex and j.win_start is null and j.truck_id is not null) then
+    return jsonb_build_object('fixed', 0, 'jobs', '[]'::jsonb);
+  end if;
+  perform public.lock_block(p_day, 'day');
+  if not exists (select 1 from public.jobs j where j.day = p_day and j.block = 'day' and j.status = 'booked' and j.deleted_at is null and j.win_flex and j.win_start is null and j.truck_id is not null) then
+    return jsonb_build_object('fixed', 0, 'jobs', '[]'::jsonb);
+  end if;
+  -- the arrivals as they are now (a plan that would throw an appointment to « À placer » is not written)
+  perform public.replan_block_safe(p_day, 'day');
+  perform set_config('garage.rpc', 'on', true);
+  for r in select j.id, j.eta_min from public.jobs j
+           where j.day = p_day and j.block = 'day' and j.status = 'booked' and j.deleted_at is null and j.win_flex and j.win_start is null and j.eta_min is not null
+           order by j.eta_min, j.id loop
+    select * into w from public.win_for(r.eta_min);
+    update public.jobs set win_start = w.win_start, win_end = w.win_end where id = r.id;
+    insert into public.activity (entity, entity_id, action, data)
+    values ('job', r.id, 'window_fixed', jsonb_build_object('day', p_day, 'win_start', w.win_start, 'win_end', w.win_end));
+    v_ids := v_ids || to_jsonb(r.id); n := n + 1;
+  end loop;
+  return jsonb_build_object('fixed', n, 'jobs', v_ids);
+end $function$;
+
+create or replace function public.lock_windows(p_op uuid, p_day date)
+ returns jsonb
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare v_done jsonb; v_res jsonb; v_t jsonb;
+begin
+  v_done := public.op_begin(p_op, 'lock_windows');
+  if v_done is not null then return v_done; end if;
+  if not (public.is_owner() or public.has_role('office')) then
+    perform public.fail('not_allowed', 'Seuls le propriétaire et le bureau fixent les plages d’arrivée.');
+  end if;
+  if p_day is null or p_day < public.local_today() then perform public.fail('past', 'Cette journée est passée.'); end if;
+  v_res := public.lock_windows_core(p_day);
+  -- today's flexible appointments still without a window are fixed too (the evening's lock was missed)
+  if p_day <> public.local_today() then
+    v_t := public.lock_windows_core(public.local_today());
+    v_res := jsonb_build_object('fixed', (v_res->>'fixed')::int + (v_t->>'fixed')::int, 'jobs', (v_res->'jobs') || (v_t->'jobs'));
+  end if;
+  v_res := v_res || jsonb_build_object('untold', public.windows_untold(p_day)
+    || case when p_day <> public.local_today() then public.windows_untold(public.local_today()) else '[]'::jsonb end);
+  return public.op_save(p_op, 'lock_windows', v_res || jsonb_build_object('ok', true, 'rows', jsonb_build_object('jobs', public.block_rows(p_day, 'day'))));
+end $function$;
+
+create or replace function public.lock_windows_due()
+ returns jsonb
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare a jsonb; b jsonb := jsonb_build_object('fixed', 0, 'jobs', '[]'::jsonb); v_today date := public.local_today(); v_tomorrow boolean;
+begin
+  -- the server (pg_cron, a service key) or any member of the team
+  if auth.uid() is not null and not public.is_staff() then perform public.fail('not_allowed', 'Connecte-toi.'); end if;
+  if not public.windows_on() then return jsonb_build_object('fixed', 0, 'jobs', '[]'::jsonb, 'untold', '[]'::jsonb); end if;
+  v_tomorrow := public.win_lock_due(v_today + 1);
+  a := public.lock_windows_core(v_today);
+  if v_tomorrow then b := public.lock_windows_core(v_today + 1); end if;
+  perform set_config('garage.rpc', '', true);
+  return jsonb_build_object('fixed', (a->>'fixed')::int + (b->>'fixed')::int, 'jobs', (a->'jobs') || (b->'jobs'),
+    'untold', public.windows_untold(v_today) || case when v_tomorrow then public.windows_untold(v_today + 1) else '[]'::jsonb end);
+end $function$;
+revoke all on function public.lock_windows_due() from public, anon;
+grant execute on function public.lock_windows_due() to authenticated, service_role;
+
+-- with pg_cron, the routine runs every 10 minutes (the same schedule as Part 25; cron.schedule with a name replaces it)
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    perform cron.schedule('garage-lock-windows', '*/10 * * * *', 'select public.lock_windows_due()');
+  end if;
+exception when others then raise notice 'pg_cron not available: %', sqlerrm;
+end $$;
