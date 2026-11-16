@@ -7,16 +7,23 @@
 //   - the same id again after it was sent: not claimed, the row says what was sent;
 //   - the same id again after it FAILED (or a first try that died half-way, still « queued » after 2 minutes): claimed
 //     again, the text is tried once more.
-// An id already used by another person or for another kind of text is refused (op_reused): a phone never reuses one.
+// An id already used by another person, for another kind of text, or for ANOTHER text (other words, another customer or
+// number) is refused (op_reused, 409): the new text would otherwise be answered « sent » and never leave.
 // Nothing changes for a request without an id (yesterday's app).
 import { fail } from './http.ts';
 import { adminDb } from './db.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STALE_MS = 2 * 60000;
-export interface MessageRow { id: string; kind: string; staff_id: string | null; status: string; body: string | null; to_addr: string | null; error: string | null; provider_ref: string | null; updated_at: string }
+export interface MessageRow { id: string; kind: string; staff_id: string | null; customer_id: string | null; job_id: string | null; status: string; body: string | null; to_addr: string | null; error: string | null; provider_ref: string | null; updated_at: string }
 export type Claim = { claimed: true } | { claimed: false; row: MessageRow };
 
+/** the same text as the one the id was claimed for: what the caller knew before it left (its words, its customer or job;
+    the number only for a text sent to a number with no customer file, since a customer's number may change in between) */
+function sameText(had: MessageRow, row: Record<string, unknown>): boolean {
+  const same = (k: 'customer_id' | 'job_id' | 'body' | 'to_addr') => !(k in row) || row[k] === undefined || (row[k] ?? null) === (had[k] ?? null);
+  return same('customer_id') && same('job_id') && same('body') && (row.customer_id != null || same('to_addr'));
+}
 /** claims the operation `op` for one text (`row`: the columns known before it leaves: kind, staff_id, customer_id…) */
 export async function claimMessage(op: string, row: Record<string, unknown> & { kind: string; staff_id: string }): Promise<Claim> {
   if (!UUID.test(op)) fail('bad_op', 'Numéro d’opération invalide.');
@@ -24,11 +31,11 @@ export async function claimMessage(op: string, row: Record<string, unknown> & { 
   const { error } = await db.from('messages').insert({ ...row, id: op, status: 'queued' });
   if (!error) return { claimed: true };
   if (error.code !== '23505') throw error;
-  const { data, error: e2 } = await db.from('messages').select('id, kind, staff_id, status, body, to_addr, error, provider_ref, updated_at').eq('id', op).maybeSingle();
+  const { data, error: e2 } = await db.from('messages').select('id, kind, staff_id, customer_id, job_id, status, body, to_addr, error, provider_ref, updated_at').eq('id', op).maybeSingle();
   if (e2) throw e2;
   const had = data as MessageRow | null;
   if (!had) fail('op_reused', 'Ce numéro d’opération a déjà servi.', 409);
-  if (had.kind !== row.kind || had.staff_id !== row.staff_id) fail('op_reused', 'Ce numéro d’opération a déjà servi.', 409);
+  if (had.kind !== row.kind || had.staff_id !== row.staff_id || !sameText(had, row)) fail('op_reused', 'Ce numéro d’opération a déjà servi.', 409);
   const stale = had.status === 'queued' && Date.parse(had.updated_at) < Date.now() - STALE_MS;
   if (had.status === 'failed' || stale) {
     // tried again after a failure: one request takes it (the status it saw is the condition)

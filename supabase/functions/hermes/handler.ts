@@ -49,9 +49,12 @@ async function keep(row: Record<string, unknown>) {
 
 /** The pairing: the right code always works while it is valid; only WRONG codes are counted, and the 10th wrong one in an
     hour burns the waiting code (a new pairing is needed). Before, any 10 posts (from anyone) used up the hour and blocked
-    the real pairing; guessing is still limited to 10 tries per code. */
+    the real pairing; guessing is still limited to 10 tries per code. Every post, whatever it says, also counts in a loose
+    ceiling of 120 an hour (« hermes:pair-any »), so the door never reads the secrets without limit. */
 async function pair(b: { code?: unknown; url?: unknown; key?: unknown }) {
   const code = String(b.code || ''), url = String(b.url || '').trim().replace(/\/+$/, ''), key = String(b.key || '').trim();
+  // a loose ceiling on every post of this public door (each one reads the secrets): never reached by a real pairing
+  if (!(await brake('hermes:pair-any', 3600, 120))) fail('busy', 'Trop d’essais de branchement cette heure-ci. Réessaie plus tard.', 429);
   const want = (await secret('hermes_pair')) || '';
   const [hash, until] = want.split('|');
   if (!hash || !until) fail('no_pair', 'Aucun branchement de Hermes n’est attendu.', 403);

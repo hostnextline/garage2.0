@@ -231,6 +231,40 @@ test('the nightly backup says « done »: one row in ops_backup_runs (GitHub tic
   }
 });
 
+test('the nightly job says « done » the way ops/sauvegardes/sauvegarde.mjs does, with the list { table: rows }: accepted, the row keeps how many tables; a total that is not the sum is refused', async () => {
+  try {
+    const good = await ticket();
+    const list = { customers: 120, jobs: 45, invoices: 30 };
+    // what sauvegarde.mjs --fin sends (it used to be refused « bad_run »: no heartbeat was ever written, the night stayed red)
+    const d = await oidc('backup', { action: 'done', tables: list, rows: 195, commit: 'abcdef1234567' }, good);
+    assert.equal(d.ok, true, JSON.stringify(d));
+    assert.deepEqual(await q(`select tables, rows::text, commit, ok from public.ops_backup_runs`), [{ tables: 3, rows: '195', commit: 'abcdef1234567', ok: true }]);
+    // said again: the same row
+    const again = await oidc('backup', { action: 'done', tables: list, rows: 195, commit: 'abcdef1234567' }, good);
+    assert.deepEqual([again.ok, again.id, again.again], [true, d.id, true], JSON.stringify(again));
+    // the total may be left out (it is the sum); a total that is not the sum, or a table count that is not a whole number, is refused
+    assert.equal((await oidc('backup', { action: 'done', tables: { customers: 7, jobs: 3 }, commit: null }, good)).ok, true);
+    assert.deepEqual(await q(`select tables, rows::text from public.ops_backup_runs where rows = 10`), [{ tables: 2, rows: '10' }]);
+    for (const wrong of [{ tables: list, rows: 200 }, { tables: { customers: -1 } }, { tables: { customers: 1.5 } }, { tables: { customers: 'beaucoup' } }, { tables: { 'drop table': 1 } }, { tables: [1, 2] }, { tables: list, rows: 'beaucoup' }]) {
+      const r = await oidc('backup', { action: 'done', commit: null, ...wrong }, good);
+      assert.deepEqual([r.status, r.code], [400, 'bad_run'], JSON.stringify(wrong) + ' → ' + JSON.stringify(r));
+    }
+    assert.equal((await q(`select count(*)::int n from public.ops_backup_runs`))[0].n, 2, 'nothing written by a refused call');
+  } finally {
+    await q(`delete from public.ops_backup_runs`);
+  }
+});
+
+test('the tables of the daily reconciliation are in the night’s backup once their migration is there (else the backup goes on without them)', async (t) => {
+  const there = (await q(`select table_name from information_schema.tables where table_schema = 'public' and table_name like 'ops\\_recon\\_%' order by 1`)).map((r) => r.table_name);
+  const list = (await oidc('backup', { action: 'tables' }, await ticket())).tables.map((x) => x.name);
+  for (const name of ['ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline']) {
+    assert.equal(list.includes(name), there.includes(name), name + ': backed up exactly when the table exists');
+  }
+  if (!there.length) t.diagnostic('the reconciliation’s tables are not in this database yet: the backup skips them (they are in its list)');
+  else for (const name of there) assert.equal((await oidc('backup', { action: 'rows', table: name, from: 0 }, await ticket())).ok, true, name);
+});
+
 test('the backup knows who has an account (id and e-mail, never a password): what a restore into a new project needs', async () => {
   assert.equal((await oidc('backup', { action: 'accounts' })).status, 401);
   const a = await oidc('backup', { action: 'accounts' }, await ticket());
@@ -327,6 +361,7 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
     assert.deepEqual(r1.added.map((a) => [a.check, a.severity, a.entity_table]), [['backup_late', 'bad', 'ops_backup_runs']]);
     assert.ok(isUuid(r1.added[0].id), 'the finding has its id');
     assert.deepEqual([r1.bad, r1.status], [true, 'bad'], 'no backup = the nightly job must end red');
+    assert.ok(Array.isArray(r1.findings) && r1.findings.some((f) => f.check === 'backup_late' && f.severity === 'bad' && /sauvegarde/.test(f.message_fr)), 'the answer says what is wrong: ' + JSON.stringify(r1.findings));
     // the backup job says « done »: the next run finds it (the job itself runs it, with its GitHub ticket)
     assert.equal((await oidc('backup', { action: 'done', tables: 34, rows: 5000, commit: 'abcdef1' }, await ticket())).ok, true);
     const r2 = await oidc('recon', { action: 'run' }, await ticket());
@@ -346,6 +381,13 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
     const late = r3.added.find((a) => a.check === 'backup_late');
     assert.deepEqual([late.severity, r3.bad], ['bad', true]);
     assert.match(late.message_fr, /27 heures/); assert.match(late.message_en, /27 hours/);
+    // the nightly job's answer lists what is open, bad first, with its words (sauvegarde.mjs writes them in the GitHub summary)
+    const r3b = await oidc('recon', { action: 'run' }, await ticket());
+    assert.equal(r3b.bad, true, JSON.stringify(r3b).slice(0, 400));
+    assert.ok(Array.isArray(r3b.findings) && r3b.findings.length >= 1, JSON.stringify(r3b.findings));
+    assert.equal(r3b.findings[0].severity, 'bad', 'bad first');
+    assert.ok(r3b.findings.every((f) => typeof f.check === 'string' && typeof f.message_fr === 'string' && f.message_fr), JSON.stringify(r3b.findings));
+    assert.ok(r3b.findings.some((f) => f.check === 'backup_late' && /27 heures/.test(f.message_fr)), JSON.stringify(r3b.findings));
     // last: the summary of the database; ack: a finding noted as seen
     const last = await fn('recon', { action: 'last', days: 3 }, ownerJwt);
     assert.equal(last.ok, true, JSON.stringify(last).slice(0, 300));
@@ -353,7 +395,7 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
     const ack = await fn('recon', { action: 'ack', finding: late.id, note: 'Vu, la sauvegarde est relancée.' }, ownerJwt);
     assert.equal(ack.ok, true, JSON.stringify(ack));
     if (stub) {
-      assert.deepEqual((await q(`select source, count(*)::int n from recon_stub.runs group by source order by source`)), [{ source: 'app', n: 3 }, { source: 'backup', n: 1 }]);
+      assert.deepEqual((await q(`select source, count(*)::int n from recon_stub.runs group by source order by source`)), [{ source: 'app', n: 3 }, { source: 'backup', n: 2 }]);
       assert.deepEqual((await q(`select acked, note from recon_stub.findings where id = $1`, [late.id])), [{ acked: true, note: 'Vu, la sauvegarde est relancée.' }]);
       assert.equal(last.summary.days, 3);
       assert.equal((await fn('recon', { action: 'ack', finding: randomUUID() }, ownerJwt)).code, 'not_found', 'the database’s own refusal comes out with its code');
@@ -371,6 +413,15 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
       assert.equal(r4.outside.stripe.status, 'error');
       assert.deepEqual(r4.added.map((a) => [a.check, a.severity]), [['stripe_unreachable', 'warn']]);
       assert.equal(r4.bad, r4.run.status === 'bad', 'a check that could not be done is not « bad » by itself');
+      // a Stripe finding is money: the Trésorerie sees it and may note it « vu » (the backup's stay the owner's)
+      const seen = await fn('recon', { action: 'last' }, tres.jwt);
+      assert.equal(seen.ok, true, JSON.stringify(seen).slice(0, 300));
+      const listed = seen.summary.findings || seen.summary.open || [];
+      const f = listed.find((x) => (x.check_id || x.chk) === 'stripe_unreachable');
+      assert.ok(f, 'the Trésorerie sees the Stripe finding: ' + JSON.stringify(listed).slice(0, 400));
+      if (!stub) assert.ok(!listed.some((x) => /^backup/.test(x.check_id)), 'the backup’s findings are the owner’s only');
+      const ackT = await fn('recon', { action: 'ack', finding: f.id, note: 'Stripe était en panne.' }, tres.jwt);
+      assert.equal(ackT.ok, true, 'the Trésorerie notes it « vu »: ' + JSON.stringify(ackT).slice(0, 300));
     } else {
       const cust = randomUUID(); made.customers.push(cust);
       await q(`insert into public.customers (id, first_name, phone) values ($1, 'Carte', '438 556-0190')`, [cust]);
@@ -378,21 +429,30 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
       await q(`insert into public.jobs (id, customer_id, day, block, status, duration_min) values ($1, $2, public.local_today(), 'am', 'booked', 60)`, [job, cust]);
       const open = async (cents, md) => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: sk,
         body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': String(cents), ...Object.fromEntries(Object.entries(md).map(([k, v]) => [`metadata[${k}]`, v])) }) })).json()).id;
-      const paidNoRow = await open(11498, { job_id: job }), paidWrong = await open(5000, { job_id: job }), paidRight = await open(2500, { job_id: job });
+      // two card payments on the same job are both missing: two findings, never one overwriting the other
+      const paidNoRow = await open(11498, { job_id: job }), paidNoRow2 = await open(3000, { job_id: job }), paidWrong = await open(5000, { job_id: job }), paidRight = await open(2500, { job_id: job });
       const notPaid = await open(9900, { job_id: job }), notOurs = await open(4200, {});
-      for (const id of [paidNoRow, paidWrong, paidRight, notOurs]) await fetch(`${MOCK}/pay/${id}`);   // paid at Stripe (the notice is refused: no webhook secret here)
+      for (const id of [paidNoRow, paidNoRow2, paidWrong, paidRight, notOurs]) await fetch(`${MOCK}/pay/${id}`);   // paid at Stripe (the notice is refused: no webhook secret here)
       await q(`delete from public.payments where job_id = $1`, [job]);
       await q(`insert into public.payments (job_id, amount_cents, method, stripe_session) values ($1, 4000, 'card_online', $2), ($1, 2500, 'card_online', $3)`, [job, paidWrong, paidRight]);
       const r4 = await fn('recon', { action: 'run' }, ownerJwt);
       assert.equal(r4.ok, true, JSON.stringify(r4));
-      assert.deepEqual([r4.outside.stripe.status, r4.outside.stripe.missing, r4.outside.stripe.wrong], ['ok', 1, 1], JSON.stringify(r4.outside.stripe));
-      assert.deepEqual(r4.added.map((a) => [a.check, a.severity, a.entity_table, a.entity_id]).sort(), [['stripe_amount', 'bad', 'jobs', job], ['stripe_paid_not_recorded', 'bad', 'jobs', job]]);
-      assert.match(r4.added.find((a) => a.check === 'stripe_paid_not_recorded').message_fr, /114,98 \$/);
+      assert.deepEqual([r4.outside.stripe.status, r4.outside.stripe.missing, r4.outside.stripe.wrong], ['ok', 2, 1], JSON.stringify(r4.outside.stripe));
+      assert.deepEqual(r4.added.map((a) => [a.check, a.severity, a.entity_table, a.entity_id]).sort(), [['stripe_amount', 'bad', 'jobs', job], ['stripe_paid_not_recorded', 'bad', 'jobs', job], ['stripe_paid_not_recorded', 'bad', 'jobs', job]]);
+      const missingIds = r4.added.filter((a) => a.check === 'stripe_paid_not_recorded').map((a) => a.id);
+      assert.equal(new Set(missingIds).size, 2, 'two findings, each with its own id');
+      assert.ok(r4.added.some((a) => /114,98 \$/.test(a.message_fr)) && r4.added.some((a) => /30,00 \$/.test(a.message_fr)), 'each amount is said');
       assert.match(r4.added.find((a) => a.check === 'stripe_amount').message_fr, /50,00 \$.+40,00 \$/);
       assert.equal(r4.bad, true);
+      if (!stub) assert.equal((await q(`select count(*)::int n from public.ops_recon_findings where check_id = 'stripe_paid_not_recorded' and entity_id = $1 and state = 'open'`, [job]))[0].n, 2);
+      // the Trésorerie sees them and may note one « vu »
+      const seen = await fn('recon', { action: 'last' }, tres.jwt);
+      const listed = seen.summary.findings || seen.summary.open || [];
+      assert.equal(listed.filter((x) => (x.check_id || x.chk) === 'stripe_paid_not_recorded').length, 2, JSON.stringify(listed).slice(0, 400));
+      assert.equal((await fn('recon', { action: 'ack', finding: missingIds[0] }, tres.jwt)).ok, true);
       void notPaid;
-      // the payment is written (and the other corrected): nothing left to say
-      await q(`insert into public.payments (job_id, amount_cents, method, stripe_session) values ($1, 11498, 'card_online', $2)`, [job, paidNoRow]);
+      // the payments are written (and the other corrected): nothing left to say
+      await q(`insert into public.payments (job_id, amount_cents, method, stripe_session) values ($1, 11498, 'card_online', $2), ($1, 3000, 'card_online', $3)`, [job, paidNoRow, paidNoRow2]);
       await q(`update public.payments set amount_cents = 5000 where stripe_session = $1`, [paidWrong]);
       const r5 = await fn('recon', { action: 'run' }, ownerJwt);
       assert.deepEqual([r5.outside.stripe.status, r5.outside.stripe.missing, r5.outside.stripe.wrong, r5.added.length], ['ok', 0, 0, 0], JSON.stringify(r5));
@@ -541,6 +601,15 @@ test('conversation « send » with an operation id: the same text tapped twice (
     assert.deepEqual([two.ok, two.status, two.again], [true, 'sent', true], JSON.stringify(two));
     assert.equal(await texts(), 1, 'the customer gets it once');
     assert.deepEqual(await q(`select status, body, customer_id from public.messages where id = $1`, [op]), [{ status: 'sent', body: 'On arrive vers 10 h.', customer_id: cust }]);
+    // the same id for ANOTHER text (other words, or another number): refused out loud, never « sent » while it did not leave
+    const other = await fn('conversation', { action: 'send', customer_id: cust, message: 'On arrive plutôt vers 11 h.', op }, ownerJwt);
+    assert.deepEqual([other.status, other.code], [409, 'op_reused'], JSON.stringify(other));
+    const opPhone = randomUUID();
+    assert.equal((await fn('conversation', { action: 'send', phone: '438 556-0181', message: 'Bonjour', op: opPhone }, ownerJwt)).status, 'sent');
+    assert.equal((await fn('conversation', { action: 'send', phone: '438 556-0182', message: 'Bonjour', op: opPhone }, ownerJwt)).code, 'op_reused', 'another number');
+    assert.equal((await fn('conversation', { action: 'send', phone: '438 556-0181', message: 'Bonjour', op: opPhone }, ownerJwt)).again, true, 'the same text again is still « already sent »');
+    assert.equal(await texts(), 2, 'the first text and the one to the number, nothing else');
+    assert.deepEqual(await q(`select body from public.messages where id = $1`, [op]), [{ body: 'On arrive vers 10 h.' }]);
     // at the same instant
     await clearLog();
     const op2 = randomUUID();
@@ -613,6 +682,26 @@ test('« Mot de passe oublié »: finds the account whatever the capital letters
   assert.equal((await fn('team', { action: 'invite-accept', token: tokenOf(none.link), password: 'mot-de-lea-9' })).ok, true);
 });
 
+test('« Mot de passe oublié »: made-up addresses posted by anybody never use up the garage’s brake; a real person still gets the link', async () => {
+  const p = await member('Omar Oublie', '{mechanic}');
+  const reset = async () => (await q(`select count(*)::int n from public.invitations where kind = 'reset' and lower(email) = lower($1)`, [p.email]))[0].n;
+  try {
+    await q(`delete from public.rate_limits where key = 'team:forgot'`);
+    const junk = await Promise.all(Array.from({ length: 35 }, (_, i) => fn('team', { action: 'forgot', email: `personne-${i}-${randomUUID().slice(0, 6)}@exemple.com`, base: BASE })));
+    assert.ok(junk.every((r) => r.ok === true), 'the answer is always the same');
+    const before = await reset();
+    assert.equal((await fn('team', { action: 'forgot', email: p.email, base: BASE })).ok, true);
+    assert.equal(await reset(), before + 1, 'the real person gets a link after 35 made-up addresses');
+    // the brake still holds what is sent: past 30 links an hour for the garage, nothing more is made (the answer stays « ok »)
+    await q(`update public.rate_limits set n = 30 where key = 'team:forgot'`);
+    await q(`delete from public.invitations where kind = 'reset' and lower(email) = lower($1)`, [p.email]);
+    assert.equal((await fn('team', { action: 'forgot', email: p.email, base: BASE })).ok, true);
+    assert.equal(await reset(), 0, 'braked');
+  } finally {
+    await q(`delete from public.rate_limits where key = 'team:forgot'`);
+  }
+});
+
 test('what the owner types in Équipe and Branchements: rights only as on / off, names escaped in the e-mail, the GoHighLevel keys never half saved', async () => {
   const inv = await fn('team', { action: 'invite', email: `zoe-${randomUUID().slice(0, 6)}@test.local`, full_name: '<b>Zoé</b> Test', roles: ['office'],
     rights: { book: true, agenda: 'oui', invoices: false, 'drop table': true }, send: 'none', base: BASE }, ownerJwt);
@@ -636,7 +725,7 @@ test('Hermes’ pairing: posts from anybody while no pairing is waiting do not b
   const fp = async (c) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(c))).toString('hex');
   const key = 'k'.repeat(40);
   try {
-    await q(`delete from public.rate_limits where key = 'hermes:pair'`);
+    await q(`delete from public.rate_limits where key in ('hermes:pair', 'hermes:pair-any')`);
     await q(`delete from public.secrets where key like 'hermes%'`);
     for (let i = 0; i < 12; i++) assert.equal((await fn('hermes', { action: 'pair', code: 'n-' + i, url: MOCK + '/hermes', key })).code, 'no_pair');
     await q(`insert into public.secrets (key, value) values ('hermes_pair', $1)`, [`${await fp('le-bon-code')}|${new Date(Date.now() + 600000).toISOString()}`]);
@@ -651,8 +740,13 @@ test('Hermes’ pairing: posts from anybody while no pairing is waiting do not b
     for (let i = 0; i < 10; i++) codes.push((await fn('hermes', { action: 'pair', code: 'devine-' + i, url: MOCK + '/hermes', key })).code);
     assert.deepEqual(codes, [...Array(9).fill('bad_pair'), 'busy']);
     assert.equal((await fn('hermes', { action: 'pair', code: 'autre-code', url: MOCK + '/hermes', key })).code, 'no_pair', 'burned');
+    // every post of this public door counts in a loose ceiling (120 an hour), even while no pairing is waiting
+    await q(`insert into public.rate_limits (key, bucket, n) values ('hermes:pair-any', floor(extract(epoch from now()) / 3600), 120)
+             on conflict (key, bucket) do update set n = 120`);
+    const over = await fn('hermes', { action: 'pair', code: 'n-x', url: MOCK + '/hermes', key });
+    assert.deepEqual([over.status, over.code], [429, 'busy'], JSON.stringify(over));
   } finally {
-    await q(`delete from public.rate_limits where key = 'hermes:pair'`);
+    await q(`delete from public.rate_limits where key in ('hermes:pair', 'hermes:pair-any')`);
     await q(`delete from public.secrets where key like 'hermes%'`);
   }
 });

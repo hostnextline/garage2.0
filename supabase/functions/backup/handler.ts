@@ -9,6 +9,8 @@
 //       new-password link for each person). Never a password, never its fingerprint.
 //   { action: 'done', tables, rows, commit }   → the job says the night's backup is written and committed: one row in
 //       « ops_backup_runs » (the daily reconciliation checks that the last good one is younger than 26 hours).
+//       « tables » is the number of tables, or the night's list { <table>: <rows> } (what ops/sauvegardes/sauvegarde.mjs
+//       sends): the row keeps how many tables, and « rows », when given, must be the sum of the list (else it is the sum).
 //       { ok: false } records a night that failed. Sent twice (the job tries again on a network hiccup): one row.
 import { serve, json, body, fail } from '../_shared/http.ts';
 import { adminDb } from '../_shared/db.ts';
@@ -20,7 +22,10 @@ export const TABLES = [
   'settings', 'counters', 'staff', 'trucks', 'truck_week', 'truck_days', 'services', 'inventory_items', 'service_parts', 'engine_specs',
   'customers', 'customer_notes', 'vehicles', 'quotes', 'jobs', 'job_items', 'invoices', 'payments', 'expenses', 'inventory_moves',
   'shifts', 'trips', 'messages', 'public_links', 'invitations', 'activity', 'attachments',
-  'coffre', 'positions', 'position_log', 'op_log', 'stripe_events', 'hermes_questions', 'ops_backup_runs'
+  'coffre', 'positions', 'position_log', 'op_log', 'stripe_events', 'hermes_questions', 'ops_backup_runs',
+  // the daily reconciliation (migration « refonte_rapprochement »): the days checked, the differences with the owner's
+  // « vu » notes, and the stock's starting point (lost, the next run would quietly take a new one)
+  'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'
 ] as const;
 // never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day),
 // incoming_calls (the calls of the day, for the « Appel entrant » banner), incoming_texts (the week's texts that wake the
@@ -29,7 +34,7 @@ export const TABLES = [
 export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incoming_texts', 'push_subs'] as const;
 // tables of the « Refonte » migrations: while a database does not have them yet (this function deployed before its
 // migration is applied), the backup goes on without them instead of failing every night
-const LATER: readonly string[] = ['ops_backup_runs'];
+const LATER: readonly string[] = ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'];
 const KEY: Record<string, string> = { counters: 'name', op_log: 'op' };
 const PAGE: Record<string, number> = { attachments: 100 };
 const missing = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|could not find the table/i.test(String(e.message || '')));
@@ -38,6 +43,22 @@ const missing = (e: { code?: string; message?: string } | null) => !!e && (e.cod
 function count(v: unknown, max: number): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d{1,15}$/.test(v) ? Number(v) : NaN;
   return Number.isInteger(n) && n >= 0 && n <= max ? n : null;
+}
+/** the night's tables: a number, or the list { <table name>: <rows> } the job wrote (each a whole number) */
+function tablesOf(v: unknown): { tables: number; sum: number | null } | null {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const list = Object.entries(v as Record<string, unknown>);
+    if (list.length > 10000) return null;
+    let sum = 0;
+    for (const [name, n] of list) {
+      const rows = count(n, 1e13);
+      if (!/^[a-z_][a-z0-9_]{0,62}$/.test(name) || rows == null) return null;
+      sum += rows;
+    }
+    return { tables: list.length, sum };
+  }
+  const tables = count(v, 10000);
+  return tables == null ? null : { tables, sum: null };
 }
 
 export const handler = serve(async (req) => {
@@ -49,6 +70,12 @@ export const handler = serve(async (req) => {
   if (action === 'tables') {
     const out: { name: string; count: number }[] = [];
     for (const t of TABLES) {
+      if (LATER.includes(t)) {
+        // a table of a migration maybe not applied yet: asked with a GET (a HEAD on a missing table answers an empty 404,
+        // which the client library takes for « 0 rows »: the night would list it, then fail reading its rows)
+        const { error: e0 } = await db.from(t).select('*').limit(0);
+        if (missing(e0)) continue;
+      }
       const { count: n, error } = await db.from(t).select('*', { count: 'exact', head: true });
       if (error && LATER.includes(t) && missing(error)) continue;
       if (error) throw error;
@@ -78,8 +105,13 @@ export const handler = serve(async (req) => {
     return json({ ok: true, at: new Date().toISOString(), accounts });
   }
   if (action === 'done') {
-    const tables = count(b.tables, 10000), rows = count(b.rows, 1e13);
-    if (tables == null || rows == null) fail('bad_run', 'Le compte des tables et des lignes doit être un nombre entier.');
+    const list = tablesOf(b.tables);
+    const given = b.rows == null || b.rows === '' ? null : count(b.rows, 1e13);
+    // rows is needed with a number of tables; with the list it may be left out (it is the list's sum)
+    const rows = given ?? (list?.sum ?? null);
+    if (!list || rows == null || (b.rows != null && b.rows !== '' && given == null)) fail('bad_run', 'Le compte des tables et des lignes doit être un nombre entier.');
+    if (list.sum != null && rows !== list.sum) fail('bad_run', `Le total des lignes (${rows}) n’est pas la somme des tables (${list.sum}).`);
+    const tables = list.tables;
     const commit = b.commit == null || b.commit === '' ? null : String(b.commit).trim();
     if (commit != null && !/^[0-9a-f]{7,64}$/i.test(commit)) fail('bad_run', 'Le numéro du commit n’a pas l’air bon.');
     const ok = b.ok !== false;

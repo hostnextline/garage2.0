@@ -2,7 +2,7 @@
 // texting and card-payment services. Without an account: only invite-info and invite-accept (with the secret link).
 // A new-password link works only for a person still on the team: removing someone cancels the links he still holds, and
 // an old link of his is refused. « Mot de passe oublié » never cancels a link the owner made (only the person's own
-// earlier requests), finds the account whatever the capital letters, and has a brake for the whole garage.
+// earlier requests), finds the account whatever the capital letters, and has a brake for the whole garage on the links sent (counted only for an address of the team).
 import { serve, json, body, fail, env } from '../_shared/http.ts';
 import { adminDb, caller, secret, setSecrets, settings, type Caller } from '../_shared/db.ts';
 import { newToken, sha256hex } from '../_shared/tokens.ts';
@@ -153,15 +153,16 @@ export const handler = serve(async (req) => {
      account; the link goes only to the e-mail (or phone) already on the person's file, at most 3 times an hour. ---------- */
   if (action === 'forgot') {
     const email = String(b.email || '').trim().toLowerCase();
-    // a brake for the whole garage (anybody may post this form): past it, the answer is the same and nothing is sent
-    if (EMAIL_RE.test(email) && await brake('team:forgot', 3600, 30)) {
+    // a brake for the whole garage on what is SENT (anybody may post this form): counted only once the address is a
+    // person of the team, so made-up addresses never use it up; past it, the answer is the same and nothing is sent
+    if (EMAIL_RE.test(email)) {
       const { data: s, error: es } = await db.from('staff').select('*')[email.includes('*') ? 'eq' : 'ilike']('email', email.includes('*') ? email : sameEmail(email)).eq('active', true).is('deleted_at', null).limit(1);
       if (es) throw es;
       const p = ((s || []) as Record<string, any>[])[0] || null;
       if (p) {
         const { count } = await db.from('invitations').select('id', { count: 'exact', head: true }).eq('email', email).eq('kind', 'reset')
           .gte('created_at', new Date(Date.now() - 3600 * 1000).toISOString());
-        if ((count || 0) < 3) {
+        if ((count || 0) < 3 && await brake('team:forgot', 3600, 30)) {
           const inv = await makeInvite(p.id, { email, full_name: p.full_name, roles: p.roles, lang: p.lang, kind: 'reset', user_id: p.id }, true);
           const link = inviteLink(baseOf(b.base), inv.token, p.lang);
           const person = { name: p.full_name, email, phone: p.phone, lang: p.lang };

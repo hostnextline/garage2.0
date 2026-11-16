@@ -7,8 +7,10 @@
 //
 //   { action: 'run', day? }            the nightly backup job (GitHub ticket in « x-github-oidc », as for « backup »), or
 //                                      from the app: the owner or a person with the « Trésorerie » right.
-//                                      → { run: { run_id, day, status, counts }, outside: { stripe, backup }, added: [...], status, bad }
-//                                      (« bad » true = money or data is wrong: the nightly job ends red)
+//                                      → { run: { run_id, day, status, counts }, outside: { stripe, backup }, added: [...], status, bad,
+//                                          findings: [{ check, severity, message_fr }] }
+//                                      (« bad » true = money or data is wrong: the nightly job ends red; « findings » = what is
+//                                      still open after this run, bad first: the nightly job lists them in its GitHub summary)
 //   { action: 'last', days? }          (owner or « Trésorerie ») → { summary }: public.recon_summary — the last runs and
 //                                      what is still open
 //   { action: 'ack', finding, note? }  (owner or « Trésorerie ») → public.recon_ack: a finding noted as seen
@@ -84,7 +86,8 @@ async function stripeCheck(add: Add): Promise<Record<string, unknown>> {
     const amount = Number(s.amount_total), row = rows.get(String(s.id));
     const invoice = uuid(s.metadata?.invoice_id), job = uuid(s.metadata?.job_id);
     const table = invoice ? 'invoices' : job ? 'jobs' : null, id = invoice || job;
-    const data = { session: s.id, amount_cents: amount, payment_intent: s.payment_intent || null, job_id: job, invoice_id: invoice, payment_id: row?.id ?? null, recorded_cents: row && !row.deleted_at ? row.amount_cents : null };
+    // sig = the checkout page: two pages paid on the same job (or invoice) are two differences, never one overwriting the other
+    const data = { sig: String(s.id), session: s.id, amount_cents: amount, payment_intent: s.payment_intent || null, job_id: job, invoice_id: invoice, payment_id: row?.id ?? null, recorded_cents: row && !row.deleted_at ? row.amount_cents : null };
     if (!row || row.deleted_at) {
       missing++;
       await add('stripe_paid_not_recorded', 'bad', table, id,
@@ -133,6 +136,20 @@ async function asPerson(c: Caller, name: string, args: Record<string, unknown>):
   const { data, error } = await adminDb().rpc(name, args);
   if (error) dbFail(error);
   return data;
+}
+
+type Said = { check: string; severity: string; message_fr: string };
+const RANK: Record<string, number> = { bad: 0, warn: 1, info: 2 };
+/** what this run leaves open (bad first), for the nightly job's summary: the database's own checks and the ones added here.
+    For the app (a person), only what this function added (the database decides what each person sees, in « last »). */
+async function openFindings(runId: string, added: Added[], job: boolean): Promise<Said[]> {
+  const mine: Said[] = added.map((a) => ({ check: a.check, severity: a.severity, message_fr: a.message_fr }));
+  if (!job) return mine;
+  const { data, error } = await adminDb().from('ops_recon_findings').select('check_id, severity, message_fr')
+    .eq('last_run', runId).eq('state', 'open').limit(200);
+  if (error) return mine;   // a database that keeps its findings elsewhere: what was added here is still said
+  const all = ((data || []) as { check_id: string; severity: string; message_fr: string }[]).map((f) => ({ check: f.check_id, severity: f.severity, message_fr: f.message_fr }));
+  return (all.length ? all : mine).sort((x, y) => (RANK[x.severity] ?? 3) - (RANK[y.severity] ?? 3) || x.check.localeCompare(y.check));
 }
 
 export const handler = serve(async (req) => {
@@ -192,5 +209,5 @@ export const handler = serve(async (req) => {
   const stripe = await stripeCheck(add);
   const backup = await backupCheck(add);
   const bad = r.status === 'bad' || added.some((a) => a.severity === 'bad');
-  return json({ ok: true, run: r, outside: { stripe, backup }, added, status: bad ? 'bad' : r.status ?? null, bad });
+  return json({ ok: true, run: r, outside: { stripe, backup }, added, findings: await openFindings(runId, added, !c), status: bad ? 'bad' : r.status ?? null, bad });
 });
