@@ -1,5 +1,5 @@
 /* The order of a truck's stops in a block (or in its whole day, « Plages d'arrivée »: block 'day'), by hand (Part 21): who is in the route, and moving one of them. Pure:
-   tested in stopOrder.test.ts. The stops on the way or there stay first; only the booked ones are put in order. */
+   tested in stopOrder.test.ts (used by « Ordre des arrêts », features/jobs/StopOrderSheet.tsx). The stops on the way or there stay first; only the booked ones are put in order. */
 import type { Job } from '../../data/types';
 
 const LIVE = new Set(['en_route', 'on_site']);

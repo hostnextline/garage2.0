@@ -4,7 +4,7 @@
 import type { JobItem, ServicePart, InventoryItem } from '../../data/types';
 import { itemsOf, partsOfService } from '../../data/select';
 import { getRow } from '../../data/store';
-import { BILLABLE } from '../../domain/jobs/steps';
+import { BILLABLE } from './billing';
 
 export interface PlannedPart { item_id: string; name: string; unit: string; qty: number; onHand: number }
 export interface UsedPart { item_id: string; qty: number }
@@ -34,4 +34,21 @@ export function plannedPartsOf(lines: Line[], partsOf: (serviceId: string) => Pi
 /** the parts planned for this job, from the phone's copy of the data */
 export function plannedParts(jobId: string): PlannedPart[] {
   return plannedPartsOf(itemsOf(jobId), partsOfService, (id) => getRow<InventoryItem>('inventory_items', id));
+}
+
+/** the step of « − » and « + » for a part: half a unit for what is measured (oil in litres, grease in kg, hose in metres),
+    else one */
+export function qtyStep(unit: string): number { return /^(L|l|kg|m)$/.test(unit) ? 0.5 : 1; }
+/** the quantity after « − » (up = false) or « + »: along the step's grid, so a planned 4.7 L goes to 4.5 or 5 (and down to 0),
+    never below zero */
+export function stepQty(current: number, up: boolean, step: number): number {
+  const at = current / step;
+  const k = up ? Math.floor(at + 1e-9) + 1 : Math.ceil(at - 1e-9) - 1;
+  return Math.max(0, Math.round(k * step * 1000) / 1000);
+}
+/** the floor the kit's stepper is given: zero, or one step below it when the quantity is off the grid (4.7 L), so « − » is
+    still offered there and lands on the grid (the stepper greys « − » when one step would go below the floor) */
+export function qtyFloor(current: number, step: number): number {
+  const off = Math.abs(current / step - Math.round(current / step)) > 1e-9;
+  return off && current > 0 ? -step : 0;
 }

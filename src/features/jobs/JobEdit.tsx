@@ -9,14 +9,30 @@ import { Sheet, Rows, RowItem, Button, Banner, attempt } from '../../ui';
 import { t } from '../../lib/i18n';
 import { vehicle, vehicleLabel, truckLabel, itemsOf, customer as customerRow, vehiclesOf } from '../../data/select';
 import { updateJob, changeJobCustomer } from '../../data/api';
+import { outboxList } from '../../data/sync';
 import { CustomerPicker } from '../../shared/customers/CustomerPicker';
 import { VehiclePicker } from '../../shared/vehicles/VehiclePicker';
 import { AddressField, EMPTY_PLACE, type PlaceValue } from '../../shared/places/AddressField';
 import { jobCustomer, jobName, dayInSentence, momentWord, wt } from '../../shared/jobs/select';
-import type { JobRights } from '../../domain/jobs/rights';
-import { editRights } from '../../domain/jobs/rights';
+import { editRights, type JobRights } from '../../domain/jobs/rights';
 
 type View = 'list' | 'customer' | 'car' | 'address';
+
+/** a row made on this phone a moment ago has reached the server (its insert left the outbox), or `ms` went by: the
+    customer just created in the sheet must exist on the server before « Changer de client » names it */
+async function reached(table: string, id: string, ms = 10000): Promise<void> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (!(await outboxList()).some((e) => e.state === 'pending' && e.table === table && e.id === id)) return;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+/** the address of the appointment as the form starts: its own (all its fields), else the customer's; never one field of
+    each (a unit or a position of the home under another address) */
+function placeOf(j: Job, c: ReturnType<typeof jobCustomer>): PlaceValue {
+  const own = (j.address || '').trim() ? j : c;
+  return { ...EMPTY_PLACE, address: own?.address || '', unit: own?.unit ?? null, postal_code: own?.postal_code ?? null, lat: own?.lat ?? null, lng: own?.lng ?? null };
+}
 
 export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onTruck: () => void; onNotes: () => void; onWork: () => void }) {
   const j = p.job;
@@ -36,6 +52,8 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
   const saveCustomer = async () => {
     if (!who) return;
     setBusy(true);
+    await reached('customers', who);
+    if (car) await reached('vehicles', car);
     const ok = await attempt(() => changeJobCustomer(j.id, who, car), { ok: t('jobs.edit.customerDone', { name: jobName({ ...j, customer_id: who }) }) });
     setBusy(false);
     if (ok) p.onClose();
@@ -63,7 +81,7 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
             onClick={() => { setWho(null); setCar(null); setView('customer'); }} data-testid="edit-customer" />}
           {r.car && c && <RowItem start={<span class="quick-icon"><Car size={20} /></span>} title={t('jobs.edit.car')} sub={vehicleLabel(v) || t('jobs.head.noCar')} chevron onClick={() => setView('car')} data-testid="edit-car" />}
           {r.address && <RowItem start={<span class="quick-icon"><MapPin size={20} /></span>} title={t('jobs.edit.address')} sub={(j.address || c?.address || t('jobs.head.noAddress'))} chevron
-            onClick={() => { setPlace({ ...EMPTY_PLACE, address: j.address || c?.address || '', unit: j.unit ?? c?.unit ?? null, postal_code: j.postal_code ?? c?.postal_code ?? null, lat: j.lat ?? c?.lat ?? null, lng: j.lng ?? c?.lng ?? null }); setView('address'); }} data-testid="edit-address" />}
+            onClick={() => { setPlace(placeOf(j, c)); setView('address'); }} data-testid="edit-address" />}
           {r.move && <RowItem start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={wt(j, 'jobs.edit.when')} sub={`${dayInSentence(j.day)}, ${momentWord(j)}`} chevron onClick={go(p.onMove)} data-testid="edit-move" />}
           {r.truck && <RowItem start={<span class="quick-icon"><Truck size={20} /></span>} title={t('jobs.edit.truck')} sub={truckLabel(j.truck_id) || t('jobs.truck.noneYet')} chevron onClick={go(p.onTruck)} data-testid="edit-truck" />}
           {r.work && <RowItem start={<span class="quick-icon"><Wrench size={20} /></span>} title={t('jobs.edit.work')} sub={items.length ? items.map((i) => i.description).join(', ') : t('jobs.edit.noWork')} chevron onClick={go(p.onWork)} data-testid="edit-work" />}
@@ -85,7 +103,9 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
         </div>
       )}
       {view === 'car' && c && (
-        <VehiclePicker customerId={c.id} value={j.vehicle_id} onPick={(id) => { if (id && id !== j.vehicle_id) { void attempt(() => updateJob(j.id, { vehicle_id: id }), { ok: t('jobs.head.carSaved') }).then((ok) => { if (ok) p.onClose(); }); } }} />
+        // never the only car by itself: the view may have been opened to add another one
+        <VehiclePicker customerId={c.id} value={j.vehicle_id} autoPick={false}
+          onPick={(id) => { if (id && id !== j.vehicle_id) void attempt(() => updateJob(j.id, { vehicle_id: id }), { ok: t('jobs.head.carSaved') }).then((ok) => { if (ok) p.onClose(); }); }} />
       )}
       {view === 'address' && (
         // room kept for the suggestions: when they close (a tap on « Garder cette adresse »), the window does not shrink
