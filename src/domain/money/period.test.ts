@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { periodRange, addMonths, monthEnd, monthStart, daysInMonth, monthKey, inRange, rangeLabel } from './period';
+import { periodRange, addMonths, monthEnd, monthStart, daysInMonth, monthKey, inRange, rangeLabel, listPeriodRange, inListPeriod } from './period';
 
 describe('periods of the treasury report', () => {
   const ref = '2026-11-04';
@@ -45,5 +45,19 @@ describe('periods of the treasury report', () => {
   it('says the period in words', () => {
     expect(rangeLabel({ from: '2026-11-01', to: '2026-11-30' }, 'fr').replace(/\s/g, ' ')).toBe('1 nov. 2026 au 30 nov. 2026');
     expect(rangeLabel({ from: '2026-11-01', to: '2026-11-30' }, 'en')).toBe('Nov 1, 2026 to Nov 30, 2026');
+  });
+});
+
+describe('periods of the invoice list', () => {
+  it('the invoice list: up to today', () => {
+    expect(listPeriodRange('month', '2026-11-04')).toEqual(['2026-11-01', '2026-11-04']);
+    expect(listPeriodRange('last', '2026-11-04')).toEqual(['2026-10-01', '2026-10-31']);
+    expect(listPeriodRange('last', '2026-01-15')).toEqual(['2025-12-01', '2025-12-31']);
+    expect(listPeriodRange('30d', '2026-11-04')).toEqual(['2026-10-06', '2026-11-04']);
+    expect(listPeriodRange('year', '2026-11-04')).toEqual(['2026-01-01', '2026-11-04']);
+    expect(listPeriodRange('all', '2026-11-04')).toBeNull();
+    expect(inListPeriod(new Date(2026, 9, 31, 12).toISOString(), ['2026-10-01', '2026-10-31'])).toBe(true);
+    expect(inListPeriod(new Date(2026, 10, 1, 12).toISOString(), ['2026-10-01', '2026-10-31'])).toBe(false);
+    expect(inListPeriod(null, null)).toBe(true);
   });
 });

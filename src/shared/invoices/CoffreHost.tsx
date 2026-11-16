@@ -7,7 +7,8 @@ import { signal } from '@preact/signals';
 import { job as jobRow } from '../../data/select';
 import { me } from '../../data/auth';
 import type { Job } from '../../data/types';
-import { whenHistorySettled } from '../../ui';
+import { whenHistorySettled, toast } from '../../ui';
+import { t } from '../../lib/i18n';
 
 const coffreFor = signal<string | null>(null);
 
@@ -26,7 +27,14 @@ export function CoffreHost() {
   const [Comp, setComp] = useState<SheetComp | null>(null);
   useEffect(() => {
     if (!id || Comp) return;
-    void import('./CoffreSheet').then((m) => setComp(() => m.CoffreSheet as SheetComp));
+    let alive = true;
+    // a new version published (the old piece gone) or no signal before the app was fully kept: say so, and let the
+    // next « Coffre » try again, instead of a pay sheet that closes on nothing
+    import('./CoffreSheet').then(
+      (m) => { if (alive) setComp(() => m.CoffreSheet as SheetComp); },
+      (e: unknown) => { console.warn('coffre sheet', e); if (alive) { coffreFor.value = null; toast(t('invoices.coffreLoadFailed'), { kind: 'bad' }); } }
+    );
+    return () => { alive = false; };
   }, [id]);
   const j = jobRow(id);
   if (!id || !j || !Comp) return null;

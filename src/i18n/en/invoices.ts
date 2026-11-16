@@ -5,6 +5,7 @@ export const invoices: typeof fr = {
   numbered: 'Invoice {n}',
   draftTitle: 'Draft invoice',
   draftWord: 'Draft',
+  coffreLoadFailed: 'The Coffre could not open. Check the network, then try again.',
   noCustomer: 'No customer file',
   ago: { zero: 'today', one: 'yesterday', other: '{n} days ago' },
   methods: { cash: 'Cash', debit: 'Debit', credit: 'Credit', interac: 'Interac e-Transfer', card_online: 'Online card', cheque: 'Cheque', other: 'Other' },
@@ -107,6 +108,8 @@ export const invoices: typeof fr = {
     plate: 'plate {p}',
     km: '{n} km',
     vin: 'VIN {v}',
+    over: 'Overpaid',
+    refund: 'Refund ({how})',
     quoteFooter: 'Price estimated before seeing all the work. Any extra work will be offered to you before it is done.'
   },
 
@@ -165,6 +168,15 @@ export const invoices: typeof fr = {
     pdfReceipt: 'Receipt PDF',
     open: 'See the invoice',
     paidOn: 'Paid {when}, {how}'
+,
+    overTitle: 'Overpaid: {amount} to give back to the customer',
+    over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Give the difference back, then record it here.',
+    overButton: 'Record the refund',
+    unbilled: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
+    unbilledText: 'To bill it, tap “Change the invoice”, then finish it again.',
+    unbilledClosed: 'This invoice can no longer be changed.',
+    finishing: 'Invoice finished on this phone: its number comes with the network.',
+    coffreWaiting: 'Put in the Coffre on this phone: it goes as soon as the network is back.'
   },
 
   draft: {
@@ -179,14 +191,22 @@ export const invoices: typeof fr = {
     finishHint: 'It gets its number. Then: take the payment or text it to the customer.',
     paidAhead: 'The customer already paid {amount}. Left to pay: {left}.',
     paidAheadAll: 'The customer already paid everything ({amount}). Finish the invoice: it will be marked PAID.',
+    paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice: give it back once the invoice is finished.',
     finished: 'Invoice {n} finished',
+    addedWork: 'Added to the invoice: {what}',
+    missing: {
+      title: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
+      text: 'It is done or planned on the job, but not billed.',
+      add: 'Add and finish',
+      without: 'Finish without'
+    },
     newWork: { one: 'Work was added to the job', other: '{n} pieces of work were added to the job' },
     addNewWork: 'Add to the invoice',
     refresh: 'Redo from the work',
     refreshConfirm: 'Tap again to replace the lines',
     refreshed: 'Lines redone from the job’s work',
     waiting: 'No signal: the invoice will be finished as soon as the signal is back.',
-    state: { saved: 'Saved', waiting: 'Not saved yet', saving: 'Saving…' },
+    state: { saved: 'Saved', waiting: 'Not saved yet', saving: 'Saving…', kept: 'Kept on the phone', failed: 'Not saved' },
     problem: {
       empty: 'Add at least one line before finishing the invoice.',
       no_description: 'A line has no description: write what was done.',
@@ -228,6 +248,7 @@ export const invoices: typeof fr = {
     removeConfirm: 'Tap again to remove',
     removed: 'Payment removed',
     waiting: 'Waiting for signal',
+    refund: 'Refund ({how})',
     onlineNote: 'An online card payment is refunded in Stripe, not here.'
   },
 
@@ -236,6 +257,20 @@ export const invoices: typeof fr = {
     sub: 'Invoice {n} for {who}',
     missing: 'Invoice not found',
     missingText: 'It is not (or no longer) on this phone. Close and try again in a moment.',
+    waiting: 'Payment waiting to be sent: {amount}',
+    waitingText: 'It goes as soon as the network is back. Do not take it a second time.',
+    waitingPart: '{amount} already taken on this phone, waiting to be sent.',
+    refund: {
+      title: 'Refund',
+      none: 'Nothing to refund: the customer did not pay more than the invoice.',
+      waiting: 'Refund waiting to be sent: {amount}',
+      toGive: 'To give back to the customer',
+      amount: 'Amount given back',
+      confirm: 'Record {amount} refunded',
+      done: 'Refund of {amount} recorded.',
+      tooMuch: 'That is more than what was paid too much ({max}).',
+      hint: 'Record here money given back in person or by transfer.'
+    },
     not: {
       draft: 'Finish the invoice before taking the payment.',
       void: 'This invoice is cancelled: nothing to collect.',

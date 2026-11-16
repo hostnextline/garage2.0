@@ -1,39 +1,36 @@
 /* « Encaisser » (shared: the job sheet opens it too). Made for the customer's door: gloves, a customer watching.
-   The balance is the hero; the payment method is one big tap; cash shows the change to give back (rounded to 5 ¢,
-   no pennies) and records only what is due; a card payment link can be texted when the garage has card payments. */
+   The amount left is the hero; the payment method is one big tap; cash shows the change to give back (rounded to
+   5 ¢, no pennies) and records only what is due; a card payment link can be texted when the garage has card payments.
+   It counts what this phone already took and has not sent yet: a payment waiting for the network is said, with its
+   amount, and never offered a second time. With `refund`, « Rembourser »: money given back to a customer who paid
+   more than the invoice (a negative payment, never more than what was paid too much). */
 import { useEffect, useState } from 'preact/hooks';
-import { signal } from '@preact/signals';
-import { Banknote, CreditCard, Landmark, Send, FileText, Ellipsis, Smartphone, Vault } from 'lucide-preact';
+import { Banknote, CreditCard, Landmark, Send, FileText, Ellipsis, Vault } from 'lucide-preact';
 import type { PayMethod } from '../../data/types';
-import { addPayment, team } from '../../data/api';
-import { isOwner, access } from '../../data/auth';
+import { addPayment } from '../../data/api';
 import { customerName, job as jobRow } from '../../data/select';
-import { mayCoffre, openCoffre } from './CoffreHost';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { Sheet, Button, Field, Input, MoneyInput, Banner, Empty, run } from '../../ui';
-import { cashChange, cashQuick } from '../../domain/money/invoice';
-import { invoiceById, amountsOf, invoiceCustomer, invoiceLabel, methodWord, METHODS } from './select';
-import { sendText, SendSheet, type SendResult } from './send';
+import { cashChange } from '../../domain/money/invoice';
+import { viewOf } from '../../domain/money/view';
+import { payMode, amountProblem } from '../../domain/money/pay';
+import { waitingEntries, coffreWaiting } from '../../domain/money/waiting';
+import { mayCoffre, openCoffre } from './CoffreHost';
+import { invoiceById, invoiceCustomer, invoiceLabel, methodWord, METHODS } from './select';
+import { PayCash } from './PayCash';
+import { PayLink } from './PayLink';
 import './invoices.css';
 
-export interface PaySheetProps { open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void; /** after the sheet closes for « Coffre » (else the shell opens the Coffre sheet itself) */ onCoffre?: () => void }
+export interface PaySheetProps {
+  open: boolean; onClose: () => void; invoiceId: string; onPaid?: () => void;
+  /** after the sheet closes for « Coffre » (else the shell opens the Coffre sheet itself) */
+  onCoffre?: () => void;
+  /** « Rembourser »: money given back to a customer who paid more than the invoice */
+  refund?: boolean;
+}
 
 const ICONS: Record<string, typeof Banknote> = { cash: Banknote, debit: Landmark, credit: CreditCard, interac: Send, cheque: FileText, other: Ellipsis };
-
-/* card payments online: everyone's access says whether they are switched on (my_access → card_online);
-   an older copy of the access without that answer asks the server (owner only) */
-type StripeState = 'unknown' | 'on' | 'off';
-const stripe = signal<StripeState | null>(null);
-async function checkStripe() {
-  const known = access.value?.card_online;
-  if (typeof known === 'boolean') { stripe.value = known ? 'on' : 'off'; return; }
-  if (!isOwner()) { stripe.value = 'unknown'; return; }
-  try {
-    const r = await team<{ stripe?: { on?: boolean } }>('secrets');
-    stripe.value = r.ok && r.stripe ? (r.stripe.on ? 'on' : 'off') : 'unknown';
-  } catch { if (stripe.value == null) stripe.value = 'unknown'; }
-}
 
 export function PaySheet(p: PaySheetProps) {
   if (!p.open) return null;
@@ -41,62 +38,71 @@ export function PaySheet(p: PaySheetProps) {
 }
 
 function PayOpen(p: PaySheetProps) {
-  const inv = invoiceById(p.invoiceId);
-  const a = inv ? amountsOf(inv) : null;
-  const balance = a?.balance ?? 0;
-  const [amount, setAmount] = useState<number | null>(balance);
+  const raw = invoiceById(p.invoiceId);
+  const view = raw ? viewOf(raw) : null;
+  const refund = !!p.refund;
+  const plan = view ? payMode(view, refund) : null;
+  // the amount in play when the payment was confirmed: its own rows arrive just before the sheet closes, keep the form
+  const [frozen, setFrozen] = useState<number | null>(null);
+  const inPlay = frozen ?? plan?.inPlay ?? 0;
+  const [amount, setAmount] = useState<number | null>(inPlay);
   const [touched, setTouched] = useState(false);
   const [method, setMethod] = useState<PayMethod | null>(null);
   const [received, setReceived] = useState<number | null>(null);
   const [reference, setReference] = useState('');
-  const [manual, setManual] = useState<SendResult | null>(null);
-  const [sending, setSending] = useState(false);
-  useEffect(() => { void checkStripe(); }, []);
-  // a payment that arrives meanwhile (card online, another phone) changes the balance: follow it until edited
-  useEffect(() => { if (!touched) setAmount(balance); }, [balance]);
+  // a payment that arrives meanwhile (card online, another phone) changes what is left: follow it until edited
+  useEffect(() => { if (!touched && frozen == null) setAmount(inPlay); }, [inPlay]);
 
   const close = p.onClose;
   const l = lang.value;
-  const who = inv ? customerName(invoiceCustomer(inv)) : '';
-  const title = t('invoices.pay.title');
-  if (!inv || !a) {
+  const title = refund ? t('invoices.pay.refund.title') : t('invoices.pay.title');
+  if (!raw || !view || !plan) {
     return <Sheet open onClose={close} title={title}><Empty title={t('invoices.pay.missing')} text={t('invoices.pay.missingText')} /></Sheet>;
   }
+  const inv = view.inv;
+  const a = view.amounts;
+  const who = customerName(invoiceCustomer(inv));
   const sub = who ? t('invoices.pay.sub', { n: invoiceLabel(inv, l), who }) : t('invoices.numbered', { n: invoiceLabel(inv, l) });
-  // (while a payment is being sent, its own rows arrive just before the sheet closes: keep the form)
-  if (!sending && (inv.status !== 'issued' || balance <= 0)) {
-    const kind = inv.status === 'draft' ? 'draft' : inv.status === 'void' ? 'void' : 'paid';
+  if (frozen == null && plan.mode !== 'form') {
     return (
       <Sheet open onClose={close} title={title} sub={sub} footer={<Button variant="primary" onClick={close}>{t('common.close')}</Button>} data-testid="pay-sheet">
-        <Banner kind={kind === 'paid' ? 'ok' : 'warn'}>{t(`invoices.pay.not.${kind}`)}</Banner>
+        {plan.mode === 'waiting'
+          ? <Banner kind="info" title={t('invoices.pay.waiting', { amount: money(view.waiting, l) })} data-testid="pay-waiting">{t('invoices.pay.waitingText')}</Banner>
+          : plan.mode === 'refund-waiting'
+            ? <Banner kind="info" data-testid="pay-waiting">{t('invoices.pay.refund.waiting', { amount: money(-view.waiting, l) })}</Banner>
+            : plan.mode === 'refund-none'
+              ? <Banner kind="ok">{t('invoices.pay.refund.none')}</Banner>
+              : <Banner kind={plan.mode === 'paid' ? 'ok' : 'warn'}>{t(`invoices.pay.not.${plan.mode}`)}</Banner>}
       </Sheet>
     );
   }
 
-  const isCash = method === 'cash';
+  const isCash = method === 'cash' && !refund;
   const cash = isCash ? cashChange(amount ?? 0, received) : null;
   const record = cash ? cash.record : amount ?? 0;
-  const amountError = amount == null || amount <= 0 ? t('invoices.pay.errAmount') : amount > balance ? t('invoices.pay.errTooMuch', { max: money(balance, l) }) : null;
+  const problem = amountProblem(amount, inPlay);
+  const amountError = problem === 'amount' ? t('invoices.pay.errAmount')
+    : problem === 'tooMuch' ? t(refund ? 'invoices.pay.refund.tooMuch' : 'invoices.pay.errTooMuch', { max: money(inPlay, l) }) : null;
   const canPay = !!method && !amountError && record > 0;
   const needsRef = method === 'cheque' || method === 'interac' || method === 'other';
 
   const pay = async () => {
     if (!canPay || !method) return;
     const change = cash?.change || 0;
-    setSending(true);
-    const r = await run(() => addPayment(inv.id, record, method, needsRef && reference.trim() ? reference.trim() : null, inv.job_id),
-      { ok: change > 0 ? t('invoices.pay.doneChange', { change: money(change, l) }) : t('invoices.pay.done') });
-    if (r !== undefined) { close(); p.onPaid?.(); } else setSending(false);
+    setFrozen(inPlay);
+    const r = await run(() => addPayment(raw.id, refund ? -record : record, method, needsRef && reference.trim() ? reference.trim() : null, raw.job_id),
+      { ok: refund ? t('invoices.pay.refund.done', { amount: money(record, l) }) : change > 0 ? t('invoices.pay.doneChange', { change: money(change, l) }) : t('invoices.pay.done') });
+    if (r !== undefined) { close(); p.onPaid?.(); } else setFrozen(null);
   };
 
-  const theJob = inv.job_id ? jobRow(inv.job_id) : undefined;
-  const coffreOk = !!theJob && mayCoffre(theJob) && a.paid <= 0;
+  const theJob = raw.job_id ? jobRow(raw.job_id) : undefined;
+  const coffreOk = !refund && !!theJob && mayCoffre(theJob) && a.paid <= 0 && view.waiting === 0 && !coffreWaiting(waitingEntries(), theJob.id);
   const toCoffre = () => {
     if (!theJob) return;
     close();
     if (p.onCoffre) p.onCoffre(); else openCoffre(theJob.id);
   };
-  const confirmLabel = !method ? t('invoices.pay.pickMethod') : t('invoices.pay.confirm', { amount: money(record, l) });
+  const confirmLabel = !method ? t('invoices.pay.pickMethod') : t(refund ? 'invoices.pay.refund.confirm' : 'invoices.pay.confirm', { amount: money(record, l) });
   return (
     <Sheet open onClose={close} title={title} sub={sub} data-testid="pay-sheet"
       footer={<>
@@ -105,10 +111,12 @@ function PayOpen(p: PaySheetProps) {
       </>}>
       <div class="stack-lg">
         <div class="pay-due">
-          <span class="pay-due-label">{a.paid > 0 ? t('invoices.pay.balance') : t('invoices.pay.toPay')}</span>
-          <span class="pay-due-amount money" data-testid="pay-balance">{money(balance, l)}</span>
-          {a.paid > 0 && <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>}
+          <span class="pay-due-label">{refund ? t('invoices.pay.refund.toGive') : a.paid > 0 || view.waiting > 0 ? t('invoices.pay.balance') : t('invoices.pay.toPay')}</span>
+          <span class="pay-due-amount money" data-testid="pay-balance">{money(inPlay, l)}</span>
+          {(refund || a.paid > 0) && <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>}
+          {!refund && view.waiting > 0 && <span class="muted small" data-testid="pay-waiting-part">{t('invoices.pay.waitingPart', { amount: money(view.waiting, l) })}</span>}
         </div>
+        {refund && <Banner kind="info">{t('invoices.pay.refund.hint')}</Banner>}
 
         <Field label={t('invoices.pay.method')} group>
           <div class="pay-methods" role="radiogroup" aria-label={t('invoices.pay.method')}>
@@ -129,32 +137,12 @@ function PayOpen(p: PaySheetProps) {
           </div>
         </Field>
 
-        <Field label={t('invoices.pay.amount')} hint={!amountError && amount != null && amount < balance ? t('invoices.pay.partial', { left: money(balance - amount, l) }) : undefined} error={touched ? amountError : null}>
-          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c) => { setTouched(true); setAmount(c); }} aria-label={t('invoices.pay.amount')} /></div>
+        <Field label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} error={touched ? amountError : null}
+          hint={!refund && !amountError && amount != null && amount < inPlay ? t('invoices.pay.partial', { left: money(inPlay - amount, l) }) : undefined}>
+          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c) => { setTouched(true); setAmount(c); }} aria-label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} /></div>
         </Field>
 
-        {isCash && cash && (
-          <div class="pay-cash stack" data-testid="pay-cash">
-            <Field label={t('invoices.pay.received')} hint={cash.dueCash !== cash.due ? t('invoices.pay.rounded', { amount: money(cash.dueCash, l) }) : undefined}>
-              <div class="pay-amount"><MoneyInput cents={received} onCents={setReceived} aria-label={t('invoices.pay.received')} /></div>
-            </Field>
-            <div class="chips" role="group" aria-label={t('invoices.pay.quick')}>
-              {cashQuick(cash.dueCash).map((c) => (
-                <button key={c} type="button" class="chip pay-bill" aria-pressed={received === c} onClick={() => setReceived(c)}>
-                  {c === cash.dueCash ? t('invoices.pay.exact') : money(c, l, { whole: true })}
-                </button>
-              ))}
-            </div>
-            {received != null && (cash.short > 0
-              ? <Banner kind="warn" title={t('invoices.pay.short', { amount: money(cash.short, l) })}>{t('invoices.pay.shortText', { amount: money(cash.record, l), left: money(balance - cash.record, l) })}</Banner>
-              : (
-                <div class="pay-change" role="status" data-testid="pay-change">
-                  <span>{t('invoices.pay.giveBack')}</span>
-                  <b class="money">{money(cash.change, l)}</b>
-                </div>
-              ))}
-          </div>
-        )}
+        {cash && <PayCash cash={cash} received={received} onReceived={setReceived} balance={inPlay} />}
 
         {needsRef && (
           <Field label={t(`invoices.pay.ref.${method}`)} optional>
@@ -162,21 +150,8 @@ function PayOpen(p: PaySheetProps) {
           </Field>
         )}
 
-        {inv.job_id && (
-          <div class="pay-link">
-            <h3 class="pay-link-title"><Smartphone aria-hidden="true" />{t('invoices.pay.link.title')}</h3>
-            {stripe.value === 'off'
-              ? <p class="muted small" style={{ margin: 0 }}>{t('invoices.pay.link.off')}{isOwner() && <> <a href="#/settings/connect" onClick={close}>{t('invoices.pay.link.settings')}</a></>}</p>
-              : <>
-                <p class="muted small" style={{ margin: 0 }}>{stripe.value === 'on' ? t('invoices.pay.link.on') : t('invoices.pay.link.unknown')}</p>
-                <Button icon={<Send />} onClick={async () => { const r = await sendText('invoice', inv.job_id!, t('invoices.pay.link.sent')); if (r) setManual(r); }} data-testid="pay-link">
-                  {t('invoices.pay.link.send')}
-                </Button>
-              </>}
-          </div>
-        )}
+        {raw.job_id && !refund && <PayLink jobId={raw.job_id} onLeave={close} />}
       </div>
-      <SendSheet result={manual} onClose={() => setManual(null)} />
     </Sheet>
   );
 }

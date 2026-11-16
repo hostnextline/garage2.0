@@ -1,6 +1,9 @@
-/* The periods of the treasury report (this month, last month, this quarter, this year, chosen dates) and the
-   month arithmetic the dashboard shares. Days are local calendar days 'YYYY-MM-DD'. */
-import { addDays, isValidDay, shortDate, type Day } from '../../lib/dates';
+/* The periods money is looked at by. Days are local calendar days 'YYYY-MM-DD'.
+   - The treasury report's periods: whole months, quarters, years, chosen dates (PeriodKey, periodRange), and the
+     month arithmetic the dashboard shares. addMonths here gives the FIRST day of that month; lib/dates' addMonths
+     keeps the same day of the month: the two are not interchangeable.
+   - The filter of « Factures » (ListPeriod, listPeriodRange): « up to today », not whole periods. */
+import { addDays, dayOf, isValidDay, shortDate, type Day } from '../../lib/dates';
 
 export type PeriodKey = 'month' | 'last_month' | 'quarter' | 'year' | 'custom';
 export const PERIODS: PeriodKey[] = ['month', 'last_month', 'quarter', 'year', 'custom'];
@@ -65,4 +68,28 @@ export function inRange(day: string | null | undefined, r: DayRange): boolean {
 export function rangeLabel(r: DayRange, lang: string): string {
   if (r.from === r.to) return shortDate(r.from, lang);
   return lang === 'en' ? `${shortDate(r.from, 'en')} to ${shortDate(r.to, 'en')}` : `${shortDate(r.from, 'fr')} au ${shortDate(r.to, 'fr')}`;
+}
+
+/* ---------- the filter of « Factures »: up to today ---------- */
+export type ListPeriod = 'all' | '30d' | 'month' | 'last' | 'year';
+export const LIST_PERIODS: ListPeriod[] = ['all', '30d', 'month', 'last', 'year'];
+/** the days of a period of the invoice list (inclusive), or null for « Toutes les dates » */
+export function listPeriodRange(p: ListPeriod, today: Day): [Day, Day] | null {
+  const ym = today.slice(0, 7);
+  switch (p) {
+    case '30d': return [addDays(today, -29), today];
+    case 'month': return [`${ym}-01`, today];
+    case 'last': { const end = addDays(`${ym}-01`, -1); return [`${end.slice(0, 7)}-01`, end]; }
+    case 'year': return [`${today.slice(0, 4)}-01-01`, today];
+    default: return null;
+  }
+}
+/** is this moment (an ISO time) inside the list's period */
+export function inListPeriod(iso: string | null | undefined, range: [Day, Day] | null): boolean {
+  if (!range) return true;
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const day = dayOf(d);
+  return day >= range[0] && day <= range[1];
 }

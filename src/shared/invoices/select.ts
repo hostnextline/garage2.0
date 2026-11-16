@@ -2,7 +2,7 @@
    when the data changes) and who may do what (the server checks again). */
 import { computed } from '@preact/signals';
 import { getRow, rowsOf } from '../../data/store';
-import { settings, invoicesList, customer, customerName, job as jobRow, vehicle, vehicleLabel, invoiceNumber, messagesOf } from '../../data/select';
+import { settings, invoicesList, customer, customerName, job as jobRow, invoiceNumber, messagesOf } from '../../data/select';
 import { can, hasRole, isOwner, myTrucks, me } from '../../data/auth';
 import type { Invoice, Job, Payment, PayMethod, Quote, Customer, Lang } from '../../data/types';
 import { t, tl } from '../../lib/i18n';
@@ -30,9 +30,6 @@ export function invoiceCustomer(inv: Pick<Invoice, 'customer_id' | 'job_id'>): C
 }
 export function invoiceWho(inv: Pick<Invoice, 'customer_id' | 'job_id'>): string {
   return customerName(invoiceCustomer(inv)) || t('invoices.noCustomer');
-}
-export function invoiceVehicleText(inv: Pick<Invoice, 'job_id'>): string {
-  return vehicleLabel(vehicle(jobRow(inv.job_id)?.vehicle_id));
 }
 /** « F-0043 », or « Brouillon » for a draft */
 export function invoiceLabel(inv: Pick<Invoice, 'number' | 'status'>, l: Lang | string = 'fr'): string {

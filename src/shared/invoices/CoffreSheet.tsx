@@ -1,5 +1,6 @@
-/* « Payé par le Coffre » (the owner, or the mechanic of the job’s truck, Part 22): the jobs of this customer that family or friends paid this way (this one is
-   checked), what was given, a note. Those jobs get no invoice and no taxes; they are written in the Coffre, apart. */
+/* « Payé par le Coffre » (every member of the team, as the server: coffre_may_add, Part 24 bis): the jobs of this
+   customer that family or friends paid this way (this one is checked), what was given, the day, a note. Those jobs get
+   no invoice and no taxes; they are written in the Coffre, apart. */
 import { useEffect, useState } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
@@ -11,6 +12,7 @@ import { Sheet, Button, Field, MoneyInput, Textarea, DateInput, Check, Banner, r
 import { coffreCandidates } from '../../domain/money/coffre';
 import './coffre.css';
 
+/** onDone: after the jobs went in the Coffre (kept for the callers; the sheet closes by itself) */
 export function CoffreSheet(p: { job: Job; open: boolean; onClose: () => void; onDone?: () => void }) {
   if (!p.open) return null;
   return <CoffreOpen {...p} />;
@@ -19,8 +21,6 @@ export function CoffreSheet(p: { job: Job; open: boolean; onClose: () => void; o
 function CoffreOpen(p: { job: Job; onClose: () => void; onDone?: () => void }) {
   const l = lang.value;
   const prepaid = (jobId: string) => paymentsOf({ jobId }).length > 0;
-  // the mechanic: the jobs his trucks do (as the server allows); the owner: all of them
-  // every member of the team may put the customer's jobs in the Coffre (the server says the same, coffre_may_add)
   const list = coffreCandidates(p.job, allJobs.value, (id) => invoiceOf(id), prepaid).slice(0, 30);
   const [picked, setPicked] = useState<string[]>(() => list.some((j) => j.id === p.job.id) ? [p.job.id] : []);
   const [amount, setAmount] = useState<number | null>(null);
@@ -34,7 +34,9 @@ function CoffreOpen(p: { job: Job; onClose: () => void; onDone?: () => void }) {
   const save = async () => {
     if (!picked.length) { setErr(t('coffre.sheet.pickOne')); return; }
     if (amount == null || amount < 0) { setErr(t('coffre.sheet.amountNeeded')); return; }
-    const r = await run(() => coffreAdd(picked, amount, note.trim() || null, day), { ok: t('coffre.sheet.done', { n: picked.length }) });
+    // « Reçu le » emptied, or a day to come: the money was received today (an empty day was a raw database error)
+    const received = day && day <= today() ? day : today();
+    const r = await run(() => coffreAdd(picked, amount, note.trim() || null, received), { ok: t('coffre.sheet.done', { n: picked.length }) });
     if (r) { p.onClose(); p.onDone?.(); }
   };
   return (
@@ -56,7 +58,7 @@ function CoffreOpen(p: { job: Job; onClose: () => void; onDone?: () => void }) {
           <MoneyInput cents={amount} onCents={setAmount} aria-label={t('coffre.sheet.amount')} invalid={!!err && amount == null} />
         </Field>
         <Field label={t('coffre.sheet.day')}>
-          <DateInput value={day} onValue={setDay} />
+          <DateInput value={day} onValue={setDay} max={today()} />
         </Field>
         <Field label={t('coffre.sheet.note')} optional>
           <Textarea value={note} onValue={setNote} rows={2} maxLength={500} />
