@@ -41,11 +41,14 @@
 --     web_switch(op, on)  the owner's switch of the public page
 --  5. Who may call what
 --     every function closed to the public and to the app, then opened by name (the list is kept exactly by
---     tests/db/refonte-droits.test.mjs); from now on a new function or table is closed until its migration opens it
---  6. Indexes the row rules and the look-ups by job, car and customer need
+--     tests/db/refonte-droits.test.mjs); from now on a new function is closed until its migration opens it
+--     (« grant execute … to authenticated »: a migration made after this one that forgets it is closed to the app)
+--  6. Indexes the row rules, the clean-up and the look-ups by job, car and customer need
 --
 -- New refusal codes: customer_busy, customer_owes (deleting a customer), bad_role (member_update).
--- New column: jobs.web_contact (part of jobs: the nightly backup holds it with the table).
+-- New column: jobs.web_contact (part of jobs: the nightly backup holds it with the table). No new table.
+-- New functions: web_switch (owner, from the app), fold_name, right_flag, and the trigger functions
+-- customers_delete_guard, customers_phone_links, push_subs_takeover, settings_web_guard (closed to the app).
 
 -- =====================================================================================================================
 -- 1. DIRECT WRITES
