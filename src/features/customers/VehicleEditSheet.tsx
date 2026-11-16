@@ -47,7 +47,7 @@ export function VehicleEditSheet(p: { v: Vehicle; onClose: () => void; onLeaving
   return (
     <Sheet open onClose={() => void close()} title={t('vehicles.screen.editTitle')} wide data-testid="vehicle-edit-sheet"
       footer={<>
-        <Button onClick={() => close()}>{t('common.cancel')}</Button>
+        <Button onClick={() => { void close(); }}>{t('common.cancel')}</Button>
         <Button variant="primary" onClick={save} data-testid="vehicle-save">{t('common.save')}</Button>
       </>}>
       <div class="stack-lg">

@@ -41,7 +41,7 @@ export function EditSheet(p: { c: Customer; onClose: () => void; onLeaving: (on:
   return (
     <Sheet open onClose={() => void close()} title={t('customers.file.editTitle')} data-testid="customer-edit-sheet"
       footer={<>
-        <Button onClick={() => close()}>{t('common.cancel')}</Button>
+        <Button onClick={() => { void close(); }}>{t('common.cancel')}</Button>
         <Button variant="primary" onClick={save} data-testid="customer-save">{t('common.save')}</Button>
       </>}>
       <div class="stack-lg">
