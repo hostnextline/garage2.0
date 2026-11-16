@@ -29,6 +29,8 @@ export interface JobView {
   /** the invoice being made while the mechanic is there (to pay during the work) */
   bill?: { lines: InvoiceLineV[]; subtotal_cents: number; tps_cents: number; tvq_cents: number; total_cents: number } | null;
   pay: { available: boolean; amount_cents: number; kind: 'invoice' | 'prepay'; pending: boolean };
+  /** the answer of « check » from a newer server: the state of the card page Stripe was asked about (absent: unknown) */
+  checked?: 'paid' | 'open' | 'expired' | null;
 }
 export interface QuoteView {
   ok: true; kind: 'quote'; garage: Garage; lang: string; number: number; vehicle: string | null;

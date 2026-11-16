@@ -75,7 +75,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     const { n, r } = await ask('check');
     if (!alive.current) return;
     // a failed check leaves the page as the first load showed it
-    if (r.ok && show(n, r.value) && r.value.kind === 'job' && moneyIn(r.value) > moneyIn(before)) { setCheck('paid'); setJustPaid(true); }
+    if (r.ok && show(n, r.value) && r.value.kind === 'job' && (r.value.checked === 'paid' || moneyIn(r.value) > moneyIn(before))) { setCheck('paid'); setJustPaid(true); }
     setPendingChecked(true);
   };
 

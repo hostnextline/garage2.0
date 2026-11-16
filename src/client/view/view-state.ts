@@ -80,6 +80,7 @@ export type PayCheck = 'idle' | 'checking' | 'paid' | 'late';
     for Stripe (`receivedBefore`: a balance may remain when the total rose meanwhile, or the payment was a part);
     else keep checking a few times */
 export function afterCheck(v: JobView, tries: number, maxTries: number, receivedBefore: number | null = null): PayCheck {
+  if (v.checked === 'paid') return 'paid';
   if (nothingLeft(v) || (v.pay.amount_cents <= 0 && (v.prepaid_cents > 0 || !!v.invoice))) return 'paid';
   if (receivedBefore != null && moneyIn(v) > receivedBefore) return 'paid';
   return tries >= maxTries ? 'late' : 'checking';

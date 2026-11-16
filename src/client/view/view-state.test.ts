@@ -68,8 +68,11 @@ describe('back from Stripe (client-page-07)', () => {
     // nothing came in yet: keep checking, then late
     expect(afterCheck(v, 1, 5, 22994)).toBe('checking');
     expect(afterCheck(v, 5, 5, 22994)).toBe('late');
-    // without the note of this tab (Stripe opened elsewhere): the balances decide, as before
+    // without the note of this tab (Stripe opened elsewhere): the balances decide, as before…
     expect(afterCheck(v, 1, 5, null)).toBe('checking');
+    // …unless the server says what Stripe answered
+    expect(afterCheck({ ...v, checked: 'paid' }, 1, 5, null)).toBe('paid');
+    expect(afterCheck({ ...v, checked: 'open' }, 5, 5, null)).toBe('late');
   });
   it('counts the money paid on the invoice too', () => {
     expect(moneyIn(job({ prepaid_cents: 1000, invoice: inv(5000) }))).toBe(6000);
