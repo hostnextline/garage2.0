@@ -11,9 +11,14 @@ import { cleanText } from './draft';
 const FIELDS = ['name', 'legal_name', 'phone', 'email', 'website', 'address', 'tps_no', 'tvq_no', 'neq'] as const;
 type Company = Record<(typeof FIELDS)[number], string>;
 
-export function CompanySection() {
+/** the section's fields as stored now (also what the dot of the list compares the draft with) */
+export function companySaved(): Company {
   const c = settings.value.company || {};
-  const saved = Object.fromEntries(FIELDS.map((k) => [k, String((c as Record<string, unknown>)[k] ?? '')])) as Company;
+  return Object.fromEntries(FIELDS.map((k) => [k, String((c as Record<string, unknown>)[k] ?? '')])) as Company;
+}
+
+export function CompanySection() {
+  const saved = companySaved();
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<Company>('company', saved);
   const [err, setErr] = useState<Partial<Record<keyof Company, string>>>({});
   const field = (k: keyof Company) => (v: string) => { set((x) => ({ ...x, [k]: v })); if (err[k]) setErr({ ...err, [k]: undefined }); };

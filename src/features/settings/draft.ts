@@ -1,9 +1,11 @@
 /* « Changements non enregistrés »: what a section shows is the saved value with the person's own changes on top.
-   - A draft holds ONLY the fields the person changed. Every other field follows the saved value, so a change made
-     meanwhile on another device shows here and is never written back from an old copy (settings-team-01).
-   - A field leaves the draft as soon as it equals the saved value again (typed back, or saved elsewhere).
-   - What counts as a change: spaces around words, an empty text and a missing value do not; key order does not;
-     the order of a list does.
+   - A draft holds ONLY the fields the person changed, exactly as typed (a space or a new line being typed is kept:
+     settings-team-st-1). Every other field follows the saved value, so a change made meanwhile on another device shows
+     here and is never written back from an old copy (settings-team-01).
+   - A field leaves the draft when it is the saved value to the letter, when the saved value catches up with it (saved
+     here, or the same value saved elsewhere), or when it is no longer part of the section (a text whose kind is hidden).
+   - What counts as a change (the bar, the dot of the list, what is saved): spaces around words, an empty text and a
+     missing value do not; key order does not; the order of a list does.
    Pure functions (draft.test.ts). */
 
 export function normalize(v: unknown): unknown {
@@ -28,20 +30,45 @@ export function isDirty(saved: unknown, draft: unknown): boolean {
   return !sameValue(saved, draft);
 }
 
-/** the fields of `next` that differ from `saved`: the draft to keep (empty = nothing to save) */
+/** the same value to the letter (no trimming): what decides whether a typed field stays in the draft */
+export function sameRaw(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a && b && typeof a === 'object' && typeof b === 'object') return JSON.stringify(a) === JSON.stringify(b);
+  return false;
+}
+/** the fields of `next` that differ from `saved` as a change (empty = nothing to save): the bar, the dot, the save */
 export function changesOf<T extends object>(saved: T, next: T): Partial<T> {
   const out: Partial<T> = {};
   for (const k of Object.keys(next) as (keyof T)[]) if (!sameValue(saved[k], next[k])) out[k] = next[k];
+  return out;
+}
+/** the fields of `next` the person typed, exactly as typed: the draft to keep (only the fields of the section) */
+export function editsOf<T extends object>(saved: T, next: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of Object.keys(next) as (keyof T)[]) if (k in saved && !sameRaw(saved[k], next[k])) out[k] = next[k];
+  return out;
+}
+/** the draft still to keep against the saved value now. `before`: the saved value the draft was last seen with; a field
+    whose saved value moved since and now says the same (saved here, or elsewhere) leaves the draft. */
+export function pruneDraft<T extends object>(saved: T, kept: Partial<T>, before?: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of Object.keys(kept) as (keyof T)[]) {
+    if (!(k in saved)) continue;
+    const v = kept[k];
+    if (sameRaw(saved[k], v)) continue;
+    if (before && !sameRaw(before[k], saved[k]) && sameValue(saved[k], v)) continue;
+    out[k] = v as T[keyof T];
+  }
   return out;
 }
 /** what the screen shows: the saved value, with the person's changes on top */
 export function withChanges<T extends object>(saved: T, changes: Partial<T> | null | undefined): T {
   return changes ? { ...saved, ...changes } : saved;
 }
-/** true when the two drafts name the same fields with the same values (nothing to write back to the store) */
+/** true when the two drafts name the same fields with the same values to the letter (nothing to write back to the store) */
 export function sameChanges(a: object, b: object): boolean {
   const ka = Object.keys(a), kb = Object.keys(b);
-  return ka.length === kb.length && ka.every((k) => k in b && sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+  return ka.length === kb.length && ka.every((k) => k in b && sameRaw((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
 }
 
 /** a text ready to store: trimmed, null when empty */

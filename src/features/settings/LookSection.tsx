@@ -7,8 +7,11 @@ import { Panel, Banner, Button, attempt } from '../../ui';
 import { ThemeSwatches, LookChoices } from '../../shared/look/LookChoices';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
+/** the section's fields as stored now (also what the dot of the list compares the draft with) */
+export const lookSaved = (): Look => teamLook.value;
+
 export function LookSection() {
-  const saved: Look = teamLook.value;
+  const saved = lookSaved();
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<Look>('look', saved);
   const save = async () => {
     if (await attempt(() => saveSettings('appearance', { ...(settings.value.appearance || {}), ...changes }), { ok: t('settings.saved') })) reset();

@@ -1,7 +1,7 @@
 /* A service's sheet: names fr/en, category, price or « à confirmer », duration, taxes, « Camion seulement », offered or
    hidden, promo with an end date, its place in the list, what is included (fr/en), what it needs from the car, and the
    inventory parts it uses (saved at once). A new service keeps this sheet once created, to add its parts right away. */
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Plus, Trash2 } from 'lucide-preact';
 import { t, lang } from '../../../lib/i18n';
 import { duration, today } from '../../../lib/dates';
@@ -10,11 +10,14 @@ import { servicesList, service as serviceOf, serviceName, settings } from '../..
 import { saveService } from '../../../data/api';
 import { uuid } from '../../../data/sync';
 import type { Service } from '../../../data/types';
-import { Panel, Button, IconButton, Sheet, Field, Input, MoneyInput, Seg, Switch, Stepper, DateInput, ask, attempt, toast } from '../../../ui';
-import { changesOf, withChanges } from '../draft';
+import { Panel, Button, IconButton, Sheet, Field, Input, MoneyInput, Seg, Switch, Stepper, DateInput, ask, attempt, toast, whenHistorySettled } from '../../../ui';
+import { changesOf, editsOf, pruneDraft, withChanges } from '../draft';
 import { toDraft, toRow, check, type ServiceDraft } from './serviceModel';
 import { NeedsPanel } from './NeedsPanel';
 import { PartsPanel } from './PartsPanel';
+
+/** how many sheets have their step in this history entry */
+const sheetsIn = (st: unknown): number => ((st as { sheets?: unknown[] } | null)?.sheets || []).length;
 
 export function ServiceSheet(p: { id: string | null; onClose: () => void }) {
   if (!p.id) return null;
@@ -28,18 +31,32 @@ function ServiceOpen(p: { id: string; onClose: () => void }) {
   const s = sid ? serviceOf(sid) : undefined;
   const saved = toDraft(s, Math.max(0, ...servicesList.value.map((x) => x.sort || 0)));
   // only the fields typed here: the row coming back from the server (or changed on another device) updates the others,
-  // and never wipes what is being typed (settings-team-09)
+  // and never wipes what is being typed (settings-team-09). Kept exactly as typed: a space or a new word being typed
+  // never snaps back (settings-team-st-1); what counts as a change is decided apart (the Save button)
   const [touched, setTouched] = useState<Partial<ServiceDraft>>({});
-  const d = withChanges(saved, touched);
+  const d = withChanges(saved, pruneDraft(saved, touched));
   const dirty = Object.keys(changesOf(saved, d)).length > 0;
   const [err, setErr] = useState<{ name?: string; price?: string }>({});
-  const put = <K extends keyof ServiceDraft>(k: K, v: ServiceDraft[K]) => setTouched(changesOf(saved, { ...d, [k]: v }));
+  const put = <K extends keyof ServiceDraft>(k: K, v: ServiceDraft[K]) => setTouched(editsOf(saved, { ...d, [k]: v }));
   const cats = useMemo(() => [...new Set(servicesList.value.map((x) => x.category).filter(Boolean))].sort(), [servicesList.value]);
   const rate = settings.value.billing.hourly_cents;
 
+  // the sheets open under this one: the sheet's own history step is the one above (the phone's back removes it)
+  const [under] = useState(() => sheetsIn(history.state));
+  // a new key draws the sheet again with a new history step (after « non » to the question asked by the phone's back)
+  const [gen, setGen] = useState(0);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+
   /** closing with changes not saved asks first (the backdrop, the phone's back) */
   const close = async () => {
-    if (dirty && !(await ask({ title: t('settings.services.leave.title'), text: t('settings.services.leave.text'), ok: t('settings.services.leave.ok'), danger: true }))) return;
+    // the phone's back has already taken the sheet's history step: on « non », it is put back, or the next back would
+    // leave Services and lose what is typed without asking (settings-team-st-3)
+    const byBack = sheetsIn(history.state) <= under;
+    if (dirty && !(await ask({ title: t('settings.services.leave.title'), text: t('settings.services.leave.text'), ok: t('settings.services.leave.ok'), danger: true }))) {
+      if (byBack) setTimeout(() => whenHistorySettled(() => { if (alive.current) setGen((g) => g + 1); }), 0);
+      return;
+    }
     p.onClose();
   };
   const save = async () => {
@@ -58,7 +75,7 @@ function ServiceOpen(p: { id: string; onClose: () => void }) {
   };
 
   return (
-    <Sheet open onClose={() => void close()} wide title={isNew ? t('settings.services.new') : t('settings.services.edit')} sub={isNew ? undefined : serviceName(s || ({ name_fr: d.name_fr, name_en: d.name_en } as Service), lang.value)} data-testid="service-sheet"
+    <Sheet key={gen} open onClose={() => void close()} wide title={isNew ? t('settings.services.new') : t('settings.services.edit')} sub={isNew ? undefined : serviceName(s || ({ name_fr: d.name_fr, name_en: d.name_en } as Service), lang.value)} data-testid="service-sheet"
       footer={<>
         {!isNew && <Button variant="danger" icon={<Trash2 size={18} />} confirm={t('settings.services.deleteConfirm')} onClick={remove} data-testid="service-delete">{t('settings.services.delete')}</Button>}
         <Button variant="primary" disabled={!dirty && !isNew} onClick={save} data-testid="service-save">{t('settings.services.save')}</Button>

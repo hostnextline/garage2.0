@@ -10,9 +10,15 @@ import { nextVersion, sameValue } from './draft';
 
 interface Waiver { fr: string; en: string }
 
+/** the section's fields as stored now (also what the dot of the list compares the draft with) */
+export function waiverSaved(): Waiver {
+  const w = settings.value.waiver;
+  return { fr: w?.fr || '', en: w?.en || '' };
+}
+
 export function WaiverSection() {
   const w = settings.value.waiver || { version: '1', fr: '', en: '' };
-  const saved: Waiver = { fr: w.fr || '', en: w.en || '' };
+  const saved = waiverSaved();
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<Waiver>('waiver', saved);
   const [l, setL] = useState<Lang>('fr');
   const version = String(w.version || '1');

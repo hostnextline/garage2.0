@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isDirty, sameValue, normalize, nextVersion, cleanText, changesOf, withChanges, sameChanges } from './draft';
+import { isDirty, sameValue, normalize, nextVersion, cleanText, changesOf, withChanges, sameChanges, sameRaw, editsOf, pruneDraft } from './draft';
 
 describe('settings: « changements non enregistrés »', () => {
   const saved = { name: 'Mécanique Mobile H.I.S', phone: '438 901-6606', website: undefined as string | undefined, travel: { cents: 0, free_over_cents: null as number | null } };
@@ -61,6 +61,39 @@ describe('settings: a draft holds only what the person changed (settings-team-01
     const later = { ...saved, horizon: 90 };
     expect(changesOf(later, withChanges(later, mine))).toEqual({});
     expect(sameChanges(mine, {})).toBe(false);
-    expect(sameChanges({ a: ' x ' }, { a: 'x' })).toBe(true);
+    // a space being typed is something to keep in the draft (settings-team-st-1)
+    expect(sameChanges({ a: ' x ' }, { a: 'x' })).toBe(false);
+    expect(sameChanges({ a: 'x' }, { a: 'x' })).toBe(true);
+  });
+});
+
+describe('settings: what is typed stays as typed (settings-team-st-1, st-4)', () => {
+  const saved = { name: 'Garage', phone: '514', list: ['Essence'] };
+  it('a space or a new line being typed is kept in the draft, though it is not yet a change to save', () => {
+    const typed = { ...saved, name: 'Garage ' };
+    expect(editsOf(saved, typed)).toEqual({ name: 'Garage ' });
+    expect(changesOf(saved, typed)).toEqual({});
+    expect(withChanges(saved, pruneDraft(saved, editsOf(saved, typed))).name).toBe('Garage ');
+    // with another field changed too (before the fix the space was dropped either way)
+    expect(editsOf(saved, { ...typed, phone: '438' })).toEqual({ name: 'Garage ', phone: '438' });
+    expect(editsOf(saved, { ...saved, list: ['Essence', 'Pneus '] })).toEqual({ list: ['Essence', 'Pneus '] });
+  });
+  it('a field typed back to the saved value, to the letter, leaves the draft', () => {
+    expect(editsOf(saved, { ...saved })).toEqual({});
+    expect(pruneDraft(saved, { name: 'Garage' })).toEqual({});
+    expect(sameRaw(['a'], ['a'])).toBe(true);
+    expect(sameRaw('a ', 'a')).toBe(false);
+  });
+  it('the saved value catching up with what is typed (saved here or elsewhere) clears it, even with a space around', () => {
+    const before = { ...saved };
+    const now = { ...saved, name: 'Garage X' };
+    expect(pruneDraft(now, { name: 'Garage X ' }, before)).toEqual({});
+    // the saved value did not move: the space being typed stays
+    expect(pruneDraft(saved, { name: 'Garage ' }, before)).toEqual({ name: 'Garage ' });
+  });
+  it('a field no longer part of the section (a text whose kind is hidden) leaves the draft', () => {
+    const shown = { 'fr.booking': 'Salut' };
+    expect(pruneDraft(shown, { 'fr.booking': 'Allo', 'fr.window': 'Plage' } as never)).toEqual({ 'fr.booking': 'Allo' });
+    expect(editsOf(shown, { 'fr.booking': 'Salut', 'fr.window': 'Plage' } as never)).toEqual({});
   });
 });

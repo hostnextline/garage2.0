@@ -10,15 +10,15 @@ import { t } from '../../lib/i18n';
 import { isOwner } from '../../data/auth';
 import { Page, Panel } from '../../ui';
 import { hasDraft, settingsHere, SectionWait } from './SectionFrame';
-import { CompanySection } from './CompanySection';
-import { BillingSection } from './BillingSection';
+import { CompanySection, companySaved } from './CompanySection';
+import { BillingSection, billingSaved } from './BillingSection';
 import { ServicesSection } from './services/ServicesSection';
-import { BookingSection } from './booking/BookingSection';
-import { TextsSection } from './TextsSection';
-import { WaiverSection } from './WaiverSection';
-import { LookSection } from './LookSection';
+import { BookingSection, bookingSaved } from './booking/BookingSection';
+import { TextsSection, textsSaved } from './TextsSection';
+import { WaiverSection, waiverSaved } from './WaiverSection';
+import { LookSection, lookSaved } from './LookSection';
 import { ConnectSection } from './connect/ConnectSection';
-import { ExpensesSection } from './ExpensesSection';
+import { ExpensesSection, expensesSaved } from './ExpensesSection';
 import { UpdatePanel } from '../../shared/app/UpdatePanel';
 import '../../shared/look/settings.css';
 
@@ -27,17 +27,19 @@ interface SectionDef {
   key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; tour?: string;
   /** for everyone on the team (no « settings » right needed) */ all?: boolean;
   /** a form over the settings row: drawn only once that row is on this device */ form?: boolean;
+  /** the section's fields as stored now: the dot of the list compares the draft with them (settings-team-st-5) */
+  saved?: () => object;
 }
 const SECTIONS: SectionDef[] = [
-  { key: 'company', icon: Building2, view: CompanySection, form: true, tour: 'settings-company' },
-  { key: 'billing', icon: Receipt, view: BillingSection, form: true },
+  { key: 'company', icon: Building2, view: CompanySection, form: true, saved: companySaved, tour: 'settings-company' },
+  { key: 'billing', icon: Receipt, view: BillingSection, form: true, saved: billingSaved },
   { key: 'services', icon: Wrench, view: ServicesSection, tour: 'settings-services' },
-  { key: 'booking', icon: CalendarClock, view: BookingSection, form: true },
-  { key: 'texts', icon: MessageSquareText, view: TextsSection, form: true, tour: 'settings-texts' },
-  { key: 'waiver', icon: FileSignature, view: WaiverSection, form: true },
-  { key: 'look', icon: Palette, view: LookSection, form: true, owner: true, tour: 'settings-look' },
+  { key: 'booking', icon: CalendarClock, view: BookingSection, form: true, saved: bookingSaved },
+  { key: 'texts', icon: MessageSquareText, view: TextsSection, form: true, saved: textsSaved, tour: 'settings-texts' },
+  { key: 'waiver', icon: FileSignature, view: WaiverSection, form: true, saved: waiverSaved },
+  { key: 'look', icon: Palette, view: LookSection, form: true, saved: lookSaved, owner: true, tour: 'settings-look' },
   { key: 'connect', icon: PlugZap, view: ConnectSection, owner: true, tour: 'settings-connect' },
-  { key: 'expenses', icon: Tags, view: ExpensesSection, form: true },
+  { key: 'expenses', icon: Tags, view: ExpensesSection, form: true, saved: expensesSaved },
   { key: 'app', icon: RefreshCw, view: AppSection, all: true }
 ];
 
@@ -59,7 +61,7 @@ export default function SettingsScreen({ params }: ScreenProps) {
           {list.map((s) => {
             const Icon = s.icon;
             const on = isWide && current?.key === s.key;
-            const dirty = hasDraft(s.key);
+            const dirty = hasDraft(s.key, s.saved);
             return (
               <a key={s.key} role="listitem" class={`row-item settings-nav-row${on ? ' is-on' : ''}`} href={`#/settings/${s.key}`} aria-current={on ? 'page' : undefined}
                 data-tour={s.tour} data-testid={`settings-nav-${s.key}`}

@@ -10,10 +10,13 @@ import { shownKinds, flatText, SWITCH_OF, type MsgKind } from './messages';
 import { viewOf, patchOf, switchOn, flipSwitch, textOf, type TextsView } from './textsModel';
 import { TextEditor } from './TextEditor';
 
+/** the switches and texts shown, as stored now (also what the dot of the list compares the draft with). « Plage
+    confirmée » exists only while the garage books by arrival windows. */
+export const textsSaved = (): TextsView => viewOf(settings.value.messages, shownKinds(windowsOn.value));
+
 export function TextsSection() {
-  // « Plage confirmée » exists only while the garage books by arrival windows
   const kinds = shownKinds(windowsOn.value);
-  const saved = viewOf(settings.value.messages, kinds);
+  const saved = textsSaved();
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<TextsView>('texts', saved);
   const [open, setOpen] = useState<MsgKind | null>(null);
   const shownLang = lang.value === 'en' ? 'en' : 'fr';
