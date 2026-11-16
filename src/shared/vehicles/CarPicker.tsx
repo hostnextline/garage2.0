@@ -4,13 +4,13 @@
    of every year. « Autre » lets the person type what is not in a list. */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { ChevronDown, ChevronRight, PenLine } from 'lucide-preact';
-import { t } from '../../lib/i18n';
+import { t, lang } from '../../lib/i18n';
 import { fold } from '../../lib/text';
 import { Sheet, Button, Input, SearchInput, Banner, Skeleton, Field } from '../../ui';
 import { yearsList, POPULAR_MAKES, OTHER_MAKES, makeName, modelsFor, refModels, type ModelList } from './carModels';
 import { engineRef, ensureEngineRef, enginesFor, type EngineChoice } from '../../domain/vehicles/engineRef';
 import { engineLine } from './vehicleText';
-import { engineWords } from './VehicleBits';
+import { engineWords, engineButtons } from '../../domain/vehicles/words';
 import '../places/customers.css';
 
 /** engine: chosen at the « Moteur » step (from the engine list), when the person knows it */
@@ -20,8 +20,8 @@ type Step = 'year' | 'make' | 'model' | 'engine';
 const FUEL: Record<string, string> = { gas: 'essence', hybrid: 'hybride', diesel: 'diesel', electric: 'electrique' };
 
 /** the three boxes (Année, Marque, Modèle) */
-export function CarPicker(p: { value: CarChoice; onValue: (v: CarChoice) => void; errors?: Partial<Record<Step, string | null>>; testid?: string; autoOpen?: boolean }) {
-  const [open, setOpen] = useState<Step | null>(p.autoOpen ? 'year' : null);
+export function CarPicker(p: { value: CarChoice; onValue: (v: CarChoice) => void; errors?: Partial<Record<Step, string | null>>; testid?: string }) {
+  const [open, setOpen] = useState<Step | null>(null);
   const v = p.value;
   const box = (step: Step, label: string, value: string, placeholder: string) => (
     <Field label={label} error={p.errors?.[step] || null}>
@@ -44,7 +44,7 @@ export function CarPicker(p: { value: CarChoice; onValue: (v: CarChoice) => void
   );
 }
 
-export function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => void; onDone: (v: CarChoice) => void }) {
+function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => void; onDone: (v: CarChoice) => void }) {
   // the model list needs the make (the year is optional)
   const first: Step = p.start === 'model' && !p.value.make ? 'make' : p.start;
   const [step, setStep] = useState<Step>(first);
@@ -170,14 +170,15 @@ function ModelStep(p: { make: string; year: number | null; value: string; q: str
 
 /** the engines of that model, each with its oil and oil filter (to take the right ones); « Je ne sais pas » closes */
 function EngineStep(p: { list: EngineChoice[]; onPick: (e: EngineChoice | null) => void }) {
+  const lines = engineButtons(p.list, lang.value);
   return (
     <div class="stack" data-testid="carpick-engines">
       <p class="small muted" style={{ margin: 0 }}>{t('vehicles.pick.engineLead')}</p>
       <div class="carpick-engines" role="listbox" aria-label={t('vehicles.fields.engine')}>
-        {p.list.map((e) => (
+        {p.list.map((e, i) => (
           <button key={e.key} type="button" role="option" aria-selected={false} class="carpick-cell carpick-engine" onClick={() => p.onPick(e)} data-testid="carpick-engine">
-            <b>{engineLine({ displacement: e.displacement, cylinders: e.cylinders, turbo: e.turbo, fuel: e.fuel, code: e.code }, engineWords()) || e.code || '—'}</b>
-            {(e.oil_visc || e.oil_filter) && <span class="small muted">{[e.oil_visc && t('vehicles.pick.engineOil', { oil: e.oil_visc }), e.oil_filter && t('vehicles.pick.engineFilter', { ref: e.oil_filter })].filter(Boolean).join(', ')}</span>}
+            <b>{lines[i].title}</b>
+            {lines[i].sub && <span class="small muted">{lines[i].sub}</span>}
           </button>
         ))}
       </div>
@@ -185,3 +186,4 @@ function EngineStep(p: { list: EngineChoice[]; onPick: (e: EngineChoice | null) 
     </div>
   );
 }
+

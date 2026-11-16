@@ -5,12 +5,10 @@
    then without the town; every answer is checked against what was typed: the same door number, the same street, and
    the town or the postal code (its first three characters) when they were given. Two different places that both fit
    are not chosen: the person picks (« Laquelle est la bonne ? »). */
-import { civicNumber, findPostal, postalCode } from '../../lib/text';
-import { splitPasted } from './address';
+import { findPostal, postalCode, fold } from '../../lib/text';
+import { splitPasted, civicOf, withoutPostal } from './address';
 import { photonQuery, metres, type Suggestion } from './photon';
 import { searchPlaces } from './places';
-
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /* words that only say what kind of street it is (they may be written or not, in full or short) */
 const GENERIC = new Set([
@@ -60,10 +58,10 @@ const PROVINCE = /^(qc|que|quebec|on|ont|ontario|nb|ns|pe|nl|mb|sk|ab|bc|yt|nt|n
 export function wantedOf(address: string, opts: { postal?: string | null; city?: string | null } = {}): Wanted {
   const { line, postal } = splitPasted(address);
   const pc = postalCode(opts.postal) || postal || findPostal(line);
-  const parts = line.replace(/\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\s?-?\d[ABCEGHJ-NPRSTV-Z]\d\b/gi, ' ').split(',').map((x) => x.trim()).filter(Boolean);
+  const parts = withoutPostal(line).split(',').map((x) => x.trim()).filter(Boolean);
   const first = parts[0] || '';
   const range = /^\s*(\d{1,6}[A-Za-z]?)\s*-\s*(\d{1,6}[A-Za-z]?)\s+(?=\D)/.exec(first);
-  const civic = range ? range[1] : civicNumber(first);
+  const civic = range ? range[1] : civicOf(first);
   const civics = range ? [range[1], range[2]] : civic ? [civic] : [];
   const street = civic ? first.replace(/^\s*\d{1,6}[A-Za-z]?(?:\s*-\s*\d{1,6}[A-Za-z]?)?\b[\s,]*/, '').trim() : first;
   let city = opts.city?.trim() || null;
@@ -75,9 +73,13 @@ const digits = (s: string | null | undefined) => String(s || '').replace(/\D/g, 
 const near = (a: Suggestion, b: Suggestion) =>
   a.place.lat != null && b.place.lat != null && metres(a.place.lat, a.place.lng!, b.place.lat, b.place.lng!) < 250;
 
+const SIDES = new Set(['est', 'ouest', 'nord', 'sud']);
+/** the side words of a street (« Sherbrooke Ouest » → ouest; « E » and « West » count too) */
+const sidesOf = (street: string) => streetWords(street).filter((x) => SIDES.has(x));
+
 export interface Best { place: Suggestion | null; quality: 'door' | 'street' | null; choices: Suggestion[] }
 /** where the garage works: with no town and no postal code typed, an answer farther than this is not taken */
-export const AREA = { lat: 45.5, lng: -73.65, km: 120 };
+const AREA = { lat: 45.5, lng: -73.65, km: 120 };
 /** the one answer that fits what was typed; none when nothing fits or when two different places fit */
 export function bestPlace(cands: Suggestion[], w: Wanted, area = AREA): Best {
   const inArea = (s: Suggestion) => !!w.city || !!w.fsa || metres(s.place.lat!, s.place.lng!, area.lat, area.lng) <= area.km * 1000;
@@ -87,17 +89,21 @@ export function bestPlace(cands: Suggestion[], w: Wanted, area = AREA): Best {
   const fsaOk = (s: Suggestion) => !!w.fsa && (s.place.postal_code || '').toUpperCase().startsWith(w.fsa);
   // a town or a postal code was given: one of them must agree (a wrong town with the right postal code still fits)
   const placeOk = (s: Suggestion) => (!w.city && !w.fsa) || townOk(s) || fsaOk(s);
+  // « rue Sherbrooke » typed, only « Sherbrooke Ouest » answered: the other side may be 10 km away. A side the person did
+  // not type is sure only when the postal code they typed agrees; otherwise they choose (customers-a-12)
+  const typedSides = sidesOf(w.street);
+  const sideOk = (s: Suggestion) => sidesOf(s.street).every((d) => typedSides.includes(d)) || fsaOk(s);
   const pick = (list: Suggestion[]): Suggestion | null => (list.length && list.every((s) => near(s, list[0])) ? list[0] : null);
 
   const doors = withPos.filter((s) => s.exact && w.civics.some((c) => digits(c) === digits(s.house)) && streetOk(s));
   const fitting = doors.filter(placeOk);
-  const door = pick(fitting);
+  const door = pick(fitting.every(sideOk) ? fitting : []);
   if (door) return { place: door, quality: 'door', choices: fitting };
   if (fitting.length) return { place: null, quality: null, choices: fitting };
   // only the street (its middle, when the street is short): only in the town or postal code that was typed
   if (w.city || w.fsa) {
     const streets = withPos.filter((s) => !s.exact && streetOk(s) && (townOk(s) || fsaOk(s)));
-    const street = pick(streets);
+    const street = pick(streets.every(sideOk) ? streets : []);
     if (street) return { place: street, quality: 'street', choices: streets };
   }
   return { place: null, quality: null, choices: doors.length ? doors : cands.filter((s) => s.place.lat != null && streetOk(s)) };

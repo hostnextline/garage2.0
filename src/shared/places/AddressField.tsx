@@ -1,20 +1,22 @@
 /* An address with suggestions as you type (Photon, OpenStreetMap); gives back the address, the unit, the postal code
    and the position (lat/lng) used by the planner and the map. With no signal or no answer, the address is kept as
-   typed (lat/lng null) and the field says so. Shared with booking and estimates. */
+   typed (lat/lng null) and the field says so. Shared with booking and estimates.
+   This file only draws: the rules are in addressEdit.ts and addressState.ts, the work over time in useAddressField.ts. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { MapPin, CircleCheck, Search, X, CloudOff } from 'lucide-preact';
 import { t } from '../../lib/i18n';
-import { findPostal, postalCode, civicNumber } from '../../lib/text';
+import { postalCode } from '../../lib/text';
 import { Spinner } from '../../ui';
-import { photonQuery, type Suggestion } from './photon';
-import { searchPlaces } from './places';
-import { locate } from './locate';
-import { splitPasted, cityOf, unitApart } from './address';
 import { useFocusOnMount } from '../../ui/hooks';
+import { useAddressField } from './useAddressField';
+import { hasDoor } from './addressEdit';
+import type { PlaceValue } from './place';
 import './customers.css';
 
-export interface PlaceValue { address: string; unit: string | null; postal_code: string | null; lat: number | null; lng: number | null; city?: string | null }
+export { EMPTY_PLACE, placeFields, type PlaceValue } from './place';
+export { searchPlaces } from './places';
+
 export interface AddressFieldProps {
   value: PlaceValue; onValue: (v: PlaceValue) => void; label?: string; autoFocus?: boolean;
   /** also show the unit and postal code fields (a customer's file). Without them, a unit typed or pasted with the
@@ -22,93 +24,29 @@ export interface AddressFieldProps {
   details?: boolean;
   id?: string; 'data-testid'?: string;
 }
-export const EMPTY_PLACE: PlaceValue = { address: '', unit: null, postal_code: null, lat: null, lng: null, city: null };
 
-/* ---------- searching (places.ts), and finding the position without a choice (locate.ts) ---------- */
-export { searchPlaces } from './places';
-/** address → possible places (empty when nothing is found or there is no signal) */
-export async function geocode(q: string): Promise<PlaceValue[]> {
-  const { line, unit } = splitPasted(q);
-  return (await searchPlaces(line)).places.map((s) => ({ ...s.place, unit: unit ?? null }));
-}
-
-/* ---------- the field ---------- */
-type State = 'idle' | 'busy' | 'none' | 'offline';
 export function AddressField(p: AddressFieldProps) {
-  const v: PlaceValue = { ...EMPTY_PLACE, ...(p.value || {}) };
+  const f = useAddressField(p.value, p.onValue);
+  const { v, st } = f;
   const base = useId();
   const id = p.id || `${base}-a`;
   const listId = `${base}-l`;
-  const [items, setItems] = useState<Suggestion[]>([]);
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const [state, setState] = useState<State>('idle');
-  const [focused, setFocused] = useState(false);
-  const [picked, setPicked] = useState<Suggestion | null>(null);
-  const [postalText, setPostalText] = useState(v.postal_code || '');
-  const [postalBad, setPostalBad] = useState(false);
-  const typed = useRef(false);
-  const run = useRef(0);
-  const vRef = useRef(v);
-  vRef.current = v;
-  const emit = (patch: Partial<PlaceValue>) => p.onValue({ ...vRef.current, ...patch });
   useFocusOnMount(p.autoFocus, () => document.getElementById(id));
 
-  useEffect(() => { if (document.activeElement?.id !== `${base}-p`) setPostalText(v.postal_code || ''); }, [v.postal_code]);
-
-  const search = async (text: string, show = true) => {
-    const n = ++run.current;
-    setState('busy');
-    const r = await searchPlaces(text);
-    if (n !== run.current) return;
-    setItems(r.places);
-    setActive(0);
-    setOpen(show && r.places.length > 0);
-    setState(r.error ? 'offline' : r.places.length ? 'idle' : 'none');
-  };
-  // suggestions as you type, 300 ms after the last key
-  useEffect(() => {
-    if (!typed.current) return;
-    const text = v.address.trim();
-    if (photonQuery(text).length < 3 || !/\p{L}/u.test(text)) { run.current++; setItems([]); setOpen(false); setState('idle'); return; }
-    const tm = setTimeout(() => void search(text), 300);
-    return () => clearTimeout(tm);
-  }, [v.address]);
   // suggestions opened by « Chercher » close when the person taps elsewhere
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!open) return;
-    const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    if (!st.open) return;
+    const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) f.dispatch({ type: 'close' }); };
     document.addEventListener('pointerdown', away, true);
     return () => document.removeEventListener('pointerdown', away, true);
-  }, [open]);
-  // the signal is back while the person is in the field: search again
-  useEffect(() => {
-    const on = () => { if (state === 'offline' && v.address.trim() && v.lat == null) void search(v.address, focused); };
-    window.addEventListener('online', on);
-    return () => window.removeEventListener('online', on);
-  }, [state, v.address, v.lat, focused]);
+  }, [st.open]);
 
-  const pick = (s: Suggestion) => {
-    typed.current = false;
-    run.current++;
-    setPicked(s);
-    setOpen(false);
-    setItems([]);
-    setState('idle');
-    emit({ address: s.place.address, postal_code: vRef.current.postal_code || null, lat: s.place.lat, lng: s.place.lng, city: s.place.city ?? null });
-  };
   const onInput = (e: Event) => {
     const el = e.currentTarget as HTMLInputElement;
     const kind = (e as InputEvent).inputType || '';
-    typed.current = true;
-    setPicked(null);
-    if (/^insertFrom(Paste|Drop)$|^insertReplacementText$/.test(kind)) {
-      const s = splitPasted(el.value);
-      emit({ address: s.line, unit: s.unit ?? vRef.current.unit, postal_code: s.postal ?? vRef.current.postal_code, lat: null, lng: null, city: null });
-      return;
-    }
-    emit({ address: el.value, lat: null, lng: null, city: null, postal_code: findPostal(el.value) ?? vRef.current.postal_code });
+    if (/^insertFrom(Paste|Drop)$|^insertReplacementText$/.test(kind)) f.paste(el.value);
+    else f.type(el.value);
   };
   // a pasted address keeps its line breaks here (an input drops them): « 180-8255 av. Mountain Sights⏎Montréal, QC H4P 2B5 »
   const onPaste = (e: ClipboardEvent) => {
@@ -117,75 +55,37 @@ export function AddressField(p: AddressFieldProps) {
     e.preventDefault();
     const el = e.currentTarget as HTMLInputElement;
     const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? el.value.length;
-    const s = splitPasted(el.value.slice(0, a) + text + el.value.slice(b));
-    typed.current = true;
-    setPicked(null);
-    emit({ address: s.line, unit: s.unit ?? vRef.current.unit, postal_code: s.postal ?? vRef.current.postal_code, lat: null, lng: null, city: null });
-  };
-  // the person leaves the field without choosing a suggestion: the position is taken when one place fits what was
-  // typed (the same door, street and town); the address stays as typed. Otherwise the suggestions wait for a choice.
-  const autoLocate = async () => {
-    const cur = vRef.current;
-    const text = cur.address.trim();
-    if (!text || cur.lat != null || photonQuery(text).length < 3 || !/\p{L}/u.test(text)) return;
-    const n = ++run.current;
-    setState('busy');
-    const r = await locate(text, { postal: cur.postal_code });
-    if (n !== run.current || vRef.current.address.trim() !== text || vRef.current.lat != null) { if (n === run.current) setState('idle'); return; }
-    if (r.status === 'found') {
-      const pl = r.place.place;
-      typed.current = false;
-      setPicked({ ...r.place, exact: r.quality === 'door' });
-      setOpen(false);
-      setState('idle');
-      emit({ lat: pl.lat, lng: pl.lng, city: vRef.current.city || pl.city || null, postal_code: vRef.current.postal_code || null });
-    } else {
-      if (r.status === 'choose') setItems(r.choices);
-      setState(r.status === 'offline' ? 'offline' : r.status === 'none' && !items.length ? 'none' : 'idle');
-    }
-  };
-  const onBlur = () => {
-    setFocused(false);
-    setTimeout(() => setOpen(false), 120);
-    // « 3-1250 rue Graham » typed by hand: the unit goes to its own field
-    const cur = vRef.current;
-    if (!cur.unit && cur.address) {
-      const s = unitApart(cur.address);
-      if (s.unit) emit({ address: s.line, unit: s.unit });
-    }
-    if (!picked) setTimeout(() => void autoLocate(), 60);
+    f.paste(el.value.slice(0, a) + text + el.value.slice(b));
   };
   const onKey = (e: KeyboardEvent) => {
-    if (open && items.length) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % items.length); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + items.length) % items.length); return; }
-      if (e.key === 'Enter') { e.preventDefault(); pick(items[Math.max(0, active)]); return; }
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); return; }
-    } else if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); setOpen(true); }
+    if (st.open && st.items.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); f.dispatch({ type: 'move', by: 1 }); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); f.dispatch({ type: 'move', by: -1 }); return; }
+      if (e.key === 'Enter') { e.preventDefault(); f.pick(st.items[Math.max(0, st.active)]); return; }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); f.dispatch({ type: 'close' }); return; }
+    } else if (e.key === 'ArrowDown' && st.items.length) { e.preventDefault(); f.dispatch({ type: 'openList' }); }
   };
   const clear = () => {
-    typed.current = false;
-    run.current++;
-    setItems([]); setOpen(false); setState('idle'); setPicked(null);
-    p.onValue({ ...EMPTY_PLACE });
+    f.clear();
     document.getElementById(id)?.focus();
   };
 
   const hasText = !!v.address.trim();
   const located = v.lat != null && v.lng != null;
+  const picked = st.picked;
   let hint: ComponentChildren = null;
-  if (state === 'busy') hint = <Spinner label={t('customers.address.searching')} />;
-  else if (state === 'offline' && hasText && !located) hint = <span class="customers-hint is-warn"><CloudOff size={16} aria-hidden="true" />{t('customers.address.offline')}</span>;
-  else if (state === 'none' && hasText && !located) hint = <span class="customers-hint is-warn">{t('customers.address.none')}</span>;
+  if (st.status === 'busy') hint = <Spinner label={t('customers.address.searching')} />;
+  else if (st.status === 'offline' && hasText && !located) hint = <span class="customers-hint is-warn"><CloudOff size={16} aria-hidden="true" />{t('customers.address.offline')}</span>;
+  else if (st.status === 'none' && hasText && !located) hint = <span class="customers-hint is-warn">{t('customers.address.none')}</span>;
   else if (located && picked && !picked.exact) hint = <span class="customers-hint is-ok"><CircleCheck size={16} aria-hidden="true" />{t('customers.address.street')}</span>;
   else if (located) hint = <span class="customers-hint is-ok"><CircleCheck size={16} aria-hidden="true" />{t('customers.address.found')}</span>;
   else if (hasText && picked && !picked.exact) hint = <span class="customers-hint is-warn">{t('customers.address.streetNoPos')}</span>;
-  else if (hasText && !open && !focused) {
+  else if (hasText && !st.open && !st.focused) {
     hint = (
       <span class="customers-hint is-warn">
         <MapPin size={16} aria-hidden="true" />
-        <span class="grow">{civicNumber(v.address) ? t('customers.address.toFind') : t('customers.address.noCivic')}</span>
-        <button type="button" class="btn btn-sm btn-secondary" onClick={() => { typed.current = false; void search(v.address); }}>
+        <span class="grow">{hasDoor(v.address) ? t('customers.address.toFind') : t('customers.address.noCivic')}</span>
+        <button type="button" class="btn btn-sm btn-secondary" onClick={f.find}>
           <Search size={16} aria-hidden="true" /><span class="btn-txt">{t('customers.address.find')}</span>
         </button>
       </span>
@@ -193,6 +93,7 @@ export function AddressField(p: AddressFieldProps) {
   }
 
   const optId = (i: number) => `${base}-o${i}`;
+  const listOpen = st.open && st.items.length > 0;
   return (
     <div ref={box} class="customers-address" data-testid={p['data-testid'] || 'address-field'}>
       <div class="field">
@@ -201,18 +102,18 @@ export function AddressField(p: AddressFieldProps) {
           <input
             id={id} class="input" type="text" autoComplete="street-address" enterKeyHint="next" autoFocus={p.autoFocus}
             placeholder={t('customers.address.placeholder')} value={v.address} spellcheck={false}
-            role="combobox" aria-autocomplete="list" aria-expanded={open && items.length > 0} aria-controls={listId}
-            aria-activedescendant={open && items.length ? optId(active) : undefined} aria-describedby={`${base}-h`}
-            onInput={onInput} onPaste={onPaste} onKeyDown={onKey} onFocus={() => { setFocused(true); if (items.length && !located) setOpen(true); }} onBlur={onBlur}
+            role="combobox" aria-autocomplete="list" aria-expanded={listOpen} aria-controls={listId}
+            aria-activedescendant={listOpen ? optId(st.active) : undefined} aria-describedby={`${base}-h`}
+            onInput={onInput} onPaste={onPaste} onKeyDown={onKey} onFocus={f.focus} onBlur={f.blur}
             data-testid="address-input"
           />
           {hasText && <button type="button" class="iconbtn" aria-label={t('customers.address.clear')} onClick={clear}><X /></button>}
         </span>
-        {open && items.length > 0 && (
+        {listOpen && (
           <ul class="customers-sugg" role="listbox" id={listId} aria-label={t('customers.address.suggestions')} data-testid="address-suggestions">
-            {items.map((s, i) => (
-              <li key={s.key} id={optId(i)} role="option" aria-selected={i === active} class={i === active ? 'is-active' : ''}
-                onPointerDown={(e) => e.preventDefault()} onMouseEnter={() => setActive(i)} onClick={() => pick(s)}>
+            {st.items.map((s, i) => (
+              <li key={s.key} id={optId(i)} role="option" aria-selected={i === st.active} class={i === st.active ? 'is-active' : ''}
+                onPointerDown={(e) => e.preventDefault()} onMouseEnter={() => f.dispatch({ type: 'hover', index: i })} onClick={() => f.pick(s)}>
                 <MapPin size={18} aria-hidden="true" class={s.exact ? 'customers-sugg-pin' : 'customers-sugg-pin is-street'} />
                 <span class="customers-sugg-txt"><b>{s.label}</b>{s.sub && <span>{s.sub}</span>}</span>
               </li>
@@ -221,34 +122,33 @@ export function AddressField(p: AddressFieldProps) {
         )}
         <span id={`${base}-h`} class="customers-address-hint" aria-live="polite">{hint}</span>
       </div>
-      {p.details && <div class="customers-address-row">
-        <label class="field">
-          <span class="field-label">{t('customers.address.unit')}<span class="faint">({t('common.optional')})</span></span>
-          <input class="input" type="text" autoComplete="address-line2" value={v.unit || ''} placeholder={t('customers.address.unitPlaceholder')}
-            onInput={(e) => emit({ unit: (e.currentTarget as HTMLInputElement).value || null })} data-testid="address-unit" />
-        </label>
-        <label class="field">
-          <span class="field-label">{t('customers.address.postal')}</span>
-          <input id={`${base}-p`} class="input customers-postal" type="text" autoComplete="postal-code" value={postalText} placeholder={t('customers.address.postalPlaceholder')} maxLength={7}
-            aria-invalid={postalBad || undefined} onInput={(e) => { const s = (e.currentTarget as HTMLInputElement).value; setPostalText(s); setPostalBad(false); emit({ postal_code: s.trim() ? s : null }); }}
-            onBlur={() => { const s = postalText.trim(); if (!s) { setPostalBad(false); return; } const pc = postalCode(s); setPostalBad(!pc); if (pc) { setPostalText(pc); emit({ postal_code: pc }); } }}
-            data-testid="address-postal" />
-          {postalBad && <span class="field-error" role="alert">{t('customers.address.postalError')}</span>}
-        </label>
-      </div>}
+      {p.details && <PlaceDetails base={base} v={v} onDetail={f.detail} />}
     </div>
   );
 }
 
-/** the place to save on a customer or a job: the city read from the address when Photon did not give it */
-export function placeFields(v: PlaceValue): { address: string | null; unit: string | null; postal_code: string | null; lat: number | null; lng: number | null; city: string | null } {
-  const address = v.address.trim() || null;
-  return {
-    address,
-    unit: v.unit?.trim() || null,
-    postal_code: postalCode(v.postal_code) || v.postal_code?.trim().toUpperCase() || null,
-    lat: address ? v.lat : null,
-    lng: address ? v.lng : null,
-    city: v.city || cityOf(address)
-  };
+/** « App., unité » and « Code postal » (a customer's file). The postal code is shown as typed until the person leaves
+    the box, then written the Canada Post way, or marked when it is not one. */
+function PlaceDetails(p: { base: string; v: PlaceValue; onDetail: (patch: Partial<PlaceValue>) => void }) {
+  const postalId = `${p.base}-p`;
+  const [postalText, setPostalText] = useState(p.v.postal_code || '');
+  const [postalBad, setPostalBad] = useState(false);
+  useEffect(() => { if (document.activeElement?.id !== postalId) setPostalText(p.v.postal_code || ''); }, [p.v.postal_code]);
+  return (
+    <div class="customers-address-row">
+      <label class="field">
+        <span class="field-label">{t('customers.address.unit')}<span class="faint">({t('common.optional')})</span></span>
+        <input class="input" type="text" autoComplete="address-line2" value={p.v.unit || ''} placeholder={t('customers.address.unitPlaceholder')}
+          onInput={(e) => p.onDetail({ unit: (e.currentTarget as HTMLInputElement).value || null })} data-testid="address-unit" />
+      </label>
+      <label class="field">
+        <span class="field-label">{t('customers.address.postal')}</span>
+        <input id={postalId} class="input customers-postal" type="text" autoComplete="postal-code" value={postalText} placeholder={t('customers.address.postalPlaceholder')} maxLength={7}
+          aria-invalid={postalBad || undefined} onInput={(e) => { const s = (e.currentTarget as HTMLInputElement).value; setPostalText(s); setPostalBad(false); p.onDetail({ postal_code: s.trim() ? s : null }); }}
+          onBlur={() => { const s = postalText.trim(); if (!s) { setPostalBad(false); return; } const pc = postalCode(s); setPostalBad(!pc); if (pc) { setPostalText(pc); p.onDetail({ postal_code: pc }); } }}
+          data-testid="address-postal" />
+        {postalBad && <span class="field-error" role="alert">{t('customers.address.postalError')}</span>}
+      </label>
+    </div>
+  );
 }

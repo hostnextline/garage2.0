@@ -1,29 +1,40 @@
-import { describe, it, expect } from 'vitest';
-import { findVin, vinScore } from './vinScan';
-import { vinCheck } from '../../lib/text';
+/* The photo reader always ends (customers-b-16, x-errors-30), and says when it could not be loaded (customers-b-09). */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-describe('reading a VIN in the text of a photo', () => {
-  it('finds a clean VIN in the middle of other words', () => {
-    expect(findVin('VEHICLE IDENTIFICATION\nVIN 1HGCM82633A004352\nMADE IN USA')).toEqual({ vin: '1HGCM82633A004352', ok: true });
+const ocr = vi.hoisted(() => ({ load: vi.fn(), terminate: vi.fn(async () => undefined), recognize: vi.fn() }));
+vi.mock('../export/ocr', () => ({
+  shrinkPhoto: async () => ({ dataUrl: 'data:image/jpeg;base64,', w: 1, h: 1 }),
+  loadTesseract: ocr.load
+}));
+import { readVinPhoto, ReaderUnavailable } from './vinScan';
+
+const photo = new Blob(['x'], { type: 'image/jpeg' });
+beforeEach(() => {
+  ocr.terminate.mockClear();
+  ocr.recognize.mockReset();
+  ocr.load.mockReset().mockResolvedValue({ createWorker: async () => ({ recognize: ocr.recognize, terminate: ocr.terminate }) });
+});
+
+describe('reading the VIN in a photo', () => {
+  it('reads the text and finds the VIN', async () => {
+    ocr.recognize.mockResolvedValue({ data: { text: 'VIN 1HGCM82633A004352' } });
+    expect(await readVinPhoto(photo, () => undefined).result).toEqual({ vin: '1HGCM82633A004352', ok: true });
+    expect(ocr.terminate).toHaveBeenCalled();
   });
-  it('fixes the letters a VIN never has (O, Q, I) and a VIN cut by spaces', () => {
-    expect(findVin('1HGCM826 33AOO4352')).toEqual({ vin: '1HGCM82633A004352', ok: true });
-    expect(findVin('2T1BURHE 0JC0I2345')?.vin.length).toBe(17);
+  it('a reading that never answers ends at its time limit, with nothing', async () => {
+    ocr.recognize.mockReturnValue(new Promise(() => undefined));
+    expect(await readVinPhoto(photo, () => undefined, 30).result).toBeNull();
+    expect(ocr.terminate).toHaveBeenCalled();
   });
-  it('repairs look-alike letters with the check digit (Z for 2, S for 5)', () => {
-    expect(findVin('1HGCM8Z633A004352')).toEqual({ vin: '1HGCM82633A004352', ok: true });
-    expect(findVin('1HGCM82633A0043S2')).toEqual({ vin: '1HGCM82633A004352', ok: true });
+  it('cancelled: ends at once, with nothing', async () => {
+    ocr.recognize.mockReturnValue(new Promise(() => undefined));
+    const r = readVinPhoto(photo, () => undefined);
+    await new Promise((done) => setTimeout(done, 5));
+    r.cancel();
+    expect(await r.result).toBeNull();
   });
-  it('keeps a reading whose check digit does not match as doubtful', () => {
-    const r = findVin('WVWZZZ1JZXW000001');
-    expect(r?.vin).toBe('WVWZZZ1JZXW000001');
-    expect(r?.ok).toBe(vinCheck('WVWZZZ1JZXW000001') === 'ok');
-  });
-  it('finds nothing without 17 characters in a row', () => {
-    expect(findVin('TOTAL 45,67 $\nMERCI')).toBeNull();
-    expect(findVin('')).toBeNull();
-  });
-  it('a real VIN scores higher than a random line of 17 characters', () => {
-    expect(vinScore('1HGCM82633A004352')).toBeGreaterThan(vinScore('ABCDEFGHJKLMNPRST'));
+  it('the reader not downloadable: says so', async () => {
+    ocr.load.mockRejectedValue(new Error('cdn'));
+    await expect(readVinPhoto(photo, () => undefined).result).rejects.toBeInstanceOf(ReaderUnavailable);
   });
 });

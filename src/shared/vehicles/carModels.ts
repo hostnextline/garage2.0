@@ -10,7 +10,7 @@ export const POPULAR_MAKES = ['Toyota', 'Honda', 'Hyundai', 'Ford', 'Chevrolet',
   'Dodge', 'Mitsubishi', 'Lexus', 'Acura', 'BMW', 'Mercedes-Benz', 'Audi', 'Tesla', 'Chrysler', 'Buick', 'Infiniti', 'Volvo', 'Cadillac', 'Lincoln', 'Mini'];
 export const OTHER_MAKES = ['Alfa Romeo', 'Fiat', 'Genesis', 'Hummer', 'Jaguar', 'Land Rover', 'Maserati', 'Mercury', 'Oldsmobile', 'Polestar', 'Pontiac', 'Porsche',
   'Rivian', 'Saab', 'Saturn', 'Scion', 'Smart', 'Suzuki'];
-export const ALL_MAKES = [...POPULAR_MAKES, ...OTHER_MAKES];
+const ALL_MAKES = [...POPULAR_MAKES, ...OTHER_MAKES];
 
 /** next year's models down to 1980 */
 export function yearsList(now = new Date().getFullYear()): number[] {
@@ -63,10 +63,10 @@ function remembered(make: string, year: number): string[] | null {
     if (!s) return null;
     const o = JSON.parse(s) as { at: number; models: string[] };
     return Date.now() - o.at < KEEP_MS && Array.isArray(o.models) && o.models.length ? o.models : null;
-  } catch { return null; }
+  } catch { return null; }   // storage blocked (private window) or a broken entry: asked again
 }
 function remember(make: string, year: number, models: string[]) {
-  try { localStorage.setItem(keyOf(make, year), JSON.stringify({ at: Date.now(), models })); } catch { /* full: fine */ }
+  try { localStorage.setItem(keyOf(make, year), JSON.stringify({ at: Date.now(), models })); } catch { /* storage full or blocked: the list is asked again next time */ }
 }
 
 export interface ModelList { models: string[]; complete: boolean }
@@ -84,14 +84,19 @@ export async function modelsFor(make: string, year: number | null, fetchImpl: ty
     try {
       const r = await fetchImpl(`${VPIC}/GetModelsForMakeYear/make/${encodeURIComponent(make.toLowerCase())}/modelyear/${year}/vehicletype/${type}?format=json`, ctl ? { signal: ctl.signal } : undefined);
       return r.ok ? await r.json() : null;
-    } catch { return null; } finally { clearTimeout(timer); }
+    } catch {
+      return null;   // no signal or too slow: counted as not answered
+    } finally { clearTimeout(timer); }
   };
   const answers = await Promise.all(TYPES.map(get));
   await ensureEngineRef().catch(() => undefined);
   if (answers.every((a) => a == null)) return { models: refModels(make, year).length ? refModels(make, year) : refModels(make), complete: false };
   const models = parseModels(answers, make);
-  if (models.length) { memo.set(k, models); remember(make, year, models); }
-  return { models: mergeModels(models, refModels(make, year)), complete: true };
+  // one list of the three did not answer (weak signal in a driveway): what came is shown with « short list », and it is
+  // asked again next time; kept, it hid the make's pickups on that phone for 90 days (customers-b-08)
+  const complete = answers.every((a) => a != null);
+  if (complete && models.length) { memo.set(k, models); remember(make, year, models); }
+  return { models: mergeModels(models, refModels(make, year)), complete };
 }
 
 /** every model of a make, any year (the year is not known): NHTSA's list for the make, with the engine list's */
@@ -106,7 +111,9 @@ async function modelsAnyYear(make: string, fetchImpl: typeof fetch, timeoutMs: n
   try {
     const r = await fetchImpl(`${VPIC}/GetModelsForMake/${encodeURIComponent(make.toLowerCase())}?format=json`, ctl ? { signal: ctl.signal } : undefined);
     answer = r.ok ? await r.json() : null;
-  } catch { answer = null; } finally { clearTimeout(timer); }
+  } catch {
+    answer = null;   // no signal or too slow: the engine list's models, marked short
+  } finally { clearTimeout(timer); }
   await ensureEngineRef().catch(() => undefined);
   if (answer == null) return { models: refModels(make), complete: false };
   const models = parseModels([answer], make);

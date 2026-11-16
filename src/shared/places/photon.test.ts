@@ -60,5 +60,8 @@ describe('address words', () => {
     expect(photonUrl('1250 rue Graham')).toBe('https://photon.komoot.io/api/?q=1250%20rue%20Graham&lang=fr&limit=5&lat=45.50&lon=-73.65');
     expect(photonQuery('1250 rue Graham, Mont-Royal, QC H3P 2C9')).toBe('1250 rue Graham, Mont-Royal, QC');
     expect(photonQuery('  700  rue Lebeau h4n1r3 ')).toBe('700 rue Lebeau');
+    // the unit typed with the address is not asked (customers-a-08); a street like « rue Logan » stays whole
+    expect(photonQuery('3-1250 rue graham')).toBe('1250 rue graham');
+    expect(photonQuery('1650 rue Logan, Montréal')).toBe('1650 rue Logan, Montréal');
   });
 });

@@ -6,13 +6,14 @@ import { useEffect, useState } from 'preact/hooks';
 import { BadgeCheck, Pencil, ClipboardCheck, RefreshCw, Wrench } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { specByKey, staffName } from '../../data/select';
+import { sheetOf } from '../../domain/vehicles/sheet';
 import { saveSpec, saveVehicle } from '../../data/api';
 import { me } from '../../data/auth';
 import type { SpecData, Vehicle, EngineSpec } from '../../data/types';
 import { Panel, Kv, Button, Pill, Banner, Skeleton, Sheet, Field, Input, Textarea, Rows, RowItem, attempt } from '../../ui';
 import { engineRef, ensureEngineRef, matchEngine, specFromRow, specKeyOf, type EngineRow } from '../../domain/vehicles/engineRef';
 import { refLine, refCode, sampleNumber } from './vehicleText';
-import { engineWords } from './VehicleBits';
+import { engineWords } from '../../domain/vehicles/words';
 import { stampDay } from '../../domain/moment/dayWords';
 import '../places/customers.css';
 
@@ -20,7 +21,7 @@ const FIELDS: (keyof SpecData)[] = ['oil_filter', 'drain_torque', 'air_filter', 
 const litres = (n: number) => new Intl.NumberFormat(lang.value === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 2 }).format(n);
 
 /** the values of a sheet, as lines */
-export function SpecValues(p: { data: SpecData; engine?: string | null }) {
+function SpecValues(p: { data: SpecData; engine?: string | null }) {
   const d = p.data || {};
   const oil = [d.oil_l != null ? `${litres(Number(d.oil_l))} L` : '', d.oil_visc || ''].filter(Boolean).join(' ');
   const items: [string, ComponentChildren][] = [
@@ -35,10 +36,8 @@ export function SpecValues(p: { data: SpecData; engine?: string | null }) {
 
 export function SpecPanel(p: { v: Vehicle; canEdit: boolean }) {
   const v = p.v;
-  const linked = specByKey(v.spec_key);
-  const sameKey = specKeyOf(v);
-  const same = !linked && sameKey ? specByKey(sameKey) : undefined;
-  const spec = linked || same;
+  const sheet = sheetOf(v);
+  const spec = sheet?.spec;
   const [chosen, setChosen] = useState<EngineRow | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [others, setOthers] = useState(false);
@@ -68,7 +67,7 @@ export function SpecPanel(p: { v: Vehicle; canEdit: boolean }) {
   if (spec) {
     body = (
       <div class="stack">
-        <ConfirmedSpec spec={spec} shared={!linked} />
+        <ConfirmedSpec spec={spec} shared={!sheet?.linked} />
         {p.canEdit && <Button icon={<Pencil size={18} />} class="customers-self-start" onClick={() => setEditing({ engine: spec.engine || '', data: { ...spec.data }, row: null, key: spec.key })} data-testid="spec-edit">{t('vehicles.spec.edit')}</Button>}
       </div>
     );
