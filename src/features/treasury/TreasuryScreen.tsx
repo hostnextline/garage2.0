@@ -25,6 +25,7 @@ import { ReconPanel } from './ReconPanel';
 import { ExpensesPanel } from './ExpensesPanel';
 import { ExportPanel } from './ExportPanel';
 import { ExpenseSheet } from './ExpenseSheet';
+import { startReceiptQueue } from './receipts';
 import '../../shared/charts/charts.css';
 import './treasury.css';
 
@@ -53,6 +54,9 @@ export default function TreasuryScreen({ query }: ScreenProps) {
   const exp = useMemo(() => expenseLines(expenses, range, NAMES), [expenses, l]);
   const stale = useRefreshOnChange(reportKey, useMemo(() => rowsSignature([...expenses, ...rev.map((r) => [r.day, r.number, r.subtotal, r.tps, r.tvq, r.total, r.paid])]), [expenses, rev]), report.reload);
   const settled = net.value.pending === 0 && !net.value.sending;
+
+  // receipt photos left waiting on this phone by an earlier visit go now
+  useEffect(() => startReceiptQueue(), []);
 
   // « + », « Dépense ou reçu » and the guide open #/treasury?add=1: clean the address first, then open the sheet
   // (the sheet's own history step must not keep ?add=1, or « Retour » would open it again)

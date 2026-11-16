@@ -127,3 +127,8 @@ export function isMissingFunction(e: unknown): boolean {
   if (!err) return false;
   return err.code === 'PGRST202' || err.code === '42883' || err.status === 404 || /could not find the function/i.test(String(err.message || ''));
 }
+
+/** the number of differences still to look at (for the count on the « Plus » tile of Trésorerie) */
+export function openCount(a: ReconAnswer | null | undefined): number {
+  return a && a.available ? a.summary.findings.filter((f) => f.state === 'open' && f.severity !== 'info').length : 0;
+}

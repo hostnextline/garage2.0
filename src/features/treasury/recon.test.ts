@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRecon, shownFindings, allBalanced, findingText, findingTarget, isMissingFunction, type ReconSummary } from './recon';
+import { normalizeRecon, openCount, shownFindings, allBalanced, findingText, findingTarget, isMissingFunction, type ReconSummary } from './recon';
 
 const SHEET = { invoiced_cents: 45990, received: [{ method: 'debit', by: 'u1', by_name: 'Saleh', cents: 22995 }], refunded_cents: 0, expenses: [{ category: 'Carburant', cents: 6629 }], coffre_in_cents: 0, coffre_out_cents: 0, to_receive_cents: 22995 };
 const summary = (x: Record<string, unknown>): ReconSummary => {
@@ -46,6 +46,8 @@ describe('« Rapprochement d’hier »: what the panel shows', () => {
   it('the most serious first, then the newest; what was seen goes after; closed ones are gone', () => {
     const s = summary({ last_run: { day: '2026-11-14', status: 'bad' }, findings: [f('a', 'info'), f('b', 'warn'), f('c', 'bad', 'acked'), f('d', 'bad'), f('e', 'bad', 'closed'), f('g', 'warn', 'open', '2026-11-13')] });
     expect(shownFindings(s).map((x) => x.id)).toEqual(['d', 'b', 'g', 'a', 'c']);
+    expect(openCount({ available: true, summary: s })).toBe(3);
+    expect(openCount({ available: false })).toBe(0);
     expect(allBalanced(s)).toBe(false);
   });
   it('« Tout balance » holds with only a piece of information or what was already seen', () => {

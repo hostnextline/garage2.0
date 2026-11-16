@@ -44,6 +44,9 @@ export async function shrinkPhoto(file: Blob, max = 1600, quality = 0.8): Promis
 
 /* ---------- tesseract.js, from the CDN, only when needed ---------- */
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+/* the exact file of that version (sha384, checked against jsDelivr's own sha256 of it): a CDN that answered anything
+   else would run with the owner's session in this page. Another answer is refused and the person types the amounts. */
+const TESSERACT_SRI = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
 interface LoggerMessage { status: string; progress: number }
 interface TWorker { recognize(image: string): Promise<{ data: { text: string } }>; terminate(): Promise<unknown> }
 interface TesseractLib { createWorker(langs: string | string[], oem?: number, options?: { logger?: (m: LoggerMessage) => void; errorHandler?: (e: unknown) => void }): Promise<TWorker> }
@@ -62,6 +65,7 @@ export function loadTesseract(timeoutMs = 25000): Promise<TesseractLib> {
     s.src = TESSERACT_URL;
     s.async = true;
     s.crossOrigin = 'anonymous';
+    s.integrity = TESSERACT_SRI;
     let done = false;
     const fail = (why: string) => {
       if (done) return;
