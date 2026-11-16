@@ -211,7 +211,7 @@ describe('what this person still sees', () => {
     const e = await boot(nextUid());
     srv.visible = (t, r) => !(t === 'jobs' && r.id === 'j1');
     srv.rpc('job_step', () => { throw Object.assign(new Error('Cette job n’est pas à toi.'), { code: 'not_allowed' }); });
-    await expect(e.callRpc('job_step', { p_job: 'j1', p_action: 'leave' })).rejects.toBeTruthy();
+    await expect(e.send.callRpc('job_step', { p_job: 'j1', p_action: 'leave' })).rejects.toBeTruthy();
     await until(() => !getRow('jobs', 'j1'));
   });
 });

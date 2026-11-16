@@ -12,7 +12,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TableName } from './schema';
 import type { OutboxEntry } from './local';
 import { clearAll, type Row } from './store';
-import { Engine, uuid, type RpcAnswer } from './engine';
+import { Engine } from './engine';
+import { uuid, type RpcAnswer } from './sender';
 import { net, setNet, outbox, type NetState } from './net';
 import { expectAccount } from './client';
 import { REALTIME } from '../lib/config';
@@ -41,7 +42,7 @@ const live = (): Engine => {
 /* ---------- start / stop ---------- */
 export async function startSync(client: SupabaseClient, userId: string) {
   // already running for this person (a second sign-in answer, a retry): just bring what is new
-  if (engine && !engine.closed && engine.client === client && engine.uid === userId) { void engine.pullAll(); void engine.flush(); return; }
+  if (engine && !engine.closed && engine.client === client && engine.uid === userId) { void engine.pullAll(); void engine.send.flush(); return; }
   stopSync();
   const e = new Engine(client, userId, {
     realtime: syncOptions.realtime,
@@ -85,11 +86,11 @@ export interface MutateOpts { label?: string }
 
 /** new row: on screen at once, sent when possible. Returns the row as shown. */
 export function insertRow(t: TableName | 'attachments', values: Record<string, unknown>, opts: MutateOpts & { patch?: Record<string, unknown> } = {}): Promise<Row> {
-  return live().insertRow(t, values, opts);
+  return live().send.insertRow(t, values, opts);
 }
 /** change some fields of a row: on screen at once, sent when possible */
 export function updateRow(t: TableName, id: string, patch: Record<string, unknown>, opts: MutateOpts & { prev?: Record<string, unknown> } = {}): Promise<void> {
-  return live().updateRow(t, id, patch, opts);
+  return live().send.updateRow(t, id, patch, opts);
 }
 /** soft delete (the row stays on the server with deleted_at, so other devices learn about it) */
 export function deleteRow(t: TableName, id: string, opts: MutateOpts = {}) {
@@ -97,29 +98,29 @@ export function deleteRow(t: TableName, id: string, opts: MutateOpts = {}) {
 }
 /** a server operation (booking, invoice number, payment…). Waits for the answer when online; queued when not. */
 export async function callRpc<T = unknown>(name: string, args: Record<string, unknown>, opts: MutateOpts & { queue?: boolean; noOp?: boolean } = {}): Promise<RpcAnswer<T>> {
-  return live().callRpc<T>(name, args, opts);
+  return live().send.callRpc<T>(name, args, opts);
 }
 /** a change of the person's own account (language, phone, switches): sent now; without signal it is kept and sent later;
     a refusal is listed in the frame. Never throws. */
 export async function sendOrKeep(name: string, args: Record<string, unknown>, label?: string): Promise<{ queued: boolean }> {
   const e = live();
   try {
-    await e.direct(name, args);
+    await e.send.direct(name, args);
     return { queued: false };
   } catch (err) {
     const c = classify(err);
-    if (c.kind === 'network' || c.kind === 'auth') { e.keep(name, args, label); return { queued: true }; }
-    e.listRefusal(name, args, c, label);
+    if (c.kind === 'network' || c.kind === 'auth') { e.send.keep(name, args, label); return { queued: true }; }
+    e.send.listRefusal(name, args, c, label);
     return { queued: false };
   }
 }
 /** runs `fn` once the operation `op` is confirmed by the server */
-export function onConfirmed(op: string, fn: (data: unknown) => void) { engine?.onConfirmed(op, fn); }
+export function onConfirmed(op: string, fn: (data: unknown) => void) { engine?.send.onConfirmed(op, fn); }
 
 /** sends what waits now; resolves when the queue is empty or has to wait */
-export function flush(): Promise<void> { return engine ? engine.flush() : Promise.resolve(); }
+export function flush(): Promise<void> { return engine ? engine.send.flush() : Promise.resolve(); }
 /** the person read the refusal: drop it (or send it once more, after what was done since) */
-export async function dismissFailed(seq: number, retry = false) { await engine?.dismiss(seq, retry); }
+export async function dismissFailed(seq: number, retry = false) { await engine?.send.dismiss(seq, retry); }
 export async function pendingCount(): Promise<number> { return engine ? engine.outbox.pending().length : net.value.pending; }
 /** the changes waiting on this device (and the refused ones), oldest first */
 export async function outboxList(): Promise<OutboxEntry[]> { return engine ? engine.outbox.items.map((i) => i.e) : []; }
