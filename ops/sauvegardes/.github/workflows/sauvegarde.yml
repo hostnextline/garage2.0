@@ -26,3 +26,8 @@ jobs:
           if git diff --cached --quiet; then echo "Rien n'a changé depuis la dernière sauvegarde."; exit 0; fi
           git commit -q -m "Sauvegarde du $(date -u +%F)"
           git push -q
+      - name: Le dire au garage, puis le rapprochement de la journée
+        # APRÈS « Garder la copie », exprès : cette étape finit en rouge quand le rapprochement trouve un écart
+        # (GitHub écrit alors au propriétaire), et la sauvegarde de la nuit est déjà gardée quoi qu'il arrive.
+        # Un serveur qui ne connaît pas encore « done » ou « recon » : un avertissement, jamais un échec.
+        run: node sauvegarde.mjs --fin donnees
