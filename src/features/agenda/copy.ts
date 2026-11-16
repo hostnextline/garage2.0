@@ -5,7 +5,7 @@
    is signed in and the phone still holds the appointment. */
 import { effect, signal } from '@preact/signals';
 import { href } from '../../platform/router';
-import { me } from '../../data/auth';
+import { access } from '../../data/auth';
 import { job as jobRow } from '../../data/select';
 import type { Job } from '../../data/types';
 import type { BlockKey, Day } from '../../lib/dates';
@@ -31,10 +31,11 @@ export function copiedRow(): Job | undefined {
   return id ? jobRow(id) : undefined;
 }
 
-// signing out (or another person signing in on the same tab) forgets the copy: it was the other person's
+// signing out (or another person signing in on the same tab) forgets the copy: it was the other person's. The real
+// account is watched, not the one shown: « Voir l'app comme… » and back keeps the owner's copy.
 let signedIn: string | null = null;
 effect(() => {
-  const id = me.value?.id ?? null;
+  const id = access.value?.id ?? null;
   if (signedIn && id !== signedIn) clearCopy();
   if (id) signedIn = id;
 });

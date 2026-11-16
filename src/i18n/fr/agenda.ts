@@ -144,6 +144,8 @@ export const agenda = {
     timeText: 'L’app place l’arrêt dans cette plage et choisit l’heure exacte d’arrivée selon la route.',
     timeFull: 'Ça ne rentre pas à cette heure-là. Choisis parmi les plages encore possibles.',
     sameWin: '{name} a déjà cette plage ({win}). L’heure exacte d’arrivée, c’est l’app qui la choisit selon la route.',
-    pastTime: 'Cette heure est déjà passée : choisis une heure à venir.'
+    pastTime: 'Cette heure est déjà passée : choisis une heure à venir.',
+    waiting: 'En attente d’envoi',
+    waitingText: 'Le déplacement est gardé sur le téléphone : il partira dès que le réseau revient.'
   }
 };

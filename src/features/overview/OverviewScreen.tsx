@@ -34,9 +34,8 @@ export default function OverviewScreen(_p: ScreenProps) {
   const isWide = wide.value;
   const [selected, setSelected] = useState<string | null>(null);
   const data = useTeamMap(day);
-  const sig = JSON.stringify(data);
-  // assembled again only when the map's data really changed (the phone's copy is rebuilt on every redraw)
-  const m = useMemo(() => assemble(data, { nameOf: staffName }), [sig]);
+  // assembled again only when the map's data really changed (useTeamMap gives back the same map while it draws the same)
+  const m = useMemo(() => assemble(data, { nameOf: staffName }), [data]);
   // the routes by the streets, like « Carte » (straight lines only until the route planner answers)
   useRoads(m.trucks);
   const jobs = jobsOn(day).filter((j) => j.status !== 'cancelled' && j.status !== 'no_show');

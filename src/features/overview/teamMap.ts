@@ -18,3 +18,20 @@ export function mergeTeamMap(server: TeamMapAnswer | null, device: TeamMapAnswer
   const trucks = [...server.trucks, ...device.trucks.filter((d) => !server.trucks.some((s) => s.id === d.id) && jobs.some((j) => j.truck_id === d.id))];
   return { home: server.home ?? device.home, trucks, jobs, people: server.people, trips: server.trips };
 }
+
+/** the server's answer as the screen keeps it: of which day, and when it came */
+export interface ServerMap { day: string; at: number; data: TeamMapAnswer }
+/** how long the mechanics' positions and trips of the last answer are still shown when a refresh fails */
+export const KEEP_PEOPLE_MS = 90_000;
+/** a refresh failed (no signal, slow, refused): the phone's copy for the appointments, always (agenda-05); the
+    mechanics' positions and trips of the last answer stay while they are recent (under 90 s), so the map does not
+    blink on a weak link; older, or of another day: nothing from the server. `at` stays the time of the real answer. */
+export function afterFailure(prev: ServerMap | null, day: string, now: number): ServerMap | null {
+  if (!prev || prev.day !== day || now - prev.at >= KEEP_PEOPLE_MS) return null;
+  return { ...prev, data: { ...prev.data, jobs: [] } };
+}
+/** a cheap key of a map: what the screen draws, the trips' routes (long lists of points) by their length and their
+    figures only. Two maps with the same key draw the same. */
+export function mapKey(a: TeamMapAnswer): string {
+  return JSON.stringify({ ...a, trips: a.trips.map((t) => ({ ...t, route: t.route?.length ?? 0 })) });
+}

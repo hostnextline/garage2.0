@@ -144,6 +144,8 @@ export const agenda: typeof fr = {
     timeText: 'The app puts the stop in this window and picks the exact arrival time from the route.',
     timeFull: 'It does not fit at that time. Pick one of the windows still possible.',
     sameWin: '{name} already has this window ({win}). The app picks the exact arrival time from the route.',
-    pastTime: 'That time has already passed: pick a time to come.'
+    pastTime: 'That time has already passed: pick a time to come.',
+    waiting: 'Waiting to be sent',
+    waitingText: 'The move is kept on the phone: it goes as soon as the network is back.'
   }
 };

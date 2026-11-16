@@ -12,7 +12,7 @@ vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ...ui }));
 vi.mock('../../shared/moment/notify', async (orig) => ({ ...(await orig<object>()), ...notify }));
 vi.mock('../../data/select', async (orig) => ({ ...(await orig<object>()), ...rows }));
 
-import { moveToWindow, moveFlow, moveToTime, movesWaiting, windowMove } from './move';
+import { moveToWindow, moveFlow, moveToTime, movesWaiting, windowMove, moveSettled, farCheckDay } from './move';
 
 const julie = (o: Partial<Job> = {}): Job => ({ id: 'j1', number: 7, day: '2026-11-20', block: 'day', status: 'booked', win_start: 540, win_end: 780, win_flex: false,
   truck_id: 't1', truck_pinned: false, duration_min: 60, lat: 45.5, lng: -73.6, customer_id: null, needs_machine: false, vehicle_kind: null, ...o } as Job);
@@ -92,7 +92,7 @@ describe('refusals and « garde-route »', () => {
   it('a refused move says why, opens the windows when it is full, and leaves the outbox alone (agenda-21)', async () => {
     api.moveJob.mockRejectedValue(Object.assign(new Error('Plein'), { hint: 'window_full' }));
     expect(await moveToTime(julie(), '2026-11-21', null, 600)).toBe(false);
-    expect(windowMove.value).toEqual({ jobId: 'j1', day: '2026-11-21' });
+    expect(windowMove.value).toEqual({ jobId: 'j1', day: '2026-11-21', farDone: true });
     expect(sync.outboxList).not.toHaveBeenCalled();
   });
   it('asks « Beaucoup de route ce jour-là » before a drag to a far place, and does not move when refused (agenda-03)', async () => {
@@ -107,5 +107,70 @@ describe('refusals and « garde-route »', () => {
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true } });
     expect(await moveFlow(julie({ block: 'am' }), { day: '2026-11-21', block: 'pm' })).toBe(true);
     expect(ui.ask).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('waiting for a move kept on the phone, without losing the answer (review TA-3)', () => {
+  const entry = { op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } };
+  it('ends when the send finished between reading the outbox and starting to wait (the wait is never answered)', async () => {
+    sync.outboxList.mockResolvedValueOnce([entry]).mockResolvedValueOnce([]);
+    sync.whenDone.mockReturnValue(new Promise(() => {}));
+    expect(await moveSettled('j1')).toEqual({ kind: 'gone' });
+  });
+  it('ends as refused when the send was refused in between', async () => {
+    sync.outboxList.mockResolvedValueOnce([entry]).mockResolvedValueOnce([{ ...entry, state: 'failed' }]);
+    sync.whenDone.mockReturnValue(new Promise(() => {}));
+    expect(await moveSettled('j1')).toEqual({ kind: 'refused' });
+  });
+  it('gives the server’s answer when the wait was set in time', async () => {
+    sync.outboxList.mockResolvedValue([entry]);
+    sync.whenDone.mockResolvedValue({ ok: true, changed: true });
+    expect(await moveSettled('j1')).toEqual({ kind: 'done', data: { ok: true, changed: true } });
+  });
+  it('the race: the move leaves the phone before the wait, the text still goes and the job can be dragged again', async () => {
+    api.moveJob.mockResolvedValue({ queued: true });
+    rows.job.mockReturnValue(julie({ day: '2026-11-22' }));
+    sync.outboxList.mockResolvedValueOnce([entry]).mockResolvedValueOnce([]);
+    sync.whenDone.mockReturnValue(new Promise(() => {}));
+    await moveToWindow(julie(), '2026-11-22', { start: 540 });
+    await flush(); await flush();
+    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+    expect(movesWaiting.value.has('j1')).toBe(false);
+  });
+  it('an unreadable outbox clears the « waiting » mark, with or without a text, and nothing is left unhandled', async () => {
+    api.moveJob.mockResolvedValue({ queued: true });
+    sync.outboxList.mockRejectedValue(new Error('IDB closed'));
+    await moveToWindow(julie(), '2026-11-22', { start: 540 });
+    await flush(); await flush();
+    expect(movesWaiting.value.has('j1')).toBe(false);
+    notify.wantsText.mockReturnValue(false);
+    await moveToWindow(julie(), '2026-11-22', { start: 600 });
+    await flush(); await flush();
+    expect(movesWaiting.value.has('j1')).toBe(false);
+  });
+});
+
+describe('« Beaucoup de route » asked once for one move (review TA-5)', () => {
+  it('the sheet opened after a drop that did not fit does not ask it again', async () => {
+    api.suggestBlocks.mockResolvedValue([{ day: '2026-11-21', block: 'day', far: 'day', day_min: 140 }]);
+    api.moveJob.mockRejectedValueOnce(Object.assign(new Error('Plein'), { hint: 'window_full' }));
+    expect(await moveToTime(julie(), '2026-11-21', null, 600)).toBe(false);
+    expect(ui.ask).toHaveBeenCalledTimes(2);            // the move, then « Beaucoup de route »
+    expect(windowMove.value?.farDone).toBe(true);
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true } });
+    ui.ask.mockClear(); api.suggestBlocks.mockClear();
+    expect(await moveToWindow(julie(), '2026-11-21', { start: 780 }, null)).toBe(true);
+    expect(ui.ask).not.toHaveBeenCalled();
+    expect(api.suggestBlocks).not.toHaveBeenCalled();
+  });
+  it('the sheet asks the question it started when it opened, without asking the server again at the pick', async () => {
+    api.suggestBlocks.mockResolvedValue([{ day: '2026-11-21', block: 'day', far: 'day', day_min: 140 }]);
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true } });
+    const far = farCheckDay(julie(), '2026-11-21');
+    ui.ask.mockResolvedValueOnce(false);
+    expect(await moveToWindow(julie(), '2026-11-21', { start: 780 }, far)).toBe(false);
+    expect(api.suggestBlocks).toHaveBeenCalledTimes(1);
+    expect(ui.ask).toHaveBeenCalledTimes(1);
+    expect(api.moveJob).not.toHaveBeenCalled();
   });
 });

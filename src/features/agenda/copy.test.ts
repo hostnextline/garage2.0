@@ -1,11 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { access } from '../../data/auth';
+import { access, viewAs } from '../../data/auth';
 import { replaceLocal, clearAll } from '../../data/store';
 import type { Access } from '../../data/types';
 import { copiedJob, copiedRow, copyJob, clearCopy } from './copy';
 
 const ID = '11111111-2222-3333-4444-555555555555';
-afterEach(() => { clearCopy(); access.value = null; clearAll(); });
+afterEach(() => { clearCopy(); viewAs.value = null; access.value = null; clearAll(); });
 
 describe('the appointment copied (agenda-19)', () => {
   it('is forgotten when the person signs out, or another person signs in on the same tab', () => {
@@ -19,6 +19,14 @@ describe('the appointment copied (agenda-19)', () => {
     copyJob(ID);
     access.value = { id: 'hassan' } as Access;
     expect(copiedJob.value).toBe(null);
+  });
+  it('stays when the owner looks at the app as someone else and comes back (« Voir l’app comme… »)', () => {
+    access.value = { id: 'hassan', owner: true } as Access;
+    copyJob(ID);
+    viewAs.value = { id: 'nadia', owner: false } as Access;
+    expect(copiedJob.value).toBe(ID);
+    viewAs.value = null;
+    expect(copiedJob.value).toBe(ID);
   });
   it('is offered for pasting only while the phone holds the appointment', () => {
     copyJob(ID);

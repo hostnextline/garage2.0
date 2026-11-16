@@ -12,7 +12,7 @@ import type { Job } from '../../data/types';
 import { Sheet, Button, Spinner } from '../../ui';
 import { wantsText } from '../../shared/moment/notify';
 import { moveDayTitle, windowChoices } from './layout';
-import { windowMove, windowsFor, moveToWindow } from './move';
+import { windowMove, windowsFor, moveToWindow, farCheckDay, type FarAsk } from './move';
 import { jobPerson } from '../../domain/jobs/words';
 
 export function MoveWindowHost() {
@@ -23,10 +23,10 @@ export function MoveWindowHost() {
   const j = m ? jobRow(m.jobId) : undefined;
   // gone from this phone, or no longer booked (on the way, cancelled): nothing to move any more
   if (!m || !j || j.status !== 'booked') return null;
-  return <MoveWindowSheet key={`${m.jobId}|${m.day}`} job={j} day={m.day} onClose={() => { windowMove.value = null; }} />;
+  return <MoveWindowSheet key={`${m.jobId}|${m.day}`} job={j} day={m.day} farDone={!!m.farDone} onClose={() => { windowMove.value = null; }} />;
 }
 
-function MoveWindowSheet(p: { job: Job; day: Day; onClose: () => void }) {
+function MoveWindowSheet(p: { job: Job; day: Day; farDone: boolean; onClose: () => void }) {
   const { job: j, day } = p;
   const l = lang.value;
   const [list, setList] = useState<Suggestion[] | null>(null);
@@ -35,6 +35,9 @@ function MoveWindowSheet(p: { job: Job; day: Day; onClose: () => void }) {
   const [turn, setTurn] = useState(0);
   // a tap is taken while the last one is still being answered (state alone would let a fast second tap through)
   const picking = useRef(false);
+  // « garde-route »: asked once, while the windows load (not again when the drop on the grid already asked it)
+  const far = useRef<Promise<FarAsk> | null | undefined>(undefined);
+  if (far.current === undefined) far.current = p.farDone ? null : farCheckDay(j, day);
   useEffect(() => {
     let live = true;
     setList(null); setError(null);
@@ -52,7 +55,7 @@ function MoveWindowSheet(p: { job: Job; day: Day; onClose: () => void }) {
     picking.current = true;
     setBusy(key);
     try {
-      if (await moveToWindow(j, day, win)) p.onClose();
+      if (await moveToWindow(j, day, win, far.current)) p.onClose();
     } finally { picking.current = false; setBusy(null); }
   };
   return (
