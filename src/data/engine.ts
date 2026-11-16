@@ -417,10 +417,9 @@ export class Engine {
   }
   async updateRow(t: string, id: string, patch: Record<string, unknown>, o: { label?: string; prev?: Record<string, unknown> } = {}): Promise<void> {
     this.o.guard();
-    if (!(await this.outbox.merge(t, id, patch, o.prev))) {
-      const it = this.outbox.add(this.entry({ kind: 'update', table: t, id, values: patch, label: o.label, ...(o.prev ? { prev: o.prev } : {}) }), true);
-      await it.ready;
-    }
+    const separately = () => this.outbox.add(this.entry({ kind: 'update', table: t, id, values: patch, label: o.label, ...(o.prev ? { prev: o.prev } : {}) }), true);
+    const merged = this.outbox.merge(t, id, patch, o.prev, () => { separately(); this.queued(); });
+    await (merged ? this.outbox.items[this.outbox.items.length - 1]?.ready : separately().ready);
     this.queued();
   }
 

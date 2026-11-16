@@ -99,6 +99,30 @@ describe('the outbox', () => {
     await until(() => net.value.pending === 0);
   });
 
+  it('an edit and an operation asked right after it, without waiting, leave in that order (core-data-45)', async () => {
+    srv.offline = true;
+    setNet({ online: false });
+    const e = await boot(nextUid());
+    srv.put('invoices', { id: 'v1', notes: null });
+    void e.updateRow('invoices', 'v1', { notes: 'Merci' });
+    const op = e.callRpc('invoice_finish', { p_invoice: 'v1' });
+    expect(e.outbox.items.map((i) => i.e.kind)).toEqual(['update', 'rpc']);
+    await op;
+  });
+
+  it('edits of a new row that never left are one request', async () => {
+    srv.hold();
+    const e = new Engine(clientFor(srv, nextUid()), 'x', { realtime: false, requireSession: false, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(e);
+    await e.start();
+    const p1 = e.insertRow('customers', { id: 'm1', first_name: 'A' });
+    const p2 = e.updateRow('customers', 'm1', { phone: '514' });
+    expect(e.outbox.items.length).toBe(1);
+    expect(e.outbox.items[0].e.values).toMatchObject({ first_name: 'A', phone: '514' });
+    srv.release();
+    await p1; await p2;
+  });
+
   it('an entry of the previous version that merged an edit after a lost answer delivers that edit (core-data-04, legacy)', async () => {
     const uid = nextUid();
     srv.put('customers', { id: 'c4', first_name: 'Avant', phone: null });

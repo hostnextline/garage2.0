@@ -77,33 +77,36 @@ export class Outbox {
     for (const i of mem) i.rescued = kept.has(i.e.op);
   }
 
-  /** merges an edit into the last entry when it is the same row's and never left the phone; false: add it instead */
-  async merge(table: string, id: string, patch: Record<string, unknown>, prev?: Record<string, unknown>): Promise<boolean> {
+  /** merges an edit into the last entry when it is the same row's and never left the phone; false: add it instead.
+      Decided at once (an operation asked right after, without waiting, still comes after this edit: core-data-45);
+      kept in IndexedDB behind, checked again there: if another tab started sending the entry meanwhile, the edit is
+      added as its own change by `separately`. */
+  merge(table: string, id: string, patch: Record<string, unknown>, prev: Record<string, unknown> | undefined, separately: () => void): boolean {
     const last = this.items[this.items.length - 1];
     if (!last || last === this.inFlight) return false;
     const e = last.e;
     if (e.state !== 'pending' || e.table !== table || e.id !== id || (e.kind !== 'insert' && e.kind !== 'update')) return false;
     if (e.v !== 2 || (e.sent ?? e.tries) > 0 || e.tries > 0) return false;
-    await last.ready;
     const merged = (cur: OutboxEntry): OutboxEntry => ({
       ...cur,
       values: { ...(cur.values || {}), ...patch },
       ...(cur.patch ? { patch: { ...cur.patch, ...patch } } : {}),
       ...(prev || cur.prev ? { prev: { ...(prev || {}), ...(cur.prev || {}) } } : {})
     });
-    if (last.mem) { last.e = merged(e); this.saveMem(); this.changed(); return true; }
-    try {
-      const { result } = await this.db!.mutateEntry(e.seq!, (cur) => {
-        // checked again inside the transaction: another tab may have started sending it meanwhile
-        if (!cur || cur.state !== 'pending' || (cur.sent ?? cur.tries) > 0 || cur.tries > 0) return { result: null };
-        const next = merged(cur);
-        return { put: next, result: next };
-      });
-      if (!result) return false;
-      last.e = { ...result, seq: e.seq };
-      this.changed();
-      return true;
-    } catch { return false; }
+    last.e = merged(e);
+    this.changed();
+    if (last.mem) { this.saveMem(); return true; }
+    const before = last.ready;
+    last.ready = before.then(async () => {
+      try {
+        const { result } = await this.db!.mutateEntry(last.e.seq!, (cur) => {
+          if (!cur || cur.state !== 'pending' || (cur.sent ?? cur.tries) > 0 || cur.tries > 0) return { result: false };
+          return { put: merged(cur), result: true };
+        });
+        if (!result) separately();
+      } catch { this.storageOk(false); }
+    });
+    return true;
   }
 
   /** marks the entry as « may have reached the server », before its request leaves. null: nothing to send any more */
