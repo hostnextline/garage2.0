@@ -76,7 +76,8 @@ export function CallAddressPanel(p: { place: PlaceValue; act: Act }) {
   );
 }
 
-/** « Appel entrant »: the car(s) of the call; each has its own work, one appointment each in the same moment */
+/** « Appel entrant »: the car(s) of the call; each has its own work, one appointment each in the same moment. A car may
+    stay empty (it is simply not made): its fields say what to fix only when it must be fixed */
 export function CallCarPanel(p: { d: Draft; bad: (id: string) => boolean; act: Act }) {
   const { d } = p;
   const cars = d.callCars;
@@ -95,7 +96,7 @@ export function CallCarPanel(p: { d: Draft; bad: (id: string) => boolean; act: A
             ))}
           </div>
         )}
-        <CarForm key={cur.id} value={cur.draft} onPatch={(patch) => p.act({ t: 'callCar', patch })} mode={cur.mode} onMode={(mode) => p.act({ t: 'callCar', mode })} tried={d.tried} />
+        <CarForm key={cur.id} value={cur.draft} onPatch={(patch) => p.act({ t: 'callCar', patch })} mode={cur.mode} onMode={(mode) => p.act({ t: 'callCar', mode })} tried={d.tried && p.bad(cur.id)} />
         {d.tried && several && carIsEmpty(cur.draft) && p.bad(cur.id) && <Banner kind="bad" data-testid="call-car-need">{t('booking.call.needCar')}</Banner>}
         <div class="row-wrap">
           <Button size="sm" icon={<Plus />} onClick={() => p.act({ t: 'addCallCar', id: uuid(), mint: uuid() })} data-testid="call-car-add">{t('booking.call.addCar')}</Button>
