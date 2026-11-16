@@ -1,0 +1,600 @@
+/* The offline engine of one signed-in account on this device. It owns everything that runs in the background for
+   that account — the device copy, the outbox and its sender, the pulls, the visibility check, realtime, the timers
+   and the listeners — and nothing else does. Signing out (or switching account) stops it: its requests are
+   cancelled, and any answer that still comes back is dropped before it touches the screen, the database or a cursor
+   (core-data-07). The next account gets a new engine.
+   Order at start: the device copy on screen at once, then live changes, the first pull, the queue. */
+import { batch } from '@preact/signals';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { SYNCED, type TableName } from './schema';
+import { openLocal, type LocalDb, type OutboxEntry, type Commit } from './local';
+import { bindStore, unbindStore, baseRow, baseIds, baseRows, type Row, type StoreWriter } from './store';
+import { Outbox, type Item } from './outbox';
+import { waitingOf } from './overlay';
+import { sendEntry, isSynced, REQUEST_MS, type Sent } from './send';
+import { pullTable } from './pull';
+import { scanTable, fetchBy, jobsGone, type ScanIO } from './reconcile';
+import { subscribeChanges, readChange, type Change } from './realtime';
+import { senderLock, type SenderLock, type LockManagerLike } from './lock';
+import { net, setNet, browserOffline } from './net';
+import { ask, expectAccount, STOP } from './client';
+import { readRescue, clearRescue } from './rescue';
+import { sampleServerTime, serverNow, tsMicros } from './clock';
+import { AppError, classify, errorText } from '../lib/errors';
+import { today, addDays } from '../lib/dates';
+
+export interface EngineOptions {
+  realtime: boolean;
+  /** every database request must carry this account's session (off for the demo, which has none) */
+  requireSession: boolean;
+  storage: 'idb' | 'memory';
+  /** the browser's Web Locks (tests pass their own; null = none) */
+  locks?: LockManagerLike | null;
+  /** rows the server changed (the rights follow the person's own row, the settings…) */
+  notify(t: TableName, rows: Row[]): void;
+  /** a table write reached the server */
+  sent(e: OutboxEntry): void;
+  /** this person sees only part of the jobs (a mechanic without « Agenda »): their coming jobs are watched */
+  narrow(): boolean;
+  /** throws when nothing may be changed (« Voir l'app comme… ») */
+  guard(): void;
+  /** the waits between two tries of the queue's head (tests make them short) */
+  retryDelays?: number[];
+}
+
+interface Waiter { resolve(v: unknown): void; reject(e: unknown): void; watching: boolean }
+/** `op`: the operation's id (optional so that callers typing the old answer still compile) */
+export interface RpcAnswer<T> { queued: boolean; data?: T; op?: string }
+
+const CYCLE_MS = 45000;
+const LIVE_CYCLE_MS = 180000;
+const SAFETY_MS = 20000;
+const SCAN_MS = 30 * 60000;
+const WATCH_MS = 60000;
+const HIDDEN_LONG_MS = 10 * 60000;
+const STUCK_AFTER_MS = 120000;
+const DELAYS = [2000, 5000, 15000, 30000, 60000];
+/** an operation unknown to the server is tried this many times before it is listed as refused (a deploy may be under way) */
+const UPDATE_TRIES = 5;
+/** what to read with a job that appears on this device (it came onto my truck): its lines, texts, trips and money */
+const CHILDREN: { t: TableName; by: string }[] = [
+  { t: 'job_items', by: 'job_id' }, { t: 'messages', by: 'job_id' }, { t: 'trips', by: 'job_id' }, { t: 'invoices', by: 'job_id' }, { t: 'payments', by: 'job_id' }
+];
+const LEAVES_WITH_JOB: TableName[] = ['job_items', 'messages', 'trips'];
+/** refusals that say « this job is not (or no longer) yours » */
+const NOT_MINE = /^(not_allowed|not_found|no_job)$/;
+
+const uuid = (): string => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+};
+export { uuid };
+
+export class Engine {
+  closed = false;
+  readonly outbox: Outbox;
+  private readonly ctl = new AbortController();
+  private readonly token = {};
+  private readonly writer: StoreWriter;
+  private readonly lock: SenderLock;
+  private readonly io: ScanIO;
+  private db: LocalDb | null;
+  private meta: Record<string, unknown> = {};
+  private waiters = new Map<string, Waiter>();
+  private confirmed = new Map<string, ((data: unknown) => void)[]>();
+  private pulling = new Map<TableName, Promise<boolean>>();
+  private draining: Promise<void> | null = null;
+  private again = false;
+  private reconciling: Promise<void> | null = null;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private backoff = 0;
+  private refreshes = 0;
+  private timers: ReturnType<typeof setInterval>[] = [];
+  private timeouts = new Set<ReturnType<typeof setTimeout>>();
+  private off: (() => void)[] = [];
+  private watchers = new Map<TableName, Set<Set<string>>>();
+  private firstPullDone = false;
+  private lastPullAt = 0;
+  private lastWatch = 0;
+  private hiddenAt = 0;
+  private storageGood = true;
+  private head: { op: string; since: number } | null = null;
+  private arrivals = new Set<string>();
+  private arrivalsTimer: ReturnType<typeof setTimeout> | null = null;
+  private rereads = new Map<TableName, Set<string>>();
+  private rereadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(readonly client: SupabaseClient, readonly uid: string, private readonly o: EngineOptions) {
+    this.writer = bindStore(this.token);
+    this.db = o.storage === 'idb' && typeof indexedDB !== 'undefined' ? openLocal(uid) : null;
+    this.outbox = new Outbox(this.db, uid, () => this.outboxChanged(), (ok) => this.storageOk(ok));
+    this.lock = senderLock(uid, { locks: o.locks });
+    const self = this;
+    this.io = {
+      client, signal: this.ctl.signal,
+      closed: () => this.closed,
+      get meta() { return self.meta; },
+      apply: (t, rows, force) => this.apply(t, rows, force),
+      remove: (t, ids) => { if (!this.closed) this.writer.remove(t, ids); },
+      save: (c) => this.save(c),
+      baseIds: (t) => baseIds(t),
+      baseStamp: (t, id) => { const r = baseRow(t, id); return r ? r.updated_at ?? null : undefined; },
+      watch: (t) => { const s = new Set<string>(); let w = this.watchers.get(t); if (!w) this.watchers.set(t, (w = new Set())); w.add(s); return s; },
+      unwatch: (t, s) => { this.watchers.get(t)?.delete(s); },
+      older: new Set<string>()
+    };
+  }
+
+  /* ---------- start and stop ---------- */
+  async start() {
+    expectAccount(this.uid, this.o.requireSession);
+    setNet({ ready: false, firstPull: 'no', stuck: null, session: 'ok', sending: false, realtime: false });
+    let loaded: Awaited<ReturnType<LocalDb['loadAll']>> | null = null;
+    if (this.db) {
+      try { loaded = await this.db.loadAll(); }
+      catch {
+        // the device copy cannot be read: this session runs in memory, the database is left as it is for next time
+        this.db.close(); this.db = null; this.outbox.db = null; this.storageGood = false;
+      }
+    }
+    if (this.closed) return;
+    this.meta = loaded?.meta ?? {};
+    const rescued = readRescue(this.uid);
+    const back = this.outbox.load(loaded?.outbox ?? [], rescued);
+    if (rescued.length) void back.then(() => { if (!this.outbox.memMode) clearRescue(this.uid); });
+    this.writer.loadAll((loaded?.rows ?? {}) as Partial<Record<TableName, Row[]>>, this.waiting());
+    this.counts();
+    this.listen();
+    if (this.o.realtime) this.subscribe();
+    void this.pullAll().then(() => { if (this.closed) return; this.firstPullDone = true; setNet({ ready: true }); });
+    void this.flush();
+    this.timers.push(
+      setInterval(() => this.cycle(), CYCLE_MS),
+      setInterval(() => { void this.reconcile(); }, SCAN_MS),
+      setInterval(() => { if (this.outbox.pending().length) void this.flush(); }, SAFETY_MS)
+    );
+    this.later(() => { void this.reconcile(); }, 4000);
+  }
+
+  stop() {
+    if (this.closed) return;
+    this.closed = true;
+    this.ctl.abort(STOP);
+    for (const t of this.timers) clearInterval(t);
+    for (const t of this.timeouts) clearTimeout(t);
+    for (const t of [this.retryTimer, this.arrivalsTimer, this.rereadTimer]) if (t) clearTimeout(t);
+    this.timers = []; this.timeouts.clear();
+    for (const f of this.off) f();
+    this.off = [];
+    this.lock.close();
+    unbindStore(this.token);
+    this.db?.close();
+    // a screen still waiting for an answer gets « kept on the phone » when its wait ends; the entry stays in the outbox
+    this.waiters.clear();
+    this.confirmed.clear();
+  }
+
+  private later(fn: () => void, ms: number) {
+    const t = setTimeout(() => { this.timeouts.delete(t); if (!this.closed) fn(); }, ms);
+    this.timeouts.add(t);
+  }
+
+  private listen() {
+    if (typeof document !== 'undefined') {
+      const h = () => this.onVisible();
+      document.addEventListener('visibilitychange', h);
+      this.off.push(() => document.removeEventListener('visibilitychange', h));
+    }
+    if (typeof window !== 'undefined') {
+      const on = () => { void this.flush(); void this.pullAll(); };
+      const offline = () => browserOffline();
+      window.addEventListener('online', on);
+      window.addEventListener('offline', offline);
+      this.off.push(() => { window.removeEventListener('online', on); window.removeEventListener('offline', offline); });
+    }
+    this.off.push(this.lock.listen((m) => { if (m === 'kick') void this.flush(); else void this.reloadOutbox(); }));
+  }
+  private onVisible() {
+    if (document.visibilityState === 'hidden') { this.hiddenAt = Date.now(); return; }
+    void this.pullAll();
+    void this.flush();
+    void this.watchMyJobs(true);
+    if (this.hiddenAt && Date.now() - this.hiddenAt > HIDDEN_LONG_MS) void this.reconcile();
+  }
+  private cycle() {
+    if (!net.value.realtime || Date.now() - this.lastPullAt >= LIVE_CYCLE_MS) void this.pullAll();
+    void this.watchMyJobs();
+  }
+
+  /* ---------- the store and the device copy ---------- */
+  private waiting() { return waitingOf(this.outbox.items.map((i) => ({ e: i.e, kept: i.kept }))); }
+  private outboxChanged() {
+    if (this.closed) return;
+    this.writer.setWaiting(this.waiting());
+    this.counts();
+  }
+  private counts() {
+    if (this.closed) return;
+    setNet({ pending: this.outbox.pending().length, failed: this.outbox.failed(), storage: this.storageGood && !this.outbox.memMode ? 'ok' : 'memory' });
+  }
+  private storageOk(ok: boolean) { this.storageGood = ok; this.counts(); }
+
+  /** rows from the server: into the store (not-older rule), told to who listens, and the jobs new on this device noted */
+  private apply(t: TableName, rows: Row[], force = false): { put: Row[]; removed: string[] } {
+    if (this.closed || !rows.length) return { put: [], removed: [] };
+    for (const s of this.watchers.get(t) || []) for (const r of rows) if (r?.id != null) s.add(String(r.id));
+    const before = t === 'jobs' && this.firstPullDone ? new Map(rows.map((r) => [String(r?.id), baseRow(t, String(r?.id))])) : null;
+    const res = this.writer.apply(t, rows, { force });
+    if (res.put.length) {
+      this.o.notify(t, res.put);
+      if (before) this.noteArrivals(res.put, before);
+    }
+    return res;
+  }
+  /** applies and keeps them on the device */
+  private keepRows(t: TableName, rows: Row[]) {
+    const { put, removed } = this.apply(t, rows);
+    if (put.length || removed.length) void this.save({ rows: [{ table: t, put, del: removed }] });
+  }
+  private removeRows(t: TableName, ids: string[]) {
+    if (this.closed || !ids.length) return;
+    this.writer.remove(t, ids);
+    void this.save({ rows: [{ table: t, put: [], del: ids }] });
+  }
+  private async save(c: Commit) {
+    if (!this.db || this.closed) return;
+    try { await this.db.commit(c); if (!this.storageGood) this.storageOk(true); }
+    catch { this.storageOk(false); }
+  }
+  /** operations and server functions answer the rows they changed as { rows: { table: [...] } } */
+  applyAnswer(data: unknown) {
+    const d = data as { rows?: Record<string, Row[]> } | null;
+    if (!d || typeof d !== 'object' || !d.rows || typeof d.rows !== 'object' || Array.isArray(d.rows)) return;
+    batch(() => { for (const [t, rows] of Object.entries(d.rows!)) if (isSynced(t) && Array.isArray(rows)) this.keepRows(t, rows); });
+  }
+
+  /* ---------- pulling ---------- */
+  pull(t: TableName): Promise<boolean> {
+    if (this.closed) return Promise.resolve(false);
+    const running = this.pulling.get(t);
+    if (running) return running;
+    const p = pullTable(this.io, t)
+      .then(() => { this.sessionOk(); return true; }, (e) => { this.noteReadFailure(classify(e)); return false; })
+      .finally(() => this.pulling.delete(t));
+    this.pulling.set(t, p);
+    return p;
+  }
+  async pullAll(): Promise<void> {
+    if (this.closed) return;
+    this.lastPullAt = Date.now();
+    const todo = [...SYNCED];
+    let ok = 0;
+    const worker = async () => { while (todo.length && !this.closed) { if (await this.pull(todo.shift()!)) ok++; } };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    if (this.closed) return;
+    const all = ok === SYNCED.length;
+    setNet({ ...(ok ? { lastPull: new Date().toISOString() } : {}), firstPull: all ? 'ok' : net.value.firstPull === 'ok' ? 'ok' : 'failed' });
+  }
+  private noteReadFailure(e: AppError) {
+    if (this.closed) return;
+    if (e.kind === 'auth' && net.value.session === 'ok') setNet({ session: 'expired' });
+  }
+  private sessionOk() { if (!this.closed && net.value.session === 'expired') setNet({ session: 'ok' }); }
+
+  /** reads one row now. 'gone' only on a clean « no such row for you » answer: a failed read changes nothing (core-data-02) */
+  async refetch(t: TableName, id: string): Promise<'updated' | 'gone' | 'failed'> {
+    if (this.closed || !id || id === 'undefined' || id === 'null') return 'failed';
+    try {
+      const row = await ask<Row | null>((s) => this.client.from(t).select('*').eq('id', id).abortSignal(s).maybeSingle(), REQUEST_MS, this.ctl.signal);
+      if (this.closed) return 'failed';
+      if (row) { this.keepRows(t, [row]); return 'updated'; }
+      this.removeRows(t, [id]);
+      return 'gone';
+    } catch { return 'failed'; }
+  }
+  /** rows the server deleted for good: gone from the screen and from the device copy */
+  forget(t: TableName, ids: string[]) { this.removeRows(t, ids); }
+
+  /* ---------- « what do I still see? » ---------- */
+  reconcile(tables: readonly TableName[] = SYNCED): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (this.reconciling) return this.reconciling;
+    this.reconciling = (async () => {
+      for (const t of tables) {
+        if (this.closed) return;
+        try { await scanTable(this.io, t); }
+        catch (e) { const c = classify(e); if (c.kind === 'network' || c.kind === 'auth') return; }
+      }
+    })().finally(() => { this.reconciling = null; });
+    return this.reconciling;
+  }
+  /** a job new on this device, or moved onto another truck: its lines and texts did not « change », they are read now */
+  private noteArrivals(put: Row[], before: Map<string, Row | undefined>) {
+    const fresh = serverNow() - 120000;
+    for (const r of put) {
+      const was = before.get(r.id);
+      const created = tsMicros(r.created_at as string | undefined) / 1000;
+      const arrived = was ? was.truck_id !== r.truck_id : !(created > fresh);
+      if (arrived) this.arrivals.add(r.id);
+    }
+    if (!this.arrivals.size || this.arrivalsTimer) return;
+    this.arrivalsTimer = setTimeout(() => { this.arrivalsTimer = null; void this.readArrivals(); }, 400);
+  }
+  private async readArrivals() {
+    const ids = [...this.arrivals];
+    this.arrivals.clear();
+    if (this.closed || !ids.length) return;
+    try {
+      for (const c of CHILDREN) await fetchBy(this.io, c.t, ids, c.by);
+      const jobs = ids.map((id) => baseRow(('jobs'), id)).filter((j): j is Row => !!j);
+      const want = (t: TableName, key: string) => [...new Set(jobs.map((j) => j[key]).filter((v): v is string => typeof v === 'string' && !baseRow(t, v)))];
+      await fetchBy(this.io, 'customers', want('customers', 'customer_id'));
+      await fetchBy(this.io, 'vehicles', want('vehicles', 'vehicle_id'));
+    } catch { /* the next visibility check reads them */ }
+  }
+  /** a mechanic's coming jobs that are no longer his leave his phone at once (core-data-15), with their lines and texts */
+  async watchMyJobs(now = false) {
+    if (this.closed || !this.o.narrow()) return;
+    if (!now && Date.now() - this.lastWatch < WATCH_MS) return;
+    this.lastWatch = Date.now();
+    const from = addDays(today(), -1);
+    const ids = baseRows<Row & { status?: string; day?: string }>('jobs').filter((j) => ['booked', 'en_route', 'on_site'].includes(String(j.status)) && String(j.day) >= from).map((j) => j.id);
+    if (!ids.length) return;
+    const seen = this.io.watch('jobs');
+    try {
+      const gone = (await jobsGone(this.io, ids)).filter((id) => !seen.has(id));
+      if (this.closed || !gone.length) return;
+      const set = new Set(gone);
+      batch(() => {
+        this.removeRows('jobs', gone);
+        for (const t of LEAVES_WITH_JOB) this.removeRows(t, baseRows<Row & { job_id?: string }>(t).filter((r) => r.job_id && set.has(r.job_id)).map((r) => r.id));
+      });
+    } catch { /* next time */ } finally { this.io.unwatch('jobs', seen); }
+  }
+
+  /* ---------- realtime ---------- */
+  private subscribe() {
+    this.off.push(subscribeChanges(this.client, this.uid, SYNCED, (c) => this.onChange(c), (live) => {
+      if (this.closed) return;
+      setNet({ realtime: live });
+      if (live) void this.pullAll();
+    }));
+  }
+  private onChange(c: Change) {
+    if (this.closed) return;
+    const id = String(c.row?.id ?? c.oldId ?? '');
+    const r = readChange(c, id ? baseRow(c.t, id) : undefined);
+    if (r.remove) this.removeRows(c.t, [r.remove]);
+    else if (r.apply) this.keepRows(c.t, [r.apply]);
+    else if (r.refetch) this.rereadSoon(c.t, r.refetch);
+    if (c.t === 'jobs' && this.o.narrow()) this.later(() => { void this.watchMyJobs(); }, 2000);
+  }
+  private rereadSoon(t: TableName, id: string) {
+    let s = this.rereads.get(t);
+    if (!s) this.rereads.set(t, (s = new Set()));
+    s.add(id);
+    if (this.rereadTimer) return;
+    this.rereadTimer = setTimeout(() => {
+      this.rereadTimer = null;
+      const all = [...this.rereads];
+      this.rereads.clear();
+      for (const [table, ids] of all) void fetchBy(this.io, table, [...ids]).catch(() => undefined);
+    }, 150);
+  }
+
+  /* ---------- writing ---------- */
+  private entry(p: Partial<OutboxEntry> & Pick<OutboxEntry, 'kind'>): OutboxEntry {
+    return { op: uuid(), at: new Date().toISOString(), tries: 0, state: 'pending', v: 2, sent: 0, ...p };
+  }
+  private queued() { this.lock.poke('outbox'); void this.flush(); }
+
+  async insertRow(t: string, values: Record<string, unknown>, o: { label?: string; patch?: Record<string, unknown> } = {}): Promise<Row> {
+    this.o.guard();
+    const id = String(values.id || uuid());
+    const row = { ...values, id } as Row;
+    const it = this.outbox.add(this.entry({ kind: 'insert', table: t, id, values: row, label: o.label, ...(o.patch ? { patch: o.patch } : {}) }), true);
+    await it.ready;
+    this.queued();
+    return row;
+  }
+  async updateRow(t: string, id: string, patch: Record<string, unknown>, o: { label?: string; prev?: Record<string, unknown> } = {}): Promise<void> {
+    this.o.guard();
+    if (!(await this.outbox.merge(t, id, patch, o.prev))) {
+      const it = this.outbox.add(this.entry({ kind: 'update', table: t, id, values: patch, label: o.label, ...(o.prev ? { prev: o.prev } : {}) }), true);
+      await it.ready;
+    }
+    this.queued();
+  }
+
+  /** an operation that needs the network now (never kept for later) */
+  async direct<T>(name: string, args: Record<string, unknown>): Promise<T> {
+    const data = await ask<T>((s) => this.client.rpc(name, args).abortSignal(s), REQUEST_MS, this.ctl.signal);
+    if (!this.closed) { this.sessionOk(); this.applyAnswer(data); }
+    return data;
+  }
+  /** an operation kept in the outbox: waits a little for the answer, else « kept on the phone » */
+  async callRpc<T>(name: string, args: Record<string, unknown>, o: { label?: string; queue?: boolean; noOp?: boolean } = {}): Promise<RpcAnswer<T>> {
+    if (!o.noOp) this.o.guard();
+    const op = String(args.p_op || uuid());
+    const full = o.noOp ? { ...args } : { ...args, p_op: op };
+    if (o.queue === false || o.noOp) return { queued: false, data: await this.direct<T>(name, full), op };
+    let resolve!: (v: unknown) => void, reject!: (e: unknown) => void;
+    const answer = new Promise<unknown>((a, b) => { resolve = a; reject = b; });
+    const w: Waiter = { resolve, reject, watching: true };
+    this.waiters.set(op, w);
+    const it = this.outbox.add(this.entry({ op, kind: 'rpc', rpc: name, args: full, label: o.label }), false);
+    await it.ready;
+    this.queued();
+    // not long when the phone already knows there is no signal; past that the frame lists a later refusal
+    const wait = net.value.online ? 8000 : 1500;
+    const quick = await Promise.race([
+      answer.then((d) => ({ done: true as const, d }), (e: unknown) => ({ done: true as const, e })),
+      new Promise<{ done: false }>((r) => setTimeout(() => r({ done: false }), wait))
+    ]);
+    if (quick.done) {
+      if ('e' in quick) throw quick.e;
+      return { queued: false, data: quick.d as T, op };
+    }
+    w.watching = false;
+    // neither IndexedDB nor the rescue copy could keep it and no request is on its way: « kept on the phone » would be
+    // a lie (core-data-01). It is taken back and the person is told it was not done.
+    if (it.mem && !it.rescued && this.outbox.inFlight !== it && it.e.state === 'pending') {
+      this.waiters.delete(op);
+      this.outbox.drop(it);
+      this.outbox.saveMem();
+      throw new AppError('network', 'offline', 'not kept: no storage and no signal', { code: 'not_kept' });
+    }
+    it.kept = true;
+    this.outboxChanged();
+    return { queued: true, op };
+  }
+  /** an operation kept without an op id (the server's change is a plain patch: sending it twice is harmless) */
+  keep(name: string, args: Record<string, unknown>, label?: string) {
+    this.outbox.add(this.entry({ kind: 'rpc', rpc: name, args, label }), true);
+    this.queued();
+  }
+  /** a refusal the person must see in the frame's « refusé » list although no screen waited for it */
+  listRefusal(name: string, args: Record<string, unknown>, err: AppError, label?: string) {
+    this.outbox.add(this.entry({ kind: 'rpc', rpc: name, args, label, state: 'failed', error: errorText(err), err: { kind: err.kind, sub: err.sub, code: err.code, hint: err.hint, status: err.status } }), true);
+    this.lock.poke('outbox');
+  }
+  /** runs `fn` with the answer once the operation `op` is confirmed */
+  onConfirmed(op: string, fn: (data: unknown) => void) {
+    const l = this.confirmed.get(op);
+    if (l) l.push(fn); else this.confirmed.set(op, [fn]);
+  }
+  async dismiss(seq: number, retry: boolean) {
+    await this.outbox.dismiss(seq, retry);
+    this.lock.poke('outbox');
+    if (retry) void this.flush();
+  }
+  private async reloadOutbox() {
+    if (this.closed || !this.db) return;
+    try {
+      const list = await this.db.listEntries();
+      if (this.closed) return;
+      await this.outbox.load(list);
+      this.outboxChanged();
+    } catch { /* this tab's own view stays until its next send */ }
+  }
+
+  /* ---------- sending ---------- */
+  /** sends what waits, in order; resolves when the queue is empty or has to wait (no signal, session to renew) */
+  flush(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (this.draining) { this.again = true; return this.draining; }
+    const run = async () => {
+      do {
+        this.again = false;
+        const mine = await this.lock.run(() => this.drain());
+        if (!mine) { this.lock.poke('kick'); break; }
+      } while (this.again && !this.closed);
+    };
+    this.draining = run().finally(() => {
+      this.draining = null;
+      // a change queued in the instant the round was ending must not wait for the safety timer
+      if (this.again && !this.closed && this.outbox.pending().length) { this.again = false; void this.flush(); }
+    });
+    return this.draining;
+  }
+  private async drain() {
+    if (this.closed) return;
+    setNet({ sending: true });
+    try {
+      for (;;) {
+        if (this.closed) return;
+        const it = this.outbox.pending()[0];
+        if (!it) { this.head = null; setNet({ stuck: null }); return; }
+        const out = await this.sendOne(it);
+        if (out === 'wait') { this.scheduleRetry(); return; }
+      }
+    } finally {
+      if (!this.closed) setNet({ sending: false });
+    }
+  }
+  private scheduleRetry() {
+    if (this.retryTimer || this.closed) return;
+    const delays = this.o.retryDelays ?? DELAYS;
+    const d = delays[Math.min(this.backoff, delays.length - 1)] * (0.8 + Math.random() * 0.4);
+    this.backoff++;
+    this.retryTimer = setTimeout(() => { this.retryTimer = null; void this.flush(); }, d);
+  }
+  private async sendOne(it: Item): Promise<'ok' | 'failed' | 'again' | 'wait'> {
+    const e = await this.outbox.attempt(it);
+    if (this.closed) return 'wait';
+    if (!e) return 'ok';
+    this.outbox.inFlight = it;
+    const t0 = Date.now();
+    try {
+      const sent = await sendEntry(this.client, e, this.ctl.signal);
+      if (this.closed) return 'wait';
+      await this.settle(it, e, sent, t0);
+      return 'ok';
+    } catch (err) {
+      if (this.closed) return 'wait';
+      return await this.outcome(it, e, classify(err));
+    } finally {
+      this.outbox.inFlight = null;
+    }
+  }
+  private async settle(it: Item, e: OutboxEntry, sent: Sent, t0: number) {
+    if (sent.row?.updated_at && e.kind !== 'rpc') sampleServerTime(String(sent.row.updated_at), t0, Date.now());
+    let gone: Promise<void> = Promise.resolve();
+    // the server's row replaces this device's change in one draw
+    batch(() => {
+      if (sent.row && isSynced(e.table)) this.keepRows(e.table, [sent.row]);
+      if (e.kind === 'rpc') this.applyAnswer(sent.data);
+      gone = this.outbox.done(it);
+    });
+    await gone;
+    this.lock.poke('outbox');
+    this.backoff = 0; this.refreshes = 0; this.head = null;
+    setNet({ stuck: null });
+    this.sessionOk();
+    const w = this.waiters.get(e.op);
+    if (w) { this.waiters.delete(e.op); w.resolve(sent.data); }
+    for (const fn of this.confirmed.get(e.op) || []) fn(sent.data);
+    this.confirmed.delete(e.op);
+    this.o.sent(e);
+    // what the server changes by itself after these writes is brought at once
+    if (e.table === 'job_items' && e.kind === 'update') void this.pull('invoices');
+    if (e.table === 'jobs' && e.values && 'odometer_km' in e.values) void this.pull('vehicles');
+  }
+  private noteHead(it: Item, why: 'network' | 'server' | 'update') {
+    if (!this.head || this.head.op !== it.e.op) this.head = { op: it.e.op, since: Date.now() };
+    if (Date.now() - this.head.since >= STUCK_AFTER_MS) setNet({ stuck: { label: it.e.label, since: new Date(this.head.since).toISOString(), tries: it.e.tries, why } });
+  }
+  private async outcome(it: Item, e: OutboxEntry, err: AppError): Promise<'failed' | 'again' | 'wait'> {
+    if (err.kind === 'network') { this.noteHead(it, err.sub === 'server' || err.sub === 'busy' ? 'server' : 'network'); return 'wait'; }
+    if (err.kind === 'auth') {
+      // the session ran out: renew it once or twice and send the same entry again; else wait, nothing is refused
+      if (err.sub === 'expired' && this.refreshes < 2) {
+        this.refreshes++;
+        const r = await this.client.auth.refreshSession().catch(() => ({ error: true }));
+        if (this.closed) return 'wait';
+        if (!r.error) return 'again';
+      }
+      if (net.value.session === 'ok') setNet({ session: 'expired' });
+      this.noteHead(it, 'network');
+      return 'wait';
+    }
+    if (err.kind === 'bug' && err.sub === 'update' && e.tries < UPDATE_TRIES) { this.noteHead(it, 'update'); return 'wait'; }
+    // a refusal (or a case nobody planned): never sent again by itself, never dropped in silence
+    const w = this.waiters.get(e.op);
+    this.waiters.delete(e.op);
+    this.confirmed.delete(e.op);
+    if (w?.watching) await this.outbox.done(it);
+    else await this.outbox.refuse(it, errorText(err), { kind: err.kind, sub: err.sub, code: err.code, hint: err.hint, status: err.status });
+    this.lock.poke('outbox');
+    this.head = null;
+    w?.reject(err);
+    // the server's version of what was refused comes back on screen (a failed read changes nothing)
+    if (e.table && e.id && isSynced(e.table)) await this.refetch(e.table, e.id);
+    const job = e.kind === 'rpc' ? e.args?.p_job : null;
+    if (typeof job === 'string' && NOT_MINE.test(String(err.hint || err.code || ''))) await this.refetch('jobs', job);
+    return 'failed';
+  }
+}

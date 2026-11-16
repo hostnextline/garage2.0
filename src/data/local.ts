@@ -1,64 +1,17 @@
 /* The copy of the garage's data kept on this device (IndexedDB), one database per account so two people sharing a
-   phone never mix their changes. Stores: one per synced table (key = id), "meta" (sync cursors, cached profile),
-   "outbox" (changes not yet confirmed by the server, in order). */
+   phone never mix their changes: `his-garage-<uid>`, version 3. Stores: one per synced table (key = id, the
+   server's rows), "meta" (sync cursors), "outbox" (changes not yet confirmed by the server, in order).
+   The layout never changes (phones in the field hold waiting changes in it, and the previous version of the app must
+   still find and send them): new things are new meta keys or new OPTIONAL fields of an outbox entry.
+   Every call either works or throws: the engine decides what a failure means (memory queue, warning on screen).
+   A failed call drops the connection and tries once more on a fresh one (iOS loses the connection when the app
+   sleeps). Rows and their cursor are written in ONE transaction, so a page is never half kept. */
 import { openDB, type IDBPDatabase } from 'idb';
 import { SYNCED } from './schema';
+import type { Row } from './store';
 
 const VERSION = 3;
-let dbp: Promise<IDBPDatabase> | null = null;
-let current = '';
-let broken = false;
-
-export function storageBroken(): boolean { return broken; }
-
-export function openLocal(uid: string): Promise<IDBPDatabase> {
-  if (dbp && current === uid) return dbp;
-  current = uid;
-  dbp = openDB(`his-garage-${uid}`, VERSION, {
-    upgrade(db) {
-      for (const t of SYNCED) if (!db.objectStoreNames.contains(t)) db.createObjectStore(t, { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
-      if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true });
-    },
-    blocked() { /* another tab holds an older version: it will reload */ },
-    terminated() { dbp = null; }
-  }).catch((e) => { broken = true; throw e; });
-  return dbp;
-}
-
-export async function closeLocal() {
-  if (dbp) { try { (await dbp).close(); } catch { /* ignore */ } }
-  dbp = null; current = '';
-}
-
-export async function readAll<T>(uid: string, table: string): Promise<T[]> {
-  try { return (await (await openLocal(uid)).getAll(table)) as T[]; } catch { broken = true; return []; }
-}
-export async function writeRows(uid: string, table: string, rows: Record<string, unknown>[], removeIds: string[] = []) {
-  if (!rows.length && !removeIds.length) return;
-  try {
-    const db = await openLocal(uid);
-    const tx = db.transaction(table, 'readwrite');
-    for (const r of rows) tx.store.put(r);
-    for (const id of removeIds) tx.store.delete(id);
-    await tx.done;
-  } catch { broken = true; }
-}
-export async function replaceAll(uid: string, table: string, rows: Record<string, unknown>[]) {
-  try {
-    const db = await openLocal(uid);
-    const tx = db.transaction(table, 'readwrite');
-    await tx.store.clear();
-    for (const r of rows) tx.store.put(r);
-    await tx.done;
-  } catch { broken = true; }
-}
-export async function getMeta<T>(uid: string, key: string): Promise<T | undefined> {
-  try { return (await (await openLocal(uid)).get('meta', key)) as T | undefined; } catch { broken = true; return undefined; }
-}
-export async function setMeta(uid: string, key: string, value: unknown) {
-  try { await (await openLocal(uid)).put('meta', value, key); } catch { broken = true; }
-}
+const OPEN_LIMIT = 8000;
 
 export interface OutboxEntry {
   seq?: number;
@@ -74,17 +27,146 @@ export interface OutboxEntry {
   tries: number;
   state: 'pending' | 'failed';
   error?: string;
+  /* optional, written by this version only (the previous one ignores them and keeps them when it rewrites an entry) */
+  v?: 2;
+  /** requests ever started for this entry, counted BEFORE each request: > 0 = it may have reached the server */
+  sent?: number;
+  /** how the server refused it (the words are in `error`) */
+  err?: { kind: string; sub: string; code?: string; hint?: string; status?: number };
+  /** settings parts: each part as the screen showed it before the edit (merged at send time, see merge3) */
+  prev?: Record<string, unknown>;
+  /** an insert made for a row this device did not hold: the fields the person set, sent as a change when the row exists */
+  patch?: Record<string, unknown>;
 }
-export async function outboxAll(uid: string): Promise<OutboxEntry[]> {
-  try { return (await (await openLocal(uid)).getAll('outbox')) as OutboxEntry[]; } catch { broken = true; return []; }
+
+export interface Commit {
+  rows?: { table: string; put: Row[]; del: string[] }[];
+  /** meta keys to write; undefined = delete the key */
+  meta?: Record<string, unknown>;
 }
-export async function outboxAdd(uid: string, e: OutboxEntry): Promise<number> {
-  const db = await openLocal(uid);
-  return (await db.add('outbox', e)) as number;
+
+export interface Loaded { rows: Record<string, Row[]>; outbox: OutboxEntry[]; meta: Record<string, unknown> }
+export interface EntryChange<T> { put?: OutboxEntry; del?: boolean; add?: OutboxEntry; result: T }
+
+export interface LocalDb {
+  readonly uid: string;
+  loadAll(): Promise<Loaded>;
+  commit(c: Commit): Promise<void>;
+  /** adds at the end of the outbox; the key gives the order */
+  addEntry(e: OutboxEntry): Promise<number>;
+  /** reads an entry, lets `fn` decide, writes what it says — in one transaction (another tab cannot slip in between);
+      `added` is the key of the entry `fn` asked to add */
+  mutateEntry<T>(seq: number, fn: (cur: OutboxEntry | undefined) => EntryChange<T>): Promise<{ result: T; added?: number }>;
+  listEntries(): Promise<OutboxEntry[]>;
+  /** empties the table stores and their cursors; never the outbox */
+  wipeRows(): Promise<void>;
+  close(): void;
 }
-export async function outboxPut(uid: string, e: OutboxEntry) {
-  try { await (await openLocal(uid)).put('outbox', e); } catch { broken = true; }
-}
-export async function outboxDelete(uid: string, seq: number) {
-  try { await (await openLocal(uid)).delete('outbox', seq); } catch { broken = true; }
+
+const STORES = (): string[] => [...SYNCED, 'meta', 'outbox'];
+
+export function openLocal(uid: string): LocalDb {
+  let handle: Promise<IDBPDatabase> | null = null;
+  let closed = false;
+
+  const open = (): Promise<IDBPDatabase> => {
+    if (handle) return handle;
+    const p = new Promise<IDBPDatabase>((resolve, reject) => {
+      // a version change held by another tab must not keep the app on its splash for ever
+      const limit = setTimeout(() => reject(Object.assign(new Error('IndexedDB open timed out'), { name: 'TimeoutError' })), OPEN_LIMIT);
+      openDB(`his-garage-${uid}`, VERSION, {
+        upgrade(db) {
+          for (const t of SYNCED) if (!db.objectStoreNames.contains(t)) db.createObjectStore(t, { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
+          if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true });
+        },
+        // a newer version of the app wants to upgrade the database: let it, and load that version
+        blocking() {
+          void p.then((db) => db.close(), () => undefined);
+          handle = null;
+          if (typeof location !== 'undefined' && typeof location.reload === 'function') location.reload();
+        },
+        terminated() { handle = null; }
+      }).then((db) => { clearTimeout(limit); resolve(db); }, (e) => { clearTimeout(limit); reject(e); });
+    });
+    handle = p;
+    p.catch(() => { if (handle === p) handle = null; });
+    return p;
+  };
+
+  /** runs `fn` on the database; on failure drops the connection and tries once more on a new one */
+  async function use<T>(fn: (db: IDBPDatabase) => Promise<T>): Promise<T> {
+    if (closed) throw new Error('local database closed');
+    try {
+      return await fn(await open());
+    } catch (first) {
+      if (closed) throw first;
+      const stale = handle;
+      handle = null;
+      if (stale) void stale.then((db) => db.close(), () => undefined);
+      return await fn(await open());
+    }
+  }
+
+  return {
+    uid,
+    loadAll: () => use(async (db) => {
+      const tx = db.transaction(STORES(), 'readonly');
+      const rows: Record<string, Row[]> = {};
+      await Promise.all(SYNCED.map(async (t) => { rows[t] = (await tx.objectStore(t).getAll()) as Row[]; }));
+      const outbox = (await tx.objectStore('outbox').getAll()) as OutboxEntry[];
+      const meta: Record<string, unknown> = {};
+      let cur = await tx.objectStore('meta').openCursor();
+      while (cur) { meta[String(cur.key)] = cur.value; cur = await cur.continue(); }
+      await tx.done;
+      return { rows, outbox, meta };
+    }),
+    commit: (c) => use(async (db) => {
+      const names = new Set<string>();
+      for (const r of c.rows || []) if (r.put.length || r.del.length) names.add(r.table);
+      if (c.meta && Object.keys(c.meta).length) names.add('meta');
+      if (!names.size) return;
+      const tx = db.transaction([...names], 'readwrite');
+      for (const r of c.rows || []) {
+        if (!r.put.length && !r.del.length) continue;
+        const s = tx.objectStore(r.table);
+        for (const row of r.put) void s.put(row);
+        for (const id of r.del) void s.delete(id);
+      }
+      if (c.meta) {
+        const m = tx.objectStore('meta');
+        for (const [k, v] of Object.entries(c.meta)) void (v === undefined ? m.delete(k) : m.put(v, k));
+      }
+      await tx.done;
+    }),
+    addEntry: (e) => use(async (db) => {
+      const { seq: _drop, ...rest } = e;
+      void _drop;
+      return (await db.add('outbox', rest)) as number;
+    }),
+    mutateEntry: <T,>(seq: number, fn: (cur: OutboxEntry | undefined) => EntryChange<T>) => use(async (db) => {
+      const tx = db.transaction('outbox', 'readwrite');
+      const cur = (await tx.store.get(seq)) as OutboxEntry | undefined;
+      const out = fn(cur);
+      if (out.del) void tx.store.delete(seq);
+      else if (out.put) void tx.store.put({ ...out.put, seq });
+      let added: number | undefined;
+      if (out.add) { const { seq: _s, ...rest } = out.add; void _s; added = (await tx.store.add(rest)) as number; }
+      await tx.done;
+      return { result: out.result, added };
+    }),
+    listEntries: () => use(async (db) => (await db.getAll('outbox')) as OutboxEntry[]),
+    wipeRows: () => use(async (db) => {
+      const tx = db.transaction([...SYNCED, 'meta'], 'readwrite');
+      for (const t of SYNCED) void tx.objectStore(t).clear();
+      void tx.objectStore('meta').clear();
+      await tx.done;
+    }),
+    close() {
+      closed = true;
+      const h = handle;
+      handle = null;
+      if (h) void h.then((db) => db.close(), () => undefined);
+    }
+  };
 }
