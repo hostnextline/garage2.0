@@ -1,6 +1,6 @@
 /* Small pieces of the customer's page (the team app's kit is not used here: it brings the whole app with it). */
 import type { ComponentChildren } from 'preact';
-import { Phone, Info, CircleCheck, TriangleAlert, OctagonAlert, Languages, Mail, MapPin } from 'lucide-preact';
+import { Phone, Info, CircleCheck, TriangleAlert, OctagonAlert, Languages, Mail, MapPin, RefreshCw, Link2Off, Clock, FileX, WifiOff } from 'lucide-preact';
 import { Button } from '../ui/Button';
 import { ct, type CLang } from './i18n';
 import { telHref, phoneText, cad } from './format';
@@ -107,5 +107,23 @@ export function PrintIdentity(p: { garage: Garage | null; l: CLang }) {
       {g.phone && <div><Phone size={12} style={{ display: 'inline', verticalAlign: '-2px' }} /> {phoneText(g.phone)}</div>}
       {g.email && <div><Mail size={12} style={{ display: 'inline', verticalAlign: '-2px' }} /> {g.email}</div>}
     </div>
+  );
+}
+
+/** a link that does not open (or a page that could not load): what happened, « Réessayer » when trying again can help,
+    and whom to call */
+export function ErrorState(p: { code: string; l: CLang; garage: Garage | null; onRetry?: () => void }) {
+  const { l } = p;
+  const key = ['bad_link', 'expired', 'gone', 'network'].includes(p.code) ? p.code : 'server';
+  const Icon = key === 'bad_link' ? Link2Off : key === 'expired' ? Clock : key === 'gone' ? FileX : key === 'network' ? WifiOff : OctagonAlert;
+  const canRetry = (key === 'network' || key === 'server') && !!p.onRetry;
+  return (
+    <section class="cl-panel glass cl-state" role="alert" data-testid={`client-error-${key}`}>
+      <span class="cl-state-icon" aria-hidden="true"><Icon /></span>
+      <h1>{ct(l, `errors.${key}.title`)}</h1>
+      <p>{ct(l, `errors.${key}.text`)}</p>
+      {canRetry && <Button variant="primary" block icon={<RefreshCw />} onClick={p.onRetry} data-testid="client-retry">{ct(l, 'errors.retry')}</Button>}
+      <CallUs garage={p.garage} l={l} primary={!canRetry} />
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { trackView, etaText, headline, isFinal } from './track-state';
-import type { TrackAnswer } from './api';
+import { trackView, arrival, headline, isFinal } from './track-state';
+import type { TrackAnswer } from '../api';
 
 const sp = (s: string | null) => String(s).replace(/\s/g, ' ');
 // 12:31 in Montréal (winter time, UTC-5)
@@ -22,8 +22,10 @@ describe('the tracking page', () => {
     expect(v.route).toHaveLength(3);
     expect(v.eta).toEqual({ minute: 12 * 60 + 40, left: 9 });
     expect(v.posMinute).toBe(12 * 60 + 30);
-    expect(sp(etaText(v, 'fr'))).toBe('Arrivée prévue vers 12 h 40 (environ 9 min)');
-    expect(sp(etaText(v, 'en'))).toBe('Expected around 12:40 p.m. (about 9 min)');
+    // the card: « 9 min » big, then « Arrivée prévue vers 12 h 40 »
+    expect(arrival(v, 'fr').left).toBe(9);
+    expect(sp(arrival(v, 'fr').when)).toBe('Arrivée prévue vers 12 h 40');
+    expect(sp(arrival(v, 'en').when)).toBe('Arriving around 12:40 p.m.');
     expect(headline(v, 'fr')).toBe('Adam est en route');
     expect(headline(v, 'en')).toBe('Adam is on the way');
     expect(isFinal(v.kind)).toBe(false);
@@ -37,14 +39,14 @@ describe('the tracking page', () => {
   it('says « d’un instant à l’autre » once the time is reached', () => {
     const at = Date.parse(NOW);
     const v = trackView(active({ eta_at: '2026-11-04T17:31:30Z' }), at, at);
-    expect(etaText(v, 'fr')).toBe('Arrivée d’un instant à l’autre');
-    expect(etaText(trackView(active(), at, at + 30 * 60000), 'en')).toBe('Arriving any minute now');
+    expect(arrival(v, 'fr')).toEqual({ left: null, when: 'Arrivée d’un instant à l’autre' });
+    expect(arrival(trackView(active(), at, at + 30 * 60000), 'en')).toEqual({ left: null, when: 'Arriving any minute now' });
   });
   it('has no arrival time without one, and no truck without a recent position', () => {
     const at = Date.parse(NOW);
     const v = trackView(active({ eta_at: null, pos: null }), at, at);
     expect(v.eta).toBeNull();
-    expect(etaText(v, 'fr')).toBeNull();
+    expect(arrival(v, 'fr')).toEqual({ left: null, when: 'Il s’en vient chez vous.' });
     expect(v.pos).toBeNull();
     expect(v.posMinute).toBeNull();
     expect(trackView(active({ mechanic: '' }), at, at).mechanic).toBe('');

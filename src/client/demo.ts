@@ -69,7 +69,7 @@ function fresh(): Record<string, DemoJob> {
 
 const KEY = 'demo.client.v2';
 let state: Record<string, DemoJob> = fresh();
-function save() { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch { /* ignore */ } }
+function save() { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode: the demo starts over on reload */ } }
 function restore() { try { const s = sessionStorage.getItem(KEY); if (s) state = { ...fresh(), ...JSON.parse(s) }; } catch { state = fresh(); } }
 
 const sum = (items: Item[]) => {
@@ -96,7 +96,8 @@ function jobView(j: DemoJob) {
     extras: j.extras.map((x) => ({ id: x.id, description: x.description, qty: x.qty, unit_cents: x.unit_cents, total_cents: Math.round(x.qty * x.unit_cents), status: x.status, note: x.note ?? null, answered_via: x.status === 'proposed' ? null : 'link' })),
     expected, prepaid_cents: j.prepaid, invoice,
     estimate: { signed_at: j.signed?.at ?? null, signer: j.signed?.name ?? null, cents: j.signed?.cents ?? null, changed: !!j.signed && j.signed.cents !== expected.total,
-      can_sign: ['booked', 'en_route', 'on_site'].includes(j.status) && !invoice && expected.total > 0 && (!j.signed || j.signed.cents !== expected.total) },
+      // as the server: no total above zero needed (Part 24 sexies)
+      can_sign: ['booked', 'en_route', 'on_site'].includes(j.status) && !invoice && planned.length > 0 && (!j.signed || j.signed.cents !== expected.total) },
     conditions: CONDITIONS,
     bill: j.draft && !invoice ? { lines: planned.map((i) => ({ description: i.description, qty: i.qty, unit_cents: i.unit_cents, taxable: true })),
       subtotal_cents: expected.subtotal, tps_cents: expected.tps, tvq_cents: expected.tvq, total_cents: expected.total } : null,
@@ -111,7 +112,10 @@ function quoteView() {
 }
 
 type Answer = { status: number; body: unknown };
-const refuse = (status: number, code: string, error: string): Answer => ({ status, body: { ok: false, code, error } });
+const refuse = (status: number, code: string, error: string, more: Record<string, unknown> = {}): Answer => ({ status, body: { ok: false, code, error, ...more } });
+/** the signing contract: the amount the page showed must still be the amount (409 « amount_changed » otherwise) */
+const moved = (b: Record<string, unknown>, current: number): Answer | null =>
+  typeof b.shown_cents === 'number' && b.shown_cents !== current ? refuse(409, 'amount_changed', 'Le montant a changé.', { current_cents: current }) : null;
 function clientAnswer(b: Record<string, unknown>): Answer {
   const token = String(b.token || '');
   const action = String(b.action || 'view');
@@ -125,6 +129,8 @@ function clientAnswer(b: Record<string, unknown>): Answer {
     if (b.confirm !== true) return refuse(400, 'confirm', 'Confirmez votre réponse.');
     const x = j.extras.find((e) => e.id === b.item_id);
     if (!x) return refuse(404, 'gone', 'Cette proposition n’existe plus.');
+    const no = moved(b, Math.round(x.qty * x.unit_cents));
+    if (no) return no;
     if (x.status === 'proposed') x.status = b.accept ? 'approved' : 'declined';
     save();
   }
@@ -132,6 +138,8 @@ function clientAnswer(b: Record<string, unknown>): Answer {
     if (b.confirm !== true) return refuse(400, 'confirm', 'Cochez « J’accepte » pour signer.');
     const v = jobView(j);
     if (!v.estimate.can_sign) return refuse(400, 'signed', 'Cette estimation est déjà signée.');
+    const no = moved(b, v.expected.total);
+    if (no) return no;
     j.signed = { name: String(b.signer || ''), at: new Date().toISOString(), cents: v.expected.total };
     save();
   }
@@ -165,12 +173,12 @@ const WEB_SERVICES = [
 /** « Plages d’arrivée » in the pretend booking: asked once in the address (#reserver&plages=1), kept for the visit */
 let windowsAsked = false;
 function demoWindows(): boolean {
-  try { if (new URLSearchParams(location.hash.replace(/^#/, '')).has('plages')) windowsAsked = true; } catch { /* ignore */ }
+  try { if (new URLSearchParams(location.hash.replace(/^#/, '')).has('plages')) windowsAsked = true; } catch { /* an old browser: blocks */ }
   return windowsAsked;
 }
 function bookAnswer(b: Record<string, unknown>): Answer {
   let closed = false;
-  try { closed = sessionStorage.getItem('demo-book-closed') === '1'; } catch { /* ignore */ }
+  try { closed = sessionStorage.getItem('demo-book-closed') === '1'; } catch { /* private mode: open */ }
   const action = String(b.action || 'info');
   if (action === 'info') {
     return { status: 200, body: { ok: true, garage: GARAGE, on: !closed, windows: demoWindows(), services: closed ? [] : WEB_SERVICES, taxes: true, horizon_days: 120,
@@ -212,7 +220,8 @@ let step = 0;
 function trackAnswer(token: string) {
   const now = new Date();
   const base = { garage: { name: GARAGE.name, phone: GARAGE.phone }, mechanic: 'Adam', customer: 'Amira', lang: 'fr', now: now.toISOString(), km: 6.2, minutes: 14 };
-  const key = token === 'demo' ? 'demo-active' : token;
+  // the appointment's own link opens its trip too, as public_track does (« Suivre le camion » of demo-route)
+  const key = token === 'demo' || token === 'demo-route' ? 'demo-active' : token;
   if (key === 'demo-active' || key === 'demo-nopos') {
     const i = Math.min(step, WAY.length - 2);
     if (key === 'demo-active') step += 1;
@@ -245,15 +254,13 @@ function switcher() {
   reset.type = 'button';
   reset.textContent = 'Recommencer la démo';
   reset.style.cssText = 'padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:transparent';
-  reset.onclick = () => { try { sessionStorage.removeItem(KEY); localStorage.removeItem('his.client.suivi'); localStorage.removeItem('his.client.t'); } catch { /* ignore */ } location.reload(); };
+  reset.onclick = () => { try { sessionStorage.removeItem(KEY); localStorage.removeItem('his.client.t'); } catch { /* private mode: nothing kept */ } location.reload(); };
   nav.appendChild(reset);
   document.body.appendChild(nav);
 }
 
 export function installClientDemo() {
   restore();
-  // the « en route » appointment knows its tracking link, like a phone that opened the text
-  try { if (!localStorage.getItem('his.client.suivi')) localStorage.setItem('his.client.suivi', JSON.stringify({ token: 'demo', at: Date.now() })); } catch { /* ignore */ }
   const real = window.fetch.bind(window);
   const origin = new URL(SUPABASE_URL).origin;
   window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
