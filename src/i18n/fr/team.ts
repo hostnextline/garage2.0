@@ -81,6 +81,7 @@ export const team = {
     roles: 'Ses rôles',
     rolesSaved: 'Rôles enregistrés.',
     lastRole: 'Garde au moins un rôle.',
+    giveOwner: { title: 'Rendre {name} propriétaire ?', text: 'Un propriétaire peut tout faire : l’argent, le Coffre, l’Équipe, les clés des services et retirer des personnes.', ok: 'Oui, propriétaire' },
     dropOwner: { title: 'Ne plus être propriétaire ?', text: 'Tu n’auras plus accès à l’Équipe, aux droits ni à l’apparence de l’équipe. Un autre propriétaire pourra te redonner ce rôle.', ok: 'Oui, continuer' },
     rights: 'Ce que {name} peut faire',
     rightsHelp: '« Selon son rôle » suit le tableau des rôles, plus bas dans Équipe. « Oui » ou « Non » vaut pour cette personne seulement.',

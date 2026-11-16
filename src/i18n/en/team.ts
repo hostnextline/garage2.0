@@ -81,6 +81,7 @@ export const team: typeof fr = {
     roles: 'Their roles',
     rolesSaved: 'Roles saved.',
     lastRole: 'Keep at least one role.',
+    giveOwner: { title: 'Make {name} an owner?', text: 'An owner can do everything: the money, the Coffre, the Team, the service keys and removing people.', ok: 'Yes, owner' },
     dropOwner: { title: 'Stop being an owner?', text: 'You will lose access to the Team, the rights and the team’s look. Another owner can give you this role back.', ok: 'Yes, continue' },
     rights: 'What {name} may do',
     rightsHelp: '« By their role » follows the roles table, further down in Team. « Yes » or « No » is for this person only.',

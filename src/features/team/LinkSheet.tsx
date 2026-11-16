@@ -4,7 +4,9 @@ import { useState } from 'preact/hooks';
 import { Copy, Share2, MessageSquare, Mail } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { Sheet, Button, Banner, Seg, Field, toast } from '../../ui';
-import { copyText, canShare, shareLink, smsHref, mailHref, type LinkResult, type SendHow } from '../../domain/team/teamApi';
+import type { LinkResult, SendHow } from '../../domain/team/teamApi';
+import { copyText, canShareText, smsHref } from '../../shared/invoices/share';
+import { shareLink, mailHref } from './links';
 
 export function HowSeg(p: { value: SendHow; onValue: (v: SendHow) => void; label: string }) {
   return (
@@ -14,9 +16,14 @@ export function HowSeg(p: { value: SendHow; onValue: (v: SendHow) => void; label
 }
 
 export function LinkSheet(p: { result: LinkResult | null; onClose: () => void }) {
-  const r = p.result;
+  if (!p.result) return null;
+  // « Lien copié » belongs to ONE link: a new link starts fresh, so the clipboard is never thought to hold it while it
+  // still holds the previous person's (settings-team-08)
+  return <LinkOpen key={p.result.link} r={p.result} onClose={p.onClose} />;
+}
+
+function LinkOpen({ r, ...p }: { r: LinkResult; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
-  if (!r) return null;
   const why = ['off', 'no_phone', 'no_email', 'error', 'none'].includes(r.sent) ? r.sent : 'none';
   const smsBody = r.message?.sms || r.link;
   const mailBody = r.message?.text || r.link;
@@ -39,7 +46,7 @@ export function LinkSheet(p: { result: LinkResult | null; onClose: () => void })
         </Field>
         <div class="row-wrap">
           <Button variant={copied ? 'secondary' : 'primary'} icon={<Copy size={18} />} onClick={copy} data-testid="link-copy">{copied ? t('team.link.copied') : t('team.link.copy')}</Button>
-          {canShare() && <Button icon={<Share2 size={18} />} onClick={() => shareLink(subject, smsBody, r.link)} data-testid="link-share">{t('team.link.share')}</Button>}
+          {canShareText() && <Button icon={<Share2 size={18} />} onClick={() => shareLink(subject, smsBody, r.link)} data-testid="link-share">{t('team.link.share')}</Button>}
           {r.phone && <Button icon={<MessageSquare size={18} />} href={smsHref(r.phone, smsBody)}>{t('team.link.text')}</Button>}
           {r.email && <Button icon={<Mail size={18} />} href={mailHref(r.email, subject, mailBody)}>{t('team.link.email')}</Button>}
         </div>

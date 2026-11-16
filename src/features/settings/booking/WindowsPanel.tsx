@@ -10,7 +10,7 @@ import { windowsSwitch, lockWindows, notify } from '../../../data/api';
 import { pull } from '../../../data/sync';
 import { isOwner, hasRole } from '../../../data/auth';
 import { Panel, Field, Button, Banner, Switch, Seg, ask, attempt, toast } from '../../../ui';
-import { smsHref } from '../../../domain/team/teamApi';
+import { smsHref } from '../../../shared/invoices/share';
 import { NumInput, TimeInput } from '../fields';
 import { spanOf, withDaySpan, exampleWindow, winRound } from './windows';
 import { flexibleWithWindow, tellOutcome, type TellAnswer, type Untold } from './windowTexts';

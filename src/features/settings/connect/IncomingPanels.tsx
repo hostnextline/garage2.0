@@ -9,7 +9,7 @@ import { errorMessage, updateMe } from '../../../data/api';
 import { checkCalls, callsOn, checkTexts, textsOn } from '../../../services/bubbles';
 import { pushState, pushOn, pushOff, type PushState } from '../../../services/push';
 import { Panel, Field, Input, Button, Switch, toast } from '../../../ui';
-import { copyText } from '../../../domain/team/teamApi';
+import { copyText } from '../../../shared/invoices/share';
 import { dropAlert } from './secrets';
 
 type Kind = 'calls' | 'texts';
