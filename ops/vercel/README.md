@@ -13,4 +13,6 @@ Vercel publie l'app construite et testée par GitHub (le même fichier que GitHu
 
 Les en-têtes (`vercel.json`) : les fichiers de `assets/` gardés un an (leur nom change à chaque version),
 `sw.js` et `version.json` jamais gardés (les téléphones voient tout de suite une nouvelle version), et la
-caméra (scan du VIN) et la position (la route du camion) permises seulement pour l'app elle-même.
+caméra (scan du VIN), la position (la route du camion) et le micro (la dictée de 🤖 Hermes) permis seulement
+pour l'app elle-même (`camera=(self), geolocation=(self), microphone=(self)`). Jusqu'au 2026-11-15 le micro
+était fermé à tous (`microphone=()`), l'app comprise : le navigateur refusait le micro sans rien demander.

@@ -32,7 +32,8 @@ jobs:
       - name: La copie locale du serveur
         run: bash tests/stack/install.sh && bash tests/stack/start.sh
       - name: Base de données et fonctions
-        run: node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs
+        # ops/tests: the backup and restore scripts (ops/sauvegardes) and the files of ops, the workflows and tests/stack/mac
+        run: node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs ops/tests/*.test.mjs
       - name: Playwright (Chromium)
         if: ${{ !cancelled() }}
         run: |
