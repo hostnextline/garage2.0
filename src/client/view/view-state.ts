@@ -38,7 +38,7 @@ export function sections(v: JobView): Sections {
 const OPEN = ['booked', 'en_route', 'on_site'];
 /** the extra work can still be answered: the visit is coming or under way and its invoice is not finished.
     A proposal nobody answered before the job was finished is not offered a week later above the paid invoice. */
-export function extrasAnswerable(v: JobView): boolean {
+function extrasAnswerable(v: JobView): boolean {
   return OPEN.includes(v.job.status) && !v.invoice;
 }
 /** the extra work to show for an answer (none once the visit is over) */

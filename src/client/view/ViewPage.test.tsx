@@ -200,3 +200,51 @@ describe('a link the server refuses (x-deadcode-25)', () => {
     expect(localStorage.getItem('his.client.t')).toBeNull();
   });
 });
+
+describe('coming back to the tab (client-page-16)', () => {
+  it('reads the file again after a while away; a quick look away asks nothing', async () => {
+    let status: JobView['job']['status'] = 'booked';
+    server = () => job({}, { status });
+    await open();
+    expect(sp(q('client-status')[0].textContent)).toBe('Rendez-vous confirmé');
+    const visible = () => act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await visible();
+    await wait();
+    expect(calls.filter((c) => c.action === 'view')).toHaveLength(1);          // just loaded: nothing asked
+    const real = Date.now;
+    const later = real() + 60000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      status = 'on_site';
+      await visible();
+      await wait(); await wait();
+      expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);
+      expect(sp(q('client-status')[0].textContent)).toBe('Votre mécano est sur place');
+    } finally { vi.restoreAllMocks(); }
+  });
+  it('an answer that arrives after a newer one is dropped', async () => {
+    let release: (v: JobView) => void = () => undefined;
+    let n = 0;
+    server = (a) => {
+      n += 1;
+      if (a === 'sign') return new Promise<JobView>((r) => { release = r; });   // slow: answers last
+      return n === 1 ? job() : signed(job());
+    };
+    await open();
+    // the tap starts (the slow sign), then the page is read again and shows the signed estimate
+    void act(async () => { q('client-sign-click')[0].click(); });
+    await wait();
+    const later = Date.now() + 60000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+      await wait(); await wait();
+      expect(q('client-signed')).toHaveLength(1);
+      // the old answer of the sign (the unsigned estimate) arrives now: it must not bring the button back
+      await act(async () => { release(job()); });
+      await wait(); await wait();
+      expect(q('client-signed')).toHaveLength(1);
+      expect(q('client-sign-click')).toHaveLength(0);
+    } finally { vi.restoreAllMocks(); }
+  });
+});
