@@ -294,7 +294,9 @@ export async function suggestWindows(lat: number | null, lng: number | null, dur
 export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
   return (await ask((s) => sb.rpc(name, args).abortSignal(s), ms)) as T;
 }
-export async function notify(kind: string, jobId: string, opts: { resend?: boolean } = {}) {
+/** `op`: one id per text sent, kept by the screen until it succeeds: the same send asked twice (an answer lost, a second
+    tap) is one text on the server; a new one for a deliberate « Renvoyer » */
+export async function notify(kind: string, jobId: string, opts: { resend?: boolean; op?: string } = {}) {
   guard();
   return callFn<{ status: string; message?: string; link?: string; phone?: string | null }>('notify', { kind, job_id: jobId, base: appBase(), ...opts });
 }

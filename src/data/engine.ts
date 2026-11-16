@@ -16,7 +16,7 @@ import { pullTable } from './pull';
 import { scanTable, fetchBy, jobsGone, type ScanIO } from './reconcile';
 import { subscribeChanges, readChange, type Change } from './realtime';
 import { senderLock, type SenderLock, type LockManagerLike } from './lock';
-import { net, setNet, browserOffline } from './net';
+import { net, setNet, browserOffline, outbox as outboxSignal } from './net';
 import { ask, expectAccount, STOP } from './client';
 import { readRescue, clearRescue } from './rescue';
 import { sampleServerTime, serverNow, tsMicros } from './clock';
@@ -49,6 +49,8 @@ export interface RpcAnswer<T> { queued: boolean; data?: T; op?: string }
 const CYCLE_MS = 45000;
 const LIVE_CYCLE_MS = 180000;
 const SAFETY_MS = 20000;
+/** tables pulled at the same time (all 23 at once was a burst on a weak signal) */
+const PULLS_AT_ONCE = 8;
 const SCAN_MS = 30 * 60000;
 const WATCH_MS = 60000;
 const HIDDEN_LONG_MS = 10 * 60000;
@@ -234,6 +236,9 @@ export class Engine {
   private counts() {
     if (this.closed) return;
     setNet({ pending: this.outbox.pending().length, failed: this.outbox.failed(), storage: this.storageGood && !this.outbox.memMode ? 'ok' : 'memory' });
+    const list = this.outbox.items.map((i) => i.e);
+    const cur = outboxSignal.value;
+    if (list.length !== cur.length || list.some((e, i) => e !== cur[i])) outboxSignal.value = list;
   }
   private storageOk(ok: boolean) { this.storageGood = ok; this.counts(); }
 
@@ -288,7 +293,7 @@ export class Engine {
     const todo = [...SYNCED];
     let ok = 0;
     const worker = async () => { while (todo.length && !this.closed) { if (await this.pull(todo.shift()!)) ok++; } };
-    await Promise.all(Array.from({ length: 6 }, worker));
+    await Promise.all(Array.from({ length: PULLS_AT_ONCE }, worker));
     if (this.closed) return;
     const all = ok === SYNCED.length;
     setNet({ ...(ok ? { lastPull: new Date().toISOString() } : {}), firstPull: all ? 'ok' : net.value.firstPull === 'ok' ? 'ok' : 'failed' });

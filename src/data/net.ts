@@ -33,6 +33,8 @@ const START: NetState = {
   session: 'ok', storage: 'ok', stuck: null, firstPull: 'no'
 };
 export const net = signal<NetState>(START);
+/** the changes waiting on this device and the refused ones, oldest first (redrawn only when the queue changes) */
+export const outbox = signal<OutboxEntry[]>([]);
 
 const sameFailed = (a: OutboxEntry[], b: OutboxEntry[]) => a.length === b.length && a.every((e, i) => e.seq === b[i].seq && e.error === b[i].error && e.op === b[i].op);
 

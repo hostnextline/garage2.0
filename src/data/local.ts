@@ -12,6 +12,12 @@ import type { Row } from './store';
 
 const VERSION = 3;
 const OPEN_LIMIT = 8000;
+const CALL_LIMIT = 20000;
+function limited<T>(p: Promise<T>): Promise<T> {
+  let tm: ReturnType<typeof setTimeout>;
+  const late = new Promise<never>((_, rej) => { tm = setTimeout(() => rej(Object.assign(new Error('IndexedDB call timed out'), { name: 'TimeoutError' })), CALL_LIMIT); });
+  return Promise.race([p, late]).finally(() => clearTimeout(tm));
+}
 
 export interface OutboxEntry {
   seq?: number;
@@ -98,17 +104,19 @@ export function openLocal(uid: string): LocalDb {
     return p;
   };
 
-  /** runs `fn` on the database; on failure drops the connection and tries once more on a new one */
+  /** runs `fn` on the database; on failure drops the connection and tries once more on a new one. A call that never
+      settles (a transaction lost when an iPhone puts the app to sleep) fails after a while instead of holding the
+      queue for ever (x-errors-35). */
   async function use<T>(fn: (db: IDBPDatabase) => Promise<T>): Promise<T> {
     if (closed) throw new Error('local database closed');
     try {
-      return await fn(await open());
+      return await limited(fn(await open()));
     } catch (first) {
       if (closed) throw first;
       const stale = handle;
       handle = null;
       if (stale) void stale.then((db) => db.close(), () => undefined);
-      return await fn(await open());
+      return await limited(fn(await open()));
     }
   }
 

@@ -13,12 +13,12 @@ import type { TableName } from './schema';
 import type { OutboxEntry } from './local';
 import { clearAll, type Row } from './store';
 import { Engine, uuid, type RpcAnswer } from './engine';
-import { net, setNet, type NetState } from './net';
+import { net, setNet, outbox, type NetState } from './net';
 import { expectAccount } from './client';
 import { REALTIME } from '../lib/config';
 import { AppError, classify } from '../lib/errors';
 export { isNetworkError } from '../lib/errors';
-export { net, uuid, type NetState };
+export { net, outbox, uuid, type NetState };
 
 /** realtime can be switched off (the demo has no realtime server); storage 'memory' keeps nothing on the device */
 export const syncOptions: { realtime: boolean; storage?: 'idb' | 'memory' } = { realtime: REALTIME };
@@ -64,7 +64,7 @@ export function stopSync() {
   expectAccount(null);
 }
 /** signing out: forget what is on the screen (the device copy and its waiting changes stay for this account) */
-export function resetScreen() { clearAll(); setNet({ ready: false, pending: 0, failed: [], sending: false, stuck: null, firstPull: 'no' }); }
+export function resetScreen() { clearAll(); outbox.value = []; setNet({ ready: false, pending: 0, failed: [], sending: false, stuck: null, firstPull: 'no' }); }
 /** the server ended this person's session: nothing is sent any more until they sign in again here */
 export function sessionLost() { setNet({ session: 'lost' }); }
 
@@ -123,3 +123,7 @@ export async function dismissFailed(seq: number, retry = false) { await engine?.
 export async function pendingCount(): Promise<number> { return engine ? engine.outbox.pending().length : net.value.pending; }
 /** the changes waiting on this device (and the refused ones), oldest first */
 export async function outboxList(): Promise<OutboxEntry[]> { return engine ? engine.outbox.items.map((i) => i.e) : []; }
+/** the waiting operations a screen cares about (reactive: a screen reading it redraws when the queue changes) */
+export function pendingOps(match: (e: OutboxEntry) => boolean = () => true): OutboxEntry[] { return outbox.value.filter((e) => e.state === 'pending' && match(e)); }
+/** this row has changes not confirmed by the server yet (reactive) */
+export function pendingFor(t: TableName, id: string): boolean { return outbox.value.some((e) => e.state === 'pending' && e.table === t && e.id === id); }

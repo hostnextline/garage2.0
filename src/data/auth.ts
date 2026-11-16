@@ -19,6 +19,7 @@ import { startSync, stopSync, resetScreen, pendingCount, isNetworkError, onRemot
 import { openLocal } from './local';
 import { getRow } from './store';
 import { sameValue } from './merge';
+import { sampleServerTime } from './clock';
 export { sb };
 
 export type AuthState = 'loading' | 'signed_out' | 'no_access' | 'ready' | 'invite';
@@ -73,8 +74,12 @@ export function clearInvite() {
 }
 
 async function loadAccess(): Promise<Access | null> {
+  const sent = Date.now();
   const { data, error, status } = await timeout(sb.rpc('my_access'), 12000);
   if (error) throw classify(error, status);
+  // a server that says its time (`now`) gives the phone its clock for the freshness checks (x-time-19)
+  const now = (data as { now?: unknown } | null)?.now;
+  if (typeof now === 'string') sampleServerTime(now, sent, Date.now());
   return (data as Access | null) ?? null;
 }
 /** the rights are assigned only when they changed (every pull used to redraw every screen); a change of what the person
@@ -133,7 +138,7 @@ export async function startAuth() {
     // no signal (or the server can't be reached) with an earlier sign-in on this device: the copy on the phone opens
     if (cached && storedUser() === uid && (unreachable || !navigator.onLine)) {
       access.value = cached; await startSync(sb, uid!); if (!inv) authState.value = 'ready';
-      window.addEventListener('online', () => { void checkBehind(uid!); }, { once: true });
+      checkAgainLater(uid!);
       return;
     }
     if (!inv) authState.value = 'signed_out';
@@ -158,14 +163,27 @@ async function checkBehind(uid: string) {
     return;
   }
   if (!reachable || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-    // no signal: the copy stays; asked again when the signal comes back
-    window.addEventListener('online', () => { void checkBehind(uid); }, { once: true });
+    // no signal: the copy stays; asked again when the signal comes back, or in a minute (a server that was unwell)
+    checkAgainLater(uid);
     return;
   }
   // the server has no session for this device any more: back to the sign-in, the waiting changes stay here
   if (authState.value === 'signed_out') return;
   sessionLost();
   await afterSignOut();
+}
+
+let againTimer: ReturnType<typeof setTimeout> | null = null;
+function checkAgainLater(uid: string) {
+  if (againTimer) return;
+  const go = () => {
+    if (againTimer) clearTimeout(againTimer);
+    againTimer = null;
+    window.removeEventListener('online', go);
+    if (access.value?.id === uid && authState.value === 'ready') void checkBehind(uid);
+  };
+  againTimer = setTimeout(go, 60000);
+  window.addEventListener('online', go, { once: true });
 }
 
 /* the owner changed my roles, my rights, the role table or my truck while my app is open: my rights follow */
