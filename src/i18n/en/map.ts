@@ -32,7 +32,13 @@ export const map: typeof fr = {
     start: 'It leaves at',
     after: 'After: {hours}',
     save: 'Change the time',
-    saved: 'Leaves at {time} that day. The appointments are placed again.'
+    saved: 'Leaves at {time} that day. The appointments are placed again.',
+    /* the new start leaves out appointments already booked: asked first (map-hours-02) */
+    askTitle: { one: '{n} appointment no longer fits that day', other: '{n} appointments no longer fit that day' },
+    askText: 'With this start, these appointments fall outside this truck’s hours: {who}. The app tries to put them on another vehicle; otherwise they go to « To place » in the agenda.',
+    askOk: 'Change anyway',
+    blind: 'You do not see all of this truck’s appointments: those that no longer fit will go to « To place » in the agenda.',
+    nothing: 'Nothing changed that day.'
   },
   legend: {
     title: 'The trucks',

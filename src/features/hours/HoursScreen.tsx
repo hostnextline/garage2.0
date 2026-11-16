@@ -11,7 +11,7 @@ import { addDays, dow, longDay, parseDay, duration, today as todayOf, isValidDay
 import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs, blockOfKey, windowsOn } from '../../data/select';
 import { rowsOf } from '../../data/store';
 import { applyHours, moveJob } from '../../data/api';
-import { closedJobs, otherKind, movesFor, type Move } from './closing';
+import { closedJobs, otherKind, movesFor, type Move } from '../../shared/map/closing';
 import { CloseDaySheet } from './CloseDaySheet';
 import { keepWindow } from '../../shared/jobs/select';
 import { deleteRow, pull, net } from '../../data/sync';

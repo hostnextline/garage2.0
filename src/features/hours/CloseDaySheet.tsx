@@ -12,7 +12,7 @@ import { assemble } from '../../shared/map/assemble';
 import { fromDevice } from '../../shared/map/device';
 import { useRoads, roadOf, roadTotal } from '../../shared/map/useRoads';
 import { moveStops } from '../../shared/moment/preview';
-import type { Move } from './closing';
+import type { Move } from '../../shared/map/closing';
 import { momentWord } from '../../shared/jobs/select';
 
 const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
