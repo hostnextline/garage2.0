@@ -255,6 +255,7 @@ export const settings: typeof fr = {
     chars: { one: '{n} character', other: '{n} characters' },
     reset: 'Put back the original text',
     empty: 'This text is empty: nothing can go out.',
+    emptyEn: 'This English text is empty: English-speaking customers will get the French text.',
     kinds: {
       booking: { title: 'Appointment confirmed', when: 'When an appointment is booked.' },
       moved: { title: 'Appointment changed', when: 'When an appointment changes day or block.' },
@@ -266,7 +267,6 @@ export const settings: typeof fr = {
       invoice: { title: 'Invoice', when: 'When the invoice is sent, with the « Pay » button.' },
       payment_reminder: { title: 'Payment reminder', when: 'When you follow up on an unpaid invoice.' },
       return_trip: { title: 'Back to the starting point', when: 'When the mechanic heads back to the Centrale after the last job (to the return number, Bookings).' },
-      reminder: { title: 'Day-before reminder', when: 'The day before the appointment.' },
       window: { title: 'Window confirmed', when: 'When the window of a flexible appointment is fixed, the day before.' }
     },
     vars: {

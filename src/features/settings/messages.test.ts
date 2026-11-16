@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { fillPreview, previewParts, unknownVars, insertAt, VARS_OF, DEFAULT_TEXTS, MSG_KINDS, ALL_VARS, SWITCH_OF, SWITCHES, DEFAULT_ON, kindsFor, plageWords, momentVars } from './messages';
+import { previewParts, unknownVars, insertAt, VARS_OF, DEFAULT_TEXTS, MSG_KINDS, ALL_VARS, SWITCH_OF, DEFAULT_ON, kindsFor, shownKinds, plageWords, momentVars } from './messages';
+
+/** the preview as one line of text */
+const fillPreview = (tpl: string, vars: Record<string, string | number>) => previewParts(tpl, vars).map((p) => p.text).join('');
 
 describe('settings: preview of the texts', () => {
   const vars = { prenom: 'Julie', garage: 'Mécanique Mobile H.I.S', lien: 'https://x.test/c' };
@@ -41,7 +44,7 @@ describe('settings: the texts in « Plages d’arrivée » mode', () => {
     expect(kindsFor(true)).toContain('window');
     expect(kindsFor(true)).toEqual(MSG_KINDS);
     expect(SWITCH_OF.window).toBe('window');
-    expect(SWITCHES).toContain('window');
+    expect(Object.values(SWITCH_OF)).toContain('window');
     expect(DEFAULT_ON.window).toBe(true);
     expect(VARS_OF.window).toContain('plage');
     for (const k of ['booking', 'moved', 'reminder'] as const) expect(VARS_OF[k]).toContain('plage');
@@ -60,5 +63,21 @@ describe('settings: the texts in « Plages d’arrivée » mode', () => {
     expect(on).toEqual({ bloc: 'dans la journée', debut: '14 h', fin: '18 h', plage: 'entre 14 h et 18 h' });
     expect(fillPreview(DEFAULT_TEXTS.fr.booking.split('\n')[0], { prenom: 'Julie', garage: 'H.I.S', jour: 'demain', ...on })).toBe('Bonjour Julie, votre rendez-vous avec H.I.S est confirmé : demain, dans la journée (entre 14 h et 18 h).');
     expect(fillPreview(DEFAULT_TEXTS.fr.window, { prenom: 'Julie', garage: 'H.I.S', jour: 'demain', telephone: '438 901-6606', ...on })).toBe('Bonjour Julie, votre plage d’arrivée est confirmée : H.I.S vient demain, entre 14 h et 18 h. Pour changer : 438 901-6606');
+  });
+});
+
+describe('settings: the texts Réglages offers', () => {
+  it('« Rappel la veille » is not offered: nothing sends it (x-deadcode-02); its text and switch stay known', () => {
+    expect(shownKinds(false)).not.toContain('reminder');
+    expect(shownKinds(true)).not.toContain('reminder');
+    expect(shownKinds(true)).toContain('window');
+    expect(MSG_KINDS).toContain('reminder');
+    expect(DEFAULT_TEXTS.fr.reminder).toBeTruthy();
+  });
+  it('the words the server fills are not said « will not be replaced » (settings-team-21b)', () => {
+    expect(unknownVars('{services} {soustotal}', VARS_OF.moved)).toEqual([]);
+    expect(unknownVars('{bloc}', VARS_OF.reminder)).toEqual([]);
+    expect(unknownVars('Votre facture{payer} : {lien}', VARS_OF.invoice)).toEqual([]);
+    expect(unknownVars('{payer}', VARS_OF.payment_reminder)).toEqual([]);
   });
 });

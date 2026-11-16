@@ -255,6 +255,7 @@ export const settings = {
     chars: { one: '{n} caractère', other: '{n} caractères' },
     reset: 'Remettre le texte d’origine',
     empty: 'Ce texte est vide : rien ne pourra partir.',
+    emptyEn: 'Ce texte anglais est vide : le client anglophone recevra le texte français.',
     kinds: {
       booking: { title: 'Rendez-vous confirmé', when: 'Quand un rendez-vous est réservé.' },
       moved: { title: 'Rendez-vous changé', when: 'Quand un rendez-vous change de jour ou de bloc.' },
@@ -266,7 +267,6 @@ export const settings = {
       invoice: { title: 'Facture', when: 'Quand la facture est envoyée, avec le bouton « Payer ».' },
       payment_reminder: { title: 'Rappel de paiement', when: 'Quand tu relances une facture pas payée.' },
       return_trip: { title: 'Retour au point de départ', when: 'Quand le mécano repart vers la Centrale après sa dernière job (au numéro de retour, Réservations).' },
-      reminder: { title: 'Rappel la veille', when: 'La veille du rendez-vous.' },
       window: { title: 'Plage confirmée', when: 'Quand la plage d’un rendez-vous flexible est fixée, la veille.' }
     },
     vars: {
