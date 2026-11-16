@@ -213,6 +213,21 @@ test('two connections: a card payment ahead that lands while the invoice is bein
   assert.equal(await s.val(`select paid_cents from public.invoices where id = $1`, [inv]), 5000);
 }));
 
+test('two connections: a payment removed while another is added: the invoice counts both, never a stale sum (sql-money-25)', () => shared(async (s) => {
+  const owner = await s.person('Hassan Conc', ['owner']);
+  const { id: job, inv } = await s.job('on_site', 'issued');
+  const p3000 = (await s.c.query(`insert into public.payments (invoice_id, job_id, amount_cents, method) values ($1, $2, 3000, 'cash') returning id`, [inv, job])).rows[0].id;
+  await s.c.query(`update public.invoices set paid_cents = 3000 where id = $1`, [inv]);
+  const k1 = await s.open(owner), k2 = await s.open(owner);
+  await k1.query(`select public.payment_add(p_op => $1, p_invoice => $2, p_amount_cents => 5000, p_method => 'debit')`, [randomUUID(), inv]);
+  const p2 = k2.query(`select public.payment_remove(p_op => $1, p_payment => $2)`, [randomUUID(), p3000]);
+  assert.equal(await within(p2, 400), 'waiting');
+  await k1.query('commit');
+  await p2;
+  await k2.query('commit');
+  assert.equal(await s.val(`select paid_cents from public.invoices where id = $1`, [inv]), 5000, 'the 30 $ removed, the 50 $ added');
+}));
+
 test('two connections: two requests making the same draft make one, without a raw error (sql-money-34)', () => shared(async (s) => {
   const owner = await s.person('Hassan Conc', ['owner']);
   const { id: job } = await s.job('on_site', null);
