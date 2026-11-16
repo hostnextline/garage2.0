@@ -1,0 +1,542 @@
+-- Part 26 — « Refonte », the planner: bookings, arrival windows, moves, order of the stops (database side).
+--
+-- Every function below is written in full from its LIVE text (the running body, read from the database), with only the
+-- lines a verified finding of the audit of 2026-11-15 needs. Nothing is removed or renamed, no argument changes, every
+-- answer keeps its fields (some gain new ones). Each operation now claims its id first (op_begin, Part 26 base): the
+-- same request delivered twice at the same instant runs once.
+--
+-- 1. Nobody is thrown to « À placer » by somebody else's gesture: a block already started is never planned again
+--    (« Ordre des arrêts », a move out of it), an operation on one appointment never un-places another one, an
+--    automatic re-plan (address found, cancellation, the evening's lock) leaves a block as it is rather than un-place.
+-- 2. « Plages d'arrivée »: the calendar's lattice, the stop numbers of a day already started, the hours with a break,
+--    the flexible appointments (lock without pg_cron, who is still to be told), the switch back to the blocks.
+-- 3. Operations kept on a phone in the other mode are converted as the switch converts an appointment.
+-- 4. « Peu importe » (car or truck), « Routes partagées » (my vehicle first), an estimate booked once.
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 0. Small helpers of this Part (server only)
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- The plan of an operation asked by a person on ONE appointment (booking, move, order, length): written with the rule
+-- « the others keep their place » (apply_plan reads garage.keep), put back as it was afterwards.
+create or replace function public.apply_plan_keep(p_plan jsonb) returns integer
+language plpgsql security definer set search_path = public as $$
+declare v_was text := coalesce(current_setting('garage.keep', true), ''); n int;
+begin
+  perform set_config('garage.keep', 'on', true);
+  n := public.apply_plan(p_plan);
+  perform set_config('garage.keep', v_was, true);
+  return n;
+end $$;
+
+-- An automatic re-plan (a cancellation, an address found later, the evening's lock): when the new plan would throw an
+-- appointment that has a truck to « À placer », the block stays as it was (the rule the day's chain already follows).
+-- A day of windows already started keeps its own rule (apply_plan never un-places there).
+create or replace function public.replan_block_safe(p_day date, p_block text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_plan jsonb; v_today boolean;
+begin
+  if not public.block_open(p_day, p_block) then return jsonb_build_object('skipped', true, 'day', p_day, 'block', p_block); end if;
+  perform public.lock_block(p_day, p_block);
+  v_plan := public.plan_block(p_day, p_block);
+  v_today := p_block = 'day' and p_day = public.local_today() and public.windows_on()
+             and public.now_min() >= (select s.start_min from public.day_span() s);
+  if not v_today and exists (select 1 from jsonb_array_elements_text(coalesce(v_plan->'over', '[]'::jsonb)) o
+                             join public.jobs j on j.id = o::uuid where j.truck_id is not null) then
+    return jsonb_build_object('skipped', true, 'kept', true, 'day', p_day, 'block', p_block);
+  end if;
+  perform public.apply_plan(v_plan);
+  return v_plan;
+end $$;
+
+-- The block a window belongs to when the garage books by blocks: the block with those very hours, else the block of the
+-- arrival the window was cut around (its start + « avant », win_for's rule), else the one that holds most of the window
+-- (the earliest when two hold as much). No block touches it: null.
+create or replace function public.block_of_window(p_ws integer, p_we integer) returns text
+language sql stable security definer set search_path = public as $$
+  select x.key from public.blocks_set() x
+  where p_ws is not null and least(x.end_min, coalesce(p_we, p_ws + 1)) > greatest(x.start_min, p_ws)
+  order by (x.start_min = p_ws and x.end_min = coalesce(p_we, x.end_min)) desc,
+           (p_ws + public.bset('win_before_min', 60)::int >= x.start_min and p_ws + public.bset('win_before_min', 60)::int < x.end_min) desc,
+           least(x.end_min, coalesce(p_we, p_ws + 1)) - greatest(x.start_min, p_ws) desc, x.pos
+  limit 1
+$$;
+
+-- The arrival times of ONE truck's stops of a block, walked in the order they are numbered, nothing else touched: used
+-- when the planner must not run (a block already started, an order by hand that would un-place somebody).
+-- Started today: from now and from where the truck is (the stop it is at, else the last one it finished).
+create or replace function public.route_retime(p_truck uuid, p_day date, p_block text) returns void
+language plpgsql security definer set search_path = public as $$
+declare b record; r record;
+  v_speed numeric := public.bset('speed_kmh', 35); v_detour numeric := public.bset('detour', 1.3);
+  v_stop numeric := public.bset('stop_min', 5); v_unknown numeric := public.bset('unknown_min', 20);
+  v_started boolean; tm int; plat double precision; plng double precision; leg int; v_prev text;
+begin
+  select * into b from public.blocks() x where x.key = p_block;
+  if not found or p_truck is null or p_day is null then return; end if;
+  v_started := p_day = public.local_today() and public.now_min() >= b.start_min;
+  if v_started then
+    tm := (ceil(public.now_min() / 5.0) * 5)::int;
+    select coalesce(j.lat, c.lat), coalesce(j.lng, c.lng) into plat, plng from public.jobs j left join public.customers c on c.id = j.customer_id
+    where j.truck_id = p_truck and j.day = p_day and j.deleted_at is null and j.status = 'done'
+      and coalesce(j.lat, c.lat) is not null and coalesce(j.lng, c.lng) is not null
+    order by j.finished_at desc nulls last, j.stop_order desc nulls last limit 1;
+  else
+    tm := coalesce(public.ranges_first(public.truck_ranges(p_truck, p_day), b.start_min, b.end_min), b.start_min);
+    select x.key into v_prev from public.blocks() x where x.pos = b.pos - 1;
+    if v_prev is not null then
+      select coalesce(j.lat, c.lat), coalesce(j.lng, c.lng) into plat, plng from public.jobs j left join public.customers c on c.id = j.customer_id
+      where j.truck_id = p_truck and j.day = p_day and j.block = v_prev and j.deleted_at is null and j.status not in ('cancelled','no_show')
+        and coalesce(j.lat, c.lat) is not null and coalesce(j.lng, c.lng) is not null
+      order by j.stop_order desc nulls last, j.eta_min desc nulls last limit 1;
+    end if;
+  end if;
+  if plat is null then
+    select coalesce((tr.start->>'lat')::double precision, h.lat), coalesce((tr.start->>'lng')::double precision, h.lng) into plat, plng
+    from public.home_point() h left join public.trucks tr on tr.id = p_truck;
+  end if;
+  perform set_config('garage.rpc', 'on', true);
+  for r in
+    select j.id, j.status, j.duration_min, j.arrived_at, coalesce(j.lat, c.lat) lat, coalesce(j.lng, c.lng) lng
+    from public.jobs j left join public.customers c on c.id = j.customer_id
+    where j.truck_id = p_truck and j.day = p_day and j.block = p_block and j.deleted_at is null and j.status in ('en_route','on_site','booked')
+    order by (j.status in ('en_route','on_site')) desc, j.stop_order nulls last, j.eta_min nulls last, j.created_at
+  loop
+    if r.status = 'on_site' then
+      -- there already: only the work that is left
+      tm := tm + greatest(0, r.duration_min - coalesce(floor(extract(epoch from (now() - r.arrived_at)) / 60)::int, 0));
+    else
+      leg := public.drive_min(plat, plng, r.lat, r.lng, v_speed, v_detour, v_unknown);
+      tm := tm + leg;
+      if r.status = 'booked' then
+        update public.jobs set eta_min = tm, travel_min = leg + ceil(v_stop)::int
+        where id = r.id and (eta_min, travel_min) is distinct from (tm, leg + ceil(v_stop)::int);
+      end if;
+      tm := tm + ceil(v_stop)::int + r.duration_min;
+    end if;
+    if r.lat is not null and r.lng is not null then plat := r.lat; plng := r.lng; end if;
+  end loop;
+end $$;
+
+revoke all on function public.apply_plan_keep(jsonb) from public, anon, authenticated;
+revoke all on function public.replan_block_safe(date, text) from public, anon, authenticated;
+revoke all on function public.block_of_window(integer, integer) from public, anon, authenticated;
+revoke all on function public.route_retime(uuid, date, text) from public, anon, authenticated;
+grant execute on function public.apply_plan_keep(jsonb) to service_role;
+grant execute on function public.replan_block_safe(date, text) to service_role;
+grant execute on function public.block_of_window(integer, integer) to service_role;
+grant execute on function public.route_retime(uuid, date, text) to service_role;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 1. Writing a plan: who may lose a place
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- apply_plan (live text) with three guards:
+--   * a job en route / on site whose truck is no longer in the plan keeps its stop number and its times (they were
+--     written null);
+--   * only an appointment still « booked » is written (a « Je pars » that landed between the plan and the write wins);
+--   * nobody is thrown to « À placer » in a block already started or of a past day, nor by an operation on ONE
+--     appointment (garage.keep, see apply_plan_keep). Closing hours, a truck switched off, a new start: as before.
+create or replace function public.apply_plan(p_plan jsonb)
+ returns integer
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare k text; v jsonb; n int := 0; c int; d date := nullif(p_plan->>'day', '')::date; bk record; p jsonb; v_moved boolean := false; v_keep boolean;
+begin
+  perform set_config('garage.rpc', 'on', true);
+  for k, v in select * from jsonb_each(coalesce(p_plan->'jobs', '{}')) loop
+    if coalesce((v->>'fixed')::boolean, false) then
+      update public.jobs set stop_order = (v->>'order')::int, eta_min = (v->>'eta')::int, travel_min = (v->>'travel')::int
+      where id = k::uuid and v ? 'order' and (stop_order, eta_min, travel_min) is distinct from ((v->>'order')::int, (v->>'eta')::int, (v->>'travel')::int);
+    else
+      update public.jobs set truck_id = (v->>'truck')::uuid, stop_order = (v->>'order')::int, eta_min = (v->>'eta')::int, travel_min = (v->>'travel')::int,
+        truck_pinned = truck_pinned and truck_id = (v->>'truck')::uuid
+      where id = k::uuid and status = 'booked' and (truck_id, stop_order, eta_min, travel_min) is distinct from ((v->>'truck')::uuid, (v->>'order')::int, (v->>'eta')::int, (v->>'travel')::int);
+    end if;
+    get diagnostics c = row_count; n := n + c;
+  end loop;
+  v_keep := (p_plan->>'block' = 'day' and d is not null and d = public.local_today() and public.windows_on()
+            and public.now_min() >= (select s.start_min from public.day_span() s))
+            -- a block already started, or of a past day: its appointments stay on their truck
+            or (d is not null and not public.block_open(d, p_plan->>'block'))
+            -- an operation on one appointment: the others keep their place
+            or coalesce(current_setting('garage.keep', true), '') = 'on';
+  if not coalesce(v_keep, false) then
+    update public.jobs set truck_id = null, stop_order = null, eta_min = null, travel_min = null, truck_pinned = false
+    where id in (select x::uuid from jsonb_array_elements_text(coalesce(p_plan->'over', '[]')) x)
+      and status = 'booked' and (truck_id is not null or stop_order is not null);
+    get diagnostics c = row_count; n := n + c;
+  end if;
+
+  if n > 0 and d is not null and coalesce(current_setting('garage.chain', true), '') <> 'on' then
+    perform set_config('garage.chain', 'on', true);
+    for bk in select b.key, b.start_min from public.blocks() b order by b.pos loop
+      -- the block just written: again only when a block before it now ends elsewhere
+      continue when bk.key = p_plan->>'block' and not v_moved;
+      continue when not public.block_open(d, bk.key);
+      continue when not exists (select 1 from public.jobs j where j.day = d and j.block = bk.key and j.deleted_at is null and j.status = 'booked');
+      continue when not pg_try_advisory_xact_lock(hashtext('block:' || d::text || ':' || bk.key));
+      p := public.plan_block(d, bk.key);
+      continue when exists (select 1 from jsonb_array_elements_text(coalesce(p->'over', '[]')) o join public.jobs j on j.id = o::uuid where j.truck_id is not null);
+      if public.apply_plan(p) > 0 then v_moved := true; end if;
+    end loop;
+    perform set_config('garage.chain', '', true);
+    perform set_config('garage.rpc', 'on', true);
+  end if;
+  return n;
+end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 2. « Ordre des arrêts »
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- The order of ONE truck's stops in ONE block (the checks of who may are done by set_stop_order).
+-- The block is planned again only while it is open AND when that throws nobody to « À placer »; otherwise only this
+-- truck's booked stops are numbered again (the list, then the others as they were) and timed again: nobody changes
+-- truck, the other trucks are not touched, the stops en route / on site and the finished ones keep their numbers.
+create or replace function public.stop_order_one(p_truck uuid, p_day date, p_block text, p_ids uuid[]) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_plan jsonb; v_direct boolean := true; v_base int;
+begin
+  perform public.lock_block(p_day, p_block);
+  if exists (select 1 from unnest(p_ids) x where not exists (select 1 from public.jobs j where j.id = x and j.truck_id = p_truck and j.day = p_day
+             and j.block = p_block and j.deleted_at is null and j.status = 'booked')) then
+    perform public.fail('changed', 'Un des rendez-vous n’est plus dans cette route (parti, fini ou déplacé). Rouvre la liste.');
+  end if;
+  perform set_config('garage.rpc', 'on', true);
+  update public.jobs set manual_order = null
+  where truck_id = p_truck and day = p_day and block = p_block and manual_order is not null and not (id = any(p_ids));
+  update public.jobs j set manual_order = x.o from unnest(p_ids) with ordinality x(id, o) where j.id = x.id and j.manual_order is distinct from x.o::int;
+  if public.block_open(p_day, p_block) then
+    v_plan := public.plan_block(p_day, p_block);
+    v_direct := not exists (select 1 from jsonb_array_elements(v_plan->'trucks') t where t->>'id' = p_truck::text)
+      or exists (select 1 from jsonb_array_elements_text(coalesce(v_plan->'over', '[]'::jsonb)) o join public.jobs j on j.id = o::uuid where j.truck_id is not null);
+    if not v_direct then perform public.apply_plan_keep(v_plan); end if;
+  end if;
+  if v_direct then
+    select coalesce(max(j.stop_order), 0) into v_base from public.jobs j
+    where j.truck_id = p_truck and j.day = p_day and j.block = p_block and j.deleted_at is null and j.status in ('en_route','on_site','done');
+    update public.jobs j set stop_order = v_base + q.rn
+    from (select x.id, (row_number() over (order by array_position(p_ids, x.id) nulls last, x.stop_order nulls last, x.eta_min nulls last, x.created_at))::int rn
+          from public.jobs x where x.truck_id = p_truck and x.day = p_day and x.block = p_block and x.deleted_at is null and x.status = 'booked') q
+    where q.id = j.id and j.stop_order is distinct from v_base + q.rn;
+    perform public.route_retime(p_truck, p_day, p_block);
+  end if;
+end $$;
+revoke all on function public.stop_order_one(uuid, date, text, uuid[]) from public, anon, authenticated;
+grant execute on function public.stop_order_one(uuid, date, text, uuid[]) to service_role;
+
+-- set_stop_order (live text): the claim first; a null truck is no longer « mine »; a block already started is not planned
+-- again (stop_order_one); an order kept on a phone in the other mode is converted (a block's order → the day's,
+-- the day's order → each block's own part of it) instead of « Bloc inconnu ».
+create or replace function public.set_stop_order(p_op uuid, p_truck uuid, p_day date, p_block text, p_jobs uuid[])
+ returns jsonb
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare v_done jsonb; v_ids uuid[] := coalesce(p_jobs, '{}'); v_wm boolean; bk record; v_part uuid[]; v_rows jsonb := '[]'::jsonb; n int := 0;
+begin
+  v_done := public.op_begin(p_op, 'set_stop_order');
+  if v_done is not null then return v_done; end if;
+  if not public.is_staff() then perform public.fail('not_allowed', 'Connecte-toi.'); end if;
+  if not (public.is_owner() or public.can('book') or coalesce(p_truck = any(public.my_truck_ids()), false)) then
+    perform public.fail('not_allowed', 'Tu ne peux pas changer l’ordre de ce camion. Parle au propriétaire.');
+  end if;
+  perform pg_advisory_xact_lock_shared(hashtext('windows_switch'));
+  v_wm := public.windows_on();
+  if p_day is null or p_truck is null
+     or not (exists (select 1 from public.blocks() x where x.key = p_block)
+             or (v_wm and exists (select 1 from public.blocks_set() x where x.key = p_block))
+             or (not v_wm and p_block = 'day')) then
+    perform public.fail('bad_block', 'Bloc inconnu.');
+  end if;
+  if p_day < public.local_today() then perform public.fail('past', 'Cette journée est passée.'); end if;
+  if cardinality(v_ids) > 200 or cardinality(v_ids) <> cardinality(array(select distinct x from unnest(v_ids) x)) then
+    perform public.fail('bad_list', 'La liste des arrêts n’est pas bonne.');
+  end if;
+  if not v_wm and p_block = 'day' then
+    -- an order of the whole day, made while the garage booked by windows: each block takes its own part of it
+    for bk in select x.key from public.blocks() x order by x.pos loop
+      v_part := array(select u.x from unnest(v_ids) with ordinality u(x, o) join public.jobs j on j.id = u.x and j.day = p_day and j.block = bk.key order by u.o);
+      n := n + cardinality(v_part);
+      perform public.stop_order_one(p_truck, p_day, bk.key, v_part);
+      v_rows := v_rows || public.block_rows(p_day, bk.key);
+    end loop;
+    if n <> cardinality(v_ids) then
+      perform public.fail('changed', 'Un des rendez-vous n’est plus dans cette route (parti, fini ou déplacé). Rouvre la liste.');
+    end if;
+  else
+    -- an order of one block, made while the garage booked by blocks: its stops are in the day's route now
+    if v_wm then p_block := 'day'; end if;
+    perform public.stop_order_one(p_truck, p_day, p_block, v_ids);
+    v_rows := public.block_rows(p_day, p_block);
+  end if;
+  return public.op_save(p_op, 'set_stop_order', jsonb_build_object('ok', true, 'rows', jsonb_build_object('jobs', v_rows)));
+end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 3. Moving an appointment
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- « Peu importe » (car or truck, nothing said): the planner tries the car first while it places the stops farthest
+-- first, so the newcomer could take the car's last room before the car's own appointments were placed, and the block
+-- answered « complet » while the truck was empty. The plan with the stop is made as before; when it does not fit, no
+-- vehicle was named and the garage has both kinds working that block, it is made again for the truck.
+create or replace function public.plan_extra(p_day date, p_block text, p_x jsonb, p_exclude uuid, p_plan0 jsonb) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare p1 jsonb; p2 jsonb; v_kind text;
+begin
+  p1 := public.plan_block(p_day, p_block, p_x, p_exclude);
+  if public.plan_fits(p_plan0, p1) or nullif(p_x->>'truck', '') is not null or coalesce((p_x->>'force')::boolean, false) then return p1; end if;
+  v_kind := case when coalesce((p_x->>'need')::boolean, false) then 'truck'
+                 when p_x ? 'kind' or p_x ? 'need' then nullif(p_x->>'kind', '')
+                 else (select case when jj.needs_machine then 'truck' else jj.vehicle_kind end from public.jobs jj where jj.id = (p_x->>'id')::uuid) end;
+  if v_kind is not null
+     or not exists (select 1 from jsonb_array_elements(p1->'trucks') t where coalesce((t->>'machine')::boolean, true))
+     or not exists (select 1 from jsonb_array_elements(p1->'trucks') t where not coalesce((t->>'machine')::boolean, true)) then
+    return p1;
+  end if;
+  p2 := public.plan_block(p_day, p_block, p_x || jsonb_build_object('kind', 'truck'), p_exclude);
+  return case when public.plan_fits(p_plan0, p2) then p2 else p1 end;
+end $$;
+revoke all on function public.plan_extra(date, text, jsonb, uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.plan_extra(date, text, jsonb, uuid, jsonb) to service_role;
+
+-- move_job (live text), with:
+--   * the claim first, and never in the middle of the switch between blocks and windows;
+--   * a job « À placer » is nobody's own (a null truck let the check through);
+--   * a move kept on a phone in the other mode is converted (a block → the window of that block's hours; a window →
+--     its block, the window kept on the job as what the customer was told) instead of bad_block;
+--   * the job is read again once the blocks are locked, and only an appointment still « booked » is written;
+--   * work for the tire machine is not put on the car (needs_truck, as when booking);
+--   * the block it leaves is planned again only while it is open: a block already started (or a past day) keeps every
+--     other appointment on its truck, only the hole in the numbers is closed (today);
+--   * « réservé quand même » ends with a move: the job fits where it now is;
+--   * the answer says what really changed: `changed` as before (the day or the block), and new `tell` (what the
+--     customer was told is no longer true: day, block or window), `window_changed`, `truck_changed`, `was`, `now`.
+create or replace function public.move_job(p_op uuid, p_job uuid, p_day date, p_block text, p_truck uuid, p_win_start integer, p_win_flex boolean)
+ returns jsonb
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare
+  v_done jsonb;
+  j public.jobs; jn public.jobs; b record; v_lat double precision; v_lng double precision; v_plan0 jsonb; v_plan1 jsonb; v_res jsonb;
+  v_wm boolean; v_ws int; v_we int; v_flex boolean := false; v_moved boolean; v_same boolean := true;
+  v_x jsonb; v_eta int; sp record; v_blk record; v_wend int; v_pws int; v_pwe int; v_tell boolean; v_winch boolean;
+begin
+  v_done := public.op_begin(p_op, 'move_job');
+  if v_done is not null then return v_done; end if;
+  perform pg_advisory_xact_lock_shared(hashtext('windows_switch'));
+  v_wm := public.windows_on();
+  select * into j from public.jobs where id = p_job and deleted_at is null;
+  if not found then perform public.fail('not_found', 'Ce rendez-vous n’existe plus.'); end if;
+  if not (public.can('book') or (p_truck is not null and coalesce(p_truck = any(public.my_truck_ids()), false) and coalesce(j.truck_id = any(public.my_truck_ids()), false))) then
+    perform public.fail('not_allowed', 'Tu ne peux pas déplacer ce rendez-vous.');
+  end if;
+  if j.status <> 'booked' then perform public.fail('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.'); end if;
+  -- a move made in the other mode (kept on a phone, or an app not yet up to date): converted as the switch converts a job
+  if v_wm and p_block is distinct from 'day' then
+    select * into v_blk from public.blocks_set() x where x.key = p_block;
+    if found then
+      p_block := 'day';
+      if p_win_start is null and p_win_flex is null and (p_day is distinct from j.day or j.block <> 'day') then
+        p_win_start := v_blk.start_min; v_wend := v_blk.end_min;
+      end if;
+    end if;
+  elsif not v_wm and p_block = 'day' then
+    if p_win_start is not null then
+      p_block := coalesce(public.block_of_window(p_win_start, p_win_start + public.win_len()), p_block);
+      if p_block <> 'day' and not exists (select 1 from public.blocks_set() x where x.key = p_block and x.start_min = p_win_start and x.end_min = p_win_start + public.win_len()) then
+        v_pws := p_win_start; v_pwe := p_win_start + public.win_len();
+      end if;
+    elsif p_day = j.day and exists (select 1 from public.blocks() x where x.key = j.block) then
+      p_block := j.block;
+    end if;
+  end if;
+  select * into b from public.blocks() x where x.key = p_block;
+  if not found then
+    perform public.fail('bad_block', case when v_wm then 'Le garage donne maintenant une plage d’arrivée de 4 heures : choisis une plage au lieu d’un bloc.' else 'Bloc inconnu.' end);
+  end if;
+  if not public.block_open(p_day, p_block) then
+    perform public.fail('block_started', case when v_wm then 'Cette journée est finie : choisis une autre journée.' else 'Ce bloc est déjà commencé.' end);
+  end if;
+  if p_truck is not null and j.needs_machine and exists (select 1 from public.trucks tr where tr.id = p_truck and not tr.tire_machine) then
+    perform public.fail('needs_truck', 'Ce travail demande le camion (montage ou balancement des pneus) : la voiture ne peut pas le faire.');
+  end if;
+  -- the two blocks, always locked in the same order (day, then morning → evening); then the job as it is NOW
+  perform public.lock_two(j.day, j.block, p_day, p_block);
+  select * into jn from public.jobs where id = p_job and deleted_at is null;
+  if not found then perform public.fail('not_found', 'Ce rendez-vous n’existe plus.'); end if;
+  if jn.status <> 'booked' then perform public.fail('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.'); end if;
+  if (jn.day, jn.block) is distinct from (j.day, j.block) then
+    perform public.fail('changed', 'Ce rendez-vous vient d’être déplacé par quelqu’un d’autre. Rouvre-le et recommence.');
+  end if;
+  j := jn;
+  v_moved := j.day <> p_day or j.block <> p_block;
+  if v_wm then
+    if coalesce(p_win_flex, false) then
+      v_flex := true; v_ws := null;
+      v_same := j.win_flex;
+      if v_same then v_ws := j.win_start; v_we := j.win_end; end if;       -- already flexible: its window, if fixed, stays
+    elsif p_win_start is not null then
+      v_flex := false; v_ws := p_win_start; v_we := coalesce(v_wend, p_win_start + public.win_len());
+      v_same := not j.win_flex and j.win_start is not distinct from p_win_start;
+      select * into sp from public.day_span();
+      if v_ws < sp.start_min or v_we > greatest(sp.end_min, sp.start_min + public.win_len()) then
+        perform public.fail('bad_window', 'Cette plage n’est pas dans les heures de la journée : choisis-en une autre.');
+      end if;
+      if p_day = public.local_today() and public.now_min() > v_we then
+        perform public.fail('window_full', 'Cette plage n’est plus libre : choisis-en une autre.');
+      end if;
+    elsif p_win_flex is not null then
+      v_flex := false; v_ws := null; v_same := false;                      -- a window cut around the planned arrival
+    elsif not v_moved then
+      v_flex := j.win_flex; v_ws := j.win_start; v_we := j.win_end;        -- the same day: what the customer was told
+    else
+      v_flex := j.win_flex; v_ws := null;
+    end if;
+    if v_moved and v_flex then v_ws := null; v_we := null; end if;         -- flexible on another day: fixed again later
+  elsif not v_moved then
+    v_pws := j.win_start; v_pwe := j.win_end;                              -- blocks, the same moment: what was told stays on the job
+  end if;
+  if not v_moved and v_same and p_truck is not distinct from (case when j.truck_pinned then j.truck_id end) then
+    return public.op_save(p_op, 'move_job', jsonb_build_object('ok', true, 'unchanged', true, 'changed', false, 'tell', false,
+      'rows', jsonb_build_object('jobs', jsonb_build_array(to_jsonb(j)))));
+  end if;
+  select coalesce(j.lat, c.lat), coalesce(j.lng, c.lng) into v_lat, v_lng from public.customers c where c.id = j.customer_id;
+  v_x := jsonb_build_object('id', j.id, 'lat', v_lat, 'lng', v_lng, 'dur', j.duration_min, 'truck', p_truck,
+    -- a vehicle chosen by hand: its kind becomes the job's (work for the tire machine still needs the machine)
+    'need', j.needs_machine, 'kind', case when p_truck is not null then (select case when tr.tire_machine then 'truck' else 'car' end from public.trucks tr where tr.id = p_truck) else j.vehicle_kind end)
+    || case when v_wm then jsonb_build_object('ws', v_ws, 'we', v_we) else '{}'::jsonb end;
+  v_plan0 := public.plan_block(p_day, p_block, null, j.id);
+  v_plan1 := public.plan_extra(p_day, p_block, v_x, j.id, v_plan0);
+  if jsonb_array_length(v_plan1->'trucks') = 0 then
+    perform public.fail('block_closed', case when v_wm then 'Cette journée est fermée : aucun camion ne travaille.' else 'Ce bloc est fermé ce jour-là.' end);
+  end if;
+  if not coalesce((v_plan1->'extra'->>'placed')::boolean, false)
+     or exists (select 1 from jsonb_array_elements_text(v_plan1->'over') o where not ((v_plan0->'over') ? o))
+     or public.plan_late_new(v_plan0, v_plan1) then
+    if v_ws is not null then
+      v_res := public.plan_block(p_day, p_block, v_x || jsonb_build_object('ws', null, 'we', null), j.id);
+      if coalesce((v_res->'extra'->>'placed')::boolean, false)
+         and not exists (select 1 from jsonb_array_elements_text(v_res->'over') o where not ((v_plan0->'over') ? o))
+         and not public.plan_late_new(v_plan0, v_res) then
+        perform public.fail('window_full', 'Cette plage n’est plus libre : choisis-en une autre.');
+      end if;
+    end if;
+    perform public.fail('block_full', case when v_wm then 'Cette journée est complète : la route ne rentre plus dans le temps.' else 'Ce bloc est complet : la route ne rentre plus dans le temps.' end);
+  end if;
+  if p_truck is not null and (v_plan1->'extra'->>'truck')::uuid is distinct from p_truck then
+    perform public.fail('truck_full', 'Ce camion n’a plus de place dans ce bloc.');
+  end if;
+  perform set_config('garage.rpc', 'on', true);
+  update public.jobs set day = p_day, block = p_block, truck_id = (v_plan1->'extra'->>'truck')::uuid, truck_pinned = p_truck is not null,
+    win_start = case when v_wm then v_ws else v_pws end, win_end = case when v_wm then v_we else v_pwe end, win_flex = v_flex,
+    -- it fits where it now is: no longer « réservé quand même »
+    forced = false,
+    -- a new window is a new moment: the place chosen by hand in the route is forgotten, the customer is told again
+    manual_order = case when v_wm and v_ws is distinct from win_start then null else manual_order end,
+    confirm_sent_at = case when day <> p_day or block <> p_block or (v_ws is not null and v_ws is distinct from win_start) then null else confirm_sent_at end
+  where id = j.id and status = 'booked';
+  if not found then perform public.fail('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.'); end if;
+  perform public.apply_plan_keep(v_plan1);
+  if v_moved and exists (select 1 from public.blocks() x where x.key = j.block) then
+    if public.block_open(j.day, j.block) then
+      perform public.apply_plan_keep(public.plan_block(j.day, j.block));
+    elsif j.day = public.local_today() and j.truck_id is not null and j.stop_order is not null then
+      -- a block already started: nobody is planned again, the stops after it move up by one
+      update public.jobs set stop_order = stop_order - 1
+      where truck_id = j.truck_id and day = j.day and block = j.block and deleted_at is null and id <> j.id
+        and status in ('booked','en_route','on_site') and stop_order > j.stop_order
+        and not exists (select 1 from public.jobs o where o.truck_id = j.truck_id and o.day = j.day and o.block = j.block and o.deleted_at is null
+                        and o.id <> j.id and o.status not in ('cancelled','no_show') and o.stop_order = j.stop_order);
+    end if;
+  end if;
+  -- no window said: it is cut around the planned arrival (a flexible job only once its day is locked). Nothing moves.
+  if v_wm and v_ws is null and (not v_flex or public.win_lock_due(p_day)) then
+    perform set_config('garage.rpc', 'on', true);
+    select x.eta_min into v_eta from public.jobs x where x.id = j.id;
+    update public.jobs set win_start = w.win_start, win_end = w.win_end,
+      confirm_sent_at = case when j.win_start is distinct from w.win_start then null else confirm_sent_at end
+    from public.win_for(v_eta) w where id = j.id;
+  end if;
+  -- what really changed for the customer (the day, the block, the window): told again
+  select * into jn from public.jobs where id = j.id;
+  v_winch := (j.win_start, j.win_end) is distinct from (jn.win_start, jn.win_end);
+  v_tell := v_moved or (v_wm and v_winch);
+  if v_tell and jn.confirm_sent_at is not null then
+    perform set_config('garage.rpc', 'on', true);
+    update public.jobs set confirm_sent_at = null where id = j.id;
+  end if;
+  v_res := jsonb_build_object('ok', true, 'job_id', j.id, 'changed', v_moved, 'tell', v_tell, 'window_changed', v_winch,
+    'truck_changed', j.truck_id is distinct from jn.truck_id,
+    'was', jsonb_build_object('day', j.day, 'block', j.block, 'win_start', j.win_start, 'win_end', j.win_end, 'win_flex', j.win_flex, 'truck_id', j.truck_id),
+    'now', jsonb_build_object('day', jn.day, 'block', jn.block, 'win_start', jn.win_start, 'win_end', jn.win_end, 'win_flex', jn.win_flex, 'truck_id', jn.truck_id),
+    'rows', jsonb_build_object('jobs', public.block_rows(p_day, p_block) || case when v_moved then public.block_rows(j.day, j.block) else '[]'::jsonb end));
+  return public.op_save(p_op, 'move_job', v_res);
+end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 4. A longer job
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- set_job_duration (live text): the claim first; a job « À placer » is nobody's own; the job is read again under the
+-- lock; a longer job is refused when ANOTHER appointment would lose its place (or its window) for it, and the plan
+-- really written is checked again (the first check plans the job apart, the plan written plans it as it is).
+create or replace function public.set_job_duration(p_op uuid, p_job uuid, p_duration integer)
+ returns jsonb
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare v_done jsonb; j public.jobs; v_plan0 jsonb; v_plan jsonb; v_lat double precision; v_lng double precision; v_res jsonb;
+  v_day date; v_block text; v_full text;
+begin
+  v_done := public.op_begin(p_op, 'set_job_duration');
+  if v_done is not null then return v_done; end if;
+  select * into j from public.jobs where id = p_job and deleted_at is null;
+  if not found then perform public.fail('not_found', 'Ce rendez-vous n’existe plus.'); end if;
+  if not (public.can('book') or coalesce(j.truck_id = any(public.my_truck_ids()), false)) then perform public.fail('not_allowed', 'Tu ne peux pas changer ce rendez-vous.'); end if;
+  p_duration := greatest(15, least(720, coalesce(p_duration, j.duration_min)));
+  perform set_config('garage.rpc', 'on', true);
+  v_day := j.day; v_block := j.block;
+  if j.status = 'booked' and public.block_open(j.day, j.block) then
+    perform public.lock_block(j.day, j.block);
+    select * into j from public.jobs where id = p_job and deleted_at is null;
+    if not found then perform public.fail('not_found', 'Ce rendez-vous n’existe plus.'); end if;
+    if (j.day, j.block) is distinct from (v_day, v_block) then
+      perform public.fail('changed', 'Ce rendez-vous vient d’être déplacé par quelqu’un d’autre. Rouvre-le et recommence.');
+    end if;
+  end if;
+  if j.status = 'booked' and public.block_open(j.day, j.block) then
+    v_full := case when j.block = 'day' then 'Avec cette durée, la job ne rentre plus dans la journée sans déranger un autre rendez-vous. Déplace-la ou raccourcis-la.'
+                   else 'Avec cette durée, la job ne rentre plus dans le bloc. Déplace-la ou raccourcis-la.' end;
+    select coalesce(j.lat, c.lat), coalesce(j.lng, c.lng) into v_lat, v_lng from public.customers c where c.id = j.customer_id;
+    v_plan0 := public.plan_block(j.day, j.block);
+    v_plan := public.plan_block(j.day, j.block, jsonb_build_object('id', j.id, 'lat', v_lat, 'lng', v_lng, 'dur', p_duration, 'truck', case when j.truck_pinned then j.truck_id end), j.id);
+    if p_duration > j.duration_min and (not coalesce((v_plan->'extra'->>'placed')::boolean, false)
+        or exists (select 1 from jsonb_array_elements_text(coalesce(v_plan->'over', '[]'::jsonb)) o where o <> j.id::text and not (coalesce(v_plan0->'over', '[]'::jsonb) ? o))
+        or exists (select 1 from jsonb_array_elements_text(coalesce(v_plan->'late', '[]'::jsonb)) o where o <> j.id::text and not (coalesce(v_plan0->'late', '[]'::jsonb) ? o))) then
+      perform public.fail('block_full', v_full);
+    end if;
+    update public.jobs set duration_min = p_duration where id = j.id;
+    v_plan := public.plan_block(j.day, j.block);
+    if p_duration > j.duration_min and (
+         exists (select 1 from jsonb_array_elements_text(coalesce(v_plan->'over', '[]'::jsonb)) o join public.jobs x on x.id = o::uuid
+                 where x.truck_id is not null and not (coalesce(v_plan0->'over', '[]'::jsonb) ? o))
+         or public.plan_late_new(v_plan0, v_plan)) then
+      perform public.fail('block_full', v_full);
+    end if;
+    perform public.apply_plan_keep(v_plan);
+  else
+    -- a started block, or a job no longer booked: the length changes, nothing moves
+    update public.jobs set duration_min = p_duration where id = j.id;
+  end if;
+  v_res := jsonb_build_object('ok', true, 'rows', jsonb_build_object('jobs', public.block_rows(j.day, j.block)));
+  return public.op_save(p_op, 'set_job_duration', v_res);
+end $function$;

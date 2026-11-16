@@ -49,8 +49,8 @@ test('windows off: the blocks are the three of before, a booking has no window, 
   const m = await h.rpc('move_job', { p_op: uuid(), p_job: r.job_id, p_day: day, p_block: 'pm', p_truck: null });
   assert.equal(m.changed, true);
   assert.equal((await row(h, r.job_id)).block, 'pm');
-  const m7 = await h.fails(() => h.rpc('move_job', { p_op: uuid(), p_job: r.job_id, p_day: day, p_block: 'day', p_truck: null, p_win_start: 600, p_win_flex: false }));
-  assert.equal(m7?.hint, 'bad_block');
+  const m7 = await h.rpc('move_job', { p_op: uuid(), p_job: r.job_id, p_day: day, p_block: 'day', p_truck: null, p_win_start: 600, p_win_flex: false });
+  assert.equal((await row(h, r.job_id)).block, 'am', 'a move kept on a phone in window mode: the block of its window (Part 26)'); void m7;
 }));
 
 test('the window for an estimated arrival: 1 h before, 3 h after, inside the day', () => tx(async (h) => {
@@ -255,8 +255,8 @@ test('moving a job in window mode: a new window, flexible, another day; a block 
   assert.equal(jb.win_flex, false);
   inside(await row(h, a.job_id), 'A');
   // a block is refused
-  const e = await h.fails(() => h.rpc('move_job', { p_op: uuid(), p_job: b.job_id, p_day: day, p_block: 'pm', p_truck: null }));
-  assert.equal(e?.hint, 'bad_block');
+  const e = await h.rpc('move_job', { p_op: uuid(), p_job: b.job_id, p_day: day, p_block: 'pm', p_truck: null });
+  assert.deepEqual([(await row(h, b.job_id)).block, (await row(h, b.job_id)).win_start], ['day', 720], 'a block kept on a phone: the window of its hours (Part 26)'); void e;
   void dow;
 }));
 
