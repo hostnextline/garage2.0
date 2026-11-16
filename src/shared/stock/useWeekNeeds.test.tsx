@@ -3,7 +3,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { useWeekNeeds } from './useWeekNeeds';
+import { useWeekNeeds, useDefaultWeek } from './useWeekNeeds';
 import { replaceLocal } from '../../data/store';
 import { addDays, today, weekStart } from '../../lib/dates';
 import type { WeekNeeds } from '../../domain/stock/needs';
@@ -29,5 +29,15 @@ describe('useWeekNeeds', () => {
     expect(seen!.lines.map((l) => l.kind)).toEqual(['oil', 'oil_filter']);
     await act(() => replaceLocal('engine_specs', [{ id: 'e', key: 'k', data: { oil_l: 4.2, oil_visc: '0W-20', oil_filter: 'PH7317' } }]));
     expect(seen!.lines.find((l) => l.kind === 'oil')).toMatchObject({ ref: '0W-20', qty: 4.2, sure: true });
+  });
+  it('the week to open re-draws its screen only when the week changes, not at every job saved', async () => {
+    replaceLocal('jobs', [{ id: 'a', number: 1, day: '2020-01-01', status: 'done' }]);
+    let draws = 0;
+    function Week() { useDefaultWeek(); draws++; return null; }
+    await act(() => render(<Week />, box));
+    const first = draws;
+    await act(() => replaceLocal('jobs', [{ id: 'a', number: 1, day: '2020-01-01', status: 'done', notes: 'x' }]));
+    await act(() => replaceLocal('jobs', [{ id: 'b', number: 2, day: '2020-01-02', status: 'cancelled' }]));
+    expect(draws).toBe(first);
   });
 });

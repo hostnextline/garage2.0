@@ -71,6 +71,8 @@ export const inventory: typeof fr = {
     copied: 'List copied: paste it in a text or an email to the supplier.',
     copyFailed: 'Could not copy the list.',
     copyTitle: 'To buy, {week}',
+    ownTrucks: 'Only your truck’s appointments: the other trucks’ are not on your phone.',
+    ownTrucksCopy: '(my truck’s appointments only)',
     cardThis: 'To buy for this week',
     cardNext: 'To buy for next week',
     cardHelp: 'From the appointments already booked and the stock. The full list is in Inventory, « Needs of the week ».',

@@ -50,4 +50,21 @@ describe('a server report', () => {
     expect(seen?.data).toBe(2);
     expect(frames).not.toContain(null);
   });
+  // the scan saw two reloads on reconnection (the app's signal and the browser's « online »); both land in one render,
+  // so one request: kept as a guard
+  it('the signal coming back twice at once (the app’s and the browser’s) asks the server once', async () => {
+    vi.useFakeTimers();
+    let asked = 0;
+    await draw('his.report.u.dashboard.2026-11', () => { asked++; return asked === 1 ? Promise.reject(new Error('boom')) : Promise.resolve(7); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(seen?.error).toBeTruthy();
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+      window.dispatchEvent(new Event('online'));
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(asked).toBe(2);
+    expect(seen?.data).toBe(7);
+  });
 });

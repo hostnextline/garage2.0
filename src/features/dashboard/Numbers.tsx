@@ -8,7 +8,7 @@ import { truckLabel, truckColor } from '../../data/select';
 import { can } from '../../data/auth';
 import type { Settings } from '../../data/types';
 import { Panel, Button } from '../../ui';
-import { noShowRate, perKm, goalShare, projection, versusLastMonth, truckShares, shownGoal, monthsAverage, type DashboardData } from './kpis';
+import { noShowRate, perKm, goalShare, projection, versusLastMonth, truckShares, shownGoal, monthsAverage, closedMonth, type DashboardData } from './kpis';
 import { BigMoney, Meter, HBars, MonthBars, Stat, StatGrid } from '../../shared/charts/charts';
 import { pct, compactMoney, decimal } from '../../shared/charts/format';
 import { monthWord, dollars } from './words';
@@ -27,6 +27,9 @@ export function Numbers(p: { d: DashboardData; month: string; now: string; l: st
   const trucks = truckShares(d.by_truck);
   const avg6 = monthsAverage(d.months, p.now);
   const mayGoal = can('settings');
+  // « À recevoir » opens the invoices only for whoever may open them (« Argent » alone landed on a closed screen)
+  const toInvoices = can('invoices') ? '#/invoices' : undefined;
+  const closed = closedMonth(p.month, p.now);
 
   return (
     <>
@@ -61,11 +64,11 @@ export function Numbers(p: { d: DashboardData; month: string; now: string; l: st
         <div class="dash-stats-wrap">
           <StatGrid>
             <Stat label={t('dashboard.collected')} value={money(d.collected_cents, l)} sub={t('dashboard.collectedSub')} data-testid="kpi-collected" />
-            <Stat label={t('dashboard.receivable')} value={money(d.receivable_cents, l)} help={t('dashboard.receivableHelp')} href="#/invoices" linkLabel={`${t('dashboard.receivableLink')} : ${money(d.receivable_cents, l)}`}
+            <Stat label={t('dashboard.receivable')} value={money(d.receivable_cents, l)} help={t('dashboard.receivableHelp')} href={toInvoices} linkLabel={`${t('dashboard.receivableLink')} : ${money(d.receivable_cents, l)}`}
               tone={d.receivable_cents > 0 ? 'warn' : undefined} data-testid="kpi-receivable"
               sub={<>{t('dashboard.receivableSub', { n: d.receivable_count })}{d.drafts > 0 && <><br />{t('dashboard.drafts', { n: d.drafts })}</>}</>} />
             <Stat label={t('dashboard.avgTicket')} value={money(d.avg_ticket_cents, l)} sub={t('dashboard.avgTicketSub')} help={t('dashboard.avgTicketHelp')} data-testid="kpi-avg" />
-            <Stat label={t('dashboard.jobsDone')} value={d.jobs_done} sub={t('dashboard.jobsToCome', { n: d.jobs_booked })} data-testid="kpi-jobs" />
+            <Stat label={t('dashboard.jobsDone')} value={d.jobs_done} sub={closed ? undefined : t('dashboard.jobsToCome', { n: d.jobs_booked })} data-testid="kpi-jobs" />
             <Stat label={t('dashboard.noShow')} value={rate == null ? '—' : pct(rate, l)} help={t('dashboard.noShowHelp')} tone={rate != null && rate >= 0.1 ? 'warn' : undefined}
               sub={rate == null ? t('dashboard.noShowNone') : t('dashboard.noShowSub', { n: d.jobs_no_show, total: ended })} data-testid="kpi-noshow" />
             <Stat label={t('dashboard.cancelled')} value={d.jobs_cancelled} help={t('dashboard.lostHelp')} sub={t('dashboard.lost', { amount: money(d.lost_cents, l) })} data-testid="kpi-cancelled" />

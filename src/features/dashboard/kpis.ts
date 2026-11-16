@@ -63,11 +63,15 @@ export function projection(revenue: Cents, month: Day, today: Day): Cents | null
   if (day < 3) return null;
   return Math.round((revenue / day) * daysInMonth(today));
 }
+/** a month already over (its « autres prévues » would only count jobs left booked by mistake) */
+export function closedMonth(month: Day, today: Day): boolean {
+  return monthStart(month) < monthStart(today);
+}
 /** the month before, and the change in percent (only for a closed month: a month in progress is not comparable) */
 export function versusLastMonth(d: Pick<DashboardData, 'months' | 'month' | 'revenue_cents'>, today: Day): { prev: Cents | null; change: number | null } {
   const prevKey = addMonths(d.month, -1);
   const prev = d.months.find((m) => m.month === prevKey)?.revenue_cents ?? null;
-  const closed = monthStart(d.month) < monthStart(today);
+  const closed = closedMonth(d.month, today);
   return { prev, change: closed && prev && prev > 0 ? (d.revenue_cents - prev) / prev : null };
 }
 /** the share of each truck in the month's revenue */

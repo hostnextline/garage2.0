@@ -3,9 +3,11 @@
    engine sheet confirmed or a service changed while the screen is open shows at once (a memo on the jobs and the
    stock alone missed them). The job lines, the services' parts and the engine sheets are indexed once per run. */
 import { useEffect, useMemo } from 'preact/hooks';
-import { computed } from '@preact/signals';
+import { computed, useComputed } from '@preact/signals';
 import { today, addDays, type Day } from '../../lib/dates';
-import { allJobs, service, vehicle, inventoryList } from '../../data/select';
+import { allJobs, service, vehicle, inventoryList, trucks } from '../../data/select';
+import { can, myTrucks } from '../../data/auth';
+import { holdsEveryJob } from '../../domain/stock/scope';
 import { rowsOf } from '../../data/store';
 import type { EngineSpec, JobItem, ServicePart } from '../../data/types';
 import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
@@ -43,7 +45,14 @@ export function useWeekNeeds(from: Day): WeekNeeds {
   return needs.value;
 }
 
-/** the week to open: this one, or from Thursday the coming one when something is booked in it */
+/** true when this phone holds every truck's appointments (else the needs are its own truck's only) */
+export function useHoldsEveryJob(): boolean {
+  return holdsEveryJob(can('agenda'), myTrucks(), trucks.value.map((x) => x.id));
+}
+
+/** the week to open: this one, or from Thursday the coming one when something is booked in it. Read through a
+    computed signal: « Inventaire » re-rendered at every job saved anywhere (it read every job), now only when the
+    week itself changes */
 export function useDefaultWeek(): Day {
-  return defaultWeekOf(today(), allJobs.value);
+  return useComputed(() => defaultWeekOf(today(), allJobs.value)).value;
 }
