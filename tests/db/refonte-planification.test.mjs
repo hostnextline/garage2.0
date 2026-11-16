@@ -700,3 +700,18 @@ test('sql-windows-09: window mode, today, an appointment that no longer fits sti
   assert.ok(e && ['block_full', 'window_full'].includes(e.hint), 'the 30 minutes left are J2\'s: refused (' + (e?.hint ?? 'booked') + ')');
   assert.deepEqual([(await row(h, j1)).truck_id, (await row(h, j2)).truck_id], [t1, t1], 'both stay on the truck');
 }));
+
+test('sql-planner-1 B6: block mode, hours with a hole inside the block are not planned as one stretch', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: [[480, 570], [630, 720]] });      // 8 h – 9 h 30, then 10 h 30 – 12 h
+  const c1 = await h.customer('A', ...near), c2 = await h.customer('B', ...near2);
+  await h.as(owner);
+  const a = await book(h, job(c1, day, 'am'));
+  const b = await book(h, job(c2, day, 'am'));
+  for (const id of [a.job_id, b.job_id]) {
+    const j = await row(h, id);
+    assert.ok(j.eta_min + 60 <= 570 || j.eta_min >= 630, `nobody during the hole: ${j.eta_min}`);
+  }
+}));

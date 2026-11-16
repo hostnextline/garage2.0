@@ -1357,8 +1357,9 @@ grant execute on function public.plan_late_stored(jsonb, text) to service_role;
 --     where every window holds. p_seed null: as before, then, when that plan makes late an appointment that its stored
 --     route reaches in its window (a cancellation, a booking, a position found), the seeded plan when it makes fewer
 --     late (sql-windows-02);
---   * window mode, hours with a break (lunch, a split shift): each truck walks its stretches of hours one after the other,
---     a stop starts and ends inside one stretch (they were one continuous stretch: sql-windows-05, x-dualmode-08);
+--   * hours with a break (lunch, a split shift: inside the day in window mode, inside a block in block mode): each truck
+--     walks its stretches of hours one after the other, a stop starts and ends inside one stretch (they were one
+--     continuous stretch: sql-windows-05, x-dualmode-08, sql-planner-1 B6);
 --   * window mode, today: the stops are numbered after the ones the truck already finished (sql-windows-03, x-dualmode-06);
 --   * window mode, booked « quand même »: placed after the other stops, inside its window where every other window still
 --     holds, else late, else at the end past the hours as before (it was always the last stop of the whole day:
@@ -1442,9 +1443,10 @@ begin
       end if;
       trucks := trucks || jsonb_build_array(jsonb_build_object('id', r.id, 'machine', r.tire_machine, 'cap', cap, 'start', coalesce(public.ranges_first(rg, b.start_min, b.end_min), b.start_min),
         'hlat', hl, 'hlng', hg, 'from', v_from_kind, 'elat', el, 'elng', eg, 'stops', '[]'::jsonb, 'nfixed', 0, 'durs', 0)
-        -- window mode, hours with a break (lunch, a split shift): its stretches of hours, walked one after the other (Part 26)
+        -- hours with a break inside the block (lunch, a split shift; the whole day in window mode): its stretches of hours,
+        -- walked one after the other (Part 26)
         || coalesce((select jsonb_build_object('rg', jsonb_agg(jsonb_build_array(greatest((x->>0)::int, b.start_min), least((x->>1)::int, b.end_min)) order by (x->>0)::int))
-                     from jsonb_array_elements(rg) x where v_wm and least((x->>1)::int, b.end_min) > greatest((x->>0)::int, b.start_min)
+                     from jsonb_array_elements(rg) x where least((x->>1)::int, b.end_min) > greatest((x->>0)::int, b.start_min)
                      having count(*) > 1), '{}'::jsonb));
     end if;
   end loop;
