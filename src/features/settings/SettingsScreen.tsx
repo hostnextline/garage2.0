@@ -12,7 +12,7 @@ import { Page, Panel } from '../../ui';
 import { hasDraft, settingsHere, SectionWait } from './SectionFrame';
 import { CompanySection } from './CompanySection';
 import { BillingSection } from './BillingSection';
-import { ServicesSection } from './ServicesSection';
+import { ServicesSection } from './services/ServicesSection';
 import { BookingSection } from './booking/BookingSection';
 import { TextsSection } from './TextsSection';
 import { WaiverSection } from './WaiverSection';

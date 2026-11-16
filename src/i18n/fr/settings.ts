@@ -101,6 +101,8 @@ export const settings = {
     toConfirm: 'À confirmer',
     hidden: 'Caché',
     promoUntil: 'Promo jusqu’au {date}',
+    promoEnded: 'Promo finie le {date} : plus offerte à la réservation',
+    leave: { title: 'Fermer sans enregistrer ?', text: 'Ce que tu as changé dans ce service sera perdu.', ok: 'Fermer sans enregistrer' },
     promo: 'Promo',
     meta: '{category}, {duration}',
     edit: 'Modifier le service',

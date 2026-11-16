@@ -101,6 +101,8 @@ export const settings: typeof fr = {
     toConfirm: 'To confirm',
     hidden: 'Hidden',
     promoUntil: 'Promo until {date}',
+    promoEnded: 'Promo ended on {date}: no longer offered for booking',
+    leave: { title: 'Close without saving?', text: 'What you changed in this service will be lost.', ok: 'Close without saving' },
     promo: 'Promo',
     meta: '{category}, {duration}',
     edit: 'Change the service',
