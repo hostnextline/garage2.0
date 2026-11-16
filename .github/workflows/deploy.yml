@@ -1,6 +1,6 @@
 # Publie l'app à chaque changement de la branche main : sur Vercel (branche « vercel », voir ops/vercel) et sur
 # l'ancienne adresse https://hostnextline.github.io/garage2.0/ (branche gh-pages, GitHub Pages).
-# Les tests passent d'abord : si un test échoue, rien n'est publié et l'app en ligne reste la même.
+# Les types (tsc) et les tests passent d'abord : si l'un des deux échoue, rien n'est publié et l'app en ligne reste la même.
 name: Publier l'app
 on:
   push:
@@ -24,6 +24,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Types
+        # its own step, before the tests: a type error stops the publication here, whatever the build step does later
+        run: npx tsc --noEmit
       - name: Tests
         run: npm test
       - name: Construire

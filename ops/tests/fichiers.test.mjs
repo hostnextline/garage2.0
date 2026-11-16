@@ -21,3 +21,15 @@ test('Vercel: the app itself may use the microphone (the dictation of Hermes), t
   assert.equal(v.outputDirectory, 'public');
   assert.deepEqual(v.headers.map((h) => h.source), ['/(.*)', '/assets/(.*)', '/sw.js', '/version.json']);
 });
+
+test('publishing: the type check, then the unit tests, then the build, all before anything is pushed (and not the 40-minute suite)', () => {
+  const y = lire('.github/workflows/deploy.yml');
+  const ou = (x) => { const i = y.indexOf(x); assert.ok(i >= 0, 'deploy.yml no longer holds: ' + x); return i; };
+  const types = ou('run: npx tsc --noEmit'), tests = ou('run: npm test'), build = ou('npm run build'), push = ou('git push');
+  assert.ok(types < tests && tests < build && build < push, 'types, tests, build, then the two pushes');
+  assert.equal(y.split('git push').length - 1, 2, 'two publications: the branch vercel and the branch gh-pages');
+  // a failing step stops the job: none of the checks may be allowed to fail
+  assert.ok(!/continue-on-error/.test(y), 'no step is allowed to fail in the publishing path');
+  assert.ok(!/tests\/(e2e|db|api|stack)/.test(y), 'the whole suite is not in the publishing path (it runs on the other branches: tests-complets.yml)');
+  assert.match(y, /branches: \[main\]/);
+});
