@@ -36,7 +36,7 @@ export function wantsText(kind: NotifyKind, jobId: string): boolean {
 }
 
 /** the window of an appointment booked by window, in words (a block appointment: nothing, its text says the block) */
-export function windowSaid(j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_end' | 'win_flex'> | null | undefined): string | null {
+function windowSaid(j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_end' | 'win_flex'> | null | undefined): string | null {
   if (!j || j.block !== 'day') return null;
   return choiceWords({ day: j.day, block: 'day', win_start: j.win_start ?? null, win_end: j.win_end ?? null, win_flex: !!j.win_flex && j.win_start == null });
 }
@@ -63,7 +63,7 @@ export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { cu
   }
 }
 
-export function openMessage(m: Msg) { ensureHost(); msg.value = m; }
+function openMessage(m: Msg) { ensureHost(); msg.value = m; }
 
 function MessageHost() {
   const m = msg.value;
