@@ -10,7 +10,7 @@ import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block
 import { totals, type Line } from '../lib/money';
 import { fullName, firstName } from '../lib/text';
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   id: '1',
   company: {}, taxes: { enabled: true, tps: 0.05, tvq: 0.09975 },
   booking: { blocks: DEFAULT_BLOCKS.map((b) => ({ ...b })), horizon_days: 120, speed_kmh: 35, detour: 1.3, stop_min: 5, unknown_min: 20, min_block_min: 45, near_km: 5, max_hop_min: 35, max_day_drive_min: 105,

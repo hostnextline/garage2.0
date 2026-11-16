@@ -61,6 +61,7 @@ export function uuid(): string {
 export class Sender {
   private waiters = new Map<string, Waiter>();
   private confirmed = new Map<string, ((data: unknown) => void)[]>();
+  private refusals = new Map<string, ((err: unknown) => void)[]>();
   private draining: Promise<void> | null = null;
   private again = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,6 +77,7 @@ export class Sender {
     this.retryTimer = null;
     this.waiters.clear();
     this.confirmed.clear();
+    this.refusals.clear();
   }
 
   private entry(p: Partial<OutboxEntry> & Pick<OutboxEntry, 'kind'>): OutboxEntry {
@@ -156,6 +158,11 @@ export class Sender {
   onConfirmed(op: string, fn: (data: unknown) => void) {
     const l = this.confirmed.get(op);
     if (l) l.push(fn); else this.confirmed.set(op, [fn]);
+  }
+  /** runs `fn` with the reason when the operation `op` is refused (a refusal is never sent again by itself) */
+  onRefused(op: string, fn: (err: unknown) => void) {
+    const l = this.refusals.get(op);
+    if (l) l.push(fn); else this.refusals.set(op, [fn]);
   }
   async dismiss(seq: number, retry: boolean) {
     await this.h.outbox.dismiss(seq, retry);
@@ -240,6 +247,7 @@ export class Sender {
     if (w) { this.waiters.delete(e.op); w.resolve(sent.data); }
     for (const fn of this.confirmed.get(e.op) || []) fn(sent.data);
     this.confirmed.delete(e.op);
+    this.refusals.delete(e.op);
     this.h.sent(e);
     // what the server changes by itself after these writes is brought at once
     if (e.table === 'job_items' && e.kind === 'update') void this.h.pull('invoices');
@@ -268,11 +276,14 @@ export class Sender {
     const w = this.waiters.get(e.op);
     this.waiters.delete(e.op);
     this.confirmed.delete(e.op);
+    const told = this.refusals.get(e.op) || [];
+    this.refusals.delete(e.op);
     if (w?.watching) await this.h.outbox.done(it);
     else await this.h.outbox.refuse(it, errorText(err), { kind: err.kind, sub: err.sub, code: err.code, hint: err.hint, status: err.status });
     this.h.lock.poke('outbox');
     this.head = null;
     w?.reject(err);
+    for (const fn of told) fn(err);
     // the server's version of what was refused comes back on screen (a failed read changes nothing)
     if (e.table && e.id && isSynced(e.table)) await this.h.refetch(e.table, e.id);
     const job = e.kind === 'rpc' ? e.args?.p_job : null;

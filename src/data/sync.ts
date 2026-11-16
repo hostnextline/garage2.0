@@ -117,6 +117,20 @@ export async function sendOrKeep(name: string, args: Record<string, unknown>, la
 /** runs `fn` once the operation `op` is confirmed by the server */
 export function onConfirmed(op: string, fn: (data: unknown) => void) { engine?.send.onConfirmed(op, fn); }
 
+/** resolves with the server's answer once the operation `op` kept on the phone is confirmed, rejects when it is refused:
+    for a screen that has something to do after a queued operation lands (the customer's text after a move). It never
+    settles when the engine stops first (sign-out): what was to follow then simply does not happen. */
+export function whenDone(op: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const e = engine;
+    if (!e || e.closed) { reject(new AppError('bug', 'unknown', 'not started')); return; }
+    e.send.onConfirmed(op, resolve);
+    e.send.onRefused(op, reject);
+  });
+}
+/** who this device's copy belongs to (empty before sign-in) */
+export function currentUid(): string { return engine && !engine.closed ? engine.uid : ''; }
+
 /** sends what waits now; resolves when the queue is empty or has to wait */
 export function flush(): Promise<void> { return engine ? engine.send.flush() : Promise.resolve(); }
 /** the person read the refusal: drop it (or send it once more, after what was done since) */
