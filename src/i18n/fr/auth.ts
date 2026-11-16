@@ -44,6 +44,6 @@ export const auth = {
   alreadyIn: 'Tu es déjà connecté comme {email}. Déconnecte-toi pour activer cette invitation.',
   signOutFirst: 'Me déconnecter',
   signOut: 'Me déconnecter',
-  signOutPending: { one: 'Un changement n’est pas encore envoyé. Si tu te déconnectes, il sera perdu. Attends d’avoir du réseau, ou touche encore pour te déconnecter quand même.', other: '{n} changements ne sont pas encore envoyés. Si tu te déconnectes, ils seront perdus. Attends d’avoir du réseau, ou touche encore pour te déconnecter quand même.' },
+  signOutPending: { one: 'Un changement n’est pas encore envoyé. Si tu te déconnectes, il reste sur ce téléphone et partira à ta prochaine connexion ici. Attends d’avoir du réseau, ou touche encore pour te déconnecter quand même.', other: '{n} changements ne sont pas encore envoyés. Si tu te déconnectes, ils restent sur ce téléphone et partiront à ta prochaine connexion ici. Attends d’avoir du réseau, ou touche encore pour te déconnecter quand même.' },
   signOutAnyway: 'Me déconnecter quand même'
 };

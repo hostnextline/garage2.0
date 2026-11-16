@@ -19,4 +19,17 @@ describe('before the app', () => {
   it('every word exists in French and English', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(fr).sort());
   });
+  it('signing out with changes waiting: they are kept on this phone and leave at the next sign-in here, never « lost » (R139)', () => {
+    for (const w of [fr.signOutPending.one, fr.signOutPending.other]) {
+      expect(w).not.toMatch(/perdu/);
+      expect(w).toMatch(/rest(e|ent) sur ce téléphone/);
+      expect(w).toMatch(/prochaine connexion ici/);
+    }
+    for (const w of [en.signOutPending.one, en.signOutPending.other]) {
+      expect(w).not.toMatch(/lost/);
+      expect(w).toMatch(/stays? on this phone/);
+    }
+    expect(fr.signOutPending.other).toContain('{n}');
+    expect(en.signOutPending.other).toContain('{n}');
+  });
 });

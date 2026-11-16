@@ -1,15 +1,14 @@
 /* Mon compte (#/account): my name and phone, the app's language, my look (the team's, or my own with live swatches),
    installing the app, signing out (warns about changes not sent yet), deleting my account. Each panel has its own file. */
-import { useState } from 'preact/hooks';
 import { LogOut, Smartphone, Trash2 } from 'lucide-preact';
 import type { ScreenProps } from '../../platform/router';
 import { t, lang, setLang, type Lang } from '../../lib/i18n';
-import { me, preview, signOut, refreshAccess } from '../../data/auth';
+import { me, preview, refreshAccess } from '../../data/auth';
 import { updateMe, errorMessage } from '../../data/api';
-import { pendingCount } from '../../data/sync';
 import { trucks } from '../../data/select';
 import { Page, Panel, Rows, RowItem, Seg, Button, Banner, Avatar, ask, attempt, toast } from '../../ui';
 import { UpdatePanel } from '../../shared/app/UpdatePanel';
+import { useSignOut, signOutNow } from '../../shared/app/signOut';
 import { rolesWords, teamDo } from '../../domain/team/teamApi';
 import { InfosPanel } from './InfosPanel';
 import { LookPanel } from './LookPanel';
@@ -20,24 +19,18 @@ import './account.css';
 export default function AccountScreen(_p: ScreenProps) {
   const a = me.value;
   const pv = preview.value;
-  const [warn, setWarn] = useState(0);
+  // the one sign-out of the app (« Plus » has the same): this device's push address leaves first (R104)
+  const { warn, out } = useSignOut();
   if (!a) return <Page title={t('account.title')} />;
   const drives = trucks.value.filter((tr) => tr.driver_id === a.id).map((tr) => tr.name).join(', ');
 
-  const out = async () => {
-    if (!warn) {
-      const n = await pendingCount();
-      if (n > 0) { setWarn(n); return; }
-    }
-    await signOut(true);
-  };
   const leave = async () => {
     const ok = await ask({ title: t('account.leaveAsk.title'), text: t('account.leaveAsk.text'), ok: t('account.leaveAsk.ok'), danger: true });
     if (!ok) return;
     try {
       await teamDo('leave');
       toast(t('account.left'), { kind: 'ok' });
-      await signOut(true);
+      await signOutNow();
     } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
   };
 
