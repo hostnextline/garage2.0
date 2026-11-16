@@ -93,12 +93,13 @@ create table if not exists public.ops_recon_findings (
 create index if not exists ops_recon_findings_state on public.ops_recon_findings (state, severity);
 
 create table if not exists public.ops_recon_baseline (
+  id        uuid primary key default gen_random_uuid(),   -- a plain id, so the backup and the restore carry it like the other tables
   check_id  text not null,
   entity_id uuid not null,                           -- the zero uuid: « the baseline of this check was taken »
   value     numeric not null,
   set_on    date not null,
   set_at    timestamptz not null default now(),
-  primary key (check_id, entity_id)
+  unique (check_id, entity_id)
 );
 
 do $$ declare t text; begin
@@ -148,9 +149,10 @@ create or replace function public.recon_hhmm(p_min int, p_lang text) returns tex
   select case when p_lang = 'en' then (p_min / 60)::text || ':' || lpad((p_min % 60)::text, 2, '0')
               else (p_min / 60)::text || ' h ' || lpad((p_min % 60)::text, 2, '0') end
 $$;
--- who sees a check: the owner every check; « Trésorerie » the money (M…) and stock (S…) checks
+-- who sees a check: the owner every check; « Trésorerie » the money (M…) and stock (S…) checks, and the money checks a server
+-- function adds (Stripe: « stripe_… », or any check named « money… » / « stock… »). The backup and the phones: the owner only.
 create or replace function public.recon_for_treasury(p_check text) returns boolean language sql immutable set search_path = public as $$
-  select coalesce(p_check, '') ~ '^[MS]'
+  select coalesce(p_check, '') ~ '^([MS][0-9]|stripe|money|stock)'
 $$;
 
 -- the test hook: a test makes one check throw with « set garage.recon_fail = 'M3' » (never set by the app or the server)

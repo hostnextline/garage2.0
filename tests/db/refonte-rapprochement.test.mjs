@@ -568,7 +568,11 @@ test('recon_summary: the owner sees everything, « Trésorerie » the money and 
   const acc = await h.person('Comptable', ['treasurer'], { rights: { treasury: true } });
   await raw(h, `update public.jobs set day = public.local_today() - 3 where id = $1`, [g.jobC]);    // D1: data, warn
   await h.c.query(`update public.expenses set total_cents = 5100 where id = $1`, [g.gas]);            // M7: money, bad
-  await run(h);
+  const r = await run(h);
+  // the checks a server function adds: Stripe is money (« Trésorerie » sees it), the backup is the owner's
+  for (const [check, sev] of [['stripe_amount', 'warn'], ['backup_late', 'warn']]) {
+    await h.c.query(`select public.recon_add($1, $2, $3, null, null, $4, $4, '{}'::jsonb)`, [r.run_id, check, sev, `Test ${check}`]);
+  }
   // the owner
   await h.as(g.owner);
   const o = await h.rpc('recon_summary', { p_days: 14 });
@@ -579,19 +583,23 @@ test('recon_summary: the owner sees everything, « Trésorerie » the money and 
   assert.deepEqual(Object.keys(o.last_run.sheet).sort(), ['coffre_in_cents', 'coffre_out_cents', 'expenses', 'invoiced_cents', 'received', 'refunded_cents', 'to_receive_cents']);
   assert.equal(o.ok, true);
   assert.equal(o.can_ack, true);
-  assert.deepEqual(o.findings.map((f) => f.check_id), ['M7.sum', 'D1.past'], 'bad first');
+  assert.deepEqual(o.findings.map((f) => f.check_id), ['M7.sum', 'D1.past', 'backup_late', 'stripe_amount'], 'bad first, then by check');
   assert.equal(o.last_run.status, 'bad');
   // « Trésorerie »: the money only
   await h.as(acc);
   const t = await h.rpc('recon_summary', { p_days: 14 });
-  assert.deepEqual(t.findings.map((f) => f.check_id), ['M7.sum']);
-  assert.deepEqual([t.last_run.counts.bad, t.last_run.counts.warn], [1, 0]);
+  assert.deepEqual(t.findings.map((f) => f.check_id), ['M7.sum', 'stripe_amount']);
+  assert.deepEqual([t.last_run.counts.bad, t.last_run.counts.warn], [1, 1]);
   // « vu » by the treasurer on a data difference: not hers
   const d1 = o.findings.find((f) => f.check_id === 'D1.past').id;
   assert.equal((await h.fails(() => h.rpc('recon_ack', { p_finding: d1, p_note: null })))?.hint, 'not_found');
-  const acked = await h.rpc('recon_ack', { p_finding: t.findings[0].id, p_note: 'Corrigé demain avec le reçu' });
-  assert.equal(acked.findings[0].state, 'acked');
+  let acked;
+  for (const f of t.findings) acked = await h.rpc('recon_ack', { p_finding: f.id, p_note: 'Corrigé demain avec le reçu' });
+  assert.deepEqual(acked.findings.map((f) => f.state), ['acked', 'acked']);
+  assert.equal(acked.findings[0].note, 'Corrigé demain avec le reçu');
   assert.equal(acked.last_run.status, 'ok', 'for her, the day no longer has an open difference');
+  await h.as(g.owner);
+  assert.equal((await h.rpc('recon_summary', {})).last_run.status, 'warn', 'for the owner, the data and the backup are still open');
   // a mechanic is refused
   await h.as(g.mech);
   for (const [fn, args] of [['recon_summary', { p_days: 7 }], ['recon_now', {}], ['recon_ack', { p_finding: d1, p_note: null }]]) {
