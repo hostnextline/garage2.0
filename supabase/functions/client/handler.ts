@@ -7,12 +7,12 @@
 // « sign » and « answer » take the amount the page displayed (`shown_cents`, optional: the total for sign, the line's
 // amount for answer): when it is no longer the amount, nothing is written and the answer is HTTP 409
 // { ok: false, code: 'amount_changed', error, current_cents }. Without it, as before (yesterday's page keeps working).
-import { serve, json, body, fail, Fail } from '../_shared/http.ts';
+import { serve, json, body, fail, Fail, withTimeout } from '../_shared/http.ts';
 import { adminDb, secret, settings } from '../_shared/db.ts';
 import { sha256hex } from '../_shared/tokens.ts';
 import { baseOf } from '../_shared/links.ts';
 import { stripeCall, StripeError } from '../_shared/stripe.ts';
-import { applyCheckout } from '../_shared/payments.ts';
+import { applyCheckout, stripeOp } from '../_shared/payments.ts';
 import { sumLines, lineCents } from '../_shared/money.ts';
 import { visitorMark } from '../_shared/visitor.ts';
 import { longDay, first, money, jobWindow } from '../_shared/texts.ts';
@@ -171,38 +171,63 @@ async function closePage(key: string, x: Page): Promise<boolean> {
   await forget(x.link.id, id);
   return paid;
 }
-/** one at a time: true for the first asker of a new card page for this job and amount, false for the others during the
-    next half-minute (two windows that do not turn at the same second: the brake's own rate_hit, nothing else needed) */
-async function firstAsker(jobId: string, amount: number): Promise<boolean> {
-  try {
-    const db = adminDb();
-    const a = await db.rpc('rate_hit', { p_key: `pay:${jobId}:${amount}`, p_window_sec: 20, p_max: 1 });
-    const b = await db.rpc('rate_hit', { p_key: `pay+:${jobId}:${amount}`, p_window_sec: 31, p_max: 1 });
-    if (a.error || b.error) return true;
-    return a.data === true && b.data === true;
-  } catch { return true; }
+/* One card page made at a time per job: an atomic claim (a row of op_log, the same id for the same job, so the database's
+   own unique key decides ONE winner however the taps interleave). The winner makes the page and frees the claim once the
+   page is remembered (or on failure); the others wait for that page. A claim left by a function that died is old after
+   CLAIM_STALE_MS and taken over. */
+const CLAIM_STALE_MS = 20000;
+async function claimPage(jobId: string): Promise<string | null> {
+  const db = adminDb();
+  const op = await stripeOp(`pay-claim:${jobId}`);
+  for (let i = 0; i < 2; i++) {
+    const { data, error } = await db.rpc('op_begin', { p_op: op, p_name: 'client_pay' });
+    if (error) throw error;
+    if (data === null) return op;                                  // claimed: this request makes the page
+    // somebody holds it: taken over only when it is old (its maker died before freeing it)
+    const { data: gone, error: e2 } = await db.from('op_log').delete().eq('op', op).is('result', null)
+      .lt('at', new Date(Date.now() - CLAIM_STALE_MS).toISOString()).select('op');
+    if (e2) throw e2;
+    if (!gone?.length) return null;
+  }
+  return null;
+}
+async function freeClaim(op: string | null) {
+  if (!op) return;
+  const { error } = await adminDb().from('op_log').delete().eq('op', op).is('result', null);
+  if (error) console.error('client pay: claim not freed', String(error.message).slice(0, 200));   // old after CLAIM_STALE_MS anyway
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** somebody else is making the page right now: wait for it (a few seconds at most) */
-async function pageOfOther(key: string, jobId: string, good: (x: Page) => boolean): Promise<Page | null> {
-  for (let i = 0; i < 16; i++) {
+/** somebody else is making the page right now: wait for it, until `deadline` at most (the page waits 15 s in all) */
+async function pageOfOther(key: string, jobId: string, good: (x: Page) => boolean, deadline: number): Promise<Page | null> {
+  const seen = new Map<string, Row | null>();
+  while (Date.now() + 350 < deadline) {
     await sleep(350);
     const { data } = await adminDb().from('public_links').select('id, last_session, last_session_amount, last_session_expires').eq('job_id', jobId).not('last_session', 'is', null);
     for (const link of (data || []) as Row[]) {
-      const sess = await stripeCall(key, 'GET', sessPath(String(link.last_session))).catch(() => null);
+      const id = String(link.last_session);
+      if (!seen.has(id)) {
+        const left = deadline - Date.now();
+        if (left < 300) return null;
+        seen.set(id, await withTimeout(stripeCall(key, 'GET', sessPath(id)), left, 'service de paiement').catch(() => null));
+      }
+      const sess = seen.get(id);
       if (sess?.status === 'open' && sess.url && good({ link, sess })) return { link, sess };
     }
   }
   return null;
 }
+const PAY_DOWN = 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez le garage.';
 /** Stripe refusing or not answering is said in words the customer can act on (never « the server had a problem ») */
 function stripeDown(e: unknown): never {
-  if (e instanceof StripeError) {
-    console.error('client pay: Stripe', e.status, String(e.message).slice(0, 200));
-    fail('pay_unavailable', 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez le garage.', 502);
+  if (e instanceof StripeError || (e instanceof Fail && e.code === 'timeout')) {
+    console.error('client pay: Stripe', e instanceof StripeError ? e.status : 'timeout', String((e as Error).message).slice(0, 200));
+    fail('pay_unavailable', PAY_DOWN, 502);
   }
   throw e;
 }
+/** the time slice of a card page: the same link asking again within it (a double tap, a lost answer) is the same request
+    for Stripe (same key, same parameters: the same page back) */
+const SLICE_S = 600;
 
 async function pay(l: Row, b: Row): Promise<Response> {
   const key = await secret('stripe_key');
@@ -210,6 +235,8 @@ async function pay(l: Row, b: Row): Promise<Response> {
   let v = await view(l) as Row;
   if (v.kind !== 'job' || !v.pay.available) fail('nothing', v.pay?.amount_cents ? 'Le paiement par carte n’est pas offert pour ce dossier.' : 'Rien à payer : merci !');
   const db = adminDb();
+  const waitUntil = Date.now() + 7000;          // the longest a request waits for another one's page
+  let claim: string | null = null;
   try {
     let amount = 0, invoiceId = '';
     for (let round = 0; ; round++) {
@@ -234,15 +261,17 @@ async function pay(l: Row, b: Row): Promise<Response> {
         if (keep.link.id !== l.id) await remember(l.id, keep.sess, amount, new Date(pageEnd(keep)).toISOString());
         return json({ ok: true, url: keep.sess.url });
       }
+      if (claim) break;                                   // claimed, and looked again with the claim held: no page yet → make it
+      claim = await claimPage(l.job_id);
+      if (claim) continue;                                // a page remembered just before the claim is found by that look
       // two texts tapped at the same moment: the second waits for the first one's page instead of making its own
-      if (!(await firstAsker(l.job_id, amount))) {
-        const other = await pageOfOther(key, l.job_id, good);
-        if (other) {
-          if (other.link.id !== l.id) await remember(l.id, other.sess, amount, new Date(pageEnd(other)).toISOString());
-          return json({ ok: true, url: other.sess.url });
-        }
+      const other = await pageOfOther(key, l.job_id, good, waitUntil);
+      if (other) {
+        if (other.link.id !== l.id) await remember(l.id, other.sess, amount, new Date(pageEnd(other)).toISOString());
+        return json({ ok: true, url: other.sess.url });
       }
-      break;
+      // the other one's page never came (it failed, or it is for another amount): never a second page without the claim
+      if (Date.now() >= waitUntil - 400 || round >= 6) fail('pay_unavailable', PAY_DOWN, 502);
     }
     const lang = v.lang === 'en' ? 'en' : 'fr';
     const base = baseOf(b.base);
@@ -250,20 +279,30 @@ async function pay(l: Row, b: Row): Promise<Response> {
     const label = v.invoice ? (lang === 'en' ? `Invoice ${v.invoice.number}` : `Facture ${v.invoice.number}`)
       : v.job.status === 'on_site' ? (lang === 'en' ? `Work of ${v.job.day_label_en}` : `Travaux du ${v.job.day_label_fr}`)
       : (lang === 'en' ? `Appointment of ${v.job.day_label_en}` : `Rendez-vous du ${v.job.day_label_fr}`);
-    const expires = Math.floor(Date.now() / 1000) + 3600;
-    // the key of « the same request sent twice »: everything that makes this request (link, amount, end), so Stripe never
-    // refuses a second honest tap because one detail differs from the first
-    const sess = await stripeCall(key, 'POST', '/checkout/sessions', [
+    // the key of « the same request sent twice »: the link, the amount, the invoice and the time slice, with parameters
+    // that follow from them only (the end of the page = end of the slice + 1 h), so the same link tapped twice gets the
+    // same page back from Stripe, never a second one nobody remembers
+    const slice = Math.floor(Date.now() / 1000 / SLICE_S);
+    const make = (expires: number, idem: string) => stripeCall(key, 'POST', '/checkout/sessions', [
       ['mode', 'payment'], ['locale', lang === 'en' ? 'en' : 'fr-CA'], ['expires_at', expires],
       ['line_items[0][quantity]', 1], ['line_items[0][price_data][currency]', 'cad'], ['line_items[0][price_data][unit_amount]', amount],
       ['line_items[0][price_data][product_data][name]', `${label} — ${v.garage.name}`],
       ['success_url', `${back}&retour=paye`], ['cancel_url', back],
       ['metadata[job_id]', l.job_id], ['metadata[invoice_id]', invoiceId], ['metadata[kind]', v.pay.kind], ['metadata[link]', l.id],
       ['payment_intent_data[metadata][job_id]', l.job_id], ['payment_intent_data[description]', `${label} — ${v.garage.name}`]
-    ], `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${expires}`);
-    await remember(l.id, sess, amount, new Date(expires * 1000).toISOString());
+    ], idem);
+    let expires = (slice + 1) * SLICE_S + 3600;
+    let sess = await make(expires, `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}`);
+    if (sess?.status !== 'open') {
+      // that same request was answered earlier in the slice by a page since closed (or paid): a new page, its own key
+      if (sess?.payment_status === 'paid') await applyCheckout(sess);
+      expires = Math.floor(Date.now() / 1000) + 3600;
+      sess = await make(expires, `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}-${crypto.randomUUID().slice(0, 8)}`);
+    }
+    await remember(l.id, sess, amount, new Date((Number(sess.expires_at) > 0 ? Number(sess.expires_at) : expires) * 1000).toISOString());
     return json({ ok: true, url: sess.url });
   } catch (e) { stripeDown(e); }
+  finally { await freeClaim(claim).catch(() => undefined); }
 }
 
 async function answer(req: Request): Promise<Response> {

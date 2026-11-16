@@ -122,6 +122,11 @@ http.createServer(async (req, res) => {
       if (idem) state.idem.set(idem, { raw, session: s });
       return send(res, 200, s);
     }
+    // the card pages of a payment (GET /v1/checkout/sessions?payment_intent=…), as Stripe lists them
+    if (p === '/stripe/v1/checkout/sessions' && req.method === 'GET') {
+      const pi = u.searchParams.get('payment_intent');
+      return send(res, 200, { object: 'list', url: '/v1/checkout/sessions', has_more: false, data: [...state.sessions.values()].filter((s) => !pi || s.payment_intent === pi).reverse() });
+    }
     const x = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)\/expire$/.exec(p);
     if (x && req.method === 'POST') {
       const s = state.sessions.get(x[1]);

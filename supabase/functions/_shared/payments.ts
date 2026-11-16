@@ -38,20 +38,32 @@ function never(e: Row): string | null {
 
 interface Entry { op: string; invoice: string | null; job: string | null; amount: number; reference: string; session: string; kind: 'payment' | 'refund' | 'refund_failed' }
 
-/** written where the office sees it: the history (activity) and the job's own texts */
+/** written where the office sees it: the history (activity) and the job's own texts. For money kept aside (« parked »:
+    Stripe is answered 2xx and never sends it again) the history row IS the only trace: not written = thrown, so Stripe is
+    answered 5xx and sends the notice again. The text on the job is a reminder only (logged when it fails). */
 async function note(action: 'payment_moved' | 'payment_parked', e: Entry, reason: string) {
   const db = adminDb();
-  try {
-    await db.from('activity').insert({ entity: 'job', entity_id: e.job, action, data: {
-      kind: e.kind, session: e.session, reference: e.reference, amount_cents: e.amount, invoice: e.invoice, job: e.job, reason } });
-  } catch { /* the payment itself comes first */ }
+  const { error } = await db.from('activity').insert({ entity: 'job', entity_id: e.job, action, data: {
+    kind: e.kind, session: e.session, reference: e.reference, amount_cents: e.amount, invoice: e.invoice, job: e.job, reason } });
+  if (error) {
+    if (action === 'payment_parked') throw error;
+    console.error('payments: note not written', action, e.session, String(error.message).slice(0, 200));
+  }
   if (!e.job) return;
   const sum = money(Math.abs(e.amount), 'fr');
   const what = e.kind === 'payment' ? `Paiement par carte de ${sum}` : e.kind === 'refund' ? `Remboursement par carte de ${sum}` : `Remboursement par carte de ${sum} qui n’a pas passé`;
   const body = action === 'payment_parked'
     ? `${what} : PAS inscrit (${reason}). À entrer à la main. Référence Stripe : ${e.reference}`
     : `${what} : la facture visée n’est plus bonne (${reason}), il est inscrit sur la job et ira sur la prochaine facture. À vérifier.`;
-  try { await db.from('messages').insert({ job_id: e.job, kind: 'payment_check', channel: 'web', status: 'skipped', error: 'note', body }); } catch { /* a note only */ }
+  const { error: em } = await db.from('messages').insert({ job_id: e.job, kind: 'payment_check', channel: 'web', status: 'skipped', error: 'note', body });
+  if (em) console.error('payments: job text not written', e.session, String(em.message).slice(0, 200));
+}
+/** kept aside once: the history row of that Stripe page (or refund) is written only if it is not there yet */
+async function park(e: Entry, why: string): Promise<Applied> {
+  const { data: known, error } = await adminDb().from('activity').select('id').eq('action', 'payment_parked').eq('data->>session', e.session).limit(1);
+  if (error) throw error;
+  if (!known?.length) await note('payment_parked', e, why);
+  return 'parked';
 }
 
 /** payment_add, never refusing money already moved */
@@ -74,9 +86,7 @@ async function record(e: Entry): Promise<Applied> {
     why = again;
   }
   // refused for good: kept in the history (once), the notice is not asked for again
-  const { data: known } = await db.from('activity').select('id').eq('action', 'payment_parked').eq('data->>session', e.session).limit(1);
-  if (!known?.length) await note('payment_parked', e, why);
-  return 'parked';
+  return park(e, why);
 }
 
 /** a paid card page (Stripe Checkout session) */
@@ -110,21 +120,57 @@ async function refundsOf(key: string, intent: string): Promise<Row[]> {
   return all;
 }
 
+/** the payment of the app this Stripe payment made (its reference is Stripe's payment id), or null */
+async function paymentOf(pi: string): Promise<Row | null> {
+  const { data, error } = await adminDb().from('payments').select('id, invoice_id, job_id, stripe_session').eq('reference', pi).eq('method', 'card_online')
+    .gt('amount_cents', 0).is('deleted_at', null).order('created_at').limit(1).maybeSingle();
+  if (error) throw error;
+  return data as Row | null;
+}
+/** the card page of the app that made this Stripe payment (asked from Stripe), when it is one of ours and paid */
+async function checkoutOf(key: string, pi: string): Promise<Row | null> {
+  const d = await stripeCall(key, 'GET', `/checkout/sessions?${new URLSearchParams({ payment_intent: pi, limit: '5' })}`);
+  const list = (Array.isArray(d?.data) ? d.data : []) as Row[];
+  return list.find((s) => s?.payment_status === 'paid' && (uuid(s.metadata?.job_id) || uuid(s.metadata?.invoice_id))) || null;
+}
+
 /** Money given back in Stripe for the payment `intent` (notices « charge.refunded », « charge.refund.updated »): each
     refund that passed is a negative card payment, once (kept as « <card page>#<refund> »), on the invoice the payment is
     on (or on the job). A refund still on its way is left for Stripe's next notice; one that failed after it was written
-    is taken back by the opposite amount (« …#echec »). Stripe not answering is thrown: the notice comes again. */
+    is taken back by the opposite amount (« …#echec »). Stripe not answering is thrown: the notice comes again.
+    The payment itself not in the books yet (its notice still being retried, or lost): it is recorded first, from Stripe's
+    own card page; a payment kept aside for the office gets its refunds kept aside beside it (never a payment entered by
+    hand that was already given back without a word). */
 export async function applyRefunds(key: string, intent: unknown): Promise<Applied> {
   const pi = typeof intent === 'string' ? intent : '';
   if (!/^[A-Za-z0-9_]{6,120}$/.test(pi)) return 'ignored';
   const db = adminDb();
-  // the payment this charge made (its reference is Stripe's payment id): none = not a payment of the app
-  const { data: paid, error } = await db.from('payments').select('id, invoice_id, job_id, stripe_session').eq('reference', pi).eq('method', 'card_online')
-    .gt('amount_cents', 0).is('deleted_at', null).order('created_at').limit(1).maybeSingle();
-  if (error) throw error;
-  const p = paid as Row | null;
-  if (!p) return 'ignored';
+  let p = await paymentOf(pi);
+  let parkedPage: Row | null = null;
+  if (!p) {
+    const sess = await checkoutOf(key, pi);
+    if (!sess) return 'ignored';                        // not a payment of the app
+    const first = await applyCheckout(sess);
+    if (first === 'parked') parkedPage = sess;
+    else if (first === 'ignored') return 'ignored';
+    else if (!(p = await paymentOf(pi))) {
+      // recorded under another reference (an older row): kept aside rather than lost
+      parkedPage = sess;
+    }
+  }
   const refunds = await refundsOf(key, pi);
+  if (parkedPage) {
+    const md = parkedPage.metadata || {};
+    const done: Applied[] = [];
+    for (const r of refunds) {
+      const id = String(r?.id || ''), amount = Math.round(Number(r?.amount || 0));
+      if (r?.status !== 'succeeded' || !/^[A-Za-z0-9_]{4,120}$/.test(id) || !(amount > 0)) continue;
+      done.push(await park({ op: await stripeOp(`refund:${id}`), invoice: uuid(md.invoice_id), job: uuid(md.job_id), amount: -amount, reference: id,
+        session: `${String(parkedPage.id)}#${id}`, kind: 'refund' }, 'paiement pas inscrit'));
+    }
+    return done.length ? 'parked' : 'ignored';
+  }
+  p = p as Row;
   const page = String(p.stripe_session || pi);
   const { data: rows, error: e2 } = await db.from('payments').select('stripe_session').like('stripe_session', `${page.replace(/[%_\\]/g, '\\$&')}#%`);
   if (e2) throw e2;

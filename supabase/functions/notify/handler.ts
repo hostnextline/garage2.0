@@ -139,7 +139,19 @@ export const handler = serve(async (req) => {
   const op = UUID.test(String(b.op || '')) ? String(b.op) : null;
   if (op) {
     const { data: done, error: e9 } = await db.rpc('op_begin', { p_op: op, p_name: `notify_${kind}` });
-    if (!e9 && done) return json((done as Record<string, any>).status ? done : { ok: true, status: 'already' });
+    if (!e9 && done) {
+      if ((done as Record<string, any>).status) return json(done);
+      // the same send is going on right now (two taps at once): its answer is awaited a few seconds; never « sent »
+      // before it is known (it may still fail, or come back as a text to send by hand)
+      for (let i = 0; i < 24; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        const { data: row } = await db.from('op_log').select('result').eq('op', op).maybeSingle();
+        const res = (row as Record<string, any> | null)?.result;
+        if (res?.status) return json(res);
+        if (!row) break;                              // the first one did not send: it freed the op
+      }
+      fail('busy', 'Ce texto est déjà en train de partir. Réessaie dans un instant.', 409);
+    }
   }
   /** the send is over: its answer is kept for a second arrival; a text that did not go frees the op (the retry sends) */
   const close = async (out: Record<string, unknown>, went: boolean) => {

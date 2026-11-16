@@ -429,3 +429,139 @@ test('back from Stripe: « check » says what became of the card page (paid even
   assert.equal((await fn('client', { action: 'check', token: t })).session, 'none', 'the paid page is forgotten by the link');
   assert.equal((await q(`select count(*)::int n from public.payments where stripe_session = $1`, [sessionOf(p.url)]))[0].n, 1, 'still once');
 });
+
+/* ---------- review round 1 ---------- */
+
+/** the operation id the functions give a Stripe object (_shared/payments.ts stripeOp) */
+const stripeOp = (what) => { const h = sha(`stripe:${what}`); return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${'89ab'[parseInt(h[16], 16) % 4]}${h.slice(17, 20)}-${h.slice(20, 32)}`; };
+/** the card pages of a job the fake Stripe holds open */
+const openPages = async (job) => ((await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { headers: { authorization: 'Bearer sk_test_abcdefghijklmnop' } })).json()).data || []).filter((s) => s.metadata?.job_id === job && s.status === 'open');
+/** a card page made straight at Stripe for a job that does not exist (nothing in the books can hold it) */
+async function ghostPage(cents = 4599) {
+  const body = new URLSearchParams({ mode: 'payment', 'line_items[0][price_data][unit_amount]': String(cents), 'metadata[job_id]': randomUUID(), success_url: 'x', cancel_url: 'x' });
+  const s = await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: { authorization: 'Bearer sk_test_abcdefghijklmnop', 'content-type': 'application/x-www-form-urlencoded' }, body })).json();
+  assert.ok(s.id, JSON.stringify(s));
+  return s;
+}
+
+test('pay-claim-split: many taps at once on several texts of the same job (however they interleave): ONE card page at Stripe, every tap gets it', async () => {
+  for (let round = 0; round < 3; round++) {
+    const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 10000 + round }] });
+    const links = [await linkFor(job), await linkFor(job), await linkFor(job)];
+    const taps = await Promise.all([...links, ...links].map((t) => fn('client', { action: 'pay', token: t, base: BASE })));
+    assert.ok(taps.every((x) => x.ok && x.url), JSON.stringify(taps));
+    assert.equal(new Set(taps.map((x) => x.url)).size, 1, 'one page for every tap: ' + JSON.stringify(taps.map((x) => x.url)));
+    assert.equal((await openPages(job)).length, 1, 'one payable page at Stripe');
+    assert.equal((await q(`select count(*)::int n from public.op_log where op = $1`, [stripeOp(`pay-claim:${job}`)]))[0].n, 0, 'the claim is freed');
+  }
+  // the interleaving that split the old two-window brake (A takes one window, B the other: both lost, both made a page),
+  // reproduced by holding the second window as a tap in between would
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  const a = await linkFor(job), b = await linkFor(job);
+  const amount = (await fn('client', { action: 'view', token: a })).pay.amount_cents;
+  await q(`select public.rate_hit($1, 31, 1)`, [`pay+:${job}:${amount}`]);
+  const [pa, pb] = await Promise.all([fn('client', { action: 'pay', token: a, base: BASE }), fn('client', { action: 'pay', token: b, base: BASE })]);
+  assert.ok(pa.url && pa.url === pb.url, 'one page: ' + JSON.stringify([pa, pb]));
+  assert.equal((await openPages(job)).length, 1, 'one payable page at Stripe');
+});
+
+test('pay-claim-split: a claim left by a function that died is taken over (the customer is not stuck)', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  await q(`insert into public.op_log (op, name, result, at) values ($1, 'client_pay', null, now() - interval '1 minute')`, [stripeOp(`pay-claim:${job}`)]);
+  const p = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p.ok && p.url, JSON.stringify(p));
+  assert.equal((await openPages(job)).length, 1);
+});
+
+test('pay-same-link-orphan: the same link asking twice for the same amount gets the SAME page back from Stripe, never a page nobody remembers', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  const slice = () => Math.floor(Date.now() / 600000);
+  const s0 = slice();
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p1.url, JSON.stringify(p1));
+  // the link lost what it held (two requests that both got through, the second writing over the first)
+  await q(`update public.public_links set last_session = null, last_session_url = null, last_session_amount = null, last_session_expires = null where token_hash = $1`, [sha(t)]);
+  const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
+  if (slice() !== s0) return;                     // the 10-minute slice turned in between: another request for Stripe
+  assert.equal(p2.url, p1.url, 'Stripe gives the same page back for the same request');
+  assert.equal((await openPages(job)).length, 1, 'no page left payable that no link remembers');
+});
+
+test('parked-note-unchecked: a payment kept aside whose history row cannot be written is NOT marked handled: 5xx, Stripe sends it again, then it is noted', async () => {
+  const s = await ghostPage(3100);
+  await q(`create or replace function public.t_fail_parked() returns trigger language plpgsql as $f$ begin if new.action = 'payment_parked' then raise exception 'disque plein'; end if; return new; end $f$`);
+  await q(`create trigger t_fail_parked before insert on public.activity for each row execute function public.t_fail_parked()`);
+  let first;
+  await clearLog();
+  try { first = await mockGet(`/pay/${s.id}`); }
+  finally { await q(`drop trigger if exists t_fail_parked on public.activity`); await q(`drop function if exists public.t_fail_parked()`); }
+  assert.equal(first.hook, 500, 'Stripe must try again: ' + JSON.stringify(first));
+  const ev = (await mockLog()).filter((x) => x.svc === 'stripe-webhook').map((h) => h.event);
+  assert.equal((await q(`select count(*)::int n from public.stripe_events where id = any($1)`, [ev]))[0].n, 0, 'not marked handled');
+  // Stripe's next try: kept aside and written for the office, once
+  assert.equal((await mockGet(`/pay/${s.id}`)).hook, 200);
+  assert.equal((await q(`select count(*)::int n from public.activity where action = 'payment_parked' and data->>'session' = $1`, [s.id]))[0].n, 1);
+});
+
+test('refund-of-unrecorded-payment: a refund whose payment notice never came records the payment first, then the refund', async () => {
+  const { job } = await newJob({ items: [{ description: 'Alternateur', unit_cents: 20000 }] });
+  const t = await linkFor(job);
+  const p = await fn('client', { action: 'pay', token: t, base: BASE });
+  const sid = sessionOf(p.url);
+  assert.equal((await mockGet(`/pay/${sid}?quiet=1`)).hook, null, 'the payment notice is lost');
+  const r = await mockGet(`/refund/${sid}?amount=7000`);
+  assert.equal(r.hook, 200, r.result);
+  const rows = await q(`select amount_cents, stripe_session from public.payments where job_id = $1 order by amount_cents desc`, [job]);
+  assert.deepEqual(rows.map((x) => [x.amount_cents, x.stripe_session]), [[22995, sid], [-7000, `${sid}#${r.refund}`]], 'the books say what really happened');
+});
+
+test('refund-of-unrecorded-payment: a refund of a payment kept aside for the office is kept aside beside it (once), never silently dropped', async () => {
+  const s = await ghostPage(5200);
+  assert.equal((await mockGet(`/pay/${s.id}`)).hook, 200);
+  const r = await mockGet(`/refund/${s.id}?amount=5200&twice=1`);
+  assert.equal(r.hook, 200, r.result);
+  const notes = await q(`select data from public.activity where action = 'payment_parked' and data->>'session' = $1`, [`${s.id}#${r.refund}`]);
+  assert.equal(notes.length, 1, 'written once for the office: ' + JSON.stringify(notes));
+  assert.deepEqual([notes[0].data.kind, notes[0].data.amount_cents, notes[0].data.reference], ['refund', -5200, r.refund]);
+});
+
+test('refund-no-key-loops: a refund notice while the garage has no Stripe key is written for the owner and answered 2xx (no retry loop)', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  const p = await fn('client', { action: 'pay', token: t, base: BASE });
+  const sid = sessionOf(p.url);
+  assert.equal((await mockGet(`/pay/${sid}`)).hook, 200);
+  const key = (await q(`select value from public.secrets where key = 'stripe_key'`))[0].value;
+  await q(`delete from public.secrets where key = 'stripe_key'`);
+  let r;
+  try { r = await mockGet(`/refund/${sid}?amount=1000&twice=1`); }
+  finally { await q(`insert into public.secrets (key, value) values ('stripe_key', $1) on conflict (key) do update set value = excluded.value`, [key]); }
+  assert.equal(r.hook, 200, r.result);
+  const pi = (await stripeSession(sid)).payment_intent;
+  assert.equal((await q(`select count(*)::int n from public.activity where action = 'payment_parked' and data->>'session' = $1`, [`refund:${pi}`]))[0].n, 1, 'the owner sees it, once');
+});
+
+test('notify-op-parallel: two sends with the same op at once while texts fail: neither is told the text went', async () => {
+  const { job } = await newJob();
+  await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed')`, [job]);
+  const op = randomUUID();
+  await fetch(`${MOCK}/control?ghl=fail`);
+  let x, y;
+  try { [x, y] = await Promise.all([fn('notify', { kind: 'extras', job_id: job, base: BASE, op }, ownerJwt), fn('notify', { kind: 'extras', job_id: job, base: BASE, op }, ownerJwt)]); }
+  finally { await fetch(`${MOCK}/control?ghl=ok`); }
+  assert.ok(x.ok !== true && y.ok !== true, 'nothing went: ' + JSON.stringify([x, y]));
+  // the same op once texts work again: sent
+  assert.equal((await fn('notify', { kind: 'extras', job_id: job, base: BASE, op }, ownerJwt)).status, 'sent');
+});
+
+test('notify-op-parallel: two sends with the same op at once: both get the first one’s real answer (the text and its link)', async () => {
+  const { job } = await newJob();
+  await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed')`, [job]);
+  const op = randomUUID();
+  const [x, y] = await Promise.all([fn('notify', { kind: 'extras', job_id: job, base: BASE, op }, ownerJwt), fn('notify', { kind: 'extras', job_id: job, base: BASE, op }, ownerJwt)]);
+  assert.deepEqual([x.status, y.status], ['sent', 'sent'], JSON.stringify([x, y]));
+  assert.equal(y.link, x.link);
+  assert.equal(y.message, x.message);
+});
