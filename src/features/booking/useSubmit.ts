@@ -96,8 +96,9 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     const when = choice ? whenSaid(choice, forced, l) : '';
     const o = outcome(results, { total: jobs.length, walkIn: a.walkIn, day: choice?.day ?? null, when }, { t, bt });
     for (const x of o.toasts) toast(x.text, { kind: x.kind, ms: x.ms });
-    if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone }); calmScroll(at.moment.current); }
+    // the screen's state first (what was booked leaves it), then where the eyes go
     if (!o.go && o.done.length) b.act({ t: 'booked', keys: o.done });
+    if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone }); calmScroll(at.moment.current); }
     if (o.go) navigate(o.go, { replace: true });
     // the customer's confirmation, for each appointment the server answered (a window: said above the text to send by hand)
     const sms = choice && choice.block === 'day' ? whenSaid(choice, forced, l) : null;

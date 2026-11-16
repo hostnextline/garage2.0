@@ -1,0 +1,169 @@
+/* The booking screen drawn for real (the rows on the device, the server pretended): the flows that broke before the
+   rebuild, end to end through the screen (booking-a-25). The calendar and the price list are replaced by two buttons;
+   their own tests are theirs. */
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+import type { BlockPickerProps } from '../../domain/moment/choice';
+import type { ServicePickerProps } from '../../shared/moment/ServicePicker';
+
+const api = vi.hoisted(() => ({
+  bookJob: vi.fn(), walkIn: vi.fn(), suggestBlocks: vi.fn(), saveCustomer: vi.fn(), saveVehicle: vi.fn(),
+  errorMessage: (e: unknown) => (e as Error).message
+}));
+const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
+const nav = vi.hoisted(() => ({ navigate: vi.fn() }));
+const texts = vi.hoisted(() => ({ notifyCustomer: vi.fn(), wantsText: vi.fn() }));
+vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), ...api }));
+vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ask: ui.ask, toast: ui.toast }));
+vi.mock('../../platform/router', async (orig) => ({ ...(await orig<typeof import('../../platform/router')>()), navigate: nav.navigate }));
+vi.mock('../../shared/moment/notify', () => texts);
+vi.mock('../../shared/jobs/CarFirst', () => ({ OilHint: () => null }));
+vi.mock('../../shared/moment/BlockPicker', () => ({
+  BlockPicker: (p: BlockPickerProps) => <button type="button" data-testid="stub-pick" onClick={() => p.onPick({ day: DAY, block: 'am' })}>{p.value ? `${p.value.day} ${p.value.block}` : 'none'}</button>
+}));
+vi.mock('../../shared/moment/ServicePicker', () => ({
+  ServicePicker: (p: ServicePickerProps) => (
+    <div data-testid="stub-services" data-lines={p.value.map((i) => `${i.description}:${i.unit_cents}`).join(',')}>
+      <button type="button" data-testid="stub-add" onClick={() => p.onValue([...p.value, { kind: 'service', service_id: 's-oil', description: 'Huile', qty: 1, unit_cents: 8999, taxable: true, duration_min: 45 }])}>+</button>
+    </div>
+  )
+}));
+
+import { upsertLocal, clearAll } from '../../data/store';
+import { access } from '../../data/auth';
+import { addDays, today } from '../../lib/dates';
+import { lang } from '../../lib/i18n';
+import BookScreen from './BookScreen';
+
+const DAY = addDays(today(), 2);
+const box = document.createElement('div');
+document.body.appendChild(box);
+const q = (id: string) => box.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+const wait = async (ms = 30) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
+const click = async (el: Element | null) => { expect(el).toBeTruthy(); await act(async () => { (el as HTMLElement).click(); }); await wait(); };
+const draw = async (query: string) => { await act(() => render(<BookScreen params={{}} query={new URLSearchParams(query)} />, box)); await wait(); };
+const lines = () => q('stub-services')?.dataset.lines ?? '';
+const refusal = (code: string) => Object.assign(new Error(`refused ${code}`), { code: 'P0001', hint: code });
+const sent = () => api.bookJob.mock.calls.map(([job]) => `${job.vehicle_id}:${job.id}`);
+
+beforeEach(() => {
+  lang.value = 'fr';
+  access.value = { id: 'me', full_name: 'Bureau', short_name: null, email: null, phone: null, roles: ['office'], owner: false, lang: 'fr', prefs: {}, color: null,
+    rights: { book: true, agenda: true, clients: true } as never, trucks: [] };
+  upsertLocal('settings', [{ id: '1', booking: {}, taxes: { enabled: true, tps: 0.05, tvq: 0.09975 }, messages: { on: { booking: true } } }], { force: true });
+  upsertLocal('trucks', [{ id: 'T1', name: 'Camion', active: true, sort: 0 }, { id: 'T2', name: 'Voiture', active: true, sort: 1 }], { force: true });
+  upsertLocal('customers', [{ id: 'c-1', first_name: 'Julie', last_name: 'Tremblay', phone: '514 555-0141', address: '1 rue A', lat: 45.5, lng: -73.6 },
+    { id: 'c-2', first_name: 'Samir', last_name: 'Haddad', phone: '514 555-0177', address: '2 rue B', lat: 45.52, lng: -73.64 }], { force: true });
+  upsertLocal('vehicles', [{ id: 'v-1', customer_id: 'c-1', year: 2019, make: 'Honda', model: 'Civic' },
+    { id: 'v-2a', customer_id: 'c-2', year: 2016, make: 'Toyota', model: 'Corolla' }, { id: 'v-2b', customer_id: 'c-2', year: 2019, make: 'Toyota', model: 'Sienna' }], { force: true });
+  upsertLocal('quotes', [{ id: 'q-1', number: 7, customer_id: 'c-1', vehicle_id: null, items: [{ description: 'Freins', qty: 1, unit_cents: 34999, taxable: true, service_id: null }, { kind: 'discount', description: 'Rabais', qty: 1, unit_cents: -2000, taxable: true, service_id: null }], status: 'accepted', job_id: null }], { force: true });
+  for (const f of [api.bookJob, api.walkIn, api.suggestBlocks, api.saveCustomer, api.saveVehicle, ui.ask, ui.toast, nav.navigate, texts.notifyCustomer, texts.wantsText]) f.mockReset();
+  api.bookJob.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id, data: {} }));
+  api.suggestBlocks.mockResolvedValue([]);
+  texts.wantsText.mockReturnValue(true);
+  ui.ask.mockResolvedValue(true);
+});
+afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; });
+
+describe('the booking screen', () => {
+  it('an estimate with no car, for a customer with one car: the car is chosen by itself and the estimate’s lines stay (booking-a-01)', async () => {
+    await draw('quote=q-1');
+    await wait(50);
+    expect(lines()).toBe('Freins:34999,Rabais:-2000');
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+    expect(api.bookJob.mock.calls[0][0]).toMatchObject({ vehicle_id: 'v-1', quote_id: 'q-1', source: 'quote', day: DAY, block: 'am' });
+    expect(nav.navigate).toHaveBeenCalledWith(expect.stringMatching(/^\/job\//), { replace: true });
+    expect(texts.notifyCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it('two cars, the second refused: the retry sends only the second one, with its own id (booking-a-02)', async () => {
+    await draw('customer=c-2');
+    const chip = (name: string) => [...box.querySelectorAll('[data-testid="vehicle-chips"] button')].find((b) => b.textContent?.includes(name)) ?? null;
+    await click(chip('Corolla'));
+    await click(q('stub-add'));
+    await click(chip('Sienna'));
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    api.bookJob.mockImplementation(async (job: { id: string; vehicle_id: string }) => {
+      if (job.vehicle_id === 'v-2a') throw refusal('block_started');
+      return { queued: false, id: job.id, data: {} };
+    });
+    await click(q('book-confirm'));
+    const [first, second] = sent();
+    expect(first.startsWith('v-2b:') && second.startsWith('v-2a:')).toBe(true);
+    expect(nav.navigate).not.toHaveBeenCalled();
+    api.bookJob.mockClear();
+    api.bookJob.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id, data: {} }));
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(sent()).toEqual([second]);
+    // the one appointment left is booked: its job opens
+    expect(nav.navigate).toHaveBeenCalledWith(`/job/${second.split(':')[1]}`, { replace: true });
+  });
+
+  it('two cars kept on the phone: said once, the screen leaves (booking-a-03)', async () => {
+    await draw('customer=c-2');
+    const chips = () => [...box.querySelectorAll('[data-testid="vehicle-chips"] button')] as HTMLElement[];
+    await click(chips()[0]);
+    await click(q('stub-add'));
+    await click(chips()[1]);
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    api.bookJob.mockImplementation(async (job: { id: string }) => ({ queued: true, id: job.id }));
+    await click(q('book-confirm'));
+    expect(api.bookJob).toHaveBeenCalledTimes(2);
+    expect(ui.toast).toHaveBeenCalledTimes(1);
+    expect(ui.toast.mock.calls[0][0]).toMatch(/À confirmer/);
+    expect(nav.navigate).toHaveBeenCalledWith(`/agenda/${DAY}`, { replace: true });
+    expect(texts.notifyCustomer).not.toHaveBeenCalled();
+  });
+
+  it('a new caller: « Réserver » tapped without the name shows what to write (booking-a-11)', async () => {
+    await draw('call=1&start=job');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    const button = q('book-confirm') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toMatch(/prénom et le numéro/);
+    await click(button);
+    expect(q('call-who')?.textContent).toMatch(/Écris le prénom/);
+    expect(api.saveCustomer).not.toHaveBeenCalled();
+  });
+
+  it('« Beaucoup de route ce jour-là » is asked for the moment chosen, even when the calendar did not know (booking-a-10)', async () => {
+    api.suggestBlocks.mockResolvedValue([{ day: DAY, block: 'am', truck: 'T1', far: 'day', day_min: 140, add_min: 70, stops: 3, drive_min: 20, near: 0, left: 100 }]);
+    ui.ask.mockResolvedValue(false);
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(api.suggestBlocks).toHaveBeenCalledWith(45.5, -73.6, 45, DAY, 1, null, false, null);
+    expect(ui.ask.mock.calls[0][0].title).toBe('Beaucoup de route ce jour-là');
+    expect(api.bookJob).not.toHaveBeenCalled();
+  });
+
+  it('an estimate already booked is not booked again (booking-a-08)', async () => {
+    upsertLocal('jobs', [{ id: 'j-q', customer_id: 'c-1', day: DAY, block: 'am', status: 'booked' }], { force: true });
+    upsertLocal('quotes', [{ id: 'q-1', number: 7, customer_id: 'c-1', vehicle_id: 'v-1', items: [], status: 'converted', job_id: 'j-q' }], { force: true });
+    await draw('quote=q-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    const button = q('book-confirm') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toMatch(/déjà réservée/);
+  });
+
+  it('the owner’s walk-in names its vehicle (booking-a-13)', async () => {
+    access.value = { ...access.value!, owner: true, roles: ['owner'] };
+    api.walkIn.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id }));
+    await draw('walkin=1&customer=c-1');
+    await click(q('stub-add'));
+    expect((q('book-confirm') as HTMLButtonElement).disabled).toBe(true);
+    await click(q('book-truck')!.querySelector('button'));
+    await click(q('book-confirm'));
+    expect(api.walkIn.mock.calls[0][0]).toMatchObject({ truck_id: 'T1', customer_id: 'c-1', vehicle_id: 'v-1' });
+  });
+});
