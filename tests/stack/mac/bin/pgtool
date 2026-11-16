@@ -1,0 +1,18 @@
+#!/bin/bash
+# psql / pg_dump / pg_isready of the harness (Postgres 16 client programs), found first on PATH by the tests.
+# The project's files name port 54332; on this Mac that port belongs to ANOTHER session's database, so a port
+# 54332 given here is turned into this harness's port (54352): a safety net on top of the rewrite done in the copy.
+B=${HIS_STACK:-$HOME/.his-stack}/tools/pgclient/pgserver/pginstall/bin   # the stack's folder (tests/stack/mac/README.md)
+tool=$(basename "$0")
+args=(); prev=
+for a in "$@"; do
+  case "$a" in
+    -p54332) a=-p54352 ;;
+    --port=54332) a=--port=54352 ;;
+    54332) case "$prev" in -p|--port) a=54352 ;; esac ;;
+  esac
+  args+=("$a"); prev=$a
+done
+export PGPORT=54352
+if [ ${#args[@]} -eq 0 ]; then exec "$B/$tool"; fi
+exec "$B/$tool" "${args[@]}"

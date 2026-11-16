@@ -33,3 +33,20 @@ test('publishing: the type check, then the unit tests, then the build, all befor
   assert.ok(!/tests\/(e2e|db|api|stack)/.test(y), 'the whole suite is not in the publishing path (it runs on the other branches: tests-complets.yml)');
   assert.match(y, /branches: \[main\]/);
 });
+
+test('the Mac test stack (tests/stack/mac): every script parses, the stack lives in the folder the developer chose (HIS_STACK), never in a scratch path', () => {
+  const M = 'tests/stack/mac';
+  const scripts = ['install.sh', 'up.sh', 'db-tests.sh', 'api-tests.sh', 'e2e.sh', 'all.sh', 'down.sh', 'psql.sh', 'lib/common.sh', 'bin/pgtool'];
+  for (const s of scripts) {
+    assert.ok(existsSync(join(ROOT, M, s)), `${M}/${s} is there`);
+    execFileSync('bash', ['-n', join(ROOT, M, s)]);   // throws on a syntax error
+  }
+  for (const s of ['lib/daemon.mjs', 'lib/summary.mjs']) execFileSync(process.execPath, ['--check', join(ROOT, M, s)]);
+  for (const t of ['psql', 'pg_dump', 'pg_isready']) assert.ok(existsSync(join(ROOT, M, 'bin', t)), `bin/${t} (a link to pgtool)`);
+  for (const s of [...scripts, 'README.md']) {
+    const txt = lire(`${M}/${s}`);
+    assert.ok(!/\/private\/tmp|scratchpad|garage2\.0-neuf/.test(txt), `${s} names no scratch folder nor somebody's copy`);
+  }
+  for (const s of ['lib/common.sh', 'install.sh', 'bin/pgtool']) assert.match(lire(`${M}/${s}`), /\$\{HIS_STACK:-\$HOME\/\.his-stack\}/, `${s}: one variable, default under the home folder`);
+  assert.ok(existsSync(join(ROOT, M, 'README.md')));
+});
