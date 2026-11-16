@@ -1,9 +1,12 @@
 /* Every change the app makes goes through here: on screen at once, sent when possible (see sync.ts), refused with a
    clear message when the server says no. In « Voir l'app comme… » nothing can be changed. */
-import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks } from './sync';
+import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks, sendOrKeep, onConfirmed } from './sync';
 import { getRow, rowsOf } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
+import { ask } from './client';
+import { REQUEST_MS } from './send';
+import { itemsOf, settings } from './select';
 import { t, lang } from '../lib/i18n';
 import type { Customer, CustomerNote, Vehicle, EngineSpec, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
 import type { BlockKey, Range } from '../lib/dates';
@@ -18,7 +21,9 @@ async function upsert(table: TableName, obj: Record<string, unknown>, defaults: 
   const { id, ...rest } = obj as { id?: string };
   const clean = Object.fromEntries(Object.entries(rest).filter(([k]) => !SKIP.has(k)));
   if (id && getRow(table, id)) { await updateRow(table, id, clean, { label }); return id; }
-  return (await insertRow(table, { ...defaults, ...clean, id: id || uuid(), created_at: now() }, { label })).id;
+  // a row this device does not hold may still exist on the server: what the person set is then sent as a change,
+  // never the defaults (core-data-49)
+  return (await insertRow(table, { ...defaults, ...clean, id: id || uuid(), created_at: now() }, { label, ...(id ? { patch: clean } : {}) })).id;
 }
 
 /* ---------- customers, cars, engine sheets ---------- */
@@ -81,7 +86,9 @@ export async function walkIn(job: Omit<BookInput, 'day' | 'block'>, items: ItemI
 }
 export async function addItem(jobId: string, item: ItemInput) {
   guard();
-  return (await insertRow('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', sort: Date.now() % 100000, ...item, job_id: jobId, id: item.id || uuid(), created_at: now() })).id;
+  // after the job's last line (a clock modulo used to wrap every 100 s and put a later line first: core-data-29)
+  const sort = itemsOf(jobId).reduce((m, i) => Math.max(m, Number(i.sort) || 0), 0) + 1;
+  return (await insertRow('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', sort, ...item, job_id: jobId, id: item.id || uuid(), created_at: now() })).id;
 }
 export async function updateItem(id: string, patch: Partial<JobItem>) { guard(); await updateRow('job_items', id, patch); }
 export async function removeItem(id: string) { guard(); await deleteRow('job_items', id); }
@@ -183,7 +190,12 @@ export async function coffreRemove(id: string) {
 }
 
 /* ---------- settings, team ---------- */
-export async function saveSettings(part: keyof Settings, value: unknown) { guard(); await updateRow('settings', '1', { [part]: value }, { label: t('log.settings') }); }
+/** a part of the settings saved whole: what the screen showed before goes with it, so only the keys the person changed
+    overwrite the server's when it is sent (another device's change to another key stays: core-data-19) */
+export async function saveSettings(part: keyof Settings, value: unknown) {
+  guard();
+  await updateRow('settings', '1', { [part]: value }, { label: t('log.settings'), prev: { [part]: settings.value[part] } });
+}
 export async function saveService(sv: Partial<Service>): Promise<string> { guard(); return upsert('services', sv, { active: true, taxable: true, is_promo: false, includes: [], category: 'autre', duration_min: 60, sort: 0 }); }
 export async function saveServicePart(sp: Partial<ServicePart>) { guard(); return upsert('service_parts', sp, { qty: 1 }); }
 export async function setRoleRight(role: string, right: string, on: boolean) { guard(); return callRpc('set_role_rights', { p_role: role, p_right: right, p_on: on }, { queue: false }); }
@@ -193,27 +205,30 @@ export async function memberUpdate(staffId: string, patch: Partial<Staff>) {
   await refreshAccess();
   return r;
 }
+/** my own phone, language, switches: sent now; without signal kept on the phone and sent later; a refusal is listed in
+    the frame (it used to be dropped in silence while the screen said « Enregistré »: core-data-30) */
 export async function updateMe(patch: { phone?: string; lang?: string; prefs?: Record<string, unknown> }) {
   if (preview.value) return;
-  try { await sb.rpc('update_me', { p_patch: patch }); } catch { /* the device keeps it until next time */ }
+  try { await sendOrKeep('update_me', { p_patch: patch }); } catch { /* signed out meanwhile: the account keeps its old value */ }
 }
 
 /* ---------- treasury and inventory ---------- */
-export async function deleteExpense(id: string) { guard(); await deleteRow('expenses', id, { label: t('log.expense') }); }
 export async function saveExpense(e: Partial<Expense>): Promise<string> { guard(); return upsert('expenses', e, { category: 'Autre', subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0 }, t('log.expense')); }
 export async function saveReceipt(dataUrl: string, w: number, h: number): Promise<string> {
   guard();
   const [head, data] = dataUrl.split(',');
   const mime = /image\/(png|jpeg|webp)|application\/pdf/.exec(head)?.[0] || 'image/jpeg';
   const id = uuid();
-  // receipts are sent straight away (they are not kept on every phone)
-  const { error } = await sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h });
-  if (error) throw error;
+  // receipts are sent straight away (they are not kept on every phone); a picture gets the time it needs, then stops
+  const ms = Math.min(120000, REQUEST_MS + Math.floor(data.length / 20000) * 1000);
+  await ask((s) => sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h }).abortSignal(s), ms);
   return id;
 }
 export async function loadAttachment(id: string): Promise<string | null> {
-  const { data } = await sb.from('attachments').select('mime, data').eq('id', id).maybeSingle();
-  return data ? `data:${(data as { mime: string }).mime};base64,${(data as { data: string }).data}` : null;
+  try {
+    const data = await ask<{ mime: string; data: string } | null>((s) => sb.from('attachments').select('mime, data').eq('id', id).abortSignal(s).maybeSingle(), 30000);
+    return data ? `data:${data.mime};base64,${data.data}` : null;
+  } catch { return null; }
 }
 export async function saveInventoryItem(i: Partial<InventoryItem>): Promise<string> {
   guard();
@@ -227,11 +242,15 @@ export async function saveInventoryItem(i: Partial<InventoryItem>): Promise<stri
 export async function deleteInventoryItem(id: string) {
   guard();
   const r = await callRpc('inventory_delete', { p_item: id }, { label: t('log.inventory') });
-  const moves = rowsOf<{ id: string; item_id: string }>('inventory_moves').filter((m) => m.item_id === id).map((m) => m.id);
-  const links = rowsOf<{ id: string; item_id: string }>('service_parts').filter((p) => p.item_id === id).map((p) => p.id);
-  await forgetLocal('inventory_moves', moves);
-  await forgetLocal('service_parts', links);
-  await forgetLocal('inventory_items', [id]);
+  // forgotten once the server has really deleted them (a refused delete no longer loses the item on this phone)
+  const forget = () => {
+    const moves = rowsOf<{ id: string; item_id: string }>('inventory_moves').filter((m) => m.item_id === id).map((m) => m.id);
+    const links = rowsOf<{ id: string; item_id: string }>('service_parts').filter((p) => p.item_id === id).map((p) => p.id);
+    void forgetLocal('inventory_moves', moves);
+    void forgetLocal('service_parts', links);
+    void forgetLocal('inventory_items', [id]);
+  };
+  if (r.queued && r.op) onConfirmed(r.op, forget); else forget();
   return r;
 }
 /** stock bought: the quantity comes in and the money leaves the Trésorerie (an expense) or the Coffre, in one step */
@@ -250,20 +269,14 @@ export async function shiftStart() { guard(); return callRpc('shift_start', {}, 
 export async function shiftEnd() { guard(); return callRpc('shift_end', {}, { noOp: true }); }
 export async function reportPosition(lat: number, lng: number, accuracy: number | null, heading: number | null, speed: number | null, jobId: string | null) {
   if (preview.value) return { ok: false };
-  const { data } = await sb.rpc('report_position', { p_lat: lat, p_lng: lng, p_accuracy: accuracy, p_heading: heading, p_speed: speed, p_job: jobId });
+  // a request that hangs no longer holds back the next positions: it stops after 15 s
+  const data = await ask((s) => sb.rpc('report_position', { p_lat: lat, p_lng: lng, p_accuracy: accuracy, p_heading: heading, p_speed: speed, p_job: jobId }).abortSignal(s), REQUEST_MS).catch(() => undefined);
   return data as { ok: boolean; reason?: string };
 }
 
-/* ---------- needs the network ---------- */
-function inTime<T>(p: PromiseLike<T>, ms = 15000): Promise<T> {
-  return new Promise<T>((res, rej) => {
-    const tm = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), ms);
-    Promise.resolve(p).then((v) => { clearTimeout(tm); res(v); }, (e) => { clearTimeout(tm); rej(e); });
-  });
-}
+/* ---------- needs the network (each request stops at its limit; the error says no signal, server unwell or refused) ---------- */
 export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
-  const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 60, p_need: need, p_kind: kind }));
-  if (error) throw error;
+  const data = await ask((s) => sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 60, p_need: need, p_kind: kind }).abortSignal(s), REQUEST_MS);
   /* every moment of the page, the best first. « Garde-route » (optional: an older server does not send them): what the
      job adds to the truck's whole day (add_min, add_km), the day's driving with it (day_min), the longest drive to a
      neighbouring customer that day (hop_min, null without another stop), the truck's other stops (stops), and
@@ -275,16 +288,15 @@ export interface Suggestion { day: string; block: BlockKey; drive_min: number; n
   pos?: number; add_min?: number; add_km?: number; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null }
 /** « Plages d'arrivée »: every window still possible on one day (the best first), for « Autres heures ce jour-là » */
 export async function suggestWindows(lat: number | null, lng: number | null, duration: number, day: string, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
-  const { data, error } = await inTime(sb.rpc('suggest_windows', { p_lat: lat, p_lng: lng, p_duration: duration, p_day: day, p_exclude: exclude, p_need: need, p_kind: kind }));
-  if (error) throw error;
+  const data = await ask((s) => sb.rpc('suggest_windows', { p_lat: lat, p_lng: lng, p_duration: duration, p_day: day, p_exclude: exclude, p_need: need, p_kind: kind }).abortSignal(s), REQUEST_MS);
   return (data || []) as Suggestion[];
 }
 export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
-  const { data, error } = await inTime(sb.rpc(name, args), ms);
-  if (error) throw error;
-  return data as T;
+  return (await ask((s) => sb.rpc(name, args).abortSignal(s), ms)) as T;
 }
-export async function notify(kind: string, jobId: string, opts: { resend?: boolean } = {}) {
+/** `op`: one id per text sent, kept by the screen until it succeeds: the same send asked twice (an answer lost, a second
+    tap) is one text on the server; a new one for a deliberate « Renvoyer » */
+export async function notify(kind: string, jobId: string, opts: { resend?: boolean; op?: string } = {}) {
   guard();
   return callFn<{ status: string; message?: string; link?: string; phone?: string | null }>('notify', { kind, job_id: jobId, base: appBase(), ...opts });
 }
