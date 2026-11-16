@@ -366,3 +366,28 @@ test('sql-planner-2-01: « Peu importe »: the suggestions offer the block where
   assert.ok(am, 'the morning is offered');
   assert.equal(am.truck, truck);
 }));
+
+test('sql-windows-01 / x-dualmode-10: back to the blocks, a job goes to the block of its arrival, keeps what it was told and is listed to call', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const c1 = await h.customer('Jean', ...near), c2 = await h.customer('Paul', ...near2);
+  await windowsOn(h, owner);
+  const a = await book(h, { customer_id: c1, day, block: 'day', duration_min: 235, win_start: 480 });
+  const b = await book(h, { customer_id: c2, day, block: 'day', duration_min: 60, win_start: 660 });
+  const jb0 = await row(h, b.job_id);
+  assert.ok(jb0.eta_min >= 720, `B arrives after noon (${jb0.eta_min})`); inside(jb0, 'B');
+  const off = await h.rpc('windows_switch', { p_op: uuid(), p_on: false });
+  const ja = await row(h, a.job_id), jb = await row(h, b.job_id);
+  assert.deepEqual([ja.block, ja.win_start, ja.win_end], ['am', null, null], 'a window that is a block: that block');
+  assert.deepEqual([jb.block, jb.win_start, jb.win_end], ['pm', 660, 900], '11 h – 15 h arriving at 12 h 20: the afternoon, the window kept');
+  assert.deepEqual(off.to_call.map((x) => x.job_id), [b.job_id], 'whom to call');
+  assert.equal(off.converted, 2);
+  assert.equal(await server(h, owner, `select count(*)::int n from public.activity where entity_id = $1 and action = 'window_to_block'`, [b.job_id]).then((r) => r[0].n), 1);
+  const on = await h.rpc('windows_switch', { p_op: uuid(), p_on: true });
+  assert.equal(on.ok, true);
+  const jb2 = await row(h, b.job_id), ja2 = await row(h, a.job_id);
+  assert.deepEqual([jb2.block, jb2.win_start, jb2.win_end], ['day', 660, 900], 'the window told comes back');
+  assert.deepEqual([ja2.win_start, ja2.win_end], [480, 720]);
+}));

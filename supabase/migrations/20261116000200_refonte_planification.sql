@@ -971,3 +971,101 @@ begin
       order by (e->>'far' is not null), (e->>'add_min')::int + coalesce((e->>'wait_min')::int, 0), (e->>'near')::int desc, e->>'day', (e->>'pos')::int) o
     from jsonb_array_elements(out) e) q where o <= greatest(1, p_limit)), '[]'::jsonb);
 end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 8. The switch between blocks and windows
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- windows_switch (live text), with:
+--   * the claim first;
+--   * back to the blocks: a job goes to the block of its planned arrival (as the owner is told), not to the block of its
+--     window's start; the window the customer was told stays on the job when it is not the block's own hours (the app
+--     shows a block job by its block: nothing changes on the screens), so the way back to the windows gives it again;
+--   * the answer lists whom to call (`to_call`: the window told is not inside the block, also in activity
+--     « window_to_block ») and the days left as they were (`kept`); `converted` counts the appointments still to come.
+CREATE OR REPLACE FUNCTION public.windows_switch(p_op uuid, p_on boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_done jsonb; v_today date := public.local_today(); n int := 0; d date; bk record; p jsonb;
+  v_chain text := coalesce(current_setting('garage.chain', true), '');
+  -- Part 26: whom to call (the window told is not inside the block they go back to), the days left as they were
+  v_call jsonb := '[]'::jsonb; v_kept jsonb := '[]'::jsonb;
+begin
+  v_done := public.op_begin(p_op, 'windows_switch');
+  if v_done is not null then return v_done; end if;
+  if not public.is_owner() then perform public.fail('not_allowed', 'Seul le propriétaire change la façon de donner les heures aux clients.'); end if;
+  if p_on is null then perform public.fail('bad_mode', 'Choisis : les plages d’arrivée, ou les blocs.'); end if;
+  perform pg_advisory_xact_lock(hashtext('windows_switch'));
+  if public.windows_on() = p_on then
+    return public.op_save(p_op, 'windows_switch', jsonb_build_object('ok', true, 'converted', 0, 'unchanged', true, 'on', p_on));
+  end if;
+  perform set_config('garage.rpc', 'on', true);
+  if p_on then
+    select count(*) into n from public.jobs j where j.day >= v_today and j.block <> 'day' and j.deleted_at is null and j.status = 'booked';
+    -- a window still kept on the job (what the customer was told before a switch back to the blocks) is its window again
+    update public.jobs j set block = 'day',
+      win_start = case when j.win_start is not null and j.win_end is not null and j.win_start < x.end_min and j.win_end > x.start_min then j.win_start else x.start_min end,
+      win_end = case when j.win_start is not null and j.win_end is not null and j.win_start < x.end_min and j.win_end > x.start_min then j.win_end else x.end_min end,
+      win_flex = false
+      from public.blocks_set() x where x.key = j.block and j.day >= v_today and j.block <> 'day';
+  else
+    select count(*) into n from public.jobs j where j.day >= v_today and j.block = 'day' and j.deleted_at is null and j.status = 'booked';
+    update public.jobs j set
+      block = coalesce(
+        -- a window that is a block's very hours (a job that came from a block) goes back to that very block; else the block
+        -- of its planned arrival when the arrival is inside the window; else the block of the window (block_of_window)
+        (select x.key from public.blocks_set() x where j.win_start = x.start_min and j.win_end = x.end_min order by x.pos limit 1),
+        (select x.key from public.blocks_set() x where j.eta_min >= x.start_min and j.eta_min < x.end_min
+           and (j.win_start is null or (j.eta_min >= j.win_start and j.eta_min <= j.win_end)) order by x.pos limit 1),
+        public.block_of_window(j.win_start, j.win_end),
+        (select x.key from public.blocks_set() x where j.eta_min >= x.start_min and j.eta_min < x.end_min order by x.pos limit 1),
+        (select x.key from public.blocks_set() x order by x.pos limit 1), 'am'),
+      win_flex = false
+    where j.day >= v_today and j.block = 'day';
+    -- what each customer was told: kept on the job when it is not the block's own hours (the switch back to the windows
+    -- gives it again); the ones whose window is not inside their block are to be called
+    perform set_config('garage.rpc', 'on', true);
+    select coalesce(jsonb_agg(jsonb_build_object('job_id', j.id, 'day', j.day, 'block', j.block, 'win_start', j.win_start, 'win_end', j.win_end,
+             'customer_id', j.customer_id, 'truck_id', j.truck_id) order by j.day, j.win_start, j.id), '[]'::jsonb) into v_call
+    from public.jobs j join public.blocks_set() x on x.key = j.block
+    where j.day >= v_today and j.deleted_at is null and j.status = 'booked' and j.win_start is not null and j.win_end is not null
+      and (j.win_start < x.start_min or j.win_end > x.end_min);
+    insert into public.activity (actor, entity, entity_id, action, data)
+    select auth.uid(), 'job', (c->>'job_id')::uuid, 'window_to_block', c - 'job_id' from jsonb_array_elements(v_call) c;
+    update public.jobs j set win_start = null, win_end = null
+      from public.blocks_set() x where x.key = j.block and j.day >= v_today and j.win_start is not null
+        and (j.status <> 'booked' or (j.win_start = x.start_min and j.win_end = x.end_min));
+  end if;
+  perform set_config('garage.windows', 'on', true);
+  update public.settings set booking = jsonb_set(coalesce(booking, '{}'::jsonb), '{windows_on}', to_jsonb(p_on)) where id = 1;
+  perform set_config('garage.windows', '', true);
+  perform set_config('garage.rpc', 'on', true);
+  -- the stops of each truck numbered again inside their new block, by arrival (for the blocks that are not planned again)
+  update public.jobs j set stop_order = q.rn
+    from (select x.id, (row_number() over (partition by x.day, x.block, x.truck_id order by x.eta_min nulls last, x.stop_order nulls last, x.created_at))::int rn
+          from public.jobs x where x.day >= v_today and x.deleted_at is null and x.truck_id is not null and x.stop_order is not null
+            and x.status not in ('cancelled', 'no_show')) q
+    where q.id = j.id and j.stop_order is distinct from q.rn;
+  -- the coming days, in block order, each block from the new end of the one before (as replan_days does)
+  perform set_config('garage.chain', 'on', true);
+  for d in select distinct j.day from public.jobs j where j.day >= v_today and j.status = 'booked' and j.deleted_at is null order by 1 loop
+    for bk in select x.key from public.blocks() x order by x.pos loop
+      continue when not public.block_open(d, bk.key);
+      continue when not exists (select 1 from public.jobs j where j.day = d and j.block = bk.key and j.deleted_at is null and j.status = 'booked');
+      perform public.lock_block(d, bk.key);
+      p := public.plan_block(d, bk.key);
+      if exists (select 1 from jsonb_array_elements_text(coalesce(p->'over', '[]'::jsonb)) o join public.jobs j on j.id = o::uuid where j.truck_id is not null) then
+        v_kept := v_kept || jsonb_build_object('day', d, 'block', bk.key);
+        continue;
+      end if;
+      perform public.apply_plan(p);
+    end loop;
+  end loop;
+  perform set_config('garage.chain', v_chain, true);
+  insert into public.activity (actor, entity, entity_id, action, data)
+  values (auth.uid(), 'settings', null, 'windows_switch', jsonb_build_object('on', p_on, 'converted', n, 'to_call', jsonb_array_length(v_call), 'kept', v_kept));
+  return public.op_save(p_op, 'windows_switch', jsonb_build_object('ok', true, 'converted', n, 'on', p_on, 'to_call', v_call, 'kept', v_kept));
+end $function$;
