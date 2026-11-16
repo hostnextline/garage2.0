@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ItemKind } from '../../data/types';
-import { workMissing, workToAdd, withoutGoneWork, lineOfWork, percentOf, syncPercents, discountBase, putBack, settleLines, draftPatch, jobOpen, type WorkItem } from './draft';
+import { workMissing, workToAdd, withoutGoneWork, lineOfWork, percentOf, syncPercents, discountBase, putBack, addLines, settleLines, draftPatch, jobOpen, type WorkItem } from './draft';
 
 const made = '2026-11-15T13:00:00.000Z';
 const item = (id: string, o: Partial<WorkItem> = {}): WorkItem => ({ id, status: 'planned', description: `work ${id}`, qty: 1, unit_cents: 10000, taxable: true, kind: 'service',
@@ -12,8 +12,17 @@ const TPL = ['Rabais de {n} %', '{n}% discount'];
 
 describe('the draft follows the work of its job', () => {
   it('work the customer accepted, or added on site, after the draft was made goes on it by itself', () => {
-    const items = [item('a'), item('b', { status: 'approved', updated_at: '2026-11-15T14:10:00.000Z' }), item('c', { created_at: '2026-11-15T14:20:00.000Z', updated_at: '2026-11-15T14:20:00.000Z' })];
+    const items = [item('a'), item('b', { status: 'approved', answered_at: '2026-11-15T14:10:00.000Z', updated_at: '2026-11-15T14:10:00.000Z' }), item('c', { created_at: '2026-11-15T14:20:00.000Z', updated_at: '2026-11-15T14:20:00.000Z' })];
     expect(workToAdd([line('a')], items, made).map((i) => i.id)).toEqual(['b', 'c']);
+  });
+  it('older work taken off the draft and changed later (marked done, a new price) is not put back by itself (review inv-r2)', () => {
+    const later = '2026-11-15T15:00:00.000Z';
+    const items = [item('a'), item('b', { status: 'done', updated_at: later }), item('c', { unit_cents: 12000, updated_at: later })];
+    expect(workToAdd([line('a')], items, made)).toEqual([]);
+    // still said missing (the banner, and « Terminer la facture » asks)
+    expect(workMissing([line('a')], items).map((i) => i.id)).toEqual(['b', 'c']);
+    // an extra accepted before the draft was made and taken off it: stays off too
+    expect(workToAdd([line('a')], [item('a'), item('x', { status: 'approved', answered_at: '2026-11-15T10:00:00.000Z', updated_at: later })], made)).toEqual([]);
   });
   it('older work missing from the draft was taken off on purpose: it is said missing, never put back by itself', () => {
     const items = [item('a'), item('b')];
@@ -38,6 +47,18 @@ describe('the draft follows the work of its job', () => {
     expect(out.map((l) => l.item_id)).toEqual(['a', 'lost', undefined]);
     // nothing to change: the same lines (no save for nothing)
     expect(withoutGoneWork(out, [item('a')])).toBe(out);
+  });
+});
+
+describe('lines added from the catalog (review inv-r6)', () => {
+  it('« Rabais de 10 % » grows with them at once (the estimate has no settle of its own)', () => {
+    const lines = [line(undefined, 30000), disc('Rabais de 10 %', 3000)];
+    const out = addLines(lines, [line(undefined, 20000)], TPL);
+    expect(out.map((l) => l.unit_cents)).toEqual([30000, 5000, 20000]);
+    // nothing added: the same lines
+    expect(addLines(lines, [], TPL)).toBe(lines);
+    // a discount typed by hand (no percent in its words) does not move
+    expect(addLines([line(undefined, 30000), disc('Rabais', 3000)], [line(undefined, 20000)], TPL).map((l) => l.unit_cents)).toEqual([30000, 3000, 20000]);
   });
 });
 
@@ -83,12 +104,12 @@ describe('the draft takes the job’s work by itself', () => {
   const o = (addNew: boolean) => ({ addNew, madeAt: made, percentWords: TPL, toLine: (i: WorkItem): TL => lineOfWork(i) });
   it('an extra the customer accepted goes on it, and « Rabais de 10 % » grows with it', () => {
     const lines = [line('a', 30000), disc('Rabais de 10 %', 3000)];
-    const r = settleLines(lines, [item('a', { unit_cents: 30000 }), item('b', { status: 'approved', unit_cents: 20000, updated_at: late })], o(true));
+    const r = settleLines(lines, [item('a', { unit_cents: 30000 }), item('b', { status: 'approved', unit_cents: 20000, answered_at: late, updated_at: late })], o(true));
     expect(r.added.map((i) => i.id)).toEqual(['b']);
     expect(r.lines.map((l) => [l.item_id ?? null, l.unit_cents])).toEqual([['a', 30000], [null, 5000], ['b', 20000]]);
   });
   it('someone who may not change the job: work gone still leaves, new work is only said (the banner)', () => {
-    const r = settleLines([line('a'), line('r')], [item('a'), item('r', { status: 'removed' }), item('b', { updated_at: late })], o(false));
+    const r = settleLines([line('a'), line('r')], [item('a'), item('r', { status: 'removed' }), item('b', { created_at: late, updated_at: late })], o(false));
     expect(r.added).toEqual([]);
     expect(r.lines.map((l) => l.item_id)).toEqual(['a']);
   });

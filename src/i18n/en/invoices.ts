@@ -167,8 +167,7 @@ export const invoices: typeof fr = {
     pdf: 'PDF',
     pdfReceipt: 'Receipt PDF',
     open: 'See the invoice',
-    paidOn: 'Paid {when}, {how}'
-,
+    paidOn: 'Paid {when}, {how}',
     overTitle: 'Overpaid: {amount} to give back to the customer',
     over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Give the difference back, then record it here.',
     overButton: 'Record the refund',

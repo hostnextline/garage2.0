@@ -16,7 +16,8 @@ import { stamp as stampText } from '../../lib/dates';
 import { Page, Panel, Button, Banner, Empty, Skeleton, InvoicePill, Rows, RowItem, askText, run, toast } from '../../ui';
 import { invoicePdfData } from '../../domain/money/document';
 import { viewOf, type InvoiceView } from '../../domain/money/view';
-import { waitingEntries, paymentsWaiting, finishEntries, waitingForNetwork } from '../../domain/money/waiting';
+import { waitingEntries, unsentPayments, finishEntries, waitingForNetwork } from '../../domain/money/waiting';
+import { mayRefund } from '../../domain/money/pay';
 import { invoiceById, paymentsOfInvoice, invoiceCustomer, invoiceWho, canEditInvoiceOf, canManageInvoices, methodWord, invoiceTexts } from '../../shared/invoices/select';
 import { DraftInvoice, PaymentsList, ReopenButton } from '../../shared/invoices/InvoicePanel';
 import { OverBanner, UnbilledBanner, PayWaitingBanner } from '../../shared/invoices/InvoiceBanners';
@@ -59,7 +60,7 @@ function DocScreen(p: { view: InvoiceView }) {
   const j = jobRow(inv.job_id);
   const a = view.amounts;
   const pays = paymentsOfInvoice(inv.id);
-  const waiting = paymentsWaiting(waitingEntries(), { invoiceId: inv.id, jobId: inv.job_id });
+  const waiting = unsentPayments({ invoiceId: inv.id, jobId: inv.job_id });
   const number = invoiceNumber(inv);
   const who = invoiceWho(inv);
   const editable = canEditInvoiceOf(j);
@@ -113,13 +114,13 @@ function DocScreen(p: { view: InvoiceView }) {
                         : inv.issued_at ? t('invoices.screen.issuedOn', { when: stampText(inv.issued_at, l) }) : null}
                 </span>
               </div>
-              <OverBanner over={view.over} canRefund={editable && !finishing} onRefund={() => setSheet('refund')} />
-              <UnbilledBanner inv={inv} job={j} />
+              <OverBanner over={view.over} canRefund={editable && mayRefund(view)} onRefund={() => setSheet('refund')} />
+              <UnbilledBanner inv={inv} job={j} finishing={finishing} />
               {inv.status === 'issued' && editable && (view.due > 0
                 ? <Button variant="primary" block class="inv-pay-btn" icon={<Banknote />} onClick={() => setSheet('pay')} data-tour="invoice-pay" data-testid="invoice-pay">
                   {t('invoices.panel.pay', { amount: money(view.due, l) })}
                 </Button>
-                : view.waiting > 0 && <PayWaitingBanner cents={view.waiting} />)}
+                : view.waitingIn > 0 && <PayWaitingBanner cents={view.waitingIn} />)}
               {inv.status === 'issued' && !finishing && <ReopenButton inv={inv} job={j} block variant="ghost" />}
               {inv.status !== 'void' && inv.job_id && !finishing && (
                 <div class="inv-actions">

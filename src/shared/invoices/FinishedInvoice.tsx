@@ -14,7 +14,8 @@ import { money } from '../../lib/money';
 import { stamp as stampText } from '../../lib/dates';
 import { Panel, Button, Banner, Totals, InvoicePill, Stamp, askText, run, toast } from '../../ui';
 import { invoicePdfData } from '../../domain/money/document';
-import { waitingEntries, paymentsWaiting, finishEntries, waitingForNetwork } from '../../domain/money/waiting';
+import { waitingEntries, unsentPayments, finishEntries, waitingForNetwork } from '../../domain/money/waiting';
+import { mayRefund } from '../../domain/money/pay';
 import type { InvoiceView } from '../../domain/money/view';
 import { paymentsOfInvoice, canEditInvoiceOf, canManageInvoices, methodWord, invoiceCustomer } from './select';
 import { ReopenButton } from './Reopen';
@@ -31,7 +32,7 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
   const a = view.amounts;
   const l = lang.value;
   const pays = paymentsOfInvoice(inv.id);
-  const waiting = paymentsWaiting(waitingEntries(), { invoiceId: inv.id, jobId: inv.job_id });
+  const waiting = unsentPayments({ invoiceId: inv.id, jobId: inv.job_id });
   const editable = canEditInvoiceOf(job);
   const [sheet, setSheet] = useState<'pay' | 'refund' | null>(null);
   const [manual, setManual] = useState<SendResult | null>(null);
@@ -65,13 +66,13 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
             {pays.length > 0 && <p>{t('invoices.panel.paidOn', { when: stampText(pays[pays.length - 1].paid_at, l), how: [...new Set(pays.map((x) => methodWord(x.method, l)))].join(', ') })}</p>}
           </div>
         )}
-        <UnbilledBanner inv={inv} job={job} />
+        <UnbilledBanner inv={inv} job={job} finishing={finishing} />
         <LinesView lines={inv.lines || []} docLang={inv.lang} />
         <div class="inv-totals">
           <Totals subtotal={a.subtotal} tps={a.tps} tvq={a.tvq} total={a.total} paid={a.paid} taxesOn={a.showTaxes} />
         </div>
         {(pays.length > 0 || waiting.length > 0) && <PaymentsList pays={pays} waiting={waiting} />}
-        <OverBanner over={view.over} canRefund={editable && !finishing} onRefund={() => setSheet('refund')} />
+        <OverBanner over={view.over} canRefund={editable && mayRefund(view)} onRefund={() => setSheet('refund')} />
         {inv.status === 'issued' && (
           <div class="stack">
             {!editable
@@ -80,7 +81,7 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
                 ? <Button variant="primary" block class="inv-pay-btn" icon={<Banknote />} onClick={() => setSheet('pay')} data-tour="job-pay" data-testid="invoice-pay">
                   {t('invoices.panel.pay', { amount: money(view.due, l) })}
                 </Button>
-                : view.waiting > 0 && <PayWaitingBanner cents={view.waiting} />}
+                : view.waitingIn > 0 && <PayWaitingBanner cents={view.waitingIn} />}
             {!finishing && <ReopenButton inv={inv} job={job} block />}
           </div>
         )}

@@ -44,12 +44,20 @@ afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null;
 
 describe('a draft invoice', () => {
   it('an extra the customer accepted after the draft was made goes on it by itself, and is saved', async () => {
-    seed(draft(), [item('a'), item('b', { status: 'approved', updated_at: '2026-11-17T14:30:00.000Z' })]);
+    seed(draft(), [item('a'), item('b', { status: 'approved', answered_at: '2026-11-17T14:30:00.000Z', updated_at: '2026-11-17T14:30:00.000Z' })]);
     await draw();
     const words = [...box.querySelectorAll<HTMLInputElement>('[data-testid="line-desc"]')].map((i) => i.value);
     expect(words).toEqual(['Travail a', 'Travail b']);
     await wait(900);
     expect(api.saveInvoiceDraft).toHaveBeenCalledWith('f-1', { lines: [line('a'), line('b')] });
+  });
+  it('work of the job taken off the draft by hand, then marked done, is not put back by itself (review inv-r2)', async () => {
+    seed(draft(), [item('a'), item('b', { status: 'done', updated_at: '2026-11-17T15:30:00.000Z' })]);
+    await draw();
+    const words = [...box.querySelectorAll<HTMLInputElement>('[data-testid="line-desc"]')].map((i) => i.value);
+    expect(words).toEqual(['Travail a']);
+    await wait(900);
+    expect(api.saveInvoiceDraft).not.toHaveBeenCalled();
   });
   it('« Terminer la facture » with billable work missing asks first; « Terminer sans » finishes as it is', async () => {
     // work older than the draft and not on it: it was taken off by hand, so it is not put back by itself

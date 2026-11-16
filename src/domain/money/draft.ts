@@ -8,7 +8,7 @@ import { BILLABLE } from '../jobs/steps';
 import { lineCents, cleanLine, type LineLike } from './invoice';
 
 export type WorkItem = Pick<JobItem, 'id' | 'status' | 'description' | 'qty' | 'unit_cents' | 'taxable' | 'kind'> & {
-  deleted_at?: string | null; updated_at?: string | null; created_at?: string | null;
+  deleted_at?: string | null; updated_at?: string | null; created_at?: string | null; answered_at?: string | null;
 };
 type LineRef = { item_id?: string | null };
 
@@ -22,13 +22,15 @@ export function workMissing<I extends WorkItem>(lines: LineRef[] | null | undefi
   return items.filter((i) => isBillable(i) && !on.has(i.id));
 }
 
-/** of the work missing, what goes on the draft by itself: what became billable after the draft was made. Older work
-    missing from it was taken off on purpose (by someone who could not change the job): it stays off, and the panel
-    says it is missing. */
+/** of the work missing, what goes on the draft by itself: what became billable after the draft was made, that is work
+    added to the job after it (created_at) or an extra the customer accepted after it (answered_at). Any other change
+    of the work (marked done, a new price) does not count: older work missing from the draft was taken off on purpose
+    (by someone who could not change the job), it stays off and the panel says it is missing. */
 export function workToAdd<I extends WorkItem>(lines: LineRef[] | null | undefined, items: I[], draftMadeAt: string | null | undefined): I[] {
   const made = Date.parse(String(draftMadeAt || ''));
   if (!Number.isFinite(made)) return [];
-  return workMissing(lines, items).filter((i) => Date.parse(String(i.updated_at || i.created_at || '')) > made);
+  const after = (at: string | null | undefined) => { const x = Date.parse(String(at || '')); return Number.isFinite(x) && x > made; };
+  return workMissing(lines, items).filter((i) => after(i.created_at) || after(i.answered_at));
 }
 
 /** a line made from a job line, as « Faire la facture » makes it */
@@ -77,6 +79,11 @@ export function syncPercents<L extends LineLike>(lines: L[], templates: string[]
     return { ...l, unit_cents: cents, qty: 1 };
   });
   return changed ? out : lines;
+}
+
+/** lines added from the catalog (the estimate's, the invoice's): they go last, and « Rabais de 10 % » follows at once */
+export function addLines<L extends LineLike>(lines: L[], add: L[], templates: string[]): L[] {
+  return add.length ? syncPercents([...lines, ...add], templates) : lines;
 }
 
 /** « Annuler » after a line was removed: that one line comes back at its place in the lines as they are NOW

@@ -9,15 +9,16 @@ const box = document.createElement('div');
 document.body.appendChild(box);
 let d: Draft<string>;
 let saves: string[] = [];
+let bases: string[] = [];
 function H(p: { server: string; busy?: boolean; offline?: boolean; fail?: boolean }) {
-  d = useDraft<string>(p.server, (v) => v, async (v) => { saves.push(v); if (p.fail) throw new Error('refusé'); }, { busy: p.busy, offline: p.offline, delay: 10 });
+  d = useDraft<string>(p.server, (v) => v, async (v, base) => { saves.push(v); bases.push(base); if (p.fail) throw new Error('refusé'); }, { busy: p.busy, offline: p.offline, delay: 10 });
   return <span>{d.value}</span>;
 }
 const draw = (p: { server: string; busy?: boolean; offline?: boolean; fail?: boolean }) => act(() => render(<H {...p} />, box));
 const wait = async (ms: number) => { await act(async () => { vi.advanceTimersByTime(ms); await Promise.resolve(); await Promise.resolve(); }); };
 const type = async (v: string) => { act(() => d.change(v)); await wait(20); };
 
-beforeEach(() => { vi.useFakeTimers(); saves = []; });
+beforeEach(() => { vi.useFakeTimers(); saves = []; bases = []; });
 afterEach(() => { act(() => render(null, box)); vi.useRealTimers(); });
 
 describe('a form saved by itself', () => {
@@ -76,6 +77,29 @@ describe('a form saved by itself', () => {
     draw({ server: 'A', busy: true, offline: true });
     await type('ABC');
     expect(d.state).toBe('kept');
+  });
+  it('a save that throws (refused at once): the text typed stays with « Pas enregistré », the next change sends it again (review inv-r7)', async () => {
+    draw({ server: 'A', fail: true });
+    await type('AB');
+    expect(d.state).toBe('failed');
+    // the settle time passes: the server's older version is not put over it, and it does not say « Enregistré »
+    await wait(5000);
+    draw({ server: 'A', fail: true });
+    await wait(2000);
+    expect(d.value).toBe('AB');
+    expect(d.state).toBe('failed');
+    // the next change is built on what the server has, so the refused text goes with it
+    draw({ server: 'A' });
+    await type('ABC');
+    expect(saves.at(-1)).toBe('ABC');
+    expect(bases.at(-1)).toBe('A');
+    expect(d.state).toBe('saved');
+    // saved: a change from elsewhere is taken again
+    draw({ server: 'ABC' });
+    await wait(2000);
+    draw({ server: 'X' });
+    await wait(10);
+    expect(d.value).toBe('X');
   });
   it('flush waits for the saves already on their way, in order', async () => {
     draw({ server: 'A' });

@@ -8,10 +8,12 @@ import { reopenInvoice } from '../../data/api';
 import { t } from '../../lib/i18n';
 import { Button, run } from '../../ui';
 import { jobOpen } from '../../domain/money/draft';
+import { waitingEntries, finishWaiting } from '../../domain/money/waiting';
 import { canEditInvoiceOf } from './select';
 
+/** never while its « Terminer la facture » still waits on this phone: the server still has a draft (and refuses) */
 export function mayReopen(inv: Invoice | undefined, job: Job | undefined): boolean {
-  return !!inv && inv.status === 'issued' && !!job && jobOpen(job.status) && canEditInvoiceOf(job);
+  return !!inv && inv.status === 'issued' && !!job && jobOpen(job.status) && canEditInvoiceOf(job) && !finishWaiting(waitingEntries(), inv.id);
 }
 export function ReopenButton(p: { inv: Invoice; job: Job | undefined; block?: boolean; variant?: 'primary' | 'ghost' }) {
   if (!mayReopen(p.inv, p.job)) return null;
