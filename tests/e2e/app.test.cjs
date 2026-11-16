@@ -202,7 +202,8 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   assert.equal(h.sql(`select method from public.payments where job_id = '${jobId}'`), 'cash');
   assert.equal(Number(h.sql(`select count(*) from public.attachments where job_id = '${jobId}' and kind = 'signature'`)), 1);
   // the last job done: « Ma journée » offers the way back to the Centrale; « Je pars » texts the garage's return number
-  // (texts not connected here: the message is shown to send by hand), then « Je suis arrivé »
+  // (texts not connected here: the message is shown to send by hand), then « Je suis arrivé »: the card says he is back
+  // and offers no second « Je pars » (a tap would text the garage's return number again)
   h.sql(`update public.settings set booking = booking || jsonb_build_object('return_phone', '514 771-4243',
     'home', jsonb_build_object('label', 'Centrale', 'address', '1401 rue Legendre O, Montréal', 'lat', 45.5312898, 'lng', -73.6544639)) where id = 1`);
   await page.goto(h.APP + '#/');
@@ -215,7 +216,9 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await page.getByTestId('today-return-arrived').waitFor({ timeout: 15000 });
   assert.equal(h.sql(`select kind || '|' || status || '|' || coalesce(dest_label, '') from public.trips where staff_id = '${who.saleh.id}' and kind = 'return' order by started_at desc limit 1`), 'return|active|Centrale');
   await page.getByTestId('today-return-arrived').click();
-  await page.getByTestId('today-return-leave').waitFor({ timeout: 15000 });
+  await page.getByTestId('today-return-home').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('today-return').innerText(), /Arrivé à Centrale à/);
+  assert.equal(await page.getByTestId('today-return-leave').count(), 0, 'no second « Je pars vers Centrale » once arrived');
   assert.equal(h.sql(`select status from public.trips where staff_id = '${who.saleh.id}' and kind = 'return' order by started_at desc limit 1`), 'arrived');
   noErrors(page);
   await page.context().close();
