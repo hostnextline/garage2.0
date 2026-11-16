@@ -4,7 +4,7 @@ import { client as fr } from '../i18n/fr/client';
 import { client as en } from '../i18n/en/client';
 import { slotText, dayTitle, relDay, cad, lineCents, qtyText, telHref, localMinuteOf, localDayOf, clockOf } from './format';
 import { parseLink, linkHash } from './link';
-import { invoicePaid, nothingLeft, chargesTaxes, sections, afterCheck } from './view-state';
+import { invoicePaid, nothingLeft, chargesTaxes, sections, afterCheck } from './view/view-state';
 import type { JobView } from './api';
 
 const sp = (s: string | null) => String(s).replace(/\s/g, ' ');   // no-break spaces read as spaces

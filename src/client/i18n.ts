@@ -9,7 +9,8 @@ type Vars = Record<string, string | number | null | undefined>;
 function lookup(d: unknown, path: string): unknown {
   let cur: unknown = d;
   for (const p of path.split('.')) {
-    if (cur && typeof cur === 'object' && p in (cur as Record<string, unknown>)) cur = (cur as Record<string, unknown>)[p];
+    // own keys only: « constructor » or « toString » must not answer a function of every object
+    if (cur && typeof cur === 'object' && Object.prototype.hasOwnProperty.call(cur, p)) cur = (cur as Record<string, unknown>)[p];
     else return undefined;
   }
   return cur;

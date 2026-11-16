@@ -3,20 +3,20 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { addDays, today } from '../lib/dates';
+import { addDays, today } from '../../lib/dates';
 
 const calls: { action: string; body: Record<string, unknown> }[] = [];
 let answer: (action: string, body: Record<string, unknown>) => unknown = () => ({});
-vi.mock('./api', async (orig) => {
-  const real = await orig<typeof import('./api')>();
+vi.mock('../api', async (orig) => {
+  const real = await orig<typeof import('../api')>();
   return { ...real, callBook: async (action: string, body: Record<string, unknown> = {}) => { calls.push({ action, body }); return answer(action, body); } };
 });
-vi.mock('../shared/places/places', () => ({
+vi.mock('../../shared/places/places', () => ({
   searchPlaces: async () => ({ error: null, places: [{ place: { address: '1250 rue Graham', unit: null, postal_code: null, city: 'Mont-Royal', lat: 45.5, lng: -73.6 },
     label: '1250 rue Graham', sub: 'Mont-Royal', exact: true, key: 'g', house: '1250', street: 'rue Graham', areas: ['Mont-Royal'] }] })
 }));
 import { BookPage } from './BookPage';
-import { ClientError } from './api';
+import { ClientError } from '../api';
 
 const D = (n: number) => addDays(today(), n);
 const SVC = { id: 's1', name_fr: 'Huile', name_en: 'Oil', category: 'x', price_cents: 8000, taxable: true, duration_min: 45, promo: false, promo_until: null, includes: [] };
@@ -55,7 +55,7 @@ afterEach(() => act(() => render(null, box)));
 describe('Réserver en ligne, blocks (as before)', () => {
   it('the moments are blocks; a block is booked by its day and block only', async () => {
     answer = (a, b) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }, { day: D(3), block: 'am', near: false }] }
-      : { ok: true, link: null, day: b.day, block: b.block, text: 'sent' };
+      : { ok: true, link: 'x#t=abc', day: b.day, block: b.block, text: 'sent' };   // a real booking always comes with its link
     await toSlots();
     expect(q('book-slot')).toHaveLength(2);
     expect(q('book-flex')).toHaveLength(0);

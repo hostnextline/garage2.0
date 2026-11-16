@@ -1,9 +1,10 @@
 /* « Réserver en ligne »: the pure part (what is chosen, the total, the checks of the form, the answers of the server). */
-import { phoneDigits } from '../lib/text';
-import { totals } from '../lib/money';
-import type { CLang } from './i18n';
-import type { Suggestion } from '../shared/places/photon';
-import { wantedOf, sameStreet, sameTown, streetWords } from '../shared/places/locate';
+import { phoneDigits } from '../../lib/text';
+import { totals } from '../../lib/money';
+import { ct, type CLang } from '../i18n';
+import { slotText } from '../format';
+import type { Suggestion } from '../../shared/places/photon';
+import { wantedOf, sameStreet, sameTown, streetWords } from '../../shared/places/locate';
 
 export interface WebService {
   id: string; name_fr: string; name_en: string; category: string; price_cents: number | null; taxable?: boolean; duration_min: number;
@@ -18,17 +19,21 @@ export interface WebInfo { ok: true; garage: { name?: string | null; phone?: str
 export interface WebSlot { day: string; block: string; near: boolean; win_start?: number | null; win_end?: number | null; flex?: boolean }
 export interface Booked { ok: true; link: string | null; day: string; block: string; text: string; win_start?: number | null; win_end?: number | null; flex?: boolean }
 
+/** the address chosen in the list: the position comes with it (the mechanic needs it, the moments are counted from it) */
+export interface Place { address: string; unit: string; postal_code: string | null; city: string | null; lat: number; lng: number; exact: boolean }
+/** a suggestion of the address search as a place to book (null without a position: it cannot be chosen) */
+export function placeOf(s: Suggestion): Place | null {
+  if (s.place.lat == null || s.place.lng == null) return null;
+  return { address: [s.label, s.sub].filter(Boolean).join(', '), unit: s.place.unit || '', postal_code: s.place.postal_code, city: s.place.city ?? null,
+    lat: s.place.lat, lng: s.place.lng, exact: s.exact };
+}
+
 export type Step = 'services' | 'address' | 'slots' | 'contact' | 'done';
 export const STEPS: Step[] = ['services', 'address', 'slots', 'contact'];
 export function stepNumber(s: Step): number { return Math.max(1, STEPS.indexOf(s) + 1); }
 
 export function serviceName(s: WebService, l: CLang): string { return (l === 'en' ? s.name_en : s.name_fr) || s.name_fr; }
 
-/** the minutes of the work chosen (as the server counts them: 15 min to 8 h) */
-export function chosenMinutes(all: WebService[], ids: string[]): number {
-  const m = all.filter((s) => ids.includes(s.id)).reduce((t, s) => t + (s.duration_min || 0), 0);
-  return Math.max(15, Math.min(480, m || 60));
-}
 /** the expected total with taxes, and whether some work is priced by the hour (not in the total) */
 export function chosenTotal(all: WebService[], ids: string[], taxes = true): { total: number; hourly: boolean; any: boolean } {
   const picked = all.filter((s) => ids.includes(s.id));
@@ -84,6 +89,21 @@ export function nextFrom(from: string, days: number): string {
   const dt = new Date(Date.UTC(y, m - 1, d + days, 12));
   return dt.toISOString().slice(0, 10);
 }
+/** the days asked at a time (« Voir d'autres dates »: the next ones) */
+export const PAGE_DAYS = 14;
+/** a page that starts after the garage's horizon (`info.horizon_days`, 120 days) has nothing to offer */
+export function pastHorizon(from: string, today: string, horizonDays: number | null | undefined): boolean {
+  return from > nextFrom(today, Math.max(PAGE_DAYS, Number(horizonDays) || 120));
+}
+/** where the next page starts, and whether to look further by itself: a later fortnight with nothing free (holidays,
+    two full weeks) is not the end of the calendar, so the page skips it, a few at a time (the server counts each ask) */
+export function afterPage(asked: string | null, got: number, today: string, horizonDays: number | null | undefined, skipped: number, maxSkips: number):
+  { next: string; again: boolean; end: boolean } {
+  const next = nextFrom(asked || today, PAGE_DAYS);
+  const over = pastHorizon(next, today, horizonDays);
+  const again = !!asked && got === 0 && !over && skipped < maxSkips;
+  return { next, again, end: !!asked && got === 0 && over };
+}
 /** the slots of a new page added to the list, without twice the same */
 export function mergeSlots(a: WebSlot[], b: WebSlot[]): WebSlot[] {
   const seen = new Set(a.map(slotKey));
@@ -132,4 +152,22 @@ export function onTypedStreet(list: Suggestion[], typed: string): Suggestion[] {
   const key = streetWords(w.street).join(' ');
   const exact = out.filter((s) => streetWords(s.street || s.label).join(' ') === key);
   return exact.length ? exact : out;
+}
+
+/** the hours of a moment: « Entre 12 h et 16 h » (a block's hours or a window), « Dans la journée » (flexible) */
+export function whenWords(x: { block: string; win_start?: number | null; win_end?: number | null; flex?: boolean }, blocks: WebBlock[], l: CLang): string {
+  if (x.block === 'day') {
+    const w = slotWindow(x);
+    return (w && slotText(w[0], w[1], l)) || ct(l, 'flex');
+  }
+  const b = blocks.find((k) => k.key === x.block);
+  return (b && slotText(b.start, b.end, l)) || ct(l, `blocks.${x.block}`);
+}
+/** the moment the server kept for a booking: its window; the moment chosen when an older server does not say; none
+    (flexible) */
+export function bookedWhen(done: Booked, chosen: WebSlot | null): { block: string; win_start?: number | null; win_end?: number | null; flex?: boolean } {
+  if (done.block !== 'day') return done;
+  if (done.win_start != null && done.win_end != null) return { block: 'day', win_start: done.win_start, win_end: done.win_end };
+  if (done.flex === undefined && chosen && slotWindow(chosen)) return chosen;
+  return { block: 'day', flex: true };
 }

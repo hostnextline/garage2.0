@@ -1,7 +1,7 @@
 /* The tracking page's answer (public_track) turned into what the page shows. Pure: tested in track-state.test.ts. */
-import type { TrackAnswer, Garage } from './api';
-import { ct, isLang, type CLang } from './i18n';
-import { localMinuteOf, nbClock } from './format';
+import type { TrackAnswer, Garage } from '../api';
+import { ct, isLang, type CLang } from '../i18n';
+import { localMinuteOf, nbClock } from '../format';
 
 export type TrackKind = 'active' | 'arrived' | 'cancelled' | 'expired' | 'not_found';
 const KINDS: TrackKind[] = ['active', 'arrived', 'cancelled', 'expired', 'not_found'];
@@ -65,11 +65,12 @@ export function trackView(a: TrackAnswer | null | undefined, fetchedAt: number, 
 /** the page stops asking once the trip is over */
 export function isFinal(kind: TrackKind): boolean { return kind !== 'active'; }
 
-/** « Arrivée prévue vers 12 h 40 (environ 9 min) », « Arrivée d'un instant à l'autre », or null (no arrival time) */
-export function etaText(v: TrackView, l: CLang): string | null {
-  if (v.kind !== 'active' || !v.eta) return null;
-  if (v.eta.left <= 1) return ct(l, 'track.etaSoon');
-  return ct(l, 'track.eta', { time: nbClock(v.eta.minute, l), min: `${v.eta.left}` });
+/** the arrival line of the card: the big minutes left (null when « d’un instant à l’autre » or unknown) and the words
+    beside them (« Arrivée prévue vers 12 h 40 ») */
+export function arrival(v: TrackView, l: CLang): { left: number | null; when: string } {
+  if (!v.eta) return { left: null, when: ct(l, 'track.etaNone') };
+  if (v.eta.left <= 1) return { left: null, when: ct(l, 'track.etaSoon') };
+  return { left: v.eta.left, when: ct(l, 'track.etaAt', { time: nbClock(v.eta.minute, l) }) };
 }
 
 /** the big line at the top */

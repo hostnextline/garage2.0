@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { chosenMinutes, chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots, stepNumber, serviceName,
+import { chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots, stepNumber, serviceName,
   EMPTY_CONTACT, windowMode, dayOffers, flexSlot, slotWindow, slotKey, bookWhen, type WebService, type WebSlot } from './book-state';
-import { parseLink } from './link';
-import { ct } from './i18n';
+import { parseLink } from '../link';
+import { ct } from '../i18n';
 import { onTypedStreet } from './book-state';
-import type { Suggestion } from '../shared/places/photon';
+import type { Suggestion } from '../../shared/places/photon';
 
 const place = (label: string, street: string, lat: number | null = 45.5): Suggestion => ({ place: { address: label, unit: null, postal_code: null, lat, lng: lat == null ? null : -73.6 },
   label, sub: '', exact: true, key: label, house: '1250', street, areas: [] });
@@ -14,12 +14,6 @@ const svc = (id: string, price: number | null, min: number, extra: Partial<WebSe
 const ALL = [svc('a', 8999, 45), svc('b', 9999, 60), svc('c', null, 60), svc('d', 1000, 30, { taxable: false })];
 
 describe('Réserver en ligne: what is chosen', () => {
-  it('the minutes of the work: the sum, between 15 min and 8 h (as the server counts)', () => {
-    expect(chosenMinutes(ALL, ['a', 'b'])).toBe(105);
-    expect(chosenMinutes(ALL, [])).toBe(60);
-    expect(chosenMinutes([svc('z', 10, 5)], ['z'])).toBe(15);
-    expect(chosenMinutes([svc('y', 10, 300), svc('w', 10, 300)], ['y', 'w'])).toBe(480);
-  });
   it('the total with the Québec taxes; work by the hour is not in it, and is said', () => {
     expect(chosenTotal(ALL, ['a'])).toEqual({ total: 10347, hourly: false, any: true });
     expect(chosenTotal(ALL, ['a', 'c'])).toEqual({ total: 10347, hourly: true, any: true });

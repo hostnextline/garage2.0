@@ -9,10 +9,10 @@ import '../ui/styles/components.css';
 import './client.css';
 import { parseLink, recallGarage, type Link } from './link';
 import { pickLang, type CLang } from './i18n';
-import { ViewPage, ErrorState } from './ViewPage';
-import { TrackPage } from './TrackPage';
-import { BookPage } from './BookPage';
-import { Header, Footer } from './ui';
+import { ViewPage } from './view/ViewPage';
+import { TrackPage } from './track/TrackPage';
+import { BookPage } from './book/BookPage';
+import { ErrorState, Header, Footer } from './ui';
 
 /** the phone's light or dark, also when it changes while the page is open */
 function followScheme() {
@@ -27,6 +27,9 @@ function followScheme() {
     };
     set();
     mq.addEventListener?.('change', set);
+    // paper is white: a dark phone prints with the light inks (the dark ones are light grey, unreadable on paper)
+    window.addEventListener('beforeprint', () => { document.documentElement.dataset.mode = 'light'; });
+    window.addEventListener('afterprint', set);
   } catch { /* old browser: light */ }
 }
 

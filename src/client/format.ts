@@ -19,9 +19,12 @@ export function dayTitle(day: Day, l: CLang, now: Date = new Date()): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** 'today' | 'tomorrow' | null */
+/** today's date on the garage's clock (a phone set to another time zone must not move « Aujourd’hui ») */
+export function montrealToday(now: Date = new Date()): Day { return localDayOf(now) ?? today(now); }
+
+/** 'today' | 'tomorrow' | null, on Montréal's calendar */
 export function relDay(day: Day, now: Date = new Date()): 'today' | 'tomorrow' | null {
-  const t = today(now);
+  const t = montrealToday(now);
   if (day === t) return 'today';
   if (day === addDays(t, 1)) return 'tomorrow';
   return null;

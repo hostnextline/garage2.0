@@ -47,9 +47,11 @@ export interface TrackAnswer {
   pos?: { lat: number; lng: number; at: string } | null;
 }
 
-/** a refusal or a failure, with a short code the page turns into plain words */
+/** a refusal or a failure, with a short code the page turns into plain words (the server's sentence, always French,
+    is kept for the console only: the page never shows it). `currentCents`: with « amount_changed », the amount the
+    server holds now (the page showed another one) */
 export class ClientError extends Error {
-  constructor(public code: string, message: string, public garage?: Garage | null) { super(message); }
+  constructor(public code: string, message: string, public garage?: Garage | null, public currentCents: number | null = null) { super(message); }
 }
 
 const TIMEOUT = 15000;
@@ -73,13 +75,17 @@ async function post(url: string, body: unknown): Promise<{ status: number; data:
   }
 }
 
-const KNOWN = new Set(['bad_link', 'expired', 'gone', 'network', 'confirm', 'nothing', 'no_stripe', 'action', 'timeout', 'signed', 'signer', 'signature']);
-/** the « client » server function: view | sign | answer | pay | check */
+const KNOWN = new Set(['bad_link', 'expired', 'gone', 'network', 'confirm', 'nothing', 'no_stripe', 'action', 'timeout', 'signed', 'signer', 'signature',
+  'amount_changed']);
+/** the « client » server function: view | sign | answer | pay | check.
+    sign and answer carry `shown_cents` (the amount the page showed): the server answers 409 « amount_changed » with
+    `current_cents` when the amount moved meanwhile, and writes nothing */
 export async function callClient<T = View>(action: 'view' | 'sign' | 'answer' | 'pay' | 'check', token: string, extra: Record<string, unknown> = {}): Promise<T> {
   const { status, data } = await post(`${SUPABASE_URL}/functions/v1/client`, { action, token, base: appBase(), ...extra });
   if (!data || data.ok === false || status >= 400) {
     const code = String(data?.code || '');
-    throw new ClientError(KNOWN.has(code) ? code : 'server', String(data?.error || `HTTP ${status}`), (data?.garage as Garage | undefined) ?? null);
+    const current = typeof data?.current_cents === 'number' && Number.isFinite(data.current_cents) ? data.current_cents : null;
+    throw new ClientError(KNOWN.has(code) ? code : 'server', String(data?.error || `HTTP ${status}`), (data?.garage as Garage | undefined) ?? null, current);
   }
   return data as unknown as T;
 }
@@ -100,4 +106,13 @@ export async function callBook<T>(action: 'info' | 'slots' | 'book', extra: Reco
     throw new ClientError(String(data?.code || 'server'), String(data?.error || `HTTP ${status}`), null);
   }
   return data as unknown as T;
+}
+
+export type Outcome<T> = { ok: true; value: T } | { ok: false; error: ClientError };
+/** the customer page's attempt(): does a call and answers what happened instead of throwing, every failure turned into
+    a ClientError with a code (the team app's run() / attempt() speak through toasts and the whole team dictionary,
+    which this light page does not load) */
+export async function attemptCall<T>(fn: () => Promise<T>): Promise<Outcome<T>> {
+  try { return { ok: true, value: await fn() }; }
+  catch (e) { return { ok: false, error: e instanceof ClientError ? e : new ClientError('server', String((e as Error)?.message || e)) }; }
 }
