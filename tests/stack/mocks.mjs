@@ -5,8 +5,12 @@
 // Stripe, as the real one behaves: a card page (Checkout session) is open, complete or expired (POST …/expire), and an
 // expired one cannot be paid; the same Idempotency-Key with other parameters is refused (400 idempotency_error);
 // « charge.refunded » carries the charge WITHOUT the list of its refunds (they are read with GET /v1/refunds).
+// Each secret key is its own Stripe account: a card page is seen (listed, read, expired) only with the key that made it, and
+// it carries `created` (seconds); the list takes created[gte|gt|lte|lt] like Stripe. So what one test file leaves here is
+// never in another file's list when that file uses a key of its own.
 //   GET /pay/<session>[?twice=1][&replay=1][&quiet=1] the customer pays (twice: two notices; replay: the same notice again;
 //                                                     quiet: Stripe's notice never comes)
+//   GET /age/<session>?hours=N                       the page was made N hours ago (its `created`)
 //   GET /refund/<session>[?amount=][&status=pending][&twice=1]   the garage gives money back from Stripe's own screens
 //   GET /refund-update/<refund>?status=succeeded|failed          Stripe says what became of a refund
 import http from 'node:http';
@@ -105,6 +109,8 @@ http.createServer(async (req, res) => {
     if (p === '/stripe/v1/webhook_endpoints' && req.method === 'POST') { state.hook = { id: 'we_' + (++state.n), secret: 'whsec_test_' + state.n, url: f.url }; return send(res, 200, state.hook); }
     if (p.startsWith('/stripe/v1/webhook_endpoints/') && req.method === 'DELETE') return send(res, 200, { deleted: true });
     if (state.stripe === 'all' || (state.stripe === 'refunds' && p === '/stripe/v1/refunds')) return send(res, 500, { error: { type: 'api_error', message: 'An unknown error occurred' } });
+    const account = String(req.headers.authorization).slice(7);   // the key = the account (see the top of this file)
+    const mine = (s) => s && s.account === account ? s : undefined;
     if (p === '/stripe/v1/checkout/sessions' && req.method === 'POST') {
       // the same key again: the same answer for the same request, a refusal for another one (as Stripe does)
       const idem = req.headers['idempotency-key'];
@@ -115,28 +121,33 @@ http.createServer(async (req, res) => {
       }
       const id = 'cs_test_' + (++state.n);
       const md = {}; for (const [k, v] of Object.entries(f)) { const m = /^metadata\[(\w+)\]$/.exec(k); if (m && v !== '') md[m[1]] = v; }
-      const s = { id, object: 'checkout.session', url: `http://127.0.0.1:8021/pay/${id}`, status: 'open', payment_status: 'unpaid',
+      const s = { id, object: 'checkout.session', created: Math.floor(Date.now() / 1000), url: `http://127.0.0.1:8021/pay/${id}`, status: 'open', payment_status: 'unpaid',
         amount_total: Number(f['line_items[0][price_data][unit_amount]']), currency: 'cad', metadata: md, success_url: f.success_url, cancel_url: f.cancel_url,
         expires_at: Number(f.expires_at) || Math.floor(Date.now() / 1000) + 86400, payment_intent: 'pi_' + id };
+      Object.defineProperty(s, 'account', { value: account, enumerable: false });   // kept here, never in the answer
       state.sessions.set(id, s);
       if (idem) state.idem.set(idem, { raw, session: s });
       return send(res, 200, s);
     }
-    // the card pages of a payment (GET /v1/checkout/sessions?payment_intent=…), as Stripe lists them
+    // the card pages of the account (GET /v1/checkout/sessions?payment_intent=…&created[gte]=…), newest first, as Stripe lists them
     if (p === '/stripe/v1/checkout/sessions' && req.method === 'GET') {
       const pi = u.searchParams.get('payment_intent');
-      return send(res, 200, { object: 'list', url: '/v1/checkout/sessions', has_more: false, data: [...state.sessions.values()].filter((s) => !pi || s.payment_intent === pi).reverse() });
+      const when = (op) => (u.searchParams.has(`created[${op}]`) ? Number(u.searchParams.get(`created[${op}]`)) : null);
+      const [gte, gt, lte, lt] = ['gte', 'gt', 'lte', 'lt'].map(when);
+      const data = [...state.sessions.values()].filter((s) => mine(s) && (!pi || s.payment_intent === pi)
+        && (gte == null || s.created >= gte) && (gt == null || s.created > gt) && (lte == null || s.created <= lte) && (lt == null || s.created < lt));
+      return send(res, 200, { object: 'list', url: '/v1/checkout/sessions', has_more: false, data: data.reverse() });
     }
     const x = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)\/expire$/.exec(p);
     if (x && req.method === 'POST') {
-      const s = state.sessions.get(x[1]);
+      const s = mine(state.sessions.get(x[1]));
       if (!s) return send(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } });
       if (s.status !== 'open') return send(res, 400, { error: { type: 'invalid_request_error', message: 'Only Checkout Sessions with a status in ["open"] can be expired.' } });
       s.status = 'expired';
       return send(res, 200, s);
     }
     const m = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)$/.exec(p);
-    if (m && req.method === 'GET') { const s = state.sessions.get(m[1]); return s ? send(res, 200, s) : send(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } }); }
+    if (m && req.method === 'GET') { const s = mine(state.sessions.get(m[1])); return s ? send(res, 200, s) : send(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } }); }
     // the refunds of a payment (newest first, like Stripe)
     if (p === '/stripe/v1/refunds' && req.method === 'GET') {
       const pi = u.searchParams.get('payment_intent');
@@ -156,6 +167,13 @@ http.createServer(async (req, res) => {
     if (u.searchParams.get('twice')) await stripeHook(s);                                         // a second notice about the same page
     if (u.searchParams.get('replay')) await stripeHook(s, 'checkout.session.completed', h?.id);   // the very same notice again
     return send(res, 200, { ok: true, hook: h?.status, result: h?.body });
+  }
+  // a card page made N hours ago (GET /age/<session>?hours=N): the tests' way to have pages older than a check's window
+  if (p.startsWith('/age/')) {
+    const s = state.sessions.get(p.split('/').pop());
+    if (!s) return send(res, 404, { error: 'no session' });
+    s.created = Math.floor(Date.now() / 1000) - Math.round(Number(u.searchParams.get('hours') || 0) * 3600);
+    return send(res, 200, { ok: true, created: s.created });
   }
   // the garage gives money back (all or part) from Stripe's own screens: the signed « charge.refunded » notice goes to
   // the garage — the charge, WITHOUT its refunds; ?status=pending: a refund still on its way

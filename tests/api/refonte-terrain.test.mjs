@@ -69,6 +69,9 @@ before(async () => {
 after(async () => {
   await q(`delete from public.trips where staff_id = any($1) or created_by = any($1)`, [made.users]);
   await q(`delete from public.messages where staff_id = any($1) or created_by = any($1) or customer_id = any($2)`, [made.users, made.customers]);
+  // the money first: a payment holds its job (and its invoice) — card payments wait on the job (payments_job_id_fkey)
+  await q(`delete from public.payments where invoice_id in (select id from public.invoices where customer_id = any($1)) or job_id in (select id from public.jobs where customer_id = any($1))`, [made.customers]);
+  await q(`delete from public.invoices where customer_id = any($1)`, [made.customers]);
   await q(`delete from public.jobs where customer_id = any($1)`, [made.customers]);
   await q(`delete from public.customers where id = any($1)`, [made.customers]);
   await q(`delete from public.trucks where id = any($1)`, [made.trucks]);
@@ -338,6 +341,7 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
   const tres = await member('Tina Trésor', '{treasurer}');
   const day = (await q(`select (public.local_today() - 1)::text d, (public.local_today() + 1)::text demain`))[0];
   const isUuid = (v) => /^[0-9a-f-]{36}$/i.test(String(v));
+  const since = (await q(`select now() t`))[0].t;   // what the real reconciliation writes from here on is removed at the end
   try {
     // the server's API learns the new functions (a moment after the stand-ins are made)
     for (let i = 0; i < 50; i++) { const r = await fn('recon', { action: 'last' }, ownerJwt); if (r.code !== 'not_ready') break; await new Promise((ok) => setTimeout(ok, 200)); }
@@ -402,9 +406,12 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
     }
     // Stripe connected. The tests' pretend Stripe may not list its checkout pages yet: then the check says it could not be
     // done (a finding to look at, never a crash); when it does list them, money taken without its payment row is « bad ».
-    await q(`insert into public.secrets (key, value) values ('stripe_key', 'sk_test_abcdefghijklmnop') on conflict (key) do update set value = excluded.value`);
+    // A Stripe account of its own (in the pretend Stripe, each key is an account): the pages the other test files paid
+    // with theirs, and this file's own earlier runs, are not in this account's list, as on the real Stripe.
+    const stripeKey = `sk_test_recon${randomUUID().replace(/-/g, '')}`;
+    await q(`insert into public.secrets (key, value) values ('stripe_key', $1) on conflict (key) do update set value = excluded.value`, [stripeKey]);
     await q(`update public.ops_backup_runs set at = now() where ok`);
-    const sk = { authorization: 'Bearer sk_test_abcdefghijklmnop', 'content-type': 'application/x-www-form-urlencoded' };
+    const sk = { authorization: `Bearer ${stripeKey}`, 'content-type': 'application/x-www-form-urlencoded' };
     const lists = (await fetch(`${MOCK}/stripe/v1/checkout/sessions?limit=1`, { headers: sk })).ok;
     if (!lists) {
       t.diagnostic('the pretend Stripe does not list checkout sessions: only the handled failure is checked (see the request to add it to tests/stack/mocks.mjs)');
@@ -427,17 +434,22 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
       await q(`insert into public.customers (id, first_name, phone) values ($1, 'Carte', '438 556-0190')`, [cust]);
       const job = randomUUID();
       await q(`insert into public.jobs (id, customer_id, day, block, status, duration_min) values ($1, $2, public.local_today(), 'am', 'booked', 60)`, [job, cust]);
-      const open = async (cents, md) => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: sk,
+      const open = async (cents, md, headers = sk) => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers,
         body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': String(cents), ...Object.fromEntries(Object.entries(md).map(([k, v]) => [`metadata[${k}]`, v])) }) })).json()).id;
       // two card payments on the same job are both missing: two findings, never one overwriting the other
       const paidNoRow = await open(11498, { job_id: job }), paidNoRow2 = await open(3000, { job_id: job }), paidWrong = await open(5000, { job_id: job }), paidRight = await open(2500, { job_id: job });
       const notPaid = await open(9900, { job_id: job }), notOurs = await open(4200, {});
-      for (const id of [paidNoRow, paidNoRow2, paidWrong, paidRight, notOurs]) await fetch(`${MOCK}/pay/${id}`);   // paid at Stripe (the notice is refused: no webhook secret here)
+      // never counted: a page of ANOTHER Stripe account (even naming this job), and a page older than the 72 hours checked
+      const otherAccount = await open(7700, { job_id: job }, { ...sk, authorization: `Bearer sk_test_autre${randomUUID().replace(/-/g, '')}` });
+      const tooOld = await open(8800, { job_id: job });
+      for (const id of [paidNoRow, paidNoRow2, paidWrong, paidRight, notOurs, otherAccount, tooOld]) await fetch(`${MOCK}/pay/${id}`);   // paid at Stripe (the notice is refused: no webhook secret here)
+      assert.equal((await (await fetch(`${MOCK}/age/${tooOld}?hours=80`)).json()).ok, true);
       await q(`delete from public.payments where job_id = $1`, [job]);
       await q(`insert into public.payments (job_id, amount_cents, method, stripe_session) values ($1, 4000, 'card_online', $2), ($1, 2500, 'card_online', $3)`, [job, paidWrong, paidRight]);
       const r4 = await fn('recon', { action: 'run' }, ownerJwt);
       assert.equal(r4.ok, true, JSON.stringify(r4));
       assert.deepEqual([r4.outside.stripe.status, r4.outside.stripe.missing, r4.outside.stripe.wrong], ['ok', 2, 1], JSON.stringify(r4.outside.stripe));
+      assert.deepEqual([r4.outside.stripe.sessions, r4.outside.stripe.paid, r4.outside.stripe.foreign], [6, 4, 1], 'this account’s pages of the last 72 hours only: ' + JSON.stringify(r4.outside.stripe));
       assert.deepEqual(r4.added.map((a) => [a.check, a.severity, a.entity_table, a.entity_id]).sort(), [['stripe_amount', 'bad', 'jobs', job], ['stripe_paid_not_recorded', 'bad', 'jobs', job], ['stripe_paid_not_recorded', 'bad', 'jobs', job]]);
       const missingIds = r4.added.filter((a) => a.check === 'stripe_paid_not_recorded').map((a) => a.id);
       assert.equal(new Set(missingIds).size, 2, 'two findings, each with its own id');
@@ -448,7 +460,7 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
       // the Trésorerie sees them and may note one « vu »
       const seen = await fn('recon', { action: 'last' }, tres.jwt);
       const listed = seen.summary.findings || seen.summary.open || [];
-      assert.equal(listed.filter((x) => (x.check_id || x.chk) === 'stripe_paid_not_recorded').length, 2, JSON.stringify(listed).slice(0, 400));
+      assert.equal(listed.filter((x) => (x.check_id || x.chk) === 'stripe_paid_not_recorded' && x.entity_id === job).length, 2, JSON.stringify(listed).slice(0, 400));
       assert.equal((await fn('recon', { action: 'ack', finding: missingIds[0] }, tres.jwt)).ok, true);
       void notPaid;
       // the payments are written (and the other corrected): nothing left to say
@@ -463,6 +475,12 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
     await q(`delete from public.secrets where key like 'stripe%'`);
     await q(`delete from public.rate_limits where key = 'recon:run'`);
     if (stub) await db.query(RECON_UNSTUB);
+    else {
+      // the real tables keep every run and difference: this test's own go, so a second run of the file starts clean
+      await q(`delete from public.ops_recon_findings where created_at >= $1`, [since]);
+      await q(`delete from public.ops_recon_runs where started_at >= $1`, [since]);
+      await q(`delete from public.ops_recon_baseline where set_at >= $1`, [since]);
+    }
   }
 });
 
