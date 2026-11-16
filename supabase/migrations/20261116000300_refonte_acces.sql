@@ -85,11 +85,11 @@ begin
      and coalesce(current_setting('role', true), '') in ('authenticated', 'anon')
      and coalesce(current_setting('garage.rpc', true), '') <> 'on' then
     if exists (select 1 from public.jobs j where j.customer_id = new.id and j.deleted_at is null
-               and (j.status in ('en_route', 'on_site') or (j.status = 'booked' and j.day >= public.local_today()))) then
+               and j.status in ('booked', 'en_route', 'on_site') and j.day >= public.local_today()) then   -- isUpcoming, facts.ts
       perform public.fail('customer_busy', 'Ce client a un rendez-vous à venir : déplace-le ou annule-le avant de supprimer la fiche.');
     end if;
     if exists (select 1 from public.invoices i where i.customer_id = new.id and i.deleted_at is null
-               and i.status = 'issued' and i.total_cents > i.paid_cents) then
+               and i.status = 'issued' and i.total_cents > i.paid_cents) then                               -- owedOn, facts.ts
       perform public.fail('customer_owes', 'Ce client a une facture à payer : encaisse-la ou annule-la avant de supprimer la fiche.');
     end if;
   end if;
