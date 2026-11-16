@@ -1,7 +1,7 @@
 /* The words of « Le véhicule d'abord » (pure, tested in carWords.test.ts). */
 import type { Vehicle, JobItem } from '../../data/types';
-import type { CarFacts } from '../inventory/needs';
-import { oilGrade } from '../inventory/needs';
+import type { CarFacts } from '../../domain/stock/needs';
+import { oilGrade } from '../../domain/stock/needs';
 import { t } from '../../lib/i18n';
 
 /** « 2015 Volkswagen Golf » and « 1.8 L TSI, 4 cyl. » */

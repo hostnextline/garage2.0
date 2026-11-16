@@ -7,33 +7,16 @@ import { User, Car, MapPin, CalendarClock, Truck, Wrench, NotebookPen } from 'lu
 import type { Job } from '../../data/types';
 import { Sheet, Rows, RowItem, Button, Banner, attempt } from '../../ui';
 import { t } from '../../lib/i18n';
-import { vehicle, vehicleLabel, truckLabel, invoiceOf, itemsOf, customer as customerRow, vehiclesOf } from '../../data/select';
+import { vehicle, vehicleLabel, truckLabel, itemsOf, customer as customerRow, vehiclesOf } from '../../data/select';
 import { updateJob, changeJobCustomer } from '../../data/api';
-import { may } from '../../domain/rights';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { AddressField, EMPTY_PLACE, type PlaceValue } from '../customers/AddressField';
-import { jobCustomer, jobName, dayInSentence, momentWord, wt, type JobRights } from './select';
-import { mayChangeTruck } from './JobParts';
+import { jobCustomer, jobName, dayInSentence, momentWord, wt } from './select';
+import type { JobRights } from '../../domain/jobs/rights';
+import { editRights } from '../../domain/jobs/rights';
 
 type View = 'list' | 'customer' | 'car' | 'address';
-const live = (j: Job) => j.status === 'booked' || j.status === 'en_route' || j.status === 'on_site';
-const invoiceDone = (j: Job) => { const v = invoiceOf(j.id); return !!v && v.status !== 'draft' && v.status !== 'void'; };
-
-/** who may fix what (the server checks the same) */
-export function editRights(j: Job, r: JobRights) {
-  const anyone = r.act || may.book();
-  return {
-    customer: j.status === 'booked' && (may.book() || r.mine) && !invoiceDone(j),
-    car: live(j) && anyone,
-    address: (j.status === 'booked' || j.status === 'en_route') && anyone,
-    move: j.status === 'booked' && r.move,
-    truck: mayChangeTruck(j, r),
-    work: live(j) && r.act && !invoiceDone(j),
-    notes: r.editNotes
-  };
-}
-export function mayEditJob(j: Job, r: JobRights): boolean { return Object.values(editRights(j, r)).some(Boolean); }
 
 export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onTruck: () => void; onNotes: () => void; onWork: () => void }) {
   const j = p.job;

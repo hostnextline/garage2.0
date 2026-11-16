@@ -1,16 +1,15 @@
 /* The treasury's reads and writes that api.ts does not have yet: the receipt sent even with no signal (it then waits
    in the outbox, before the expense that points to it), deleting an expense, the categories, the export lines. */
 import { computed } from '@preact/signals';
-import { Refused, saveReceipt, loadAttachment } from '../../data/api';
-import { insertRow, deleteRow, isNetworkError, uuid, refetch } from '../../data/sync';
-import { getRow } from '../../data/store';
+import { saveReceipt, loadAttachment } from '../../data/api';
+import { insertRow, isNetworkError, uuid } from '../../data/sync';
 import { preview } from '../../data/auth';
 import { settings, expensesList, invoicesList, invoiceNumber, customer, customerName, truckLabel } from '../../data/select';
 import { invoiceStatusWord } from '../../ui';
 import { t } from '../../lib/i18n';
 import { dayOf } from '../../lib/dates';
 import type { Expense, Invoice } from '../../data/types';
-import { inRange, type DayRange } from './period';
+import { inRange, type DayRange } from '../../domain/money/period';
 import { withTimeout } from '../dashboard/useReport';
 import type { Photo } from './ocr';
 import type { ExpenseLine, RevenueLine } from './exports';
@@ -67,22 +66,6 @@ export async function uploadReceipt(p: Photo): Promise<{ id: string; queued: boo
     const id = uuid();
     await insertRow('attachments', { id, kind: 'receipt', mime: 'image/jpeg', data, bytes: Math.round(data.length * 0.75), width: p.w, height: p.h, created_at: new Date().toISOString() }, { label: t('log.expense') });
     return { id, queued: true };
-  }
-}
-
-const removed = new Set<string>();
-export async function removeExpense(id: string) {
-  if (preview.value) throw new Refused('preview', t('errors.preview'));
-  removed.add(id);
-  await deleteRow('expenses', id, { label: t('log.expense') });
-}
-
-/** A row just created can be dropped from the phone by the sync's « which ids do I still see? » check when both
-    happen at the same moment (see the report: src/data/sync.ts checkIds). Until that is fixed there, look again a
-    little later and bring the row back from the server if it vanished (never one the person deleted). */
-export function keepAfterSave(table: 'expenses' | 'inventory_moves', id: string) {
-  for (const ms of [5000, 15000]) {
-    setTimeout(() => { if (!removed.has(id) && !getRow(table, id)) void refetch(table, id); }, ms);
   }
 }
 

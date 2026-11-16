@@ -8,7 +8,7 @@ import { moveStock, saveInventoryItem, buyStock, type PaidFrom } from '../../dat
 import { getRow, patchLocal } from '../../data/store';
 import { net, refetch } from '../../data/sync';
 import type { InventoryItem } from '../../data/types';
-import { keepAfterSave } from '../treasury/data';
+import { keepAfterSave } from '../money/expenses';
 
 export type MoveKind = 'in' | 'out' | 'count';
 

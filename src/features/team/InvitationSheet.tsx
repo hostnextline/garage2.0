@@ -5,7 +5,7 @@ import { stamp } from '../../lib/dates';
 import { truckLabel } from '../../data/select';
 import { errorMessage } from '../../data/api';
 import { Sheet, Button, Banner, Kv, toast } from '../../ui';
-import { teamDo, rolesWords, type Invitation } from './teamApi';
+import { teamDo, rolesWords, type Invitation } from '../../domain/team/teamApi';
 
 export function InvitationSheet(p: { inv: Invitation | null; onClose: () => void; onAgain: (inv: Invitation) => void; onCancelled: () => void }) {
   const inv = p.inv;

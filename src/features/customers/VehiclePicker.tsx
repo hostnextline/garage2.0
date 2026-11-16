@@ -6,7 +6,7 @@ import { t } from '../../lib/i18n';
 import { vehiclesOf, vehicleLabel } from '../../data/select';
 import { Button, Chips } from '../../ui';
 import { VehicleAddSheet } from './VehicleBits';
-import { carName } from './bits';
+import { carName } from '../../domain/vehicles/words';
 import './customers.css';
 
 export interface VehiclePickerProps {

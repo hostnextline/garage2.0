@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { coffreCandidates, normalizeCoffre, coffreSheet, coffreCsv, type CoffreLabels } from './logic';
-import { nextStep } from '../jobs/nextStep';
+import { normalizeCoffre, coffreSheet, coffreCsv, type CoffreLabels } from './logic';
+import { coffreCandidates } from '../../domain/money/coffre';
+import { nextStep } from '../../domain/jobs/steps';
 import type { Job, Invoice } from '../../data/types';
 import { coffre as fr } from '../../i18n/fr/coffre';
 import { coffre as en } from '../../i18n/en/coffre';

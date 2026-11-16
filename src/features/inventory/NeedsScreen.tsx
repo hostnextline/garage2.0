@@ -12,8 +12,8 @@ import { job as jobById, customer, customerName } from '../../data/select';
 import { Page, Panel, Button, IconButton, Pill, Empty, run } from '../../ui';
 import { saveInventoryItem } from '../../data/api';
 import { can } from '../../data/auth';
-import { itemsToCreate, type NeedLine, type Missing } from './needs';
-import { formatQty } from './stock';
+import { itemsToCreate, type NeedLine, type Missing } from '../../domain/stock/needs';
+import { formatQty } from '../../domain/stock/stock';
 import { useWeekNeeds, defaultWeek, lineLabel, qtyWords, jugWords, weekWords, shoppingText, copy, dayWord, FAMILY } from './needsView';
 import './inventory.css';
 

@@ -2,7 +2,7 @@
    revenue against the goal, per truck, the average ticket, the no-show rate, money per km driven, month to month. */
 import type { Cents } from '../../lib/money';
 import type { Day } from '../../lib/dates';
-import { addMonths, daysInMonth, monthStart } from '../treasury/period';
+import { addMonths, daysInMonth, monthStart } from '../../domain/money/period';
 
 export interface TruckRevenue { truck_id: string | null; revenue_cents: Cents; invoices: number }
 export interface MonthRevenue { month: Day; revenue_cents: Cents }

@@ -10,7 +10,7 @@ import { errorMessage } from '../../data/api';
 import type { Staff } from '../../data/types';
 import { Page, Panel, Button, Avatar, Pill, Banner, Empty, Skeleton, Rows } from '../../ui';
 import { ago } from '../map/ago';
-import { loadTeamList, loadRules, rolesWords, type Invitation, type LinkResult, type TeamList } from './teamApi';
+import { loadTeamList, loadRules, rolesWords, type Invitation, type LinkResult, type TeamList } from '../../domain/team/teamApi';
 import { InviteSheet, type InviteDraft } from './InviteSheet';
 import { PersonSheet } from './PersonSheet';
 import { InvitationSheet } from './InvitationSheet';

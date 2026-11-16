@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextStep, draftIsStale, type StepRights, type StepKind } from './nextStep';
+import { nextStep, draftIsStale, type StepRights, type StepKind } from './steps';
 import type { JobStatus, ItemStatus, InvoiceLine } from '../../data/types';
 
 const TODAY = '2026-11-04';

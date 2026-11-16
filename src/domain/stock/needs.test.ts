@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import refJson from '../../../public/data/engine-ref.json';
-import { parseEngineRef } from '../customers/engineRef';
+import { parseEngineRef } from '../vehicles/engineRef';
 import { oilGrade, partRef, tireSize, seasonOf, litresIn, guessNeeds, needsOf, carFacts, weekNeeds, litresPerUnit, shoppingWeek, type NeedsInput } from './needs';
 import type { EngineSpec, InventoryItem, Job, JobItem, Service, ServicePart, Vehicle } from '../../data/types';
 

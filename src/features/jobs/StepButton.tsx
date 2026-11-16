@@ -10,8 +10,9 @@ import { getRow } from '../../data/store';
 import { net } from '../../data/sync';
 import { me } from '../../data/auth';
 import { job as jobById } from '../../data/select';
-import type { NextStep, StepKind } from './nextStep';
-import { jobFirstName, customerGetsTexts, type JobRights } from './select';
+import type { NextStep, StepKind } from '../../domain/jobs/steps';
+import { jobFirstName, customerGetsTexts } from './select';
+import type { JobRights } from '../../domain/jobs/rights';
 import { doLeave, doArrive, doFinish, doVin } from './flow';
 
 const ICONS: Partial<Record<StepKind, LucideIcon>> = {

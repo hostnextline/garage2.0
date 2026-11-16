@@ -10,7 +10,8 @@ import type { Job } from '../../data/types';
 import { Sheet, Button, Spinner } from '../../ui';
 import { wantsText } from '../booking/notify';
 import { moveDayTitle, windowChoices } from './layout';
-import { windowMove, windowsFor, moveToWindow, jobPerson } from './move';
+import { windowMove, windowsFor, moveToWindow } from './move';
+import { jobPerson } from '../../domain/jobs/words';
 
 export function MoveWindowHost() {
   const m = windowMove.value;

@@ -1,16 +1,12 @@
 /* Finding a customer the way people type it on the phone: part of a name (accents, case and order ignored), phone
    digits in any format, street, postal code, plate, VIN, car. Phone digits are compared with the phone alone, so the
    end of a number never matches digits glued across two fields (lib/text `matches` joins them). */
-import { fold } from '../../lib/text';
 import type { Customer, Vehicle } from '../../data/types';
+import { norm, squash } from '../../lib/text';
 
 type CustomerLike = Pick<Customer, 'first_name' | 'last_name' | 'company' | 'phone' | 'email' | 'address' | 'unit' | 'city' | 'postal_code'>;
 type VehicleLike = Pick<Vehicle, 'year' | 'make' | 'model' | 'trim' | 'plate' | 'vin' | 'color'>;
 
-/** folded text: no accents, lower case, no apostrophes (O’Neil = oneil) */
-export const norm = (s: unknown): string => (s == null ? '' : fold(String(s)).replace(/['’`´]/g, ''));
-/** letters and digits only (H3P 2C9 = h3p2c9, FLT-001 = flt001) */
-export const squash = (s: unknown): string => norm(s).replace(/[^a-z0-9]/g, '');
 const digitsOf = (s: unknown): string => String(s ?? '').replace(/\D/g, '');
 
 export interface SearchDoc {

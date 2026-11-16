@@ -8,7 +8,7 @@ import { t } from '../../lib/i18n';
 import { allJobs } from '../../data/select';
 import { Banner, Button, Sheet, Skeleton } from '../../ui';
 import { JobTicket } from '../jobs/JobTicket';
-import { carName } from './bits';
+import { carName } from '../../domain/vehicles/words';
 import { jobOrder } from './facts';
 import { useVinHistory, VinVisits } from './VinHistory';
 

@@ -8,7 +8,7 @@ import { settings } from '../../data/select';
 import { setRoleRight } from '../../data/api';
 import { wide } from '../../platform/media';
 import { Panel, Tabs, run } from '../../ui';
-import { TEAM_ROLES, ruleOf, roleGives, type TeamRole, type RoleRights } from './rights';
+import { TEAM_ROLES, ruleOf, roleGives, type TeamRole, type RoleRights } from '../../domain/team/rights';
 
 export function RoleTable() {
   const rr = (settings.value.role_rights || {}) as RoleRights;

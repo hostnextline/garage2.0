@@ -8,7 +8,7 @@ import { notesOf, staffName } from '../../data/select';
 import { saveNote } from '../../data/api';
 import type { CustomerNote } from '../../data/types';
 import { Panel, Button, IconButton, Textarea, DateInput, Field, Pill, attempt } from '../../ui';
-import { dateShort, stampDay } from './bits';
+import { dateShort, stampDay } from '../../domain/moment/dayWords';
 import './customers.css';
 
 export { addMonths };

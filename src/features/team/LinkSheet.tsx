@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { Copy, Share2, MessageSquare, Mail } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { Sheet, Button, Banner, Seg, Field, toast } from '../../ui';
-import { copyText, canShare, shareLink, smsHref, mailHref, type LinkResult, type SendHow } from './teamApi';
+import { copyText, canShare, shareLink, smsHref, mailHref, type LinkResult, type SendHow } from '../../domain/team/teamApi';
 
 export function HowSeg(p: { value: SendHow; onValue: (v: SendHow) => void; label: string }) {
   return (

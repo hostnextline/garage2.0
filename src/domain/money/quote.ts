@@ -3,7 +3,7 @@
 import type { Quote, QuoteItem } from '../../data/types';
 import type { TaxRates } from '../../lib/money';
 import { addDays, type Day } from '../../lib/dates';
-import { linesTotals, cleanLine } from '../invoices/logic';
+import { linesTotals, cleanLine } from './invoice';
 
 export type QuoteStatus = Quote['status'];
 export const QUOTE_STATUSES: QuoteStatus[] = ['open', 'sent', 'accepted', 'declined', 'converted'];

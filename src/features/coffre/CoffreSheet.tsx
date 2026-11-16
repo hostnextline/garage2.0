@@ -8,7 +8,7 @@ import { allJobs, customer as customerRow, customerName, invoiceOf, jobTotals, p
 import { coffreAdd } from '../../data/api';
 import type { Job } from '../../data/types';
 import { Sheet, Button, Field, MoneyInput, Textarea, DateInput, Check, Banner, run } from '../../ui';
-import { coffreCandidates } from './logic';
+import { coffreCandidates } from '../../domain/money/coffre';
 import './coffre.css';
 
 export function CoffreSheet(p: { job: Job; open: boolean; onClose: () => void; onDone?: () => void }) {

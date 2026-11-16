@@ -3,7 +3,7 @@
    suggestions « à confirmer »: the mechanic checks them on the engine before they become the car's sheet. */
 import { signal } from '@preact/signals';
 import type { SpecData } from '../../data/types';
-import { norm, squash } from './search';
+import { norm, squash } from '../../lib/text';
 
 export interface EngineRow {
   make: string; model: string; aliases: string[]; year_from: number; year_to: number; displacement: number; cylinders: number;

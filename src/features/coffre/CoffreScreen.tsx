@@ -12,7 +12,7 @@ import { rpcNow, coffreRemove, errorMessage } from '../../data/api';
 import { isOwner } from '../../data/auth';
 import { garageName } from '../../data/select';
 import { Page, Panel, Rows, RowItem, Button, Chips, Field, DateInput, Empty, Banner, Skeleton, run } from '../../ui';
-import { PERIODS, periodRange, rangeLabel, type PeriodKey } from '../treasury/period';
+import { PERIODS, periodRange, rangeLabel, type PeriodKey } from '../../domain/money/period';
 import { XLSX_MIME } from '../treasury/xlsx';
 import { normalizeCoffre, coffreWorkbook, coffreCsv, type CoffreReport, type CoffreLabels } from './logic';
 import './coffre.css';

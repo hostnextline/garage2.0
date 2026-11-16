@@ -2,33 +2,12 @@
 import type { ComponentChildren } from 'preact';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { today, daysBetween, parseDay, tinyDay, type BlockKey } from '../../lib/dates';
-import { vehicleLabel } from '../../data/select';
+import { today, daysBetween, type BlockKey } from '../../lib/dates';
 import { windowWords } from '../../domain/moment/words';
-import type { Customer, Vehicle } from '../../data/types';
+import type { Customer } from '../../data/types';
 import { Pill } from '../../ui';
+import { dayWord, dayInline } from '../../domain/moment/dayWords';
 
-const fmt = new Map<string, Intl.DateTimeFormat>();
-function df(o: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-  const k = lang.value + JSON.stringify(o);
-  let f = fmt.get(k);
-  if (!f) { f = new Intl.DateTimeFormat(lang.value === 'en' ? 'en-CA' : 'fr-CA', o); fmt.set(k, f); }
-  return f;
-}
-/** « 4 nov. » this year, « 4 nov. 2025 » another year */
-export function dateShort(day: string): string {
-  const d = parseDay(day);
-  return df(d.getFullYear() === new Date().getFullYear() ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
-}
-/** « Aujourd’hui », « Hier », « Demain », « mer. 4 » this week, else « 4 nov. » */
-export function dayWord(day: string): string {
-  const n = daysBetween(today(), day);
-  if (n === 0) return t('common.today');
-  if (n === -1) return t('common.yesterday');
-  if (n === 1) return t('common.tomorrow');
-  if (Math.abs(n) <= 6) return tinyDay(day, lang.value);
-  return dateShort(day);
-}
 /** the window told to the customer of a job booked by arrival window (block 'day'); none yet (« flexible »): null */
 export type WinPart = { win_start?: number | null; win_end?: number | null; win_flex?: boolean };
 const winOf = (w?: WinPart | null): [number, number] | null => (w && w.win_start != null && w.win_end != null ? [w.win_start, w.win_end] : null);
@@ -41,19 +20,6 @@ export function whenText(day: string, block: BlockKey, win?: WinPart | null): st
   if (n === 1) return t(`customers.when.tomorrow.${block}`);
   return t(`customers.when.other.${block}`, { day: dayWord(day) });
 }
-/** the local day of a timestamp ('YYYY-MM-DD'), or null */
-export function dayOfIso(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-/** inside a sentence: « hier », « demain », « ven. 7 », « 4 nov. » */
-export function dayInline(day: string): string {
-  const n = daysBetween(today(), day);
-  const w = dayWord(day);
-  return Math.abs(n) <= 1 ? w.toLowerCase() : w;
-}
 /** « Rendez-vous demain matin », « Rendez-vous le ven. 7, soir »; by arrival window: « Rendez-vous demain, entre 14 h et 18 h » */
 export function nextLine(day: string, block: BlockKey, win?: WinPart | null): string {
   const n = daysBetween(today(), day);
@@ -64,19 +30,6 @@ export function nextLine(day: string, block: BlockKey, win?: WinPart | null): st
 }
 /** « Dernière visite : 6 avr. » */
 export function lastLine(day: string): string { return t('customers.whenLine.last', { day: dayInline(day) }); }
-/** a timestamp as a day: « Aujourd’hui », « Hier », else « 4 nov. »; `inline`: inside a sentence (« aujourd’hui ») */
-export function stampDay(iso: string | null | undefined, inline = false): string {
-  const day = dayOfIso(iso);
-  if (!day) return '';
-  if (Math.abs(daysBetween(today(), day)) > 1) return dateShort(day);
-  return inline ? dayWord(day).toLowerCase() : dayWord(day);
-}
-
-/** what a car is called in a list: « 2019 Honda Civic », else its plate or the end of its VIN */
-export function carName(v: Vehicle | null | undefined): string {
-  if (!v) return '';
-  return vehicleLabel(v) || v.plate || (v.vin ? t('vehicles.vinTail', { tail: v.vin.slice(-6) }) : t('vehicles.untitled'));
-}
 
 export function Flags(p: { c: Pick<Customer, 'no_shows' | 'card_on_file' | 'lang' | 'sms_ok'>; owed?: number; noSms?: boolean; class?: string }) {
   const out: ComponentChildren[] = [];

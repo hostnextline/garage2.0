@@ -1,7 +1,6 @@
 /* « Coffre » (family and friends, Part 20): pure parts, tested in logic.test.ts.
    - the jobs that can go in the Coffre with this one (same customer, not cancelled, not already in it, nothing paid);
    - the report the accountant exports apart (Excel and CSV): one line per entry, the totals. */
-import type { Job, Invoice } from '../../data/types';
 import type { Cents } from '../../lib/money';
 import type { Day } from '../../lib/dates';
 import { buildXlsx, type Cell, type SheetDef } from '../treasury/xlsx';
@@ -37,14 +36,6 @@ export function normalizeCoffre(raw: unknown, from: Day, to: Day): CoffreReport 
   const spent = rows.filter((r) => r.kind === 'purchase').reduce((n, r) => n + r.amount_cents, 0);
   return { from, to, rows, count: rows.length, amount_cents: received, value_cents: rows.reduce((n, r) => n + r.value_cents, 0),
     spent_cents: spent, balance_cents: a.balance_cents != null ? num(a.balance_cents) : received - spent, stock_cents: num(a.stock_cents) };
-}
-
-/** the jobs that may go in the Coffre together with this one: same customer, not cancelled, not in it, nothing paid */
-export function coffreCandidates(job: Pick<Job, 'id' | 'customer_id'>, jobs: Job[], invoiceOf: (jobId: string) => Invoice | undefined, prepaid: (jobId: string) => boolean): Job[] {
-  return jobs
-    .filter((j) => !j.deleted_at && j.customer_id === job.customer_id && !j.coffre_id && j.status !== 'cancelled' && j.status !== 'no_show')
-    .filter((j) => { const v = invoiceOf(j.id); return !(v && v.status !== 'void' && !v.deleted_at && v.paid_cents > 0) && !prepaid(j.id); })
-    .sort((a, b) => (a.id === job.id ? -1 : b.id === job.id ? 1 : b.day.localeCompare(a.day) || b.number - a.number));
 }
 
 export interface CoffreLabels {

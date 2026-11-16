@@ -15,7 +15,7 @@ import type { Expense } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Banner, Empty, Chips, Field, DateInput, SearchInput, Select, Skeleton, Help, toast } from '../../ui';
 import { BigMoney, HBars } from '../dashboard/charts';
 import { useReport } from '../dashboard/useReport';
-import { PERIODS, isPeriod, periodRange, rangeLabel, type PeriodKey, type DayRange } from './period';
+import { PERIODS, isPeriod, periodRange, rangeLabel, type PeriodKey, type DayRange } from '../../domain/money/period';
 import { normalizeReport, type TreasuryReport } from './report';
 import { periodExpenses, filterCategories, matches, methodLabel, revenueLines, expenseLines } from './data';
 import { buildWorkbook, buildCsv, type ExportLabels } from './exports';

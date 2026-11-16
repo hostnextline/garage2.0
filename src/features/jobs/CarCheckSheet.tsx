@@ -13,7 +13,7 @@ import { Sheet, Button, Banner, Field, Input, Rows, RowItem, attempt } from '../
 import { updateJob, saveVehicle } from '../../data/api';
 import { Car } from 'lucide-preact';
 import { VinField, vinSavable, type CarFields } from '../customers/VehicleBits';
-import { carName } from '../customers/bits';
+import { carName } from '../../domain/vehicles/words';
 import { carsWithVin, skipVin } from './vinStep';
 import { km, parseKm } from '../customers/vehicleText';
 import { vehicleLabel, vehiclesOf } from '../../data/select';

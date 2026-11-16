@@ -6,7 +6,7 @@ import { settings, invoicesList, customer, customerName, job as jobRow, vehicle,
 import { can, hasRole, isOwner, myTrucks, me } from '../../data/auth';
 import type { Invoice, Job, Payment, PayMethod, Quote, Customer, Lang } from '../../data/types';
 import { t, tl } from '../../lib/i18n';
-import { invoiceAmounts, formatNumber, type Amounts } from './logic';
+import { invoiceAmounts, formatNumber, type Amounts } from '../../domain/money/invoice';
 
 export function invoiceById(id: string | null | undefined): Invoice | undefined {
   const v = getRow<Invoice>('invoices', id);

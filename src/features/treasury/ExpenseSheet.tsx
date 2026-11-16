@@ -14,7 +14,8 @@ import { Sheet, Form, Field, Input, Textarea, Select, MoneyInput, Seg, Chips, Da
 import { Meter } from '../dashboard/charts';
 import { parseReceipt, splitFromSubtotal, splitFromTotal, guessCategory, type ReceiptGuess } from './receipt';
 import { shrinkPhoto, readReceipt, type Photo, type Reading } from './ocr';
-import { categories, EXPENSE_METHODS, methodLabel, uploadReceipt, removeExpense, receiptImage, rememberReceipt, keepAfterSave } from './data';
+import { categories, EXPENSE_METHODS, methodLabel, uploadReceipt, receiptImage, rememberReceipt } from './data';
+import { removeExpense, keepAfterSave } from '../../domain/money/expenses';
 
 type Anchor = 'total' | 'subtotal';
 interface Draft {

@@ -12,7 +12,7 @@ import { money } from '../../lib/money';
 import { shortDate, dayOf, today } from '../../lib/dates';
 import { matches } from '../../lib/text';
 import { Page, Panel, Tabs, SearchInput, Select, Button, IconButton, Empty, Banner, Skeleton, InvoicePill, Money } from '../../ui';
-import { daysSince, periodRange, inPeriod, toCsv, PERIODS, type PeriodKey, type CsvValue } from './logic';
+import { daysSince, periodRange, inPeriod, toCsv, PERIODS, type PeriodKey, type CsvValue } from '../../domain/money/invoice';
 import { amountsOf, invoiceCustomer, invoiceWho, owing, invoiceLabel } from './select';
 import { sendText, SendSheet, type SendResult } from './send';
 import { downloadBlob } from './share';

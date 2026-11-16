@@ -4,7 +4,7 @@
    that day, the best first, and « Flexible »; the choice is the move. */
 import { signal } from '@preact/signals';
 import { moveJob, suggestWindows, errorMessage, type Suggestion } from '../../data/api';
-import { customer as customerRow, customerName, windowOf } from '../../data/select';
+import { customer as customerRow, windowOf } from '../../data/select';
 import type { Job } from '../../data/types';
 import { t, lang } from '../../lib/i18n';
 import { today, type BlockKey, type Day } from '../../lib/dates';
@@ -13,11 +13,7 @@ import { moveQuestion, winShort } from './layout';
 import { windowPhrase } from '../../domain/moment/words';
 import { notifyCustomer, wantsText } from '../booking/notify';
 import { forgetRefusal, noLongWaitOffline } from '../../domain/moment/outbox';
-
-export function jobPerson(j: Pick<Job, 'customer_id'>): string {
-  const c = customerRow(j.customer_id);
-  return c ? (c.first_name || c.company || customerName(c)) : '';
-}
+import { jobPerson } from '../../domain/jobs/words';
 
 /** the job waiting for its new window (the sheet is open), or null */
 export const windowMove = signal<{ job: Job; day: Day } | null>(null);

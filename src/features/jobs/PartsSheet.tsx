@@ -8,7 +8,7 @@ import { Package } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { t, lang } from '../../lib/i18n';
 import { Sheet, Button, Banner, Stepper } from '../../ui';
-import { formatQty, unitWord } from '../inventory/stock';
+import { formatQty, unitWord } from '../../domain/stock/stock';
 import type { PlannedPart, UsedPart } from './parts';
 
 interface Ask { job: Job; planned: PlannedPart[]; resolve: (v: UsedPart[] | null) => void }

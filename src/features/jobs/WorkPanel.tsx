@@ -20,7 +20,8 @@ import { SignaturePad } from './SignaturePad';
 import { hasEnoughInk, type Stroke } from './signature';
 import { answerBySignature, answerByVoice, sendText } from './flow';
 import { customerLang } from './WaiverSheet';
-import { wt, type JobRights } from './select';
+import { wt } from './select';
+import type { JobRights } from '../../domain/jobs/rights';
 import { ReopenButton } from '../invoices/InvoicePanel';
 
 const OPEN_STATUSES = ['booked', 'en_route', 'on_site'];

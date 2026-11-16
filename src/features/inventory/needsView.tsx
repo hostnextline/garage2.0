@@ -8,9 +8,9 @@ import { today, addDays, weekStart, parseDay, type Day } from '../../lib/dates';
 import { allJobs, itemsOf, service, partsOfService, vehicle, specByKey, inventoryList, garageName } from '../../data/select';
 import type { InventoryItem } from '../../data/types';
 import { Panel, Button, toast } from '../../ui';
-import { engineRef, ensureEngineRef } from '../customers/engineRef';
-import { weekNeeds, shoppingWeek, type NeedLine, type WeekNeeds } from './needs';
-import { formatQty } from './stock';
+import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
+import { weekNeeds, shoppingWeek, type NeedLine, type WeekNeeds } from '../../domain/stock/needs';
+import { formatQty } from '../../domain/stock/stock';
 import './inventory.css';
 
 /** the needs of the week starting on `from` (Sunday): only the days from today on (what is still to come) */

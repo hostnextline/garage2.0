@@ -21,7 +21,7 @@ import { Banner, Button, Pill, Skeleton, Seg, Switch, ask, toast } from '../../u
 import { suggWindow } from '../../domain/moment/logic';
 import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
 import { jobBox, jobMinute, overlapColumns, workedUnits, unitCount, unitMinutes, unitIndex, unitMinute } from '../../domain/moment/grid';
-import { jobPerson } from '../agenda/move';
+import { jobPerson } from '../../domain/jobs/words';
 import { roomy } from '../../platform/media';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
 import { DayRoute } from './DayRoute';

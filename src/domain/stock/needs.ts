@@ -9,7 +9,7 @@
 import type { Day } from '../../lib/dates';
 import { addDays, dow } from '../../lib/dates';
 import type { EngineSpec, InventoryItem, Job, JobItem, Need, NeedKind, Service, ServicePart, SpecData, TireSeason, Vehicle } from '../../data/types';
-import { matchEngine, type EngineRow } from '../customers/engineRef';
+import { matchEngine, type EngineRow } from '../vehicles/engineRef';
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const alnum = (s: string | null | undefined) => fold(String(s || '')).replace(/[^a-z0-9]/g, '');

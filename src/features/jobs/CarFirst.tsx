@@ -10,8 +10,8 @@ import { CarHistoryButton } from '../customers/CarHistory';
 import { t, lang } from '../../lib/i18n';
 import { vehicle as vehicleRow, specByKey, itemsOf } from '../../data/select';
 import type { Job } from '../../data/types';
-import { engineRef, ensureEngineRef } from '../customers/engineRef';
-import { carFacts } from '../inventory/needs';
+import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
+import { carFacts } from '../../domain/stock/needs';
 import { carLine, oilLine, workLines } from './carWords';
 import './jobs.css';
 

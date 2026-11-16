@@ -3,45 +3,13 @@
 import { signal } from '@preact/signals';
 import type { Job, JobItem, Customer, JobStatus } from '../../data/types';
 import { net } from '../../data/sync';
-import { me, can, hasRole, isOwner, myTrucks } from '../../data/auth';
 import { windowWords } from '../../domain/moment/words';
 import { vehicle as vehicleRow, customer, customerName, itemsOf, invoiceOf, jobsOn, blockOfKey, truck, staffName, messagesOf, settings } from '../../data/select';
 import { today, addDays, longDay, shortDate, clock, clockRange } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { nextStep, BILLABLE, type NextStep, type StepRights } from './nextStep';
+import { nextStep, BILLABLE, type NextStep } from '../../domain/jobs/steps';
 import { vinNeeded, vinSkips } from './vinStep';
-
-export interface JobRights extends StepRights {
-  /** the person drives this job's truck: they are the one at the customer's door */
-  mine: boolean;
-  /** the owner or the office */
-  office: boolean;
-  move: boolean; order: boolean; duration: boolean; reopen: boolean; verbal: boolean; editNotes: boolean; text: boolean; backFromDone: boolean;
-}
-export function jobRights(j: Job): JobRights {
-  const a = me.value;
-  const owner = isOwner();
-  const mine = !!j.truck_id && myTrucks().includes(j.truck_id);
-  // the server also lets the person who opened a job (a walk-in) work it
-  const opened = !!a && j.created_by === a.id && (owner || hasRole('office') || hasRole('mechanic'));
-  const office = owner || hasRole('office');
-  const book = can('book');
-  return {
-    act: owner || book || mine || opened,
-    invoice: owner || can('edit_invoices') || ((mine || opened) && hasRole('mechanic')) || book,
-    payLater: owner || can('edit_invoices'),
-    mine, office,
-    move: office || book,
-    // the order of the stops: the owner, the office (« book »), the truck's driver (as the server)
-    order: owner || book || mine,
-    duration: office && (book || mine),
-    reopen: office,
-    verbal: office,
-    editNotes: office,
-    text: owner || book || mine || opened,
-    backFromDone: owner || book
-  };
-}
+import { jobRights } from '../../domain/jobs/rights';
 
 /** another job of this truck, today, on site and not paid: the server refuses « Je pars » until it is paid */
 export function blockingJob(j: Job): Job | undefined {

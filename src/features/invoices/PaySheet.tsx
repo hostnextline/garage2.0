@@ -12,7 +12,7 @@ import { mayCoffre, openCoffre } from '../coffre/host';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { Sheet, Button, Field, Input, MoneyInput, Banner, Empty, run } from '../../ui';
-import { cashChange, cashQuick } from './logic';
+import { cashChange, cashQuick } from '../../domain/money/invoice';
 import { invoiceById, amountsOf, invoiceCustomer, invoiceLabel, methodWord, METHODS } from './select';
 import { sendText, SendSheet, type SendResult } from './send';
 import './invoices.css';

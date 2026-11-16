@@ -9,7 +9,7 @@ import { jobStatusWord } from '../../ui';
 import { winInfo, winShort } from './layout';
 import { isOff } from './select';
 import { etaWord } from '../jobs/select';
-import { jobPerson } from './move';
+import { jobPerson } from '../../domain/jobs/words';
 import { jobMenu, jobPress } from './actions';
 
 /** a job as a small ticket: the stop number on the stub, the person and the work */

@@ -8,7 +8,7 @@ import { money } from '../../lib/money';
 import { Field, Input, MoneyInput, Check, IconButton, Button, Sheet, toast } from '../../ui';
 import { ServicePicker } from '../booking/ServicePicker';
 import type { ItemDraft } from '../../domain/moment/logic';
-import { lineCents, type LineLike } from './logic';
+import { lineCents, type LineLike } from '../../domain/money/invoice';
 
 export interface EditLine {
   _k: string; description: string; qty: number; unit_cents: number; taxable: boolean; kind?: ItemKind;

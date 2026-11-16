@@ -18,7 +18,9 @@ import { customerActions } from './shortcuts';
 import { factsOf, searchIndex, recentFirst, nameOrder, type CustomerFacts } from './facts';
 import { useSettled, useFocusOnMount } from '../../ui/hooks';
 import { searchList, draftFromQuery } from './search';
-import { Flags, Bit, carName, whenText, dayWord, nextLine, lastLine } from './bits';
+import { Flags, Bit, whenText, nextLine, lastLine } from './bits';
+import { dayWord } from '../../domain/moment/dayWords';
+import { carName } from '../../domain/vehicles/words';
 import './customers.css';
 
 const PAGE = 60;

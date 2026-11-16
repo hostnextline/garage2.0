@@ -2,8 +2,8 @@
    and the models of a make for a year from NHTSA's public list (vPIC: passenger cars, SUVs/minivans, pickups).
    A list already seen is kept on the phone (and by the service worker) so it opens again without signal; without
    signal the first time, the old app's engine list gives the common models. */
-import { engineRef, ensureEngineRef } from './engineRef';
-import { squash } from './search';
+import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
+import { squash } from '../../lib/text';
 
 /** the makes, the most common in Québec first */
 export const POPULAR_MAKES = ['Toyota', 'Honda', 'Hyundai', 'Ford', 'Chevrolet', 'Nissan', 'Mazda', 'Kia', 'Volkswagen', 'Subaru', 'GMC', 'RAM', 'Jeep',

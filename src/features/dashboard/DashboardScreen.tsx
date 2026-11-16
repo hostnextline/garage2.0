@@ -11,7 +11,7 @@ import { rpcNow, saveSettings } from '../../data/api';
 import { settings, truckLabel, truckColor } from '../../data/select';
 import { can, me } from '../../data/auth';
 import { Page, Panel, Banner, Button, IconButton, Skeleton, Sheet, Field, MoneyInput, Form, Empty, attempt } from '../../ui';
-import { addMonths, monthKey } from '../treasury/period';
+import { addMonths, monthKey } from '../../domain/money/period';
 import { normalizeDashboard, noShowRate, perKm, goalShare, projection, versusLastMonth, truckShares, type DashboardData } from './kpis';
 import { BigMoney, Meter, HBars, MonthBars, Stat, StatGrid, pct, compactMoney, decimal } from './charts';
 import { useReport } from './useReport';

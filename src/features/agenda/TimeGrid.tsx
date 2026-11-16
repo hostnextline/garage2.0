@@ -13,7 +13,8 @@ import { may } from '../../domain/rights';
 import { jobStatusWord, toast } from '../../ui';
 import { dropRefusal, winInfo, winShort, winTiny, type DropRefusal } from './layout';
 import { UNIT, unitCount, unitMinutes, unitIndex, minuteAt, unitsAt, jobBox, jobMinute, overlapColumns, openingUnit, type Box, type Slot } from '../../domain/moment/grid';
-import { moveFlow, moveToTime, jobPerson } from './move';
+import { moveFlow, moveToTime } from './move';
+import { jobPerson } from '../../domain/jobs/words';
 import { jobMenu, jobPress, unitMenu, unitBookHref, placeWords } from './actions';
 
 /** what a unit belongs to: the whole day (windows) or a block (a day still booked by blocks), and whether it still books */

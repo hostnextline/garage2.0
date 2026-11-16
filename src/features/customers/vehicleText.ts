@@ -1,6 +1,6 @@
 /* Cars in words: the engine line, the VIN read from a barcode, the odometer. */
 import { cleanVin, vinCheck } from '../../lib/text';
-import type { EngineRow } from './engineRef';
+import type { EngineRow } from '../../domain/vehicles/engineRef';
 
 export interface EngineWords { turbo: string; hybrid: string; diesel: string }
 const FR_WORDS: EngineWords = { turbo: 'turbo', hybrid: 'hybride', diesel: 'diesel' };

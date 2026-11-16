@@ -6,7 +6,7 @@ import { tl } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { shortDate, dayOf } from '../../lib/dates';
 import { formatPhone, fullName, findPostal } from '../../lib/text';
-import { lineCents, linesTotals, invoiceAmounts, formatNumber, safeFileName, type LineLike } from './logic';
+import { lineCents, linesTotals, invoiceAmounts, formatNumber, safeFileName, type LineLike } from '../../domain/money/invoice';
 
 export interface PdfData {
   kind: 'invoice' | 'quote';

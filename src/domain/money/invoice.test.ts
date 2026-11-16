@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   lineCents, linesTotals, invoiceAmounts, draftProblems, cleanLine, cashRound, cashChange, cashQuick, formatNumber, daysSince,
   periodRange, inPeriod, csvCell, toCsv, centsText, safeFileName
-} from './logic';
+} from './invoice';
 import { QC_TAXES } from '../../lib/money';
 import type { Invoice } from '../../data/types';
 

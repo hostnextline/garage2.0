@@ -12,7 +12,7 @@ import type { InventoryItem, InventoryMove } from '../../data/types';
 import { wide } from '../../platform/media';
 import { Sheet, Tabs, Form, Field, Input, Textarea, MoneyInput, Switch, Button, Pill, Help, Empty, Seg, toast, attempt, ask } from '../../ui';
 import { deleteInventoryItem, type PaidFrom } from '../../data/api';
-import { parseQty, formatQty, qtyLabel, unitWord, itemValue, isLow, moveDelta, round2, recordMove, recordPurchase, saveItem, REASON, type MoveKind } from './stock';
+import { parseQty, formatQty, qtyLabel, unitWord, itemValue, isLow, moveDelta, round2, recordMove, recordPurchase, saveItem, REASON, type MoveKind } from '../../domain/stock/stock';
 
 export function useQty() {
   const l = lang.value;

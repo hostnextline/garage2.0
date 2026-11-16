@@ -111,3 +111,8 @@ export function fullName(first?: string | null, last?: string | null): string {
   return [first, last].map((x) => (x || '').trim()).filter(Boolean).join(' ');
 }
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** folded text: no accents, lower case, no apostrophes (O’Neil = oneil) */
+export const norm = (s: unknown): string => (s == null ? '' : fold(String(s)).replace(/['’`´]/g, ''));
+/** letters and digits only (H3P 2C9 = h3p2c9, FLT-001 = flt001) */
+export const squash = (s: unknown): string => norm(s).replace(/[^a-z0-9]/g, '');

@@ -19,7 +19,7 @@ import { useRoads, roadOf } from '../map/useRoads';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, normalize, UNPLACED_COLOR, type TeamMapAnswer } from '../map/assemble';
 import { fromDevice } from '../map/device';
-import { dayCounts } from '../../app/more';
+import { dayCounts } from '../../domain/jobs/counts';
 import { overviewRows, type OverviewRow } from './rows';
 import './overview.css';
 

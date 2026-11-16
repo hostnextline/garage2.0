@@ -8,7 +8,7 @@ import { t } from '../../lib/i18n';
 import { fold } from '../../lib/text';
 import { Sheet, Button, Input, SearchInput, Banner, Skeleton, Field } from '../../ui';
 import { yearsList, POPULAR_MAKES, OTHER_MAKES, makeName, modelsFor, refModels, type ModelList } from './carModels';
-import { engineRef, ensureEngineRef, enginesFor, type EngineChoice } from './engineRef';
+import { engineRef, ensureEngineRef, enginesFor, type EngineChoice } from '../../domain/vehicles/engineRef';
 import { engineLine } from './vehicleText';
 import { engineWords } from './VehicleBits';
 import './customers.css';

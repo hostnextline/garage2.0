@@ -10,7 +10,8 @@ import { openShift, truck, invoiceOf, settings, customer as customerRow } from '
 import { toast, ask, askText, attempt, run, whenHistorySettled } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
-import { jobFirstName, rememberLink, clockOf, keepAhead, wt, type JobRights } from './select';
+import { jobFirstName, rememberLink, clockOf, keepAhead, wt } from './select';
+import type { JobRights } from '../../domain/jobs/rights';
 import { exportSignature, type Stroke } from './signature';
 import { plannedParts, type UsedPart } from './parts';
 import { confirmParts } from './PartsSheet';

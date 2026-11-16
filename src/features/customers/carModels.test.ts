@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { yearsList, makeName, parseModels, mergeModels, modelsFor, VPIC } from './carModels';
-import { engineRef } from './engineRef';
+import { engineRef } from '../../domain/vehicles/engineRef';
 
 const answer = (make: string, models: string[]) => ({ Count: models.length, Results: models.map((m) => ({ Make_Name: make, Model_Name: m })) });
 

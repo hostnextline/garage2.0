@@ -13,8 +13,8 @@ import { access, startPreview } from '../../data/auth';
 import { refetch } from '../../data/sync';
 import { navigate } from '../../platform/router';
 import { Sheet, Panel, Button, Field, Input, PhoneInput, Chips, Seg, Switch, Banner, Avatar, Pill, ask, run, toast } from '../../ui';
-import { ALL_ROLES, fromRoles, choiceOf, withChoice, activeOverrides, type Choice, type Overrides, type RoleRights } from './rights';
-import { teamDo, rolesWords, type LinkAnswer, type LinkResult, type SendHow, type TeamList } from './teamApi';
+import { ALL_ROLES, fromRoles, choiceOf, withChoice, activeOverrides, type Choice, type Overrides, type RoleRights } from '../../domain/team/rights';
+import { teamDo, rolesWords, type LinkAnswer, type LinkResult, type SendHow, type TeamList } from '../../domain/team/teamApi';
 import { HowSeg } from './LinkSheet';
 import { ago } from '../map/ago';
 

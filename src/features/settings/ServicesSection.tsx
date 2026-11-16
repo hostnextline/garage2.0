@@ -15,7 +15,7 @@ import { preview } from '../../data/auth';
 import type { Service, ServicePart, InventoryItem, Need, NeedKind, TireSeason } from '../../data/types';
 import { Panel, Rows, RowItem, Pill, Money, Button, IconButton, Sheet, Field, Input, MoneyInput, Seg, Switch, Stepper, DateInput, Select, SearchInput, Empty, Banner, Chips, attempt, run, toast } from '../../ui';
 import { isDirty, cleanText } from './draft';
-import { NEED_KINDS, guessNeeds } from '../inventory/needs';
+import { NEED_KINDS, guessNeeds } from '../../domain/stock/needs';
 
 export function ServicesSection() {
   const [q, setQ] = useState('');

@@ -14,8 +14,9 @@ import { jobsOn, invoicesList, lowStock } from '../data/select';
 import { Button, Avatar, Banner } from '../ui';
 import { computeChecklist, nextStep, progress, mainRole, type Role } from '../features/guide/checklist';
 import { guideInput, nextJobId, refreshChecks } from '../features/guide/guide-data';
-import { TILE_HUE, filtersFor, tilesFor, dayCounts, dueCents, unpaidCount, ratio, type MoreFilter } from './more';
-import { callCount } from '../features/oil/select';
+import { TILE_HUE, filtersFor, tilesFor, dueCents, unpaidCount, ratio, type MoreFilter } from './more';
+import { dayCounts } from '../domain/jobs/counts';
+import { callCount } from '../domain/oil/select';
 import './more.css';
 
 const FILTER_KEY = 'his.more.filter';

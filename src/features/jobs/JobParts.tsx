@@ -17,9 +17,10 @@ import { locateMissing } from '../../app/locator';
 import { BlockPicker, type BlockChoice, type FarInfo } from '../booking/BlockPicker';
 import { windowWords, freeWords } from '../../domain/moment/words';
 import { sameMoment, moveWindow, choiceWindow, farQuestion } from '../../domain/moment/logic';
-import type { NextStep } from './nextStep';
+import type { NextStep } from '../../domain/jobs/steps';
 import { bookedBy } from './bookedBy';
-import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, isWindowJob, momentWord, outsideWindow, wt, capFirst, keepWindow, type JobRights } from './select';
+import { jobCustomer, jobName, dayWord, dayInSentence, blockRange, clockOf, driverName, clientLinkOf, isWindowJob, momentWord, outsideWindow, wt, capFirst, keepWindow } from './select';
+import type { JobRights } from '../../domain/jobs/rights';
 import { stopFirst } from './StopOrderSheet';
 import { sendText, sendTracking, trackingSent, doBack, doCancel, doNoShow, doReopen } from './flow';
 import { signedWhen } from './WaiverSheet';
@@ -27,6 +28,7 @@ import { copyText } from './TextOutcome';
 import { JobTicket } from './JobTicket';
 import { askCar, saveCar } from './CarCheckSheet';
 import { km } from '../customers/vehicleText';
+import { mayChangeTruck } from '../../domain/jobs/rights';
 
 /** the km of a visit is noted once the truck is there (and fixed after) */
 const KM_STATUS = ['on_site', 'done'];
@@ -354,10 +356,6 @@ export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void }) {
 }
 
 /* ---------- « Changer de camion »: the same day and block (or arrival window), another truck (booked by mistake on the wrong one) ---------- */
-/** may this appointment change truck now: booked, its block not started, the person may move appointments */
-export function mayChangeTruck(j: Job, rights: Pick<JobRights, 'move'>): boolean {
-  return j.status === 'booked' && rights.move && !blockLoad(j.day, j.block).started;
-}
 export function TruckSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   const { job: j } = p;
   const [busy, setBusy] = useState<string | null>(null);

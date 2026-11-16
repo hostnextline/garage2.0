@@ -25,7 +25,7 @@ import { usePdf } from '../invoices/usePdf';
 import { quotePdfData } from '../invoices/pdf';
 import { canShareText } from '../invoices/share';
 import { quoteNumber } from '../invoices/select';
-import { quoteTotals, cleanItems, quoteIsEmpty, quoteExpired, defaultValidUntil } from './logic';
+import { quoteTotals, cleanItems, quoteIsEmpty, quoteExpired, defaultValidUntil } from '../../domain/money/quote';
 import { QuotePill } from './QuotesScreen';
 import '../invoices/invoices.css';
 import './quotes.css';

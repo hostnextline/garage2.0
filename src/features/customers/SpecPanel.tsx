@@ -10,10 +10,10 @@ import { saveSpec, saveVehicle } from '../../data/api';
 import { me } from '../../data/auth';
 import type { SpecData, Vehicle, EngineSpec } from '../../data/types';
 import { Panel, Kv, Button, Pill, Banner, Skeleton, Sheet, Field, Input, Textarea, Rows, RowItem, attempt } from '../../ui';
-import { engineRef, ensureEngineRef, matchEngine, specFromRow, specKeyOf, type EngineRow } from './engineRef';
+import { engineRef, ensureEngineRef, matchEngine, specFromRow, specKeyOf, type EngineRow } from '../../domain/vehicles/engineRef';
 import { refLine, refCode, sampleNumber } from './vehicleText';
 import { engineWords } from './VehicleBits';
-import { stampDay } from './bits';
+import { stampDay } from '../../domain/moment/dayWords';
 import './customers.css';
 
 const FIELDS: (keyof SpecData)[] = ['oil_filter', 'drain_torque', 'air_filter', 'cabin_filter', 'plugs', 'coolant', 'trans', 'brake', 'tires', 'pressure', 'wipers', 'battery'];

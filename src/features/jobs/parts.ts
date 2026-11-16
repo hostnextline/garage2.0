@@ -4,7 +4,7 @@
 import type { JobItem, ServicePart, InventoryItem } from '../../data/types';
 import { itemsOf, partsOfService } from '../../data/select';
 import { getRow } from '../../data/store';
-import { BILLABLE } from './nextStep';
+import { BILLABLE } from '../../domain/jobs/steps';
 
 export interface PlannedPart { item_id: string; name: string; unit: string; qty: number; onHand: number }
 export interface UsedPart { item_id: string; qty: number }

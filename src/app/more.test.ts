@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { filtersFor, tilesFor, dayCounts, dueCents, unpaidCount, ratio, TILE_HUE, type Tileable } from './more';
+import { filtersFor, tilesFor, dueCents, unpaidCount, ratio, TILE_HUE, type Tileable } from './more';
+import { dayCounts } from '../domain/jobs/counts';
 
 const owner: Tileable[] = [
   { key: 'today', group: 'day' }, { key: 'agenda', group: 'day' }, { key: 'customers', group: 'office' },

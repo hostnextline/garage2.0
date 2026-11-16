@@ -15,9 +15,11 @@ import { me } from '../../data/auth';
 import { net } from '../../data/sync';
 import type { OilMark } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Seg, Empty, Skeleton, Pill, Sheet, Kv, Banner, Field, attempt } from '../../ui';
-import { carName, dateShort, dayOfIso, nextLine, whenText } from '../customers/bits';
-import type { OilRow } from './due';
-import { oilList } from './select';
+import { nextLine, whenText } from '../customers/bits';
+import { dateShort, dayOfIso } from '../../domain/moment/dayWords';
+import { carName } from '../../domain/vehicles/words';
+import type { OilRow } from '../../domain/oil/due';
+import { oilList } from '../../domain/oil/select';
 import './oil.css';
 
 type Tab = 'call' | 'soon' | 'all';

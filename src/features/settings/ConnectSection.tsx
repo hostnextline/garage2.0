@@ -9,7 +9,7 @@ import { checkCalls, callsOn, checkTexts, textsOn } from '../../services/bubbles
 import { pushState, pushOn, pushOff, type PushState } from '../../services/push';
 import { team, errorMessage, updateMe } from '../../data/api';
 import { Panel, Field, Input, PhoneInput, Button, Pill, Banner, Skeleton, Switch, toast } from '../../ui';
-import { teamDo } from '../team/teamApi';
+import { teamDo } from '../../domain/team/teamApi';
 
 interface Secrets { ghl: { on: boolean; token_end: string | null; location: string | null }; stripe: { on: boolean; test: boolean; end: string | null; webhook: boolean } }
 
