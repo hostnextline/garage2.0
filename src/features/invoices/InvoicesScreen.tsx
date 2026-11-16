@@ -73,7 +73,7 @@ export default function InvoicesScreen({ query }: ScreenProps) {
   return (
     <Page title={t('invoices.title')} sub={t('invoices.list.sub')} help={t('invoices.list.help')} wide
       actions={<Button icon={<FileDown />} onClick={exportCsv} disabled={!list.length} data-testid="invoices-export">{t('invoices.list.export')}</Button>}>
-      <Panel class="inv-summary" data-testid="invoices-owing">
+      <Panel data-testid="invoices-owing">
         <div class="inv-top">
           <div class="inv-hero">
             <span class="inv-hero-label">{t('invoices.list.owing')}</span>
