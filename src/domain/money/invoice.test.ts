@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  lineCents, linesTotals, invoiceAmounts, draftProblems, cleanLine, cashRound, cashChange, cashQuick, formatNumber, daysSince,
-  periodRange, inPeriod, csvCell, toCsv, centsText, safeFileName
-} from './invoice';
+import { lineCents, unitCents, lineQty, linesTotals, invoiceAmounts, draftProblems, cleanLine, cashRound, cashChange, cashQuick, formatNumber, daysSince } from './invoice';
 import { QC_TAXES } from '../../lib/money';
 import type { Invoice } from '../../data/types';
 
@@ -19,6 +16,14 @@ describe('draft totals, the way the server computes them', () => {
     expect(t.tps).toBe(1500);      // 1499,95
     expect(t.tvq).toBe(2992);      // 2992,40
     expect(t.total).toBe(34491);
+  });
+  it('the unit price of a discount reads negative, whatever sign it was stored with; the quantity reads like the server', () => {
+    expect(unitCents(L(5000, { kind: 'discount' }))).toBe(-5000);
+    expect(unitCents(L(-5000, { kind: 'discount' }))).toBe(-5000);
+    expect(unitCents(L(-2000))).toBe(-2000);
+    expect(unitCents(L(1999))).toBe(1999);
+    expect(lineQty({ qty: '1,5' as unknown as number })).toBe(1.5);
+    expect(lineQty({})).toBe(1);
   });
   it('a discount typed as a negative amount counts the same (never adds money)', () => {
     expect(lineCents(L(-5000, { kind: 'discount' }))).toBe(-5000);
@@ -84,6 +89,15 @@ describe('what an invoice says', () => {
   it('a cancelled invoice has nothing left to pay', () => {
     expect(invoiceAmounts({ ...base, status: 'void' }, QC_TAXES).balance).toBe(0);
   });
+  it('paid more than the total (paid ahead then a rebate, the same payment twice): the money to give back is said', () => {
+    expect(invoiceAmounts({ ...base, status: 'paid', paid_cents: 20000 }, QC_TAXES)).toMatchObject({ balance: 0, over: 2755 });
+    expect(invoiceAmounts({ ...base, status: 'issued' }, QC_TAXES).over).toBe(0);
+    // a cancelled invoice that still holds money owes all of it back
+    expect(invoiceAmounts({ ...base, status: 'void', paid_cents: 5000 }, QC_TAXES).over).toBe(5000);
+    // a draft counts from its lines
+    expect(invoiceAmounts({ ...base, status: 'draft', paid_cents: 20000 }, QC_TAXES).over).toBe(2755);
+    expect(invoiceAmounts({ ...base, status: 'draft', paid_cents: 0 }, QC_TAXES).over).toBe(0);
+  });
   it('an exempt invoice hides the tax lines', () => {
     expect(invoiceAmounts({ ...base, status: 'issued', taxes_on: false, tps_cents: 0, tvq_cents: 0 }, QC_TAXES).showTaxes).toBe(false);
   });
@@ -124,46 +138,5 @@ describe('numbers and dates', () => {
     expect(daysSince(new Date(2026, 10, 3, 23, 0).toISOString(), now)).toBe(1);
     expect(daysSince(new Date(2026, 9, 12, 12, 0).toISOString(), now)).toBe(23);
     expect(daysSince(null, now)).toBeNull();
-  });
-  it('periods', () => {
-    expect(periodRange('month', '2026-11-04')).toEqual(['2026-11-01', '2026-11-04']);
-    expect(periodRange('last', '2026-11-04')).toEqual(['2026-10-01', '2026-10-31']);
-    expect(periodRange('last', '2026-01-15')).toEqual(['2025-12-01', '2025-12-31']);
-    expect(periodRange('30d', '2026-11-04')).toEqual(['2026-10-06', '2026-11-04']);
-    expect(periodRange('year', '2026-11-04')).toEqual(['2026-01-01', '2026-11-04']);
-    expect(periodRange('all', '2026-11-04')).toBeNull();
-    expect(inPeriod(new Date(2026, 9, 31, 12).toISOString(), ['2026-10-01', '2026-10-31'])).toBe(true);
-    expect(inPeriod(new Date(2026, 10, 1, 12).toISOString(), ['2026-10-01', '2026-10-31'])).toBe(false);
-    expect(inPeriod(null, null)).toBe(true);
-  });
-  it('file names a phone accepts', () => {
-    expect(safeFileName('Facture F-0043 - Julie / "Tremblay": ok?')).toBe('Facture F-0043 - Julie Tremblay ok');
-  });
-});
-
-describe('CSV for a spreadsheet', () => {
-  it('French: « ; » between cells and a decimal comma; English: « , » and a point', () => {
-    expect(toCsv([['Numéro', 'Total'], ['F-0043', { cents: 17245 }]], 'fr')).toBe('﻿Numéro;Total\r\nF-0043;172,45\r\n');
-    expect(toCsv([['Number', 'Total'], ['F-0043', { cents: 17245 }]], 'en')).toBe('﻿Number,Total\r\nF-0043,172.45\r\n');
-  });
-  it('quotes a cell that holds the separator, a quote or a line break', () => {
-    expect(csvCell('Tremblay, Julie', 'en')).toBe('"Tremblay, Julie"');
-    expect(csvCell('Tremblay, Julie', 'fr')).toBe('Tremblay, Julie');
-    expect(csvCell('Garage; Laval', 'fr')).toBe('"Garage; Laval"');
-    expect(csvCell('Le "garage"', 'fr')).toBe('"Le ""garage"""');
-    expect(csvCell('ligne 1\nligne 2', 'fr')).toBe('"ligne 1\nligne 2"');
-    expect(csvCell(' espace ', 'fr')).toBe('" espace "');
-    expect(csvCell(null, 'fr')).toBe('');
-  });
-  it('text that looks like a formula stays text', () => {
-    expect(csvCell('=SUM(A1:A9)', 'en')).toBe("'=SUM(A1:A9)");
-    expect(csvCell('+1 514 555-0141', 'fr')).toBe("'+1 514 555-0141");
-    expect(csvCell('@cmd', 'fr')).toBe("'@cmd");
-    expect(csvCell('-2+3', 'fr')).toBe("'-2+3");
-  });
-  it('amounts are never treated as formulas, negative ones included', () => {
-    expect(csvCell({ cents: -1000 }, 'fr')).toBe('-10,00');
-    expect(csvCell({ cents: 5 }, 'en')).toBe('0.05');
-    expect(centsText(123456, 'fr')).toBe('1234,56');
   });
 });

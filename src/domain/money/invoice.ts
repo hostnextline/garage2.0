@@ -1,12 +1,13 @@
-/* Invoices and estimates: the pure rules (no screen, no store), tested in logic.test.ts.
+/* Invoices and estimates: the one rule for what lines are worth (no screen, no store), tested in invoice.test.ts.
    - Totals mirror the server's trigger (supabase/migrations/…_jobs_money.sql, invoice_totals): a line is qty × price
      rounded to the cent, a discount line always lowers the total, TPS and TVQ are computed once on the taxable subtotal.
-     So a draft shows on screen exactly what the finished invoice will say; a finished invoice shows the server's numbers.
-   - Cash: Canada has no more pennies, a cash payment is rounded to the nearest 5 ¢; only the balance is recorded.
-   - CSV for a spreadsheet in the person's language (French Excel: « ; » and decimal comma). */
+     The draft on screen, the estimate, the PDF and the document all count with these functions, so they show exactly
+     what the finished invoice will say; a finished invoice shows the server's numbers.
+   - Cash: Canada has no more pennies, a cash payment is rounded to the nearest 5 ¢; only the balance is recorded
+     (what counts as paid is the owner's decision: no « close enough » here). */
 import { totals as moneyTotals, roundCents, type TaxRates, type Totals } from '../../lib/money';
-import { addDays, dayOf, daysBetween, type Day } from '../../lib/dates';
-import type { Invoice, InvoiceLine, ItemKind, Lang } from '../../data/types';
+import { dayOf, daysBetween } from '../../lib/dates';
+import type { Invoice, InvoiceLine, ItemKind } from '../../data/types';
 
 export interface LineLike {
   description?: string | null; qty?: number | string | null; unit_cents?: number | string | null; taxable?: boolean | null; kind?: ItemKind | string | null;
@@ -18,11 +19,19 @@ function numberOf(v: unknown, dflt: number): number {
   return Number.isFinite(n) ? n : dflt;
 }
 
-/** a line's amount, the server's way: qty × price rounded to the cent; a discount always lowers the total */
+/** a line's amount, the server's way: qty × price rounded to the cent; a discount always lowers the total
+    (an editor stores a discount positive, « Changer le prix » stores it negative: both count the same) */
 export function lineCents(l: LineLike): number {
   const lt = roundCents(numberOf(l.qty, 1) * numberOf(l.unit_cents, 0));
   return l.kind === 'discount' && lt > 0 ? -lt : lt;
 }
+/** the unit price as the customer reads it: a discount is shown negative, whatever sign it was stored with */
+export function unitCents(l: LineLike): number {
+  const u = Math.round(numberOf(l.unit_cents, 0));
+  return l.kind === 'discount' ? -Math.abs(u) : u;
+}
+/** the quantity of a line (« 1,5 » typed in French counts 1.5; nothing = 1, like the server) */
+export function lineQty(l: LineLike): number { return numberOf(l.qty, 1); }
 
 /** subtotal, taxes and total of lines (taxesOn: false for an exempted customer) */
 export function linesTotals(lines: LineLike[], rates: Partial<TaxRates> | null | undefined, taxesOn = true): Totals {
@@ -30,20 +39,24 @@ export function linesTotals(lines: LineLike[], rates: Partial<TaxRates> | null |
   return moneyTotals(lines.map((l) => ({ qty: 1, unitCents: lineCents(l), taxable: l.taxable !== false })), r);
 }
 
-export interface Amounts { subtotal: number; tps: number; tvq: number; total: number; paid: number; balance: number; showTaxes: boolean }
-type InvoiceMoney = Pick<Invoice, 'status' | 'lines' | 'taxes_on' | 'subtotal_cents' | 'tps_cents' | 'tvq_cents' | 'total_cents' | 'paid_cents'>;
-/** what an invoice says: a draft is computed from its lines (as the server will), a finished one is the server's */
+/** over: paid more than the total (paid ahead then a rebate, the same payment taken twice): money to give back */
+export interface Amounts { subtotal: number; tps: number; tvq: number; total: number; paid: number; balance: number; over: number; showTaxes: boolean }
+export type InvoiceMoney = Pick<Invoice, 'status' | 'lines' | 'taxes_on' | 'subtotal_cents' | 'tps_cents' | 'tvq_cents' | 'total_cents' | 'paid_cents'>;
+/** what an invoice says: a draft is computed from its lines (as the server will), a finished one is the server's.
+    A cancelled invoice owes nothing, and anything paid on it is owed back. */
 export function invoiceAmounts(inv: InvoiceMoney, rates: Partial<TaxRates> | null | undefined): Amounts {
   const paid = Number(inv.paid_cents || 0);
   const ratesOn = rates?.enabled !== false;
   if (inv.status === 'draft') {
     const tt = linesTotals(inv.lines || [], rates, inv.taxes_on !== false);
-    return { subtotal: tt.subtotal, tps: tt.tps, tvq: tt.tvq, total: tt.total, paid, balance: Math.max(0, tt.total - paid), showTaxes: ratesOn && inv.taxes_on !== false };
+    return { subtotal: tt.subtotal, tps: tt.tps, tvq: tt.tvq, total: tt.total, paid, balance: Math.max(0, tt.total - paid), over: Math.max(0, paid - tt.total), showTaxes: ratesOn && inv.taxes_on !== false };
   }
   const tps = Number(inv.tps_cents || 0), tvq = Number(inv.tvq_cents || 0), total = Number(inv.total_cents || 0);
+  const voided = inv.status === 'void';
   return {
     subtotal: Number(inv.subtotal_cents || 0), tps, tvq, total, paid,
-    balance: inv.status === 'void' ? 0 : Math.max(0, total - paid),
+    balance: voided ? 0 : Math.max(0, total - paid),
+    over: voided ? Math.max(0, paid) : Math.max(0, paid - total),
     showTaxes: tps + tvq > 0 || (ratesOn && inv.taxes_on !== false)
   };
 }
@@ -58,7 +71,8 @@ export function draftProblems(lines: LineLike[], total: number): { problem: Draf
   return { problem: null, lines: [] };
 }
 
-/** the lines as they are saved: only the fields the server keeps (its trigger adds total_cents) */
+/** the lines as they are saved: only the fields the server keeps (its trigger adds total_cents).
+    item_id on an invoice line is the job line it bills (job_items.id), not an item of the inventory. */
 export function cleanLine(l: LineLike & { item_id?: string | null }): InvoiceLine {
   const out: InvoiceLine = {
     description: String(l.description ?? '').trim(), qty: numberOf(l.qty, 1), unit_cents: Math.round(numberOf(l.unit_cents, 0)),
@@ -100,57 +114,4 @@ export function daysSince(iso: string | null | undefined, now: Date = new Date()
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return Math.max(0, daysBetween(dayOf(d), dayOf(now)));
-}
-export type PeriodKey = 'all' | '30d' | 'month' | 'last' | 'year';
-export const PERIODS: PeriodKey[] = ['all', '30d', 'month', 'last', 'year'];
-/** the days of a period (inclusive), or null for « Tout » */
-export function periodRange(p: PeriodKey, today: Day): [Day, Day] | null {
-  const ym = today.slice(0, 7);
-  switch (p) {
-    case '30d': return [addDays(today, -29), today];
-    case 'month': return [`${ym}-01`, today];
-    case 'last': { const end = addDays(`${ym}-01`, -1); return [`${end.slice(0, 7)}-01`, end]; }
-    case 'year': return [`${today.slice(0, 4)}-01-01`, today];
-    default: return null;
-  }
-}
-export function inPeriod(iso: string | null | undefined, range: [Day, Day] | null): boolean {
-  if (!range) return true;
-  if (!iso) return false;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return false;
-  const day = dayOf(d);
-  return day >= range[0] && day <= range[1];
-}
-
-/* ---------- CSV (a spreadsheet) ---------- */
-export type CsvValue = string | number | null | undefined | { cents: number };
-/** French Excel reads « ; » and a decimal comma; English, « , » and a point */
-export function csvSeparator(lang: Lang): ';' | ',' { return lang === 'en' ? ',' : ';'; }
-export function centsText(c: number, lang: Lang): string {
-  const s = (Math.abs(c) / 100).toFixed(2);
-  return (c < 0 ? '-' : '') + (lang === 'en' ? s : s.replace('.', ','));
-}
-export function csvCell(v: CsvValue, lang: Lang): string {
-  if (v == null) return '';
-  let s: string;
-  if (typeof v === 'object') s = centsText(v.cents, lang);
-  else if (typeof v === 'number') s = lang === 'en' ? String(v) : String(v).replace('.', ',');
-  else {
-    s = String(v);
-    // a name typed as « =… » must stay text in a spreadsheet, never become a formula
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  }
-  const sep = csvSeparator(lang);
-  return s.includes(sep) || /["\r\n]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-/** the whole file: a BOM (accents read right by Excel), one line per row, Windows line ends */
-export function toCsv(rows: CsvValue[][], lang: Lang): string {
-  const sep = csvSeparator(lang);
-  return '﻿' + rows.map((r) => r.map((c) => csvCell(c, lang)).join(sep)).join('\r\n') + '\r\n';
-}
-
-/** a file name a phone and a computer both accept */
-export function safeFileName(s: string): string {
-  return s.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 120);
 }

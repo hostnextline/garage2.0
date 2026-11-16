@@ -13,6 +13,7 @@
 .inv-paid-row p { margin: 0; font-size: var(--t-sm); color: var(--ink-2); flex: 1 1 160px; }
 .inv-saved { font-size: var(--t-xs); font-weight: 520; color: var(--ink-3); white-space: nowrap; min-height: 24px; display: inline-flex; align-items: center; }
 .inv-saved-saved { color: var(--ok); }
+.inv-saved-failed { color: var(--bad); }
 .inv-subtitle { font-size: var(--t-sm); font-stretch: 100%; font-weight: 560; color: var(--ink-2); margin: 0 0 var(--sp-1); }
 .inv-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .inv-actions > .btn { flex: 1 1 auto; }
@@ -183,5 +184,4 @@
 .inv-doc-foot p { margin: 0 0 4px; }
 .inv-doc-left { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 .inv-doc-stamp { align-self: flex-start; font-size: 2.1rem; margin: var(--sp-3) var(--sp-4); }
-.inv-void-note { margin-top: var(--sp-4); }
 .inv-history .row-item { padding-left: 0; padding-right: 0; min-height: 52px; }

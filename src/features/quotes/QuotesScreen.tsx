@@ -1,34 +1,28 @@
 /* « Estimations »: prices given before the work (often on the spot, with no customer file). Tabs by answer, a search,
    « Nouvelle estimation ». */
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import { FilePlus2, ClipboardList } from 'lucide-preact';
 import { isField } from '../../domain/rights';
 import { setQuery, type ScreenProps } from '../../platform/router';
 import type { Quote } from '../../data/types';
 import { quotesList, settings, customer, customerName, vehicle, vehicleLabel } from '../../data/select';
+import { tableSignal } from '../../data/store';
 import { net } from '../../data/sync';
 import { t, lang } from '../../lib/i18n';
 import { shortDate, dayOf, today } from '../../lib/dates';
 import { matches, formatPhone } from '../../lib/text';
-import { Page, Panel, Tabs, SearchInput, Button, Empty, Skeleton, Pill, Money, type Tone } from '../../ui';
+import { Page, Panel, Tabs, SearchInput, Button, Empty, Skeleton, Money } from '../../ui';
 import { quoteNumber } from '../../shared/invoices/select';
-import { quoteTotals, quoteExpired, type QuoteStatus } from '../../domain/money/quote';
+import { quoteTotals, quoteExpired } from '../../domain/money/quote';
+import { QuotePill } from './QuotePill';
 import '../../shared/invoices/invoices.css';
 import './quotes.css';
 
 type QTab = 'active' | 'accepted' | 'converted' | 'declined' | 'all';
 const TABS: QTab[] = ['active', 'accepted', 'converted', 'declined', 'all'];
-const TONE: Record<QuoteStatus, Tone> = { open: 'draft', sent: 'booked', accepted: 'done', declined: 'cancelled', converted: 'on_site' };
 
-export function QuotePill(p: { status: QuoteStatus }) {
-  return <Pill tone={TONE[p.status] || 'muted'} data-testid="quote-status">{t(`quotes.status.${p.status}`)}</Pill>;
-}
-export function quoteWho(q: Quote): string {
-  return customerName(customer(q.customer_id)) || q.contact_name?.trim() || '';
-}
-export function quoteCar(q: Quote): string {
-  return vehicleLabel(vehicle(q.vehicle_id)) || q.vehicle_text?.trim() || '';
-}
+const quoteWho = (q: Quote) => customerName(customer(q.customer_id)) || q.contact_name?.trim() || '';
+const quoteCar = (q: Quote) => vehicleLabel(vehicle(q.vehicle_id)) || q.vehicle_text?.trim() || '';
 function inTab(q: Quote, tab: QTab) {
   return tab === 'all' || (tab === 'active' ? q.status === 'open' || q.status === 'sent' : q.status === tab);
 }
@@ -38,12 +32,18 @@ export default function QuotesScreen({ query }: ScreenProps) {
   const [q, setQ] = useState('');
   const l = lang.value;
   const all = quotesList.value;
-  const counts: Record<QTab, number> = { active: 0, accepted: 0, converted: 0, declined: 0, all: all.length };
-  for (const x of all) { if (x.status === 'open' || x.status === 'sent') counts.active++; else if (x.status in counts) counts[x.status as QTab]++; }
-  const list = all.filter((x) => inTab(x, tab) && (!q.trim() || matches(q, quoteNumber(x), x.number != null ? String(x.number) : '', quoteWho(x), quoteCar(x), x.contact_phone, customer(x.customer_id)?.phone)))
-    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.number ?? 0) - Number(a.number ?? 0));
+  const customers = tableSignal('customers').value;
+  const counts = useMemo(() => {
+    const c: Record<QTab, number> = { active: 0, accepted: 0, converted: 0, declined: 0, all: all.length };
+    for (const x of all) { if (x.status === 'open' || x.status === 'sent') c.active++; else if (x.status in c) c[x.status as QTab]++; }
+    return c;
+  }, [all]);
+  // searched and sorted once per change (not at every redraw)
+  const list = useMemo(() => all.filter((x) => inTab(x, tab) && (!q.trim() || matches(q, quoteNumber(x), x.number != null ? String(x.number) : '', quoteWho(x), quoteCar(x), x.contact_phone, customer(x.customer_id)?.phone)))
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.number ?? 0) - Number(a.number ?? 0)), [all, customers, tab, q]);
   const canCreate = isField();
   const n = net.value;
+  const day = today();
   return (
     <Page title={t('quotes.title')} sub={t('quotes.list.sub')} help={t('quotes.list.help')} wide
       actions={canCreate ? <Button variant="primary" icon={<FilePlus2 />} href="#/quote/new" class="quote-new-head" data-testid="quote-new">{t('quotes.list.new')}</Button> : undefined}>
@@ -65,7 +65,7 @@ export default function QuotesScreen({ query }: ScreenProps) {
           <div class="inv-rows" role="list">
             {list.map((x) => {
               const total = quoteTotals(x.items, settings.value.taxes).total;
-              const expired = quoteExpired(x, today());
+              const expired = quoteExpired(x, day);
               const who = quoteWho(x) || (x.contact_phone ? formatPhone(x.contact_phone) : t('quotes.noName'));
               const car = quoteCar(x);
               const when = x.created_at ? shortDate(dayOf(new Date(x.created_at)), l) : '';
