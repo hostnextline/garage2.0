@@ -1,0 +1,83 @@
+/* MapView against a pretend Leaflet: what is created, updated and removed, so a refresh of the team map does not draw
+   everything again, and nothing of the map is left behind when the screen goes. */
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+
+const log: string[] = [];
+let mapsAlive = 0;
+vi.mock('leaflet/dist/leaflet.css', () => ({}));
+vi.mock('leaflet', () => {
+  const chain = <T extends object>(o: T) => Object.assign(o, { addTo() { return o; } });
+  const L = {
+    Browser: { mobile: false },
+    DomEvent: { stopPropagation: () => undefined },
+    map: () => {
+      mapsAlive++;
+      const handlers: Record<string, () => void> = {};
+      return {
+        setView() { log.push('fit'); }, fitBounds() { log.push('fit'); }, getZoom: () => 11, invalidateSize() { /* pretend */ },
+        on(k: string, f: () => void) { handlers[k] = f; }, off() { log.push('off'); }, remove() { mapsAlive--; log.push('remove'); },
+        getContainer: () => ({ clientWidth: 400, clientHeight: 300 }),
+        scrollWheelZoom: { enable() { /* */ }, disable() { /* */ } }, dragging: { enable() { /* */ }, disable() { /* */ } }
+      };
+    },
+    control: { attribution: () => chain({}), zoom: () => chain({ remove() { /* */ } }) },
+    tileLayer: () => chain({}),
+    layerGroup: () => chain({ clearLayers() { log.push('clear'); } }),
+    divIcon: (o: { html: string }) => o,
+    latLngBounds: (p: unknown) => p,
+    marker: (_at: unknown, o: { icon: { html: string } }) => {
+      log.push(`marker:${/data-mk="([^"]+)"/.exec(o.icon.html)?.[1]}`);
+      return chain({ on() { /* */ }, remove() { log.push('marker-remove'); }, setIcon() { log.push('setIcon'); }, setLatLng() { log.push('move'); }, setZIndexOffset() { /* */ } });
+    },
+    polyline: () => { log.push('line'); return chain({ remove() { log.push('line-remove'); }, setLatLngs() { log.push('line-points'); }, setStyle() { log.push('line-style'); } }); }
+  };
+  return { default: L };
+});
+import { MapView, type MapMarker, type MapLine } from './MapView';
+
+const box = document.createElement('div');
+document.body.appendChild(box);
+const settle = () => act(async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
+const person = (sub: string, lat = 45.5): MapMarker => ({ id: 'p:adam', kind: 'person', lat, lng: -73.6, label: 'Adam', sub, title: 'Adam' });
+const stops = (): MapMarker[] => [{ id: 'j1', kind: 'job', lat: 45.51, lng: -73.61, number: 1, title: 'Arrêt 1', onClick: () => undefined }, { id: 'j2', kind: 'job', lat: 45.52, lng: -73.62, number: 2, title: 'Arrêt 2', onClick: () => undefined }];
+const road: [number, number][] = [[45.51, -73.61], [45.515, -73.615], [45.52, -73.62]];
+
+describe('MapView', () => {
+  beforeEach(() => { log.length = 0; });
+  it('draws once, then only what changed: « il y a 4 min » is a new icon for that dot, a move is a move, nothing else is touched', async () => {
+    const lines = (): MapLine[] => [{ points: road, color: '#D3000E' }];
+    await act(async () => { render(<MapView markers={[...stops(), person('il y a 3 min')]} lines={lines()} refit="focus" />, box); });
+    await settle();
+    expect(log.filter((x) => x.startsWith('marker:'))).toEqual(['marker:j1', 'marker:j2', 'marker:p:adam']);
+    expect(log.filter((x) => x === 'line')).toHaveLength(2);   // casing + line
+    log.length = 0;
+    // the parent draws again with new arrays of the same things
+    await act(async () => { render(<MapView markers={[...stops(), person('il y a 3 min')]} lines={lines()} refit="focus" />, box); });
+    expect(log).toEqual([]);
+    await act(async () => { render(<MapView markers={[...stops(), person('il y a 4 min')]} lines={lines()} refit="focus" />, box); });
+    expect(log).toEqual(['setIcon']);
+    log.length = 0;
+    await act(async () => { render(<MapView markers={[...stops(), person('il y a 4 min', 45.501)]} lines={lines()} refit="focus" />, box); });
+    expect(log).toEqual(['move']);
+  });
+  it('a new marker on the team map after the person moved the map: added, the view stays; « Recentrer » fits again', async () => {
+    box.querySelector('.mv')!.dispatchEvent(new Event('pointerdown'));
+    log.length = 0;
+    const more: MapMarker[] = [...stops(), person('il y a 4 min', 45.501), { id: 'p:saleh', kind: 'person', lat: 45.4, lng: -73.7, title: 'Saleh' }];
+    await act(async () => { render(<MapView markers={more} refit="focus" />, box); });
+    expect(log).toContain('marker:p:saleh');
+    expect(log).not.toContain('fit');
+    expect(log.filter((x) => x === 'line-remove')).toHaveLength(2);   // the line asked no more is taken off
+    log.length = 0;
+    await act(async () => { render(<MapView markers={more} refit="focus" fitKey={1} />, box); });
+    expect(log).toEqual(['fit']);
+  });
+  it('the screen goes: the map, its layers and its listeners go with it', async () => {
+    expect(mapsAlive).toBe(1);
+    await act(async () => { render(null, box); });
+    expect(mapsAlive).toBe(0);
+    expect(log).toEqual(expect.arrayContaining(['clear', 'off', 'remove']));
+  });
+});
