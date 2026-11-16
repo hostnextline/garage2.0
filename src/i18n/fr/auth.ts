@@ -36,6 +36,7 @@ export const auth = {
   activate: 'Activer mon accès',
   activating: 'Activation…',
   activated: 'Ton accès est prêt.',
+  passwordSet: 'Ton mot de passe est choisi. Connecte-toi.',
   roles: { owner: 'Propriétaire', office: 'Bureau', mechanic: 'Mécanicien', treasurer: 'Trésorier' },
   yourRoles: 'Ton rôle : {roles}',
   linkProblem: 'Problème avec ton lien',
