@@ -12,6 +12,7 @@ import { matches } from '../../lib/text';
 import { Button, IconButton, Sheet, Field, Input, MoneyInput, Check as CheckBox, Seg, Stepper, SearchInput, Money, Empty, Skeleton } from '../../ui';
 import { net } from '../../data/sync';
 import { draftOfService, workMinutes, type ItemDraft } from '../../domain/moment/logic';
+import { lineCents } from '../../domain/money/invoice';
 import { dayMonth } from '../../domain/moment/words';
 import './booking.css';
 
@@ -77,7 +78,9 @@ export function ServicePicker(p: ServicePickerProps) {
   const removeLine = (idx: number) => p.onValue(p.value.filter((_, i) => i !== idx));
 
   const minutes = workMinutes(p.value);
-  const subtotal = p.value.reduce((n, i) => n + Math.round((Number(i.qty) || 0) * i.unit_cents) * (i.kind === 'discount' ? -1 : 1), 0);
+  // a discount always lowers (a price changed on the job is stored negative; a line of the price list positive)
+  const amountOf = (i: ItemDraft) => lineCents({ qty: Number(i.qty) || 0, unit_cents: i.unit_cents, kind: i.kind });
+  const subtotal = p.value.reduce((n, i) => n + amountOf(i), 0);
   const toConfirm = p.value.some((i) => i.service_id && serviceRow(i.service_id)?.price_cents == null);
 
   return (
@@ -132,7 +135,7 @@ export function ServicePicker(p: ServicePickerProps) {
                   </span>
                   {stepper && <Stepper value={Number(it.qty) || 1} min={1} max={99} label={`${t('booking.svc.qty')} : ${it.description}`} onValue={(v) => setLine(i, { qty: v })} />}
                   <span class="svc-price">
-                    {s && s.price_cents == null && !it.unit_cents ? <span class="svc-confirm">{t('booking.svc.toConfirm')}</span> : <Money cents={Math.round((Number(it.qty) || 0) * it.unit_cents) * (it.kind === 'discount' ? -1 : 1)} />}
+                    {s && s.price_cents == null && !it.unit_cents ? <span class="svc-confirm">{t('booking.svc.toConfirm')}</span> : <Money cents={amountOf(it)} />}
                   </span>
                   <IconButton icon={<X />} label={t('booking.svc.remove', { name: it.description })} onClick={() => removeLine(i)} />
                 </li>

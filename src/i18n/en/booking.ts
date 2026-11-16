@@ -332,5 +332,12 @@ export const booking: typeof fr = {
     copied: 'Text copied',
     copyFail: 'Press and hold the text to copy it.',
     share: 'Share'
+  },
+  // refonte:moment-pickers
+  /** the moment pickers' own words (shared/moment) */
+  momentPickers: {
+    /** the server did not send the text on purpose (status « quiet »): nothing failed */
+    smsQuiet: 'No text: this customer or this kind of text is turned off.'
   }
+  // fin refonte:moment-pickers
 };

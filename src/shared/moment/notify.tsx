@@ -26,21 +26,22 @@ function ensureHost() {
   render(<MessageHost />, host);
 }
 
-/** should a text go out for this job? (the setting is on, the customer has a number and accepts texts) */
+/** should a text go out for this job? (the setting is on, the customer has a number and accepts texts). A switch the
+    settings do not hold yet counts as ON, as for the server (`notify` is quiet only on `false`) and Réglages */
 export function wantsText(kind: NotifyKind, jobId: string): boolean {
-  if (!settings.value.messages?.on?.[kind]) return false;
+  if (settings.value.messages?.on?.[kind] === false) return false;
   const j = jobRow(jobId);
   const c = customerRow(j?.customer_id);
   return !!c && !!c.phone && c.sms_ok !== false;
 }
 
-/** sends the customer's text and says what happened (never throws) */
 /** the window of an appointment booked by window, in words (a block appointment: nothing, its text says the block) */
 export function windowSaid(j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_end' | 'win_flex'> | null | undefined): string | null {
   if (!j || j.block !== 'day') return null;
   return choiceWords({ day: j.day, block: 'day', win_start: j.win_start ?? null, win_end: j.win_end ?? null, win_flex: !!j.win_flex && j.win_start == null });
 }
 
+/** sends the customer's text and says what happened (never throws) */
 export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { customerId?: string | null; when?: string | null } = {}): Promise<void> {
   const c = customerRow(opts.customerId ?? jobRow(jobId)?.customer_id);
   const name = c ? (c.first_name || c.company || c.last_name || '') : '';
@@ -52,6 +53,8 @@ export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { cu
     if (status === 'sent') toast(t(`booking.sms.sent.${kind}`), { kind: 'ok' });
     else if (status === 'already') toast(t('booking.sms.already'));
     else if (status === 'no_phone') toast(t('booking.sms.noPhone'));
+    // the customer does not want texts, or this kind is switched off: nothing failed
+    else if (status === 'quiet') toast(t('booking.momentPickers.smsQuiet'));
     else if ((status === 'off' || status === 'error') && (r?.message || r?.link)) {
       toast(t(status === 'off' ? 'booking.sms.off' : 'booking.sms.error'), { kind: status === 'error' ? 'bad' : 'info', ms: 12000, action: { label: t('booking.sms.show'), run: open } });
     } else if (r?.ok === false || status === 'error') toast(t('booking.sms.failed', { msg: r?.error || '' }).trim(), { kind: 'bad' });
