@@ -26,7 +26,7 @@ import { roomy } from '../../platform/media';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
 import { DayRoute } from './DayRoute';
 import { stopRank } from './preview';
-import { fromDevice } from '../../shared/map/device';
+import { fromDevice } from '../map/device';
 import { spanEnds } from '../../domain/moment/words';
 import { choiceWords, winLen, type BlockChoice, type BlockPickerProps } from '../../domain/moment/choice';
 import { possibleUnits, rowsByStart, unitOfWindow, unitStates, pageDays, pageOf, lastPage, type Win } from '../../domain/moment/units';

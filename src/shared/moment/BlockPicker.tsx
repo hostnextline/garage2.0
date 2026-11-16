@@ -13,7 +13,7 @@ import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
 import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';
-import { fromDevice } from '../../shared/map/device';
+import { fromDevice } from '../map/device';
 import { blockPhraseWithHours, spanEnds } from '../../domain/moment/words';
 export type { FarInfo };
 import type { BlockPickerProps } from '../../domain/moment/choice';

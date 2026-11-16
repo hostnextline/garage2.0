@@ -30,16 +30,16 @@ import { phoneOwners } from '../../shared/customers/dupes';
 import { customersList } from '../../data/select';
 import { phoneDigits } from '../../lib/text';
 import type { CallStart } from './CallScreen';
-import { OilHint } from '../jobs/CarFirst';
-import { ServicePicker } from './ServicePicker';
-import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind, type FarInfo } from './BlockPicker';
+import { OilHint } from '../../shared/jobs/CarFirst';
+import { ServicePicker } from '../../shared/moment/ServicePicker';
+import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind, type FarInfo } from '../../shared/moment/BlockPicker';
 import { winLen } from '../../domain/moment/choice';
 import { broad } from './screen';
 import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, farQuestion, BLOCK_REFUSALS, type ItemDraft } from '../../domain/moment/logic';
 import { blockPhrase } from '../../domain/moment/words';
-import { notifyCustomer, wantsText } from './notify';
+import { notifyCustomer, wantsText } from '../../shared/moment/notify';
 import { forgetRefusal, noLongWaitOffline } from '../../domain/moment/outbox';
-import './booking.css';
+import '../../shared/moment/booking.css';
 
 /** the refusals « Réserver quand même » can go past */
 const FULL = ['block_full', 'truck_full'];

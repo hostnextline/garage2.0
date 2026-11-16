@@ -11,7 +11,7 @@ import { today, type BlockKey, type Day } from '../../lib/dates';
 import { ask, run, toast } from '../../ui';
 import { moveQuestion, winShort } from './layout';
 import { windowPhrase } from '../../domain/moment/words';
-import { notifyCustomer, wantsText } from '../booking/notify';
+import { notifyCustomer, wantsText } from '../../shared/moment/notify';
 import { forgetRefusal, noLongWaitOffline } from '../../domain/moment/outbox';
 import { jobPerson } from '../../domain/jobs/words';
 

@@ -10,7 +10,7 @@ import { truckLabel, truckColor, truckRanges, blocks } from '../../data/select';
 import { may } from '../../domain/rights';
 import { href, navigate } from '../../platform/router';
 import { Panel, Button, IconButton, Empty } from '../../ui';
-import { JobTicket } from '../jobs/JobTicket';
+import { JobTicket } from '../../shared/jobs/JobTicket';
 import { relativeDay, freeWords } from '../../domain/moment/words';
 import { fillOf, fillWords, weekOfDay } from './layout';
 import { dayPlan, dayJobs, isOff, type BlockView } from './select';

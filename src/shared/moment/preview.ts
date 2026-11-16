@@ -1,8 +1,8 @@
 /* « Voir sur la carte » of a moment offered for a booking: the truck's day as it is (from the phone's copy, the shape of
    team_map), and the same day with the new appointment put where it costs the least driving in its block (like the planner:
    between two stops of that block, never in another block). Pure: the screen draws it (RoutePreview.tsx). */
-import type { TeamMapAnswer } from '../../shared/map/assemble';
-import { metres } from '../../shared/places/photon';
+import type { TeamMapAnswer } from '../map/assemble';
+import { metres } from '../places/photon';
 
 export const NEW_STOP = 'new-stop';
 /* « Plages d'arrivée »: a whole day is one block ('day'), its stops in the planner's order */

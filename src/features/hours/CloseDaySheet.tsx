@@ -11,9 +11,9 @@ import { MapView, type MapMarker, type MapLine } from '../../shared/map/MapView'
 import { assemble } from '../../shared/map/assemble';
 import { fromDevice } from '../../shared/map/device';
 import { useRoads, roadOf, roadTotal } from '../../shared/map/useRoads';
-import { moveStops } from '../booking/preview';
+import { moveStops } from '../../shared/moment/preview';
 import type { Move } from './closing';
-import { momentWord } from '../jobs/select';
+import { momentWord } from '../../shared/jobs/select';
 
 const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
 const kindWord = (truckId: string | null, form: 'of' | 'to') => t(`hours.closing.${form}.${truckRow(truckId)?.tire_machine === false ? 'car' : 'truck'}`);

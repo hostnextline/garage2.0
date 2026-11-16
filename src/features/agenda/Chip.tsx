@@ -8,7 +8,7 @@ import type { Job } from '../../data/types';
 import { jobStatusWord } from '../../ui';
 import { winInfo, winShort } from './layout';
 import { isOff } from './select';
-import { etaWord } from '../jobs/select';
+import { etaWord } from '../../shared/jobs/select';
 import { jobPerson } from '../../domain/jobs/words';
 import { jobMenu, jobPress } from './actions';
 

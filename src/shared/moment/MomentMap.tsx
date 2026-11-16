@@ -10,10 +10,10 @@ import { tinyDay, longDay, duration, clockRange, type BlockKey } from '../../lib
 import { wide } from '../../platform/media';
 import { jobsBetween, customer, settings, activeTrucks, truckColor, staffName } from '../../data/select';
 import { Pill } from '../../ui';
-import { MapView, type MapMarker, type MapLine } from '../../shared/map/MapView';
-import { assemble, UNPLACED_COLOR, type TruckRoute } from '../../shared/map/assemble';
-import { fromDevice } from '../../shared/map/device';
-import { useRoads, roadOf, roadTotal } from '../../shared/map/useRoads';
+import { MapView, type MapMarker, type MapLine } from '../map/MapView';
+import { assemble, UNPLACED_COLOR, type TruckRoute } from '../map/assemble';
+import { fromDevice } from '../map/device';
+import { useRoads, roadOf, roadTotal } from '../map/useRoads';
 import { placeNewStop, NEW_STOP } from './preview';
 import { MapHover } from './RoutePreview';
 import { isFar, momentsByKey, roadWords, type CellState, type Moment } from '../../domain/moment/logic';

@@ -11,8 +11,8 @@ import { Sheet, Button, Field, Input, Spinner, Banner } from '../../ui';
 import { dayOf } from '../../lib/dates';
 import { SignaturePad } from '../../shared/sign/SignaturePad';
 import { hasEnoughInk, type Stroke } from '../../shared/sign/signature';
-import { signWaiver } from './flow';
-import { jobCustomer, dayWord, clockOf } from './select';
+import { signWaiver } from '../../shared/jobs/flow';
+import { jobCustomer, dayWord, clockOf } from '../../shared/jobs/select';
 
 /** the customer's language (their texts, invoice and signatures follow it) */
 export function customerLang(j: Job): Lang { return jobCustomer(j)?.lang === 'en' ? 'en' : 'fr'; }

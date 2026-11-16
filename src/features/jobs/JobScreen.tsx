@@ -16,22 +16,22 @@ import { Page, IconButton, Banner, Empty, Button, Skeleton, StatusPill } from '.
 import { InvoicePanel } from '../invoices/InvoicePanel';
 import { PaySheet } from '../invoices/PaySheet';
 import { CoffreSheet } from '../coffre/CoffreSheet';
-import { CarFirst } from './CarFirst';
+import { CarFirst } from '../../shared/jobs/CarFirst';
 import { startPositionSharing } from '../../services/position';
 import type { NextStep } from '../../domain/jobs/steps';
-import { stepOf, jobName, jobCustomer, whenLine, proposedOf, seen } from './select';
+import { stepOf, jobName, jobCustomer, whenLine, proposedOf, seen } from '../../shared/jobs/select';
 import { jobRights, mayChangeTruck, mayEditJob } from '../../domain/jobs/rights';
-import { startInvoice, letGo } from './flow';
-import { StepButton } from './StepButton';
+import { startInvoice, letGo } from '../../shared/jobs/flow';
+import { StepButton } from '../../shared/jobs/StepButton';
 import { WaiverSheet, SignatureView } from './WaiverSheet';
 import { WorkPanel, ItemSheet, AddWorkSheet, ProposeSheet, AnswerSheet } from './WorkPanel';
 import { StopOrderSheet } from './StopOrderSheet';
 import { EditSheet } from './JobEdit';
 import { HeadPanel, NotesSheet, WaiverPanel, StepState, MomentPanel, MoveSheet, TruckSheet, TextsPanel, MenuSheet, afterSheet } from './JobParts';
-import { TextOutcomeHost } from './TextOutcome';
-import { PartsHost } from './PartsSheet';
-import { CarCheckHost } from './CarCheckSheet';
-import './jobs.css';
+import { TextOutcomeHost } from '../../shared/jobs/TextOutcome';
+import { PartsHost } from '../../shared/jobs/PartsSheet';
+import { CarCheckHost } from '../../shared/jobs/CarCheckSheet';
+import '../../shared/jobs/jobs.css';
 
 type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre' | 'order' | 'truck' | 'edit';
 

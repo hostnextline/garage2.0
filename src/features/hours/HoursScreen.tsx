@@ -13,7 +13,7 @@ import { rowsOf } from '../../data/store';
 import { applyHours, moveJob } from '../../data/api';
 import { closedJobs, otherKind, movesFor, type Move } from './closing';
 import { CloseDaySheet } from './CloseDaySheet';
-import { keepWindow } from '../jobs/select';
+import { keepWindow } from '../../shared/jobs/select';
 import { deleteRow, pull, net } from '../../data/sync';
 import { can, isOwner, myTrucks, preview } from '../../data/auth';
 import type { TruckDay } from '../../data/types';

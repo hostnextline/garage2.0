@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { bestPlace, placeNewStop, stopRank, moveStops, NEW_STOP } from './preview';
-import type { TeamMapAnswer } from '../../shared/map/assemble';
+import type { TeamMapAnswer } from '../map/assemble';
 
 // the Centrale, then stops going east along a line; the new one between two of them
 const home = { lat: 45.5, lng: -73.70 };

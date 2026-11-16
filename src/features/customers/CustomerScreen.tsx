@@ -20,7 +20,7 @@ import { can } from '../../data/auth';
 import { net } from '../../data/sync';
 import type { Customer, Invoice, Quote, Vehicle } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Kv, Button, BigStep, Sheet, Switch, Banner, Empty, Skeleton, Pill, Money, InvoicePill, Form, ask, attempt, run, toast, whenHistorySettled, type Tone } from '../../ui';
-import { JobTicket } from '../jobs/JobTicket';
+import { JobTicket } from '../../shared/jobs/JobTicket';
 import { quoteNumber } from '../invoices/select';
 import { quoteTotals } from '../../domain/money/quote';
 import { factsOf, owedOn, isUpcoming, jobOrder } from '../../shared/customers/facts';
@@ -37,7 +37,7 @@ import { Flags, Plate, Bit } from '../../shared/customers/bits';
 import { stampDay, dayOfIso, dateShort } from '../../domain/moment/dayWords';
 import { carName } from '../../domain/vehicles/words';
 import { lastOil } from '../../domain/oil/select';
-import { CarHistoryButton } from './CarHistory';
+import { CarHistoryButton } from '../../shared/jobs/CarHistory';
 import { km } from '../../shared/vehicles/vehicleText';
 import '../../shared/places/customers.css';
 

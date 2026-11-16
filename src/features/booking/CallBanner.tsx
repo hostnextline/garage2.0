@@ -12,7 +12,7 @@ import { navigate } from '../../platform/router';
 import { REALTIME } from '../../lib/config';
 import { Button, IconButton } from '../../ui';
 import { phoneOwners } from '../../shared/customers/dupes';
-import './booking.css';
+import '../../shared/moment/booking.css';
 import { type IncomingCall, callLink, callsOn, onCheckCalls } from '../../services/bubbles';
 
 /** a call stays on screen this long */

@@ -15,7 +15,7 @@ import { recentFirst, searchIndex } from '../../shared/customers/facts';
 import { searchList, type SearchDoc } from '../../shared/customers/search';
 import { Bit } from '../../shared/customers/bits';
 import { windowWords } from '../../domain/moment/words';
-import './booking.css';
+import '../../shared/moment/booking.css';
 
 /** the block of an appointment in words; booked by window (« Plages d'arrivée »): its window, or flexible */
 function nextWhen(j: Pick<Job, 'block' | 'win_start' | 'win_end' | 'win_flex'>, l: 'fr' | 'en'): string {

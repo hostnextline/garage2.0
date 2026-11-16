@@ -8,7 +8,7 @@ import { today as todayOf, clock, type Day } from '../../lib/dates';
 import { errorMessage, type Suggestion } from '../../data/api';
 import type { Job } from '../../data/types';
 import { Sheet, Button, Spinner } from '../../ui';
-import { wantsText } from '../booking/notify';
+import { wantsText } from '../../shared/moment/notify';
 import { moveDayTitle, windowChoices } from './layout';
 import { windowMove, windowsFor, moveToWindow } from './move';
 import { jobPerson } from '../../domain/jobs/words';

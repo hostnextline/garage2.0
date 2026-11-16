@@ -12,7 +12,7 @@ import { updateJob, changeJobCustomer } from '../../data/api';
 import { CustomerPicker } from '../../shared/customers/CustomerPicker';
 import { VehiclePicker } from '../../shared/vehicles/VehiclePicker';
 import { AddressField, EMPTY_PLACE, type PlaceValue } from '../../shared/places/AddressField';
-import { jobCustomer, jobName, dayInSentence, momentWord, wt } from './select';
+import { jobCustomer, jobName, dayInSentence, momentWord, wt } from '../../shared/jobs/select';
 import type { JobRights } from '../../domain/jobs/rights';
 import { editRights } from '../../domain/jobs/rights';
 

@@ -12,10 +12,10 @@ import { t, lang } from '../../lib/i18n';
 import { Sheet, Button, Banner, Field, Input, Rows, RowItem, attempt } from '../../ui';
 import { updateJob, saveVehicle } from '../../data/api';
 import { Car } from 'lucide-preact';
-import { VinField, vinSavable, type CarFields } from '../../shared/vehicles/VehicleBits';
+import { VinField, vinSavable, type CarFields } from '../vehicles/VehicleBits';
 import { carName } from '../../domain/vehicles/words';
 import { carsWithVin, skipVin } from './vinStep';
-import { km, parseKm } from '../../shared/vehicles/vehicleText';
+import { km, parseKm } from '../vehicles/vehicleText';
 import { vehicleLabel, vehiclesOf } from '../../data/select';
 
 export interface CarAnswer {

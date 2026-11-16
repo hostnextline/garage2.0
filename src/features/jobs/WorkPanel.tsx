@@ -14,13 +14,13 @@ import { duration } from '../../lib/dates';
 import { itemsOf, jobTotals, settings, invoiceOf } from '../../data/select';
 import { me } from '../../data/auth';
 import { addItem, updateItem, removeItem, setJobDuration, setItemPrice } from '../../data/api';
-import { ServicePicker } from '../booking/ServicePicker';
+import { ServicePicker } from '../../shared/moment/ServicePicker';
 import { itemsDuration, type ItemDraft } from '../../domain/moment/logic';
 import { SignaturePad } from '../../shared/sign/SignaturePad';
 import { hasEnoughInk, type Stroke } from '../../shared/sign/signature';
-import { answerBySignature, answerByVoice, sendText } from './flow';
+import { answerBySignature, answerByVoice, sendText } from '../../shared/jobs/flow';
 import { customerLang } from './WaiverSheet';
-import { wt } from './select';
+import { wt } from '../../shared/jobs/select';
 import type { JobRights } from '../../domain/jobs/rights';
 import { ReopenButton } from '../invoices/InvoicePanel';
 

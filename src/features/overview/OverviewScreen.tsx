@@ -14,7 +14,7 @@ import { rpcNow } from '../../data/api';
 import { jobsOn, customer as customerRow, customerName, vehicle as vehicleRow, vehicleLabel, itemsOf, staffName } from '../../data/select';
 import type { JobStatus } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Empty, StatusPill, Pill } from '../../ui';
-import { isWindowJob, blockRange, outsideWindow } from '../jobs/select';
+import { isWindowJob, blockRange, outsideWindow } from '../../shared/jobs/select';
 import { useRoads, roadOf } from '../../shared/map/useRoads';
 import { MapView, type MapMarker, type MapLine } from '../../shared/map/MapView';
 import { assemble, normalize, UNPLACED_COLOR, type TeamMapAnswer } from '../../shared/map/assemble';

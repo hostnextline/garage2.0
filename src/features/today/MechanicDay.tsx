@@ -12,12 +12,12 @@ import { shiftStart, shiftEnd, errorMessage } from '../../data/api';
 import { isNetworkError } from '../../data/sync';
 import { may } from '../../domain/rights';
 import type { Job } from '../../data/types';
-import { JobTicket } from '../jobs/JobTicket';
-import { CarFirst } from '../jobs/CarFirst';
-import { StepButton, PRESSABLE } from '../jobs/StepButton';
-import { stepOf, dayWord, clockOf, seen, outsideWindow, blockRange } from '../jobs/select';
+import { JobTicket } from '../../shared/jobs/JobTicket';
+import { CarFirst } from '../../shared/jobs/CarFirst';
+import { StepButton, PRESSABLE } from '../../shared/jobs/StepButton';
+import { stepOf, dayWord, clockOf, seen, outsideWindow, blockRange } from '../../shared/jobs/select';
 import { jobRights } from '../../domain/jobs/rights';
-import { doReturn, doReturnEnd } from '../jobs/flow';
+import { doReturn, doReturnEnd } from '../../shared/jobs/flow';
 import { sharing, retryPosition, agoText } from '../../services/position';
 import { OPEN, myJobsOn, nextStopOf, summaryOf, nextWorkDay, shiftsOf, workedMinutes, useTick, myRoute, setMyRoute } from './select';
 
