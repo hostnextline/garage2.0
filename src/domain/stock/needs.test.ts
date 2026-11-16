@@ -191,6 +191,27 @@ describe('the rebuild: what a line takes', () => {
     expect(weekNeeds(one({ description: 'Diagnostic du moteur', service_id: null, kind: 'labour' })).lines).toEqual([]);
     expect(weekNeeds(one({ description: 'Rabais huile', service_id: null, kind: 'discount' }))).toMatchObject({ lines: [] });
   });
+  it('a part typed by hand is not an oil change, and an oil service with its filter typed beside it is one oil change', () => {
+    const golfJob = (lines: Partial<JobItem>[], services: Service[] = []): NeedsInput => ({
+      ...one({}, services), itemsOf: () => lines.map((l, k) => line(`x${k}`, 'j', null, l))
+    });
+    const oil = svc('o', 'Changement d’huile (5 L)');
+    const noCar = (lines: Partial<JobItem>[]) => ({ ...golfJob(lines, [oil]), jobs: [job('j', 1, '2026-11-10', null)] });
+    // oil service + « Filtre à huile » typed as a part: 5 L and 1 filter (not 10 L and 2)
+    const w1 = weekNeeds(noCar([{ service_id: 'o' }, { description: 'Filtre à huile Fram PH7317', kind: 'part' }]));
+    expect(w1.lines.map((l) => [l.kind, l.qty])).toEqual([['oil', 5], ['oil_filter', 1]]);
+    // the same with the part first
+    const w2 = weekNeeds(noCar([{ description: 'Filtre à huile Fram PH7317', kind: 'part' }, { service_id: 'o' }]));
+    expect(w2.lines.map((l) => [l.kind, l.qty])).toEqual([['oil', 5], ['oil_filter', 1]]);
+    // « Huile supplémentaire 1 L » as a part alone: no oil change, no filter
+    expect(weekNeeds(golfJob([{ description: 'Huile supplémentaire 1 L', kind: 'part' }])).lines).toEqual([]);
+    // an oil service and a hand-typed oil change line on the same appointment: one oil change
+    const w3 = weekNeeds(noCar([{ service_id: 'o' }, { description: 'Changement d’huile synthétique', kind: 'labour' }]));
+    expect(w3.lines.map((l) => [l.kind, l.qty])).toEqual([['oil', 5], ['oil_filter', 1]]);
+    // two hand-typed oil lines: one oil change
+    const w4 = weekNeeds(golfJob([{ description: 'Changement d’huile', kind: 'labour' }, { description: 'Huile 5W-30 synthétique', kind: 'service' }]));
+    expect(w4.lines.map((l) => [l.kind, l.qty])).toEqual([['oil', 5.7], ['oil_filter', 1]]);
+  });
   it('four tires priced one by one are 4 tires, not 16; a set on one line is 4', () => {
     const tires = svc('t', 'Vente de pneus neufs d’hiver');
     expect(weekNeeds(one({ service_id: 't', qty: 4 }, [tires])).lines[0]).toMatchObject({ kind: 'tires', qty: 4 });

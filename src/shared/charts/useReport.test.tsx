@@ -50,6 +50,20 @@ describe('a server report', () => {
     expect(seen?.data).toBe(2);
     expect(frames).not.toContain(null);
   });
+  it('old kept numbers and a server that keeps refusing: asked again once per few minutes, not every minute', async () => {
+    vi.useFakeTimers();
+    writeReport('his.report.u.dashboard.2026-08', { at: new Date(Date.now() - 2 * STALE_MS).toISOString(), data: 8 });
+    let asked = 0;
+    await draw('his.report.u.dashboard.2026-08', () => { asked++; return Promise.reject(new Error('refused')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect([asked, seen?.data, !!seen?.error]).toEqual([1, 8, true]);
+    // four minutes of the timer looking every minute: no new request, the banner stays
+    await act(async () => { await vi.advanceTimersByTimeAsync(4 * 60_000); });
+    expect([asked, !!seen?.error]).toEqual([1, true]);
+    // once STALE_MS has passed since the last try: one more
+    await act(async () => { await vi.advanceTimersByTimeAsync(STALE_MS); });
+    expect(asked).toBe(2);
+  });
   // the scan saw two reloads on reconnection (the app's signal and the browser's « online »); both land in one render,
   // so one request: kept as a guard
   it('the signal coming back twice at once (the app’s and the browser’s) asks the server once', async () => {
