@@ -604,3 +604,20 @@ test('sql-planner-2-06: a vehicle that loses the tire machine: its coming tire w
   const jo = await row(h, old);
   assert.deepEqual([jo.vehicle_kind, jo.updated_at], ['truck', stamp], 'a job already done is not rewritten');
 }));
+
+test('sql-windows-04: window mode, a job booked « quand même » is not sent behind every stop of the day when it fits', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near), c2 = await h.customer('Paul', ...near2);
+  await windowsOn(h, owner);
+  // a morning job booked « quand même » (8 h – 12 h after the switch), an afternoon and an evening appointment, a day with room
+  const f = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 3, eta: 1000, ws: 480, we: 720, forced: true, dur: 60 });
+  await book(h, { customer_id: c2, day, block: 'day', duration_min: 60, win_start: 720 });
+  await book(h, { customer_id: c, day, block: 'day', duration_min: 60, win_start: 960 });
+  await server(h, owner, `select public.replan_block($1::date, 'day')`, [day]);
+  const jf = await row(h, f);
+  assert.ok(jf.eta_min <= 720, `the forced morning job is in the morning: ${jf.eta_min}`);
+  assert.equal(jf.stop_order, 1);
+}));

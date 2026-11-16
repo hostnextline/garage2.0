@@ -1351,7 +1351,10 @@ grant execute on function public.plan_late_stored(jsonb, text) to service_role;
 --     late (sql-windows-02);
 --   * window mode, hours with a break (lunch, a split shift): each truck walks its stretches of hours one after the other,
 --     a stop starts and ends inside one stretch (they were one continuous stretch: sql-windows-05, x-dualmode-08);
---   * window mode, today: the stops are numbered after the ones the truck already finished (sql-windows-03, x-dualmode-06).
+--   * window mode, today: the stops are numbered after the ones the truck already finished (sql-windows-03, x-dualmode-06);
+--   * window mode, booked « quand même »: placed after the other stops, inside its window where every other window still
+--     holds, else late, else at the end past the hours as before (it was always the last stop of the whole day:
+--     sql-windows-04); it never holds another stop to anything.
 create or replace function public.plan_route(p_day date, p_block text, p_extra jsonb, p_exclude uuid, p_seed boolean)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1386,6 +1389,7 @@ declare jkind text; carfirst boolean;
   v_ws int; v_we int; v_dur int; v_start int; v_nf int;
   -- Part 26: the stored routes as the seed (p_seed), hours with a break (a truck's 'rg'), the stops already done today
   v_seed boolean := false; v_seedfree jsonb := '{}'; fe jsonb; v_res jsonb; v_alt jsonb; v_dn int; v_fit int;
+  v_pastend jsonb := '[]';        -- booked « quand même » and placed past the hours (they go at the end)
 begin
   select * into b from public.blocks() x where x.key = p_block;
   if not found then raise exception 'Bloc inconnu : %', p_block using errcode = '22023'; end if;
@@ -1453,9 +1457,13 @@ begin
     end if;
     pts := pts || jsonb_build_object(r.id::text, jsonb_build_object('lat', r.lat, 'lng', r.lng, 'dur', v_dur)
       || case when v_wm and r.status = 'booked' and not coalesce(r.forced, false) and r.win_start is not null and r.win_end is not null
+              then jsonb_build_object('ws', r.win_start, 'we', r.win_end)
+              -- booked « quand même » (Part 26): placed after every other stop of the plan, inside its window when it fits,
+              -- else late, else at the end (it never holds another stop to anything)
+              when v_wm and r.status = 'booked' and r.win_start is not null and r.win_end is not null
               then jsonb_build_object('ws', r.win_start, 'we', r.win_end) else '{}'::jsonb end
       || case when v_wm and p_day = v_today and r.status = 'on_site' and r.eta_min is not null then jsonb_build_object('eta0', r.eta_min) else '{}'::jsonb end);
-    if v_wm and r.status = 'booked' and not coalesce(r.forced, false) and r.win_start is not null and r.win_end is not null then v_win := true; end if;
+    if v_wm and r.status = 'booked' and r.win_start is not null and r.win_end is not null then v_win := true; end if;
     -- on the way or there: stays where it is, before the others. Put in order by hand (Part 21): right after, in that
     -- order, on its truck when that truck works the block (else the planner places it like the others)
     ti := null;
@@ -1633,7 +1641,9 @@ begin
         end if;
       end loop;
     end if;
-    exit when best_ti is not null or not v_win or v_try >= 3 or jid is not distinct from v_xid or coalesce((r.e->>'forced')::boolean, false);
+    exit when best_ti is not null or not v_win or v_try >= 3 or jid is not distinct from v_xid
+      -- booked « quand même »: window mode, it is tried inside its window, then late (Part 26); else straight to the end
+      or (coalesce((r.e->>'forced')::boolean, false) and not (v_wm and v_try = 1 and (pts->jid->>'we') is not null));
     if v_try = 1 and (pts->jid->>'we') is not null then
       v_try := 2; pts := jsonb_set(pts, array[jid, 'late'], 'true'::jsonb);
     else
@@ -1652,6 +1662,7 @@ begin
         cost := (rc - base) + case when pinned and t->>'id' <> jtruck then 100000 else 0 end + case when carfirst and coalesce((t->>'machine')::boolean, true) then 10000 else 0 end;
         if best_cost is null or cost < best_cost then best_cost := cost; best_ti := ti; best_pos := n; end if;
       end loop;
+      if best_ti is not null then v_pastend := v_pastend || to_jsonb(jid); end if;
     end if;
     if best_ti is null then
       over := over || to_jsonb(jid);
@@ -1671,9 +1682,10 @@ begin
   for ti in 0 .. jsonb_array_length(trucks) - 1 loop
     hl := (trucks->ti->>'hlat')::double precision; hg := (trucks->ti->>'hlng')::double precision;
     el := (trucks->ti->>'elat')::double precision; eg := (trucks->ti->>'elng')::double precision;
-    -- the stops booked « quand même » (not on the way or there) stay at the end, in the order they were added
+    -- the stops booked « quand même » (not on the way or there) stay at the end, in the order they were added (window mode:
+    -- only the ones placed past the hours; the others are where they fit, Part 26)
     v_tail := (select coalesce(jsonb_agg(x order by o), '[]'::jsonb) from jsonb_array_elements(trucks->ti->'stops') with ordinality s(x, o)
-               where o > (trucks->ti->>'nfixed')::int and v_forced @> jsonb_build_array(x));
+               where o > (trucks->ti->>'nfixed')::int and v_forced @> jsonb_build_array(x) and (not v_wm or v_pastend @> jsonb_build_array(x)));
     cand := (select coalesce(jsonb_agg(x order by o), '[]'::jsonb) from jsonb_array_elements(trucks->ti->'stops') with ordinality s(x, o)
              where not (v_tail @> jsonb_build_array(x)));
     t := public.route_improve(cand, (trucks->ti->>'nfixed')::int, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
