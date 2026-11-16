@@ -870,7 +870,9 @@ end $$;
 
 -- suggest_windows_core (live text): the windows tried are exactly the ones win_for cuts for the day's quarter hours (the
 -- booking calendar opens a quarter hour T when the server lists windowOf(T)): with « avant » 30 or 45, or a day that
--- starts at 7 h 30, the calendar was nearly empty. « Peu importe » plans again for the truck (plan_extra).
+-- starts at 7 h 30, the calendar was nearly empty. « Peu importe » plans again for the truck (plan_extra). Each window
+-- also says what it adds to the driving of the day (`add_min`, `add_km`, `day_min`, `hop_min`, `stops`, `far`: the
+-- « garde-route » of suggest_core, for the window mode: x-dualmode-01, server side).
 CREATE OR REPLACE FUNCTION public.suggest_windows_core(p_lat double precision, p_lng double precision, p_duration integer, p_day date, p_exclude uuid DEFAULT NULL::uuid, p_need boolean DEFAULT false, p_kind text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -884,6 +886,10 @@ declare p0 jsonb; p1 jsonb; out jsonb := '[]'; used0 int; used1 int; wait0 int; 
   v_dur int := greatest(15, least(720, coalesce(p_duration, 60)));
   v_len int := public.win_len(); v_step int := greatest(public.bset('win_round_min', 60)::int, 15); v_ws int; sp record; k int := 0;
   v_starts int[];
+  -- « garde-route » (Part 26): what each window adds to the driving of the day, as suggest_core says it for a day
+  v_maxhop numeric := public.bset('max_hop_min', 35); v_maxday numeric := public.bset('max_day_drive_min', 105);
+  v_x jsonb := jsonb_build_object('id', x, 'lat', p_lat, 'lng', p_lng); v_w0 jsonb := '{}'::jsonb;
+  tk record; w0 jsonb; w1 jsonb; v_truck text; min0 int; min1 int; km0 numeric; km1 numeric; v_day int; v_hop int; v_stops int; v_far text;
 begin
   if not public.windows_on() or p_day is null or not public.block_open(p_day, 'day') then return '[]'::jsonb; end if;
   if p_day > public.local_today() + public.bset('horizon_days', 120)::int then return '[]'::jsonb; end if;
@@ -908,10 +914,26 @@ begin
         'ws', v_ws, 'we', v_ws + v_len), p_exclude, p0);
       if public.plan_fits(p0, p1) then
         select coalesce(sum((t->>'used')::int), 0), coalesce(sum(coalesce((t->>'wait')::int, 0)), 0) into used1, wait1 from jsonb_array_elements(p1->'trucks') t;
+        -- the whole day of the vehicles, without and with the appointment (the day without it once per vehicle)
+        v_truck := p1->'extra'->>'truck'; min0 := 0; min1 := 0; km0 := 0; km1 := 0; v_day := null; v_hop := null; v_stops := 0;
+        for tk in select (e->>'id')::uuid id from jsonb_array_elements(p1->'trucks') e loop
+          w0 := v_w0->(tk.id::text);
+          if w0 is null then w0 := public.day_drive(p_day, tk.id, p0, null, p_exclude); v_w0 := v_w0 || jsonb_build_object(tk.id::text, w0); end if;
+          w1 := public.day_drive(p_day, tk.id, p1, v_x, p_exclude);
+          min0 := min0 + (w0->>'min')::int; min1 := min1 + (w1->>'min')::int;
+          km0 := km0 + (w0->>'km')::numeric; km1 := km1 + (w1->>'km')::numeric;
+          if tk.id::text = v_truck then
+            v_day := (w1->>'min')::int; v_hop := (w1->>'hop')::int; v_stops := greatest(0, (w1->>'stops')::int - 1);
+          end if;
+        end loop;
+        v_far := case when p_lat is null or p_lng is null or v_stops = 0 then null
+                      when v_maxhop > 0 and v_hop is not null and v_hop > v_maxhop then 'hop'
+                      when v_maxday > 0 and v_day > v_maxday then 'day' end;
         out := out || jsonb_build_array(jsonb_build_object('day', p_day, 'block', 'day', 'pos', k, 'drive_min', greatest(0, used1 - used0 - v_dur - (wait1 - wait0)),
           'wait_min', greatest(0, wait1 - wait0), 'near', near, 'truck', p1->'extra'->>'truck',
           'left', (select max((t->>'left')::int) from jsonb_array_elements(p1->'trucks') t),
-          'eta', (p1->'extra'->>'eta')::int, 'win_start', v_ws, 'win_end', v_ws + v_len));
+          'eta', (p1->'extra'->>'eta')::int, 'win_start', v_ws, 'win_end', v_ws + v_len,
+          'add_min', greatest(0, min1 - min0), 'add_km', greatest(0, round(km1 - km0, 1)), 'day_min', v_day, 'hop_min', v_hop, 'stops', v_stops, 'far', v_far));
       end if;
     end if;
   end loop;
@@ -1159,8 +1181,10 @@ begin
   return public.op_save(p_op, 'walk_in', jsonb_build_object('ok', true, 'job_id', v_id, 'rows', public.job_payload(v_id)));
 end $function$;
 
--- job_step (live text, patched in place by Parts 24 quater and 25): the claim first; a cancellation or a « Client absent » plans the block again without throwing anybody to « À placer »;
--- « Remettre à l'agenda » only when nobody else loses a place (or a window) for it, as a booking.
+-- job_step (live text, patched in place by Parts 24 quater and 25): the claim first; a cancellation or a « Client
+-- absent » plans the block again without throwing anybody to « À placer », then the blocks after it from where the truck
+-- now ends (sql-planner-1 B7); « Remettre à l'agenda » only when nobody else loses a place (or a window) for it, as a
+-- booking.
 CREATE OR REPLACE FUNCTION public.job_step(p_op uuid, p_job uuid, p_action text, p_data jsonb DEFAULT '{}'::jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1213,12 +1237,16 @@ begin
     update public.jobs set status = 'cancelled', cancelled_at = now(), lost_cents = v_lost, lost_reason = nullif(p_data->>'reason', '') where id = j.id;
     update public.trips set status = 'cancelled', ended_at = now() where job_id = j.id and status = 'active';
     perform public.replan_block_safe(j.day, j.block);
+    -- the blocks after it are planned again from where the truck now ends (the chain of apply_plan runs only when a row
+    -- of the block changed: the last stop of a block taken away changed none)
+    perform public.replan_block_safe(j.day, x.key) from public.blocks() x where x.pos > public.block_pos(j.block) order by x.pos;
   when 'no_show' then
     if j.status not in ('booked','en_route','on_site') then perform public.fail('bad_step', 'Cette job ne peut plus passer à « Client absent ».'); end if;
     update public.jobs set status = 'no_show', cancelled_at = now(), lost_cents = v_lost, lost_reason = nullif(p_data->>'reason', '') where id = j.id;
     update public.customers set no_shows = no_shows + 1 where id = j.customer_id;
     update public.trips set status = 'cancelled', ended_at = now() where job_id = j.id and status = 'active';
     perform public.replan_block_safe(j.day, j.block);
+    perform public.replan_block_safe(j.day, x.key) from public.blocks() x where x.pos > public.block_pos(j.block) order by x.pos;
   when 'reopen' then
     if j.status not in ('cancelled','no_show') then perform public.fail('bad_step', 'Cette job est déjà à l’agenda.'); end if;
     select * into b from public.blocks() x where x.key = j.block;
@@ -1770,4 +1798,36 @@ begin
   perform set_config('garage.chain', v_chain, true);
   perform set_config('garage.unplace', v_unplace, true);
   return n;
+end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 12. A vehicle that gets or loses the tire machine
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- trucks_kind_keep (live text): only the appointments still to come take the vehicle's new kind (every job it ever did
+-- was rewritten, and downloaded again by every phone); losing the machine plans its coming work for the machine again
+-- (sql-planner-2-06; the list to show before saving needs an RPC and a sheet in the app: not done here).
+CREATE OR REPLACE FUNCTION public.trucks_kind_keep()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_days date[];
+begin
+  -- only the appointments still to come take the vehicle's new kind: its history is not rewritten (Part 26)
+  update public.jobs set vehicle_kind = case when new.tire_machine then 'truck' else 'car' end
+   where truck_id = new.id and deleted_at is null and status = 'booked' and day >= public.local_today()
+     and vehicle_kind is distinct from case when new.tire_machine then 'truck' else 'car' end;
+  -- the vehicle no longer has the tire machine: its coming work for the machine is planned again, on a vehicle that has
+  -- it, else « À placer » (it stayed on the car until something else re-planned its block)
+  if coalesce(old.tire_machine, true) and not coalesce(new.tire_machine, true) then
+    select coalesce(array_agg(distinct j.day order by j.day), '{}') into v_days from public.jobs j
+    where j.truck_id = new.id and j.needs_machine and j.status = 'booked' and j.deleted_at is null and j.day >= public.local_today();
+    if cardinality(v_days) > 0 then
+      perform public.replan_days(v_days);
+      perform set_config('garage.rpc', '', true);
+    end if;
+  end if;
+  return null;
 end $function$;

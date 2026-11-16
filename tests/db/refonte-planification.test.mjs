@@ -556,3 +556,51 @@ test('sql-planner-1 B4: an address found in the background never throws an appoi
   await h.q(`insert into public.truck_days (truck_id, day, ranges) values ($1, $2, '[]')`, [t1, day]);
   for (const id of ids) assert.equal((await row(h, id)).truck_id, null, 'the hours closed: « À placer »');
 }));
+
+test('x-dualmode-01 (server side): each window offered says what it adds to the day and whether it is far', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const c = await h.customer('Près', home.lat + 0.01, home.lng);
+  await windowsOn(h, owner);
+  await book(h, { customer_id: c, day, block: 'day', duration_min: 60, win_start: 600 });
+  const far = await h.rpc('suggest_windows', { p_lat: home.lat + 0.4, p_lng: home.lng, p_duration: 60, p_day: day, p_exclude: null, p_need: false, p_kind: null });
+  assert.ok(far.length > 0);
+  for (const x of far) { assert.equal(x.far, 'hop', `44 km from the day's stop: far (${x.hop_min} min)`); assert.ok(x.add_min > 0 && x.stops === 1); }
+  const close = await h.rpc('suggest_windows', { p_lat: home.lat + 0.011, p_lng: home.lng, p_duration: 60, p_day: day, p_exclude: null, p_need: false, p_kind: null });
+  assert.ok(close.length > 0 && close.every((x) => x.far === null), 'next door: not far');
+}));
+
+test('sql-planner-1 B7: the last morning stop cancelled, the afternoon is planned again from where the truck now leaves', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const cx = await h.customer('Loin', home.lat + 0.2, home.lng), cy = await h.customer('Près', home.lat + 0.01, home.lng);
+  await h.as(owner);
+  const x = await book(h, job(cx, day, 'am'));
+  const y = await book(h, job(cy, day, 'pm'));
+  const before = (await row(h, y.job_id)).travel_min;
+  await h.rpc('job_step', { p_op: uuid(), p_job: x.job_id, p_action: 'cancel', p_data: {} });
+  const after = (await row(h, y.job_id)).travel_min;
+  assert.ok(after < before, `the afternoon leaves from the start again, not from the cancelled customer (${before} → ${after})`);
+}));
+
+test('sql-planner-2-06: a vehicle that loses the tire machine: its coming tire work goes to a vehicle that has it; its history is not rewritten', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const v1 = await h.truck('Voiture', null, { [dow]: DAY }), v2 = await h.truck('Camion', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  const tire = await put(h, owner, { customer: c, day, block: 'am', truck: v1, order: 1, eta: 500, need: true, kind: 'truck', pinned: true });
+  const old = await put(h, owner, { customer: c, day: await h.val(`select (public.local_today() - 3)::text`), block: 'am', truck: v1, status: 'done', order: 1, eta: 500, kind: 'truck' });
+  await h.as(null);
+  const stamp = (await row(h, old)).updated_at;
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [v1]);
+  assert.equal((await row(h, tire)).truck_id, v2, 'the tire work goes to the vehicle with the machine');
+  const jo = await row(h, old);
+  assert.deepEqual([jo.vehicle_kind, jo.updated_at], ['truck', stamp], 'a job already done is not rewritten');
+}));
