@@ -62,7 +62,7 @@ async function view(l: Row) {
     db.from('job_items').select('*').eq('job_id', j.id).is('deleted_at', null).order('sort'),
     db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle(),
     db.from('payments').select('amount_cents, method, paid_at, invoice_id').eq('job_id', j.id).is('deleted_at', null),
-    j.vehicle_id ? db.from('vehicles').select('year, make, model').eq('id', j.vehicle_id).maybeSingle() : Promise.resolve({ data: null }),
+    j.vehicle_id ? db.from('vehicles').select('year, make, model').eq('id', j.vehicle_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').is('deleted_at', null).limit(1).maybeSingle()
   ]);
   // a read that failed would show a wrong page (no lines, nothing paid, nothing to pay): a server problem instead
