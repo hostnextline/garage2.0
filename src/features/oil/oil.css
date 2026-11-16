@@ -16,3 +16,4 @@
   .oil-row .row-main { flex: 1 1 100%; }
   .oil-row .row-end { width: 100%; justify-content: space-between; }
 }
+.oil-more { display: flex; justify-content: center; padding: var(--sp-4); border-top: 1px solid var(--glass-line); }
