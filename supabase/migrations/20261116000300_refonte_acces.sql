@@ -8,7 +8,9 @@
 --                         (every mechanic on live) could make himself the driver of any truck, or switch one off
 --     jobs                duration_min and deleted_at are no longer writable directly (set_job_duration, job_step)
 --     customers           a file with a coming appointment or a finished invoice not paid is not deleted (the rule lived
---                         in the screen only, on the phone's own copy); a person without « Clients » can create a customer
+--                         in the screen only, on the phone's own copy); a person without « Clients » can create a customer;
+--                         a phone number corrected closes the customer's links texted to the old one (open jobs, open
+--                         estimates) and lets the booking text go again
 --     attachments         written once (a signature could be replaced after the fact); no SVG (a picture that runs code)
 --     push_subs           a device's alert address follows the person who asks last (a second owner got a raw error)
 --     settings.booking    web.on (the public booking page) changes only through web_switch: a settings save from a
@@ -124,6 +126,38 @@ grant execute on function public.push_subs_takeover() to service_role;
 drop trigger if exists push_subs_takeover on public.push_subs;
 create trigger push_subs_takeover before insert on public.push_subs
   for each row execute function public.push_subs_takeover();
+
+-- ---------- customers: a phone number corrected closes the links texted to the old one (x-security-03) ----------
+-- Every text makes a new link (90 days) and nothing closed one but « Changer de client »: a booking text sent to a
+-- wrong digit kept showing the appointment to a stranger, who could sign it, after the office fixed the number. When
+-- the digits of a customer's phone change, the links of their appointments not finished yet (booked, en route, on
+-- site) and of their estimates still open are closed, and a booked appointment may be confirmed again (the app then
+-- offers to resend the text, to the new number, with a new link). A finished job's links stay (the customer's invoice
+-- and the card payment's return use them). Only the digits count: « 514 555-1234 » → « (514) 555-1234 » closes nothing.
+create or replace function public.customers_phone_links() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_links int := 0; n int;
+begin
+  if old.phone_digits is null or new.phone_digits is not distinct from old.phone_digits then return null; end if;
+  update public.public_links l set revoked_at = now()
+   where l.revoked_at is null
+     and (l.job_id in (select j.id from public.jobs j where j.customer_id = new.id and j.status in ('booked', 'en_route', 'on_site'))
+       or l.quote_id in (select q.id from public.quotes q where q.customer_id = new.id and q.status in ('open', 'sent')));
+  get diagnostics v_links = row_count;
+  update public.jobs set confirm_sent_at = null
+   where customer_id = new.id and status = 'booked' and deleted_at is null and confirm_sent_at is not null;
+  get diagnostics n = row_count;
+  if v_links > 0 or n > 0 then
+    insert into public.activity (actor, entity, entity_id, action, data)
+    values (auth.uid(), 'customer', new.id, 'phone_changed', jsonb_build_object('links_closed', v_links, 'to_confirm', n));
+  end if;
+  return null;
+end $$;
+revoke all on function public.customers_phone_links() from public, anon, authenticated;
+grant execute on function public.customers_phone_links() to service_role;
+drop trigger if exists customers_phone_links on public.customers;
+create trigger customers_phone_links after update of phone on public.customers
+  for each row execute function public.customers_phone_links();
 
 -- ---------- settings.booking.web.on: the public booking page opens and closes through web_switch only (sql-misc-04) ----------
 -- The app saves « booking » as one whole object built from the phone's copy: a phone whose copy is older than the day
@@ -689,7 +723,8 @@ declare
     'truck_home','truck_hours_editable','truck_ranges','trucks_kind_keep','update_me','use_parts','vin_history','walk_in','web_book',
     'web_duration','web_in_area','web_on','web_services','web_suggest','web_windows','win_for','win_len','win_lock_due','windows_on',
     'windows_switch','words_need_machine',
-    'customers_delete_guard','push_subs_takeover','settings_web_guard','web_switch','right_flag','fold_name'];
+    'customers_delete_guard','push_subs_takeover','settings_web_guard','web_switch','right_flag','fold_name',
+    'customers_phone_links'];
   -- the signed-in app: its operations and reads…
   v_app text[] := array[
     'access_of','apply_hours','blocks_overview','book_job','coffre_add','coffre_remove','coffre_report','dashboard','day_path',
@@ -718,8 +753,8 @@ begin
   end loop;
 end $grants$;
 
--- closed by default from now on (the role that runs the migrations)
+-- closed by default from now on (the role that runs the migrations). Functions only: the tables keep Supabase's own
+-- defaults tonight (every table has row level security on and its grants written; closing them by default too is a
+-- decision for after the merge, when no other migration of tonight still counts on them).
 alter default privileges for role postgres revoke execute on functions from public;
 alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
-alter default privileges for role postgres in schema public revoke all on tables from public, anon, authenticated;
-alter default privileges for role postgres in schema public revoke all on sequences from public, anon, authenticated;
