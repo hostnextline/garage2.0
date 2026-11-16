@@ -110,6 +110,7 @@ if (retablir) {
 }
 
 await ecrire('-- Restauration de la sauvegarde du ' + (resume ? resume.quand : '?'));
+if (resume && resume.schema != null) await ecrire(`-- Schéma de la base le soir de la sauvegarde : ${JSON.stringify(resume.schema)} (comparer avec la dernière migration de la base où on restaure)`);
 await ecrire(`-- Tables : ${tables.join(', ')}${ids ? ` — seulement les lignes ${ids.join(', ')}` : ''}`);
 
 if (retablir) {

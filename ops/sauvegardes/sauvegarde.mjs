@@ -147,9 +147,11 @@ function tailles(dir, out = []) {
 }
 
 async function copier() {
-  const { tables, at } = await call({ action: 'tables' }, await frais());
+  const { tables, at, schema } = await call({ action: 'tables' }, await frais());
   mkdirSync(DOSSIER, { recursive: true });
-  const resume = { quand: at, tables: {} };
+  // « schema »: the last migration of the server, when the function tells it (a server of before does not): the restore
+  // then says which schema the copy belongs to
+  const resume = { quand: at, ...(schema != null ? { schema } : {}), tables: {} };
   for (const { name, count } of tables) {
     const { rows, etat } = await table(name, count);
     writeFileSync(join(DOSSIER, `${name}.json`), rows.length ? '[\n' + rows.map((r) => JSON.stringify(r)).join(',\n') + '\n]\n' : '[]\n');

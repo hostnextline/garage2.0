@@ -595,3 +595,19 @@ test('the nightly backup says (a warning, never a failure) when a person of the 
   assert.ok(!/Retiré/.test(r.out), 'a person removed from the team is not counted');
   await s.fermer();
 });
+
+test('the schema of the night: when the server tells its last migration, the copy keeps it and the restore says it', async () => {
+  const s = await faux((quoi, b) => {
+    if (b.action === 'tables') return [200, { ok: true, at: '2026-11-16T08:23:00.000Z', schema: '20261116000050', tables: [{ name: 'customers', count: 1 }] }];
+    if (b.action === 'rows') return [200, { ok: true, rows: [{ id: randomUUID(), first_name: 'Schéma' }], next: null }];
+    return [400, { ok: false, code: 'action', error: 'Action inconnue.' }];
+  });
+  const dos = join(dir, 'schema', 'donnees');
+  const r = await lancer('sauvegarde.mjs', [dos], s.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(lire(dos, '_resume.json').schema, '20261116000050');
+  const sql = await lancer('restaurer.mjs', [dos]);
+  assert.equal(sql.code, 0, sql.err);
+  assert.match(sql.out, /-- Schéma de la base le soir de la sauvegarde : "20261116000050"/);
+  await s.fermer();
+});
