@@ -127,8 +127,11 @@ export function moveStops(a: TeamMapAnswer, ids: string[], truckId: string): Tea
     const mine = dayOrder(jobs.filter(live));
     let at: number;
     if (has(j)) {
+      /* the rule CloseDaySheet has always shown (its owner did not ask for booking-b-20's): after the last located stop,
+         the moved stop goes at the end of the list */
+      const located = mine.filter(has);
       const r = bestPlace(from, mine, { block: j.block, lat: j.lat!, lng: j.lng! });
-      at = listIndex(mine, r.index, j.block);
+      at = r.index < located.length ? mine.indexOf(located[r.index]) : mine.length;
     } else {
       // no position: at the end of its block
       const b = BLOCKS[j.block] ?? 1;

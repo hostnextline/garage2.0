@@ -35,6 +35,8 @@ const same = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.le
 
 export function useWindowModels(i: ModelsInput): WindowDay[] {
   const cache = useRef(new Map<Day, { sig: unknown[]; model: WindowDay }>());
+  // only the days shown are kept (paging for a while does not pile up every day ever drawn)
+  for (const d of [...cache.current.keys()]) if (!i.days.includes(d)) cache.current.delete(d);
   return i.days.map((d) => {
     const w = i.winsOf(d);
     const stamp = dayStamp(d);

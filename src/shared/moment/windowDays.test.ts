@@ -87,6 +87,12 @@ describe('the phone’s list of times', () => {
     expect(listDay([g('d1', 'loading'), g('d3', 'open', [600])], 'd3')).toBe('d3');
     expect(listDay([g('d1', 'full'), g('d2', 'closed')], null)).toBe('d1');
     expect(listDay([g('d1', 'open', [600])], 'gone')).toBe('d1');
+    // review mp-4: an earlier day asked again (its appointments changed) does not put its skeleton in place of the times shown
+    expect(listDay([g('d1', 'loading'), g('d3', 'open', [600])], null, 'd3')).toBe('d3');
+    expect(listDay([g('d1', 'loading'), g('d3', 'loading')], null, 'd3')).toBe('d3');
+    // the day held has no time any more: the usual rule
+    expect(listDay([g('d1', 'open', [540]), g('d3', 'full')], null, 'd3')).toBe('d1');
+    expect(listDay([g('d1', 'open', [540])], null, 'gone')).toBe('d1');
   });
 });
 

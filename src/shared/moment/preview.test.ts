@@ -109,4 +109,10 @@ describe('a stop of the route without a position', () => {
     expect(listIndex(mine, 1, 'eve')).toBe(3);
     expect(listIndex([noPos('p1', 'pm', 1)], 0, 'am')).toBe(0);
   });
+  // review mp-6: « La voiture ferme » (CloseDaySheet) keeps the order it has always shown; b-20 is the booking preview's
+  it('« La voiture ferme » keeps its rule: after the last located stop, the moved stop goes at the end', () => {
+    const two: TeamMapAnswer = { ...d, trucks: day.trucks, jobs: [...d.jobs, { ...job('m1', 'T2', 'am', 1, -73.55) }] };
+    const r = moveStops(two, ['m1'], 'T1');
+    expect(r.jobs.filter((j) => j.truck_id === 'T1').sort((a, b) => a.order! - b.order!).map((j) => j.id)).toEqual(['a1', 'e1', 'm1']);
+  });
 });

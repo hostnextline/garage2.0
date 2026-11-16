@@ -116,9 +116,13 @@ export function windowGone(picked: BlockChoice | null, day: Pick<GridDay, 'statu
 
 /** a phone lists one day's times. The day chosen; else the first day that has some — but a day still waiting for its
     answer before it is shown first (its skeleton), so times on screen never give way to another day's while the
-    answers arrive in any order (the thumb going to « 14 h 30 » would land on another day's 14 h 30) */
-export function listDay(days: readonly Pick<GridDay, 'day' | 'kind' | 'open'>[], chosen: Day | null): Day | null {
+    answers arrive in any order (the thumb going to « 14 h 30 » would land on another day's 14 h 30). `held`: the day
+    whose times are already on screen (nothing chosen): it stays while it has times or waits for a new answer, so an
+    earlier day asked again (its appointments changed, « Réessayer ») does not put its skeleton in their place */
+export function listDay(days: readonly Pick<GridDay, 'day' | 'kind' | 'open'>[], chosen: Day | null, held: Day | null = null): Day | null {
   if (chosen && days.some((d) => d.day === chosen)) return chosen;
+  const h = held ? days.find((d) => d.day === held) : undefined;
+  if (h && (h.open.length || h.kind === 'loading')) return h.day;
   for (const d of days) {
     if (d.open.length) return d.day;
     if (d.kind === 'loading') return d.day;

@@ -33,7 +33,7 @@ import { dayOf } from './deviceDay';
 import { useDayWindows } from './useDayWindows';
 import { dayStamp, useWindowModels } from './useWindowModels';
 import { listDay, openingMinute, windowGone, type GridDay } from './windowDays';
-import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer } from './hooks';
+import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer, answers } from './hooks';
 import { askedKind, bothKinds, fitsJob, kindOf } from './vehicles';
 import { bestWindows, betterThan, betterWindowText, dayRows, dayScores, rowChoice, windowFar, type DayRow } from './moments';
 import { besideRow } from './place';
@@ -69,8 +69,11 @@ export function WindowPicker(p: BlockPickerProps) {
   const [retry, setRetry] = useState(0);
   const [bump, setBump] = useState(0);
   const base = { lat: p.lat, lng: p.lng, duration: dur, exclude: p.excludeJob ?? null, need: !!p.need, kind, truckId: p.truckId };
-  const sugg = useSuggestions({ ...base, from: today, days: SUGG_DAYS }, online, retry + (p.reload || 0));
+  const q = { ...base, from: today, days: SUGG_DAYS };
+  const sugg = useSuggestions(q, online, retry + (p.reload || 0));
   const usable = hasAnswer(sugg);
+  // the list answers the question of now (not the last one, kept dimmed while a new answer is awaited)
+  const fresh = answers(sugg, q);
   const rows = useMemo(() => dayRows(sugg.list, windowOf, len), [sugg.list, len]);
   const best = useMemo(() => bestWindows(rows), [rows]);
   const again = () => { setRetry((x) => x + 1); setBump((x) => x + 1); };
@@ -104,6 +107,8 @@ export function WindowPicker(p: BlockPickerProps) {
   const later = useLaterScores(base, lateAt >= 0 ? days[lateAt] : null, lateAt >= 0 ? days.length - lateAt : 0, online, retry + (p.reload || 0));
   const scores = useMemo(() => momentsByKey(dayScores(usable ? [...sugg.list, ...later] : later)), [sugg.list, later, usable]);
   const scoreOf = (d: string) => scores.get(`${d}|day`);
+  /* the warning and the question before booking only from the answer to the question of now (booking-b-26) */
+  const freshScores = useMemo(() => (fresh ? scores : momentsByKey(dayScores(later))), [fresh, scores, later]);
 
   /* ---------- the days as the calendar draws them ---------- */
   const moving = p.excludeJob ? jobRow(p.excludeJob) : undefined;
@@ -153,7 +158,12 @@ export function WindowPicker(p: BlockPickerProps) {
   const lastWin = useRef<BlockChoice | null>(null);
   if (picked) lastWin.current = picked;
   /* a phone lists one day's times: the day chosen, else the first day that has some (never another day's under the thumb) */
-  const shown = list ? listDay(models, modelOf(day) ? day : null) : day;
+  const held = useRef<{ page: string; day: string | null }>({ page: '', day: null });
+  const pageKey = `${days[0] || ''}|${per}`;
+  if (held.current.page !== pageKey) held.current = { page: pageKey, day: null };
+  const shown = list ? listDay(models, modelOf(day) ? day : null, held.current.day) : day;
+  // once a day's times are drawn on the phone, that day stays under the thumb until a tap (booking-b-04)
+  if (list && shown && modelOf(shown)?.open.length) held.current.day = shown;
   const sel = modelOf(shown);
   const here = !!p.value && p.value.day === shown && p.value.block === 'day';
   const flex = here && !!p.value!.win_flex;
@@ -174,8 +184,9 @@ export function WindowPicker(p: BlockPickerProps) {
   useEffect(() => { if (p.value) setLost(false); }, [p.value]);
 
   /* ---------- « garde-route » of the moment chosen ---------- */
-  const pickedScore = p.value ? scoreOf(p.value.day) : undefined;
-  const winScore = picked ? rowsByStart(winsOf(picked.day).rows, windowOf).get(picked.win_start!) : undefined;
+  const pickedScore = p.value ? freshScores.get(`${p.value.day}|day`) : undefined;
+  const pickedWins = picked ? winsOf(picked.day) : null;
+  const winScore = picked && pickedWins && pickedWins.status === 'ok' ? rowsByStart(pickedWins.rows, windowOf).get(picked.win_start!) : undefined;
   const far = windowFar(p.value, pickedScore, winScore, farLimits(settings.value.booking), l);
   const isCurrent = (s: DayRow) => !!moving && sameMoment(rowChoice(s), moving);
   const better = far && pickedScore ? betterThan(pickedScore, rows, moving, rowChoice) : [];
@@ -250,7 +261,7 @@ export function WindowPicker(p: BlockPickerProps) {
               onDayMenu={dayMenu}
               onUnit={(d, m, st) => { if (st === 'open') pick(unitChoice(d, m)); else if (st === 'no') void refused(d, m); }}
               askOf={(d, m) => (hasPos ? askOf(unitChoice(d, m), t('booking.win.grid.around', { time: clock(m, l) })) : null)}
-              range={range} {...nav} goto={goto} openAt={openingMinute(models, { today, now, span })} pageKey={`${days[0] || ''}|${per}`} hint={t('booking.win.grid.hint')} force={mayForce} />}
+              range={range} {...nav} goto={goto} openAt={openingMinute(models, { today, now, span })} pageKey={pageKey} hint={t('booking.win.grid.hint')} force={mayForce} />}
         {list && sel && sel.chosen != null && picked && (
           <p class="pl-says" data-testid="pick-says"><Check size={18} aria-hidden="true" />{labelOf(sel.chosen)}</p>
         )}

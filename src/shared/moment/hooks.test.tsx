@@ -63,14 +63,30 @@ describe('the windows of each day shown', () => {
     expect(seen?.rows.map((r) => r.win_start)).toEqual([840]);
     expect(api.suggestWindows).toHaveBeenCalledTimes(2);
   });
+  // review mp-8: the first entry of the day (the OLDEST answer) was shown while the day was asked a third time
+  it('asked a third time, the day shows its LAST answer meanwhile, not an older one', async () => {
+    api.suggestWindows.mockResolvedValueOnce([win(540), win(840)]).mockResolvedValueOnce([win(840)]).mockImplementationOnce(() => new Promise(() => {}));
+    const job = (id: string, eta: number) => ({ id, day: D, block: 'day', status: 'booked', truck_id: 'T1', duration_min: 60, eta_min: eta, win_start: eta - 60, win_end: eta + 180, number: 9 });
+    act(() => render(<Days bump={0} />, box));
+    await wait();
+    act(() => { upsertLocal('jobs', [job('J8', 600)], { force: true }); });
+    act(() => render(<Days bump={0} />, box));
+    await wait();
+    expect(seen?.rows.map((r) => r.win_start)).toEqual([840]);
+    act(() => { upsertLocal('jobs', [job('J9', 660)], { force: true }); });
+    act(() => render(<Days bump={0} />, box));
+    await wait();
+    expect(seen).toMatchObject({ status: 'loading' });
+    expect(seen?.rows.map((r) => r.win_start)).toEqual([840]);
+  });
 });
 
 let state: SuggState | null = null;
 let more: Suggestion[] = [];
 const base = { lat: 45.5, lng: -73.6, duration: 60, exclude: null, need: false, kind: null, truckId: null };
-function Sugg(p: { from: string; again?: number; online?: boolean; laterFrom?: string | null }) {
+function Sugg(p: { from: string; again?: number; online?: boolean; laterFrom?: string | null; laterOnline?: boolean }) {
   state = useSuggestions({ ...base, from: p.from, days: 14 }, p.online ?? true, p.again ?? 0);
-  more = useLaterScores(base, p.laterFrom ?? null, 14, true, 0);
+  more = useLaterScores(base, p.laterFrom ?? null, 14, p.laterOnline ?? true, 0);
   return null;
 }
 describe('the best moments', () => {
@@ -96,6 +112,21 @@ describe('the best moments', () => {
     act(() => render(<Sugg from="2026-12-01" laterFrom={null} />, box));
     await wait();
     expect(more.map((m) => m.day)).toEqual(['2026-12-16']);
+  });
+  // review mp-5: the kept scores stayed offline or after an error, so cells stayed marked far and the warning could show
+  it('offline, or when the server failed, the later scores say nothing (as the first two weeks)', async () => {
+    api.suggestBlocks.mockImplementation(async (_a: unknown, _b: unknown, _c: unknown, from: string) => (from === '2026-12-15' ? [{ ...win(540), day: '2026-12-16', far: 'hop' }] : []));
+    act(() => render(<Sugg from="2026-12-01" laterFrom="2026-12-15" />, box));
+    await wait();
+    expect(more.map((m) => m.day)).toEqual(['2026-12-16']);
+    act(() => render(<Sugg from="2026-12-01" laterFrom="2026-12-15" laterOnline={false} />, box));
+    expect(more).toEqual([]);
+    act(() => render(<Sugg from="2026-12-01" laterFrom={null} laterOnline={false} />, box));
+    expect(more).toEqual([]);
+    api.suggestBlocks.mockRejectedValue(new Error('boom'));
+    act(() => render(<Sugg from="2026-12-01" laterFrom="2026-12-29" />, box));
+    await wait();
+    expect(more).toEqual([]);
   });
 });
 

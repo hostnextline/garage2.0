@@ -183,7 +183,7 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .pk-dayhd.is-past, .pk-dayhd.is-closed { color: var(--ink-3); }
 .pk-dayhd.is-sel { background: var(--accent-soft); border-bottom-color: var(--accent); }
 /* « garde-route »: a day far from the vehicle's other stops (still pickable): a small road in the warning colour */
-.pk-dayhd.is-far .pk-dayhd-state { color: var(--warn); }
+.pk-dayhd.is-far.is-open .pk-dayhd-state { color: var(--warn); }
 .pk-spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink-3); border-right-color: transparent; animation: spin 700ms linear infinite; }
 .pk-scroll { overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; max-height: clamp(324px, calc(100dvh - 400px), 648px); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .pk-body { display: grid; grid-template-columns: var(--time) minmax(0, 1fr); }

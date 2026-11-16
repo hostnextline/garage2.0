@@ -52,10 +52,15 @@ export function useSuggestions(q: SuggQuery | null, online: boolean, again: numb
 }
 /** the list is usable: an answer is there or being replaced (not offline, not failed) */
 export const hasAnswer = (s: SuggState): boolean => s.status === 'ok' || s.status === 'loading';
+/** the list is THE answer to `q` (not the last one kept while a new question waits): only such a list may warn about a
+    far moment or tell the screen to ask before booking (booking-b-26: after an address change the old address's scores
+    warned, or kept quiet, about the new place until the answer landed) */
+export const answers = (s: SuggState, q: SuggQuery): boolean => s.status === 'ok' && s.key === keyOf(q);
 
 /** the garde-route scores of the days after the first two weeks (the best moments only look that far): asked for the
     days shown (`from`, `days`; null: none needed) and kept for the same question while the person pages back and forth,
-    so a far moment chosen on a later page is still warned about from another page */
+    so a far moment chosen on a later page is still warned about from another page. Offline, or when the server failed,
+    there are none (as for the first two weeks: old scores would mark cells and warn from an answer that may be stale) */
 export function useLaterScores(base: Omit<SuggQuery, 'from' | 'days'>, from: Day | null, days: number, online: boolean, again: number): Suggestion[] {
   const s = useSuggestions(from ? { ...base, from, days } : null, online, again);
   const bk = baseKey(base);
@@ -63,7 +68,8 @@ export function useLaterScores(base: Omit<SuggQuery, 'from' | 'days'>, from: Day
   if (kept.current.base !== bk) kept.current = { base: bk, byFrom: new Map() };
   // only an answer to the question of now (the state can still hold the previous page's for one drawing)
   if (from && s.status === 'ok' && s.key === keyOf({ ...base, from, days })) kept.current.byFrom.set(from, s.list);
-  return useMemo(() => [...kept.current.byFrom.values()].flat(), [bk, s.key, s.status]);
+  const none = !online || s.status === 'offline' || s.status === 'error';
+  return useMemo(() => (none ? [] : [...kept.current.byFrom.values()].flat()), [bk, s.key, s.status, none]);
 }
 
 /* ---------- the clock ---------- */

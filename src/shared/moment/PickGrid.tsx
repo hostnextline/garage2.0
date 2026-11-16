@@ -173,7 +173,8 @@ export function PickGrid(p: PickGridProps) {
             aria-label={p.dayLabel(d)} title={p.dayLabel(d)} onClick={() => p.onDay(d.day)} onContextMenu={(e) => p.onDayMenu?.(e, d.day, null)} data-testid={`pick-day-${d.day}`}>
             <span class="pk-dayhd-wd">{d.day === p.today ? t('common.today') : wd.format(parseDay(d.day))}</span>
             <span class="pk-dayhd-num">{parseDay(d.day).getDate()}</span>
-            <span class="pk-dayhd-state">{d.kind === 'open' ? ' ' : d.kind === 'loading' ? <span class="pk-spin" aria-hidden="true" /> : t(`booking.win.grid.state.${d.kind}`)}</span>
+            {/* « garde-route »: a far day that can still be chosen shows the road mark of the legend (as the phone's chip) */}
+            <span class="pk-dayhd-state">{d.kind === 'open' ? (d.far ? <Route size={11} aria-hidden="true" data-testid={`pick-day-far-${d.day}`} /> : ' ') : d.kind === 'loading' ? <span class="pk-spin" aria-hidden="true" /> : t(`booking.win.grid.state.${d.kind}`)}</span>
           </button>
         ))}
       </div>

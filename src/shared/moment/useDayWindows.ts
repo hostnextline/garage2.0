@@ -29,6 +29,10 @@ export function useDayWindows(days: string[], q: WinQuery, online: boolean, bump
   const keys = days.map(keyOf);
   const list = keys.join(',');
   const lastBump = useRef(bump);
+  /* the day's question (place, work, vehicle, job left out: the key without its stamp) → the key of its LAST answer, so a
+     day asked again shows that answer dimmed meanwhile (not an older one) */
+  const last = useRef(new Map<string, string>());
+  const note = (k: string) => { last.current.set(headOf(k), k); };
   useEffect(() => {
     if (lastBump.current !== bump) { lastBump.current = bump; forgetWindows(); }
     if (!days.length) return;
@@ -38,13 +42,20 @@ export function useDayWindows(days: string[], q: WinQuery, online: boolean, bump
     // what is already known is shown at once; the rest waits (the last answer of that day stays on screen meanwhile).
     // An entry that does not change keeps its identity: the days drawn from it are not drawn again.
     setGot((g) => {
-      const next = { ...g };
+      /* nothing piles up: only the answers of the days shown and the LAST answer of each day of the same question (shown
+         dimmed while that day is asked again, or when the person pages back) are kept; another address, duration or
+         vehicle, and the older stamps of a day, are dropped */
+      const question = askOf(keys[0]);
+      for (const h of [...last.current.keys()]) if (askOf(h) !== question) last.current.delete(h);
+      const keep = new Set([...keys, ...last.current.values()]);
+      const next: Record<string, DayWins> = {};
+      for (const k in g) if (keep.has(k)) next[k] = g[k];
       days.forEach((_d, i) => {
         const k = keys[i];
         const rows = fresh(k);
         const was = g[k];
-        if (rows) { if (!was || was.status !== 'ok' || was.rows !== rows) next[k] = { status: 'ok', rows }; }
-        else if (!was || was.status !== 'loading') next[k] = { status: 'loading', rows: was?.rows || prevRows(g, k) };
+        if (rows) { note(k); if (!was || was.status !== 'ok' || was.rows !== rows) next[k] = { status: 'ok', rows }; }
+        else if (!was || was.status !== 'loading') next[k] = { status: 'loading', rows: was?.rows || prevRows(g, last.current.get(headOf(k)), k) };
       });
       return next;
     });
@@ -56,7 +67,7 @@ export function useDayWindows(days: string[], q: WinQuery, online: boolean, bump
         const k = keys[i];
         suggestWindows(q.lat, q.lng, q.duration, d, q.exclude, q.need, q.need ? null : q.kind).then((rows) => {
           if (gen === generation) kept.set(k, { at: Date.now(), rows });
-          if (alive) setGot((g) => ({ ...g, [k]: { status: 'ok', rows } }));
+          if (alive) { note(k); setGot((g) => ({ ...g, [k]: { status: 'ok', rows } })); }
         }, (e: unknown) => {
           if (alive) setGot((g) => ({ ...g, [k]: { status: isNetworkError(e) ? 'offline' : 'error', rows: [] } }));
         });
@@ -67,9 +78,12 @@ export function useDayWindows(days: string[], q: WinQuery, online: boolean, bump
   return (day) => got[keyOf(day)] || LOADING;
 }
 
-/** a day asked again because its appointments changed: its last answer stays on screen (dimmed) meanwhile */
-function prevRows(g: Record<string, DayWins>, key: string): DayWins['rows'] {
-  const head = key.slice(0, key.lastIndexOf('#') + 1);
-  for (const k in g) if (k !== key && k.startsWith(head) && g[k].rows.length) return g[k].rows;
-  return [];
+/** the key without what the phone holds of the day (its stamp) */
+const headOf = (key: string) => key.slice(0, key.lastIndexOf('#') + 1);
+/** the key without its day nor its stamp: the question itself (cacheKey starts with the day) */
+const askOf = (key: string) => { const h = headOf(key); return h.slice(h.indexOf('|') + 1); };
+/** a day asked again because its appointments changed: its LAST answer (`lastKey`) stays on screen (dimmed) meanwhile.
+    Before, the first entry of that day in the order they were made was taken: an older answer. */
+function prevRows(g: Record<string, DayWins>, lastKey: string | undefined, key: string): DayWins['rows'] {
+  return lastKey && lastKey !== key ? g[lastKey]?.rows ?? [] : [];
 }

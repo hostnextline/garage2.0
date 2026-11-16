@@ -70,6 +70,46 @@ describe('« garde-route » with « Plages d’arrivée » (booking-b-01, x-dual
     expect(q(`pick-day-${later}`)?.className).not.toContain('is-far');
     expect(q('pick-legend-far')).toBeTruthy();
   });
+  // review mp-1: the class alone drew nothing (the state of an open day is an empty space): the legend's road mark is drawn
+  it('the far day of the time grid shows the road mark of the legend in its header', async () => {
+    draw();
+    await wait();
+    const mark = q(`pick-day-far-${tomorrow}`);
+    expect(mark?.tagName.toLowerCase()).toBe('svg');
+    expect(q(`pick-day-${tomorrow}`)!.querySelector('.pk-dayhd-state')!.contains(mark)).toBe(true);
+    expect(q(`pick-day-far-${later}`)).toBeNull();
+  });
+  // review mp-2: while the answer for a new address is awaited, the old address's scores neither warn nor tell the screen
+  it('a new address: the warning waits for its own answer (never the old address’s)', async () => {
+    draw();
+    await wait();
+    await act(async () => { unit(900).click(); });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, kind: 'hop' });
+    let land: (rows: unknown[]) => void = () => {};
+    api.suggestBlocks.mockImplementation(() => new Promise((ok) => { land = ok; }));
+    draw({ lat: 45.6 });
+    await wait();
+    expect(fars.at(-1)).toBeNull();
+    expect(q('bp-far-warn')).toBeNull();
+    // the new address is near that day's other stops
+    await act(async () => { land([{ ...win(tomorrow, 840), far: null, add_min: 8 }]); });
+    expect(fars.at(-1)).toBeNull();
+    expect(q('bp-far-warn')).toBeNull();
+    await act(async () => { land([]); });
+  });
+  it('the same address asked again for another length of work: the warning comes back with its answer', async () => {
+    draw();
+    await wait();
+    await act(async () => { unit(900).click(); });
+    let land: (rows: unknown[]) => void = () => {};
+    api.suggestBlocks.mockImplementation(() => new Promise((ok) => { land = ok; }));
+    draw({ duration: 90 });
+    await wait();
+    expect(fars.at(-1)).toBeNull();
+    await act(async () => { land([{ ...win(tomorrow, 840), far: 'hop', hop_min: 55, add_min: 40 }]); });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, kind: 'hop' });
+    expect(q('bp-far-warn')?.textContent).toContain('55 min');
+  });
   it('a time chosen on a far day: warned with « Plutôt … », and the screen is told (it asks before booking)', async () => {
     draw();
     await wait();
@@ -209,6 +249,29 @@ describe('blocks (the switch off)', () => {
     await act(async () => { q('bp-earlier')!.click(); });
     await wait();
     expect(q('bp-far-warn')).toBeTruthy();
+  });
+  // review mp-7: the map's day strip got only the first two weeks' scores, so the same day was far in the calendar only
+  it('a later page: the map’s day strip marks the far day too', async () => {
+    const d20 = addDays(today(), 20);
+    api.suggestBlocks.mockImplementation(async (_a: unknown, _b: unknown, _c: unknown, from: string) => (from === today() ? [] : [{ day: d20, block: 'pm', drive_min: 50, near: 0, truck: null, left: 200, far: 'hop', hop_min: 60 }]));
+    draw();
+    await wait();
+    await act(async () => { q('bp-later')!.click(); });
+    await wait();
+    expect(q(`bp-cell-${d20}-pm`)?.className).toContain('is-far');
+    expect(q(`mm-day-${d20}`)?.className).toContain('is-far');
+  });
+  it('a block chosen, then another address: no warning from the old address’s scores (booking-b-26)', async () => {
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 50, near: 0, truck: null, left: 200, far: 'hop', hop_min: 60 }]);
+    draw();
+    await wait();
+    await act(async () => { q(`bp-cell-${tomorrow}-pm`)!.click(); });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, block: 'pm' });
+    api.suggestBlocks.mockImplementation(() => new Promise(() => {}));
+    draw({ lat: 45.6 });
+    await wait();
+    expect(fars.at(-1)).toBeNull();
+    expect(q('bp-far-warn')).toBeNull();
   });
   it('a suggestion being replaced does not take a tap (booking-b-26)', async () => {
     api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }]);

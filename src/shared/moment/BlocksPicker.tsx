@@ -16,7 +16,7 @@ import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';
 import { dayOf } from './deviceDay';
-import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer } from './hooks';
+import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer, answers } from './hooks';
 import { askedKind, bothKinds, kindOf } from './vehicles';
 import { anyFar, betterThan } from './moments';
 import { blockCell, keyOf } from './blockCells';
@@ -43,8 +43,11 @@ export function BlocksPicker(p: BlockPickerProps) {
   const [retry, setRetry] = useState(0);
   const again = retry + (p.reload || 0);
   const base = { lat: p.lat, lng: p.lng, duration: dur, exclude: p.excludeJob ?? null, need: !!p.need, kind: askedKind(p, trucks), truckId: p.truckId };
-  const sugg = useSuggestions({ ...base, from: today, days: PAGE }, online, again);
+  const q = { ...base, from: today, days: PAGE };
+  const sugg = useSuggestions(q, online, again);
   const usable = hasAnswer(sugg);
+  // the list answers the question of now (not the last one, kept dimmed while a new answer is awaited)
+  const fresh = answers(sugg, q);
   // every moment of the page is kept (the calendar marks the far ones); only the good ones are offered
   const shown = useMemo(() => offered(sugg.list, 6), [sugg.list]);
   const stale = sugg.status === 'loading';
@@ -71,8 +74,12 @@ export function BlocksPicker(p: BlockPickerProps) {
 
   /* ---------- « garde-route »: the server's scores, for the first two weeks and for any later page shown ---------- */
   const later = useLaterScores(base, page > 0 ? start : null, PAGE, online, again);
-  const moments = useMemo(() => momentsByKey(usable ? [...sugg.list, ...later] : later), [sugg.list, later, usable]);
-  const pickedMoment = p.value ? moments.get(keyOf(p.value.day, p.value.block)) : undefined;
+  const scored = useMemo(() => (usable ? [...sugg.list, ...later] : later), [sugg.list, later, usable]);
+  const moments = useMemo(() => momentsByKey(scored), [scored]);
+  /* the warning and the question before booking only from the answer to the question of now: while a new one is awaited
+     (another address, another duration) the old scores may speak of another place, so nothing is said until it lands */
+  const freshMoments = useMemo(() => (fresh ? moments : momentsByKey(later)), [fresh, moments, later]);
+  const pickedMoment = p.value ? freshMoments.get(keyOf(p.value.day, p.value.block)) : undefined;
   const far = farInfo(pickedMoment, farLimits(settings.value.booking), l);
   const better = far && pickedMoment ? betterThan(pickedMoment, sugg.list, moving, (m) => ({ day: m.day, block: m.block })) : [];
   useEffect(() => { p.onFar?.(far); }, [far?.day, far?.block, far?.text]);
@@ -121,7 +128,7 @@ export function BlocksPicker(p: BlockPickerProps) {
 
       {/* the map first: the days, the appointments around, the day's routes with the new stop (needs a position) */}
       {hasPos && (
-        <MomentMap lat={p.lat!} lng={p.lng!} address={p.address || ''} cells={rows} list={usable ? sugg.list : []}
+        <MomentMap lat={p.lat!} lng={p.lng!} address={p.address || ''} cells={rows} list={scored}
           value={p.value} onPick={pick} excludeJob={p.excludeJob} truckId={p.truckId} pop={canHover} hoverProps={hoverProps} />
       )}
 
