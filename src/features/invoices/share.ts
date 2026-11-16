@@ -1,5 +1,5 @@
 /* Getting a text or a file out of the app: copy, the phone's « Partager », or a download on a computer. */
-import { touch } from '../../app/media';
+import { touch } from '../../platform/media';
 
 /** copies text; works without the Clipboard API too (an older phone, a page not in https) */
 export async function copyText(text: string): Promise<boolean> {

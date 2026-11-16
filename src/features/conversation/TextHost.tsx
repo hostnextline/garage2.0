@@ -13,7 +13,7 @@ import { formatPhone } from '../../lib/text';
 import { sb, isOwner, preview, access } from '../../data/auth';
 import { customersList, customerName } from '../../data/select';
 import { conversation, conversationPhone, sendChat, sendChatPhone, errorMessage, type ChatMessage } from '../../data/api';
-import { wide } from '../../app/media';
+import { wide } from '../../platform/media';
 import { REALTIME } from '../../lib/config';
 import { Avatar, IconButton, toast } from '../../ui';
 import { phoneOwners } from '../customers/dupes';

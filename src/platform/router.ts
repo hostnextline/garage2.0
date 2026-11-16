@@ -2,7 +2,7 @@
    Links are plain <a href="#/…">; code calls navigate('/…'). Retour goes back in the app's own history when there
    is some, else to the screen given as fallback. */
 import { signal } from '@preact/signals';
-import { whenHistorySettled } from '../ui/Sheet';
+import { whenHistorySettled } from './history';
 
 export interface Route { path: string; parts: string[]; query: URLSearchParams }
 
@@ -82,3 +82,5 @@ export function matchPath(pattern: string, path: string): Record<string, string>
   if (b.length > a.length) return null;
   return params;
 }
+
+export interface ScreenProps { params: Record<string, string>; query: URLSearchParams }

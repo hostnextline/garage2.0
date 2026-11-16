@@ -10,7 +10,7 @@ import { me, myTrucks } from '../../data/auth';
 import { openShift, positionOf, settings, truck as truckRow, activeReturnTrip } from '../../data/select';
 import { shiftStart, shiftEnd, errorMessage } from '../../data/api';
 import { isNetworkError } from '../../data/sync';
-import { may } from '../../app/routes';
+import { may } from '../../domain/rights';
 import type { Job } from '../../data/types';
 import { JobTicket } from '../jobs/JobTicket';
 import { CarFirst } from '../jobs/CarFirst';

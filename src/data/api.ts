@@ -1,6 +1,6 @@
 /* Every change the app makes goes through here: on screen at once, sent when possible (see sync.ts), refused with a
    clear message when the server says no. In « Voir l'app comme… » nothing can be changed. */
-import { insertRow, updateRow, deleteRow, callRpc, uuid, isNetworkError, forgetLocal, sentHooks } from './sync';
+import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks } from './sync';
 import { getRow, rowsOf } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
@@ -8,28 +8,9 @@ import { t, lang } from '../lib/i18n';
 import type { Customer, CustomerNote, Vehicle, EngineSpec, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
 import type { BlockKey, Range } from '../lib/dates';
 import { appBase } from '../lib/config';
+import { Refused } from '../lib/errors';
+export { Refused, errorMessage } from '../lib/errors';
 
-export class Refused extends Error {
-  constructor(public code: string, message: string) { super(message); }
-}
-/** the message to show a person for an error (the server's own words, translated when we know the case) */
-export function errorMessage(e: unknown): string {
-  if (!e) return t('common.genericError', { msg: '' });
-  if (typeof e === 'string') return e;
-  const err = e as { hint?: string; code?: string; message?: string; error?: string };
-  if (isNetworkError(err)) return t('common.networkError');
-  // our own refusals carry a short code (database: hint; server functions: code) and a French sentence
-  const own = String(err.hint || (/^[a-z_]+$/.test(String(err.code || '')) ? err.code : '') || '');
-  const said = String(err.error || err.message || '');
-  if (own) {
-    if (lang.value === 'fr' && said) return said;
-    const k = `errors.${own}`; const tr = t(k);
-    if (tr !== k) return tr;
-    return said || t('common.genericError', { msg: own });
-  }
-  if (err.code === '42501' || /row-level security|permission denied/i.test(said)) return lang.value === 'fr' && /[éèàù’]/.test(said) ? said : t('common.notAllowed');
-  return t('common.genericError', { msg: said });
-}
 function guard() { if (preview.value) throw new Refused('preview', t('errors.preview')); }
 const now = () => new Date().toISOString();
 const SKIP = new Set(['phone_digits', 'created_at', 'updated_at', 'created_by', 'number', 'no_shows']);

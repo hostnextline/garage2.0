@@ -5,7 +5,7 @@
    - An owner (or the office) who is also a mechanic: « Vue propriétaire » / « Vue mécano » on top, kept on the phone.
    The guide's « Par où commencer » card sits on top when there is something to set up. */
 import { useEffect } from 'preact/hooks';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { Page, Tabs } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { today, longDay } from '../../lib/dates';

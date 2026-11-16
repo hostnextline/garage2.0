@@ -11,7 +11,7 @@ import { money } from '../../lib/money';
 import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals, blockLoad, staffName, windowsOn } from '../../data/select';
 import { freeWords } from '../agenda/layout';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
-import { may } from '../../app/routes';
+import { may } from '../../domain/rights';
 import { ConversationSheet } from '../conversation/ConversationSheet';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { locateMissing } from '../../app/locator';

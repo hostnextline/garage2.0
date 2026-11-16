@@ -2,7 +2,7 @@
    the right screen; the calm guided tour; installing the app; short answers to common questions. */
 import { useEffect, useState } from 'preact/hooks';
 import { Check, CirclePlay } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { t } from '../../lib/i18n';
 import { shortDate, dayOf } from '../../lib/dates';
 import { lang } from '../../lib/i18n';

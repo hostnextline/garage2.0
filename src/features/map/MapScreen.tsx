@@ -5,10 +5,9 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { RefreshCw, Navigation, ChevronUp, ChevronDown, Check, Truck, X, LocateFixed, CalendarPlus, Settings2, MapPinOff } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { may } from '../../app/routes';
-import { setQuery, href } from '../../app/router';
-import { wide } from '../../app/media';
+import { may } from '../../domain/rights';
+import { setQuery, href, type ScreenProps } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, longDay, clock, isValidDay, nowMinute } from '../../lib/dates';
 import { rpcNow, errorMessage } from '../../data/api';

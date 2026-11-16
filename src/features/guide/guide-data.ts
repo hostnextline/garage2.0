@@ -7,7 +7,7 @@ import { rowsOf } from '../../data/store';
 import { settings, trucks, staffList, allJobs, expensesList, jobsOn } from '../../data/select';
 import { net } from '../../data/sync';
 import { team } from '../../data/api';
-import { route } from '../../app/router';
+import { route } from '../../platform/router';
 import { today } from '../../lib/dates';
 import type { Service, TruckWeek, Shift } from '../../data/types';
 import { rolesOf, type GuideInput, type Role } from './checklist';

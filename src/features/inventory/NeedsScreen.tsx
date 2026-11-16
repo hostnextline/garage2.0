@@ -5,8 +5,7 @@
 import { useState } from 'preact/hooks';
 import { ChevronLeft, ChevronRight, ChevronDown, Copy, PackagePlus, Droplet, Filter, Disc3, Package, TriangleAlert, PackageCheck } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
-import type { ScreenProps } from '../../app/routes';
-import { setQuery } from '../../app/router';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, weekStart, isValidDay, type Day } from '../../lib/dates';
 import { job as jobById, customer, customerName } from '../../data/select';

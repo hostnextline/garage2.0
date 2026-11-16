@@ -11,7 +11,7 @@ import { staff as staffOf, settings, trucks } from '../../data/select';
 import { memberUpdate, errorMessage } from '../../data/api';
 import { access, startPreview } from '../../data/auth';
 import { refetch } from '../../data/sync';
-import { navigate } from '../../app/router';
+import { navigate } from '../../platform/router';
 import { Sheet, Panel, Button, Field, Input, PhoneInput, Chips, Seg, Switch, Banner, Avatar, Pill, ask, run, toast } from '../../ui';
 import { ALL_ROLES, fromRoles, choiceOf, withChoice, activeOverrides, type Choice, type Overrides, type RoleRights } from './rights';
 import { teamDo, rolesWords, type LinkAnswer, type LinkResult, type SendHow, type TeamList } from './teamApi';

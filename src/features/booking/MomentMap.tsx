@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Check, Route, Car, Truck, ListOrdered } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { tinyDay, longDay, duration, clockRange, type BlockKey } from '../../lib/dates';
-import { wide } from '../../app/media';
+import { wide } from '../../platform/media';
 import { jobsBetween, customer, settings, activeTrucks, truckColor, staffName } from '../../data/select';
 import { Pill } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';

@@ -3,8 +3,7 @@
    the screen to open, the other sheets of the same topic. The articles are in articles.ts. */
 import { useEffect, useState } from 'preact/hooks';
 import { Lightbulb, Info as InfoIcon, ArrowRight } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { navigate } from '../../app/router';
+import { navigate, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { Page, Panel, Rows, RowItem, SearchInput, Chips, Button, Empty } from '../../ui';
 import { ARTICLES, INFO_TOPICS, type InfoArticle, type InfoTopic } from './articles';

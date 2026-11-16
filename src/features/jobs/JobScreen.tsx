@@ -5,9 +5,8 @@
    ready for that step. */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Ellipsis, Pencil } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { may } from '../../app/routes';
-import { setQuery } from '../../app/router';
+import { may } from '../../domain/rights';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import type { Job, JobItem } from '../../data/types';
 import { job as jobById, invoiceOf, itemsOf } from '../../data/select';
 import { getRow } from '../../data/store';

@@ -3,7 +3,7 @@
 import { UpdatePanel } from '../../app/UpdatePanel';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { LogOut, Smartphone, Trash2, ImageUp, RotateCcw } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { t, lang, setLang, type Lang } from '../../lib/i18n';
 import { access, me, preview, signOut, refreshAccess, isOwner } from '../../data/auth';
 import { updateMe, memberUpdate, errorMessage } from '../../data/api';

@@ -8,7 +8,7 @@ import { t, lang } from '../../lib/i18n';
 import { longDay, parseDay, today as todayOf, type Day, type Range } from '../../lib/dates';
 import { blocks, daySpan, windowsOn, truckColor, truckLabel, truckRanges, truck as truckRow, staffName, activeTrucks } from '../../data/select';
 import type { Job } from '../../data/types';
-import { may } from '../../app/routes';
+import { may } from '../../domain/rights';
 import { dropRefusal, freeWords, weekTitle } from './layout';
 import { dayJobs, isOff, laneShown, type DayPlan } from './select';
 import { Meter } from './DayView';

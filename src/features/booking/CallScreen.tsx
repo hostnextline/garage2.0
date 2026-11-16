@@ -4,7 +4,7 @@
    that order, the number already typed, the name asked last (#/book?call=1&start=…&phone=…). */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { MapPin, Car, Wrench, CalendarPlus, UserRound, CalendarClock } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { today, shortDate } from '../../lib/dates';
 import { phoneDigits, formatPhone } from '../../lib/text';

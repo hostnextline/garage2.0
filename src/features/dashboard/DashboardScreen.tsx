@@ -3,8 +3,7 @@
    revenue per truck, six months side by side, the services done most. The server computes them (dashboard). */
 import { useEffect, useState } from 'preact/hooks';
 import { ChevronLeft, ChevronRight, Target, CloudOff } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { setQuery } from '../../app/router';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { today, stamp, parseDay } from '../../lib/dates';

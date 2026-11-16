@@ -4,8 +4,7 @@
    the accountant (Excel with the sheets Revenus, Dépenses, Taxes; CSV). */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Plus, Paperclip, FileSpreadsheet, FileText, Share2 } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { setQuery } from '../../app/router';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { today, stamp, parseDay } from '../../lib/dates';

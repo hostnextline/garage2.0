@@ -5,9 +5,9 @@
    Touch a stop on the map: its appointment is picked out in the list; touch an appointment: its job opens. */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { CalendarPlus, Map as MapIcon } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { may } from '../../app/routes';
-import { wide } from '../../app/media';
+import type { ScreenProps } from '../../platform/router';
+import { may } from '../../domain/rights';
+import { wide } from '../../platform/media';
 import { t, lang } from '../../lib/i18n';
 import { today, longDay, clock } from '../../lib/dates';
 import { rpcNow } from '../../data/api';

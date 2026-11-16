@@ -4,9 +4,8 @@
    week / a month / 3 months, or stop calling for this car). The rule is due.ts; the note lives on the car. */
 import { useState } from 'preact/hooks';
 import { Phone, MessageSquareText, CalendarPlus, UserRound, Droplet, BellOff, RotateCcw, CalendarClock } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { may } from '../../app/routes';
-import { setQuery } from '../../app/router';
+import { may } from '../../domain/rights';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import { t } from '../../lib/i18n';
 import { addDays, addMonths, today, type Day } from '../../lib/dates';
 import { e164 } from '../../lib/text';

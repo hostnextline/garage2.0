@@ -4,8 +4,8 @@ import { UserRound, MessageSquareText, Phone, Navigation, Car, FileText, Calenda
 import type { Customer } from '../../data/types';
 import { t } from '../../lib/i18n';
 import { e164 } from '../../lib/text';
-import { may, isField } from '../../app/routes';
-import { navigate } from '../../app/router';
+import { may, isField } from '../../domain/rights';
+import { navigate } from '../../platform/router';
 import type { MenuAction } from '../agenda/ContextMenu';
 import { directionsUrl } from './address';
 

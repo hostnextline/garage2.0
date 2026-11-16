@@ -4,10 +4,9 @@
    A mechanic only receives his own customers (the database decides). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { UserPlus, Phone, Car, Users, SearchX } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { may } from '../../app/routes';
-import { navigate, setQuery, route } from '../../app/router';
-import { touch } from '../../app/media';
+import { may } from '../../domain/rights';
+import { navigate, setQuery, route, type ScreenProps } from '../../platform/router';
+import { touch } from '../../platform/media';
 import { t } from '../../lib/i18n';
 import { customersList, customerName } from '../../data/select';
 import { can } from '../../data/auth';

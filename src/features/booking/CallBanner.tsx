@@ -8,7 +8,7 @@ import { t } from '../../lib/i18n';
 import { formatPhone } from '../../lib/text';
 import { sb, access, isOwner, preview } from '../../data/auth';
 import { customersList, customerName } from '../../data/select';
-import { navigate } from '../../app/router';
+import { navigate } from '../../platform/router';
 import { REALTIME } from '../../lib/config';
 import { Button, IconButton } from '../../ui';
 import { phoneOwners } from '../customers/dupes';

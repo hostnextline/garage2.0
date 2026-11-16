@@ -1,6 +1,7 @@
 /* The menu: what each person sees depends on their rights (the server checks every action again). */
 import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen, PhoneIncoming, Droplet } from 'lucide-preact';
-import { may, type NavKey } from './routes';
+import type { NavKey } from './routes';
+import { may } from '../domain/rights';
 import { t } from '../lib/i18n';
 
 export interface NavItem { key: NavKey; href: string; icon: LucideIcon; show: () => boolean; group: 'day' | 'office' | 'garage' }

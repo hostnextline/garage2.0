@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Info, AlertTriangle, CircleCheck, OctagonAle
 import { t, lang } from '../lib/i18n';
 import { money } from '../lib/money';
 import { initials } from '../lib/text';
-import { goBack } from '../app/router';
+import { goBack } from '../platform/router';
 import type { JobStatus } from '../data/types';
 import { Help } from './Help';
 import { IconButton } from './Button';

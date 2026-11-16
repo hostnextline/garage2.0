@@ -4,9 +4,9 @@
    Finished tours are remembered per person (guide-data.ts). */
 import { signal } from '@preact/signals';
 import { h, render } from 'preact';
-import { navigate, route } from '../../app/router';
-import { may } from '../../app/routes';
-import { wide } from '../../app/media';
+import { navigate, route } from '../../platform/router';
+import { may } from '../../domain/rights';
+import { wide } from '../../platform/media';
 import { t } from '../../lib/i18n';
 import { toast } from '../../ui';
 import { tourFor, resolveStep, locate, findAnchor, type TourStep, type TourEnv, type TourCtx } from './tour-steps';

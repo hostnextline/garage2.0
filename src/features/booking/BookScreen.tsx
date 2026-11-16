@@ -9,9 +9,8 @@
    « flexible »; ?day=…&block=day opens that day in the picker (&win=840 or &flex=1: already chosen). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CalendarCheck, Wrench, RotateCcw, Search, UserPlus, Plus, Trash2 } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { navigate } from '../../app/router';
-import { wide } from '../../app/media';
+import { navigate, type ScreenProps } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { t, lang } from '../../lib/i18n';
 import { duration, today as todayOf } from '../../lib/dates';
 import { money } from '../../lib/money';

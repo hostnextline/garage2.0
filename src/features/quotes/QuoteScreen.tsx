@@ -3,10 +3,9 @@
    PDF or « Partager » in the customer's language, « Réserver » turns it into a job, « Accepté » / « Refusé ». */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Share2, FileDown, CalendarPlus, Check as CheckIcon, X, Undo2, Trash2, UserRound, Wrench } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { isField, may } from '../../app/routes';
-import { navigate, goBack } from '../../app/router';
-import { touch } from '../../app/media';
+import { isField, may } from '../../domain/rights';
+import { navigate, goBack, type ScreenProps } from '../../platform/router';
+import { touch } from '../../platform/media';
 import type { Quote, Lang } from '../../data/types';
 import { getRow } from '../../data/store';
 import { settings, customer, customerName, vehicle, job as jobRow } from '../../data/select';

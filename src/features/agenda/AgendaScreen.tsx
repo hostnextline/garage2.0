@@ -3,13 +3,12 @@
    A mechanic without the « agenda » right sees « Mon horaire »: his truck's jobs only. */
 import { useEffect, useState } from 'preact/hooks';
 import { ChevronLeft, ChevronRight, ClipboardCopy } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { navigate, href } from '../../app/router';
-import { wide } from '../../app/media';
+import { navigate, href, type ScreenProps } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { t, lang } from '../../lib/i18n';
 import { isValidDay, today as todayOf, type Day } from '../../lib/dates';
 import { allJobs, windowsOn, job as jobRow } from '../../data/select';
-import { may } from '../../app/routes';
+import { may } from '../../domain/rights';
 import { net } from '../../data/sync';
 import { Page, Banner, Button, IconButton, Seg, Skeleton, Panel } from '../../ui';
 import { DayView, DatePick } from './DayView';

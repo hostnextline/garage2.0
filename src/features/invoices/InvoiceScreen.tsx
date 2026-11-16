@@ -4,7 +4,7 @@
    « Annuler la facture ». A draft opens the editor of the job sheet. */
 import { useRef, useState } from 'preact/hooks';
 import { Send, BellRing, FileDown, Banknote, Wrench, Ban } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import type { Invoice, Payment } from '../../data/types';
 import { job as jobRow, vehicle, settings, invoiceNumber } from '../../data/select';
 import { removePayment, voidInvoice } from '../../data/api';

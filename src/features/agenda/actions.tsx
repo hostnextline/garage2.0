@@ -6,9 +6,9 @@ import { Copy, ClipboardPaste, ExternalLink, CalendarPlus, CalendarClock, Receip
 import type { Job } from '../../data/types';
 import { clock, type BlockKey, type Day } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { may } from '../../app/routes';
-import { navigate, href } from '../../app/router';
-import { wide } from '../../app/media';
+import { may } from '../../domain/rights';
+import { navigate, href } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { customer as customerRow, invoiceOf, windowsOn, windowOf } from '../../data/select';
 import { toast } from '../../ui';
 import { blockPhrase } from '../booking/when';

@@ -2,7 +2,7 @@
    run(fn) / attempt(fn): do an action, show its result or the server's refusal in a toast. */
 import { signal } from '@preact/signals';
 import { t } from '../lib/i18n';
-import { errorMessage } from '../data/api';
+import { errorMessage } from '../lib/errors';
 
 export interface Toast { id: number; text: string; kind: 'info' | 'ok' | 'bad'; action?: { label: string; run: () => unknown }; ms: number }
 export const toasts = signal<Toast[]>([]);

@@ -9,7 +9,7 @@ import { Sheet, Rows, RowItem, Button, Banner, attempt } from '../../ui';
 import { t } from '../../lib/i18n';
 import { vehicle, vehicleLabel, truckLabel, invoiceOf, itemsOf, customer as customerRow, vehiclesOf } from '../../data/select';
 import { updateJob, changeJobCustomer } from '../../data/api';
-import { may } from '../../app/routes';
+import { may } from '../../domain/rights';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { VehiclePicker } from '../customers/VehiclePicker';
 import { AddressField, EMPTY_PLACE, type PlaceValue } from '../customers/AddressField';

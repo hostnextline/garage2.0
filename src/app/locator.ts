@@ -12,7 +12,7 @@ import { net } from '../data/sync';
 import { today } from '../lib/dates';
 import { locate } from '../features/customers/locate';
 import type { Customer, Job } from '../data/types';
-import { may } from './routes';
+import { may } from '../domain/rights';
 
 export interface Task {
   /** the address folded: one lookup for the same address written on a customer and its appointments */

@@ -6,7 +6,7 @@ import { t } from '../../lib/i18n';
 import { RIGHTS, type Right } from '../../data/types';
 import { settings } from '../../data/select';
 import { setRoleRight } from '../../data/api';
-import { wide } from '../../app/media';
+import { wide } from '../../platform/media';
 import { Panel, Tabs, run } from '../../ui';
 import { TEAM_ROLES, ruleOf, roleGives, type TeamRole, type RoleRights } from './rights';
 

@@ -9,7 +9,7 @@ import { stamp } from '../../lib/dates';
 import { getRow } from '../../data/store';
 import { inventoryList, movesOf, staffName, job } from '../../data/select';
 import type { InventoryItem, InventoryMove } from '../../data/types';
-import { wide } from '../../app/media';
+import { wide } from '../../platform/media';
 import { Sheet, Tabs, Form, Field, Input, Textarea, MoneyInput, Switch, Button, Pill, Help, Empty, Seg, toast, attempt, ask } from '../../ui';
 import { deleteInventoryItem, type PaidFrom } from '../../data/api';
 import { parseQty, formatQty, qtyLabel, unitWord, itemValue, isLow, moveDelta, round2, recordMove, recordPurchase, saveItem, REASON, type MoveKind } from './stock';

@@ -2,9 +2,8 @@
    « Nouvelle estimation ». */
 import { useState } from 'preact/hooks';
 import { FilePlus2, ClipboardList } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { isField } from '../../app/routes';
-import { setQuery } from '../../app/router';
+import { isField } from '../../domain/rights';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import type { Quote } from '../../data/types';
 import { quotesList, settings, customer, customerName, vehicle, vehicleLabel } from '../../data/select';
 import { net } from '../../data/sync';

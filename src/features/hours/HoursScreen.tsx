@@ -4,9 +4,8 @@
    habituel ». The owner (or the « settings » right) also manages the trucks here. */
 import { useEffect, useState } from 'preact/hooks';
 import { RotateCcw, Truck as TruckIcon } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { navigate } from '../../app/router';
-import { wide } from '../../app/media';
+import { navigate, type ScreenProps } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { t, lang } from '../../lib/i18n';
 import { addDays, dow, longDay, parseDay, duration, today as todayOf, isValidDay, type Day } from '../../lib/dates';
 import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs, blockOfKey, windowsOn } from '../../data/select';

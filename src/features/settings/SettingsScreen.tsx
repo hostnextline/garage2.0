@@ -3,9 +3,9 @@
    they are saved or undone. Apparence and Branchements are the owner's. */
 import type { ComponentType } from 'preact';
 import { type LucideIcon, Building2, Receipt, Wrench, CalendarClock, MessageSquareText, FileSignature, Palette, PlugZap, Tags, ChevronRight, RefreshCw } from 'lucide-preact';
-import { may, type ScreenProps } from '../../app/routes';
-import { navigate } from '../../app/router';
-import { wide } from '../../app/media';
+import { may } from '../../domain/rights';
+import { navigate, type ScreenProps } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { t } from '../../lib/i18n';
 import { isOwner } from '../../data/auth';
 import { Page, Panel } from '../../ui';

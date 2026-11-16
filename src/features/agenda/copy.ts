@@ -3,7 +3,7 @@
    work, problem and notes, in that block, and the person confirms with « Réserver » (the usual rules, nothing booked
    behind their back). The copy stays on this phone for the visit (sessionStorage). */
 import { signal } from '@preact/signals';
-import { href } from '../../app/router';
+import { href } from '../../platform/router';
 import type { BlockKey, Day } from '../../lib/dates';
 
 const KEY = 'his.agenda.copy';

@@ -4,9 +4,8 @@
 import type { ComponentChildren } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { Pencil, ScanLine, Trash2, Car, UserRound } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { isField } from '../../app/routes';
-import { navigate } from '../../app/router';
+import { isField } from '../../domain/rights';
+import { navigate, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { vinCheck } from '../../lib/text';
 import { vehicle, customer, customerName, allJobs } from '../../data/select';

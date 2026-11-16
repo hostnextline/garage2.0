@@ -7,8 +7,8 @@ import { ChevronLeft, ChevronRight, CalendarSearch, Plus, TriangleAlert, Clock, 
 import { t, lang } from '../../lib/i18n';
 import { addDays, longDay, clockRange, isValidDay, parseDay, today as todayOf, type Day, type Range } from '../../lib/dates';
 import { truckLabel, truckColor, truckRanges, blocks } from '../../data/select';
-import { may } from '../../app/routes';
-import { href, navigate } from '../../app/router';
+import { may } from '../../domain/rights';
+import { href, navigate } from '../../platform/router';
 import { Panel, Button, IconButton, Empty } from '../../ui';
 import { JobTicket } from '../jobs/JobTicket';
 import { relativeDay } from '../booking/when';

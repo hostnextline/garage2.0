@@ -3,9 +3,9 @@
    the totals, and the report the accountant exports apart (Excel, CSV). The owner can take an entry back out. */
 import { useEffect, useState } from 'preact/hooks';
 import { FileSpreadsheet, FileText, Undo2 } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
-import { may } from '../../app/routes';
+import { may } from '../../domain/rights';
 import { money } from '../../lib/money';
 import { today, longDay } from '../../lib/dates';
 import { rpcNow, coffreRemove, errorMessage } from '../../data/api';

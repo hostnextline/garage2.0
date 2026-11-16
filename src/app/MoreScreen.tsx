@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { LogOut, CircleQuestionMark, Settings } from 'lucide-preact';
 import { NAV, navLabel, type NavItem } from './nav';
-import { may } from './routes';
+import { may } from '../domain/rights';
 import { t, lang } from '../lib/i18n';
 import { today } from '../lib/dates';
 import { money } from '../lib/money';

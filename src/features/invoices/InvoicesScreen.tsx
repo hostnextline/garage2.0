@@ -2,8 +2,7 @@
    « Relancer » on an unpaid one, and « Exporter » (the list shown, for a spreadsheet). */
 import { useState } from 'preact/hooks';
 import { FileDown, BellRing, Receipt } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { setQuery } from '../../app/router';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import type { Invoice, Payment } from '../../data/types';
 import { invoicesList, invoiceNumber } from '../../data/select';
 import { rowsOf } from '../../data/store';

@@ -9,7 +9,7 @@ import { t, lang } from '../../lib/i18n';
 import { clock, duration, nowMinute, today as todayOf, type BlockKey, type Day, type Range } from '../../lib/dates';
 import { blocks, truckColor, itemsOf, customer as customerRow, windowOf } from '../../data/select';
 import type { Job } from '../../data/types';
-import { may } from '../../app/routes';
+import { may } from '../../domain/rights';
 import { jobStatusWord, toast } from '../../ui';
 import { dropRefusal, winInfo, winShort, winTiny, type DropRefusal } from './layout';
 import { UNIT, unitCount, unitMinutes, unitIndex, minuteAt, unitsAt, jobBox, jobMinute, overlapColumns, openingUnit, type Box, type Slot } from './grid';

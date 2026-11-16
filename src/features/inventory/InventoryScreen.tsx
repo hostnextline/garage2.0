@@ -4,11 +4,10 @@
    garage's value, orders and the Trésorerie). */
 import { useState } from 'preact/hooks';
 import { Plus, PackageCheck, ClipboardList } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { inventoryList, lowStock, coffreStock } from '../../data/select';
-import { setQuery } from '../../app/router';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import type { InventoryItem } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, Help, BigStep, Seg, Banner } from '../../ui';
 import { BigMoney } from '../dashboard/charts';

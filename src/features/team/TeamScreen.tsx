@@ -2,7 +2,7 @@
    « Inviter quelqu'un », the person's sheet (roles, rights, colour…), and what each role may do. */
 import { useEffect, useState } from 'preact/hooks';
 import { UserPlus } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { t } from '../../lib/i18n';
 import { staffList, trucks, truck } from '../../data/select';
 import { access } from '../../data/auth';

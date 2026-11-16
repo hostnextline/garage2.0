@@ -11,6 +11,8 @@ import { SYNCED, SCOPED, type TableName } from './schema';
 import { readAll, writeRows, replaceAll, getMeta, setMeta, outboxAll, outboxAdd, outboxPut, outboxDelete, storageBroken, type OutboxEntry } from './local';
 import { upsertLocal, patchLocal, removeLocal, replaceLocal, getRow, clearAll, type Row } from './store';
 import { REALTIME } from '../lib/config';
+import { isNetworkError, errorText } from '../lib/errors';
+export { isNetworkError, errorText } from '../lib/errors';
 
 export interface NetState {
   online: boolean;          // last request reached the server
@@ -59,24 +61,9 @@ function withTimeout<T>(p: PromiseLike<T>, ms = REQUEST_TIMEOUT): Promise<T> {
   });
 }
 
-/** network trouble (try again later) vs. a real refusal (tell the person) */
-export function isNetworkError(e: unknown): boolean {
-  const err = e as { code?: string; status?: number; message?: string; name?: string } | null;
-  if (!err) return false;
-  if (err.code === 'timeout') return true;
-  // the database asked to try again (two changes at the same instant): not a refusal
-  if (err.code === '40P01' || err.code === '40001' || err.code === '55P03') return true;
-  if (typeof err.status === 'number' && (err.status === 0 || err.status === 408 || err.status === 429 || err.status >= 500)) return true;
-  const m = String(err.message || err.name || '');
-  return /Failed to fetch|NetworkError|Load failed|network|fetch failed|ECONN|ETIMEDOUT|aborted|AbortError/i.test(m) && !/permission|policy|violates/i.test(m);
-}
 function isAuthError(e: unknown): boolean {
   const err = e as { code?: string; status?: number; message?: string } | null;
   return !!err && (err.status === 401 || err.code === 'PGRST301' || err.code === 'PGRST303' || /JWT expired|invalid JWT|jwt/i.test(String(err.message || '')));
-}
-export function errorText(e: unknown): string {
-  const err = e as { message?: string; details?: string; hint?: string } | null;
-  return String(err?.message || err || 'erreur').slice(0, 300);
 }
 
 /* ---------- start / stop ---------- */
