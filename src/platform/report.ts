@@ -42,7 +42,7 @@ function safeJson(o: unknown): string {
 }
 
 /** noise a browser sends that says nothing about the app */
-export function isNoise(message: string): boolean {
+function isNoise(message: string): boolean {
   return /ResizeObserver loop|^AbortError|The operation was aborted|Script error\.?$/i.test(message);
 }
 

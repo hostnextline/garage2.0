@@ -18,7 +18,7 @@ export interface RouteDef {
 }
 export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'oil' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
 
-export const ROUTES: RouteDef[] = [
+const ROUTES: RouteDef[] = [
   { pattern: '/', load: () => import('../features/today/TodayScreen'), nav: 'today' },
   { pattern: '/agenda/:day?', load: () => import('../features/agenda/AgendaScreen'), allow: may.agenda, nav: 'agenda' },
   { pattern: '/book', load: () => import('../features/booking/BookScreen'), allow: () => may.book() || may.walkIn(), nav: 'agenda' },

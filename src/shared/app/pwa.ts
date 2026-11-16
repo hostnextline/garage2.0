@@ -52,7 +52,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
     p.then((v) => { clearTimeout(tm); res(v); }, (e) => { clearTimeout(tm); rej(e); });
   });
 }
-export async function fetchRemoteVersion(): Promise<RemoteVersion | null> {
+async function fetchRemoteVersion(): Promise<RemoteVersion | null> {
   try {
     const r = await withTimeout(fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' }), 15000);
     if (!r.ok) return null;

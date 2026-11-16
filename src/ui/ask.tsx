@@ -9,7 +9,7 @@ import { Textarea } from './forms';
 import { Sheet } from './Sheet';
 
 /** a question just shown ignores answers this long */
-export const ASK_DEAD_MS = 400;
+const ASK_DEAD_MS = 400;
 
 interface Ask { id: number; title: string; text?: string; ok: string; cancel: string; danger: boolean; input?: { label: string; value: string; required: boolean }; resolve: (v: string | boolean | null) => void }
 const asks = signal<Ask[]>([]);

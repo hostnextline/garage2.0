@@ -54,7 +54,7 @@ export function whenHistorySettled(fn: () => void) { if (pendingBack > 0) settle
 
 /** steps back over `n` of our own entries (the popstate it causes is ours, not the person's); `keep`: the address the
     entry we land on must show (the entries below were written before a setQuery made while the sheet was open) */
-export function stepBack(n = 1, keep: string | null = null) {
+function stepBack(n = 1, keep: string | null = null) {
   if (n <= 0) return;
   pendingBack++;
   keepUrl = keep;

@@ -7,7 +7,7 @@ import { windowsOn } from '../data/select';
 import { Sheet, Rows, RowItem } from '../ui';
 import { QUICK } from './nav';
 
-export const quickOpen = signal(false);
+const quickOpen = signal(false);
 export const openQuick = () => { quickOpen.value = true; };
 
 export function QuickSheet() {

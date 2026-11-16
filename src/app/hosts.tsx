@@ -13,7 +13,7 @@ import { QuickSheet } from './QuickSheet';
 import { SyncSheet } from './sync';
 import { ReconnectSheet } from './ReconnectSheet';
 
-export const HOSTS: { name: string; C: ComponentType }[] = [
+const HOSTS: { name: string; C: ComponentType }[] = [
   { name: 'quick', C: QuickSheet },
   { name: 'sync', C: SyncSheet },
   { name: 'reconnect', C: ReconnectSheet },

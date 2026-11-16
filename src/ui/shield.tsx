@@ -5,13 +5,12 @@ import { useEffect } from 'preact/hooks';
 import { signal } from '@preact/signals';
 
 /** how long the shield stays after a sheet closes */
-export const SHIELD_MS = 350;
+const SHIELD_MS = 350;
 const until = signal(0);
 
 export function raiseShield(ms = SHIELD_MS, now = Date.now()) {
   if (now + ms > until.value) until.value = now + ms;
 }
-export function shieldUp(now = Date.now()): boolean { return until.value > now; }
 
 export function TapShield() {
   const end = until.value;

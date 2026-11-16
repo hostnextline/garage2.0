@@ -62,7 +62,7 @@ export function pressProps(onPress: (x: number, y: number) => boolean | void) {
     onClickCapture: (e: MouseEvent) => { if (Date.now() - lastPress < 900) { e.preventDefault(); e.stopPropagation(); } }
   };
 }
-export function closeMenu() { menu.value = null; }
+function closeMenu() { menu.value = null; }
 
 export function ContextMenuHost() {
   const m = menu.value;
