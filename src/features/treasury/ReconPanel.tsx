@@ -80,7 +80,7 @@ function FindingRow(p: { f: ReconFinding; l: string; canAck: boolean; onAck: (f:
   const href = target && 'href' in target ? target.href : target ? '#/treasury' : undefined;
   const events = target && 'expense' in target ? { onClick: (e: MouseEvent) => { e.preventDefault(); p.onOpenExpense(target.expense); } } : undefined;
   return (
-    <RowItem href={href} events={events} chevron={!!target} data-testid="recon-finding"
+    <RowItem href={href} events={events} chevron={!!target} class="tre-recon-row" data-testid="recon-finding"
       title={findingText(f, l)}
       sub={[f.note, since].filter(Boolean).join('. ') || undefined}
       end={<span class="stack" style={{ alignItems: 'flex-end', gap: '4px' }}>
