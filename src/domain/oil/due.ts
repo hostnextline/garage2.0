@@ -15,12 +15,12 @@ export { oilWords, oilOnlyAdded, isOilService, isOilItem, isOilStock } from './w
 export { deniedJobs } from './followup';
 
 export const AFTER_OIL_MONTHS = 6;
-export const AFTER_VISIT_MONTHS = 3;
-export const SOON_DAYS = 30;
+const AFTER_VISIT_MONTHS = 3;
+const SOON_DAYS = 30;
 /** the least oil taken from the stock that says « oil change » rather than « top-up », in litres */
-export const FULL_CHANGE_L = 3;
+const FULL_CHANGE_L = 3;
 
-export type OilState = 'call' | 'soon' | 'later' | 'stopped';
+type OilState = 'call' | 'soon' | 'later' | 'stopped';
 export interface OilRow {
   /** the car's id, or « c:<customer> » for visits with no car on them (a customer with several cars) */
   key: string;

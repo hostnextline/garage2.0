@@ -18,7 +18,7 @@ import { Flags, Bit } from './bits';
 import { carName } from '../../domain/vehicles/words';
 import '../places/customers.css';
 
-export interface CustomerPickerProps {
+interface CustomerPickerProps {
   value: string | null;
   onPick: (customerId: string | null) => void;
   /** offer « Nouveau client » (a short form in a sheet) when the search finds nobody */

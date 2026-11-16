@@ -75,7 +75,7 @@ export function heads(chats: Chat[], texts: IncomingText[]): Chat[] {
 export interface Line { id: string; at: string | null; dir: 'in' | 'out'; body: string; files?: string[] }
 /** a text that arrived here and GoHighLevel's message are the same one when this close in time (and with the same words,
     or, for a text with no words, a message with a picture) */
-export const SAME_MS = 10 * 60 * 1000;
+const SAME_MS = 10 * 60 * 1000;
 /** what the window shows: GoHighLevel's conversation, plus the texts that arrived here and are not in it yet (the newest
     one, told to us before GoHighLevel's list has it; or everything while GoHighLevel does not answer). A short answer
     said again later (« Merci », « Ok ») is a new text: the words alone do not make two texts the same one. */
@@ -94,7 +94,7 @@ export function lines<T extends Line>(conv: T[] | null, texts: IncomingText[], m
 }
 
 /* ---------- pictures and documents ---------- */
-export type FileKind = 'image' | 'video' | 'audio' | 'file' | 'unknown';
+type FileKind = 'image' | 'video' | 'audio' | 'file' | 'unknown';
 const KINDS: Record<Exclude<FileKind, 'unknown'>, string[]> = {
   image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'svg'],
   video: ['mp4', 'm4v', 'mov', 'webm', '3gp', '3gpp'],

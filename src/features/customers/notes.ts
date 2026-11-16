@@ -25,7 +25,7 @@ export function orderNotes(all: CustomerNote[]): CustomerNote[] {
 /** how many reminders are due today or before */
 export const dueCount = (all: CustomerNote[], today: Day) => all.filter((n) => toDo(n) && String(n.remind_on) <= today).length;
 
-export type NoteState = 'done' | 'late' | 'today' | 'later' | null;
+type NoteState = 'done' | 'late' | 'today' | 'later' | null;
 /** what the pill of a note says */
 export function noteState(n: Pick<CustomerNote, 'remind_on' | 'done_at'>, today: Day): NoteState {
   if (!n.remind_on) return null;

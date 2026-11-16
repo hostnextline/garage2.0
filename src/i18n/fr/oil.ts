@@ -24,7 +24,7 @@ export const oil = {
     next: '{when}, sans changement d’huile'
   },
   sheet: {
-    car: 'Auto', phone: 'Téléphone', noPhone: 'Pas de numéro au dossier',
+    phone: 'Téléphone', noPhone: 'Pas de numéro au dossier',
     lastOil: 'Dernier changement d’huile', never: 'Jamais chez nous',
     lastVisit: 'Dernière visite', due: 'Dû le', next: 'Prochain rendez-vous',
     nextHint: 'Ce rendez-vous n’a pas de changement d’huile : propose de l’ajouter.',

@@ -37,7 +37,7 @@ function forget(key: string) {
 }
 
 /* ---------- finding them ---------- */
-export interface LocateRun {
+interface LocateRun {
   found: number; missing: number; offline: boolean;
   /** the appointments placed by this run, with their new position (the map shows them at once) */
   placed: Record<string, { lat: number; lng: number }>;

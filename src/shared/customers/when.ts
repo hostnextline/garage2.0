@@ -6,7 +6,7 @@ import { windowWords } from '../../domain/moment/words';
 import { dayWord, dayInline } from '../../domain/moment/dayWords';
 
 /** the window told to the customer of a job booked by arrival window (block 'day'); none yet (« flexible »): null */
-export type WinPart = { win_start?: number | null; win_end?: number | null; win_flex?: boolean };
+type WinPart = { win_start?: number | null; win_end?: number | null; win_flex?: boolean };
 const winOf = (w?: WinPart | null): [number, number] | null => (w && w.win_start != null && w.win_end != null ? [w.win_start, w.win_end] : null);
 
 /** « Ce matin », « Demain après-midi », « ven. 7, soir », « 12 nov., matin »;

@@ -7,7 +7,7 @@
 import type { OilMark, Vehicle } from '../../data/types';
 
 /** the stored shape; `at` is absent when only `not_oil` was said (the old app then ignores the whole value) */
-export interface OilFollowup { at?: string; by?: string | null; again_on?: string | null; stop?: boolean; not_oil?: string[] }
+interface OilFollowup { at?: string; by?: string | null; again_on?: string | null; stop?: boolean; not_oil?: string[] }
 /** a call noted: call back on a day, or stop calling */
 export interface OilCall { at: string; by: string | null; again_on?: string | null; stop?: boolean }
 

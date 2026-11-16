@@ -5,7 +5,7 @@
 import { parseHash, route } from '../../platform/router';
 import { whenHistorySettled } from '../../platform/history';
 
-export function queryWithout(path: string, query: URLSearchParams, patch: Record<string, string | null>): string {
+function queryWithout(path: string, query: URLSearchParams, patch: Record<string, string | null>): string {
   const sp = new URLSearchParams(query);
   for (const [k, v] of Object.entries(patch)) { if (v == null || v === '') sp.delete(k); else sp.set(k, v); }
   const s = sp.toString();

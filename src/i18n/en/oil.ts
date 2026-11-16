@@ -24,7 +24,7 @@ export const oil: typeof fr = {
     next: '{when}, no oil change'
   },
   sheet: {
-    car: 'Car', phone: 'Phone', noPhone: 'No number on file',
+    phone: 'Phone', noPhone: 'No number on file',
     lastOil: 'Last oil change', never: 'Never with us',
     lastVisit: 'Last visit', due: 'Due', next: 'Next appointment',
     nextHint: 'This appointment has no oil change: offer to add it.',
