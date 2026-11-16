@@ -1,67 +1,64 @@
 // Off-site backups with no password stored anywhere: a scheduled job of the garage's PRIVATE GitHub repository asks
 // GitHub for a short signed ticket (OIDC) and calls this function with it. The function checks GitHub's signature,
-// the audience and the repository, then hands out the data table by table, page by page (no 1000-row ceiling).
-// The keys of the outside services (table « secrets ») are never part of a backup.
-import { serve, json, body, fail, env } from '../_shared/http.ts';
+// the audience and the repository (_shared/github.ts), then hands out the data table by table, page by page (no
+// 1000-row ceiling). The keys of the outside services (table « secrets ») are never part of a backup.
+//   { action: 'tables' }                       → { at, tables: [{ name, count }] }
+//   { action: 'rows', table, from }            → { rows, next }
+//   { action: 'accounts' }                     → { accounts: [{ id, email, created_at, banned_until }] }: who has an account (the
+//       sign-in side lives outside the tables: a restore into a NEW project makes each account again with the SAME id, then a
+//       new-password link for each person). Never a password, never its fingerprint.
+//   { action: 'done', tables, rows, commit }   → the job says the night's backup is written and committed: one row in
+//       « ops_backup_runs » (the daily reconciliation checks that the last good one is younger than 26 hours).
+//       « tables » is the number of tables, or the night's list { <table>: <rows> } (what ops/sauvegardes/sauvegarde.mjs
+//       sends): the row keeps how many tables, and « rows », when given, must be the sum of the list (else it is the sum).
+//       { ok: false } records a night that failed. Sent twice (the job tries again on a network hiccup): one row.
+import { serve, json, body, fail } from '../_shared/http.ts';
 import { adminDb } from '../_shared/db.ts';
+import { verifyGithub } from '../_shared/github.ts';
+export { verifyGithub };
 
-const ISSUER = 'https://token.actions.githubusercontent.com';
-const AUDIENCE = 'garage2.0-backup';
 /** what a backup holds, in the order a restore would load it */
 export const TABLES = [
   'settings', 'counters', 'staff', 'trucks', 'truck_week', 'truck_days', 'services', 'inventory_items', 'service_parts', 'engine_specs',
   'customers', 'customer_notes', 'vehicles', 'quotes', 'jobs', 'job_items', 'invoices', 'payments', 'expenses', 'inventory_moves',
   'shifts', 'trips', 'messages', 'public_links', 'invitations', 'activity', 'attachments',
-  'coffre', 'positions', 'position_log', 'op_log', 'stripe_events', 'hermes_questions'
+  'coffre', 'positions', 'position_log', 'op_log', 'stripe_events', 'hermes_questions', 'ops_backup_runs',
+  // the daily reconciliation (migration « refonte_rapprochement »): the days checked, the differences with the owner's
+  // « vu » notes, and the stock's starting point (lost, the next run would quietly take a new one)
+  'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'
 ] as const;
 // never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day),
 // incoming_calls (the calls of the day, for the « Appel entrant » banner), incoming_texts (the week's texts that wake the
 // « Texto entrant » bubble: the conversations themselves stay in GoHighLevel), push_subs (the devices that asked for the
 // alert while the app is closed: a device asks again)
 export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incoming_texts', 'push_subs'] as const;
+// tables of the « Refonte » migrations: while a database does not have them yet (this function deployed before its
+// migration is applied), the backup goes on without them instead of failing every night
+const LATER: readonly string[] = ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'];
 const KEY: Record<string, string> = { counters: 'name', op_log: 'op' };
 const PAGE: Record<string, number> = { attachments: 100 };
+const missing = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|could not find the table/i.test(String(e.message || '')));
 
-function b64url(s: string): Uint8Array {
-  const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
-  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+/** a whole number from the job (never a fraction, a negative or a text) */
+function count(v: unknown, max: number): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d{1,15}$/.test(v) ? Number(v) : NaN;
+  return Number.isInteger(n) && n >= 0 && n <= max ? n : null;
 }
-let jwksCache: { at: number; keys: JsonWebKey[] } | null = null;
-async function jwks(force = false): Promise<(JsonWebKey & { kid?: string })[]> {
-  if (!force && jwksCache && Date.now() - jwksCache.at < 10 * 60000) return jwksCache.keys;
-  const r = await fetch(env('GITHUB_OIDC_JWKS', `${ISSUER}/.well-known/jwks`));
-  if (!r.ok) fail('github', 'GitHub ne répond pas.', 502);
-  jwksCache = { at: Date.now(), keys: ((await r.json()) as { keys: JsonWebKey[] }).keys || [] };
-  return jwksCache.keys;
-}
-/** the GitHub ticket: signed by GitHub, for us, recent, from an allowed repository */
-export async function verifyGithub(token: string): Promise<Record<string, unknown>> {
-  const parts = token.split('.');
-  if (parts.length !== 3) fail('signin', 'Ticket GitHub manquant.', 401);
-  let header: { alg?: string; kid?: string }, claims: Record<string, unknown>;
-  try {
-    header = JSON.parse(new TextDecoder().decode(b64url(parts[0])));
-    claims = JSON.parse(new TextDecoder().decode(b64url(parts[1])));
-  } catch { fail('signin', 'Ticket GitHub illisible.', 401); }
-  if (header!.alg !== 'RS256') fail('signin', 'Ticket GitHub refusé.', 401);
-  const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-  const check = async (keys: JsonWebKey[]) => {
-    const jwk = keys.find((k) => (k as { kid?: string }).kid === header!.kid);
-    if (!jwk) return false;
-    const key = await crypto.subtle.importKey('jwk', { ...jwk, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-    return crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), signed);
-  };
-  // GitHub changes its keys from time to time: one fresh look at them before saying no
-  if (!(await check(await jwks())) && !(await check(await jwks(true)))) fail('signin', 'Ticket GitHub refusé (signature).', 401);
-  const now = Math.floor(Date.now() / 1000);
-  const aud = claims!.aud;
-  if (claims!.iss !== ISSUER) fail('signin', 'Ticket GitHub refusé (émetteur).', 401);
-  if (!(aud === AUDIENCE || (Array.isArray(aud) && aud.includes(AUDIENCE)))) fail('signin', 'Ticket GitHub refusé (destinataire).', 401);
-  if (typeof claims!.exp !== 'number' || (claims!.exp as number) < now - 30) fail('signin', 'Ticket GitHub expiré.', 401);
-  if (typeof claims!.nbf === 'number' && (claims!.nbf as number) > now + 60) fail('signin', 'Ticket GitHub pas encore valide.', 401);
-  const allowed = env('BACKUP_REPOS', 'hostnextline/garage2.0-sauvegardes').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-  if (!allowed.includes(String(claims!.repository || '').toLowerCase())) fail('not_allowed', 'Ce dépôt GitHub n’est pas celui des sauvegardes.', 403);
-  return claims!;
+/** the night's tables: a number, or the list { <table name>: <rows> } the job wrote (each a whole number) */
+function tablesOf(v: unknown): { tables: number; sum: number | null } | null {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const list = Object.entries(v as Record<string, unknown>);
+    if (list.length > 10000) return null;
+    let sum = 0;
+    for (const [name, n] of list) {
+      const rows = count(n, 1e13);
+      if (!/^[a-z_][a-z0-9_]{0,62}$/.test(name) || rows == null) return null;
+      sum += rows;
+    }
+    return { tables: list.length, sum };
+  }
+  const tables = count(v, 10000);
+  return tables == null ? null : { tables, sum: null };
 }
 
 export const handler = serve(async (req) => {
@@ -73,9 +70,16 @@ export const handler = serve(async (req) => {
   if (action === 'tables') {
     const out: { name: string; count: number }[] = [];
     for (const t of TABLES) {
-      const { count, error } = await db.from(t).select('*', { count: 'exact', head: true });
+      if (LATER.includes(t)) {
+        // a table of a migration maybe not applied yet: asked with a GET (a HEAD on a missing table answers an empty 404,
+        // which the client library takes for « 0 rows »: the night would list it, then fail reading its rows)
+        const { error: e0 } = await db.from(t).select('*').limit(0);
+        if (missing(e0)) continue;
+      }
+      const { count: n, error } = await db.from(t).select('*', { count: 'exact', head: true });
+      if (error && LATER.includes(t) && missing(error)) continue;
       if (error) throw error;
-      out.push({ name: t, count: count || 0 });
+      out.push({ name: t, count: n || 0 });
     }
     return json({ ok: true, at: new Date().toISOString(), tables: out });
   }
@@ -88,6 +92,40 @@ export const handler = serve(async (req) => {
     if (error) throw error;
     const rows = data || [];
     return json({ ok: true, table: t, from, rows, next: rows.length === limit ? from + limit : null });
+  }
+  if (action === 'accounts') {
+    const accounts: { id: string; email: string | null; created_at: string | null; banned_until: string | null }[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
+      if (error) throw error;
+      for (const u of data.users) accounts.push({ id: u.id, email: u.email || null, created_at: u.created_at || null, banned_until: (u as { banned_until?: string }).banned_until || null });
+      if (data.users.length < 200) break;
+    }
+    accounts.sort((x, y) => x.id.localeCompare(y.id));
+    return json({ ok: true, at: new Date().toISOString(), accounts });
+  }
+  if (action === 'done') {
+    const list = tablesOf(b.tables);
+    const given = b.rows == null || b.rows === '' ? null : count(b.rows, 1e13);
+    // rows is needed with a number of tables; with the list it may be left out (it is the list's sum)
+    const rows = given ?? (list?.sum ?? null);
+    if (!list || rows == null || (b.rows != null && b.rows !== '' && given == null)) fail('bad_run', 'Le compte des tables et des lignes doit être un nombre entier.');
+    if (list.sum != null && rows !== list.sum) fail('bad_run', `Le total des lignes (${rows}) n’est pas la somme des tables (${list.sum}).`);
+    const tables = list.tables;
+    const commit = b.commit == null || b.commit === '' ? null : String(b.commit).trim();
+    if (commit != null && !/^[0-9a-f]{7,64}$/i.test(commit)) fail('bad_run', 'Le numéro du commit n’a pas l’air bon.');
+    const ok = b.ok !== false;
+    // the same night said twice (the job tries again when the answer is lost): the row already written is the answer
+    let seen = db.from('ops_backup_runs').select('id, at').eq('ok', ok).eq('tables', tables).eq('rows', rows).gte('at', new Date(Date.now() - 3600 * 1000).toISOString());
+    seen = commit == null ? seen.is('commit', null) : seen.eq('commit', commit.toLowerCase());
+    const { data: before, error: e1 } = await seen.order('at', { ascending: false }).limit(1);
+    if (missing(e1)) fail('not_ready', 'La table des sauvegardes n’existe pas encore sur cette base (migration « refonte_sauvegarde » à appliquer).', 503);
+    if (e1) throw e1;
+    const again = ((before || []) as { id: string; at: string }[])[0];
+    if (again) return json({ ok: true, id: again.id, at: again.at, again: true });
+    const { data: run, error } = await db.from('ops_backup_runs').insert({ tables, rows, commit: commit?.toLowerCase() ?? null, ok }).select('id, at').single();
+    if (error) throw error;
+    return json({ ok: true, id: (run as { id: string }).id, at: (run as { at: string }).at });
   }
   fail('action', 'Action inconnue.');
 });
