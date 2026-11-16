@@ -445,3 +445,92 @@ test('sql-planner-1 B4: a cancellation never throws another appointment to « À
   assert.equal(e?.hint, 'block_full');
   assert.deepEqual([(await row(h, a.job_id)).truck_id, (await row(h, cj.job_id)).truck_id], [t1, t1], 'nobody lost a place');
 }));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   « Plages d'arrivée »: the plan of the day
+   ------------------------------------------------------------------------------------------------------------------ */
+
+test('sql-windows-02: a later re-plan never makes late a stop its stored route reaches in its window', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const kmLng = 1 / (111.2 * Math.cos((home.lat * Math.PI) / 180));
+  const ca = await h.customer('A', home.lat, home.lng - 2 * kmLng), cb = await h.customer('B', home.lat, home.lng - 1.9 * kmLng);
+  const ck = await h.customer('K', home.lat, home.lng + 20 * kmLng), cx = await h.customer('X', home.lat + 0.01, home.lng);
+  await windowsOn(h, owner);
+  const a = await book(h, { customer_id: ca, day, block: 'day', duration_min: 150, win_start: 480 });
+  const b = await book(h, { customer_id: cb, day, block: 'day', duration_min: 30, win_start: 480 });
+  const k = await book(h, { customer_id: ck, day, block: 'day', duration_min: 60, win_start: 480 });
+  const ids = [a.job_id, b.job_id, k.job_id];
+  for (const id of ids) inside(await row(h, id), 'booked');
+  // the plan made again (as a cancellation, a position found or the evening's lock would)
+  await server(h, owner, `select public.replan_block($1::date, 'day')`, [day]);
+  for (const id of ids) inside(await row(h, id), 'after a re-plan');
+  // another booking that day, in the afternoon
+  await book(h, { customer_id: cx, day, block: 'day', duration_min: 60, win_start: 840 });
+  for (const id of ids) inside(await row(h, id), 'after another booking');
+}));
+
+test('sql-windows-03 / x-dualmode-06: window mode, a day already started: the stops left are numbered after the ones done', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await today(h);
+  const week = {}; for (let d = 0; d < 7; d++) week[d] = DAY;
+  const t1 = await h.truck('Camion', null, week);
+  const c = await h.customer('Jean', ...near);
+  await windowsOn(h, owner);
+  await clock(h, owner, 780);                                   // 13 h
+  const d1 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, status: 'done', order: 1, eta: 500 });
+  const d2 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, status: 'done', order: 2, eta: 600 });
+  const s3 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 3, eta: 840, ws: 780, we: 1020 });
+  const s4 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 4, eta: 900, ws: 840, we: 1080, lat: near2[0], lng: near2[1] });
+  const s5 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 5, eta: 960, ws: 900, we: 1140 });
+  await server(h, owner, `update public.jobs set finished_at = now() - interval '2 hours' where id = $1`, [d1]);
+  await h.as(owner);
+  await h.rpc('job_step', { p_op: uuid(), p_job: s5, p_action: 'cancel', p_data: {} });
+  const nums = [];
+  for (const id of [d1, d2, s3, s4]) nums.push((await row(h, id)).stop_order);
+  assert.deepEqual(nums.slice(0, 2), [1, 2], 'the stops done keep 1 and 2');
+  assert.deepEqual(nums.slice(2).sort(), [3, 4], `the stops left come after them: ${nums}`);
+}));
+
+test('sql-windows-05 / x-dualmode-08: window mode, a truck with a break in its hours is not planned during the break', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: [[480, 720], [960, 1200]] });        // 8 h – 12 h, then 16 h – 20 h
+  const cs = [];
+  for (let i = 0; i < 6; i++) cs.push(await h.customer('C' + i, near[0] + 0.002 * i, near[1]));
+  await windowsOn(h, owner);
+  const ids = [];
+  for (const cu of cs) {
+    const r = await h.fails(() => book(h, { customer_id: cu, day, block: 'day', duration_min: 60 }));
+    if (!r) ids.push((await h.one(`select id from public.jobs where customer_id = $1 and day = $2`, [cu, day])).id);
+  }
+  assert.ok(ids.length >= 5, `the two stretches hold the appointments (${ids.length})`);
+  for (const id of ids) {
+    const j = await row(h, id);
+    assert.ok(j.eta_min + 60 <= 720 || j.eta_min >= 960, `nobody during the break: ${j.eta_min}`);
+  }
+  // the windows offered: none the truck can only reach during the break, the evening ones are offered
+  const w = await h.rpc('suggest_windows', { p_lat: near2[0], p_lng: near2[1], p_duration: 60, p_day: day, p_exclude: null, p_need: false, p_kind: null });
+  for (const x of w) assert.ok(x.eta + 60 <= 720 || x.eta >= 960, `offered arrival ${x.eta}`);
+  // a lunch hour: 8 h – 12 h and 13 h – 18 h, the day is sold until 18 h
+  await h.as(null);
+  const day2 = await h.val(`select ($1::date + 7)::text`, [day]);
+  await h.q(`update public.truck_week set ranges = $1 where dow = $2`, [JSON.stringify([[480, 720], [780, 1080]]), dow]);
+  await h.as(owner);
+  const lunch = [];
+  for (let i = 0; i < 7; i++) {
+    const cu = cs[i % cs.length];
+    const e = await h.fails(() => book(h, { customer_id: cu, day: day2, block: 'day', duration_min: 60 }));
+    if (e) break;
+  }
+  for (const j of await h.q(`select eta_min, duration_min from public.jobs where day = $1 and status = 'booked'`, [day2])) {
+    lunch.push(j.eta_min);
+    assert.ok(j.eta_min + 60 <= 720 || j.eta_min >= 780, `nobody during lunch: ${j.eta_min}`);
+    assert.ok(j.eta_min + 60 <= 1080, `inside the hours: ${j.eta_min}`);
+  }
+  assert.ok(lunch.length >= 7, `the 9 worked hours hold 7 appointments of an hour (${lunch.length})`);
+}));
