@@ -13,7 +13,7 @@ import { REQUEST_MS } from './send';
 import { cmpTs } from './clock';
 import type { TableIO } from './pull';
 
-export const SCAN_PAGE = 1000;
+const SCAN_PAGE = 1000;
 const BY_IDS = 100;
 
 export interface ScanIO extends TableIO {

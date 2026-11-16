@@ -9,15 +9,11 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import { SYNCED } from './schema';
 import type { Row } from './store';
+import { withLimit } from './clock';
 
 const VERSION = 3;
 const OPEN_LIMIT = 8000;
 const CALL_LIMIT = 20000;
-function limited<T>(p: Promise<T>): Promise<T> {
-  let tm: ReturnType<typeof setTimeout>;
-  const late = new Promise<never>((_, rej) => { tm = setTimeout(() => rej(Object.assign(new Error('IndexedDB call timed out'), { name: 'TimeoutError' })), CALL_LIMIT); });
-  return Promise.race([p, late]).finally(() => clearTimeout(tm));
-}
 
 export interface OutboxEntry {
   seq?: number;
@@ -110,13 +106,13 @@ export function openLocal(uid: string): LocalDb {
   async function use<T>(fn: (db: IDBPDatabase) => Promise<T>): Promise<T> {
     if (closed) throw new Error('local database closed');
     try {
-      return await limited(fn(await open()));
+      return await withLimit(fn(await open()), CALL_LIMIT);
     } catch (first) {
       if (closed) throw first;
       const stale = handle;
       handle = null;
       if (stale) void stale.then((db) => db.close(), () => undefined);
-      return await limited(fn(await open()));
+      return await withLimit(fn(await open()), CALL_LIMIT);
     }
   }
 

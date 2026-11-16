@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY } from '../lib/config';
 import { guardedFetch } from './client';
 
-export type FakeRow = Record<string, unknown> & { id: string };
+type FakeRow = Record<string, unknown> & { id: string };
 type Rpc = (args: Record<string, unknown>, srv: FakeServer) => unknown;
 export interface Call { method: string; table: string; url: URL; body: unknown; auth: string | null }
 
@@ -17,7 +17,6 @@ export function stamp(): string {
   const base = new Date(ms).toISOString().replace('Z', '');
   return `${base}${String(us).padStart(3, '0')}`.replace(/\.?0+$/, '') + '+00:00';
 }
-export const sameStampAll = (): string => stamp();
 
 /** a session token of `uid` (only its account is read by the app) */
 export function jwt(uid: string): string {

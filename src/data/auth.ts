@@ -14,12 +14,12 @@ import { SUPABASE_URL, SUPABASE_KEY } from '../lib/config';
 import { t } from '../lib/i18n';
 import { Refused, classify } from '../lib/errors';
 import type { Access, Right } from './types';
-import { sb, guardedFetch } from './client';
+import { sb, guardedFetch, ask } from './client';
 import { startSync, stopSync, resetScreen, pendingCount, isNetworkError, onRemoteChange, applyRows, accessHooks, sessionLost, reconcile, flush, net } from './sync';
 import { openLocal } from './local';
 import { getRow } from './store';
 import { sameValue } from './merge';
-import { sampleServerTime } from './clock';
+import { sampleServerTime, withLimit } from './clock';
 export { sb };
 
 export type AuthState = 'loading' | 'signed_out' | 'no_access' | 'ready' | 'invite';
@@ -56,9 +56,6 @@ function storedUser(): string | null {
 }
 function lastUid(): string | null { try { return localStorage.getItem('his.lastuid'); } catch { return null; } }
 
-function timeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
-  return new Promise((res, rej) => { const tm = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), ms); Promise.resolve(p).then((v) => { clearTimeout(tm); res(v); }, (e) => { clearTimeout(tm); rej(e); }); });
-}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** reads the invitation link (#invite=…) without losing it on reload */
@@ -75,8 +72,7 @@ export function clearInvite() {
 
 async function loadAccess(): Promise<Access | null> {
   const sent = Date.now();
-  const { data, error, status } = await timeout(sb.rpc('my_access'), 12000);
-  if (error) throw classify(error, status);
+  const data = await ask<unknown>((s) => sb.rpc('my_access').abortSignal(s), 12000);
   // a server that says its time (`now`) gives the phone its clock for the freshness checks (x-time-19)
   const now = (data as { now?: unknown } | null)?.now;
   if (typeof now === 'string') sampleServerTime(now, sent, Date.now());
@@ -129,7 +125,7 @@ export async function startAuth() {
   let s: Session | null = null;
   let unreachable = false;
   try {
-    const r = await timeout(sb.auth.getSession(), 6000);
+    const r = await withLimit(sb.auth.getSession(), 6000);
     s = r.data.session;
     if (!s && r.error && isNetworkError(r.error)) unreachable = true;
   } catch { s = null; unreachable = true; }
@@ -152,7 +148,7 @@ async function checkBehind(uid: string) {
   let s: Session | null = null;
   let reachable = true;
   try {
-    const r = await timeout(sb.auth.getSession(), 30000);
+    const r = await withLimit(sb.auth.getSession(), 30000);
     s = r.data.session;
     if (!s && r.error && isNetworkError(r.error)) reachable = false;
   } catch { reachable = false; }
@@ -261,7 +257,7 @@ export async function signIn(email: string, password: string): Promise<string | 
 }
 export async function googleEnabled(): Promise<boolean> {
   try {
-    const r = await timeout(fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_KEY } }), 5000);
+    const r = await withLimit(fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_KEY } }), 5000);
     const d = await r.json();
     return !!d?.external?.google;
   } catch { return false; }
@@ -308,7 +304,7 @@ async function afterSignOut() {
 
 /** calls one of the garage's server functions as the signed-in person */
 export async function callFn<T = Record<string, unknown>>(name: string, body: Record<string, unknown>, ms = 40000): Promise<T & { ok: boolean; code?: string; error?: string }> {
-  const s = (await timeout(sb.auth.getSession(), 10000).catch(() => ({ data: { session: null } }))).data.session;
+  const s = (await withLimit(sb.auth.getSession(), 10000).catch(() => ({ data: { session: null } }))).data.session;
   const ctl = new AbortController();
   // the request really stops at the limit (it used to keep running after the screen gave up)
   const tm = setTimeout(() => ctl.abort('timeout'), ms);

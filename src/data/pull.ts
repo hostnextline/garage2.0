@@ -21,7 +21,7 @@ export const LAG_MS = 15000;
 /** the rewind for a cursor written by the previous version (its overlap was 2 s) */
 export const LEGACY_LAG_MS = 17000;
 
-export interface Cursor { at: string; id: string }
+interface Cursor { at: string; id: string }
 
 /** what the pull and the visibility check need from the engine */
 export interface TableIO {

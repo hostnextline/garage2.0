@@ -25,7 +25,7 @@ function headerOf(input: RequestInfo | URL, init: RequestInit | undefined, name:
   return typeof Request !== 'undefined' && input instanceof Request ? input.headers.get(name) : null;
 }
 /** the account a session token belongs to (its `sub`), null for the public key or anything unreadable */
-export function tokenAccount(token: string | null): string | null {
+function tokenAccount(token: string | null): string | null {
   const part = token?.split('.')[1];
   if (!part) return null;
   try {

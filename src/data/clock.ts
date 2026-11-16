@@ -26,11 +26,13 @@ export function cmpTs(a: string | null | undefined, b: string | null | undefined
   return (Number.isNaN(x) ? -Infinity : x) - (Number.isNaN(y) ? -Infinity : y) || 0;
 }
 
-/** an ISO stamp `ms` milliseconds before another (for the pull's rewind) */
-export function isoMinus(s: string, ms: number): string {
-  const us = tsMicros(s);
-  if (Number.isNaN(us)) return s;
-  return new Date(Math.floor(us / 1000) - ms).toISOString();
+/** a promise that fails with « timeout » when it takes longer than `ms` (the work itself is not stopped: requests
+    use client.ts `ask`, which really cancels them) */
+export function withLimit<T>(p: PromiseLike<T>, ms: number): Promise<T> {
+  return new Promise<T>((res, rej) => {
+    const tm = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout', name: 'TimeoutError' })), ms);
+    Promise.resolve(p).then((v) => { clearTimeout(tm); res(v); }, (e) => { clearTimeout(tm); rej(e); });
+  });
 }
 
 /* ---------- the server's clock, estimated ---------- */

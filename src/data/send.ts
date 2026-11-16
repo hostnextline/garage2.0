@@ -8,25 +8,24 @@
    - rpc: the operation with its op id (the server answers a repeat with what it did the first time). */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AppError } from '../lib/errors';
-import { SYNCED, type TableName } from './schema';
+import { isSynced } from './schema';
 import type { OutboxEntry } from './local';
 import type { Row } from './store';
 import { ask } from './client';
 import { merge3, sameValue } from './merge';
 
 export const REQUEST_MS = 15000;
-export const RPC_MS = 40000;
-export const isSynced = (t: string | undefined): t is TableName => !!t && (SYNCED as readonly string[]).includes(t);
+const RPC_MS = 40000;
 
 /** a picture of hundreds of kB needs longer than a few fields on a weak uplink (and the request really stops after) */
-export function limitFor(e: OutboxEntry): number {
+function limitFor(e: OutboxEntry): number {
   if (e.kind === 'rpc') return RPC_MS;
   const size = JSON.stringify(e.values || {}).length;
   return Math.min(120000, REQUEST_MS + Math.floor(size / 20000) * 1000);
 }
 
 /** the fields of `values` that the server's row does not have (its own stamps aside) */
-export function differing(values: Record<string, unknown>, row: Row): Record<string, unknown> {
+function differing(values: Record<string, unknown>, row: Row): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(values)) {
     if (k === 'id' || k === 'created_at' || k === 'updated_at' || k === 'created_by') continue;

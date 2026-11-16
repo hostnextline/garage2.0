@@ -6,12 +6,12 @@
    Order at start: the device copy on screen at once, then live changes, the first pull, the queue. */
 import { batch } from '@preact/signals';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { SYNCED, type TableName } from './schema';
+import { SYNCED, isSynced, type TableName } from './schema';
 import { openLocal, type LocalDb, type OutboxEntry, type Commit } from './local';
 import { bindStore, unbindStore, baseRow, baseIds, baseRows, type Row, type StoreWriter } from './store';
 import { Outbox, type Item } from './outbox';
 import { waitingOf } from './overlay';
-import { sendEntry, isSynced, REQUEST_MS, type Sent } from './send';
+import { sendEntry, REQUEST_MS, type Sent } from './send';
 import { pullTable } from './pull';
 import { scanTable, fetchBy, jobsGone, type ScanIO } from './reconcile';
 import { subscribeChanges, readChange, type Change } from './realtime';

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tsMicros, cmpTs, isoMinus, sampleServerTime, serverNow, resetServerClock } from './clock';
+import { tsMicros, cmpTs, sampleServerTime, serverNow, resetServerClock } from './clock';
 import { sameValue, merge3 } from './merge';
 
 describe('timestamps as Postgres writes them', () => {
@@ -16,9 +16,6 @@ describe('timestamps as Postgres writes them', () => {
     expect(cmpTs('2026-11-15T10:00:03.123457+00:00', '2026-11-15T10:00:03.123456+00:00')).toBeGreaterThan(0);
     expect(cmpTs('2026-11-15T10:00:03Z', '2026-11-15T10:00:03.000000+00:00')).toBe(0);
     expect(cmpTs(null, '2026-11-15T10:00:03Z')).toBeLessThan(0);
-  });
-  it('rewinds a stamp', () => {
-    expect(isoMinus('2026-11-15T10:00:20.000000+00:00', 15000)).toBe('2026-11-15T10:00:05.000Z');
   });
 });
 

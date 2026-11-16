@@ -5,16 +5,14 @@
      This is what the job section did by hand (keepAhead / seen); it now survives a restart without signal.
    Operations whose effect the server computes (stock counts, prices of discounts) show nothing ahead here.
    A refused change shows nothing: the row is the server's again. */
-import { SYNCED, type TableName } from './schema';
+import { isSynced, type TableName } from './schema';
 import type { OutboxEntry } from './local';
 import type { Fx, Waiting } from './store';
-
-const isSynced = (t: string | undefined): t is TableName => !!t && (SYNCED as readonly string[]).includes(t);
 
 const STEP_STATUS: Record<string, string> = { leave: 'en_route', arrive: 'on_site', finish: 'done', cancel: 'cancelled', no_show: 'no_show' };
 
 /** the effects of one waiting entry; `kept`: nobody waits for its answer any more */
-export function effectsOf(e: OutboxEntry, kept: boolean): { t: TableName; id: string; fx: Fx }[] {
+function effectsOf(e: OutboxEntry, kept: boolean): { t: TableName; id: string; fx: Fx }[] {
   if (e.state !== 'pending') return [];
   if ((e.kind === 'insert' || e.kind === 'update') && isSynced(e.table) && e.id && e.values) {
     return [{ t: e.table, id: e.id, fx: e.kind === 'insert' ? { put: e.values } : { patch: e.values } }];

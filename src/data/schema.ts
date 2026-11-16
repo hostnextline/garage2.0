@@ -6,3 +6,5 @@ export const SYNCED = [
   'shifts', 'positions', 'trips', 'messages'
 ] as const;
 export type TableName = (typeof SYNCED)[number];
+/** a table this device keeps a copy of (`attachments`, for one, is only sent) */
+export const isSynced = (t: string | undefined): t is TableName => !!t && (SYNCED as readonly string[]).includes(t);
