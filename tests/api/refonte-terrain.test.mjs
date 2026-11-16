@@ -738,6 +738,30 @@ test('what the owner types in Équipe and Branchements: rights only as on / off,
   await q(`delete from public.secrets where key like 'ghl%'`);
 });
 
+test('Branchements, the Stripe key: the endpoint made for the garage also hears the refunds made in Stripe (charge.refunded, charge.refund.updated) in the version the server reads; webhook made, secrets written, old one deleted', async () => {
+  await q(`delete from public.secrets where key like 'stripe%'`);
+  await q(`insert into public.secrets (key, value) values ('stripe_test_ok', 'on'), ('stripe_key', 'sk_test_ancienne0123456789'), ('stripe_webhook_id', 'we_ancien'), ('stripe_webhook_secret', 'whsec_ancien')`);
+  await clearLog();
+  const r = await fn('team', { action: 'secrets-set', stripe_key: 'sk_test_nouvelle0123456789' }, ownerJwt);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const calls = (await mockLog()).filter((x) => x.svc === 'stripe' && x.path.startsWith('/v1/webhook_endpoints'));
+  const made = calls.find((x) => x.method === 'POST');
+  assert.ok(made, 'the endpoint is made');
+  const events = Object.entries(made.form).filter(([k]) => k.startsWith('enabled_events[')).map(([, v]) => v).sort();
+  assert.deepEqual(events, ['charge.refund.updated', 'charge.refunded', 'checkout.session.async_payment_succeeded', 'checkout.session.completed']);
+  assert.equal(made.form.api_version, '2024-06-20', 'the notices come in the version the stripe function reads');
+  assert.match(made.form.url, /\/functions\/v1\/stripe$/);
+  // the new secrets are written, then the old endpoint (with the old key) is removed
+  const s = Object.fromEntries((await q(`select key, value from public.secrets where key like 'stripe%'`)).map((x) => [x.key, x.value]));
+  assert.equal(s.stripe_key, 'sk_test_nouvelle0123456789');
+  assert.match(s.stripe_webhook_id, /^we_\d+$/);
+  assert.match(s.stripe_webhook_secret, /^whsec_test_\d+$/);
+  const del = calls.findIndex((x) => x.method === 'DELETE' && x.path === '/v1/webhook_endpoints/we_ancien');
+  assert.ok(del > calls.indexOf(made), 'the old endpoint is removed after the new one is made');
+  assert.equal(JSON.stringify(r).includes('whsec'), false, 'the secret never comes back in the answer');
+  await q(`delete from public.secrets where key like 'stripe%'`);
+});
+
 /* ---------- Hermes' pairing ---------- */
 test('Hermes’ pairing: posts from anybody while no pairing is waiting do not block the real one; ten wrong codes burn the waiting code', async () => {
   const fp = async (c) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(c))).toString('hex');
