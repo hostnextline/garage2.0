@@ -15,7 +15,7 @@ import { me } from '../../data/auth';
 import { net } from '../../data/sync';
 import type { OilMark } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Seg, Empty, Skeleton, Pill, Sheet, Kv, Banner, Field, attempt } from '../../ui';
-import { nextLine, whenText } from '../customers/bits';
+import { nextLine, whenText } from '../../shared/customers/bits';
 import { dateShort, dayOfIso } from '../../domain/moment/dayWords';
 import { carName } from '../../domain/vehicles/words';
 import type { OilRow } from '../../domain/oil/due';

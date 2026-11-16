@@ -5,7 +5,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Car, Droplet, Wrench, Pencil } from 'lucide-preact';
 import { Button, Sheet, Banner } from '../../ui';
 import { isField } from '../../domain/rights';
-import { SpecPanel } from '../customers/SpecPanel';
+import { SpecPanel } from '../../shared/vehicles/SpecPanel';
 import { CarHistoryButton } from '../customers/CarHistory';
 import { t, lang } from '../../lib/i18n';
 import { vehicle as vehicleRow, specByKey, itemsOf } from '../../data/select';

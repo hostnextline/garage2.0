@@ -18,7 +18,7 @@ import { jobName, jobFirstName, jobCustomer, shortDayWord, blockRange, clockOf, 
 import { agoText } from '../../services/position';
 import { trucksNow, unplacedOn, toCollect, proposalsWaiting, toConfirm, paymentsOn, useTick, type TruckNow } from './select';
 import { ShiftCard } from './MechanicDay';
-import { NeedsCard } from '../inventory/needsView';
+import { NeedsCard } from '../../shared/stock/needsView';
 
 /* ---------- each truck, now ---------- */
 function nowLine(x: TruckNow): string {

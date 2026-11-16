@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import refJson from '../../../public/data/engine-ref.json';
 import { parseEngineRef, matchEngine, parseDisplacement, parseCylinders, specFromRow, specKeyOf, makeModel, fuelKind, type EngineRow } from './engineRef';
-import { refLine, engineLine } from '../../features/customers/vehicleText';
+import { refLine, engineLine } from '../../shared/vehicles/vehicleText';
 
 const row = (o: Partial<EngineRow>): EngineRow => ({
   make: 'Honda', model: 'Civic', aliases: [], year_from: 2016, year_to: 2021, displacement: 2.0, cylinders: 4, turbo: false, fuel: 'gas',

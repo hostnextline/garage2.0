@@ -5,7 +5,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Phone, MessageSquareText, MessagesSquare, Navigation, CalendarPlus, Pencil, Plus, Car, Trash2, UserPlus, MapPin, Gauge, Users, Droplet } from 'lucide-preact';
-import { ConversationSheet } from '../conversation/ConversationSheet';
+import { ConversationSheet } from '../../shared/customers/ConversationSheet';
 import { may, isField } from '../../domain/rights';
 import { navigate, setQuery, type ScreenProps } from '../../platform/router';
 import { touch } from '../../platform/media';
@@ -23,22 +23,22 @@ import { Page, Panel, Rows, RowItem, Kv, Button, BigStep, Sheet, Switch, Banner,
 import { JobTicket } from '../jobs/JobTicket';
 import { quoteNumber } from '../invoices/select';
 import { quoteTotals } from '../../domain/money/quote';
-import { factsOf, owedOn, isUpcoming, jobOrder } from './facts';
-import { draftFromQuery } from './search';
-import { CustomerFields, emptyDraft, draftOf, customerPatch, checkDraft, hasErrors, changed, type Draft, type DraftErrors } from './CustomerFields';
+import { factsOf, owedOn, isUpcoming, jobOrder } from '../../shared/customers/facts';
+import { draftFromQuery } from '../../shared/customers/search';
+import { CustomerFields, emptyDraft, draftOf, customerPatch, checkDraft, hasErrors, changed, type Draft, type DraftErrors } from '../../shared/customers/CustomerFields';
 import { NotesPanel } from './NotesPanel';
-import { VehicleAddSheet, CarForm, EMPTY_CAR, carIsEmpty, carErrors, carRow, type AddDraft, type AddMode } from './VehicleBits';
+import { VehicleAddSheet, CarForm, EMPTY_CAR, carIsEmpty, carErrors, carRow, type AddDraft, type AddMode } from '../../shared/vehicles/VehicleBits';
 import { searchPlaces } from '../../shared/places/AddressField';
 import { locate } from '../../shared/places/locate';
-import { spreadToJobs } from '../../app/locator';
+import { spreadToJobs } from '../../shared/customers/locator';
 import type { Suggestion } from '../../shared/places/photon';
 import { oneLine, directionsUrl } from '../../shared/places/address';
-import { Flags, Plate, Bit } from './bits';
+import { Flags, Plate, Bit } from '../../shared/customers/bits';
 import { stampDay, dayOfIso, dateShort } from '../../domain/moment/dayWords';
 import { carName } from '../../domain/vehicles/words';
 import { lastOil } from '../../domain/oil/select';
 import { CarHistoryButton } from './CarHistory';
-import { km } from './vehicleText';
+import { km } from '../../shared/vehicles/vehicleText';
 import '../../shared/places/customers.css';
 
 export default function CustomerScreen({ params, query }: ScreenProps) {

@@ -11,9 +11,9 @@ import { phoneDigits, formatPhone } from '../../lib/text';
 import { customerName, vehiclesOf, vehicleLabel, jobsOfCustomer } from '../../data/select';
 import type { Customer, Job } from '../../data/types';
 import { Page, Panel, Field, PhoneInput, Button, Avatar } from '../../ui';
-import { recentFirst, searchIndex } from '../customers/facts';
-import { searchList, type SearchDoc } from '../customers/search';
-import { Bit } from '../customers/bits';
+import { recentFirst, searchIndex } from '../../shared/customers/facts';
+import { searchList, type SearchDoc } from '../../shared/customers/search';
+import { Bit } from '../../shared/customers/bits';
 import { windowWords } from '../../domain/moment/words';
 import './booking.css';
 

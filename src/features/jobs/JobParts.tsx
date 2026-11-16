@@ -11,9 +11,9 @@ import { money } from '../../lib/money';
 import { truckLabel, truckColor, vehicle, vehicleLabel, messagesOf, activeTrip, settings, invoiceOf, jobsOn, jobTotals, blockLoad, staffName, windowsOn } from '../../data/select';
 import { updateJob, setJobDuration, moveJob, errorMessage } from '../../data/api';
 import { may } from '../../domain/rights';
-import { ConversationSheet } from '../conversation/ConversationSheet';
-import { VehiclePicker } from '../customers/VehiclePicker';
-import { locateMissing } from '../../app/locator';
+import { ConversationSheet } from '../../shared/customers/ConversationSheet';
+import { VehiclePicker } from '../../shared/vehicles/VehiclePicker';
+import { locateMissing } from '../../shared/customers/locator';
 import { BlockPicker, type BlockChoice, type FarInfo } from '../booking/BlockPicker';
 import { windowWords, freeWords } from '../../domain/moment/words';
 import { sameMoment, moveWindow, choiceWindow, farQuestion } from '../../domain/moment/logic';
@@ -27,7 +27,7 @@ import { signedWhen } from './WaiverSheet';
 import { copyText } from './TextOutcome';
 import { JobTicket } from './JobTicket';
 import { askCar, saveCar } from './CarCheckSheet';
-import { km } from '../customers/vehicleText';
+import { km } from '../../shared/vehicles/vehicleText';
 import { mayChangeTruck } from '../../domain/jobs/rights';
 
 /** the km of a visit is noted once the truck is there (and fixed after) */

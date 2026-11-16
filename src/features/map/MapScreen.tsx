@@ -12,7 +12,7 @@ import { t, lang } from '../../lib/i18n';
 import { today, addDays, longDay, clock, isValidDay, nowMinute } from '../../lib/dates';
 import { rpcNow, errorMessage } from '../../data/api';
 import { isNetworkError, flush } from '../../data/sync';
-import { locateMissing } from '../../app/locator';
+import { locateMissing } from '../../shared/customers/locator';
 import { access, can, isOwner, myTrucks, preview } from '../../data/auth';
 import { TruckDaySheet } from './TruckDaySheet';
 import { staffName, job as jobRow, customer as customerRow } from '../../data/select';

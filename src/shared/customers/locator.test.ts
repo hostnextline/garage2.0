@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { missingPositions, jobPlace, addrKey } from './locator';
-import type { Customer, Job } from '../data/types';
+import type { Customer, Job } from '../../data/types';
 
 const cust = (id: string, address: string | null, lat: number | null = null, extra: Partial<Customer> = {}) =>
   ({ id, address, lat, lng: lat == null ? null : -73.6, postal_code: null, city: null, deleted_at: null, ...extra }) as unknown as Customer;

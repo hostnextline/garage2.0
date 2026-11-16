@@ -15,7 +15,7 @@ import { searchList, draftFromQuery } from './search';
 import { CustomerFields, emptyDraft, checkDraft, hasErrors, customerPatch, type Draft, type DraftErrors } from './CustomerFields';
 import { Flags, Bit } from './bits';
 import { carName } from '../../domain/vehicles/words';
-import '../../shared/places/customers.css';
+import '../places/customers.css';
 
 export interface CustomerPickerProps {
   value: string | null;

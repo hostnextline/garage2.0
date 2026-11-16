@@ -14,8 +14,8 @@ import { saveInventoryItem } from '../../data/api';
 import { can } from '../../data/auth';
 import { itemsToCreate, type NeedLine, type Missing } from '../../domain/stock/needs';
 import { formatQty } from '../../domain/stock/stock';
-import { useWeekNeeds, defaultWeek, lineLabel, qtyWords, jugWords, weekWords, shoppingText, copy, dayWord, FAMILY } from './needsView';
-import './inventory.css';
+import { useWeekNeeds, defaultWeek, lineLabel, qtyWords, jugWords, weekWords, shoppingText, copy, dayWord, FAMILY } from '../../shared/stock/needsView';
+import '../../shared/stock/inventory.css';
 
 const ICON = { oil: Droplet, filters: Filter, tires: Disc3, parts: Package };
 

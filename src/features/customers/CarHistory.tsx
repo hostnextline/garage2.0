@@ -9,8 +9,8 @@ import { allJobs } from '../../data/select';
 import { Banner, Button, Sheet, Skeleton } from '../../ui';
 import { JobTicket } from '../jobs/JobTicket';
 import { carName } from '../../domain/vehicles/words';
-import { jobOrder } from './facts';
-import { useVinHistory, VinVisits } from './VinHistory';
+import { jobOrder } from '../../shared/customers/facts';
+import { useVinHistory, VinVisits } from '../../shared/vehicles/VinHistory';
 
 export function CarHistoryButton(p: { car: Vehicle; size?: 'sm' | 'md'; variant?: 'secondary' | 'ghost'; class?: string }) {
   const [open, setOpen] = useState(false);

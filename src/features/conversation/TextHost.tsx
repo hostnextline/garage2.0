@@ -16,11 +16,11 @@ import { conversation, conversationPhone, sendChat, sendChatPhone, errorMessage,
 import { wide } from '../../platform/media';
 import { REALTIME } from '../../lib/config';
 import { Avatar, IconButton, toast } from '../../ui';
-import { phoneOwners } from '../customers/dupes';
+import { phoneOwners } from '../../shared/customers/dupes';
 import { hermesOpen, setHermesOpen, callLink, textsOn, onCheckTexts } from '../../services/bubbles';
-import { nextChats, openChat, minimiseChat, closeChat, unread, heads, textsOf, phoneId, lines, FRESH_MS, type Chat, type IncomingText } from './texts';
-import { Attachments } from './Attachments';
-import './conversation.css';
+import { nextChats, openChat, minimiseChat, closeChat, unread, heads, textsOf, phoneId, lines, FRESH_MS, type Chat, type IncomingText } from '../../shared/customers/texts';
+import { Attachments } from '../../shared/customers/Attachments';
+import '../../shared/customers/conversation.css';
 
 const LS_CHATS = 'his-text-chats', LS_SINCE = 'his-text-since';
 const WEEK_MS = 7 * 24 * 3600 * 1000, ASK_MS = 15 * 1000, REFRESH_MS = 20 * 1000, PEEK_MS = 2 * 60 * 1000, MAX_HEADS = 4;

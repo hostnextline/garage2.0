@@ -11,7 +11,7 @@ import { yearsList, POPULAR_MAKES, OTHER_MAKES, makeName, modelsFor, refModels, 
 import { engineRef, ensureEngineRef, enginesFor, type EngineChoice } from '../../domain/vehicles/engineRef';
 import { engineLine } from './vehicleText';
 import { engineWords } from './VehicleBits';
-import '../../shared/places/customers.css';
+import '../places/customers.css';
 
 /** engine: chosen at the « Moteur » step (from the engine list), when the person knows it */
 export interface CarChoice { year: string; make: string; model: string; engine?: { displacement: number | null; cylinders: number | null; fuel: string; engine: string } | null }

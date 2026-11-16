@@ -13,9 +13,9 @@ import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, He
 import { BigMoney } from '../../shared/charts/charts';
 import { itemValue, stockValue, toOrder } from '../../domain/stock/stock';
 import { ItemSheet, useQty } from './ItemSheet';
-import { defaultWeek, weekWords } from './needsView';
+import { defaultWeek, weekWords } from '../../shared/stock/needsView';
 import '../../shared/charts/charts.css';
-import './inventory.css';
+import '../../shared/stock/inventory.css';
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function found(i: InventoryItem, q: string): boolean {

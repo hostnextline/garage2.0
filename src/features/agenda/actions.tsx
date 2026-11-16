@@ -14,7 +14,7 @@ import { toast } from '../../ui';
 import { blockPhrase } from '../../domain/moment/words';
 import { dayWords } from './layout';
 import { today as todayOf } from '../../lib/dates';
-import { customerActions } from '../customers/shortcuts';
+import { customerActions } from '../../shared/customers/shortcuts';
 import { jobRights, mayChangeTruck, mayEditJob } from '../../domain/jobs/rights';
 import { jobPerson } from '../../domain/jobs/words';
 import { copiedJob, copyJob, pasteHref, bookHref } from './copy';

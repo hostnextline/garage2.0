@@ -14,7 +14,7 @@ import { engineRef, ensureEngineRef, matchEngine, specFromRow, specKeyOf, type E
 import { refLine, refCode, sampleNumber } from './vehicleText';
 import { engineWords } from './VehicleBits';
 import { stampDay } from '../../domain/moment/dayWords';
-import '../../shared/places/customers.css';
+import '../places/customers.css';
 
 const FIELDS: (keyof SpecData)[] = ['oil_filter', 'drain_torque', 'air_filter', 'cabin_filter', 'plugs', 'coolant', 'trans', 'brake', 'tires', 'pressure', 'wipers', 'battery'];
 const litres = (n: number) => new Intl.NumberFormat(lang.value === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 2 }).format(n);

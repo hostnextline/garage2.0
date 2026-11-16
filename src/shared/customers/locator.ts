@@ -6,13 +6,13 @@
    One address at a time, gently with the free map service; only a sure answer is saved (locate.ts: the same door,
    street and town). An address that gave nothing is tried again after 6 hours, or as soon as it is changed. */
 import { signal } from '@preact/signals';
-import { allJobs, customersList } from '../data/select';
-import { saveCustomer, updateJob } from '../data/api';
-import { net } from '../data/sync';
-import { today } from '../lib/dates';
-import { locate } from '../shared/places/locate';
-import type { Customer, Job } from '../data/types';
-import { may } from '../domain/rights';
+import { allJobs, customersList } from '../../data/select';
+import { saveCustomer, updateJob } from '../../data/api';
+import { net } from '../../data/sync';
+import { today } from '../../lib/dates';
+import { locate } from '../places/locate';
+import type { Customer, Job } from '../../data/types';
+import { may } from '../../domain/rights';
 
 export interface Task {
   /** the address folded: one lookup for the same address written on a customer and its appointments */
