@@ -3,45 +3,14 @@
    - Meter: a goal bar with its words.
    - HBars: a ranked list with a thin bar under each label (the values are text, so it reads without the bars).
    - MonthBars: an inline SVG column chart drawn at the real width of its panel (text stays 13 px), one accent colour,
-     the month shown in full and the others lighter, a dashed goal line, and the same numbers as a table below it. */
+     the month shown in full and the others lighter, a dashed goal line, and the same numbers as a table below it.
+   - Stat / StatGrid: a grid of numbers inside one panel.
+   The number formats are in format.ts. */
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Help } from '../../ui';
+import { moneyParts } from './format';
 import './charts.css';
-
-/* ---------- formats ---------- */
-const nfs = new Map<string, Intl.NumberFormat>();
-function nf(key: string, make: () => Intl.NumberFormat): Intl.NumberFormat {
-  let f = nfs.get(key);
-  if (!f) { f = make(); nfs.set(key, f); }
-  return f;
-}
-const loc = (lang: string) => (lang === 'en' ? 'en-CA' : 'fr-CA');
-/** 0.123 → "12 %" / "12%" */
-export function pct(x: number | null | undefined, lang: string, digits = 0): string {
-  if (x == null || !Number.isFinite(x)) return '';
-  return nf(`p${lang}${digits}`, () => new Intl.NumberFormat(loc(lang), { style: 'percent', maximumFractionDigits: digits, minimumFractionDigits: 0 })).format(x);
-}
-/** 1234567 → "12,3 k $" / "$12.3K" (chart labels; the table below gives the exact amount) */
-export function compactMoney(cents: number, lang: string, digits = 1): string {
-  return nf(`c${lang}${digits}`, () => new Intl.NumberFormat(loc(lang), { style: 'currency', currency: 'CAD', notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: digits }))
-    .format(cents / 100).replace(/CA\$/, '$');
-}
-export function decimal(x: number | null | undefined, lang: string, digits = 1): string {
-  if (x == null || !Number.isFinite(x)) return '';
-  return nf(`d${lang}${digits}`, () => new Intl.NumberFormat(loc(lang), { maximumFractionDigits: digits, minimumFractionDigits: 0 })).format(x);
-}
-/** "12 345" and ",67 $" (fr) / "$12,345" and ".67" (en) */
-export function moneyParts(cents: number, lang: string): { main: string; minor: string } {
-  const parts = nf(`m${lang}`, () => new Intl.NumberFormat(loc(lang), { style: 'currency', currency: 'CAD', minimumFractionDigits: 2, maximumFractionDigits: 2 })).formatToParts(cents / 100);
-  let main = '', minor = '', inMinor = false;
-  for (const p of parts) {
-    if (p.type === 'decimal') inMinor = true;
-    const v = p.type === 'currency' ? p.value.replace(/^CA\$$/, '$') : p.value;
-    if (inMinor) minor += v; else main += v;
-  }
-  return { main: main.trim(), minor: minor.replace(/^\s+$/, '') };
-}
 
 /* ---------- pieces ---------- */
 export function BigMoney(p: { cents: number; lang: string; size?: 'xl' | 'lg' | 'md'; class?: string; 'data-testid'?: string }) {
@@ -87,11 +56,12 @@ export function HBars(p: { items: HBar[]; label: string; 'data-testid'?: string 
   );
 }
 
-/** the width of an element, followed as it changes */
+/** the width of an element, followed as it changes. Read before the first paint (a layout effect): the chart is never
+    drawn once at a guessed width and then again at the real one */
 function useWidth<T extends HTMLElement>(fallback = 340) {
   const ref = useRef<T>(null);
   const [w, setW] = useState(fallback);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const read = () => { const x = Math.round(el.getBoundingClientRect().width); if (x > 0) setW(x); };

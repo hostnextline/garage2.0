@@ -1,14 +1,8 @@
-/* Stock: quantities (2 decimals at most, like the database), units, value at cost, what to order, and the moves.
-   The server changes an item's quantity itself when a move is saved (a trigger), but only the move comes back to the
-   phone: the quantity on screen is moved at once here, then the item is read again from the server once the move
-   has left the phone (or was refused), so the screen never keeps a wrong count. */
-import { effect } from '@preact/signals';
+/* Stock: quantities (2 decimals at most, like the database), units, value at cost, what to order, and the change a
+   move makes. Pure (tested in stock.test.ts); the moves themselves are written by features/inventory/actions.ts, and the
+   quantity on hand while a move waits to be sent is onHand.ts. */
 import { roundCents, type Cents } from '../../lib/money';
-import { moveStock, saveInventoryItem, buyStock, type PaidFrom } from '../../data/api';
-import { getRow, patchLocal } from '../../data/store';
-import { net, refetch } from '../../data/sync';
 import type { InventoryItem } from '../../data/types';
-import { keepAfterSave } from '../money/expenses';
 
 export type MoveKind = 'in' | 'out' | 'count';
 
@@ -30,8 +24,17 @@ export function formatQty(n: number | null | undefined, lang: string): string {
   if (!f) { f = new Intl.NumberFormat(lang === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 2 }); nf.set(k, f); }
   return f.format(Number(n));
 }
+/** a quantity to put back in a field the person edits: no thousands separator (« 1,000 » in English would read as
+    1 with three decimals), the decimal comma in French; parseQty reads it back as the same number */
+export function editQty(n: number | null | undefined, lang: string): string {
+  if (n == null || !Number.isFinite(Number(n))) return '';
+  const s = String(round2(Number(n)));
+  return lang === 'en' ? s : s.replace('.', ',');
+}
 const SYMBOL = /^(?:l|ml|kg|g|lb|lbs|oz|m|cm|mm|pi|po|gal|qt|pt|%)$/i;
 const DEFAULT_UNIT = /^(?:unite|unité|unites|unités|unit|units|u|pc|pcs|pièce|piece|pieces|pièces)?$/i;
+/** no unit, or a word for « one by one » (unité, pièce, pc…): the quantity reads « 6 unités » */
+export const isDefaultUnit = (unit: string | null | undefined) => DEFAULT_UNIT.test(String(unit || '').trim());
 /** the unit written after a quantity: symbols stay (L, kg), French words take the plural (2 jeux, 3 boîtes) */
 export function unitWord(unit: string | null | undefined, n: number, lang: string): string {
   const u = String(unit || '').trim();
@@ -43,7 +46,7 @@ export function unitWord(unit: string | null | undefined, n: number, lang: strin
 /** "38 L", "6 unités", "2 jeux" ; `units` is the plural word for items counted one by one (« unités ») */
 export function qtyLabel(n: number | null | undefined, unit: string | null | undefined, lang: string, units: (n: number) => string): string {
   const q = Number(n ?? 0);
-  if (DEFAULT_UNIT.test(String(unit || '').trim())) return units(q);
+  if (isDefaultUnit(unit)) return units(q);
   return `${formatQty(q, lang)} ${unitWord(unit, q, lang)}`.trim();
 }
 
@@ -71,49 +74,3 @@ export function moveDelta(kind: MoveKind, amount: number, current: number): numb
   return round2(amount - Number(current));
 }
 export const REASON: Record<MoveKind, 'restock' | 'used' | 'adjust'> = { in: 'restock', out: 'used', count: 'adjust' };
-
-/* ---------- writing ---------- */
-const settling = new Set<string>();
-/** reads the item again from the server once nothing waits to be sent (the server's count is the truth) */
-function settle(itemId: string) {
-  if (settling.has(itemId)) return;
-  settling.add(itemId);
-  setTimeout(() => {
-    let done = false;
-    let stop: (() => void) | undefined;
-    stop = effect(() => {
-      const n = net.value;
-      if (done || n.pending > 0 || n.sending) return;
-      done = true;
-      // after this run: `stop` is set by then
-      queueMicrotask(() => { stop?.(); settling.delete(itemId); void refetch('inventory_items', itemId); });
-    });
-  }, 30);
-}
-function showQty(itemId: string, delta: number) {
-  const cur = getRow<InventoryItem>('inventory_items', itemId);
-  if (cur) patchLocal('inventory_items', itemId, { qty: round2(Number(cur.qty) + delta) });
-}
-/** a stock move (throws only when nothing may be changed, like the owner's preview) */
-export async function recordMove(itemId: string, delta: number, reason: 'restock' | 'used' | 'adjust' | 'return', note: string | null): Promise<string> {
-  const id = await moveStock(itemId, delta, reason, note);
-  showQty(itemId, delta);
-  settle(itemId);
-  keepAfterSave('inventory_moves', id);
-  return id;
-}
-/** stock bought and paid (Trésorerie or Coffre): the server moves the stock and the money together */
-export async function recordPurchase(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null): Promise<void> {
-  await buyStock(itemId, qty, totalCents, from, vendor, note);
-  showQty(itemId, qty);
-  settle(itemId);
-}
-/** saves an item's sheet; a new item starts with its first quantity */
-export async function saveItem(item: Partial<InventoryItem>, firstQty: number | null): Promise<string> {
-  const isNew = !(item.id && getRow('inventory_items', item.id));
-  const { qty: _ignored, ...rest } = item;
-  void _ignored;
-  const id = await saveInventoryItem(isNew && firstQty ? { ...rest, qty: firstQty } : rest);
-  if (isNew && firstQty) { showQty(id, firstQty); settle(id); }
-  return id;
-}

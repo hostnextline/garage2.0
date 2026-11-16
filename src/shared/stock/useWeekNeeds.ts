@@ -1,0 +1,49 @@
+/* The needs of a week from the phone's copy of the data (shared by « Besoins de la semaine » and the card on
+   « La journée »). Worked out in a computed signal that reads every table it uses, so a line added to a job, an
+   engine sheet confirmed or a service changed while the screen is open shows at once (a memo on the jobs and the
+   stock alone missed them). The job lines, the services' parts and the engine sheets are indexed once per run. */
+import { useEffect, useMemo } from 'preact/hooks';
+import { computed } from '@preact/signals';
+import { today, addDays, type Day } from '../../lib/dates';
+import { allJobs, service, vehicle, inventoryList } from '../../data/select';
+import { rowsOf } from '../../data/store';
+import type { EngineSpec, JobItem, ServicePart } from '../../data/types';
+import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
+import { weekNeeds, defaultWeekOf, type WeekNeeds } from '../../domain/stock/needs';
+
+function groupBy<T>(rows: T[], key: (r: T) => string | null | undefined): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    if (k == null) continue;
+    const list = m.get(k);
+    if (list) list.push(r); else m.set(k, [r]);
+  }
+  return m;
+}
+
+/** the needs of the week starting on `from` (Sunday): only the days from today on (what is still to come) */
+export function useWeekNeeds(from: Day): WeekNeeds {
+  useEffect(() => { void ensureEngineRef(); }, []);
+  const now = today();
+  const start = from < now ? now : from;
+  const needs = useMemo(() => computed<WeekNeeds>(() => {
+    const items = groupBy(rowsOf<JobItem>('job_items'), (i) => i.job_id);
+    const parts = groupBy(rowsOf<ServicePart>('service_parts').filter((p) => !p.deleted_at), (p) => p.service_id);
+    const specs = new Map(rowsOf<EngineSpec>('engine_specs').filter((s) => !s.deleted_at).map((s) => [s.key, s]));
+    return {
+      ...weekNeeds({
+        from: start, to: addDays(from, 6), jobs: allJobs.value, itemsOf: (id) => items.get(id) || [],
+        service: (id) => service(id), partsOf: (id) => parts.get(id) || [], vehicle: (id) => vehicle(id),
+        spec: (k) => (k ? specs.get(k) : undefined), refRows: engineRef.value.rows, inventory: inventoryList.value
+      }),
+      from
+    };
+  }), [from, start]);
+  return needs.value;
+}
+
+/** the week to open: this one, or from Thursday the coming one when something is booked in it */
+export function useDefaultWeek(): Day {
+  return defaultWeekOf(today(), allJobs.value);
+}

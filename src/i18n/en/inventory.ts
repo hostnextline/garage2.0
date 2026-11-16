@@ -36,14 +36,8 @@ export const inventory: typeof fr = {
     missingSub: 'These appointments do not say enough about the vehicle to know what to take.',
     missing: {
       car: 'No vehicle on the appointment: add it to know which oil to take.',
-      oil_l: 'Oil quantity unknown: fill in the engine sheet.',
       oil_visc: 'Oil type unknown: fill in the engine sheet.',
       oil_filter: 'Oil filter unknown: fill in the engine sheet.',
-      air_filter: 'Air filter unknown.',
-      cabin_filter: 'Cabin filter unknown.',
-      wipers: 'Wipers unknown.',
-      plugs: 'Spark plugs unknown.',
-      battery: 'Battery unknown.',
       tires: 'Tire size unknown: add it on the vehicle.'
     },
     fromJobs: { one: '{n} appointment', other: '{n} appointments' },

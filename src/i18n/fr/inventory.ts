@@ -36,14 +36,8 @@ export const inventory = {
     missingSub: 'Ces rendez-vous ne disent pas assez sur le véhicule pour savoir quoi prendre.',
     missing: {
       car: 'Pas de véhicule sur le rendez-vous : ajoute-le pour savoir quelle huile prendre.',
-      oil_l: 'Quantité d’huile inconnue : remplis la fiche moteur.',
       oil_visc: 'Type d’huile inconnu : remplis la fiche moteur.',
       oil_filter: 'Filtre à huile inconnu : remplis la fiche moteur.',
-      air_filter: 'Filtre à air inconnu.',
-      cabin_filter: 'Filtre d’habitacle inconnu.',
-      wipers: 'Essuie-glaces inconnus.',
-      plugs: 'Bougies inconnues.',
-      battery: 'Batterie inconnue.',
       tires: 'Grandeur des pneus inconnue : ajoute-la sur le véhicule.'
     },
     fromJobs: { one: '{n} rendez-vous', other: '{n} rendez-vous' },

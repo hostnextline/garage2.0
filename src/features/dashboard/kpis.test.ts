@@ -48,3 +48,28 @@ describe('the dashboard numbers', () => {
     expect(s[1]).toMatchObject({ share: 0.25, avg: 0 });
   });
 });
+
+import { shownGoal, monthsAverage } from './kpis';
+describe('the rebuild', () => {
+  it('a goal removed in the settings stays removed, whatever the last answer of the server kept', () => {
+    expect(shownGoal({ billing: { goal_cents: null } }, 2500000)).toBeNull();
+    expect(shownGoal({ billing: {} }, 2500000)).toBeNull();
+    expect(shownGoal({ billing: { goal_cents: 3000000 } }, 2500000)).toBe(3000000);
+    // the settings not on the phone yet: the server's goal
+    expect(shownGoal(undefined, 2500000)).toBe(2500000);
+  });
+  it('the six-month average leaves out the month in progress and the months before the first revenue', () => {
+    const keys = ['2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01', '2026-10-01', '2026-11-01'];
+    const months = [0, 0, 0, 900000, 1100000, 200000].map((r, k) => ({ month: keys[k], revenue_cents: r }));
+    // the old way: (900 000 + 1 100 000 + 200 000) / 6 = 366 667
+    expect(monthsAverage(months, '2026-11-11')).toBe(1000000);
+    // a closed month seen later: every month is closed
+    expect(monthsAverage(months, '2026-12-02')).toBe(Math.round(2200000 / 3));
+    expect(monthsAverage(months.map((m) => ({ ...m, revenue_cents: 0 })), '2026-11-11')).toBe(0);
+  });
+  it('an answer shaped again reads the same (the kept copy of an older app cannot break the screen)', () => {
+    const d = normalizeDashboard({ revenue_cents: 5, months: [{ month: '2026-10-01', revenue_cents: 7 }], by_truck: [{ truck_id: 'a', revenue_cents: 1, invoices: 1 }] }, '2026-11-04');
+    expect(normalizeDashboard(d, '2026-11-04')).toEqual(d);
+    expect(normalizeDashboard({ months: 'oops', by_truck: null }, '2026-11-04').months).toHaveLength(6);
+  });
+});

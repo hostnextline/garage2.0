@@ -1,0 +1,53 @@
+/* useReport with a pretend server: an old answer never replaces a newer one, the numbers kept on the device show at
+   once on a month already seen (no empty frame), and numbers left open get loaded again. */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+import { useReport, STALE_MS, type ReportState } from './useReport';
+import { clearReports, writeReport } from './reportCache';
+
+const box = document.createElement('div');
+document.body.appendChild(box);
+let seen: (ReportState<number> & { reload: () => void }) | null = null;
+const frames: (number | null)[] = [];
+function Probe(p: { k: string; load: () => Promise<number> }) {
+  seen = useReport<number>(p.k, p.load, (raw) => Number(raw));
+  frames.push(seen.data);
+  return null;
+}
+const draw = (k: string, load: () => Promise<number>) => act(() => render(<Probe k={k} load={load} />, box));
+const later = (v: number, ms: number) => () => new Promise<number>((r) => setTimeout(() => r(v), ms));
+
+beforeEach(() => { clearReports(); localStorage.clear(); frames.length = 0; });
+afterEach(() => { act(() => render(null, box)); vi.useRealTimers(); });
+
+describe('a server report', () => {
+  it('the answer of a month left before it arrived never shows on the new month', async () => {
+    vi.useFakeTimers();
+    await draw('his.report.u.dashboard.2026-10', later(10, 500));
+    await draw('his.report.u.dashboard.2026-11', later(11, 100));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(seen?.data).toBe(11);
+    expect(frames).not.toContain(10);
+  });
+  it('a month already seen shows its kept numbers in the very first frame', async () => {
+    writeReport('his.report.u.dashboard.2026-09', { at: new Date().toISOString(), data: 9 });
+    await draw('his.report.u.dashboard.2026-10', later(10, 5));
+    frames.length = 0;
+    await draw('his.report.u.dashboard.2026-09', later(9, 5));
+    expect(frames[0]).toBe(9);
+  });
+  it('numbers older than a few minutes are loaded again while the screen stays open, keeping the old ones meanwhile', async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    await draw('his.report.u.dashboard.2026-11', () => Promise.resolve(++n));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(seen?.data).toBe(1);
+    frames.length = 0;
+    await act(async () => { await vi.advanceTimersByTimeAsync(STALE_MS + 61_000); });
+    // the reload's answer
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(seen?.data).toBe(2);
+    expect(frames).not.toContain(null);
+  });
+});
