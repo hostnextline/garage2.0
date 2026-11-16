@@ -18,7 +18,6 @@ export const treasury = {
     refund: 'Taxes à recevoir',
     invoices: { zero: 'Aucune facture', one: '{n} facture', other: '{n} factures' },
     expensesCount: { zero: 'Aucune dépense', one: '{n} dépense', other: '{n} dépenses' },
-    beforeTax: 'avant taxes',
     remitSub: 'TPS et TVQ ensemble',
     loading: 'Calcul du rapport…'
   },
@@ -61,6 +60,7 @@ export const treasury = {
     file: 'tresorerie-{from}-au-{to}',
     mismatch: 'Le téléphone n’a pas encore toutes les factures ou dépenses de la période. Attends la fin de la synchro (en haut) avant d’exporter.',
     noInvoices: 'Tu ne vois pas les factures : le fichier n’aura que les dépenses.',
+    offline: 'Pas de réseau : le fichier est fait avec ce qui est gardé sur le téléphone. Les derniers changements peuvent manquer.',
     help: 'Le fichier Excel a trois feuilles : Revenus (les factures), Dépenses (les reçus) et Taxes (TPS et TVQ à remettre). Le CSV met tout dans une seule liste, par date.',
     sheets: { revenue: 'Revenus', expenses: 'Dépenses', taxes: 'Taxes' },
     cols: {
@@ -118,13 +118,37 @@ export const treasury = {
     save: 'Enregistrer la dépense',
     saved: 'Dépense enregistrée',
     deleted: 'Dépense supprimée',
-    sending: 'Envoi du reçu…',
-    receiptQueued: 'Pas de réseau : le reçu partira avec la dépense dès que le réseau revient.',
+    photoWaiting: 'La photo est gardée sur le téléphone : elle partira toute seule quand le réseau reviendra.',
+    photoRefused: 'Le serveur n’a pas pris cette photo. Touche « Enregistrer la dépense » pour essayer encore, ou retire la photo.',
+    receiptQueued: 'Pas de réseau : la dépense est enregistrée, le reçu partira tout seul dès que le réseau revient.',
     errDay: 'Choisis la date du reçu.',
+    errDayFuture: 'Cette date est dans le futur : vérifie le jour et l’année.',
     errTotal: 'Écris le total payé.',
     errCategory: 'Choisis la catégorie.',
     errSum: 'Les montants ne s’additionnent pas : corrige l’avant-taxes, la TPS ou la TVQ.',
     fix: 'Il manque quelque chose : regarde les champs en rouge.'
+  },
+  recon: {
+    title: 'Rapprochement d’hier',
+    help: 'Chaque nuit, l’app compare les factures, les paiements, les dépenses, le Coffre et le stock. Si tout balance, tu vois le résumé de la journée. Sinon, chaque différence est écrite ici : touche-la pour ouvrir ce qu’elle concerne.',
+    checked: 'Vérifié le {when}',
+    day: 'Journée du {day}',
+    allGood: 'Tout balance',
+    allGoodText: 'Aucune différence pour cette journée.',
+    toLook: { one: '1 chose à vérifier', other: '{n} choses à vérifier' },
+    never: 'Pas encore de vérification. Touche « Vérifier maintenant » pour en faire une.',
+    offline: 'Pas de réseau : vérification du {when}.',
+    error: 'Le rapprochement ne se charge pas.',
+    seen: 'Vu',
+    seenDone: 'Noté comme vu',
+    since: 'Depuis le {day}',
+    check: 'Vérifier maintenant',
+    checkDone: 'Vérification faite',
+    severity: { bad: 'Important', warn: 'À regarder', info: 'Pour info' },
+    sheet: {
+      invoiced: 'Facturé', received: 'Reçu : {what}', refunded: 'Remboursé', expenses: 'Dépenses : {what}', coffreIn: 'Entré au Coffre', coffreOut: 'Sorti du Coffre', toReceive: 'Reste à recevoir',
+      by: '{method}, {name}'
+    }
   },
   viewer: { title: 'Reçu', loading: 'Ouverture du reçu…', offline: 'Le reçu s’affiche seulement avec du réseau.', missing: 'Ce reçu n’est plus disponible.', open: 'Ouvrir en grand' }
 };

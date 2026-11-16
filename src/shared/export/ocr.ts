@@ -43,7 +43,10 @@ export async function shrinkPhoto(file: Blob, max = 1600, quality = 0.8): Promis
 }
 
 /* ---------- tesseract.js, from the CDN, only when needed ---------- */
-export const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+/* the exact file of that version (sha384, checked against jsDelivr's own sha256 of it): a CDN that answered anything
+   else would run with the owner's session in this page. Another answer is refused and the person types the amounts. */
+const TESSERACT_SRI = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
 interface LoggerMessage { status: string; progress: number }
 interface TWorker { recognize(image: string): Promise<{ data: { text: string } }>; terminate(): Promise<unknown> }
 interface TesseractLib { createWorker(langs: string | string[], oem?: number, options?: { logger?: (m: LoggerMessage) => void; errorHandler?: (e: unknown) => void }): Promise<TWorker> }
@@ -62,6 +65,7 @@ export function loadTesseract(timeoutMs = 25000): Promise<TesseractLib> {
     s.src = TESSERACT_URL;
     s.async = true;
     s.crossOrigin = 'anonymous';
+    s.integrity = TESSERACT_SRI;
     let done = false;
     const fail = (why: string) => {
       if (done) return;
@@ -88,9 +92,11 @@ export function readReceipt(image: string, onProgress: (p: number, stage: 'load'
   let stopped = false;
   let rejectNow: (e: Error) => void = () => {};
   const stop = () => { const w = worker; worker = null; if (w) void w.terminate().catch(() => undefined); };
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const result = new Promise<string>((resolve, reject) => {
-    rejectNow = (e) => { stop(); reject(e); };
-    const timer = setTimeout(() => rejectNow(Object.assign(new Error('receipt reader: timeout'), { code: 'reader' })), timeoutMs);
+    // a stop or a failure also ends the time limit (it held the reading's memory for two minutes)
+    rejectNow = (e) => { clearTimeout(timer); stop(); reject(e); };
+    timer = setTimeout(() => rejectNow(Object.assign(new Error('receipt reader: timeout'), { code: 'reader' })), timeoutMs);
     (async () => {
       await Promise.resolve();   // the caller has its handle before the first progress
       onProgress(0, 'load');
