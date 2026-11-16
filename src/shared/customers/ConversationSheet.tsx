@@ -1,6 +1,7 @@
 /* « Conversation » with a customer: the texts both ways (what the garage sent, what the customer answered), read from
    the garage's GoHighLevel number, and an answer written here, sent from that number. No GoHighLevel app is needed on
-   the phone. Opened from the job (next to « Appeler ») and from the customer's file. Refreshes every 20 s while open. */
+   the phone. Opened from the job (next to « Appeler ») and from the customer's file. Refreshes every 20 s while open and
+   shown; a refresh that fails never takes the reply box away (the send says itself whether it went). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { RefreshCw, Send } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
@@ -23,19 +24,31 @@ function Open(p: { customerId: string; onClose: () => void }) {
   const l = lang.value;
   const c = customerRow(p.customerId);
   const [msgs, setMsgs] = useState<ChatMessage[] | null>(null);
-  const [state, setState] = useState<'ok' | 'off' | 'no_phone' | 'error' | 'offline'>('ok');
+  // what the server said (GoHighLevel connected or not, a phone or not), and apart from it a read that failed: a refresh
+  // that fails (one bar of signal in a driveway) shows a line above the list and keeps the reply box with what is typed
+  const [state, setState] = useState<'ok' | 'off' | 'no_phone'>('ok');
+  const [trouble, setTrouble] = useState<null | 'error' | 'offline'>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLDivElement>(null);
+  // only the answer of the latest read is used (a slow one that comes back after a newer one is dropped), never after closing
+  const asked = useRef(0);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   const load = async () => {
+    const n = ++asked.current;
     try {
       const r = await conversation(p.customerId);
-      if (!r.ok && r.code) { setState('error'); setError(r.error || null); return; }
-      setState(r.status); setError(r.error || null);
+      if (!alive.current || n !== asked.current) return;
+      if ((!r.ok && r.code) || r.status === 'error') { setTrouble('error'); setError(r.error || null); return; }
+      setState(r.status); setTrouble(null); setError(r.error || null);
       setMsgs(r.messages || []);
-    } catch (e) { setState(net.value.online ? 'error' : 'offline'); setError(errorMessage(e)); }
+    } catch (e) {
+      if (!alive.current || n !== asked.current) return;
+      setTrouble(net.value.online ? 'error' : 'offline'); setError(errorMessage(e));
+    }
   };
   useEffect(() => {
     void load();
@@ -52,7 +65,7 @@ function Open(p: { customerId: string; onClose: () => void }) {
       const r = await sendChat(p.customerId, m);
       if (r.status === 'sent') { setText(''); toast(t('conversation.sent'), { kind: 'ok' }); await load(); }
       else toast(r.error && r.code ? r.error : t(`conversation.status.${r.status === 'off' || r.status === 'no_phone' ? r.status : 'error'}`), { kind: 'bad' });
-    } catch (e) { toast(errorMessage(e), { kind: 'bad' }); } finally { setBusy(false); }
+    } catch (e) { toast(errorMessage(e), { kind: 'bad' }); } finally { if (alive.current) setBusy(false); }
   };
   const smsOff = c?.sms_ok === false;
   return (
@@ -60,16 +73,17 @@ function Open(p: { customerId: string; onClose: () => void }) {
       footer={state === 'ok' && !smsOff ? (
         <div class="conv-reply">
           <Textarea value={text} onValue={setText} rows={2} maxLength={1000} placeholder={t('conversation.placeholder')} aria-label={t('conversation.placeholder')} data-testid="conversation-input" />
-          <Button variant="primary" icon={<Send />} onClick={send} disabled={!text.trim() || busy} data-testid="conversation-send">{t('conversation.send')}</Button>
+          <Button variant="primary" icon={<Send />} onClick={() => send()} disabled={!text.trim() || busy} data-testid="conversation-send">{t('conversation.send')}</Button>
         </div>
       ) : <Button onClick={p.onClose}>{t('common.close')}</Button>}>
       <div class="conv-head">
         <span class="small muted">{t('conversation.from')}</span>
-        <IconButton icon={<RefreshCw />} label={t('conversation.refresh')} onClick={() => void load()} />
+        <IconButton icon={<RefreshCw />} label={t('conversation.refresh')} onClick={() => load()} />
       </div>
-      {state !== 'ok' && <Banner kind={state === 'error' ? 'bad' : 'warn'}>{t(`conversation.status.${state}`)}{error && state === 'error' ? ` (${error})` : ''}</Banner>}
+      {trouble ? <Banner kind={trouble === 'error' ? 'bad' : 'warn'}>{t(`conversation.status.${trouble}`)}{error && trouble === 'error' ? ` (${error})` : ''}</Banner>
+        : state !== 'ok' && <Banner kind="warn">{t(`conversation.status.${state}`)}</Banner>}
       {smsOff && <Banner kind="warn">{t('conversation.smsOff')}</Banner>}
-      {state === 'ok' && msgs == null && <Skeleton h={44} lines={4} />}
+      {state === 'ok' && !trouble && msgs == null && <Skeleton h={44} lines={4} />}
       {msgs && !msgs.length && state === 'ok' && <p class="muted" style={{ margin: 0 }}>{t('conversation.empty')}</p>}
       {msgs && msgs.length > 0 && (
         <div class="conv-list" role="log" aria-live="polite" data-testid="conversation-list">

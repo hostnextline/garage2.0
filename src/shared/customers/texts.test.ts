@@ -85,6 +85,15 @@ describe('« Texto entrant » bubbles', () => {
     expect(lines(full, texts, make).map((m) => m.id)).toEqual(['g1', 'g2', 'g3']);
   });
 
+  it('a short answer said again later is a new text (comms-guide-11)', () => {
+    const make = (x: IncomingText): Line => ({ id: x.id, at: x.at, dir: 'in', body: x.body });
+    const conv: Line[] = [{ id: 'g1', at: iso(1), dir: 'in', body: 'Merci' }];
+    // the same words two days later: shown
+    expect(lines(conv, [text('m', A, 1 + 2 * 24 * 60, null, 'Merci')], make).map((m) => m.id)).toEqual(['g1', 'm']);
+    // the same words a moment apart: the same text, once
+    expect(lines(conv, [text('m', A, 2, null, 'Merci')], make).map((m) => m.id)).toEqual(['g1']);
+  });
+
   it('a picture with no words: shown once, from GoHighLevel as soon as it has it', () => {
     const make = (x: IncomingText): Line => ({ id: x.id, at: x.at, dir: 'in', body: x.body || '📎' });
     const pic = [text('p', A, 5, null, '')];
@@ -118,8 +127,10 @@ describe('pictures and documents of a text', () => {
     expect(fileName('https://x.test/')).toBe('');
     expect(fileName('pas une adresse')).toBe('pas une adresse');
   });
-  it('only web addresses are shown', () => {
+  it('only secure web addresses are shown', () => {
     expect(safeFiles(['https://x.test/a.jpg', 'javascript:alert(1)', 'data:text/html,x', 7 as unknown as string])).toEqual(['https://x.test/a.jpg']);
+    // (comms-guide-13) plain http is never fetched or opened
+    expect(safeFiles(['http://x.test/a.jpg', 'HTTPS://x.test/b.jpg', 'https:///nohost'])).toEqual(['HTTPS://x.test/b.jpg']);
     expect(safeFiles(undefined)).toEqual([]);
   });
   it('the server finds them wherever GoHighLevel put them', () => {

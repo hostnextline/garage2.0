@@ -40,4 +40,16 @@ describe('pictures and documents in the conversation', () => {
     expect(box.querySelector('img')).toBeNull();
     expect(q('conversation-doc')[0].getAttribute('href')).toBe('https://x.test/media/8f2c91');
   });
+  it('a video or a voice note the browser cannot play becomes a link that opens it (comms-guide-12)', () => {
+    draw(['https://x.test/note.amr', 'https://x.test/clip.3gp']);
+    act(() => { for (const el of [...q('conversation-audio'), ...q('conversation-video')]) el.dispatchEvent(new Event('error')); });
+    expect(q('conversation-audio')).toHaveLength(0);
+    expect(q('conversation-video')).toHaveLength(0);
+    expect(q('conversation-doc').map((a) => a.getAttribute('href'))).toEqual(['https://x.test/note.amr', 'https://x.test/clip.3gp']);
+    expect(q('conversation-doc')[0].textContent).toContain('note.amr');
+  });
+  it('a plain http address is not drawn (comms-guide-13)', () => {
+    draw(['http://x.test/pneu.jpg']);
+    expect(box.innerHTML).toBe('');
+  });
 });

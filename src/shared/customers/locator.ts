@@ -11,60 +11,11 @@ import { saveCustomer, updateJob } from '../../data/api';
 import { net } from '../../data/sync';
 import { today } from '../../lib/dates';
 import { locate } from '../places/locate';
-import type { Customer, Job } from '../../data/types';
 import { may } from '../../domain/rights';
+import { preview } from '../../data/auth';
+import { COMING, jobPlace, missingPositions, placeTargets } from './positions';
 
-export interface Task {
-  /** the address folded: one lookup for the same address written on a customer and its appointments */
-  key: string; address: string; postal: string | null; city: string | null;
-  customerId: string | null; jobIds: string[];
-}
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-export const addrKey = (a: string | null | undefined) => fold(String(a || '')).replace(/[^a-z0-9]+/g, ' ').trim();
-const COMING = new Set(['booked', 'en_route', 'on_site']);
-
-/** where a coming appointment is: its own address, or its customer's when it has none (or the same one) */
-export function jobPlace(j: Pick<Job, 'address' | 'lat' | 'lng' | 'postal_code'>, c: Customer | undefined): { address: string; postal: string | null; city: string | null; lat: number | null; lng: number | null; home: boolean } {
-  const own = (j.address || '').trim();
-  const home = !own || (!!c && addrKey(own) === addrKey(c.address));
-  if (home && c) return { address: (c.address || own).trim(), postal: c.postal_code || j.postal_code || null, city: c.city || null, lat: j.lat ?? c.lat, lng: j.lng ?? c.lng, home: true };
-  return { address: own, postal: j.postal_code || null, city: null, lat: j.lat, lng: j.lng, home: false };
-}
-
-/** what has no position yet: the coming appointments first (today on, nearest day first), then the customers;
-    one task per address. `only` keeps the given appointments and customers (« Chercher »). */
-export function missingPositions(jobs: Job[], customers: Customer[], day: string, only?: { jobs?: string[]; customers?: string[] }): Task[] {
-  const byId = new Map(customers.map((c) => [c.id, c]));
-  const tasks = new Map<string, Task>();
-  const add = (address: string, postal: string | null, city: string | null, customerId: string | null, jobId: string | null) => {
-    const key = addrKey(address);
-    if (!key || !/[a-z]/.test(key)) return;
-    let t = tasks.get(key);
-    if (!t) { t = { key, address: address.trim(), postal, city, customerId: null, jobIds: [] }; tasks.set(key, t); }
-    if (customerId && !t.customerId) t.customerId = customerId;
-    if (jobId && !t.jobIds.includes(jobId)) t.jobIds.push(jobId);
-    if (!t.postal && postal) t.postal = postal;
-    if (!t.city && city) t.city = city;
-  };
-  const coming = jobs
-    .filter((j) => !j.deleted_at && j.day >= day && COMING.has(j.status) && j.lat == null && (!only || !!only.jobs?.includes(j.id)))
-    .sort((a, b) => a.day.localeCompare(b.day) || a.number - b.number);
-  for (const j of coming) {
-    const c = j.customer_id ? byId.get(j.customer_id) : undefined;
-    const p = jobPlace(j, c);
-    if (!p.address) continue;
-    if (p.home) {
-      if (c && c.lat != null) continue;                     // the customer's position is known: the appointment uses it
-      add(p.address, p.postal, p.city, c ? c.id : null, j.id);
-    } else add(p.address, p.postal, null, null, j.id);
-  }
-  for (const c of customers) {
-    if (c.deleted_at || c.lat != null || !c.address?.trim()) continue;
-    if (only && !only.customers?.includes(c.id)) continue;
-    add(c.address, c.postal_code, c.city, c.id, null);
-  }
-  return [...tasks.values()];
-}
+export { addrKey, jobPlace, missingPositions, placeTargets, type Task } from './positions';
 
 /* ---------- addresses already tried (this phone) ---------- */
 const TRIED = 'his.locate.tried';
@@ -107,6 +58,8 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** looks for the positions still missing (or only `only`); `force` tries again the addresses tried lately */
 export function locateMissing(opts: { only?: { jobs?: string[]; customers?: string[] }; force?: boolean; max?: number } = {}): Promise<LocateRun> {
   if (running) return running.then(() => (opts.only || opts.force ? locateMissing(opts) : (locator.value.last as LocateRun)));
+  // « Voir l'app comme… »: nothing may be written, so nothing is looked up (the addresses are not marked as tried)
+  if (preview.value) return Promise.resolve({ found: 0, missing: 0, offline: false, placed: {} });
   running = (async () => {
     locator.value = { ...locator.value, busy: true };
     tell('busy');
@@ -119,23 +72,25 @@ export function locateMissing(opts: { only?: { jobs?: string[]; customers?: stri
       if (i) await wait(1100);                                 // gently with the free map service
       const r = await locate(t.address, { postal: t.postal, city: t.city, fresh: opts.force });
       if (r.status === 'offline') { run.offline = true; break; }
-      if (r.status !== 'found') { markTried(t.key); continue; }
+      if (r.status !== 'found') { markTried(t.key); continue; } // the map service does not know it: not again soon
       const pl = r.place.place;
+      // what may still take it, read now: the address may have been corrected during the run
+      const to = placeTargets(t, customersList.value, allJobs.value);
       try {
-        if (t.customerId) {
-          const c = customersList.value.find((x) => x.id === t.customerId);
-          if (c && c.lat == null) await saveCustomer({ id: c.id, lat: pl.lat, lng: pl.lng, ...(c.city ? {} : { city: pl.city ?? null }) });
+        if (to.customerId) {
+          const c = customersList.value.find((x) => x.id === to.customerId);
+          await saveCustomer({ id: to.customerId, lat: pl.lat, lng: pl.lng, ...(c?.city ? {} : { city: pl.city ?? null }) });
         }
-        for (const id of t.jobIds) {
-          const j = allJobs.value.find((x) => x.id === id);
-          if (j && j.lat == null) await updateJob(id, { lat: pl.lat, lng: pl.lng });
+        for (const id of to.jobIds) {
+          await updateJob(id, { lat: pl.lat, lng: pl.lng });
           if (pl.lat != null && pl.lng != null) run.placed[id] = { lat: pl.lat, lng: pl.lng };
         }
         forget(t.key);
         run.found++;
         run.missing--;
-      } catch {
-        markTried(t.key);                                      // refused (rights) or kept for later: not again soon
+      } catch (e) {
+        // refused (rights, « Voir l'app comme… ») or kept for later: the address was found, so it is NOT marked as tried
+        console.warn('locator: position found but not saved', t.key, e);
       }
     }
     locator.value = { busy: false, last: run };
@@ -151,7 +106,7 @@ let started = false;
 export function startLocator() {
   if (started || typeof window === 'undefined') return;
   started = true;
-  const go = () => { if (net.value.ready && navigator.onLine !== false && may.book()) void locateMissing(); };
+  const go = () => { if (net.value.ready && navigator.onLine !== false && may.book() && !preview.value) void locateMissing(); };
   const first = setInterval(() => { if (net.value.ready) { clearInterval(first); setTimeout(go, 4000); } }, 1000);
   setInterval(go, 10 * 60_000);
   window.addEventListener('online', () => setTimeout(go, 3000));
@@ -164,6 +119,6 @@ export async function spreadToJobs(customerId: string, lat: number | null, lng: 
   for (const j of allJobs.value) {
     if (j.customer_id !== customerId || j.lat != null || !COMING.has(j.status) || j.day < today()) continue;
     if (!jobPlace(j, c).home) continue;
-    try { await updateJob(j.id, { lat, lng }); } catch { /* the appointment still uses the customer's position */ }
+    try { await updateJob(j.id, { lat, lng }); } catch (e) { console.warn('locator: appointment keeps the customer position', j.id, e); }
   }
 }

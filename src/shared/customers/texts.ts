@@ -73,18 +73,22 @@ export function heads(chats: Chat[], texts: IncomingText[]): Chat[] {
 }
 
 export interface Line { id: string; at: string | null; dir: 'in' | 'out'; body: string; files?: string[] }
-/** a text with no words and GoHighLevel's message that carries its picture are the same one when this close in time */
+/** a text that arrived here and GoHighLevel's message are the same one when this close in time (and with the same words,
+    or, for a text with no words, a message with a picture) */
 export const SAME_MS = 10 * 60 * 1000;
 /** what the window shows: GoHighLevel's conversation, plus the texts that arrived here and are not in it yet (the newest
-    one, told to us before GoHighLevel's list has it; or everything while GoHighLevel does not answer) */
+    one, told to us before GoHighLevel's list has it; or everything while GoHighLevel does not answer). A short answer
+    said again later (« Merci », « Ok ») is a new text: the words alone do not make two texts the same one. */
 export function lines<T extends Line>(conv: T[] | null, texts: IncomingText[], make: (x: IncomingText) => T): T[] {
   const list = conv || [];
   // a long conversation: GoHighLevel gives its last messages only, so nothing older than those is added
   const firstAt = list.length < 50 ? '' : list.reduce((m, x) => (x.at && (!m || x.at < m) ? x.at : m), '');
-  const has = new Set(list.filter((m) => m.dir === 'in').map((m) => m.body.trim()));
-  // a text with no words is a picture or a document: GoHighLevel's list has it once it shows one that came at that time
-  const pics = list.filter((m) => m.dir === 'in' && !m.body.trim() && m.files?.length && m.at).map((m) => Date.parse(m.at!));
-  const there = (x: IncomingText) => (x.body.trim() ? has.has(x.body.trim()) : pics.some((at) => Math.abs(at - Date.parse(x.at)) < SAME_MS));
+  const inbound = list.filter((m) => m.dir === 'in');
+  const near = (m: Line, at: number) => !!m.at && Math.abs(Date.parse(m.at) - at) < SAME_MS;
+  const there = (x: IncomingText) => {
+    const words = x.body.trim(), at = Date.parse(x.at);
+    return inbound.some((m) => (words ? m.body.trim() === words && (!m.at || near(m, at)) : !m.body.trim() && !!m.files?.length && near(m, at)));
+  };
   const extra = texts.filter((x) => x.at >= firstAt && !there(x)).map(make);
   return extra.length ? [...list, ...extra].sort((a, b) => String(a.at).localeCompare(String(b.at))) : list;
 }
@@ -110,5 +114,5 @@ export function fileKind(url: string): FileKind {
   if (!ext) return 'unknown';
   return (Object.keys(KINDS) as (keyof typeof KINDS)[]).find((k) => KINDS[k].includes(ext)) || 'file';
 }
-/** only a web address is ever opened or shown */
-export const safeFiles = (files: string[] | null | undefined): string[] => (Array.isArray(files) ? files : []).filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u));
+/** only a secure web address is ever opened or shown (never a script, a data address or plain http) */
+export const safeFiles = (files: string[] | null | undefined): string[] => (Array.isArray(files) ? files : []).filter((u) => typeof u === 'string' && /^https:\/\/[^\s/]/i.test(u));
