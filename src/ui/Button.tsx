@@ -5,7 +5,7 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionFailed } from './actionFailed';
-import { createTapGuard, ARM_DEAD_MS, CONFIRM_MS, COOL_MS } from './tapGuard';
+import { createTapGuard, tapPauses, CONFIRM_MS } from './tapGuard';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Clickable = (e: MouseEvent) => unknown;
@@ -39,8 +39,7 @@ function useTap(onClick: Clickable | undefined, confirm: string | undefined, blo
       e.preventDefault();
       const at = guard.armedAt;
       setArmed(true);
-      setWaiting(true);
-      later(() => setWaiting(false), ARM_DEAD_MS);
+      if (tapPauses().armDead > 0) { setWaiting(true); later(() => setWaiting(false), tapPauses().armDead); }
       later(() => { if (guard.armedAt === at) { guard.disarm(); setArmed(false); } }, CONFIRM_MS);
       return;
     }
@@ -55,7 +54,7 @@ function useTap(onClick: Clickable | undefined, confirm: string | undefined, blo
       try { await r; } catch (err) { failed(err); } finally {
         guard.settle(Date.now());
         // the cool-down shows as aria-disabled (nothing changes on screen; a test robot waits for it to end)
-        if (alive.current) { setBusy(false); setWaiting(true); later(() => setWaiting(false), COOL_MS); }
+        if (alive.current) { setBusy(false); if (tapPauses().cool > 0) { setWaiting(true); later(() => setWaiting(false), tapPauses().cool); } }
       }
     }
   };

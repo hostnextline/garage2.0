@@ -11,9 +11,12 @@ import { Help, bubbleTop } from './Help';
 import { toasts } from './toast';
 import { recentErrors, resetReports } from '../platform/report';
 import { whenHistorySettled } from '../platform/history';
-import { ARM_DEAD_MS } from './tapGuard';
+import { ARM_DEAD_MS, tapPausesForTests } from './tapGuard';
 import { jobStatusWord, invoiceStatusWord, Totals, Stamp } from './kit';
 import { lang } from '../lib/i18n';
+
+// the buttons' own tests: the real pauses (src/test-setup.ts turns them off for the other tests)
+tapPausesForTests(true);
 
 let root: HTMLDivElement;
 beforeEach(() => { lang.value = 'fr'; root = document.createElement('div'); document.body.appendChild(root); toasts.value = []; resetReports(); });

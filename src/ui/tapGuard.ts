@@ -13,6 +13,15 @@ export const CONFIRM_MS = 4000;
 /** after an action that returned a promise settles, taps are ignored this long */
 export const COOL_MS = 350;
 
+/** the two pauses in use (the constants above). A unit test of a screen clicks faster than any person can (the next
+    tap 30 ms after a question was answered, a block picked and « Réserver » tapped in the same millisecond), so
+    src/test-setup.ts turns them off for every unit test; the guard's own tests (tapGuard.test.ts, kit.test.tsx) turn
+    them back on. The app never changes them. The lock while an action is pending is not a pause: it always holds. */
+const pause = { armDead: ARM_DEAD_MS, cool: COOL_MS };
+export function tapPausesForTests(on: boolean): void { pause.armDead = on ? ARM_DEAD_MS : 0; pause.cool = on ? COOL_MS : 0; }
+/** the pause after arming a « confirm » button, and the cool-down after an action, as they are now */
+export const tapPauses = (): Readonly<typeof pause> => pause;
+
 export type TapVerdict = 'ignore' | 'arm' | 'act';
 
 export interface TapGuard {
@@ -41,13 +50,13 @@ export function createTapGuard(o: { confirm: () => boolean; blocked: () => boole
       if (busy || o.blocked() || cooling(now)) return 'ignore';
       if (o.confirm()) {
         if (armedAt == null || now - armedAt >= CONFIRM_MS) { armedAt = now; return 'arm'; }
-        if (now - armedAt < ARM_DEAD_MS) return 'ignore';
+        if (now - armedAt < pause.armDead) return 'ignore';
       }
       armedAt = null;
       return 'act';
     },
     start() { busy = true; },
-    settle(now) { busy = false; settledAt = now; coolUntil = now + COOL_MS; },
+    settle(now) { busy = false; settledAt = now; coolUntil = now + pause.cool; },
     disarm() { armedAt = null; }
   };
 }
