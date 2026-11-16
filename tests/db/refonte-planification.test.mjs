@@ -534,3 +534,25 @@ test('sql-windows-05 / x-dualmode-08: window mode, a truck with a break in its h
   }
   assert.ok(lunch.length >= 7, `the 9 worked hours hold 7 appointments of an hour (${lunch.length})`);
 }));
+
+test('sql-planner-1 B4: an address found in the background never throws an appointment to « À placer »; closing the hours still does', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion', null, { [dow]: [[480, 720]] });
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const at = (km) => [home.lat + km / 111.2, home.lng];
+  const ca = await h.customer('A', ...at(1)), cb = await h.customer('B', ...at(1.2));
+  const cc = await h.customer('C', null, null);
+  await h.as(owner);
+  const ids = [];
+  for (const cu of [ca, cb, cc]) ids.push((await book(h, job(cu, day, 'am'))).job_id);
+  for (const id of ids) assert.equal((await row(h, id)).truck_id, t1);
+  // C's address is found 25 km away: the morning no longer holds the three on paper
+  await h.as(null);
+  await h.q(`update public.customers set lat = $1, lng = $2 where id = $3`, [...at(25), cc]);
+  for (const id of ids) assert.equal((await row(h, id)).truck_id, t1, 'nobody thrown to « À placer » by the address found');
+  // the truck no longer works that morning: its appointments go to « À placer », as before
+  await h.q(`insert into public.truck_days (truck_id, day, ranges) values ($1, $2, '[]')`, [t1, day]);
+  for (const id of ids) assert.equal((await row(h, id)).truck_id, null, 'the hours closed: « À placer »');
+}));

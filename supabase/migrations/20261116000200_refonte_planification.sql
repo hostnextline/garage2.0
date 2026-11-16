@@ -30,11 +30,12 @@ begin
 end $$;
 
 -- An automatic re-plan (a cancellation, an address found later, the evening's lock): when the new plan would throw an
--- appointment that has a truck to « À placer », the block stays as it was (the rule the day's chain already follows).
--- A day of windows already started keeps its own rule (apply_plan never un-places there).
+-- appointment that has a truck to « À placer », the block stays as it was (the rule the day's chain already follows):
+-- nobody changes truck or place, only the arrival times are walked again in the stored order (route_retime), so a
+-- position found still counts. A day of windows already started keeps its own rule (apply_plan never un-places there).
 create or replace function public.replan_block_safe(p_day date, p_block text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_plan jsonb; v_today boolean;
+declare v_plan jsonb; v_today boolean; tk record;
 begin
   if not public.block_open(p_day, p_block) then return jsonb_build_object('skipped', true, 'day', p_day, 'block', p_block); end if;
   perform public.lock_block(p_day, p_block);
@@ -43,6 +44,10 @@ begin
              and public.now_min() >= (select s.start_min from public.day_span() s);
   if not v_today and exists (select 1 from jsonb_array_elements_text(coalesce(v_plan->'over', '[]'::jsonb)) o
                              join public.jobs j on j.id = o::uuid where j.truck_id is not null) then
+    for tk in select distinct j.truck_id from public.jobs j
+              where j.day = p_day and j.block = p_block and j.deleted_at is null and j.status = 'booked' and j.truck_id is not null loop
+      perform public.route_retime(tk.truck_id, p_day, p_block);
+    end loop;
     return jsonb_build_object('skipped', true, 'kept', true, 'day', p_day, 'block', p_block);
   end if;
   perform public.apply_plan(v_plan);
@@ -97,7 +102,8 @@ begin
   end if;
   perform set_config('garage.rpc', 'on', true);
   for r in
-    select j.id, j.status, j.duration_min, j.arrived_at, coalesce(j.lat, c.lat) lat, coalesce(j.lng, c.lng) lng
+    select j.id, j.status, j.duration_min, j.arrived_at, coalesce(j.lat, c.lat) lat, coalesce(j.lng, c.lng) lng,
+           case when p_block = 'day' and public.windows_on() and not j.forced and j.manual_order is null then j.win_start end ws
     from public.jobs j left join public.customers c on c.id = j.customer_id
     where j.truck_id = p_truck and j.day = p_day and j.block = p_block and j.deleted_at is null and j.status in ('en_route','on_site','booked')
     order by (j.status in ('en_route','on_site')) desc, j.stop_order nulls last, j.eta_min nulls last, j.created_at
@@ -108,6 +114,8 @@ begin
     else
       leg := public.drive_min(plat, plng, r.lat, r.lng, v_speed, v_detour, v_unknown);
       tm := tm + leg;
+      -- early at a stop with a window: the truck waits until it opens (as the planner)
+      if r.status = 'booked' and r.ws is not null and tm < r.ws then tm := r.ws; end if;
       if r.status = 'booked' then
         update public.jobs set eta_min = tm, travel_min = leg + ceil(v_stop)::int
         where id = r.id and (eta_min, travel_min) is distinct from (tm, leg + ceil(v_stop)::int);
@@ -1709,4 +1717,57 @@ create or replace function public.plan_block(p_day date, p_block text, p_extra j
 as $function$
 begin
   return public.plan_route(p_day, p_block, p_extra, p_exclude, null);
+end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 11. The automatic re-plans
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- replan_block (live text): an automatic re-plan (a position found in the background, work that now needs the tire
+-- machine) leaves the block as it was rather than throw an appointment that has a truck to « À placer »
+-- (sql-planner-1 B4, sql-planner-2 B6). replan_days (the hours, a truck switched off, a start moved) keeps the rule of
+-- before: a job that fits nowhere any more goes to « À placer » (garage.unplace).
+CREATE OR REPLACE FUNCTION public.replan_block(p_day date, p_block text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_plan jsonb;
+begin
+  -- a block already started (or past) is left as it is: its jobs stay on their truck, in their order
+  if not public.block_open(p_day, p_block) then return jsonb_build_object('skipped', true, 'day', p_day, 'block', p_block); end if;
+  -- Part 26: an automatic re-plan (a position found, work that now needs the tire machine, …) never throws an appointment
+  -- that has a truck to « À placer »: the block stays as it was. Only a change of the hours, of a truck or of the start
+  -- does (replan_days).
+  if coalesce(current_setting('garage.unplace', true), '') <> 'on' then return public.replan_block_safe(p_day, p_block); end if;
+  perform public.lock_block(p_day, p_block);
+  v_plan := public.plan_block(p_day, p_block);
+  perform public.apply_plan(v_plan);
+  return v_plan;
+end $function$;
+
+CREATE OR REPLACE FUNCTION public.replan_days(p_days date[])
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare d date; b record; n int := 0; v_chain text := coalesce(current_setting('garage.chain', true), '');
+  v_unplace text := coalesce(current_setting('garage.unplace', true), '');
+begin
+  perform set_config('garage.chain', 'on', true);
+  -- the hours, a truck or the start changed: a job that no longer fits anywhere goes to « À placer », as before (Part 26)
+  perform set_config('garage.unplace', 'on', true);
+  foreach d in array p_days loop
+    for b in select x.key, x.start_min from public.blocks() x order by x.pos loop
+      if not public.block_open(d, b.key) then continue; end if;
+      if exists (select 1 from public.jobs j where j.day = d and j.block = b.key and j.deleted_at is null and j.status = 'booked') then
+        perform public.replan_block(d, b.key); n := n + 1;
+      end if;
+    end loop;
+  end loop;
+  perform set_config('garage.chain', v_chain, true);
+  perform set_config('garage.unplace', v_unplace, true);
+  return n;
 end $function$;
