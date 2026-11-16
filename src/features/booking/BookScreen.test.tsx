@@ -145,6 +145,30 @@ describe('the booking screen', () => {
     expect(api.bookJob).not.toHaveBeenCalled();
   });
 
+  it('a new caller refused once, the number fixed before the retry: the same file gets the right number (booking-a-09)', async () => {
+    api.saveCustomer.mockImplementation(async (c: Record<string, unknown>) => {
+      const id = (c.id as string) || 'c-new';
+      upsertLocal('customers', [{ ...c, id }], { force: true });
+      return id;
+    });
+    await draw('call=1&start=job&phone=438%20555-0100&name=Mario');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    api.bookJob.mockImplementationOnce(async () => { throw refusal('block_started'); });
+    await click(q('book-confirm'));
+    expect(api.saveCustomer).toHaveBeenCalledTimes(1);
+    // « Changer »: back to the caller's fields, the number fixed, « Réserver » again
+    await click([...box.querySelectorAll('[data-testid="customer-picked"] button')].at(-1)!);
+    const tel = box.querySelector('[data-testid="call-who"] input[type=tel]') as HTMLInputElement;
+    await act(async () => { tel.value = '438 555-0199'; tel.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(api.saveCustomer).toHaveBeenCalledTimes(2);
+    expect(api.saveCustomer.mock.calls[1][0]).toMatchObject({ id: 'c-new', phone: '438 555-0199' });
+    expect(api.bookJob.mock.calls.at(-1)![0]).toMatchObject({ customer_id: 'c-new' });
+  });
+
   it('an estimate already booked is not booked again (booking-a-08)', async () => {
     upsertLocal('jobs', [{ id: 'j-q', customer_id: 'c-1', day: DAY, block: 'am', status: 'booked' }], { force: true });
     upsertLocal('quotes', [{ id: 'q-1', number: 7, customer_id: 'c-1', vehicle_id: 'v-1', items: [], status: 'converted', job_id: 'j-q' }], { force: true });
