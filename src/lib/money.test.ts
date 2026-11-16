@@ -44,7 +44,32 @@ describe('reading an amount typed by a person', () => {
     ['59,99', 5999], ['59.99', 5999], ['59', 5900], ['59 $', 5900], ['$59.99', 5999], ['1 234,50', 123450],
     ['1,234.50', 123450], ['1.234,50', 123450], ['0,5', 50], ['-20', -2000], ['  79,99 $ ', 7999]
   ])('%s → %i', (s, c) => expect(parseMoney(s)).toBe(c));
-  it.each(['', 'abc', '12,345,6', '5..9'])('refuses %s', (s) => expect(parseMoney(s)).toBeNull());
+  it.each(['', 'abc', '12,345,6', '5..9', ',', '-', '$'])('refuses %s', (s) => expect(parseMoney(s)).toBeNull());
+  // core-data-20 / x-money-24: one separator then exactly three digits is a slip, not thousands
+  it.each(['59,999', '0,125', '12.345', '1.000', '0,995', '-59,999'])('refuses %s (three decimals are not thousands)', (s) => expect(parseMoney(s)).toBeNull());
+  it('in English, a comma before three digits still means thousands', () => {
+    expect(parseMoney('1,000', 'en')).toBe(100000);
+    expect(parseMoney('$1,250', 'en')).toBe(125000);
+    expect(parseMoney('1.000', 'en')).toBeNull();
+    expect(parseMoney('59,999', 'fr')).toBeNull();
+  });
+  it('several thousand groups, or a group with decimals, are still thousands', () => {
+    expect(parseMoney('1,234,567')).toBe(123456700);
+    expect(parseMoney('1.234.567,89')).toBe(123456789);
+    expect(parseMoney('1 000')).toBe(100000);
+    expect(parseMoney('1 000,00 $')).toBe(100000);
+  });
+  it('a missing whole part or missing cents are read the way a person means them', () => {
+    expect(parseMoney(',50')).toBe(50);
+    expect(parseMoney('.5')).toBe(50);
+    expect(parseMoney('5,')).toBe(500);
+    expect(parseMoney('-,25')).toBe(-25);
+  });
+  it('refuses an amount the database cannot hold', () => {
+    expect(parseMoney('21474836,47')).toBe(2147483647);
+    expect(parseMoney('21474836,48')).toBeNull();
+    expect(parseMoney('99999999999')).toBeNull();
+  });
 });
 
 describe('showing an amount', () => {

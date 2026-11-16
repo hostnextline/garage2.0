@@ -1,5 +1,13 @@
-/* Dates are local calendar days written 'YYYY-MM-DD' (the garage is in Montréal); times are minutes after midnight.
-   The week goes from Sunday to Saturday, like the schedule Hassan asked for. */
+/* Days, hours and the garage's clock.
+   A day is a calendar day of the garage written 'YYYY-MM-DD'; a time of day is minutes after midnight. The week goes
+   from Sunday to Saturday, like the schedule Hassan asked for.
+
+   Two families that never mix:
+   - an INSTANT (a Date, an ISO time from the server) becomes a garage day or minute through Intl in Montréal's zone
+     (dayOf, today, nowMinute, minuteOf, stamp), so a phone set to Paris or Vancouver still sees Montréal's day, like
+     the server (local_today(), now_min());
+   - a DAY string is pure calendar maths done at noon UTC (addDays, dow, daysBetween, the formatters), so no device
+     zone and no daylight-saving night can move it. */
 
 export type Day = string;       // 'YYYY-MM-DD'
 export type Minute = number;    // 0..1440
@@ -7,39 +15,67 @@ export type Minute = number;    // 0..1440
 export const TZ = 'America/Toronto'; // same rules as Montréal
 
 const pad = (n: number) => String(n).padStart(2, '0');
+const DAY_MS = 86400000;
 
-export function dayOf(d: Date): Day {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/* ---------- instants → the garage's day and minute ---------- */
+
+// en-CA writes the date as YYYY-MM-DD; h23 so midnight is 00, never 24
+const garageClock = new Intl.DateTimeFormat('en-CA', {
+  timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+});
+function garageParts(d: Date): { day: Day; minute: Minute } | null {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+  const p: Record<string, string> = {};
+  for (const x of garageClock.formatToParts(d)) p[x.type] = x.value;
+  return { day: `${p.year}-${p.month}-${p.day}`, minute: (Number(p.hour) % 24) * 60 + Number(p.minute) };
 }
+
+/** the garage's day of an instant ('' when the date is not valid) */
+export function dayOf(d: Date): Day { return garageParts(d)?.day ?? ''; }
+/** the garage's minute of an instant (NaN when the date is not valid) */
+export function minuteOf(d: Date): Minute { return garageParts(d)?.minute ?? NaN; }
 export function today(now: Date = new Date()): Day { return dayOf(now); }
+export function nowMinute(now: Date = new Date()): Minute { return minuteOf(now); }
+
+/* ---------- day strings: calendar maths ---------- */
+
+function utcNoon(day: Day): Date {
+  const [y, m, d] = String(day).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12));
+}
+const dayOfUtc = (d: Date): Day => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+
+/** the day at the device's local noon: for code that reads it with getDate() / getDay() or formats it without a zone */
 export function parseDay(day: Day): Date {
   const [y, m, d] = day.split('-').map(Number);
   return new Date(y, m - 1, d, 12, 0, 0, 0); // noon: safe across DST changes
 }
 export function addDays(day: Day, n: number): Day {
-  const d = parseDay(day);
-  d.setDate(d.getDate() + n);
-  return dayOf(d);
+  return dayOfUtc(new Date(utcNoon(day).getTime() + n * DAY_MS));
 }
 /** the same day n months later (31 jan. + 1 month = 28 or 29 feb.) */
 export function addMonths(day: Day, n: number): Day {
   const [y, m, d] = day.split('-').map(Number);
-  const first = new Date(y, m - 1 + n, 1, 12);
-  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0, 12).getDate();
-  first.setDate(Math.min(d, last));
-  return dayOf(first);
+  const first = new Date(Date.UTC(y, m - 1 + n, 1, 12));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0, 12)).getUTCDate();
+  first.setUTCDate(Math.min(d, last));
+  return dayOfUtc(first);
 }
-export function dow(day: Day): number { return parseDay(day).getDay(); } // 0 = Sunday
+export function dow(day: Day): number { return utcNoon(day).getUTCDay(); } // 0 = Sunday
 export function weekStart(day: Day): Day { return addDays(day, -dow(day)); }
 export function weekDays(day: Day): Day[] { const s = weekStart(day); return Array.from({ length: 7 }, (_, i) => addDays(s, i)); }
-export function daysBetween(a: Day, b: Day): number { return Math.round((parseDay(b).getTime() - parseDay(a).getTime()) / 86400000); }
+export function daysBetween(a: Day, b: Day): number { return Math.round((utcNoon(b).getTime() - utcNoon(a).getTime()) / DAY_MS); }
 export function isValidDay(s: unknown): s is Day {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  return dayOf(parseDay(s)) === s;
+  return dayOfUtc(utcNoon(s)) === s;
 }
-export function nowMinute(now: Date = new Date()): Minute { return now.getHours() * 60 + now.getMinutes(); }
 
-export function hm(min: Minute): string { return `${pad(Math.floor(min / 60))}:${pad(min % 60)}`; }
+/* ---------- minutes ---------- */
+
+// a time of day is shown in whole minutes: 612.5 (a computed arrival) is « 10 h 13 », never « 10 h 12.5 »
+const whole = (min: number) => Math.round(min);
+
+export function hm(min: Minute): string { const m = whole(min); return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; }
 export function parseHm(s: string): Minute | null {
   const m = /^(\d{1,2})(?::|h|\s*h\s*)?(\d{2})?$/i.exec(String(s).trim());
   if (!m) return null;
@@ -48,9 +84,10 @@ export function parseHm(s: string): Minute | null {
   return h * 60 + mi;
 }
 
-/** "8 h", "13 h 30" (fr) / "8 a.m.", "1:30 p.m." (en) */
+/** "8 h", "13 h 30" (fr) / "8 a.m.", "1:30 p.m." (en); past midnight it goes round the dial (1440 = "0 h") */
 export function clock(min: Minute, lang = 'fr'): string {
-  const h = Math.floor(min / 60) % 24, m = min % 60;
+  const t = ((whole(min) % 1440) + 1440) % 1440;
+  const h = Math.floor(t / 60), m = t % 60;
   if (lang === 'en') {
     const ap = h < 12 ? 'a.m.' : 'p.m.';
     const h12 = h % 12 === 0 ? 12 : h % 12;
@@ -62,44 +99,55 @@ export function clock(min: Minute, lang = 'fr'): string {
 export function clockRange(a: Minute, b: Minute, lang = 'fr'): string {
   return lang === 'en' ? `${clock(a, 'en')} to ${clock(b, 'en')}` : `${clock(a)} à ${clock(b)}`;
 }
-/** "1 h 30", "45 min" / "1 h 30 min" */
+/** "1 h 30", "45 min" / "1 h 30 min". Rounded to the minute first (119.6 is « 2 h », not « 1 h 60 »); a negative
+    amount (time missing) carries its sign once: « -30 min ». */
 export function duration(min: number, lang = 'fr'): string {
-  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  const all = whole(min);
+  if (all < 0) return `-${duration(-all, lang)}`;
+  const h = Math.floor(all / 60), m = all % 60;
   if (!h) return `${m} min`;
   if (!m) return `${h} h`;
   return lang === 'en' ? `${h} h ${m} min` : `${h} h ${pad(m)}`;
 }
 
+/* ---------- days in words ---------- */
+
 const dtf = new Map<string, Intl.DateTimeFormat>();
+// the formatters read the day at noon UTC in the UTC zone: the same words on every phone
 function df(lang: string, o: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   const k = lang + JSON.stringify(o);
   let f = dtf.get(k);
-  if (!f) { f = new Intl.DateTimeFormat(lang === 'en' ? 'en-CA' : 'fr-CA', o); dtf.set(k, f); }
+  if (!f) { f = new Intl.DateTimeFormat(lang === 'en' ? 'en-CA' : 'fr-CA', { ...o, timeZone: 'UTC' }); dtf.set(k, f); }
   return f;
 }
-/** "mercredi 4 novembre" / "Wednesday, November 4" (adds the year when not this year) */
+// a hand-typed #/agenda/abc must show nothing, not throw on an invalid date
+function write(day: Day, lang: string, o: Intl.DateTimeFormatOptions): string {
+  const d = utcNoon(day);
+  return Number.isNaN(d.getTime()) ? '' : df(lang, o).format(d);
+}
+
+/** "mercredi 4 novembre" / "Wednesday, November 4" (adds the year when not the garage's current year) */
 export function longDay(day: Day, lang = 'fr', now: Date = new Date()): string {
-  const d = parseDay(day);
   const o: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' };
-  if (d.getFullYear() !== now.getFullYear()) o.year = 'numeric';
-  return df(lang, o).format(d);
+  if (String(day).slice(0, 4) !== today(now).slice(0, 4)) o.year = 'numeric';
+  return write(day, lang, o);
 }
 /** "4 nov. 2026" / "Nov 4, 2026" */
 export function shortDate(day: Day, lang = 'fr'): string {
-  return df(lang, { day: 'numeric', month: 'short', year: 'numeric' }).format(parseDay(day));
+  return write(day, lang, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 /** "mer. 4" / "Wed 4" */
 export function tinyDay(day: Day, lang = 'fr'): string {
-  return df(lang, { weekday: 'short', day: 'numeric' }).format(parseDay(day));
+  return write(day, lang, { weekday: 'short', day: 'numeric' });
 }
 export function monthName(day: Day, lang = 'fr'): string {
-  return df(lang, { month: 'long', year: 'numeric' }).format(parseDay(day));
+  return write(day, lang, { month: 'long', year: 'numeric' });
 }
-/** a timestamp shown in local time: "4 nov. 2026, 14 h 23" */
+/** a timestamp shown on the garage's clock: "4 nov. 2026, 14 h 23" ('' when there is none or it is not a date) */
 export function stamp(iso: string | null | undefined, lang = 'fr'): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  return `${shortDate(dayOf(d), lang)}, ${clock(d.getHours() * 60 + d.getMinutes(), lang)}`;
+  const p = garageParts(new Date(iso));
+  return p ? `${shortDate(p.day, lang)}, ${clock(p.minute, lang)}` : '';
 }
 
 /* ---------- blocks ---------- */
@@ -120,9 +168,6 @@ export function windowFor(eta: Minute, o: { before?: number; after?: number; rou
   s = Math.max(d0, Math.min(s, Math.max(d0, d1 - len)));
   return [s, s + len];
 }
-export function blockOf(min: Minute, blocks: Block[] = DEFAULT_BLOCKS): Block | undefined {
-  return blocks.find((b) => min >= b.start && min < b.end);
-}
 
 /* ---------- time ranges (truck hours) ---------- */
 export type Range = [Minute, Minute];
@@ -142,11 +187,6 @@ export function overlapMinutes(rs: Range[], a: Minute, b: Minute): number {
   let n = 0;
   for (const [x, y] of mergeRanges(rs)) n += Math.max(0, Math.min(y, b) - Math.max(x, a));
   return n;
-}
-/** first minute of `rs` inside [a, b), or null */
-export function firstMinuteIn(rs: Range[], a: Minute, b: Minute): Minute | null {
-  for (const [x, y] of mergeRanges(rs)) { const s = Math.max(x, a); if (s < Math.min(y, b)) return s; }
-  return null;
 }
 /** cells of `step` minutes → ranges (used by the drag-select schedule editor) */
 export function cellsToRanges(cells: Minute[], step: number): Range[] {

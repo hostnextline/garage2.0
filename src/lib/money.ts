@@ -33,22 +33,31 @@ export function totals(lines: Line[], rates: TaxRates = QC_TAXES): Totals {
   return { subtotal, taxable, tps, tvq, total: subtotal + tps + tvq };
 }
 
-/** "59,99", "59.99", "59 $", "$59.99", "1 234,50" → 5999 ; returns null when it is not an amount */
-export function parseMoney(input: string): Cents | null {
+/** the largest amount the database keeps (a Postgres integer of cents) */
+const MAX_CENTS = 2147483647;
+
+/** "59,99", "59.99", "59 $", "$59.99", "1 234,50", ",50" → whole cents ; null when it is not an amount.
+    One comma or point followed by exactly three digits and nothing else is refused: in Québec French the comma is the
+    decimal mark, so « 59,999 » is a slip (a doubled key with gloves on), not 59 999 $ (core-data-20). In English
+    (`lang` 'en') « 1,000 » keeps meaning a thousand. Thousands written with a space, or a group followed by decimals
+    (« 1.234,50 », « 1,234.50 »), are read as before. */
+export function parseMoney(input: string, lang?: string): Cents | null {
   if (input == null) return null;
-  let s = String(input).trim().replace(/[\s  ]/g, '').replace(/\$/g, '').replace(/CAD$/i, '');
+  let s = String(input).trim().replace(/[\s\u00a0\u202f]/g, '').replace(/\$/g, '').replace(/CAD$/i, '');
   if (!s) return null;
   const neg = s.startsWith('-') || s.startsWith('−');
   s = s.replace(/^[-−]/, '');
-  // "1.234,50" or "1,234.50": the last separator is the decimal one when followed by 1-2 digits,
+  // "1.234,50" or "1,234.50": the last separator is the decimal one when followed by 0-2 digits ("5," while typing),
   // and it must differ from the thousands separator ("12,345,6" is refused)
-  const m = /^(\d{1,3}(?:([.,])\d{3})*|\d+)(?:([.,])(\d{1,2}))?$/.exec(s);
-  if (!m) return null;
-  if (m[2] && m[3] && m[2] === m[3]) return null;
-  const whole = Number(m[1].replace(/[.,]/g, ''));
-  const frac = m[4] ? Number(m[4].padEnd(2, '0')) : 0;
-  if (!Number.isFinite(whole)) return null;
-  const c = whole * 100 + frac;
+  const m = /^(\d{1,3}(?:([.,])\d{3})*|\d*)(?:([.,])(\d{0,2}))?$/.exec(s);
+  if (!m || !/\d/.test(s)) return null;
+  const [, whole, group, dec, frac] = m;
+  if (group && dec && group === dec) return null;
+  // a lone separator before three digits: thousands only for an English comma
+  const groups = whole.split(/[.,]/).length - 1;
+  if (groups === 1 && !dec && !(lang === 'en' && group === ',')) return null;
+  const c = Number(whole.replace(/[.,]/g, '') || '0') * 100 + (frac ? Number(frac.padEnd(2, '0')) : 0);
+  if (!Number.isFinite(c) || c > MAX_CENTS) return null;
   return neg ? -c : c;
 }
 
