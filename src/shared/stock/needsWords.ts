@@ -50,10 +50,11 @@ export const FAMILY: Record<NeedLine['kind'], 'oil' | 'filters' | 'tires' | 'par
   oil: 'oil', oil_filter: 'filters', air_filter: 'filters', cabin_filter: 'filters', tires: 'tires', wipers: 'parts', plugs: 'parts', battery: 'parts', item: 'parts'
 };
 
-/** the shopping list as text, for the supplier (copied, or sent from the phone) */
-export function shoppingText(w: WeekNeeds): string {
+/** the shopping list as text, for the supplier (copied, or sent from the phone); `ownOnly`: the phone holds only its
+    own truck's appointments, and the list says so */
+export function shoppingText(w: WeekNeeds, ownOnly = false): string {
   const buy = w.lines.filter((l) => l.toBuy > 0);
-  const head = `${t('inventory.needs.copyTitle', { week: weekWords(w.from) })} — ${garageName.value}`;
+  const head = `${t('inventory.needs.copyTitle', { week: weekWords(w.from) })} — ${garageName.value}${ownOnly ? ` ${t('inventory.needs.ownTrucksCopy')}` : ''}`;
   if (!buy.length) return `${head}\n${t('inventory.needs.nothingToBuy')}`;
   return [head, ...buy.map((l) => `- ${lineLabel(l)} : ${qtyWords(l, l.toBuy)}${jugWords(l) ? ` (${jugWords(l)})` : ''}${l.sure ? '' : ` — ${t('inventory.needs.toConfirm').toLowerCase()}`}`)].join('\n');
 }

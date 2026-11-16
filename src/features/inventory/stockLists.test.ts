@@ -24,4 +24,13 @@ describe('« Inventaire » lists', () => {
     expect(huile.low.map((i) => i.id)).toEqual(['a']);
     expect(huile.lowAll).toHaveLength(3);
   });
+  it('the digits of the query do not widen the search: every word must still be found', () => {
+    const more = [...all, it_('f', 'Filtre à air', 4, 2, { sku: 'CA3600' }), it_('g', 'Bouchon', 4, 2, { sku: '75300' })];
+    const ids = (q: string) => { const s = stockLists(more, q, ''); return [...s.low, ...s.rest, ...s.off].map((i) => i.id); };
+    expect(ids('PH 3600 Fram')).toEqual([]);
+    expect(ids('5w30')).toEqual([]);
+    expect(ids('3600')).toEqual(['f']);
+    expect(ids('ÉPH7317')).toEqual([]);
+    expect(ids('PH7317')).toEqual(['b']);
+  });
 });

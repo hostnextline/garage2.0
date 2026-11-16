@@ -6,12 +6,12 @@ import { ChevronLeft, ChevronRight, Copy, PackagePlus, Droplet, Filter, Disc3, P
 import { setQuery, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, weekStart, isValidDay, type Day } from '../../lib/dates';
-import { Page, Panel, Button, IconButton, Pill, Empty, run } from '../../ui';
+import { Page, Panel, Button, IconButton, Pill, Empty, Banner, run } from '../../ui';
 import { saveInventoryItem } from '../../data/api';
 import { can } from '../../data/auth';
 import { itemsToCreate } from '../../domain/stock/needs';
 import { formatQty } from '../../domain/stock/stock';
-import { useWeekNeeds, useDefaultWeek } from '../../shared/stock/useWeekNeeds';
+import { useWeekNeeds, useDefaultWeek, useHoldsEveryJob } from '../../shared/stock/useWeekNeeds';
 import { lineLabel, qtyWords, jugWords, weekWords, shoppingText, FAMILY } from '../../shared/stock/needsWords';
 import { NeedRow, MissingRow } from './NeedRows';
 import { copyText } from './clipboard';
@@ -25,6 +25,8 @@ export default function NeedsScreen({ query }: ScreenProps) {
   const fallback = useDefaultWeek();
   const from = isValidDay(q) ? weekStart(q) : fallback;
   const w = useWeekNeeds(from);
+  // a phone that holds only its own truck's appointments: said on screen and in the copied list
+  const ownOnly = !useHoldsEveryJob();
   const thisWeek = weekStart(today());
   const buy = w.lines.filter((l) => l.toBuy > 0);
   const litres = w.lines.filter((l) => l.kind === 'oil').reduce((n, l) => n + l.qty, 0);
@@ -53,13 +55,14 @@ export default function NeedsScreen({ query }: ScreenProps) {
         <Stat n={formatQty(filters, lang.value)} label={t('inventory.needs.stat.filters', { n: filters })} />
         <Stat n={formatQty(tires, lang.value)} label={t('inventory.needs.stat.tires', { n: tires })} />
       </div>
+      {ownOnly && <Banner kind="info" data-testid="needs-own-trucks">{t('inventory.needs.ownTrucks')}</Banner>}
 
       {!w.lines.length ? (
         <Panel><Empty title={w.jobs ? t('inventory.needs.emptyWork') : t('inventory.needs.emptyWeek')} text={w.jobs ? t('inventory.needs.emptyWorkText') : t('inventory.needs.emptyWeekText')} /></Panel>
       ) : (
         <>
           <Panel flush title={<>{t('inventory.needs.buyTitle')} {buy.length > 0 && <Pill tone="warn">{buy.length}</Pill>}</>} sub={t('inventory.needs.buySub')} data-testid="needs-buy"
-            action={buy.length > 0 && <Button size="sm" icon={<Copy size={16} />} onClick={() => copyText(shoppingText(w))} data-testid="needs-copy">{t('inventory.needs.copy')}</Button>}>
+            action={buy.length > 0 && <Button size="sm" icon={<Copy size={16} />} onClick={() => copyText(shoppingText(w, ownOnly))} data-testid="needs-copy">{t('inventory.needs.copy')}</Button>}>
             {buy.length ? (
               <ul class="needs-buy" role="list">
                 {buy.map((l) => (

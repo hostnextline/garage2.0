@@ -3,9 +3,11 @@
    engine sheet confirmed or a service changed while the screen is open shows at once (a memo on the jobs and the
    stock alone missed them). The job lines, the services' parts and the engine sheets are indexed once per run. */
 import { useEffect, useMemo } from 'preact/hooks';
-import { computed } from '@preact/signals';
+import { computed, useComputed } from '@preact/signals';
 import { today, addDays, type Day } from '../../lib/dates';
-import { allJobs, service, vehicle, inventoryList } from '../../data/select';
+import { allJobs, service, vehicle, inventoryList, trucks } from '../../data/select';
+import { can, myTrucks } from '../../data/auth';
+import { holdsEveryJob } from '../../domain/stock/scope';
 import { rowsOf } from '../../data/store';
 import type { EngineSpec, JobItem, ServicePart } from '../../data/types';
 import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
@@ -22,15 +24,22 @@ function groupBy<T>(rows: T[], key: (r: T) => string | null | undefined): Map<st
   return m;
 }
 
+/** the order of a job's lines (the same as `itemsOf` in data/select.ts) */
+export const byLineOrder = (a: JobItem, b: JobItem) => a.sort - b.sort || String(a.created_at).localeCompare(String(b.created_at));
+
 /** the needs of the week starting on `from` (Sunday): only the days from today on (what is still to come) */
 export function useWeekNeeds(from: Day): WeekNeeds {
   useEffect(() => { void ensureEngineRef(); }, []);
   const now = today();
   const start = from < now ? now : from;
   const needs = useMemo(() => computed<WeekNeeds>(() => {
-    const items = groupBy(rowsOf<JobItem>('job_items'), (i) => i.job_id);
+    // each job's lines as `itemsOf` gives them (no deleted line, in the job's order), so ties keep the order of before
+    const items = groupBy(rowsOf<JobItem>('job_items').filter((i) => !i.deleted_at), (i) => i.job_id);
+    for (const list of items.values()) list.sort(byLineOrder);
     const parts = groupBy(rowsOf<ServicePart>('service_parts').filter((p) => !p.deleted_at), (p) => p.service_id);
-    const specs = new Map(rowsOf<EngineSpec>('engine_specs').filter((s) => !s.deleted_at).map((s) => [s.key, s]));
+    // the first sheet of a key, as `specByKey` finds it
+    const specs = new Map<string, EngineSpec>();
+    for (const s of rowsOf<EngineSpec>('engine_specs')) if (!s.deleted_at && !specs.has(s.key)) specs.set(s.key, s);
     return {
       ...weekNeeds({
         from: start, to: addDays(from, 6), jobs: allJobs.value, itemsOf: (id) => items.get(id) || [],
@@ -43,7 +52,14 @@ export function useWeekNeeds(from: Day): WeekNeeds {
   return needs.value;
 }
 
-/** the week to open: this one, or from Thursday the coming one when something is booked in it */
+/** true when this phone holds every truck's appointments (else the needs are its own truck's only) */
+export function useHoldsEveryJob(): boolean {
+  return holdsEveryJob(can('agenda'), myTrucks(), trucks.value.map((x) => x.id));
+}
+
+/** the week to open: this one, or from Thursday the coming one when something is booked in it. Read through a
+    computed signal: « Inventaire » re-rendered at every job saved anywhere (it read every job), now only when the
+    week itself changes */
 export function useDefaultWeek(): Day {
-  return defaultWeekOf(today(), allJobs.value);
+  return useComputed(() => defaultWeekOf(today(), allJobs.value)).value;
 }

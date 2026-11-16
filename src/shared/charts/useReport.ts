@@ -35,9 +35,12 @@ export function useReport<T>(key: string, load: () => Promise<T>, normalize?: (r
   const stRef = useRef(st);
   stRef.current = st;
   const seq = useRef(0);
+  /** when the server was last asked: a failing server is not asked again every minute (the online listener retries a lost signal) */
+  const tried = useRef(0);
 
   useEffect(() => {
     const mine = ++seq.current;
+    tried.current = Date.now();
     // another report: start from what this device kept for it; the same report again: keep the numbers on screen
     setSt((s) => (s.key === key ? { ...s, loading: true, error: null } : fromCache(key, normalize)));
     withTimeout(loadRef.current()).then((data) => {
@@ -67,11 +70,12 @@ export function useReport<T>(key: string, load: () => Promise<T>, normalize?: (r
     const refresh = () => {
       const s = stRef.current;
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      if (s.loading || !s.at || Date.now() - Date.parse(s.at) < STALE_MS) return;
+      if (s.loading || !s.at || Date.now() - Math.max(Date.parse(s.at), tried.current) < STALE_MS) return;
       setTick((n) => n + 1);
     };
     document.addEventListener('visibilitychange', refresh);
-    // looked at every minute: the numbers are loaded again once they are STALE_MS old
+    // looked at every minute: the numbers are loaded again once they are STALE_MS old, and at most once per STALE_MS
+    // while the server keeps failing (the error banner is not hidden and shown again each minute)
     const timer = setInterval(refresh, 60_000);
     return () => { document.removeEventListener('visibilitychange', refresh); clearInterval(timer); };
   }, []);

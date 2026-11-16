@@ -71,6 +71,8 @@ export const inventory = {
     copied: 'Liste copiée : colle-la dans un texto ou un courriel au fournisseur.',
     copyFailed: 'Impossible de copier la liste.',
     copyTitle: 'Achats, {week}',
+    ownTrucks: 'Seulement les rendez-vous de ton camion : ceux des autres camions ne sont pas sur ton téléphone.',
+    ownTrucksCopy: '(rendez-vous de mon camion seulement)',
     cardThis: 'Achats pour cette semaine',
     cardNext: 'Achats pour la semaine prochaine',
     cardHelp: 'D’après les rendez-vous déjà pris et le stock. La liste complète est dans Inventaire, « Besoins de la semaine ».',

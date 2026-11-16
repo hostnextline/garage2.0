@@ -1,6 +1,6 @@
 /* « Inventaire »: phone, rows with the quantity and its value at the end; computer, columns (quantity, minimum, cost,
-   value) under a header. Tokens only. */
-.inv-summary { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); }
+   value) under a header. Tokens only. .inv-summary, .inv-filters and .inv-qty are in shared/stock/needs.css (loaded
+   first by the screen). */
 .inv-counts { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: var(--t-sm); font-weight: 520; color: var(--ink-2); }
 .inv-warn { color: var(--warn); }
 .inv-okay { color: var(--ok); }
@@ -8,11 +8,8 @@
    visit to the Trésorerie) */
 .inv-warn-text { color: var(--warn); font-weight: 520; }
 @media (max-width: 520px) { .inv-counts { align-items: flex-start; } }
-.inv-filters { display: flex; flex-direction: column; gap: var(--sp-3); }
 
 .inv-end { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.inv-qty { font-size: var(--t-md); white-space: nowrap; }
-.inv-qty.is-low { color: var(--warn); }
 .inv-val { font-size: var(--t-xs); color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .inv-col { display: none; }
 .inv-sub-wide { display: none; }

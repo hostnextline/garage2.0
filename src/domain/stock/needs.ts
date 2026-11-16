@@ -46,11 +46,15 @@ export function guessNeeds(s: Pick<Service, 'name_fr' | 'name_en' | 'includes'>)
 export function needsOf(s: Pick<Service, 'name_fr' | 'name_en' | 'includes' | 'needs'>): { needs: Need[]; guessed: boolean } {
   return Array.isArray(s.needs) ? { needs: s.needs.filter((n) => NEED_KINDS.includes(n.kind)), guessed: false } : { needs: guessNeeds(s), guessed: true };
 }
-/** a line typed by hand (no service): an oil change when its own words say so */
+/** a line typed by hand (no service): an oil change when its own words say so. Only a line of work (« service »,
+    « labour ») with no part of the stock: a part typed by hand (« Filtre à huile Fram PH7317 », « Huile supplémentaire 1 L »)
+    is not a whole oil change. Counted once per appointment, and not at all when a service of the appointment already takes
+    the oil (`oilDone`). */
 const OIL_CHANGE: Need[] = [{ kind: 'oil' }, { kind: 'oil_filter' }];
-function needsOfLine(it: JobItem, s: Service | undefined): Need[] {
+const HAND_WORK: ReadonlySet<string> = new Set(['service', 'labour']);
+function needsOfLine(it: JobItem, s: Service | undefined, oilDone: boolean): Need[] {
   if (s) return needsOf(s).needs;
-  if (it.kind === 'discount' || it.kind === 'fee') return [];
+  if (oilDone || it.item_id || !HAND_WORK.has(it.kind)) return [];
   return oilWords(it.description) ? OIL_CHANGE : [];
 }
 
@@ -171,8 +175,13 @@ export function weekNeeds(x: NeedsInput): WeekNeeds {
     const car = facts.label;
     const val = (k: Fact) => facts.values[k];
     const sheet = (k: Fact) => facts.from[k] === 'sheet' || facts.from[k] === 'car';
-    for (const it of x.itemsOf(j.id)) {
-      if (it.deleted_at || !TO_DO.has(it.status)) continue;
+    const todo = x.itemsOf(j.id).filter((it) => !it.deleted_at && TO_DO.has(it.status));
+    // a service of the appointment already takes the oil: a line typed by hand that says it too is the same oil change
+    let oilDone = todo.some((it) => {
+      const s = it.item_id && it.kind !== 'service' ? undefined : x.service(it.service_id);
+      return !!s && needsOf(s).needs.some((n) => n.kind === 'oil');
+    });
+    for (const it of todo) {
       const times = Number(it.qty) > 0 ? Number(it.qty) : 1;
       // a part of the stock sold on the appointment
       if (it.item_id && it.kind !== 'service') {
@@ -189,7 +198,9 @@ export function weekNeeds(x: NeedsInput): WeekNeeds {
       }
       const name = s ? s.name_fr : it.description;
       // what depends on the car
-      for (const n of needsOfLine(it, s)) {
+      const needs = needsOfLine(it, s, oilDone);
+      if (!s && needs.length) oilDone = true;
+      for (const n of needs) {
         if (!v) lack(j, '', 'car');
         if (n.kind === 'oil') {
           const g = oilGrade(String(val('oil_visc') ?? ''));
