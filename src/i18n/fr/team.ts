@@ -15,7 +15,6 @@ export const team = {
   drives: '{roles}, conduit {truck}',
   willDrive: '{roles}, avec {truck}',
   me: '{name} (toi)',
-  listLoading: 'Je regarde les invitations en attente…',
   listError: 'Les invitations en attente ne s’affichent pas.',
   empty: { title: 'Personne d’autre pour l’instant', text: 'Invite ton équipe : chacun reçoit un lien pour choisir son mot de passe.' },
   inviteSheet: {
@@ -72,8 +71,6 @@ export const team = {
     name: 'Nom complet',
     short: 'Nom court',
     phone: 'Téléphone',
-    email: 'Courriel',
-    emailHint: 'Le courriel sert à se connecter : il ne se change pas ici.',
     emailLine: 'Courriel : {email}. Il sert à se connecter et ne se change pas ici.',
     saveInfos: 'Enregistrer ses infos',
     infosSaved: 'Infos enregistrées.',

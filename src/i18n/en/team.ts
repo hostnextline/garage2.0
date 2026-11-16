@@ -15,7 +15,6 @@ export const team: typeof fr = {
   drives: '{roles}, drives {truck}',
   willDrive: '{roles}, with {truck}',
   me: '{name} (you)',
-  listLoading: 'Looking at the pending invitations…',
   listError: 'The pending invitations can’t be shown.',
   empty: { title: 'Nobody else yet', text: 'Invite your team: each person gets a link to choose their password.' },
   inviteSheet: {
@@ -72,8 +71,6 @@ export const team: typeof fr = {
     name: 'Full name',
     short: 'Short name',
     phone: 'Phone',
-    email: 'Email',
-    emailHint: 'The email is used to sign in: it can’t be changed here.',
     emailLine: 'Email: {email}. It is used to sign in and can’t be changed here.',
     saveInfos: 'Save their details',
     infosSaved: 'Details saved.',
