@@ -165,18 +165,19 @@ export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out';
 export async function conversation(customerId: string) {
   return callFn<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }>('conversation', { action: 'get', customer_id: customerId }, 20000);
 }
-export async function sendChat(customerId: string, message: string) {
+/** `op`: one id per typed text, kept until it is sent: the same text sent again (a lost answer, a second tap) goes once */
+export async function sendChat(customerId: string, message: string, op?: string) {
   guard();
-  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', customer_id: customerId, message }, 20000);
+  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', customer_id: customerId, message, ...(op ? { op } : {}) }, 20000);
 }
 
 /** the same with a number that has no file yet (somebody new who texted the garage): the owner only */
 export async function conversationPhone(phone: string) {
   return callFn<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }>('conversation', { action: 'get', phone }, 20000);
 }
-export async function sendChatPhone(phone: string, message: string) {
+export async function sendChatPhone(phone: string, message: string, op?: string) {
   guard();
-  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', phone, message }, 20000);
+  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', phone, message, ...(op ? { op } : {}) }, 20000);
 }
 
 /* ---------- « Coffre » (family and friends, Part 20): no invoice, no taxes, its own register (owner) ---------- */
@@ -301,7 +302,7 @@ export async function notify(kind: string, jobId: string, opts: { resend?: boole
   return callFn<{ status: string; message?: string; link?: string; phone?: string | null }>('notify', { kind, job_id: jobId, base: appBase(), ...opts });
 }
 /** the trip of a job (start, refresh, end), or the trip back to the start after the last job (return, return_end: no job) */
-export async function enroute(action: 'start' | 'refresh' | 'end' | 'return' | 'return_end', jobId: string | null, opts: { pos?: { lat: number; lng: number }; notify?: boolean; resend?: boolean } = {}) {
+export async function enroute(action: 'start' | 'refresh' | 'end' | 'return' | 'return_end', jobId: string | null, opts: { pos?: { lat: number; lng: number }; notify?: boolean; resend?: boolean; op?: string } = {}) {
   guard();
   return callFn<{ sms: string; link?: string; message?: string; phone?: string | null; place?: string; eta_at?: string | null; minutes?: number | null; km?: number | null; rows?: unknown }>('enroute', { action, ...(jobId ? { job_id: jobId } : {}), base: appBase(), ...opts });
 }

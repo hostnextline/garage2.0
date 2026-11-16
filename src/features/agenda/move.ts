@@ -15,7 +15,7 @@ import { farInfo, farLimits, farQuestion, momentsByKey } from '../../domain/mome
 import { notifyCustomer, wantsText } from '../../shared/moment/notify';
 import { jobPerson } from '../../domain/jobs/words';
 import { moveQuestion, winShort } from './layout';
-import { moveOutcome, textAfterMove, toldChanged, dropTruck, dropTells } from './moveRules';
+import { moveOutcome, textAfterMove, toldChanged, dropTruck, dropTells } from '../../domain/moment/moveRules';
 
 /** the job waiting for its new window (the sheet is open), or null. Only its id: the sheet reads the live row.
     `farDone`: the « garde-route » question was already asked for that day (a drop on the time grid that did not fit):
