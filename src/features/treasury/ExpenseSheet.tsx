@@ -128,6 +128,8 @@ function ExpenseForm(p: { open: boolean; onClose: () => void; expense?: Expense 
       }
       // the photo waiting from before was changed or taken off: it is not sent any more
       if (waiting && photoTouched.current && waiting.id !== photo?.id) { await receiptQueue.drop(waiting.id); setWaiting(null); }
+      // the photo the server refused before, kept: saving again gives it a new try
+      else if (waiting?.failed && !photoTouched.current) { await receiptQueue.retry(waiting.id); setWaiting({ ...waiting, failed: false }); }
       const offline = told || !net.value.online;
       const id = await run(() => saveExpense({
         id: expenseId,
@@ -149,7 +151,8 @@ function ExpenseForm(p: { open: boolean; onClose: () => void; expense?: Expense 
         <Button variant="primary" onClick={save} data-testid="expense-save">{t('treasury.form.save')}</Button>
       </>}>
       <Form id="expense-form" class="tre-form" onSubmit={save}>
-        <ReceiptCapture shown={shown} attached={!!d.receipt_id} thumb={thumb} waiting={!!waiting && !photo && shown === waiting.dataUrl}
+        <ReceiptCapture shown={shown} attached={!!d.receipt_id} thumb={thumb} waiting={!!waiting && !waiting.failed && !photo && shown === waiting.dataUrl}
+          refused={!!waiting?.failed && !photo && shown === waiting.dataUrl}
           reading={reader.reading} msg={reader.msg} l={l}
           onShoot={() => camRef.current?.click()} onPick={() => pickRef.current?.click()} onRemove={dropPhoto} onView={() => setViewer(true)} onStop={reader.stop} />
 

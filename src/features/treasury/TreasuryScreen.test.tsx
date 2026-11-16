@@ -20,13 +20,18 @@ vi.mock('../../data/api', async (orig) => {
     }
   };
 });
+const saved: { data: string; name: string }[] = [];
+vi.mock('../../shared/export/download', async (orig) => {
+  const real = await orig<typeof import('../../shared/export/download')>();
+  return { ...real, saveFile: (data: Uint8Array | string, name: string) => { saved.push({ data: typeof data === 'string' ? data : '', name }); } };
+});
 import TreasuryScreen from './TreasuryScreen';
 import { replaceLocal, upsertLocal } from '../../data/store';
 import { access } from '../../data/auth';
 import { net } from '../../data/sync';
 import { lang } from '../../lib/i18n';
 import { today } from '../../lib/dates';
-import type { Access, Expense } from '../../data/types';
+import type { Access, Customer, Expense, Invoice } from '../../data/types';
 
 let person = 0;
 const who = (): Access => ({ id: `u${++person}`, full_name: 'Louis', short_name: 'Louis', email: null, phone: null, roles: ['treasurer'], owner: false, lang: 'fr', prefs: {}, color: null,
@@ -54,6 +59,7 @@ beforeEach(() => {
   serverRows = [expense('e1', 9771)];
   replaceLocal('expenses', serverRows);
   replaceLocal('invoices', []);
+  replaceLocal('customers', []);
 });
 
 describe('Trésorerie: the report follows the expenses (bug 01)', () => {
@@ -86,6 +92,21 @@ describe('Trésorerie: the report follows the expenses (bug 01)', () => {
     serverRows = [expense('e1', 9000)];
     await show();
     expect(q('export-mismatch').length).toBe(1);
+  });
+});
+
+describe('Trésorerie: the accountant’s files follow the names (review TR-4)', () => {
+  it('a customer renamed during the visit: the CSV has the new name', async () => {
+    access.value = { ...who(), rights: { treasury: true, invoices: true } } as unknown as Access;
+    replaceLocal('customers', [{ id: 'c1', first_name: 'Marc', last_name: 'Tremblay', company: null } as unknown as Customer]);
+    replaceLocal('invoices', [{ id: 'i1', number: 1042, status: 'paid', customer_id: 'c1', subtotal_cents: 10000, tps_cents: 500, tvq_cents: 998, total_cents: 11498, paid_cents: 11498, issued_at: `${today()}T17:00:00Z` } as unknown as Invoice]);
+    await show();
+    await act(async () => { upsertLocal('customers', [{ id: 'c1', first_name: 'Marc', last_name: 'Gagnon', company: null } as unknown as Customer], { force: true }); });
+    await wait();
+    saved.length = 0;
+    await act(async () => { q('export-csv')[0].click(); });
+    expect(saved[0].data).toMatch(/Marc Gagnon/);
+    expect(saved[0].data).not.toMatch(/Tremblay/);
   });
 });
 

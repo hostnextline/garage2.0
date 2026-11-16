@@ -9,6 +9,7 @@ import { parseDay } from '../../lib/dates';
 import type { Expense } from '../../data/types';
 import { Panel, Rows, RowItem, Button, Empty, SearchInput, Select } from '../../ui';
 import { categories, expenseMatches, filterCategories } from './select';
+import { receiptQueue } from './receipts';
 
 const dayFmt = new Map<string, Intl.DateTimeFormat>();
 function DateStub(p: { day: string; l: string }) {
@@ -28,7 +29,8 @@ const ExpenseRow = memo(function ExpenseRow(p: { e: Expense; l: string; onOpen: 
       sub={e.category}
       end={<>
         <span class="money">{money(e.total_cents, l)}</span>
-        {e.receipt_id ? <span class="tre-clip" role="img" aria-label={t('treasury.list.receipt')} title={t('treasury.list.receipt')}><Paperclip size={16} /></span> : <span class="tre-clip" aria-hidden="true" />}
+        {/* a photo still waiting on the phone counts: it is the expense's receipt, on its way */}
+        {e.receipt_id || receiptQueue.waitingFor(e.id) ? <span class="tre-clip" role="img" aria-label={t('treasury.list.receipt')} title={t('treasury.list.receipt')}><Paperclip size={16} /></span> : <span class="tre-clip" aria-hidden="true" />}
       </>} chevron />
   );
 });

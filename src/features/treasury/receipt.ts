@@ -276,12 +276,14 @@ export function parseReceipt(text: string, ref: Day, rates: TaxRates = QC_TAXES)
 }
 
 /* ---------- the category ---------- */
-/* kinds of store, as whole words (« esso » inside « accessoires » made a parts store a gas station) */
+/* kinds of store, as words (« esso » inside « accessoires » made a parts store a gas station, « meta » inside « métal »
+   a store an ad). The short names stay whole words; a few plain words also take their longer forms, as the old rules
+   did: « outil » → Outillage Laval, « tire » → Tirecraft, « tool » → Toolbox Supply, « pneu » → Pneumatiques. */
 const RULES: [RegExp, string[]][] = [
   [/\b(?:petro|shell|esso|ultramar|irving|couche[- ]?tard|sonic|crevier|harnois|pioneer|olco|essence|carburants?|gaz|fuel)\b/, ['carburant', 'fuel']],
-  [/\b(?:lordco|napa|carquest|partsource|uni-?select|pieces|auto parts|princess auto|rockauto|pneus?|tires?)\b/, ['pieces', 'parts']],
+  [/\b(?:lordco|napa|carquest|partsource|uni-?select|pieces|auto parts|princess auto|rockauto|pneu\w*|tire\w*)\b/, ['pieces', 'parts']],
   [/\b(?:castrol|valvoline|mobil 1|huiles?|lave-glace|antigel|liquides?)\b/, ['huile et liquides', 'oil and fluids']],
-  [/\b(?:home depot|rona|bmr|reno-depot|canac|snap-on|mac tools|matco|outils?|tools?)\b/, ['outils et equipement', 'tools and equipment']],
+  [/\b(?:home depot|rona|bmr|reno-depot|canac|snap-on|mac tools|matco|outil\w*|tool\w*)\b/, ['outils et equipement', 'tools and equipment']],
   [/\b(?:bell|videotron|fizz|rogers|telus|koodo|virgin|freedom|cogeco|ebox)\b/, ['telephone et internet', 'phone and internet']],
   [/\b(?:tim hortons|mcdonalds?|subway|a&w|restaurants?|resto|cafes?|pizzas?|pizzeria|st-hubert|bistro|starbucks|poulet)\b/, ['repas', 'meals']],
   [/\b(?:assurances?|insurance|intact|belair|promutuel|la capitale)\b/, ['assurances', 'insurance']],

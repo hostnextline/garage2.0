@@ -237,12 +237,21 @@ describe('the category proposed for a vendor', () => {
     expect(guessCategory('Pièces et Accessoires Laval', all)).toBe('Pièces');
     expect(guessCategory('Accessoires d’auto Leblanc', all)).toBeNull();
     expect(guessCategory('Métal Supermarchés', all)).toBeNull();
-    expect(guessCategory('Toolbox Café', all)).toBe('Repas');
     expect(guessCategory('Meta (Facebook)', all)).toBe('Publicité');
     expect(guessCategory('Lordco Pièces d’auto', all)).toBe('Pièces');
     expect(guessCategory('Esso', all)).toBe('Carburant');
     expect(guessCategory('Huiles Castrol', all)).toBe('Huile et liquides');
     expect(guessCategory('McDonald’s', all)).toBe('Repas');
+  });
+  it('review TR-5: the plain words keep their longer forms (the old rules found these vendors)', () => {
+    expect(guessCategory('Outillage Laval', cats)).toBe('Outils et équipement');
+    expect(guessCategory('Toolbox Supply', cats)).toBe('Outils et équipement');
+    expect(guessCategory('Tirecraft', cats)).toBe('Pièces');
+    expect(guessCategory('Canadian Tire', cats)).toBe('Pièces');
+    expect(guessCategory('Pneumatiques Robert', cats)).toBe('Pièces');
+    // the short names stay whole words (bug 26)
+    expect(guessCategory('Accessoires d’auto Leblanc', cats)).toBeNull();
+    expect(guessCategory('Métal Supermarchés', [...cats, 'Publicité'])).toBeNull();
   });
   it('only a category of the garage’s own list', () => {
     expect(guessCategory('Petro-Canada', ['Autre'])).toBeNull();

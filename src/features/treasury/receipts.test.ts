@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createReceiptQueue, receiptImage, openableUrl, tryTimeout, type QueueDeps, type WaitingPhoto, type ReceiptPhoto } from './receipts';
+import { createReceiptQueue, receiptImage, readAttachment, openableUrl, tryTimeout, SEND_MAX_MS, type QueueDeps, type WaitingPhoto, type ReceiptPhoto } from './receipts';
+import { sb } from '../../data/auth';
 
 const photo = (id: string): ReceiptPhoto => ({ id, dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(4000), w: 10, h: 10 });
 const offline = () => Object.assign(new Error('TypeError: Failed to fetch'), { code: '' });
@@ -67,16 +68,95 @@ describe('receipt photos: out of the ordered outbox (bug 02)', () => {
     expect(s.kept.size).toBe(0);
     expect(s.links).toEqual([]);
   });
-  it('a refusal is thrown to the person at once, and a waiting photo refused later is dropped', async () => {
+  it('a refusal is thrown to the person at once; a waiting photo refused later is KEPT, marked, told once, not tried again by itself (review TR-1)', async () => {
     const s = fakeServer();
     const q = createReceiptQueue({ ...s.deps, upload: async () => { throw Object.assign(new Error('violates row-level security policy'), { code: '42501' }); } });
     await expect(q.send(photo('p3'), 'e3')).rejects.toThrow(/row-level/);
     const q2 = createReceiptQueue(s.deps);
     await q2.send(photo('p4'), 'e4');
-    const q3 = createReceiptQueue({ ...s.deps, upload: async () => { throw Object.assign(new Error('too big'), { code: '23514' }); } });
+    let tries = 0;
+    const q3 = createReceiptQueue({ ...s.deps, upload: async () => { tries++; throw Object.assign(new Error('too big'), { code: '23514' }); } });
     await q3.resume();
     expect(s.refusals.length).toBe(1);
+    expect(s.kept.get('p4')?.failed).toBe(true);
+    expect(q3.waitingFor('e4')?.failed).toBe(true);
+    expect(q3.picture('p4')).toMatch(/^data:image\/jpeg/);
+    await vi.advanceTimersByTimeAsync(700000);
+    await q3.drain();
+    expect(tries).toBe(1);
+    expect(s.refusals.length).toBe(1);
+    // a later visit reads it back as refused: still not tried by itself
+    const s4 = { ...s.deps, upload: async () => { tries++; } };
+    const q4 = createReceiptQueue(s4);
+    await q4.resume();
+    expect(tries).toBe(1);
+    // the person saves the expense again: one new try, and it lands
+    await q4.retry('p4');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tries).toBe(2);
+    expect(s.links).toEqual([['e4', 'p4']]);
     expect(s.kept.size).toBe(0);
+  });
+  it('an expired sign-in (a night with no signal) keeps the photo, renews the session and tries again (review TR-1)', async () => {
+    const s = fakeServer();
+    let expired = true;
+    let renewed = 0;
+    const q = createReceiptQueue({
+      ...s.deps,
+      reauth: async () => { renewed++; expired = false; return true; },
+      upload: async (p, signal) => {
+        if (expired) throw Object.assign(new Error('JWT expired'), { code: 'PGRST301', status: 401 });
+        return s.deps.upload(p, signal);
+      }
+    });
+    s.kept.set('p6', { ...photo('p6'), uid: 'u1', expenseId: 'e6' });
+    s.set('up');
+    await q.resume();
+    expect(renewed).toBe(1);
+    expect(s.refusals).toEqual([]);
+    expect(s.kept.has('p6')).toBe(true);
+    expect(s.kept.get('p6')?.failed).toBeFalsy();
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(s.rows.has('p6')).toBe(true);
+    expect(s.links).toEqual([['e6', 'p6']]);
+  });
+  it('an expired sign-in while saving in the sheet: the expense is saved, the photo waits (no refusal)', async () => {
+    const s = fakeServer();
+    const q = createReceiptQueue({ ...s.deps, reauth: async () => true, upload: async () => { throw Object.assign(new Error('JWT expired'), { code: 'PGRST301', status: 401 }); } });
+    expect(await q.send(photo('p7'), 'e7')).toEqual({ id: 'p7', queued: true });
+    expect(s.kept.has('p7')).toBe(true);
+  });
+  it('the try made while the person waits stops after 25 s, even for a big photo; the background try gets longer (review TR-2)', async () => {
+    const s = fakeServer();
+    s.set('hang');
+    const q = createReceiptQueue(s.deps);
+    const big: ReceiptPhoto = { id: 'big', dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(600000), w: 1600, h: 1200 };
+    expect(tryTimeout(big.dataUrl)).toBeGreaterThan(SEND_MAX_MS * 3);
+    let answer: { id: string; queued: boolean } | null = null;
+    void q.send(big, 'e8').then((a) => { answer = a; });
+    await vi.advanceTimersByTimeAsync(SEND_MAX_MS - 1000);
+    expect(answer).toBeNull();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(answer).toEqual({ id: 'big', queued: true });
+    // the background try started after 10 s is still going at 25 s: it has the longer time
+    await vi.advanceTimersByTimeAsync(10000 + SEND_MAX_MS + 1000);
+    expect(s.maxOpen).toBe(1);
+    expect(q.size).toBe(1);
+  });
+  it('one upload at a time: a save in the sheet pauses the background try, which goes on right after (review TR-6)', async () => {
+    const s = fakeServer();
+    s.set('hang');
+    const q = createReceiptQueue(s.deps);
+    await (async () => { const a = q.send(photo('old'), 'e1'); await vi.advanceTimersByTimeAsync(tryTimeout(photo('old').dataUrl)); await a; })();
+    // the background try of « old » is running (and hangs)
+    await vi.advanceTimersByTimeAsync(10000);
+    s.set('up');
+    expect(await q.send(photo('new'), 'e2')).toEqual({ id: 'new', queued: false });
+    expect(s.maxOpen).toBe(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rows.has('old')).toBe(true);
+    expect(s.links).toEqual([['e1', 'old']]);
+    expect(s.maxOpen).toBe(1);
   });
   it('photos kept by an earlier visit are sent, only in the session of the person who took them', async () => {
     const s = fakeServer();
@@ -114,6 +194,19 @@ describe('showing a receipt (x-security-01, bug 13)', () => {
     } finally {
       if (was) Object.defineProperty(window.navigator, 'onLine', was); else delete (window.navigator as { onLine?: boolean }).onLine;
     }
+  });
+  it('a request that fails on a weak signal the phone still thinks is fine: « needs the network », not « no longer available » (review TR-3)', async () => {
+    const chain = (r: unknown) => ({ select: () => ({ eq: () => ({ maybeSingle: async () => r }) }) });
+    const spy = vi.spyOn(sb, 'from');
+    try {
+      spy.mockReturnValue(chain({ data: null, error: { message: 'TypeError: Failed to fetch', code: '' } }) as never);
+      await expect(readAttachment('a6')).rejects.toMatchObject({ message: /Failed to fetch/ });
+      await expect(receiptImage('a6')).rejects.toMatchObject({ message: /Failed to fetch/ });
+      spy.mockReturnValue(chain({ data: null, error: null }) as never);
+      expect(await readAttachment('a7')).toBeNull();
+      spy.mockReturnValue(chain({ data: { mime: 'image/png', data: 'iVBOR' }, error: null }) as never);
+      expect(await receiptImage('a8')).toBe('data:image/png;base64,iVBOR');
+    } finally { spy.mockRestore(); }
   });
   it('full size: only plain pictures, with the kind checked here (never an SVG or HTML document)', () => {
     const made: Blob[] = [];

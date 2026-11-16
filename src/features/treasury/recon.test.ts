@@ -73,4 +73,10 @@ describe('« Rapprochement d’hier »: what the panel shows', () => {
     expect(findingTarget({ entity_table: 'coffre', entity_id: null }, pay)).toEqual({ href: '#/coffre' });
     expect(findingTarget({ entity_table: 'ops_backup_runs', entity_id: 'b' }, pay)).toBeNull();
   });
+  it('review TR-7: an expense the phone does not hold (deleted, not synced yet) opens nothing, so no link', () => {
+    const pay = () => undefined;
+    const has = (id: string) => id === 'e1';
+    expect(findingTarget({ entity_table: 'expenses', entity_id: 'e1' }, pay, has)).toEqual({ expense: 'e1' });
+    expect(findingTarget({ entity_table: 'expenses', entity_id: 'e2' }, pay, has)).toBeNull();
+  });
 });

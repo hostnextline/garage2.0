@@ -5,16 +5,21 @@
    it stayed on the phone (bug 02). Now:
    - each photo has its id from the moment it is taken, used by the first try and by every retry: a try whose answer
      was lost and that did land is found again (duplicate key), never stored twice;
-   - a try is really stopped (abort) after a time that grows with the photo, and one photo is sent at a time;
+   - a try is really stopped (abort). The try made while the person waits in the sheet stops after 25 s at most; the
+     tries in the background get a time that grows with the photo;
+   - one photo is sent at a time: a save in the sheet goes first and pauses the background try, which goes on after it;
    - when the photo cannot go, the expense is saved WITHOUT it (expenses.receipt_id must name a photo already on the
      server) and goes at once; the photo waits here, on the phone (Cache Storage, per person), is tried again later and
-     when the signal comes back, and then the expense is given its receipt_id.
+     when the signal comes back, and then the expense is given its receipt_id;
+   - an expired sign-in (a night with no signal) is not a refusal: the session is renewed and the photo waits;
+   - a photo the server really refuses is never thrown away: it stays on the phone, marked « refused », is not tried
+     again by itself, and is tried again when the person saves that expense again (or taken off with « Retirer »).
    Pictures read from the server are kept for the session (a few only), and only real pictures are shown: a receipt
    stored as anything else (an SVG with a script, an HTML page) is never opened as a document of the app. */
 import { t } from '../../lib/i18n';
 import { Refused } from '../../lib/errors';
 import { sb, preview } from '../../data/auth';
-import { loadAttachment, errorMessage } from '../../data/api';
+import { errorMessage } from '../../data/api';
 import { currentUid, isNetworkError, net, updateRow } from '../../data/sync';
 import { getRow } from '../../data/store';
 import type { Expense } from '../../data/types';
@@ -24,21 +29,35 @@ import type { Photo } from '../../shared/export/ocr';
 
 /** a photo with the id it will have on the server */
 export interface ReceiptPhoto extends Photo { id: string }
-export interface WaitingPhoto extends ReceiptPhoto { uid: string; expenseId: string }
+/** `failed`: the server refused it (not the network); it waits for the person, never tried again by itself */
+export interface WaitingPhoto extends ReceiptPhoto { uid: string; expenseId: string; failed?: boolean }
 
 export interface QueueDeps {
   upload: (p: ReceiptPhoto, signal: AbortSignal) => Promise<void>;
   /** the photo is on the server: the expense may now name it */
   link: (expenseId: string, receiptId: string) => void;
-  /** a photo the server will never take (a refusal, not the network) */
+  /** a photo the server will not take (a refusal, not the network) */
   refused: (e: unknown) => void;
+  /** the sign-in expired: renew it (true when it worked) */
+  reauth?: () => Promise<boolean>;
   keep: { put: (p: WaitingPhoto) => Promise<void>; remove: (id: string) => Promise<void>; all: () => Promise<WaitingPhoto[]> };
   uid: () => string;
 }
-/** how long one try may take: 20 s, plus the time to send the photo at about 64 kbit/s */
+/** how long one background try may take: 20 s, plus the time to send the photo at about 64 kbit/s */
 export const tryTimeout = (dataUrl: string) => 20000 + Math.round(dataUrl.length / 8);
+/** the try made while the person waits in the sheet: never longer than this, then the expense is saved and the photo
+    waits (a try cut off that did land is found again by its id) */
+export const SEND_MAX_MS = 25000;
 /** waits between the tries of the waiting photos (the signal coming back tries at once) */
 export const RETRY_MS = [10000, 30000, 60000, 120000, 300000, 600000];
+
+/** the sign-in has expired (the same test as the phone's outbox) */
+export function isAuthError(e: unknown): boolean {
+  const err = e as { code?: string; status?: number; message?: string } | null;
+  return !!err && (err.status === 401 || err.code === 'PGRST301' || err.code === 'PGRST303' || /JWT expired|invalid JWT|jwt/i.test(String(err.message || '')));
+}
+/** not the photo's fault: no signal, an expired sign-in, or « Voir l'app comme… » for a while */
+const isLater = (e: unknown) => isNetworkError(e) || isAuthError(e) || (e instanceof Refused && e.code === 'preview');
 
 export function createReceiptQueue(deps: QueueDeps) {
   const waiting = new Map<string, WaitingPhoto>();
@@ -46,70 +65,108 @@ export function createReceiptQueue(deps: QueueDeps) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let draining = false;
   let failures = 0;
+  // one upload at a time: the sheet's save pauses the background one, which goes on once the save is done
+  let busySend = 0;
+  let drainCtl: AbortController | null = null;
+  let paused = false;
+  let drainAfter = false;
 
-  async function tryOnce(p: ReceiptPhoto): Promise<void> {
-    const ctl = new AbortController();
-    const stop = setTimeout(() => ctl.abort(), tryTimeout(p.dataUrl));
+  async function tryOnce(p: ReceiptPhoto, ms: number, ctl = new AbortController()): Promise<void> {
+    const stop = setTimeout(() => ctl.abort(), ms);
     sending.add(p.id);
     try { await deps.upload(p, ctl.signal); } finally { clearTimeout(stop); sending.delete(p.id); }
   }
   function schedule() {
-    if (timer || !waiting.size) return;
+    if (timer || busySend || ![...waiting.values()].some((p) => !p.failed)) return;
     timer = setTimeout(() => { timer = null; void drain(); }, RETRY_MS[Math.min(failures, RETRY_MS.length - 1)]);
   }
   async function forget(id: string) {
     waiting.delete(id);
     await deps.keep.remove(id).catch((e) => console.warn('receipt: not removed from the phone', e));
   }
+  async function hold(w: WaitingPhoto) {
+    waiting.set(w.id, w);
+    await deps.keep.put(w).catch((err) => console.warn('receipt: kept in memory only', err));
+  }
+  function reauth() {
+    if (!deps.reauth) return Promise.resolve(false);
+    return deps.reauth().catch((e) => { console.warn('receipt: sign-in not renewed', e); return false; });
+  }
   /** sends the photos waiting, one after the other; stops at the first network failure and tries again later */
   async function drain(): Promise<void> {
+    if (busySend) { drainAfter = true; return; }
     if (draining) return;
     draining = true;
     if (timer) { clearTimeout(timer); timer = null; }
     try {
       for (const p of [...waiting.values()]) {
-        if (p.uid !== deps.uid() || sending.has(p.id) || !waiting.has(p.id)) continue;
+        if (busySend) { drainAfter = true; break; }
+        if (p.failed || p.uid !== deps.uid() || sending.has(p.id) || !waiting.has(p.id)) continue;
         try {
-          await tryOnce(p);
+          drainCtl = new AbortController();
+          await tryOnce(p, tryTimeout(p.dataUrl), drainCtl);
         } catch (e) {
-          if (isNetworkError(e)) { failures++; break; }
-          await forget(p.id);
+          // paused by a save in the sheet: not a failure, it goes on right after
+          if (paused) break;
+          if (isAuthError(e)) await reauth();
+          if (isLater(e)) { failures++; break; }
+          // a real refusal: kept, marked, and the person is told once
+          if (waiting.has(p.id)) await hold({ ...p, failed: true });
           deps.refused(e);
           continue;
-        }
+        } finally { drainCtl = null; }
         failures = 0;
         await forget(p.id);
         deps.link(p.expenseId, p.id);
       }
     } finally {
       draining = false;
+      paused = false;
       schedule();
     }
   }
 
   return {
-    /** sends the photo of `expenseId` now; with no signal it waits on the phone (queued: true) and the expense is
-        saved without it. A refusal (rights, preview) throws: the person is told and nothing is saved. */
+    /** sends the photo of `expenseId` now (25 s at most); with no signal it waits on the phone (queued: true) and the
+        expense is saved without it. A refusal (rights, preview) throws: the person is told and nothing is saved. */
     async send(p: ReceiptPhoto, expenseId: string): Promise<{ id: string; queued: boolean }> {
-      if (waiting.has(p.id)) { waiting.set(p.id, { ...waiting.get(p.id)!, expenseId }); return { id: p.id, queued: true }; }
+      const known = waiting.get(p.id);
+      if (known) {
+        await hold({ ...known, expenseId, failed: false });
+        if (known.failed) void drain();
+        return { id: p.id, queued: true };
+      }
+      busySend++;
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (drainCtl) { paused = true; drainAfter = true; drainCtl.abort(); }
       try {
-        await tryOnce(p);
+        await tryOnce(p, Math.min(SEND_MAX_MS, tryTimeout(p.dataUrl)));
         return { id: p.id, queued: false };
       } catch (e) {
-        if (!isNetworkError(e)) throw e;
-        const w: WaitingPhoto = { ...p, uid: deps.uid(), expenseId };
-        waiting.set(p.id, w);
-        await deps.keep.put(w).catch((err) => console.warn('receipt: kept in memory only', err));
-        schedule();
+        if (isAuthError(e)) void reauth();
+        if (!isLater(e) || (e instanceof Refused)) throw e;
+        await hold({ ...p, uid: deps.uid(), expenseId });
         return { id: p.id, queued: true };
+      } finally {
+        busySend--;
+        if (!busySend) {
+          if (drainAfter) { drainAfter = false; void drain(); } else schedule();
+        }
       }
     },
     /** the picture of a photo still waiting (the person sees it in the expense) */
     picture(id: string): string | null { return waiting.get(id)?.dataUrl ?? null; },
-    /** the photo waiting for this expense, if any */
+    /** the photo waiting for this expense, if any (`failed`: refused by the server, waiting for the person) */
     waitingFor(expenseId: string): WaitingPhoto | null {
       for (const p of waiting.values()) if (p.expenseId === expenseId) return p;
       return null;
+    },
+    /** a refused photo: the person saved its expense again, so it gets a new try (in the background) */
+    async retry(id: string): Promise<void> {
+      const w = waiting.get(id);
+      if (!w) return;
+      if (w.failed) await hold({ ...w, failed: false });
+      void drain();
     },
     /** the person took the photo off the expense (or changed it): it will not be sent */
     drop(id: string): Promise<void> { return forget(id); },
@@ -171,6 +228,7 @@ export const receiptQueue = createReceiptQueue({
       .catch((err) => toast(errorMessage(err), { kind: 'bad' }));
   },
   refused: (e) => toast(errorMessage(e), { kind: 'bad' }),
+  reauth: async () => { const { error } = await sb.auth.refreshSession(); return !error; },
   keep,
   uid: currentUid
 });
@@ -200,9 +258,18 @@ function remember(id: string, url: string) {
 }
 export function rememberReceipt(id: string, dataUrl: string) { if (SHOWN.test(dataUrl)) remember(id, dataUrl); }
 
+/** the stored picture of a receipt, or null when the server has none. A failed request THROWS (a weak or just-lost
+    signal is not « no longer available », even while the phone still believes it is online). */
+export async function readAttachment(id: string): Promise<string | null> {
+  const { data, error } = await sb.from('attachments').select('mime, data').eq('id', id).maybeSingle();
+  if (error) throw error;
+  const row = data as { mime: string; data: string } | null;
+  return row ? `data:${row.mime};base64,${row.data}` : null;
+}
+
 /** the picture of a receipt, or null when there is none (or it is not a picture). Throws when the network is
     missing, so the person reads « needs the network » rather than « no longer available ». */
-export async function receiptImage(id: string, load: (id: string) => Promise<string | null> = loadAttachment): Promise<string | null> {
+export async function receiptImage(id: string, load: (id: string) => Promise<string | null> = readAttachment): Promise<string | null> {
   const waitingPhoto = receiptQueue.picture(id);
   if (waitingPhoto) return waitingPhoto;
   const known = receipts.get(id);

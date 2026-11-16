@@ -10,6 +10,7 @@ import { Refused } from '../../lib/errors';
 import { rpcNow } from '../../data/api';
 import { me, preview } from '../../data/auth';
 import { getRow } from '../../data/store';
+import { expensesList } from '../../data/select';
 import type { Payment } from '../../data/types';
 import { Panel, Rows, RowItem, Button, Banner, Pill, attempt } from '../../ui';
 import { useReport } from '../../shared/charts/useReport';
@@ -31,6 +32,8 @@ function change(name: string, args: Record<string, unknown>, ms?: number) {
   return rpcNow(name, args, ms);
 }
 const paymentOf = (id: string) => getRow<Payment>('payments', id);
+/** the same rows « Dépenses » opens from (an expense deleted or not yet on the phone has nothing to open) */
+const hasExpense = (id: string) => expensesList.value.some((e) => e.id === id);
 
 export function ReconPanel(p: { onOpenExpense: (id: string) => void }) {
   const l = lang.value;
@@ -73,7 +76,7 @@ export function ReconPanel(p: { onOpenExpense: (id: string) => void }) {
 
 function FindingRow(p: { f: ReconFinding; l: string; canAck: boolean; onAck: (f: ReconFinding) => Promise<void>; onOpenExpense: (id: string) => void }) {
   const { f, l } = p;
-  const target = findingTarget(f, paymentOf);
+  const target = findingTarget(f, paymentOf, hasExpense);
   const tone = f.state === 'acked' ? 'muted' : f.severity === 'bad' ? 'bad' : f.severity === 'warn' ? 'warn' : 'muted';
   const since = f.first_day ? t('treasury.recon.since', { day: longDay(f.first_day, l) }) : null;
   // an expense has no screen of its own: it opens in its sheet, here

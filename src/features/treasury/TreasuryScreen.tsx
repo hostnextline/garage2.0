@@ -10,7 +10,7 @@ import { setQuery, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { today } from '../../lib/dates';
 import { rpcNow } from '../../data/api';
-import { expensesList, invoicesList, invoiceNumber, customer, customerName, truckLabel } from '../../data/select';
+import { expensesList, invoicesList, invoiceNumber, customer, customerName, customersList, truckLabel, trucks, staffList, settings } from '../../data/select';
 import { can, me } from '../../data/auth';
 import { net } from '../../data/sync';
 import type { Expense } from '../../data/types';
@@ -50,8 +50,11 @@ export default function TreasuryScreen({ query }: ScreenProps) {
   // the phone's rows of the period, computed once per change of the store (the list, the files and the check share them)
   const seesInvoices = can('invoices');
   const expenses = useMemo(() => periodExpenses(expensesList.value, range), [expensesList.value, range.from, range.to]);
-  const rev = useMemo(() => (seesInvoices ? revenueLines(invoicesList.value, range, NAMES) : []), [seesInvoices, invoicesList.value, range.from, range.to, l]);
-  const exp = useMemo(() => expenseLines(expenses, range, NAMES), [expenses, l]);
+  // the names in the lines (customer, truck and its driver, the invoice prefix) are read from the store too: a name
+  // changed or arrived during the visit must reach the accountant's file
+  const customersNow = customersList.value, trucksNow = trucks.value, staffNow = staffList.value, billing = settings.value.billing;
+  const rev = useMemo(() => (seesInvoices ? revenueLines(invoicesList.value, range, NAMES) : []), [seesInvoices, invoicesList.value, range.from, range.to, l, customersNow, billing]);
+  const exp = useMemo(() => expenseLines(expenses, range, NAMES), [expenses, l, trucksNow, staffNow]);
   const stale = useRefreshOnChange(reportKey, useMemo(() => rowsSignature([...expenses, ...rev.map((r) => [r.day, r.number, r.subtotal, r.tps, r.tvq, r.total, r.paid])]), [expenses, rev]), report.reload);
   const settled = net.value.pending === 0 && !net.value.sending;
 

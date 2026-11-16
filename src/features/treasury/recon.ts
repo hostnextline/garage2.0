@@ -97,7 +97,9 @@ export function findingText(f: ReconFinding, lang: string): string {
 
 /** where a difference leads: a screen of the app, the expense (opened on this screen), or nowhere */
 export type FindingTarget = { href: string } | { expense: string } | null;
-export function findingTarget(f: Pick<ReconFinding, 'entity_table' | 'entity_id'>, paymentOf: (id: string) => { invoice_id: string | null; job_id: string | null } | undefined): FindingTarget {
+export function findingTarget(f: Pick<ReconFinding, 'entity_table' | 'entity_id'>, paymentOf: (id: string) => { invoice_id: string | null; job_id: string | null } | undefined,
+  /** the expense is on this phone (an expense opens in its sheet: one the phone does not hold opens nothing) */
+  hasExpense: (id: string) => boolean = () => true): FindingTarget {
   const id = f.entity_id;
   if (!id) return f.entity_table === 'coffre' ? { href: '#/coffre' } : null;
   const enc = encodeURIComponent(id);
@@ -107,7 +109,7 @@ export function findingTarget(f: Pick<ReconFinding, 'entity_table' | 'entity_id'
     case 'customers': return { href: `#/customer/${enc}` };
     case 'vehicles': return { href: `#/vehicle/${enc}` };
     case 'quotes': return { href: `#/quote/${enc}` };
-    case 'expenses': return { expense: id };
+    case 'expenses': return hasExpense(id) ? { expense: id } : null;
     case 'coffre': return { href: '#/coffre' };
     case 'inventory_items': case 'inventory_moves': return { href: '#/inventory' };
     case 'payments': {

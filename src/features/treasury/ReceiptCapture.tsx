@@ -11,6 +11,8 @@ export function ReceiptCapture(p: {
   shown: string | null; attached: boolean; thumb: 'idle' | 'loading' | 'failed';
   /** the photo waits on the phone to be sent */
   waiting: boolean;
+  /** the server refused the photo: it is kept, and saving again tries it again */
+  refused?: boolean;
   reading: ReadingState | null; msg: ReadMsg | null; l: string;
   onShoot: () => void; onPick: () => void; onRemove: () => void; onView: () => void; onStop: () => void;
 }) {
@@ -36,6 +38,7 @@ export function ReceiptCapture(p: {
           ) : p.thumb === 'loading' ? <div class="tre-thumb tre-thumb-empty"><Skeleton h={180} /></div>
             : <div class="tre-thumb tre-thumb-empty"><Paperclip /><Button variant="secondary" onClick={p.onView}>{t('treasury.form.see')}</Button></div>}
           {p.waiting && <p class="small muted" style={{ margin: 0 }} data-testid="receipt-waiting">{t('treasury.form.photoWaiting')}</p>}
+          {p.refused && <p class="small tre-warn" style={{ margin: 0 }} role="status" data-testid="receipt-refused">{t('treasury.form.photoRefused')}</p>}
           <div class="row-wrap">
             <Button variant="secondary" icon={<Camera size={18} />} onClick={p.onShoot} data-testid="receipt-change">{t('treasury.form.change')}</Button>
             <Button variant="ghost" icon={<X size={18} />} onClick={p.onRemove} data-testid="receipt-remove">{t('treasury.form.remove')}</Button>
