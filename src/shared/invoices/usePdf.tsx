@@ -9,9 +9,12 @@ import { shareOrDownload, shareFileNow, downloadBlob, type ShareOutcome } from '
 
 export function usePdf() {
   const [ready, setReady] = useState<{ blob: Blob; data: PdfData; onShared?: () => void } | null>(null);
+  // the PDF tools load while the phone is idle, so « PDF » answers the tap at once; nothing is left behind on leaving
   useEffect(() => {
-    const w = window as unknown as { requestIdleCallback?: (f: () => void) => number };
-    if (w.requestIdleCallback) w.requestIdleCallback(preloadPdf); else setTimeout(preloadPdf, 1500);
+    const w = window as unknown as { requestIdleCallback?: (f: () => void) => number; cancelIdleCallback?: (id: number) => void };
+    if (w.requestIdleCallback && w.cancelIdleCallback) { const id = w.requestIdleCallback(preloadPdf); return () => w.cancelIdleCallback!(id); }
+    const id = setTimeout(preloadPdf, 1500);
+    return () => clearTimeout(id);
   }, []);
   /** makes the PDF; share: false only downloads it; onShared: once it was handed to another app (or downloaded) */
   const make = async (build: () => PdfData | null, o: { share?: boolean; onShared?: () => void } = {}): Promise<ShareOutcome | null> => {

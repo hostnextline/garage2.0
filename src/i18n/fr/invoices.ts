@@ -174,7 +174,6 @@ export const invoices = {
     unbilled: { one: '1 travail de la job n’est pas sur la facture', other: '{n} travaux de la job ne sont pas sur la facture' },
     unbilledText: 'Pour le facturer, touche « Modifier la facture », puis termine-la de nouveau.',
     unbilledClosed: 'Cette facture ne peut plus être modifiée.',
-    finishing: 'Facture terminée sur ce téléphone : son numéro viendra avec le réseau.',
     coffreWaiting: 'Mise au Coffre sur ce téléphone : ça part dès que le réseau revient.'
   },
 

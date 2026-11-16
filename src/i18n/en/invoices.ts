@@ -175,7 +175,6 @@ export const invoices: typeof fr = {
     unbilled: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
     unbilledText: 'To bill it, tap “Change the invoice”, then finish it again.',
     unbilledClosed: 'This invoice can no longer be changed.',
-    finishing: 'Invoice finished on this phone: its number comes with the network.',
     coffreWaiting: 'Put in the Coffre on this phone: it goes as soon as the network is back.'
   },
 
