@@ -18,7 +18,6 @@ export const guide = {
   go: 'Y aller',
   later: 'Plus tard',
   laterToast: 'D’accord. On t’en reparle dans une semaine.',
-  seeAll: 'Tout voir',
   done: 'Fait',
   todo: 'À faire',
   unknown: 'À vérifier avec du réseau',
@@ -61,11 +60,12 @@ export const guide = {
     title: 'Les étapes d’une job',
     lead: 'Le gros bouton rouge montre toujours la prochaine étape. Une à la fois.',
     leave: { title: 'Je pars', text: 'Le client reçoit un texto avec le lien pour suivre ton camion.' },
-    arrive: { title: 'Je suis arrivé', text: 'Le bureau voit que tu es sur place.' },
+    arrive: { title: 'Je suis arrivé', text: 'Le bureau voit que tu es sur place. Note le kilométrage de l’auto.' },
+    vin: { title: 'Le NIV de l’auto', text: 'Scanne le NIV (porte du conducteur ou pare-brise) ou écris-le. Illisible\u00a0? Touche «\u00a0NIV illisible\u00a0».' },
     waiver: { title: 'Faire signer', text: 'Le client signe sur ton téléphone avant les travaux.' },
-    invoice: { title: 'Facture', text: 'Les travaux faits deviennent la facture. Vérifie-la.' },
-    pay: { title: 'Encaisser', text: 'Comptant, débit, crédit ou Interac. Le tampon Payé se pose.' },
-    finish: { title: 'Terminer', text: 'La job est finie. Ta prochaine job apparaît.' }
+    invoice: { title: 'Facture', text: 'Les travaux faits deviennent la facture. Vérifie-la, puis termine-la.' },
+    pay: { title: 'Encaisser', text: 'Comptant, débit, crédit, virement Interac ou chèque. Le tampon Payé se pose.' },
+    finish: { title: 'Terminer', text: 'Confirme les pièces utilisées\u00a0: la job est finie. Ta prochaine job apparaît.' }
   },
 
   tour: {
@@ -76,7 +76,6 @@ export const guide = {
     finishedOn: 'Visite faite le {date}.',
     others: 'Les visites des autres rôles',
     othersLead: 'Pour montrer l’app à ton équipe.',
-    label: 'Visite guidée',
     here: 'C’est ici',
     count: '{n} sur {total}',
     prev: 'Précédent',
@@ -88,7 +87,6 @@ export const guide = {
     finished: 'Visite terminée. Tu peux la refaire quand tu veux dans «\u00a0Par où commencer\u00a0».',
     empty: 'Cette visite n’a rien à montrer sur cet écran pour l’instant.',
     steps: {
-      sync: { title: 'La synchro', text: 'Cette pastille dit si tout est envoyé. Sans réseau, continue\u00a0: tout part tout seul quand le réseau revient.' },
       add: { title: 'Le bouton +', text: 'Pour tout ajouter\u00a0: un rendez-vous, un client sans rendez-vous, une estimation, une dépense.' },
       addTreasurer: { title: 'Le bouton +', text: 'Une dépense ou un reçu, de n’importe où dans l’app.' },
       today: { title: 'Aujourd’hui', text: 'La journée en un coup d’œil\u00a0: la prochaine job de chaque camion et ce qui reste à faire.' },
@@ -106,7 +104,7 @@ export const guide = {
       map: { title: 'La carte', text: 'Où sont les camions et les jobs du jour.' },
       shift: { title: 'Commencer ta journée', text: 'Touche ici le matin. Le bureau voit que tu travailles et où est ton camion.' },
       next: { title: 'Ta prochaine job', text: 'Elle est toujours en haut. Touche-la pour l’ouvrir.' },
-      bigstep: { title: 'Le gros bouton rouge', text: 'Il montre la seule prochaine étape\u00a0: Je pars, Je suis arrivé, Faire signer, Facture, Encaisser, Terminer.' },
+      bigstep: { title: 'Le gros bouton rouge', text: 'Il montre la seule prochaine étape\u00a0: Je pars, Je suis arrivé, le NIV de l’auto, Faire signer, Facture, Encaisser, Terminer.' },
       waiver: { title: 'La signature', text: 'Le client signe sur ton téléphone avant le début des travaux.' },
       work: { title: 'Les travaux', text: 'Ce qui est prévu pour cette job, avec les prix.' },
       extra: { title: 'Des travaux en plus', text: 'Tu trouves autre chose\u00a0? Propose-le\u00a0: le client accepte ou refuse, sur ton téléphone ou par texto.' },
@@ -160,7 +158,7 @@ export const guide = {
       qa: {
         book: {
           how: { a: 'Touche «\u00a0+\u00a0», puis «\u00a0Réserver un rendez-vous\u00a0». Choisis le client, son auto et les services, puis une des plages d’arrivée proposées. Touche «\u00a0Réserver\u00a0»\u00a0: le client reçoit sa confirmation par texto.' },
-          change: { a: 'Ouvre le rendez-vous depuis l’agenda. Tu peux le déplacer à un autre jour ou une autre plage d’arrivée, ou l’annuler en écrivant la raison. Si le jour ou la plage change, le client reçoit un texto.' }
+          change: { a: 'Ouvre le rendez-vous depuis l’agenda et touche «\u00a0Modifier\u00a0»\u00a0: le client, l’auto, l’adresse, le jour et la plage d’arrivée, le camion, les services et les prix. Pour l’annuler\u00a0: menu «\u00a0…\u00a0», «\u00a0Annuler la job\u00a0», avec la raison. Si le jour ou la plage change, le client reçoit un texto.' }
         },
         blocks: {
           what: { q: 'C’est quoi, une plage d’arrivée\u00a0?', a: 'Quatre heures autour de l’heure où l’app pense arriver\u00a0: 1\u00a0heure avant, 3\u00a0heures après. Si l’app pense arriver à 15\u00a0h, le client entend «\u00a0entre 14\u00a0h et 18\u00a0h\u00a0». On promet une plage, pas une heure exacte.' },
@@ -180,7 +178,7 @@ export const guide = {
       book: {
         how: { q: 'Comment réserver un rendez-vous\u00a0?', a: 'Touche «\u00a0+\u00a0», puis «\u00a0Réserver un rendez-vous\u00a0». Choisis le client, son auto et les services, puis un des blocs proposés. Touche «\u00a0Réserver\u00a0»\u00a0: le client reçoit sa confirmation par texto.' },
         newCustomer: { q: 'Le client n’est pas encore dans l’app\u00a0?', a: 'Écris son nom ou son numéro dans le champ du client. S’il n’existe pas, crée sa fiche au même endroit\u00a0: nom, téléphone, adresse.' },
-        change: { q: 'Comment changer ou annuler un rendez-vous\u00a0?', a: 'Ouvre le rendez-vous depuis l’agenda. Tu peux le déplacer dans un autre bloc, ou l’annuler en écrivant la raison. Si le jour ou le bloc change, le client reçoit un texto.' },
+        change: { q: 'Comment changer ou annuler un rendez-vous\u00a0?', a: 'Ouvre le rendez-vous depuis l’agenda et touche «\u00a0Modifier\u00a0»\u00a0: le client, l’auto, l’adresse, le jour et le bloc, le camion, les services et les prix. Pour l’annuler\u00a0: menu «\u00a0…\u00a0», «\u00a0Annuler la job\u00a0», avec la raison. Si le jour ou le bloc change, le client reçoit un texto.' },
         walkIn: { q: 'Un client sans rendez-vous\u00a0?', a: 'Touche «\u00a0+\u00a0», puis «\u00a0Client sans rendez-vous\u00a0»\u00a0: la job commence tout de suite, sur place.' }
       },
       blocks: {
@@ -192,7 +190,7 @@ export const guide = {
       offline: {
         works: { q: 'Qu’est-ce qui marche sans réseau\u00a0?', a: 'Presque tout\u00a0: voir ta journée, avancer une job, faire signer, faire la facture, encaisser. Tout reste sur le téléphone et part tout seul quand le réseau revient.' },
         needs: { q: 'Qu’est-ce qui a besoin du réseau\u00a0?', a: 'Les blocs proposés quand on réserve, la carte en direct, les textos aux clients et le paiement par carte en ligne.' },
-        chip: { q: 'Comment savoir si tout est envoyé\u00a0?', a: 'Regarde la pastille en haut\u00a0: «\u00a0À jour\u00a0» veut dire que tout est envoyé. «\u00a0Hors ligne\u00a0» ou «\u00a03 à envoyer\u00a0» veut dire que ça attend le réseau.' },
+        chip: { q: 'Comment savoir si tout est envoyé\u00a0?', a: 'Quand tout est envoyé, il n’y a rien à voir. Sinon, une pastille dit «\u00a0Hors ligne\u00a0» ou «\u00a03 à envoyer\u00a0» (en haut sur le téléphone, en bas du menu sur l’ordinateur)\u00a0: ça attend le réseau et ça part tout seul.' },
         refused: { q: 'Un changement a été refusé\u00a0?', a: 'Un bandeau rouge dit pourquoi. Corrige si besoin, puis touche «\u00a0Réessayer\u00a0», ou «\u00a0Retirer\u00a0» si ce n’est plus utile.' }
       },
       texts: {
@@ -201,8 +199,8 @@ export const guide = {
         lang: { q: 'Le client parle anglais\u00a0?', a: 'Les textos, la page du client et la facture suivent la langue écrite dans sa fiche.' }
       },
       payments: {
-        how: { q: 'Comment encaisser\u00a0?', a: 'À la fin de la job\u00a0: la facture, puis «\u00a0Encaisser\u00a0». Choisis comptant, débit, crédit ou Interac. Le tampon Payé se pose quand tout est payé.' },
-        later: { q: 'Le client veut payer plus tard\u00a0?', a: 'Le bureau ou le propriétaire peut permettre «\u00a0Payer plus tard\u00a0», par exemple pour un compte d’entreprise. Sinon, la job ne se termine pas avant d’être payée.' },
+        how: { q: 'Comment encaisser\u00a0?', a: 'À la fin de la job\u00a0: la facture, puis «\u00a0Encaisser\u00a0». Choisis comptant, débit, crédit, virement Interac, chèque ou autre. Le tampon Payé se pose quand tout est payé. Une job pour la famille ou les amis peut être payée par le Coffre\u00a0: pas de facture.' },
+        later: { q: 'Le client veut payer plus tard\u00a0?', a: 'Sous le bouton rouge, touche «\u00a0Le client paiera plus tard\u00a0», écris pourquoi, puis «\u00a0Laisser partir\u00a0»\u00a0: la job se termine et la facture reste à encaisser. Pour le propriétaire et ceux qui ont le droit des factures. Sinon, la job ne se termine pas avant d’être payée.' },
         online: { q: 'Le paiement par carte en ligne\u00a0?', a: 'Quand Stripe est branché, le client peut payer par carte depuis le lien de sa facture. Le paiement s’inscrit tout seul dans l’app.' }
       },
       rights: {

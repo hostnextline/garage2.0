@@ -55,7 +55,8 @@ function StepRow(p: { s: GuideStep; n: number; next: boolean }) {
   );
 }
 
-const JOB_STEPS = ['leave', 'arrive', 'waiver', 'invoice', 'pay', 'finish'] as const;
+// the order of the red button (domain/jobs/steps.ts nextStep): the VIN before the signature, the parts confirmed at « Terminer »
+export const JOB_STEPS = ['leave', 'arrive', 'vin', 'waiver', 'invoice', 'pay', 'finish'] as const;
 function JobSteps() {
   return (
     <Panel title={t('guide.jobSteps.title')} sub={t('guide.jobSteps.lead')} data-testid="guide-jobsteps">

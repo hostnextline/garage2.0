@@ -36,6 +36,7 @@ export const auth: typeof fr = {
   activate: 'Activate my access',
   activating: 'Activating…',
   activated: 'Your access is ready.',
+  passwordSet: 'Your password is set. Sign in.',
   roles: { owner: 'Owner', office: 'Office', mechanic: 'Mechanic', treasurer: 'Treasurer' },
   yourRoles: 'Your role: {roles}',
   linkProblem: 'Problem with your link',

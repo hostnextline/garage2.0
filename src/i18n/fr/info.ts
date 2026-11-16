@@ -6,7 +6,7 @@ export const info = {
   search: 'Chercher : coffre, annuler, premier, huile…',
   all: 'Tout',
   topics: { day: 'Ma journée', booking: 'Rendez-vous', pay: 'Paiements', customers: 'Clients', map: 'Carte', office: 'Bureau', setup: 'Réglages' },
-  roles: { owner: 'Propriétaire', office: 'Bureau', mechanic: 'Mécano', accountant: 'Comptable' },
+  roles: { owner: 'Propriétaire', office: 'Bureau', mechanic: 'Mécano', accountant: 'Trésorier' },
   forWho: 'Pour : {who}',
   count: '{n} fiches',
   countOne: '1 fiche',
@@ -17,6 +17,5 @@ export const info = {
   tips: 'Bon à savoir',
   open: 'Ouvrir cet écran',
   related: 'Dans le même sujet',
-  back: 'Toutes les fiches',
   notFound: 'Cette fiche n’existe plus.'
 };

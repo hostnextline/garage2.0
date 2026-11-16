@@ -60,6 +60,9 @@ export function TourOverlay() {
     if (!r) return;
     const before = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
+      // « Montre-moi » still looking: nothing is on screen yet, the keys belong to the page
+      const cur = tourRun.value;
+      if (cur?.kind === 'spot' && cur.phase !== 'show') return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stopTour(); return; }
       if (e.key === 'ArrowRight' && tourRun.value?.phase === 'show') { e.preventDefault(); nextTourStep(); return; }
       if (e.key === 'ArrowLeft' && tourRun.value?.phase === 'show') { e.preventDefault(); prevTourStep(); return; }

@@ -31,7 +31,7 @@ export const TOURS: Record<Role, TourStep[]> = {
   owner: [
     { key: 'add', anchors: ['quick-add', 'nav-book'], when: anyAdd },
     { key: 'today', path: '/', anchors: ['today-next', 'today-shift'], fallback: ['nav-today'] },
-    { key: 'agenda', path: '/agenda', anchors: ['agenda-week', 'agenda-day'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
+    { key: 'agenda', path: '/agenda', anchors: ['agenda-week'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
     { key: 'book', path: '/book', anchors: ['book-customer', 'book-services'], when: (c) => c.can('book') },
     { key: 'hours', path: '/hours', anchors: ['hours-grid', 'hours-truck'], when: (c) => c.can('hours') },
     { key: 'team', path: '/team', anchors: ['team-invite', 'team-rights'], when: (c) => c.can('team') },
@@ -40,7 +40,7 @@ export const TOURS: Record<Role, TourStep[]> = {
   ],
   office: [
     { key: 'add', anchors: ['quick-add', 'nav-book'], when: anyAdd },
-    { key: 'agenda', path: '/agenda', anchors: ['agenda-day', 'agenda-week'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
+    { key: 'agenda', path: '/agenda', anchors: ['agenda-week'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
     { key: 'agendaBlock', path: '/agenda', anchors: ['agenda-block'], when: (c) => c.can('agenda') },
     { key: 'bookCustomer', path: '/book', anchors: ['book-customer'], when: (c) => c.can('book') },
     { key: 'bookServices', path: '/book', anchors: ['book-services'], when: (c) => c.can('book') },
@@ -49,7 +49,7 @@ export const TOURS: Record<Role, TourStep[]> = {
     { key: 'map', path: '/map', anchors: ['map-legend'], when: (c) => c.can('map') }
   ],
   mechanic: [
-    { key: 'shift', path: '/', anchors: ['today-shift'], teaches: 'day' },
+    { key: 'shift', path: '/', anchors: ['today-shift'] },
     { key: 'next', path: '/', anchors: ['today-next'] },
     { key: 'bigstep', path: NEXT_JOB, anchors: ['job-bigstep'], teaches: 'job' },
     { key: 'waiver', path: NEXT_JOB, anchors: ['job-waiver'] },
@@ -111,6 +111,8 @@ export interface TourEnv {
 }
 export const WAIT_MS = 3000;
 export const FALLBACK_MS = 1500;
+/** a screen already drawn for the step before: its elements are there or not, no need to wait 3 s again */
+export const SETTLED_MS = 1000;
 
 /** opens the step's screen if needed and waits for its element (up to `timeout`); null when it never shows */
 export async function locate(step: TourStep, env: TourEnv, timeout = WAIT_MS, alive: () => boolean = () => true): Promise<Element | null> {
@@ -126,10 +128,14 @@ export async function locate(step: TourStep, env: TourEnv, timeout = WAIT_MS, al
   }
 }
 
-/** from step `from`, going forward (+1) or back (-1): the first step whose element shows (missing ones are skipped) */
+/** from step `from`, going forward (+1) or back (-1): the first step whose element shows (missing ones are skipped).
+    A step on the same screen as the step just before it (in the way we go) waits only SETTLED_MS: that screen is drawn
+    already, so a mechanic whose job has no « signature » or « extra work » part no longer waits 3 s for each. */
 export async function resolveStep(steps: TourStep[], from: number, dir: 1 | -1, env: TourEnv, timeout = WAIT_MS, alive: () => boolean = () => true): Promise<{ index: number; el: Element } | null> {
   for (let i = from; i >= 0 && i < steps.length; i += dir) {
-    const el = await locate(steps[i], env, timeout, alive);
+    const before = steps[i - dir];
+    const settled = !!steps[i].path && before?.path === steps[i].path && onScreen(env.path(), steps[i].path!);
+    const el = await locate(steps[i], env, settled ? Math.min(timeout, SETTLED_MS) : timeout, alive);
     if (!alive()) return null;
     if (el) return { index: i, el };
   }

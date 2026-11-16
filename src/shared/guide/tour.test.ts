@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { TOURS, tourFor, onScreen, locate, resolveStep, placeBubble, findAnchor, WAIT_MS, FALLBACK_MS, type TourCtx, type TourEnv, type TourStep } from './tour-steps';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { TOURS, tourFor, onScreen, locate, resolveStep, placeBubble, findAnchor, WAIT_MS, FALLBACK_MS, SETTLED_MS, type TourCtx, type TourEnv, type TourStep } from './tour-steps';
+import { computeChecklist } from './checklist';
 
 const all = (): TourCtx => ({ can: () => true, wide: false, nextJobId: 'j-2' });
 
@@ -14,6 +17,20 @@ describe('the tours', () => {
   it('only uses the anchors listed in ARCHITECTURE.md', () => {
     const listed = /^(nav-[a-z]+|quick-add|sync-state|agenda-(day|block|week)|book-(customer|vehicle|services|block|confirm)|hours-(truck|grid|apply)|customers-search|customer-book|today-(shift|next)|job-(bigstep|waiver|work|extra|invoice|pay)|invoice-(send|pay)|quote-(items|send)|team-(invite|rights)|map-legend|settings-(company|services|texts|look|connect)|treasury-(add|report)|inventory-low|dashboard-kpis)$/;
     for (const steps of Object.values(TOURS)) for (const s of steps) for (const a of [...s.anchors, ...(s.fallback || [])]) expect(a).toMatch(listed);
+  });
+  it('every anchor a tour or a first step looks for is really carried by an element of the app (the agenda had none for « agenda-block »)', () => {
+    const src = join(__dirname, '..', '..');
+    const files: string[] = [];
+    const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(f) && !/\.test\./.test(f) && !p.includes(join('shared', 'guide'))) files.push(p); } };
+    walk(src);
+    const code = files.map((f) => readFileSync(f, 'utf8')).join('\n');
+    // written as data-tour="x", data-tour={… ? 'x' : …}, a settings row's tour: 'x', or the menu's data-tour={`nav-${key}`}
+    const carried = (a: string) => code.includes(`data-tour="${a}"`) || code.includes(`tour: '${a}'`) || new RegExp(`data-tour=\\{[^}]*'${a}'`).test(code) || (a.startsWith('nav-') && code.includes('data-tour={`nav-${'));
+    const used = new Set<string>();
+    for (const steps of Object.values(TOURS)) for (const s of steps) for (const a of [...s.anchors, ...(s.fallback || [])]) used.add(a);
+    const all = { me: { id: 'u', roles: ['owner', 'office', 'mechanic', 'treasurer'] as never, owner: true, trucks: ['t'] }, company: {}, taxesOn: true, services: [], trucks: [], trucksWithHours: [], staff: [], invitations: 0, secrets: { ghl: false, stripe: false }, jobs: [], shifts: [], expenses: [], marks: {}, tours: {} };
+    for (const s of computeChecklist(all, 'j-1')) if (s.anchor) used.add(s.anchor);
+    for (const a of used) expect(carried(a), a).toBe(true);
   });
   it('leaves out what the person can’t open', () => {
     const owner = tourFor('owner', { ...all(), can: (k) => k !== 'team' && k !== 'dashboard' });
@@ -90,6 +107,21 @@ describe('finding a step', () => {
     const back = await resolveStep(steps, 1, -1, fakeEnv('/team', { 'sync-state': 0 }).env);
     expect(back?.index).toBe(0);
     expect(await resolveStep(steps, 1, 1, fakeEnv('/guide', {}).env)).toBeNull();
+  });
+  it('a step on the screen of the step before waits only a moment (a mechanic’s job without « signature » or « extra work »)', async () => {
+    const job = (key: string, anchor: string): TourStep => step({ key, path: '/job/j-2', anchors: [anchor] });
+    const steps = [job('bigstep', 'job-bigstep'), job('waiver', 'job-waiver'), job('work', 'job-work'), job('extra', 'job-extra'), job('pay', 'job-pay')];
+    const f = fakeEnv('/job/j-2', { 'job-bigstep': 0, 'job-work': 0, 'job-pay': 0 });
+    const r = await resolveStep(steps, 1, 1, f.env);
+    expect(r?.index).toBe(2);
+    expect(f.time()).toBeLessThan(SETTLED_MS + 300);
+    const t0 = f.time();
+    expect((await resolveStep(steps, 3, 1, f.env))?.index).toBe(4);
+    expect(f.time() - t0).toBeLessThan(SETTLED_MS + 300);
+    // the first step of a screen still gets the whole wait (the screen is being drawn)
+    const g = fakeEnv('/', {});
+    await resolveStep(steps, 0, 1, g.env);
+    expect(g.time()).toBeGreaterThanOrEqual(WAIT_MS);
   });
   it('stops waiting when the tour is stopped', async () => {
     let alive = true;

@@ -1,6 +1,8 @@
 /* The guided tour, running: a module signal drives an overlay rendered in its own container in document.body (the
-   frame is not touched). A step on another screen opens it with navigate() and waits for its element (3 s at most,
-   else the step is skipped). « Montre-moi » (showMe) is the same with a single step, used by the checklist.
+   frame is not touched). A step on another screen opens it and waits for its element (3 s at most, else the step is
+   skipped). The tour moves between screens without filling the history: « Retour » after a tour goes where it went
+   before the tour, not back through each screen shown. « Montre-moi » (showMe) is the same with a single step, used by
+   the checklist; when its element is not on that screen (a phone draws fewer parts), the explanation still shows.
    Finished tours are remembered per person (guide-data.ts). */
 import { signal } from '@preact/signals';
 import { h, render } from 'preact';
@@ -36,7 +38,7 @@ let run = 0;
 /* ---------- the real screen ---------- */
 const env: TourEnv = {
   path: () => route.value.path,
-  go: (p) => navigate(p),
+  go: (p) => navigate(p, { replace: true }),
   find: (a) => findAnchor(a),
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   now: () => Date.now()
@@ -96,8 +98,10 @@ async function show(index: number, dir: 1 | -1) {
 
 /** the tour of a role (6 to 10 steps), from the first step */
 export function startTour(role: Role) {
-  mount();
   const steps = tourFor(role, tourCtx());
+  // nothing this person may open (an owner previewing someone without rights): say so, no empty overlay
+  if (!steps.length) { toast(t('guide.tour.empty')); return; }
+  mount();
   const from = route.value.path + (route.value.query.toString() ? `?${route.value.query.toString()}` : '');
   tourRun.value = { kind: 'tour', role, steps, index: 0, phase: 'seek', el: null, from, shown: 0 };
   void show(0, 1);
@@ -110,8 +114,8 @@ export function showMe(anchors: string[], title: string, text: string, path?: st
   tourRun.value = { kind: 'spot', role: null, steps: [step], index: 0, phase: 'seek', el: null, title, text, from: route.value.path, shown: 0 };
   void locate(step, env, undefined, () => my === run).then((el) => {
     if (my !== run || !tourRun.value) return;
-    if (!el) { tourRun.value = null; return; }
-    bringIntoView(el);
+    // not drawn on this screen: the bubble alone, at the bottom, so the person still reads where to go
+    if (el) bringIntoView(el);
     tourRun.value = { ...tourRun.value, phase: 'show', el, shown: 1 };
   });
 }
@@ -145,7 +149,7 @@ function end(completed: boolean) {
   if (!r || r.kind !== 'tour') return;
   if (completed && r.role) { markTour(r.role); toast(t('guide.tour.finished'), { kind: 'ok' }); }
   else if (!r.shown) toast(t('guide.tour.empty'));
-  if (r.from && r.from !== route.value.path) navigate(r.from);
+  if (r.from && r.from !== route.value.path) navigate(r.from, { replace: true });
 }
 
 /** a first step of the checklist: its screen, and the element to tap shown on it (or the tour, or the help) */
