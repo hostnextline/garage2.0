@@ -37,7 +37,11 @@ function server() {
   });
   const client = {
     from: () => empty,
-    rpc: (name: string, args: Record<string, unknown>) => new Promise((resolve) => { calls.push({ name, args, answer: (data) => resolve({ data, error: null }) }); }),
+    // like the real builder: awaitable, and `abortSignal` hands the same request back (the sender gives each call a time limit)
+    rpc: (name: string, args: Record<string, unknown>) => {
+      const asked = new Promise((resolve) => { calls.push({ name, args, answer: (data) => resolve({ data, error: null }) }); });
+      return Object.assign(asked, { abortSignal: () => asked });
+    },
     auth: { refreshSession: async () => ({ error: null }) },
     channel: () => empty,
     removeChannel: async () => undefined
