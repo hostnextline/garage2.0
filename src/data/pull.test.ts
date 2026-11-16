@@ -90,6 +90,15 @@ describe('the pull', () => {
     expect(startOf({ 'cur2:jobs': { at, id: 'x' }, 'pullAt:jobs': ms + 600000 }, 'jobs')).toBe(new Date(ms).toISOString());
   });
 
+  it('without signal the first pull ends at once: the screens stop « loading » on the device copy', async () => {
+    srv.offline = true;
+    const t0 = Date.now();
+    await boot(nextUid());
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(net.value.firstPull).toBe('failed');
+    expect(net.value.online).toBe(false);
+  });
+
   it('a first download that failed says so (core-data-48)', async () => {
     // (supabase-js itself retries a GET answered 503; a 500 is not retried)
     srv.failNext((c) => c.table === 'jobs', 500, { message: 'down' }, 10);

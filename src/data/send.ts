@@ -54,7 +54,7 @@ export async function sendEntry(client: SupabaseClient, e: OutboxEntry, signal: 
     let row = rows?.[0];
     if (!row) {
       // it was already there: an answer got lost, or the row existed before
-      row = (await ask<Row | null>((s) => client.from(t).select(cols).eq('id', id).abortSignal(s).maybeSingle(), REQUEST_MS, signal)) ?? undefined;
+      row = (await ask<Row | null>((s) => client.from(t).select(cols).eq('id', id).retry(false).abortSignal(s).maybeSingle(), REQUEST_MS, signal)) ?? undefined;
       if (!row) throw new AppError('refusal', 'rights', 'Ligne refusée par le serveur', { code: '42501' });
       if (synced) {
         const say = !e.v ? differing(e.values || {}, row) : e.patch ? differing(e.patch, row) : {};
@@ -67,7 +67,7 @@ export async function sendEntry(client: SupabaseClient, e: OutboxEntry, signal: 
     const t = e.table!, id = e.id!;
     let values = e.values || {};
     if (e.prev && Object.keys(e.prev).length) {
-      const now = await ask<Row | null>((s) => client.from(t).select('*').eq('id', id).abortSignal(s).maybeSingle(), REQUEST_MS, signal);
+      const now = await ask<Row | null>((s) => client.from(t).select('*').eq('id', id).retry(false).abortSignal(s).maybeSingle(), REQUEST_MS, signal);
       if (now) {
         values = { ...values };
         for (const part of Object.keys(e.prev)) if (part in values) values[part] = merge3(e.prev[part], values[part], now[part]);

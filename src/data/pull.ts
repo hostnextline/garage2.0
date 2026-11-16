@@ -5,7 +5,9 @@
      rows per request on Supabase, 2 000 on the test copy: PAGE never asks more).
    - Each pull starts 15 s before the previous pull began (server time): a row stamped before our cursor but committed
      after we read (a long operation) is still received; an idle table costs one request.
-   - The rows of a page and the cursor that says « received » are kept in ONE transaction (core-data-22). */
+   - The rows of a page and the cursor that says « received » are kept in ONE transaction (core-data-22).
+   - A read that fails is not tried again inside supabase-js (it would wait up to 7 s per table without signal): the
+     engine pulls again at its next cycle, when the signal comes back or the app returns to the screen. */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Commit } from './local';
 import type { Row } from './store';
@@ -72,7 +74,7 @@ export async function pullTable(io: TableIO, t: TableName, page = PAGE): Promise
     const rows = (await ask<Row[] | null>((s) => {
       let q = io.client.from(t).select('*').order('updated_at', { ascending: true }).order('id', { ascending: true }).limit(page);
       if (from) q = q.gt('updated_at', from);
-      return q.abortSignal(s);
+      return q.retry(false).abortSignal(s);
     }, REQUEST_MS, io.signal)) || [];
     if (io.closed()) return;
     await keep(rows);
@@ -81,7 +83,7 @@ export async function pullTable(io: TableIO, t: TableName, page = PAGE): Promise
     let last = rows[rows.length - 1];
     for (;;) {
       const at = String(last.updated_at), after = String(last.id);
-      const more = (await ask<Row[] | null>((s) => io.client.from(t).select('*').eq('updated_at', at).gt('id', after).order('id', { ascending: true }).limit(page).abortSignal(s), REQUEST_MS, io.signal)) || [];
+      const more = (await ask<Row[] | null>((s) => io.client.from(t).select('*').eq('updated_at', at).gt('id', after).order('id', { ascending: true }).limit(page).retry(false).abortSignal(s), REQUEST_MS, io.signal)) || [];
       if (io.closed()) return;
       await keep(more);
       if (more.length < page) break;

@@ -30,7 +30,7 @@ export interface ScanIO extends TableIO {
 export async function fetchBy(io: TableIO, t: TableName, values: string[], column = 'id', force = false): Promise<void> {
   for (let i = 0; i < values.length; i += BY_IDS) {
     const chunk = values.slice(i, i + BY_IDS);
-    const rows = (await ask<Row[] | null>((s) => io.client.from(t).select('*').in(column, chunk).abortSignal(s), REQUEST_MS, io.signal)) || [];
+    const rows = (await ask<Row[] | null>((s) => io.client.from(t).select('*').in(column, chunk).retry(false).abortSignal(s), REQUEST_MS, io.signal)) || [];
     if (io.closed()) return;
     const { put, removed } = io.apply(t, rows, force);
     await io.save({ rows: [{ table: t, put, del: removed }] });
@@ -46,7 +46,7 @@ export async function scanTable(io: ScanIO, t: TableName): Promise<void> {
       const page = (await ask<{ id: string; updated_at: string | null }[] | null>((s) => {
         let q = io.client.from(t).select('id,updated_at').is('deleted_at', null).order('id', { ascending: true }).limit(SCAN_PAGE);
         if (after) q = q.gt('id', after);
-        return q.abortSignal(s);
+        return q.retry(false).abortSignal(s);
       }, REQUEST_MS, io.signal)) || [];
       if (io.closed()) return;
       for (const r of page) listed.set(String(r.id), r.updated_at);
@@ -78,7 +78,7 @@ export async function jobsGone(io: TableIO, ids: string[]): Promise<string[]> {
   const visible = new Set<string>();
   for (let i = 0; i < ids.length; i += BY_IDS) {
     const chunk = ids.slice(i, i + BY_IDS);
-    const rows = (await ask<{ id: string }[] | null>((s) => io.client.from('jobs').select('id').in('id', chunk).abortSignal(s), REQUEST_MS, io.signal)) || [];
+    const rows = (await ask<{ id: string }[] | null>((s) => io.client.from('jobs').select('id').in('id', chunk).retry(false).abortSignal(s), REQUEST_MS, io.signal)) || [];
     if (io.closed()) return [];
     for (const r of rows) visible.add(String(r.id));
   }

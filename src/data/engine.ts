@@ -308,7 +308,7 @@ export class Engine {
   async refetch(t: TableName, id: string): Promise<'updated' | 'gone' | 'failed'> {
     if (this.closed || !id || id === 'undefined' || id === 'null') return 'failed';
     try {
-      const row = await ask<Row | null>((s) => this.client.from(t).select('*').eq('id', id).abortSignal(s).maybeSingle(), REQUEST_MS, this.ctl.signal);
+      const row = await ask<Row | null>((s) => this.client.from(t).select('*').eq('id', id).retry(false).abortSignal(s).maybeSingle(), REQUEST_MS, this.ctl.signal);
       if (this.closed) return 'failed';
       if (row) { this.keepRows(t, [row]); return 'updated'; }
       this.removeRows(t, [id]);
