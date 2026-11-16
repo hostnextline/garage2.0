@@ -14,12 +14,15 @@ import { tx, pool } from './helpers.mjs';
 
 after(() => pool.end());
 
-/** what the signed-in app calls (src/: callRpc, rpcNow, rpc, rpcOf) and what the server functions call with the person's own key */
+/** what the signed-in app calls (src/: callRpc, rpcNow, rpc, rpcOf) and what the server functions call with the person's own key.
+ *  recon_summary, recon_ack, recon_now: « Rapprochement d'hier » in Trésorerie (src/features/treasury/ReconPanel.tsx; ack and
+ *  now go through its own `change`, which the scan below does not see) and the function « recon »; each checks the owner or
+ *  « Trésorerie » inside (20261116000400_refonte_rapprochement, tested in refonte-rapprochement.test.mjs). */
 const APP = [
   'access_of', 'apply_hours', 'blocks_overview', 'book_job', 'coffre_add', 'coffre_remove', 'coffre_report', 'dashboard', 'day_path',
   'extra_answer', 'inventory_buy', 'inventory_delete', 'invoice_finish', 'invoice_for_job', 'invoice_reopen', 'invoice_void',
   'job_customer', 'job_item_price', 'job_step', 'lock_windows', 'member_update', 'move_job', 'my_access', 'payment_add', 'payment_remove',
-  'public_track', 'report_position', 'rights_table', 'set_job_duration', 'set_role_rights', 'set_stop_order', 'set_truck_start',
+  'public_track', 'recon_ack', 'recon_now', 'recon_summary', 'report_position', 'rights_table', 'set_job_duration', 'set_role_rights', 'set_stop_order', 'set_truck_start',
   'shift_end', 'shift_start', 'suggest_blocks', 'suggest_windows', 'team_map', 'treasury_report', 'update_me', 'vin_history', 'walk_in',
   'web_switch', 'windows_switch'
 ];
@@ -31,8 +34,6 @@ const AS_PERSON = [
   'ranges_first', 'ranges_from', 'ranges_norm', 'ranges_overlap', 'right_default', 'right_of', 'right_rule', 'sees_calls',
   'truck_hours_editable', 'truck_ranges', 'words_need_machine'
 ];
-/** made tonight by the daily reconciliation (another migration): open to the team, the check is inside. Present or not. */
-const RECON = ['recon_summary', 'recon_ack', 'recon_now'];
 /** existed before tonight, re-made and opened to the team by an earlier migration of tonight (its check inside):
  *  lock_windows_due (20261116000200_refonte_planification, the windows locked by the app where there is no pg_cron).
  *  Open with that migration, closed without it; the D1 loop of 20261116000300 leaves it as it finds it. */
@@ -48,8 +49,7 @@ async function openTo(h, role) {
 
 test('the signed-in app may run exactly the functions it calls and the ones its row rules need', () => tx(async (h) => {
   const open = await openTo(h, 'authenticated');
-  const present = new Set((await h.q(`select distinct proname n from pg_proc where pronamespace = 'public'::regnamespace`)).map((r) => r.n));
-  const expected = sorted([...APP, ...AS_PERSON, ...RECON.filter((n) => present.has(n))]);
+  const expected = sorted([...APP, ...AS_PERSON]);
   const extra = open.filter((n) => !expected.includes(n) && !TONIGHT.includes(n));
   const missing = expected.filter((n) => !open.includes(n));
   assert.deepEqual(extra, [], 'open to the app but not in the list (close it, or add it to APP / AS_PERSON with the reason): ' + extra.join(', '));
