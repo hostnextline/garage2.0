@@ -21,7 +21,7 @@ import { net } from '../../data/sync';
 import type { Customer, Invoice, Quote, Vehicle } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Kv, Button, BigStep, Sheet, Switch, Banner, Empty, Skeleton, Pill, Money, InvoicePill, Form, ask, attempt, run, toast, whenHistorySettled, type Tone } from '../../ui';
 import { JobTicket } from '../../shared/jobs/JobTicket';
-import { quoteNumber } from '../invoices/select';
+import { quoteNumber } from '../../shared/invoices/select';
 import { quoteTotals } from '../../domain/money/quote';
 import { factsOf, owedOn, isUpcoming, jobOrder } from '../../shared/customers/facts';
 import { draftFromQuery } from '../../shared/customers/search';

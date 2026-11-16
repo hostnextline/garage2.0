@@ -3,7 +3,7 @@ import { DICTS, t, lang } from '../../lib/i18n';
 import { clockRange } from '../../lib/dates';
 import { blocks } from '../../data/select';
 import { Panel, Tabs } from '../../ui';
-import { gt } from './words';
+import { gt } from '../../shared/guide/words';
 
 export type Topic = 'book' | 'blocks' | 'offline' | 'texts' | 'payments' | 'rights';
 export const TOPICS: Topic[] = ['book', 'blocks', 'offline', 'texts', 'payments', 'rights'];

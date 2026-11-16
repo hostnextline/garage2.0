@@ -9,7 +9,7 @@ import type { ScreenProps } from '../../platform/router';
 import { Page, Tabs } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { today, longDay } from '../../lib/dates';
-import { GuideCard } from '../guide/GuideCard';
+import { GuideCard } from '../../shared/guide/GuideCard';
 import { TextOutcomeHost } from '../../shared/jobs/TextOutcome';
 import { PartsHost } from '../../shared/jobs/PartsSheet';
 import { CarCheckHost } from '../../shared/jobs/CarCheckSheet';

@@ -8,7 +8,7 @@ import type { PayMethod } from '../../data/types';
 import { addPayment, team } from '../../data/api';
 import { isOwner, access } from '../../data/auth';
 import { customerName, job as jobRow } from '../../data/select';
-import { mayCoffre, openCoffre } from '../coffre/host';
+import { mayCoffre, openCoffre } from './CoffreHost';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { Sheet, Button, Field, Input, MoneyInput, Banner, Empty, run } from '../../ui';

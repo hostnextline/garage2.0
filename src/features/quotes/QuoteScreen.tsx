@@ -19,15 +19,15 @@ import { formatPhone } from '../../lib/text';
 import { Page, Panel, Button, Banner, Empty, Skeleton, Field, Input, PhoneInput, Textarea, DateInput, Seg, Totals, run, attempt, toast } from '../../ui';
 import { CustomerPicker } from '../../shared/customers/CustomerPicker';
 import { VehiclePicker } from '../../shared/vehicles/VehiclePicker';
-import { LinesEditor, LinesView, CatalogSheet, withKeys, type EditLine } from '../invoices/Lines';
-import { useDraft } from '../invoices/useDraft';
-import { usePdf } from '../invoices/usePdf';
-import { quotePdfData } from '../invoices/pdf';
-import { canShareText } from '../invoices/share';
-import { quoteNumber } from '../invoices/select';
+import { LinesEditor, LinesView, CatalogSheet, withKeys, type EditLine } from '../../shared/invoices/Lines';
+import { useDraft } from '../../shared/invoices/useDraft';
+import { usePdf } from '../../shared/invoices/usePdf';
+import { quotePdfData } from '../../shared/invoices/pdf';
+import { canShareText } from '../../shared/invoices/share';
+import { quoteNumber } from '../../shared/invoices/select';
 import { quoteTotals, cleanItems, quoteIsEmpty, quoteExpired, defaultValidUntil } from '../../domain/money/quote';
 import { QuotePill } from './QuotesScreen';
-import '../invoices/invoices.css';
+import '../../shared/invoices/invoices.css';
 import './quotes.css';
 
 export default function QuoteScreen({ params, query }: ScreenProps) {

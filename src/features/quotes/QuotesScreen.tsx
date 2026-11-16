@@ -11,9 +11,9 @@ import { t, lang } from '../../lib/i18n';
 import { shortDate, dayOf, today } from '../../lib/dates';
 import { matches, formatPhone } from '../../lib/text';
 import { Page, Panel, Tabs, SearchInput, Button, Empty, Skeleton, Pill, Money, type Tone } from '../../ui';
-import { quoteNumber } from '../invoices/select';
+import { quoteNumber } from '../../shared/invoices/select';
 import { quoteTotals, quoteExpired, type QuoteStatus } from '../../domain/money/quote';
-import '../invoices/invoices.css';
+import '../../shared/invoices/invoices.css';
 import './quotes.css';
 
 type QTab = 'active' | 'accepted' | 'converted' | 'declined' | 'all';

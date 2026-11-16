@@ -19,7 +19,7 @@ import { garageName, windowsOn } from '../data/select';
 import { startPositionSharing } from '../services/position';
 import { Button, IconButton, Sheet, Banner, Avatar, Rows, RowItem, Empty, Skeleton } from '../ui';
 import { MovedBanner } from '../shared/app/moved';
-import { CoffreHost } from '../features/coffre/host';
+import { CoffreHost } from '../shared/invoices/CoffreHost';
 import { startLocator } from '../shared/customers/locator';
 import { ContextMenuHost } from '../ui/ContextMenu';
 import { HermesHost } from '../features/hermes/host';

@@ -15,7 +15,7 @@ import { Page, Panel, Rows, RowItem, Button, Chips, Field, DateInput, Empty, Ban
 import { PERIODS, periodRange, rangeLabel, type PeriodKey } from '../../domain/money/period';
 import { XLSX_MIME } from '../../shared/export/xlsx';
 import { normalizeCoffre, coffreWorkbook, coffreCsv, type CoffreReport, type CoffreLabels } from './logic';
-import './coffre.css';
+import '../../shared/invoices/coffre.css';
 
 export default function CoffreScreen(_p: ScreenProps) {
   const l = lang.value;

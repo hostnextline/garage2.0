@@ -8,13 +8,13 @@ import { shortDate, dayOf } from '../../lib/dates';
 import { lang } from '../../lib/i18n';
 import { me } from '../../data/auth';
 import { Page, Panel, Button, Banner, toast } from '../../ui';
-import { computeChecklist, progress, nextStep, type GuideStep, type Role, type Detail } from './checklist';
-import { guideInput, myRoles, nextJobId, readLocal, markStep, refreshChecks, watchScreens } from './guide-data';
-import { startTour, openStep } from './tour';
+import { computeChecklist, progress, nextStep, type GuideStep, type Role, type Detail } from '../../shared/guide/checklist';
+import { guideInput, myRoles, nextJobId, readLocal, markStep, refreshChecks, watchScreens } from '../../shared/guide/guide-data';
+import { startTour, openStep } from '../../shared/guide/tour';
 import { InstallPanel } from './Install';
-import { gt } from './words';
+import { gt } from '../../shared/guide/words';
 import { HelpCenter, isTopic, type Topic } from './HelpCenter';
-import './guide.css';
+import '../../shared/guide/guide.css';
 
 export function detailText(d: Detail | null): string | null {
   if (!d) return null;

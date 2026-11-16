@@ -22,7 +22,7 @@ import { answerBySignature, answerByVoice, sendText } from '../../shared/jobs/fl
 import { customerLang } from './WaiverSheet';
 import { wt } from '../../shared/jobs/select';
 import type { JobRights } from '../../domain/jobs/rights';
-import { ReopenButton } from '../invoices/InvoicePanel';
+import { ReopenButton } from '../../shared/invoices/InvoicePanel';
 
 const OPEN_STATUSES = ['booked', 'en_route', 'on_site'];
 const lineCents = (i: Pick<JobItem, 'qty' | 'unit_cents' | 'kind'>) => (i.kind === 'discount' ? -1 : 1) * lineTotal({ qty: Number(i.qty), unitCents: Math.abs(i.unit_cents) });

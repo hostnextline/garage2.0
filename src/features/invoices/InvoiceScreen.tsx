@@ -13,13 +13,13 @@ import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { stamp as stampText } from '../../lib/dates';
 import { Page, Panel, Button, Banner, Empty, Skeleton, InvoicePill, Rows, RowItem, askText, run, toast } from '../../ui';
-import { invoiceById, paymentsOfInvoice, amountsOf, invoiceCustomer, invoiceWho, canEditInvoiceOf, canManageInvoices, methodWord, invoiceTexts } from './select';
-import { invoicePdfData, type PdfData } from './pdf';
-import { DraftInvoice, PaymentsList, ReopenButton } from './InvoicePanel';
-import { PaySheet } from './PaySheet';
-import { sendText, SendSheet, type SendResult } from './send';
-import { usePdf } from './usePdf';
-import './invoices.css';
+import { invoiceById, paymentsOfInvoice, amountsOf, invoiceCustomer, invoiceWho, canEditInvoiceOf, canManageInvoices, methodWord, invoiceTexts } from '../../shared/invoices/select';
+import { invoicePdfData, type PdfData } from '../../shared/invoices/pdf';
+import { DraftInvoice, PaymentsList, ReopenButton } from '../../shared/invoices/InvoicePanel';
+import { PaySheet } from '../../shared/invoices/PaySheet';
+import { sendText, SendSheet, type SendResult } from '../../shared/invoices/send';
+import { usePdf } from '../../shared/invoices/usePdf';
+import '../../shared/invoices/invoices.css';
 
 export default function InvoiceScreen({ params }: ScreenProps) {
   const inv = invoiceById(params.id);

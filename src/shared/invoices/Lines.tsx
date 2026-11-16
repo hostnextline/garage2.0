@@ -6,7 +6,7 @@ import type { ItemKind, Lang } from '../../data/types';
 import { t, tl, lang as uiLang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { Field, Input, MoneyInput, Check, IconButton, Button, Sheet, toast } from '../../ui';
-import { ServicePicker } from '../../shared/moment/ServicePicker';
+import { ServicePicker } from '../moment/ServicePicker';
 import type { ItemDraft } from '../../domain/moment/logic';
 import { lineCents, type LineLike } from '../../domain/money/invoice';
 

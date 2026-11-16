@@ -13,10 +13,10 @@ import { shortDate, dayOf, today } from '../../lib/dates';
 import { matches } from '../../lib/text';
 import { Page, Panel, Tabs, SearchInput, Select, Button, IconButton, Empty, Banner, Skeleton, InvoicePill, Money } from '../../ui';
 import { daysSince, periodRange, inPeriod, toCsv, PERIODS, type PeriodKey, type CsvValue } from '../../domain/money/invoice';
-import { amountsOf, invoiceCustomer, invoiceWho, owing, invoiceLabel } from './select';
-import { sendText, SendSheet, type SendResult } from './send';
-import { downloadBlob } from './share';
-import './invoices.css';
+import { amountsOf, invoiceCustomer, invoiceWho, owing, invoiceLabel } from '../../shared/invoices/select';
+import { sendText, SendSheet, type SendResult } from '../../shared/invoices/send';
+import { downloadBlob } from '../../shared/invoices/share';
+import '../../shared/invoices/invoices.css';
 
 type Tab = 'unpaid' | 'draft' | 'paid' | 'void' | 'all';
 const TABS: Tab[] = ['unpaid', 'draft', 'paid', 'void', 'all'];
