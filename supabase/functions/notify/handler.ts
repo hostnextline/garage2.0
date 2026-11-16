@@ -23,8 +23,10 @@ const MONEY_KINDS = ['invoice', 'payment_reminder', 'arrived'];
 const taxed = (lines: Record<string, any>[], s: Record<string, any>): number => sumLines(lines, s).total;
 export async function makeLink(jobId: string | null, quoteId: string | null, by: string | null, base: string, lang: string) {
   const token = newToken(24);
-  await adminDb().from('public_links').insert({ token_hash: await sha256hex(token), job_id: jobId, quote_id: quoteId,
+  // a link that was not kept would open « lien invalide »: no text goes with it
+  const { error } = await adminDb().from('public_links').insert({ token_hash: await sha256hex(token), job_id: jobId, quote_id: quoteId,
     expires_at: new Date(Date.now() + LINK_DAYS * 86400000).toISOString(), created_by: by });
+  if (error) throw error;
   return clientLink(base, token, lang);
 }
 
@@ -54,7 +56,9 @@ export const handler = serve(async (req) => {
   if (MONEY_KINDS.includes(kind) && !(r.edit_invoices || r.invoices || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas envoyer cette facture.', 403);
 
   const s = await settings();
-  const { data: cust } = await db.from('customers').select('*').eq('id', j.customer_id).maybeSingle();
+  // a read that fails is a server problem, never « this customer has no number » nor an empty estimate
+  const { data: cust, error: ec } = await db.from('customers').select('*').eq('id', j.customer_id).maybeSingle();
+  if (ec) throw ec;
   const cu = (cust || {}) as Record<string, any>;
   const lang: Lang = cu.lang === 'en' ? 'en' : 'fr';
   const garage = s.company?.name || 'Mécanique Mobile H.I.S';
@@ -81,7 +85,8 @@ export const handler = serve(async (req) => {
   const when = whenText(tpl, j as never, s.booking?.blocks, lang);
   Object.assign(vars, when.vars);
   vars.payer = payNowWords(cardOn, lang);
-  const { data: items } = await db.from('job_items').select('*').eq('job_id', j.id).is('deleted_at', null);
+  const { data: items, error: ei } = await db.from('job_items').select('*').eq('job_id', j.id).is('deleted_at', null);
+  if (ei) throw ei;
   const its = (items || []) as Record<string, any>[];
   if (kind === 'booking' || kind === 'moved') {
     const planned = its.filter((i) => ['planned', 'done', 'approved'].includes(i.status)).sort((x, y) => (x.sort ?? 0) - (y.sort ?? 0));

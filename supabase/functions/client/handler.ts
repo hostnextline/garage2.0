@@ -4,8 +4,9 @@
 //   answer  accept or decline an extra work (asked to confirm on the page first)
 //   pay     opens Stripe's card page for what is due: ONE open page per job, whatever the text the customer came from
 //   check   back from Stripe: asks Stripe whether it is paid
-// « sign » and « answer » take the amount the page displayed (`seen_total_cents`, optional): when it is no longer the
-// amount, nothing is written and the answer is `changed` (409) with the new amount and the page to show again.
+// « sign » and « answer » take the amount the page displayed (`shown_cents`, optional: the total for sign, the line's
+// amount for answer): when it is no longer the amount, nothing is written and the answer is HTTP 409
+// { ok: false, code: 'amount_changed', error, current_cents }. Without it, as before (yesterday's page keeps working).
 import { serve, json, body, fail, Fail } from '../_shared/http.ts';
 import { adminDb, secret, settings } from '../_shared/db.ts';
 import { sha256hex } from '../_shared/tokens.ts';
@@ -29,8 +30,8 @@ async function linkOf(token: unknown): Promise<Row> {
 }
 /** the totals of lines, the same way everywhere (a discount counts negative): _shared/money.ts */
 const taxesOf = (s: Row, lines: Row[]) => sumLines(lines, s);
-/** the amount the page displayed, when it says so (yesterday's page does not: null) */
-function seenCents(x: unknown): number | null {
+/** the amount the page displayed, when it says so (yesterday's page does not: null; anything not a number never matches) */
+function shownCents(x: unknown): number | null {
   if (x === undefined || x === null || x === '') return null;
   const n = Math.round(Number(x));
   return Number.isFinite(n) ? n : NaN;
@@ -284,11 +285,21 @@ async function answer(req: Request): Promise<Response> {
         fail('closed', 'Ce rendez-vous est terminé : cette proposition ne peut plus être acceptée ici. Appelez le garage.', 409);
       }
       // the price the customer saw (the page sends it): another price since = nothing written, the page shows the new one
-      const seen = seenCents(b.seen_total_cents), now = lineCents(i);
-      if (seen !== null && seen !== now) {
-        fail('changed', 'Le prix de ce travail a changé. Regardez le nouveau montant avant de répondre.', 409, { amount_cents: now, item_id: i.id, view: await view(l) });
+      const shown = shownCents(b.shown_cents), now = lineCents(i);
+      const moved = (cents: number) => fail('amount_changed', 'Le prix de ce travail a changé. Regardez le nouveau montant avant de répondre.', 409, { current_cents: cents, item_id: i.id });
+      if (shown !== null && shown !== now) moved(now);
+      // written only while it is still the line that was read (a price changed in between is never approved)
+      let w = db.from('job_items').update({ status: b.accept ? 'approved' : 'declined', answered_at: new Date().toISOString(), answered_via: 'link' }).eq('id', i.id).eq('status', 'proposed');
+      if (shown !== null) w = w.eq('unit_cents', i.unit_cents).eq('qty', i.qty);
+      const { data: done, error: ew } = await w.select('id');
+      if (ew) throw ew;
+      if (!done?.length) {
+        if (shown !== null) {
+          const { data: again } = await db.from('job_items').select('qty, unit_cents, kind, status').eq('id', i.id).maybeSingle();
+          if ((again as Row | null)?.status === 'proposed') moved(lineCents(again as Row));
+        }
+        return json(await view(l));
       }
-      await db.from('job_items').update({ status: b.accept ? 'approved' : 'declined', answered_at: new Date().toISOString(), answered_via: 'link' }).eq('id', i.id).eq('status', 'proposed');
       // the mechanic's app shows the answer at once (realtime); it is also kept in the job's history
       await db.from('messages').insert({ job_id: l.job_id, kind: 'extras_answer', channel: 'web', body: `${b.accept ? 'Accepté' : 'Refusé'} : ${i.description}`, status: 'skipped', error: 'answer' });
     }
@@ -301,9 +312,9 @@ async function answer(req: Request): Promise<Response> {
     const v = await view(l) as Row;
     if (!v.estimate?.can_sign) fail('signed', v.estimate?.signed_at ? 'Cette estimation est déjà signée.' : 'Il n’y a plus rien à signer ici.');
     // the total the customer saw (the page sends it): another total since = nothing is signed, the page shows the new one
-    const seen = seenCents(b.seen_total_cents);
-    if (seen !== null && seen !== v.expected.total) {
-      fail('changed', 'Le montant de l’estimation a changé. Regardez le nouveau total avant de signer.', 409, { amount_cents: v.expected.total, view: v });
+    const shown = shownCents(b.shown_cents);
+    if (shown !== null && shown !== v.expected.total) {
+      fail('amount_changed', 'Le montant de l’estimation a changé. Regardez le nouveau total avant de signer.', 409, { current_cents: v.expected.total });
     }
     const s = await settings();
     // one tap (« J’accepte et je signe »): an electronic signature in the name on the customer's file; or the name typed
@@ -334,7 +345,7 @@ async function answer(req: Request): Promise<Response> {
     // only, made with a secret of the server), the amount seen and the lines it was for
     if (click) {
       await db.from('activity').insert({ entity: 'job', entity_id: l.job_id, action: 'signed_online', data: {
-        signer, at: now, version: String(s.waiver?.version || '1'), cents: v.expected.total, seen_cents: seen, link: l.id,
+        signer, at: now, version: String(s.waiver?.version || '1'), cents: v.expected.total, shown_cents: shown, link: l.id,
         lines: ((v.items || []) as Row[]).map((i) => ({ id: i.id, description: i.description, qty: i.qty, unit_cents: i.unit_cents })),
         device: (req.headers.get('user-agent') || '').slice(0, 160), ip: await visitorMark(req, 'sig') } });
     }
