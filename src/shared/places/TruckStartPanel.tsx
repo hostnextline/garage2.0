@@ -53,6 +53,7 @@ export function TruckStartPanel(p: { truckId: string; canEdit: boolean }) {
     const ok = await attempt(() => setTruckStart(tr.id, next), { ok: moved ? t('hours.start.moved') : t('hours.start.saved') });
     if (!ok) return;
     // the server planned the coming appointments again: bring them now
+    // (a failure here only delays them: the next sync brings them, and the sync bar says when the phone is offline)
     if (moved) void flush().then(() => pull('jobs')).catch(() => undefined);
   };
 

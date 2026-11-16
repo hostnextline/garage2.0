@@ -64,7 +64,7 @@ export function splitPasted(input: string): Pasted {
 }
 
 /** the provinces as they end an address part (« Montréal QC », « Laval, Québec ») */
-export const PROVINCE_WORDS = '(?:QC|ON|NB|NS|PE|NL|MB|SK|AB|BC|YT|NT|NU|Québec|Quebec|Ontario|Canada)';
+const PROVINCE_WORDS = '(?:QC|ON|NB|NS|PE|NL|MB|SK|AB|BC|YT|NT|NU|Québec|Quebec|Ontario|Canada)';
 const ONLY_PROVINCE = new RegExp(`^${PROVINCE_WORDS}$`, 'i');
 const TRAILING_PROVINCE = new RegExp(`[\\s,]+${PROVINCE_WORDS}$`, 'i');
 const POSTAL_INSIDE = /\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\s?-?\d[ABCEGHJ-NPRSTV-Z]\d\b/i;

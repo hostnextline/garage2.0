@@ -12,7 +12,7 @@ const num = (x: unknown) => { const n = Number(x); return Number.isFinite(n) && 
 const str = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null);
 
 /** the decoder's answer → the car's fields (only what it really knows) */
-export function carOfDecoded(v: Record<string, unknown>): Partial<CarFields> {
+function carOfDecoded(v: Record<string, unknown>): Partial<CarFields> {
   const car: Partial<CarFields> = {};
   if (num(v.year)) car.year = num(v.year);
   if (str(v.make)) car.make = str(v.make);

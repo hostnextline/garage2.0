@@ -21,7 +21,7 @@ const FIELDS: (keyof SpecData)[] = ['oil_filter', 'drain_torque', 'air_filter', 
 const litres = (n: number) => new Intl.NumberFormat(lang.value === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 2 }).format(n);
 
 /** the values of a sheet, as lines */
-export function SpecValues(p: { data: SpecData; engine?: string | null }) {
+function SpecValues(p: { data: SpecData; engine?: string | null }) {
   const d = p.data || {};
   const oil = [d.oil_l != null ? `${litres(Number(d.oil_l))} L` : '', d.oil_visc || ''].filter(Boolean).join(' ');
   const items: [string, ComponentChildren][] = [

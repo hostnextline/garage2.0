@@ -44,7 +44,7 @@ export function CarPicker(p: { value: CarChoice; onValue: (v: CarChoice) => void
   );
 }
 
-export function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => void; onDone: (v: CarChoice) => void }) {
+function CarPickSheet(p: { start: Step; value: CarChoice; onClose: () => void; onDone: (v: CarChoice) => void }) {
   // the model list needs the make (the year is optional)
   const first: Step = p.start === 'model' && !p.value.make ? 'make' : p.start;
   const [step, setStep] = useState<Step>(first);

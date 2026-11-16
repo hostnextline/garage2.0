@@ -6,7 +6,7 @@
 import { findVin, type VinRead } from '../../domain/vehicles/vinRead';
 import { loadTesseract, shrinkPhoto } from '../export/ocr';
 
-export const FORMATS = ['code_39', 'code_128', 'data_matrix', 'qr_code', 'pdf417'] as const;
+const FORMATS = ['code_39', 'code_128', 'data_matrix', 'qr_code', 'pdf417'] as const;
 export interface Detected { rawValue: string }
 export interface Detector { detect(src: ImageBitmapSource | ImageData): Promise<Detected[]> }
 interface DetectorClass { new (o: { formats: string[] }): Detector; getSupportedFormats(): Promise<string[]> }

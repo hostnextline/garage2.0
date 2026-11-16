@@ -25,7 +25,7 @@ export interface Suggestion {
   areas: string[];
 }
 
-export const PHOTON = 'https://photon.komoot.io/api/';
+const PHOTON = 'https://photon.komoot.io/api/';
 /** near Montréal first */
 export function photonUrl(q: string): string {
   return `${PHOTON}?q=${encodeURIComponent(q)}&lang=fr&limit=5&lat=45.50&lon=-73.65`;

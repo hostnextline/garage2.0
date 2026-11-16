@@ -10,7 +10,7 @@ export const POPULAR_MAKES = ['Toyota', 'Honda', 'Hyundai', 'Ford', 'Chevrolet',
   'Dodge', 'Mitsubishi', 'Lexus', 'Acura', 'BMW', 'Mercedes-Benz', 'Audi', 'Tesla', 'Chrysler', 'Buick', 'Infiniti', 'Volvo', 'Cadillac', 'Lincoln', 'Mini'];
 export const OTHER_MAKES = ['Alfa Romeo', 'Fiat', 'Genesis', 'Hummer', 'Jaguar', 'Land Rover', 'Maserati', 'Mercury', 'Oldsmobile', 'Polestar', 'Pontiac', 'Porsche',
   'Rivian', 'Saab', 'Saturn', 'Scion', 'Smart', 'Suzuki'];
-export const ALL_MAKES = [...POPULAR_MAKES, ...OTHER_MAKES];
+const ALL_MAKES = [...POPULAR_MAKES, ...OTHER_MAKES];
 
 /** next year's models down to 1980 */
 export function yearsList(now = new Date().getFullYear()): number[] {

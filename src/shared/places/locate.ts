@@ -79,7 +79,7 @@ const sidesOf = (street: string) => streetWords(street).filter((x) => SIDES.has(
 
 export interface Best { place: Suggestion | null; quality: 'door' | 'street' | null; choices: Suggestion[] }
 /** where the garage works: with no town and no postal code typed, an answer farther than this is not taken */
-export const AREA = { lat: 45.5, lng: -73.65, km: 120 };
+const AREA = { lat: 45.5, lng: -73.65, km: 120 };
 /** the one answer that fits what was typed; none when nothing fits or when two different places fit */
 export function bestPlace(cands: Suggestion[], w: Wanted, area = AREA): Best {
   const inArea = (s: Suggestion) => !!w.city || !!w.fsa || metres(s.place.lat!, s.place.lng!, area.lat, area.lng) <= area.km * 1000;
