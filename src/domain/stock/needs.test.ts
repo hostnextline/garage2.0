@@ -175,3 +175,40 @@ describe('« Ajouter à l’inventaire »', () => {
     ]);
   });
 });
+
+import { defaultWeekOf } from './needs';
+describe('the rebuild: what a line takes', () => {
+  const golf = car('golf', { year: 2015, make: 'Volkswagen', model: 'Golf' });
+  const one = (it: Partial<JobItem>, services: Service[] = []): NeedsInput => ({
+    from: '2026-11-08', to: '2026-11-14', jobs: [job('j', 1, '2026-11-10', 'golf')],
+    itemsOf: () => [line('x', 'j', null, it)], service: (id) => services.find((s) => s.id === id), partsOf: () => [],
+    vehicle: (id) => (id === 'golf' ? golf : undefined), spec: () => undefined, refRows: REF, inventory: []
+  });
+  it('a line typed by hand that says an oil change takes the oil and the filter (the same words as « Rappels d’huile »)', () => {
+    const w = weekNeeds(one({ description: 'Changement d’huile synthétique 5W-30', service_id: null, kind: 'labour' }));
+    expect(w.lines.map((l) => l.kind)).toEqual(['oil', 'oil_filter']);
+    expect(w.lines[0]).toMatchObject({ ref: '5W-40', qty: 5.7 });
+    expect(weekNeeds(one({ description: 'Diagnostic du moteur', service_id: null, kind: 'labour' })).lines).toEqual([]);
+    expect(weekNeeds(one({ description: 'Rabais huile', service_id: null, kind: 'discount' }))).toMatchObject({ lines: [] });
+  });
+  it('four tires priced one by one are 4 tires, not 16; a set on one line is 4', () => {
+    const tires = svc('t', 'Vente de pneus neufs d’hiver');
+    expect(weekNeeds(one({ service_id: 't', qty: 4 }, [tires])).lines[0]).toMatchObject({ kind: 'tires', qty: 4 });
+    expect(weekNeeds(one({ service_id: 't', qty: 1 }, [tires])).lines[0]).toMatchObject({ kind: 'tires', qty: 4 });
+    expect(weekNeeds(one({ service_id: 't', qty: 2 }, [tires])).lines[0]).toMatchObject({ kind: 'tires', qty: 2 });
+  });
+  it('guesses: a « vidange » is an oil change; checking the oil level, tires the customer brings, the cabin air filter are not what they seem', () => {
+    expect(guessNeeds(svc('a', 'Vidange')).map((n) => n.kind)).toEqual(['oil', 'oil_filter']);
+    expect(guessNeeds(svc('a', 'Vidange de transmission'))).toEqual([]);
+    expect(guessNeeds(svc('a', 'Vérification du niveau d’huile'))).toEqual([]);
+    expect(guessNeeds(svc('a', 'Pose de pneus neufs (client fournit)'))).toEqual([]);
+    expect(guessNeeds(svc('a', 'Remplacement du filtre à air d’habitacle')).map((n) => n.kind)).toEqual(['cabin_filter']);
+    expect(guessNeeds(svc('a', 'Filtre à air et filtre d’habitacle')).map((n) => n.kind)).toEqual(['air_filter', 'cabin_filter']);
+  });
+  it('the week to open: this one, or from Thursday the next one when it has a coming appointment', () => {
+    expect(defaultWeekOf('2026-11-10', [])).toBe('2026-11-08');
+    expect(defaultWeekOf('2026-11-12', [{ day: '2026-11-17', status: 'booked' }])).toBe('2026-11-15');
+    expect(defaultWeekOf('2026-11-12', [{ day: '2026-11-17', status: 'cancelled' }])).toBe('2026-11-08');
+    expect(defaultWeekOf('2026-11-15', [])).toBe('2026-11-15');
+  });
+});

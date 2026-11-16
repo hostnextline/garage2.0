@@ -51,3 +51,20 @@ describe('value and what to order', () => {
     expect(moveDelta('count', 6, 6)).toBe(0);
   });
 });
+
+import { editQty, isDefaultUnit } from './stock';
+describe('a quantity put back in a field reads back the same', () => {
+  it('in English a minimum of 1 000 is « 1000 » (« 1,000 » was refused by the form that wrote it)', () => {
+    expect(parseQty(formatQty(1000, 'en'))).toBeNull();          // the old way
+    expect(editQty(1000, 'en')).toBe('1000');
+    expect(parseQty(editQty(1000, 'en'))).toBe(1000);
+    expect(editQty(4.5, 'fr')).toBe('4,5');
+    expect(parseQty(editQty(1234.25, 'fr'))).toBe(1234.25);
+    expect(editQty(null, 'fr')).toBe('');
+  });
+  it('one way to say « one by one »', () => {
+    expect(isDefaultUnit('pièce')).toBe(true);
+    expect(isDefaultUnit('')).toBe(true);
+    expect(isDefaultUnit('L')).toBe(false);
+  });
+});

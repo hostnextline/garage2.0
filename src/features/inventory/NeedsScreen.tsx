@@ -1,36 +1,38 @@
 /* « Besoins de la semaine » (#/needs?week=YYYY-MM-DD, right « inventory »): what the appointments of a week will take
    (oil by grade, filters, new tires by size and season, the parts of the stock), compared with the stock: what to
    buy, ready to copy for the supplier. Each line opens the appointments it comes from; « À compléter » lists the
-   appointments whose car does not say enough (no car, oil type unknown…). The logic is needs.ts. */
-import { useState } from 'preact/hooks';
-import { ChevronLeft, ChevronRight, ChevronDown, Copy, PackagePlus, Droplet, Filter, Disc3, Package, TriangleAlert, PackageCheck } from 'lucide-preact';
-import type { ComponentChildren } from 'preact';
+   appointments whose car does not say enough (no car, oil type unknown…). The logic is domain/stock/needs.ts. */
+import { ChevronLeft, ChevronRight, Copy, PackagePlus, Droplet, Filter, Disc3, Package, PackageCheck } from 'lucide-preact';
 import { setQuery, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { today, addDays, weekStart, isValidDay, type Day } from '../../lib/dates';
-import { job as jobById, customer, customerName } from '../../data/select';
 import { Page, Panel, Button, IconButton, Pill, Empty, run } from '../../ui';
 import { saveInventoryItem } from '../../data/api';
 import { can } from '../../data/auth';
-import { itemsToCreate, type NeedLine, type Missing } from '../../domain/stock/needs';
+import { itemsToCreate } from '../../domain/stock/needs';
 import { formatQty } from '../../domain/stock/stock';
-import { useWeekNeeds, defaultWeek, lineLabel, qtyWords, jugWords, weekWords, shoppingText, copy, dayWord, FAMILY } from '../../shared/stock/needsView';
-import '../../shared/stock/inventory.css';
+import { useWeekNeeds, useDefaultWeek } from '../../shared/stock/useWeekNeeds';
+import { lineLabel, qtyWords, jugWords, weekWords, shoppingText, FAMILY } from '../../shared/stock/needsWords';
+import { NeedRow, MissingRow } from './NeedRows';
+import { copyText } from './clipboard';
+import '../../shared/stock/needs.css';
 
 const ICON = { oil: Droplet, filters: Filter, tires: Disc3, parts: Package };
 
 /* ---------- the screen ---------- */
 export default function NeedsScreen({ query }: ScreenProps) {
   const q = query.get('week');
-  const from = isValidDay(q) ? weekStart(q) : defaultWeek();
+  const fallback = useDefaultWeek();
+  const from = isValidDay(q) ? weekStart(q) : fallback;
   const w = useWeekNeeds(from);
   const thisWeek = weekStart(today());
   const buy = w.lines.filter((l) => l.toBuy > 0);
   const litres = w.lines.filter((l) => l.kind === 'oil').reduce((n, l) => n + l.qty, 0);
   const filters = w.lines.filter((l) => FAMILY[l.kind] === 'filters').reduce((n, l) => n + l.qty, 0);
   const tires = w.lines.filter((l) => l.kind === 'tires').reduce((n, l) => n + l.qty, 0);
-  const go = (d: Day) => setQuery({ week: d === defaultWeek() ? null : d });
+  const go = (d: Day) => setQuery({ week: d === fallback ? null : d });
   const toCreate = itemsToCreate(w.lines, lineLabel, (k) => t(`inventory.needs.cat.${k}`));
+  // the button's own spinner keeps a second tap out while the items are written
   const createAll = () => run(async () => { for (const it of toCreate) await saveInventoryItem({ ...it, qty: 0, active: true }); }, { ok: t('inventory.needs.created', { n: toCreate.length }) });
   const families = (['oil', 'filters', 'tires', 'parts'] as const).map((f) => ({ f, lines: w.lines.filter((l) => FAMILY[l.kind] === f) })).filter((x) => x.lines.length);
 
@@ -57,7 +59,7 @@ export default function NeedsScreen({ query }: ScreenProps) {
       ) : (
         <>
           <Panel flush title={<>{t('inventory.needs.buyTitle')} {buy.length > 0 && <Pill tone="warn">{buy.length}</Pill>}</>} sub={t('inventory.needs.buySub')} data-testid="needs-buy"
-            action={buy.length > 0 && <Button size="sm" icon={<Copy size={16} />} onClick={() => void copy(shoppingText(w))} data-testid="needs-copy">{t('inventory.needs.copy')}</Button>}>
+            action={buy.length > 0 && <Button size="sm" icon={<Copy size={16} />} onClick={() => copyText(shoppingText(w))} data-testid="needs-copy">{t('inventory.needs.copy')}</Button>}>
             {buy.length ? (
               <ul class="needs-buy" role="list">
                 {buy.map((l) => (
@@ -105,61 +107,3 @@ export default function NeedsScreen({ query }: ScreenProps) {
 function Stat(p: { n: string; unit?: string; label: string }) {
   return <span class="needs-stat"><b class="num">{p.n}{p.unit && <small> {p.unit}</small>}</b><span class="small muted">{p.label}</span></span>;
 }
-
-function NeedRow(p: { l: NeedLine }) {
-  const { l } = p;
-  const [open, setOpen] = useState(false);
-  const stock = l.stock == null ? '—' : qtyWords(l, l.stock);
-  return (
-    <div class={`needs-row${open ? ' is-open' : ''}`} data-testid="needs-row">
-      <button type="button" class="needs-row-btn" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span class="grow needs-row-main">
-          <span class="needs-row-name">{lineLabel(l)}</span>
-          <span class="small muted">
-            {t('inventory.needs.fromJobs', { n: l.jobs.length })}
-            <span class="needs-phone">, {t('inventory.needs.needStock', { need: qtyWords(l, l.qty), stock })}</span>
-            {!l.sure && <>, <span class="needs-warn">{t('inventory.needs.toConfirm').toLowerCase()}</span></>}
-          </span>
-        </span>
-        <span class="needs-cell num"><span class="sr-only">{t('inventory.needs.cols.need')} </span>{qtyWords(l, l.qty)}</span>
-        <span class="needs-cell num muted"><span class="sr-only">{t('inventory.needs.cols.stock')} </span>{stock}</span>
-        <span class={`needs-cell num ${l.toBuy > 0 ? 'needs-buy-n' : 'needs-ok'}`}><span class="sr-only">{t('inventory.needs.cols.buy')} </span>{l.toBuy > 0 ? qtyWords(l, l.toBuy) : '✓'}</span>
-        <ChevronDown size={18} class="needs-chev" aria-hidden="true" />
-      </button>
-      {open && (
-        <ul class="needs-jobs" role="list">
-          {l.jobs.map((j) => {
-            const job = jobById(j.jobId);
-            const who = job ? customerName(customer(job.customer_id)) : '';
-            return (
-              <li key={j.jobId}>
-                <a href={`#/job/${j.jobId}`} class="needs-job">
-                  <span class="grow">{[`#${j.number}`, dayWord(j.day), who].filter(Boolean).join(', ')}<span class="small muted needs-job-car">{j.car || t('inventory.needs.noCar')}{j.sure ? '' : `, ${t('inventory.needs.fromList')}`}</span></span>
-                  <span class="num">{qtyWords(l, j.qty)}</span>
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function MissingRow(p: { m: Missing }) {
-  const { m } = p;
-  const job = jobById(m.jobId);
-  const vid = job?.vehicle_id;
-  const what: ComponentChildren = m.what.map((x) => t(`inventory.needs.missing.${x}`, { car: m.car })).join(' ');
-  const href = vid && !m.what.includes('car') ? `#/vehicle/${vid}` : `#/job/${m.jobId}`;
-  return (
-    <li>
-      <a class="needs-job" href={href} data-testid="needs-missing-row">
-        <TriangleAlert size={18} aria-hidden="true" class="needs-warn" />
-        <span class="grow">{[`#${m.number}`, dayWord(m.day), m.car].filter(Boolean).join(', ')}<span class="small muted needs-job-car">{what}</span></span>
-        <ChevronRight size={18} class="faint" aria-hidden="true" />
-      </a>
-    </li>
-  );
-}
-
