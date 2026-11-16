@@ -1354,7 +1354,9 @@ grant execute on function public.plan_late_stored(jsonb, text) to service_role;
 --   * window mode, today: the stops are numbered after the ones the truck already finished (sql-windows-03, x-dualmode-06);
 --   * window mode, booked « quand même »: placed after the other stops, inside its window where every other window still
 --     holds, else late, else at the end past the hours as before (it was always the last stop of the whole day:
---     sql-windows-04); it never holds another stop to anything.
+--     sql-windows-04); it never holds another stop to anything;
+--   * window mode, a day already started: an appointment that no longer fits stays on its truck (apply_plan) and now
+--     counts there, at the end, late, so its time is not sold again to a same-day booking (sql-windows-09).
 create or replace function public.plan_route(p_day date, p_block text, p_extra jsonb, p_exclude uuid, p_seed boolean)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1675,6 +1677,25 @@ begin
       trucks := jsonb_set(trucks, array[best_ti::text, 'durs'], to_jsonb(durs_of(cand, pts)));
     end if;
   end loop;
+
+  -- window mode, a day already started (Part 26): an appointment that no longer fits stays on its truck (apply_plan never
+  -- un-places it there), so it counts there, at the end of the route past the hours, late, instead of in « over »: the
+  -- time it needs is not sold again to a same-day booking
+  if v_wm and p_day = v_today and jsonb_array_length(over) > 0 then
+    for jid in select o from jsonb_array_elements_text(over) o loop
+      continue when jid is not distinct from v_xid;
+      ti := null;
+      for k in 0 .. jsonb_array_length(trucks) - 1 loop
+        if trucks->k->>'id' = (select j.truck_id::text from public.jobs j where j.id::text = jid and j.status = 'booked') then ti := k; end if;
+      end loop;
+      continue when ti is null;
+      trucks := jsonb_set(trucks, array[ti::text, 'stops'], (trucks->ti->'stops') || to_jsonb(jid));
+      trucks := jsonb_set(trucks, array[ti::text, 'durs'], to_jsonb((trucks->ti->>'durs')::int + coalesce((pts->jid->>'dur')::int, 0)));
+      pts := jsonb_set(pts, array[jid, 'late'], 'true'::jsonb);
+      v_forced := v_forced || to_jsonb(jid); v_pastend := v_pastend || to_jsonb(jid);
+      over := over - jid;
+    end loop;
+  end if;
 
   -- each truck's stops in the order that drives the least (from where it is, toward its next block), then arrival times, drive of each leg, what is left.
   -- Ending near the next block never costs room in this block: when that order no longer fits in the truck's hours,

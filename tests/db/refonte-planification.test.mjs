@@ -684,3 +684,19 @@ test('booking-a-08, two connections: the same estimate booked on two devices at 
     c.release();
   }
 });
+
+test('sql-windows-09: window mode, today, an appointment that no longer fits still holds its time on its truck', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await today(h);
+  const week = {}; for (let d = 0; d < 7; d++) week[d] = [[480, 1020]];     // the truck ends at 17 h
+  const t1 = await h.truck('Camion', null, week);
+  const c = await h.customer('Jean', ...near), c2 = await h.customer('Paul', ...near2);
+  await windowsOn(h, owner);
+  await clock(h, owner, 900);                                                // 15 h, running late
+  const j1 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 1, eta: 905, ws: 840, we: 1080, dur: 60 });
+  const j2 = await put(h, owner, { customer: c2, day, block: 'day', truck: t1, order: 2, eta: 970, ws: 900, we: 1140, dur: 120 });
+  await h.as(owner);
+  const e = await h.fails(() => book(h, { customer_id: c, day, block: 'day', duration_min: 30, lat: near[0] + 0.001, lng: near[1] }));
+  assert.ok(e && ['block_full', 'window_full'].includes(e.hint), 'the 30 minutes left are J2\'s: refused (' + (e?.hint ?? 'booked') + ')');
+  assert.deepEqual([(await row(h, j1)).truck_id, (await row(h, j2)).truck_id], [t1, t1], 'both stay on the truck');
+}));
