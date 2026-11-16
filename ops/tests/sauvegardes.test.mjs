@@ -524,8 +524,11 @@ test('restore --retablir: the app\'s « Effacer » undone on the rows asked (del
   assert.equal(m5.code, 1); assert.match(m5.err, /était déjà effacé le soir de la sauvegarde/);
   // --ids with --remplacer: only that row goes back to the night
   await q(`update public.customers set notes = 'du jour' where id = any($1)`, [[d, e]]);
+  const avant6 = (await q(`select updated_at from public.customers where id = $1`, [d]))[0].updated_at;
   const r6 = await restaurer(dos, ['--tables', 'customers', '--ids', d, '--remplacer']);
   assert.equal(r6.sql, '', r6.sql);
-  assert.equal((await q(`select notes from public.customers where id = $1`, [d]))[0].notes, 'la nuit');
+  const d6 = (await q(`select notes, updated_at from public.customers where id = $1`, [d]))[0];
+  assert.equal(d6.notes, 'la nuit');
+  assert.ok(new Date(d6.updated_at) > new Date(avant6), 'a row restored by its id gets a new updated_at: the phones take the night\'s values (infra-07)');
   assert.equal((await q(`select notes from public.customers where id = $1`, [e]))[0].notes, 'du jour', 'the other row is untouched');
 });

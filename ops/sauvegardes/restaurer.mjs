@@ -180,6 +180,15 @@ for (const t of tables) {
     await ecrire(`select '${t}' as table_, pg_temp.remettre('${t}', ${dollar(JSON.stringify(lot))}::jsonb, ${remplacer}) as lignes;`);
   }
 }
+// a few rows asked by their id (--ids): their updated_at is made new, so every phone pulls them again (a phone keeps a
+// row only when the server's copy is newer than its own). Not for a whole table: until the app pulls by (updated_at, id),
+// a thousand rows stamped within two seconds would make the phones read the same page forever.
+if (ids && ids.length <= PAQUET) {
+  for (const t of tables) {
+    if (!lignesDe[t].length || !lignesDe[t].every((r) => 'updated_at' in r)) continue;
+    await ecrire(`update public.${t} set updated_at = clock_timestamp() where id::text in (select jsonb_array_elements_text(${dollar(JSON.stringify(lignesDe[t].map((r) => String(r.id))))}::jsonb));  -- les téléphones les revoient`);
+  }
+}
 // numbers never go back below one already given (no invoice, job or quote number twice), and never DOWN either.
 // Every sequence a restored table takes its numbers from is found in the database (the bigserial ids of activity and
 // position_log, job_number_seq, quote_number_seq…): raised to the highest number restored, never lowered, untouched
