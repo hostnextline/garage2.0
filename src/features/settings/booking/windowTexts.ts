@@ -8,6 +8,15 @@ export function flexibleWithWindow(jobs: readonly Pick<Job, 'id' | 'block' | 'st
   return jobs.filter((j) => j.block === 'day' && j.win_flex && j.win_start != null && j.status === 'booked').map((j) => j.id);
 }
 
+/** a window of `day` already over at `minute` (its end, else its start, passed): nothing to tell any more. Pressed in
+    the evening, « Fixer les plages » never texts « votre plage est confirmée » for a window gone (settings-team-st-2).
+    An appointment not on this device (`undefined`) is left to the server. */
+export function windowOver(j: Pick<Job, 'day' | 'win_start' | 'win_end'> | undefined, day: string, minute: number): boolean {
+  if (!j || j.day !== day) return false;
+  const end = j.win_end ?? j.win_start;
+  return end != null && end <= minute;
+}
+
 /** what `notify` answered for one appointment (or `failed`: no answer at all) */
 export interface TellAnswer { id: string; failed?: boolean; ok?: boolean; status?: string; code?: string; message?: string; phone?: string | null }
 export interface Untold { id: string; phone: string | null; message: string | null }

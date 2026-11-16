@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flexibleWithWindow, tellOutcome } from './windowTexts';
+import { flexibleWithWindow, tellOutcome, windowOver } from './windowTexts';
 
 describe('« Fixer les plages »: who is texted, who is not (settings-team-02, x-errors-17)', () => {
   it('the booked flexible appointments with a window are texted; the others are not', () => {
@@ -23,5 +23,15 @@ describe('« Fixer les plages »: who is texted, who is not (settings-team-02, x
     const answers = [{ id: 'a', ok: false, code: 'not_booked' }, { id: 'b', ok: false, code: 'no_window' }, { id: 'c', ok: false, status: 'quiet' }];
     expect(tellOutcome(answers, false).untold.map((u) => u.id)).toEqual(['c']);
     expect(tellOutcome(answers, true).untold).toEqual([]);
+  });
+  it('a window of today already over is not told any more; tomorrow, or a window still ahead, is (settings-team-st-2)', () => {
+    const j = (day: string, win_end: number | null, win_start: number | null = 480) => ({ day, win_start, win_end });
+    expect(windowOver(j('2026-11-16', 720), '2026-11-16', 1200)).toBe(true);
+    expect(windowOver(j('2026-11-16', 720), '2026-11-16', 720)).toBe(true);
+    expect(windowOver(j('2026-11-16', 1200), '2026-11-16', 1080)).toBe(false);
+    expect(windowOver(j('2026-11-17', 720), '2026-11-16', 1200)).toBe(false);
+    expect(windowOver(j('2026-11-16', null, 600), '2026-11-16', 1200)).toBe(true);
+    expect(windowOver(j('2026-11-16', null, null), '2026-11-16', 1200)).toBe(false);
+    expect(windowOver(undefined, '2026-11-16', 1200)).toBe(false);
   });
 });

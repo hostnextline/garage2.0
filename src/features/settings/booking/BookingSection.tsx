@@ -26,8 +26,11 @@ export interface PartProps {
   flag: (k: keyof BookingErrors, message: string) => void;
 }
 
+/** the section's fields as stored now (also what the dot of the list compares the draft with) */
+export const bookingSaved = (): BookingView => viewOf(settings.value.booking);
+
 export function BookingSection() {
-  const saved = viewOf(settings.value.booking);
+  const saved = bookingSaved();
   const winOn = windowsOn.value;
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<BookingView>('booking', saved);
   const [err, setErr] = useState<BookingErrors>({});

@@ -49,4 +49,34 @@ describe('Réglages → Services: the sheet', () => {
     expect(asked.length).toBe(1);
     expect(closed).toBe(0);
   });
+  it('a space typed after the saved name stays, so a second word can follow (settings-team-st-1)', async () => {
+    const name = q('service-name') as HTMLInputElement;
+    await act(async () => { name.value = 'Huile '; name.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect((q('service-name') as HTMLInputElement).value).toBe('Huile ');
+    const again = q('service-name') as HTMLInputElement;
+    await act(async () => { again.value = 'Huile s'; again.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect((q('service-name') as HTMLInputElement).value).toBe('Huile s');
+  });
+  it('the phone\'s back with changes asks; « no » puts the sheet\'s history step back, so the next back asks again (settings-team-st-3)', async () => {
+    const steps = () => ((history.state as { sheets?: string[] } | null)?.sheets || []).length;
+    const before = steps();
+    const name = q('service-name') as HTMLInputElement;
+    await act(async () => { name.value = 'Huile 2'; name.dispatchEvent(new Event('input', { bubbles: true })); });
+    await act(async () => { history.back(); });
+    await act(() => new Promise<void>((r) => setTimeout(r, 700)));
+    await wait();
+    expect(asked.length).toBe(1);
+    expect(closed).toBe(0);
+    expect(steps()).toBe(before);
+    expect(q('service-sheet')).toBeTruthy();
+    expect((q('service-name') as HTMLInputElement).value).toBe('Huile 2');
+    // the next back asks again instead of leaving Services
+    await act(async () => { history.back(); });
+    await act(() => new Promise<void>((r) => setTimeout(r, 700)));
+    await wait();
+    expect(asked.length).toBe(2);
+    expect(closed).toBe(0);
+  });
 });

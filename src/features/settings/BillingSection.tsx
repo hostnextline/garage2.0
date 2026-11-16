@@ -9,8 +9,11 @@ import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 import { NumInput } from './fields';
 import { viewOf, check, patchOf, nextNumber, type BillingView, type BillingErrors } from './billingModel';
 
+/** the section's fields as stored now (also what the dot of the list compares the draft with) */
+export const billingSaved = (): BillingView => viewOf(settings.value.billing, settings.value.company || {});
+
 export function BillingSection() {
-  const saved = viewOf(settings.value.billing, settings.value.company || {});
+  const saved = billingSaved();
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<BillingView>('billing', saved);
   const [err, setErr] = useState<BillingErrors>({});
   const put = <K extends keyof BillingView>(k: K) => (v: BillingView[K]) => { set((x) => ({ ...x, [k]: v })); if (err[k]) setErr({ ...err, [k]: undefined }); };

@@ -8,9 +8,12 @@ import { saveSettings } from '../../data/api';
 import { Panel, Input, IconButton, Button, Empty, attempt, toast } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
+/** the section's list as stored now (also what the dot of the list compares the draft with) */
+export const expensesSaved = (): { list: string[] } => ({ list: (settings.value.expense_categories || []).map(String) });
+
 export function ExpensesSection() {
   // the list is one value (its order counts): kept whole in the draft
-  const saved = { list: (settings.value.expense_categories || []).map(String) };
+  const saved = expensesSaved();
   const { draft, set: setDraft, dirty, reset } = useSectionDraft<{ list: string[] }>('expenses', saved);
   const d = draft.list;
   const set = (fn: (x: string[]) => string[]) => setDraft((x) => ({ list: fn(x.list) }));

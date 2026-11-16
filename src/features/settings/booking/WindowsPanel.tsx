@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CalendarCheck, MessageSquare } from 'lucide-preact';
 import { t, lang } from '../../../lib/i18n';
-import { addDays, clock, today } from '../../../lib/dates';
+import { addDays, clock, today, nowMinute } from '../../../lib/dates';
 import { settings, windowsOn, jobsOn, job as jobOf, customer, customerName } from '../../../data/select';
 import { windowsSwitch, lockWindows, notify } from '../../../data/api';
 import { pull } from '../../../data/sync';
@@ -13,7 +13,7 @@ import { Panel, Field, Button, Banner, Switch, Seg, ask, attempt, toast } from '
 import { smsHref } from '../../../shared/invoices/share';
 import { NumInput, TimeInput } from '../fields';
 import { spanOf, withDaySpan, exampleWindow, winRound } from './windows';
-import { flexibleWithWindow, tellOutcome, type TellAnswer, type Untold } from './windowTexts';
+import { flexibleWithWindow, tellOutcome, windowOver, type TellAnswer, type Untold } from './windowTexts';
 import type { PartProps } from './BookingSection';
 
 export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
@@ -59,9 +59,11 @@ export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
       if (!ok) return;
       await pull('jobs').catch(() => undefined);
       // every flexible customer of today and tomorrow whose window is fixed is told (the server never texts the same
-      // window twice): the ones just fixed, and the ones the server fixed by itself
-      const tell = new Set([...ids, ...flexibleWithWindow(jobsOn(today())), ...flexibleWithWindow(jobsOn(addDays(today(), 1)))]);
-      const answers: TellAnswer[] = await Promise.all([...tell].map((id) => notify('window', id)
+      // window twice): the ones just fixed, and the ones the server fixed by itself. Today's windows already over are not.
+      const day = today(), minute = nowMinute();
+      const tell = [...new Set([...ids, ...flexibleWithWindow(jobsOn(day)), ...flexibleWithWindow(jobsOn(addDays(day, 1)))])]
+        .filter((id) => !windowOver(jobOf(id), day, minute));
+      const answers: TellAnswer[] = await Promise.all(tell.map((id) => notify('window', id)
         .then((a) => ({ id, ok: a.ok, status: a.status, code: a.code, message: a.message, phone: a.phone }), () => ({ id, failed: true }))));
       const r = tellOutcome(answers, settings.value.messages?.on?.window === false);
       if (alive.current) setUntold(r.untold);

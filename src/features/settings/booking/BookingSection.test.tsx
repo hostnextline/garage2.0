@@ -34,7 +34,7 @@ import { drafts } from '../SectionFrame';
 import { replaceLocal } from '../../../data/store';
 import { access } from '../../../data/auth';
 import { toasts } from '../../../ui/toast';
-import { addDays, today } from '../../../lib/dates';
+import { addDays, today, nowMinute } from '../../../lib/dates';
 import { lang } from '../../../lib/i18n';
 import type { Access } from '../../../data/types';
 
@@ -148,6 +148,17 @@ describe('Réglages → Réservations : plages d’arrivée', () => {
     expect(sp(list.textContent)).toContain('Karim Haddad');
     expect(sp(list.textContent)).not.toContain('Julie');
     expect(list.querySelector('a')?.getAttribute('href')).toContain('sms:5145551234');
+  });
+  it('« Fixer les plages » pressed late: a window of today already over is not texted, one still ahead is (settings-team-st-2)', async () => {
+    seed({ windows_on: true }, ['office']);
+    const now = nowMinute();
+    const flex = (id: string, end: number) => ({ id, number: 1, customer_id: null, day: today(), block: 'day', status: 'booked', win_flex: true, win_start: Math.max(0, end - 240), win_end: end });
+    replaceLocal('jobs', [flex('gone', now - 1), flex('ahead', now + 60)] as never);
+    lockAnswer = { ok: true, fixed: 0, jobs: [], untold: ['gone'] };
+    await show();
+    await click(q('windows-lock')[0]);
+    await wait(); await wait();
+    expect(calls.filter((c) => c.name === 'notify').map((c) => c.args[1])).toEqual(['ahead']);
   });
 });
 
