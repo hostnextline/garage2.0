@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { blockOpen, closedJobs, otherKind, movesFor, windowOpen, jobOpen, mayMoveBetween, holdsJobsOf } from './closing';
+import { blockOpen, closedJobs, otherKind, movesFor, windowOpen, jobOpen, mayMoveBetween, holdsJobsOf, refusedWhy } from './closing';
 import { DEFAULT_BLOCKS, type Range } from '../../lib/dates';
 import type { Job, Truck } from '../../data/types';
 
@@ -69,13 +69,25 @@ describe('a vehicle closes: only what can really work is offered (map-hours-01)'
     const m = movesFor(hit, [truck], open, blockOf, { mayMove: () => false });
     expect(m.map((x) => [x.target, x.why])).toEqual([[null, 'rights'], [null, 'rights'], [null, 'rights']]);
   });
-  it('the other vehicle has room for one of the morning: the first goes, the second stays « full »', () => {
-    const roomOf = (_t: string, j: Job) => (j.block === 'am' ? { left: 90, started: false } : { left: 240, started: false });
-    const m = movesFor(hit, [truck], open, blockOf, { roomOf, travelMin: 20 });
-    expect(m.map((x) => [x.job.id, x.target, x.why])).toEqual([['a', 'truck', null], ['b', null, 'full'], ['c', 'truck', null]]);
+  it('the phone’s estimate never hides a move: the planner decides the room (mh-2)', () => {
+    const m = movesFor(hit, [truck], open, blockOf, { roomOf: () => ({ started: false }) });
+    expect(m.map((x) => [x.job.id, x.target, x.why])).toEqual([['a', 'truck', null], ['b', 'truck', null], ['c', 'truck', null]]);
+  });
+  it('a move the server refused (or that waits on the phone) is not offered again; the others still are (mh-1, mh-5)', () => {
+    const stayed = new Map([['a', 'full' as const], ['c', 'waiting' as const]]);
+    const m = movesFor(hit, [truck], open, blockOf, { stayed });
+    expect(m.map((x) => [x.job.id, x.target, x.why])).toEqual([['a', null, 'full'], ['b', 'truck', null], ['c', null, 'waiting']]);
+  });
+  it('the server’s refusal says why', () => {
+    expect(refusedWhy({ hint: 'truck_full', code: 'P0001' })).toBe('full');
+    expect(refusedWhy({ hint: 'block_full' })).toBe('full');
+    expect(refusedWhy({ code: 'not_allowed' })).toBe('rights');
+    expect(refusedWhy({ hint: 'block_started' })).toBe('started');
+    expect(refusedWhy({ hint: 'block_closed' })).toBe('closed');
+    expect(refusedWhy(new Error('boom'))).toBe('refused');
   });
   it('a moment already started there: not offered', () => {
-    const m = movesFor([hit[0]], [truck], open, blockOf, { roomOf: () => ({ left: 500, started: true }) });
+    const m = movesFor([hit[0]], [truck], open, blockOf, { roomOf: () => ({ started: true }) });
     expect(m[0]).toMatchObject({ target: null, why: 'started' });
   });
   it('move_job’s rule: « book », or both vehicles his', () => {

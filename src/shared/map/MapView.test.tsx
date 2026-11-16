@@ -6,6 +6,7 @@ import { act } from 'preact/test-utils';
 
 const log: string[] = [];
 let mapsAlive = 0;
+let removeThrows = false;
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 vi.mock('leaflet', () => {
   const chain = <T extends object>(o: T) => Object.assign(o, { addTo() { return o; } });
@@ -17,7 +18,7 @@ vi.mock('leaflet', () => {
       const handlers: Record<string, () => void> = {};
       return {
         setView() { log.push('fit'); }, fitBounds() { log.push('fit'); }, getZoom: () => 11, invalidateSize() { /* pretend */ },
-        on(k: string, f: () => void) { handlers[k] = f; }, off() { log.push('off'); }, remove() { mapsAlive--; log.push('remove'); },
+        on(k: string, f: () => void) { handlers[k] = f; }, off() { log.push('off'); }, remove() { mapsAlive--; log.push('remove'); if (removeThrows) throw new Error('zoom animation'); },
         getContainer: () => ({ clientWidth: 400, clientHeight: 300 }),
         scrollWheelZoom: { enable() { /* */ }, disable() { /* */ } }, dragging: { enable() { /* */ }, disable() { /* */ } }
       };
@@ -31,7 +32,11 @@ vi.mock('leaflet', () => {
       log.push(`marker:${/data-mk="([^"]+)"/.exec(o.icon.html)?.[1]}`);
       return chain({ on() { /* */ }, remove() { log.push('marker-remove'); }, setIcon() { log.push('setIcon'); }, setLatLng() { log.push('move'); }, setZIndexOffset() { /* */ } });
     },
-    polyline: () => { log.push('line'); return chain({ remove() { log.push('line-remove'); }, setLatLngs() { log.push('line-points'); }, setStyle() { log.push('line-style'); } }); }
+    polyline: (_p: unknown, o: { className?: string; color?: string }) => {
+      const name = `${o.className === 'mv-casing' ? 'casing' : 'stroke'}:${o.color || ''}`;
+      log.push('line');
+      return chain({ remove() { log.push('line-remove'); }, setLatLngs() { log.push('line-points'); }, setStyle() { log.push('line-style'); }, bringToFront() { log.push(`front:${name}`); } });
+    }
   };
   return { default: L };
 });
@@ -79,5 +84,26 @@ describe('MapView', () => {
     await act(async () => { render(null, box); });
     expect(mapsAlive).toBe(0);
     expect(log).toEqual(expect.arrayContaining(['clear', 'off', 'remove']));
+  });
+  it('a line that becomes dashed is drawn again, and the lines after it go back on top of it, in order (mh-9)', async () => {
+    const a: [number, number][] = [[45.5, -73.6], [45.51, -73.61]];
+    const b: [number, number][] = [[45.52, -73.62], [45.53, -73.63]];
+    const lines = (dashed: boolean): MapLine[] => [{ points: a, color: '#2F6FD0', dashed }, { points: b, color: '#D3000E' }];
+    await act(async () => { render(<MapView markers={stops()} lines={lines(false)} />, box); });
+    await settle();
+    log.length = 0;
+    await act(async () => { render(<MapView markers={stops()} lines={lines(true)} />, box); });
+    expect(log.filter((x) => x === 'line')).toHaveLength(2);   // only the first line is made again
+    expect(log.filter((x) => x.startsWith('front:'))).toEqual(['front:casing:', 'front:stroke:#D3000E']);
+    await act(async () => { render(null, box); });
+  });
+  it('Leaflet throws while the map is removed: the screen still goes (mh-7)', async () => {
+    await act(async () => { render(<MapView markers={stops()} />, box); });
+    await settle();
+    removeThrows = true;
+    try {
+      await act(async () => { render(null, box); });
+      expect(log).toContain('remove');
+    } finally { removeThrows = false; }
   });
 });

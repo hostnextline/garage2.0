@@ -4,7 +4,8 @@
    last few days only), so coming back to the map shows it at once.
    A refresh never resets anything on the screen: the new answer simply replaces the old one. An answer that comes back
    after a newer question was asked (or after the day changed) is dropped. */
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { computed } from '@preact/signals';
 import { rpcNow, errorMessage } from '../../data/api';
 import { isNetworkError } from '../../data/sync';
 import { access } from '../../data/auth';
@@ -106,12 +107,20 @@ export function useTeamMap(day: Day): TeamMap {
     };
   }, [day]);
 
-  // read while drawing, so the phone's copy is drawn again when it changes (offline, before the first answer)
-  const base = cur.answer
-    ? (cur.status === 'offline' ? freshen(cur.answer.data, cur.answer.at, { job: deviceJob, positions: rowsOf<Position>('positions').filter((p) => !p.deleted_at) }) : cur.answer.data)
-    : fromDevice(day);
+  /* what the map draws: the same object as long as its inputs are the same (mh-6: the screen assembles it again only
+     then, not on every minute tick). The phone's tables are signals: the computed follows the ones it reads, so the
+     phone's copy (offline, before the first answer) is drawn again when it changes; the answer, the status and the
+     positions found here make a new one. */
+  const { answer, placed } = cur;
+  const offline = cur.status === 'offline';
+  const shown = useMemo(() => computed(() => {
+    const base = answer
+      ? (offline ? freshen(answer.data, answer.at, { job: deviceJob, positions: rowsOf<Position>('positions').filter((p) => !p.deleted_at) }) : answer.data)
+      : fromDevice(day);
+    return withPositions(base, knownPos, placed);
+  }), [answer, offline, placed, day]);
   return {
-    data: withPositions(base, knownPos, cur.placed),
+    data: shown.value,
     at: cur.answer ? cur.answer.at : cur.since,
     source: cur.answer ? 'server' : 'device',
     status: cur.status,

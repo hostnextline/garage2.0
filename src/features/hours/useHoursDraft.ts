@@ -1,6 +1,7 @@
 /* The drawing on the glass window: it starts from what the truck has (its usual week; « one day »: that date's real
-   hours in its column) and follows it while nothing is drawn. When the truck's hours change on the server while the
-   person is drawing, the drawing stays and only what it is compared with moves. */
+   hours in its column) and follows it while nothing is drawn. When the hours compared change while the person is drawing
+   (the server, another date, « Le … seulement »), the weekdays really drawn stay; every other weekday takes the new hours,
+   so « Appliquer » never writes the usual hours over a date's own (mh-3). */
 import { useEffect, useState } from 'preact/hooks';
 import { weekToPanes, changedDays, type Panes, type Week } from './grid';
 
@@ -17,13 +18,17 @@ export interface Draft {
 }
 interface St { truck: string | null; key: string; from: Panes; draft: Panes }
 
-/** the state for this truck and these hours: another truck starts over; new hours replace an untouched drawing */
+/** the state for this truck and these hours: another truck starts over; new hours replace what is not drawn */
 export function follow(st: St, truck: string | null, week: Week): St {
   const key = JSON.stringify(week);
   if (st.truck === truck && st.key === key) return st;
   const b = weekToPanes(week);
   if (st.truck !== truck) return { truck, key, from: b, draft: b };
-  return changedDays(st.draft, st.from).length ? { ...st, key, from: b } : { truck, key, from: b, draft: b };
+  const drawn = changedDays(st.draft, st.from);
+  if (!drawn.length) return { truck, key, from: b, draft: b };
+  const draft: Panes = { ...b };
+  for (const d of drawn) draft[d] = st.draft[d];
+  return { truck, key, from: b, draft };
 }
 
 export function useHoursDraft(truckId: string | null, week: Week): Draft {

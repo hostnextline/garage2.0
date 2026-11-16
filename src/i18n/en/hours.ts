@@ -46,7 +46,7 @@ export const hours: typeof fr = {
     none: 'None of these appointments can go to the other vehicle. If you close, they go to “To place” in the schedule.',
     someStay: { one: '{n} cannot go there: it will go to “To place”.', other: '{n} cannot go there: they will go to “To place”.' },
     goes: 'Goes to {to}',
-    stays: { machine: 'Stays to place: needs the truck', closed: 'Stays to place: the other vehicle is closed then', rights: 'Stays to place: you cannot put it on the other vehicle', started: 'Stays to place: that time has already started', full: 'Stays to place: the other vehicle is full then' },
+    stays: { machine: 'Stays to place: needs the truck', closed: 'Stays to place: the other vehicle is closed then', rights: 'Stays to place: you cannot put it on the other vehicle', started: 'Stays to place: that time has already started', full: 'Stays to place: the other vehicle is full then', refused: 'Stays to place: the move was refused', waiting: 'Move kept on the phone: it goes out with the network' },
     mapTitle: 'The new route for {to}',
     day: 'Which day',
     stops: { one: '{n} stop that day.', other: '{n} stops that day.' },

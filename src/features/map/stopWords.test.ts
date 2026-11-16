@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { whenOf, lateStop, winOf, kmText, durText, fmtKm, lostStops, findable } from './stopWords';
+import { t } from '../../lib/i18n';
+import { whenOf, lateStop, winOf, kmText, durText, fmtKm, lostStops, findable, findFailed } from './stopWords';
 import type { Stop } from '../../shared/map/assemble';
 
 const stop = (o: Partial<Stop> = {}): Stop => ({ id: 'j', number: 1, truckId: 't', n: 1, block: 'am', order: 1, etaMin: 600, status: 'booked', name: 'Julie', address: '', lat: 45.5, lng: -73.6, hasPos: true, done: false, live: false, ...o });
@@ -41,5 +42,13 @@ describe('« Trouver »', () => {
   it('the button looks only for what the locator will look for: today on, coming, on this phone (map-hours-17)', () => {
     expect(findable(lost, '2026-11-16', '2026-11-16', (id) => id !== 'e').map((s) => s.id)).toEqual(['a', 'd']);
     expect(findable(lost, '2026-11-15', '2026-11-16', () => true)).toEqual([]);   // yesterday's map: nothing to search
+  });
+});
+
+describe('« Trouver » failed (mh-8)', () => {
+  it('no network: « pas de réseau »; a real failure: its own words', () => {
+    expect(findFailed(new TypeError('Failed to fetch'))).toBe(t('map.lost.offline'));
+    expect(findFailed(Object.assign(new Error('Tu ne peux pas faire ça.'), { hint: 'not_allowed' }))).not.toBe(t('map.lost.offline'));
+    expect(findFailed(new Error('Photon a répondu 500 ?'))).toContain('Photon');
   });
 });

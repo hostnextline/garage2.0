@@ -4,7 +4,7 @@
    habituel ». The owner (or the « settings » right, when it may also write the trucks) also manages the trucks here.
    The screen composes: the drawing (useHoursDraft), the window (HoursGridPanel), « Appliquer » (ApplyPanel), the changed
    days, the start, the trucks; and the closing of a vehicle that holds appointments (CloseDaySheet, closeFlow.ts). */
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Truck as TruckIcon } from 'lucide-preact';
 import { navigate, type ScreenProps } from '../../platform/router';
 import { wide } from '../../platform/media';
@@ -19,7 +19,7 @@ import type { TruckDay } from '../../data/types';
 import { Page, Panel, Banner, Chips, Empty, Skeleton, ask, run, toast } from '../../ui';
 import { keepWindow } from '../../shared/jobs/select';
 import { TruckStartPanel } from '../../shared/places/TruckStartPanel';
-import { closedJobs, otherKind, movesFor, mayMoveBetween, holdsJobsOf, type Move } from '../../shared/map/closing';
+import { closedJobs, otherKind, movesFor, mayMoveBetween, holdsJobsOf, refusedWhy, type Move, type StayWhy } from '../../shared/map/closing';
 import { focusAfterNav, restoreFocus } from '../../platform/focus';
 import { CloseDaySheet } from './CloseDaySheet';
 import { TrucksPanel } from './TrucksPanel';
@@ -55,7 +55,9 @@ export default function HoursScreen({ params }: ScreenProps) {
   const [mode, setMode] = useState<Mode>('always');
   const [weeks, setWeeks] = useState(2);
   const [chosen, setChosen] = useState<Day>(today);
-  // left open past midnight, the chosen day may be gone: it is today then (the server would write nothing for it)
+  // left open past midnight, the chosen day may be gone: it is today then (the server would write nothing for it).
+  // today() is not a signal: « Appliquer » reads the clock itself and draws the screen again when the day changed (setDaySeen)
+  const [, setDaySeen] = useState(today);
   const from = chosen < today ? today : chosen;
   useEffect(() => { if (chosen < today) setChosen(today); }, [chosen, today]);
   const [phoneDay, setPhoneDay] = useState<number>(() => dow(today));
@@ -95,33 +97,47 @@ export default function HoursScreen({ params }: ScreenProps) {
      and the garage has the other kind of vehicle: ask first */
   const [closing, setClosing] = useState<Move[] | null>(null);
   const [moving, setMoving] = useState(false);
+  /* this closing so far: the appointments the server already moved (on the other vehicle now, even before the phone's copy
+     knows it), and those it refused (or that wait on the phone), with why: never offered again in this closing (mh-1, mh-5) */
+  const round = useRef<{ moved: Set<string>; stayed: Map<string, StayWhy> }>({ moved: new Set(), stayed: new Map() });
   /** the appointments the new hours leave out, and where each can go (null: nothing to ask) */
   const movesNow = (): Move[] | null => {
     if (!truckId) return null;
-    const hit = closedJobs(allJobs.value, truckId, plan.week, plan.dates, blockOfKey);
+    const hit = closedJobs(allJobs.value, truckId, plan.week, plan.dates, blockOfKey).filter((j) => !round.current.moved.has(j.id));
     const targets = otherKind(activeTrucks.value, truckId);
     if (!hit.length || !targets.length) return null;
     return movesFor(hit, targets, truckRanges, blockOfKey, {
       mayMove: (to) => mayMoveBetween(truckId, to, { book: can('book'), mine }),
       roomOf: (to, job) => {
         const b = blockLoad(job.day, job.block, { exclude: job.id });
-        const x = b.trucks.find((y) => y.truck.id === to);
-        return x ? { left: x.left, started: b.started } : null;
+        return b.trucks.some((y) => y.truck.id === to) ? { started: b.started } : null;
       },
-      travelMin: Number(settings.value.booking.unknown_min) || 0
+      stayed: round.current.stayed
     });
   };
   /** sends the hours; true when the server took them (or kept on the phone) */
   const apply = async (asked = false): Promise<boolean> => {
     if (!truckId || plan.empty) return false;
-    if (!asked) { const m = movesNow(); if (m) { setClosing(m); return false; } }
+    // the screen may have been drawn before midnight: the day of the tap counts (mh-4)
+    const now = todayOf();
+    if (now !== today) {
+      setDaySeen(now);
+      // « Le … seulement » for a date now gone: the screen shows today's hours first, nothing is sent for a past day
+      if (mode === 'day' && chosen < now) { setChosen(now); setPhoneDay(dow(now)); return false; }
+    }
+    const at = mode === 'always' || chosen < now ? now : chosen;
+    if (!asked) {
+      round.current = { moved: new Set(), stayed: new Map() };
+      const m = movesNow();
+      if (m) { setClosing(m); return false; }
+    }
     let r: Awaited<ReturnType<typeof applyHours>>;
     // not run(): a change kept on the phone has its own words here (« Horaire gardé sur le téléphone »)
-    try { r = await applyHours(truckId, mode, plan.week, mode === 'always' ? today : from, weeks); }
+    try { r = await applyHours(truckId, mode, plan.week, at, weeks); }
     catch (e) { toast(errorMessage(e), { kind: 'bad' }); return false; }
     if (r.queued) { toast(t('hours.apply.queued')); return true; }
     if ((r.data as { changed?: number } | undefined)?.changed === 0) toast(t('hours.apply.nothingChanged'));
-    else toast(mode === 'day' ? t('hours.apply.doneDay', { day: longDay(from, l) }) : mode === 'weeks' ? t('hours.apply.doneWeeks', { weeks: t('hours.apply.weeksN', { n: weeks }) }) : t('hours.apply.doneAlways'), { kind: 'ok' });
+    else toast(mode === 'day' ? t('hours.apply.doneDay', { day: longDay(at, l) }) : mode === 'weeks' ? t('hours.apply.doneWeeks', { weeks: t('hours.apply.weeksN', { n: weeks }) }) : t('hours.apply.doneAlways'), { kind: 'ok' });
     // the server re-planned the blocks touched: bring the hours and the jobs now
     await run(() => Promise.all([pull('truck_week'), pull('truck_days'), pull('jobs')]), { quiet: true });
     // one day or a few weeks: the usual week did not change, the window shows it again
@@ -129,14 +145,18 @@ export default function HoursScreen({ params }: ScreenProps) {
     return true;
   };
   /** « Déplacer vers … »: every appointment first (while its vehicle is still open), then the hours; a refusal stops before
-      the hours, and the sheet stays open with what is left (map-hours-01, -07). « Fermer sans déplacer »: the hours only. */
+      the hours, and the sheet stays open with what is left (map-hours-01, -07): the refused appointment says why and is
+      not offered again, so the next « Déplacer » moves the others (mh-1); a move kept on the phone will still be sent, so
+      it is not offered again either (mh-5). « Fermer sans déplacer »: the hours only. */
   const closeWith = async (move: boolean) => {
     const list = closing || [];
     setMoving(true);
     try {
       if (move) {
         const r = await moveAll(list, (m) => moveJob(m.job.id, m.job.day, m.job.block as BlockKey, m.target, keepWindow(m.job)));
+        for (const id of r.moved) round.current.moved.add(id);
         if (r.kind !== 'done') {
+          round.current.stayed.set(r.job, r.kind === 'waiting' ? 'waiting' : refusedWhy(r.error));
           toast(r.kind === 'waiting' ? t('hours.closing.waiting') : t('hours.closing.refused', { n: r.moved.length, reason: errorMessage(r.error) }), { kind: 'bad', ms: 9000 });
           setClosing(movesNow());
           return;
@@ -145,10 +165,11 @@ export default function HoursScreen({ params }: ScreenProps) {
       if (!(await apply(true))) return;
       setClosing(null);
       if (move) {
-        const moved = list.filter((m) => m.target);
-        const left = list.length - moved.length;
-        const to = t(`hours.closing.to.${truckRow(moved[0]?.target)?.tire_machine === false ? 'car' : 'truck'}`);
-        toast(left ? t('hours.closing.donePart', { n: moved.length, total: list.length, to }) : t('hours.closing.done', { n: moved.length, to }), { kind: left ? 'info' : 'ok', ms: 9000 });
+        // every round of this closing counts; a move still on the phone is neither moved nor left « À placer »
+        const n = round.current.moved.size;
+        const left = list.filter((m) => !m.target && m.why !== 'waiting').length;
+        const to = t(`hours.closing.to.${truckRow(list.find((m) => m.target)?.target)?.tire_machine === false ? 'car' : 'truck'}`);
+        toast(left ? t('hours.closing.donePart', { n, total: n + left, to }) : t('hours.closing.done', { n, to }), { kind: left ? 'info' : 'ok', ms: 9000 });
       }
     } finally { setMoving(false); }
   };
