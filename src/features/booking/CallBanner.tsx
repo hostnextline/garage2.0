@@ -15,11 +15,10 @@ import { Button, IconButton } from '../../ui';
 import { phoneOwners } from '../../shared/customers/dupes';
 import { type IncomingCall, callLink, callsOn, onCheckCalls } from '../../services/bubbles';
 import { CALL_SHOWN_MS, callToShow } from './calls';
-/* The banner's own rules. The shared booking stylesheet is still loaded here, at the start of the app, because the
-   « texto à envoyer » sheet (shared/moment/notify.tsx) draws its bubble with it on screens that load no picker (the
-   agenda): it can leave once that sheet brings its own stylesheet. */
+/* The banner's rules (and the « texto à envoyer » sheet's, shared/moment/notify.tsx, on screens that load no picker)
+   are in the shared booking stylesheet, loaded here at the start of the app, as before the rebuild: one sheet, one
+   order (a copy of the same rules loaded later would change which rule wins). */
 import '../../shared/moment/booking.css';
-import './CallBanner.css';
 
 const POLL_MS = 10 * 1000;
 

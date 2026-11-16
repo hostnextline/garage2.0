@@ -137,8 +137,10 @@ export function useBooking(query: URLSearchParams) {
   const carIsBad = (id: string) => callCars.some((c) => c.id === id && carBad(c, callCars.length));
   const badCar = callCars.find((c) => carBad(c, callCars.length))?.id ?? null;
   const quoteJob = quote?.job_id ? jobRow(quote.job_id) : undefined;
-  // an estimate already booked is booked once: a second appointment only once the first one was cancelled
-  const quoteDone = !!quote && (quote.status === 'converted' || !!quote.job_id) && !(quoteJob && GONE.includes(quoteJob.status));
+  // an estimate already booked is booked once: a second appointment only once the first one was cancelled. Booked by
+  // this very form (several cars, one refused): the cars left are the same visit, they may still be booked
+  const ownQuoteJob = !!quote?.job_id && d.bookedIds.includes(quote.job_id);
+  const quoteDone = !!quote && !ownQuoteJob && (quote.status === 'converted' || !!quote.job_id) && !(quoteJob && GONE.includes(quoteJob.status));
   const miss = missing({
     walkIn: a.walkIn, quoteDone, customerId: d.customerId, newCaller: needNew, searchKnown: d.searchKnown, callerOk: callerOk(d.caller, phoneDigits),
     callCars, planned: planned.length, truckNeeded, truckId: d.truckId, choice: d.choice

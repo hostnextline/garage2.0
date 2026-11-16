@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { sendVisit, type SendDeps } from './send';
-import { visitJobs, kindFor, forcedJob, type VisitBase } from './visit';
+import { visitJobs, kindFor, forcedJob, callerUpdate, type VisitBase } from './visit';
 import { outcome, withHint } from './outcome';
 import { QC_TAXES } from '../../lib/money';
 import type { BookInput } from '../../data/api';
@@ -57,6 +57,14 @@ describe('the appointments of a visit', () => {
     expect(kindFor(true, 2, 'car')).toBe('truck');
     expect(kindFor(true, 1, 'car')).toBeNull();
     expect(kindFor(false, 2, 'car')).toBe('car');
+  });
+  it('the new caller’s file fixed before another try: only what changed, never an empty address over the file’s (booking-a-09)', () => {
+    const first = { first_name: 'Mario', last_name: null, phone: '438 555-0100', address: '99 rue Typed', unit: null, postal_code: null, lat: 45.5, lng: -73.6, city: 'Montréal', sms_ok: true };
+    expect(callerUpdate(first, { ...first })).toBeNull();
+    expect(callerUpdate(first, { ...first, phone: '438 555-0199' })).toEqual({ phone: '438 555-0199' });
+    // the address emptied on screen (« Changer » before the fix kept it): the file keeps its own
+    expect(callerUpdate(first, { ...first, phone: '438 555-0199', address: null, unit: null, postal_code: null, lat: null, lng: null, city: null })).toEqual({ phone: '438 555-0199' });
+    expect(callerUpdate(first, { ...first, address: '5 rue Autre', lat: 45.6 })).toEqual({ address: '5 rue Autre', lat: 45.6 });
   });
 });
 

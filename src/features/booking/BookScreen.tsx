@@ -21,7 +21,7 @@ import { OptionsPanel, TruckPanel } from './OptionPanels';
 import { MomentPanel } from './MomentPanel';
 import { SummaryPanel, BookStep } from './SummaryPanel';
 import { broad } from './screen';
-import './booking.css';
+import '../../shared/moment/booking.css';
 
 /** a new address (#/book → #/book?customer=…, a second booking) starts a fresh form: the frame keeps the screen when
     only the query changes */

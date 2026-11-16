@@ -68,7 +68,7 @@ export function windowWords(win: [number, number] | null, l: Lang): string {
 /* Hours in words: « 8 h à 12 h et 13 h à 20 h », « Fermé », « Mardi et samedi ». */
 const LF = new Map<string, Intl.ListFormat>();
 /** « a, b et c » / « a, b, and c » */
-function listWords(items: string[], l: Lang): string {
+export function listWords(items: string[], l: Lang): string {
   if (items.length < 2) return items[0] || '';
   const k = l;
   let f = LF.get(k);
@@ -91,7 +91,7 @@ export function weekdaysWords(dows: number[], l: Lang): string {
 }
 
 /** « 2 h 08 », « 45 min » — short enough for a small cell, in both languages */
-function shortDuration(min: number): string {
+export function shortDuration(min: number): string {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   if (!h) return `${m} min`;
   return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;

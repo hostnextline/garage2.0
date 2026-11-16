@@ -7,7 +7,7 @@ import type { BlockKey, Range } from '../../lib/dates';
 /** minutes in one unit of the grid */
 export const UNIT = 15;
 /** the smallest block drawn, in units (two lines of text fit) */
-const MIN_UNITS = 2;
+export const MIN_UNITS = 2;
 
 /** how many units a day has (a span that does not end on a quarter keeps its last piece) */
 export function unitCount(span: Range): number { return Math.max(1, Math.ceil((span[1] - span[0]) / UNIT)); }
