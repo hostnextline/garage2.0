@@ -6,7 +6,6 @@ export const dashboard = {
   revenueOf: 'Revenus de {month}',
   revenueOfVowel: 'Revenus d’{month}',
   beforeTax: 'avant taxes',
-  revenueHelp: 'Le total avant taxes des factures terminées pendant le mois. Les brouillons et les factures annulées ne comptent pas.',
   invoicesCount: { zero: 'Aucune facture', one: '{n} facture', other: '{n} factures' },
   goal: {
     of: '{pct} de l’objectif de {goal}',

@@ -6,7 +6,6 @@ export const dashboard: typeof fr = {
   revenueOf: 'Revenue for {month}',
   revenueOfVowel: 'Revenue for {month}',
   beforeTax: 'before taxes',
-  revenueHelp: 'The total before taxes of the invoices finished during the month. Drafts and cancelled invoices do not count.',
   invoicesCount: { zero: 'No invoices', one: '{n} invoice', other: '{n} invoices' },
   goal: {
     of: '{pct} of the {goal} goal',
