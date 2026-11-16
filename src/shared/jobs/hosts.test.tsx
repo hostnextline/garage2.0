@@ -8,6 +8,7 @@ import { PartsHost, confirmParts } from './PartsSheet';
 import { CarCheckHost, askCar } from './CarCheckSheet';
 import { TextOutcomeHost } from './TextOutcome';
 import { outcome } from './texts';
+import { GRACE_MS } from './hosts';
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -40,7 +41,7 @@ describe('one host draws a question', () => {
     const asked = confirmParts(job, planned);
     outcome.value = { status: 'off', message: 'Bonjour' };
     await act(() => render(null, box));
-    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => { vi.advanceTimersByTime(GRACE_MS + 50); });
     vi.useRealTimers();
     await expect(asked).resolves.toBeNull();
     expect(outcome.value).toBeNull();
@@ -51,10 +52,24 @@ describe('one host draws a question', () => {
     let answered: unknown = 'not yet';
     void confirmParts(job, planned).then((v) => { answered = v; });
     await act(() => render(<section key="job"><PartsHost /></section>, box));
-    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => { vi.advanceTimersByTime(GRACE_MS + 50); });
     vi.useRealTimers();
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(answered).toBe('not yet');
     expect(count('parts-sheet')).toBe(1);
+  });
+  it('the next screen opened for the first time (its code loads first, a skeleton meanwhile): the text to send by hand waits for it (jobs-r5)', async () => {
+    vi.useFakeTimers();
+    await act(() => render(<div key="today"><TextOutcomeHost /></div>, box));
+    outcome.value = { status: 'off', message: 'Bonjour, je suis en route' };
+    // « Aujourd'hui » goes, the job sheet's code loads for a second on a slow phone
+    await act(() => render(<p key="loading" />, box));
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await act(() => render(<section key="job"><TextOutcomeHost /></section>, box));
+    await act(async () => { vi.advanceTimersByTime(GRACE_MS + 50); });
+    vi.useRealTimers();
+    expect(outcome.value?.message).toBe('Bonjour, je suis en route');
+    expect(count('text-outcome')).toBe(1);
+    outcome.value = null;
   });
 });

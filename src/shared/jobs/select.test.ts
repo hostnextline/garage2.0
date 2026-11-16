@@ -60,6 +60,18 @@ describe('a payment waiting is not asked a second time', () => {
     expect(stepOf(here)).toEqual({ kind: 'finish', waiting: true });
     expect(blockingJob(JOB({ id: 'j2' }))).toBeUndefined();
   });
+  it('a part paid: once the invoice shows it, still in the outbox a moment, it is not counted twice (jobs-r2)', async () => {
+    upsertLocal('invoices', [{ id: 'inv2', job_id: 'j3', status: 'issued', total_cents: 10000, paid_cents: 0, lines: [{ item_id: 'i3', description: 'x', qty: 1, unit_cents: 10000, taxable: false }] }]);
+    upsertLocal('job_items', [{ id: 'i3', job_id: 'j3', status: 'done', qty: 1, unit_cents: 10000, sort: 1, description: 'Freins' }]);
+    const here = JOB({ id: 'j3', status: 'on_site', waiver_signed_at: 'x' });
+    await outboxNow([rpc('payment_add', { p_invoice: 'inv2', p_amount_cents: 4000, p_method: 'cash', p_job: 'j3' })]);
+    expect(stepOf(here)).toEqual({ kind: 'pay', payLater: false, due: 6000, waiting: true });
+    // the server's answer lands before the entry leaves the outbox: 40 $ on the invoice, 60 $ still owed
+    upsertLocal('invoices', [{ id: 'inv2', job_id: 'j3', status: 'issued', total_cents: 10000, paid_cents: 4000, lines: [{ item_id: 'i3', description: 'x', qty: 1, unit_cents: 10000, taxable: false }] }]);
+    expect(stepOf(here)).toEqual({ kind: 'pay', payLater: false, due: 6000 });
+    await outboxNow([]);
+    expect(stepOf(here)).toEqual({ kind: 'pay', payLater: false, due: 6000 });
+  });
 });
 
 describe('a customer’s answer waiting', () => {

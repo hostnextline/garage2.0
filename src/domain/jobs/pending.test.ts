@@ -63,10 +63,26 @@ describe('payments and answers waiting', () => {
       rpc('payment_add', { p_invoice: 'inv1', p_amount_cents: 9999 }, 'failed'),
       rpc('payment_add', { p_invoice: 'inv2', p_amount_cents: 300 })
     ]);
-    expect(paidWaiting(v, 'j1', 'inv1')).toBe(8000);
+    expect(paidWaiting(v, 'j1', { id: 'inv1', paid_cents: 0 })).toBe(8000);
     expect(paidWaiting(v, 'j1', null)).toBe(1000);
-    expect(paidWaiting(v, 'j9', 'inv2')).toBe(300);
-    expect(paidWaiting(v, 'j9', 'inv9')).toBe(0);
+    expect(paidWaiting(v, 'j9', { id: 'inv2', paid_cents: 0 })).toBe(300);
+    expect(paidWaiting(v, 'j9', { id: 'inv9', paid_cents: 0 })).toBe(0);
+  });
+  it('a payment the invoice already shows (its row came back before the outbox forgot it) is not counted twice (jobs-r2)', () => {
+    // invoice of 100 $, 50 $ already paid; 30 $ waiting, seen when the invoice had 50 $
+    const v = pendingOf([rpc('payment_add', { p_invoice: 'inv1', p_amount_cents: 3000, p_job: 'j1' })]);
+    const base = () => 5000;
+    expect(paidWaiting(v, 'j1', { id: 'inv1', paid_cents: 5000 }, base)).toBe(3000);
+    // the server's answer (or another phone's copy) brought the invoice with it, the entry is still in the outbox
+    expect(paidWaiting(v, 'j1', { id: 'inv1', paid_cents: 8000 }, base)).toBe(0);
+    // two waiting, the first one landed: only the second still counts
+    const two = pendingOf([rpc('payment_add', { p_invoice: 'inv1', p_amount_cents: 3000 }), rpc('payment_add', { p_invoice: 'inv1', p_amount_cents: 1000 })]);
+    expect(paidWaiting(two, 'j1', { id: 'inv1', paid_cents: 8000 }, base)).toBe(1000);
+    // a payment sent before the invoice was finished, now on it
+    const ahead = pendingOf([rpc('payment_add', { p_invoice: null, p_amount_cents: 2000, p_job: 'j1' })]);
+    expect(paidWaiting(ahead, 'j1', { id: 'inv1', paid_cents: 7000 }, base)).toBe(0);
+    // the invoice reopened (its payments wait on the job): never below nothing, never more than what waits
+    expect(paidWaiting(v, 'j1', { id: 'inv1', paid_cents: 0 }, base)).toBe(3000);
   });
   it('a customer’s answer waiting shows as given (jobs-b-07)', () => {
     const v = pendingOf([rpc('extra_answer', { p_item: 'i1', p_accept: true, p_via: 'signature' }), rpc('extra_answer', { p_item: 'i2', p_accept: false, p_via: 'verbal' })]);
@@ -82,6 +98,6 @@ describe('payments and answers waiting', () => {
   });
   it('table writes and other operations are not steps', () => {
     const v = pendingOf([{ seq: 1, op: 'x', kind: 'insert', table: 'job_items', id: 'i', values: {}, at: '', tries: 0, state: 'pending' }, rpc('move_job', { p_job: 'j1' })]);
-    expect(v.steps.size + v.paidOnInvoice.size + v.answers.size + v.invoicing.size).toBe(0);
+    expect(v.steps.size + v.payments.length + v.answers.size + v.invoicing.size).toBe(0);
   });
 });

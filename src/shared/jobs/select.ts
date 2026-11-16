@@ -12,7 +12,7 @@ import { BILLABLE } from '../../domain/jobs/billing';
 import { withSteps, withAnswer, paidWaiting } from '../../domain/jobs/pending';
 import { jobRights } from '../../domain/jobs/rights';
 import { vinNeeded, vinSkips } from './vinStep';
-import { pendingJobs } from './pending';
+import { pendingJobs, paymentBase } from './pending';
 
 export {
   dayWord, dayInSentence, shortDayWord, capFirst, isWindowJob, promisedWindow, blockRange, momentWord, momentShort, keepWindow, wt,
@@ -49,9 +49,10 @@ export function itemsSeen(jobId: string): JobItem[] {
   const list = itemsOf(jobId);
   return answers.size ? list.map((i) => withAnswer(i, answers)) : list;
 }
-/** the cents of this job's payments still waiting on this phone */
+/** the cents of this job's payments still waiting on this phone (and not on its invoice yet) */
 function paidWaitingOf(j: Pick<Job, 'id'>): number {
-  return paidWaiting(pendingJobs(), j.id, invoiceOf(j.id)?.id);
+  const inv = invoiceOf(j.id);
+  return paidWaiting(pendingJobs(), j.id, inv, inv && ((p) => paymentBase(p, inv)));
 }
 /** « Faire la facture » was asked and waits for signal */
 export function invoiceWaiting(jobId: string): boolean { return pendingJobs().invoicing.has(jobId); }

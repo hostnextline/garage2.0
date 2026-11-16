@@ -19,11 +19,14 @@ import { editRights, type JobRights } from '../../domain/jobs/rights';
 type View = 'list' | 'customer' | 'car' | 'address';
 
 /** a row made on this phone a moment ago has reached the server (its insert left the outbox), or `ms` went by: the
-    customer just created in the sheet must exist on the server before « Changer de client » names it */
-async function reached(table: string, id: string, ms = 10000): Promise<void> {
+    customer just created in the sheet must exist on the server before « Changer de client » names it. Never throws: the
+    phone's storage refusing to be read (blocked, full) only means not waiting (the server then says what is missing). */
+export async function reached(table: string, id: string, ms = 10000): Promise<void> {
   const end = Date.now() + ms;
   while (Date.now() < end) {
-    if (!(await outboxList()).some((e) => e.state === 'pending' && e.table === table && e.id === id)) return;
+    try {
+      if (!(await outboxList()).some((e) => e.state === 'pending' && e.table === table && e.id === id)) return;
+    } catch { return; }
     await new Promise((r) => setTimeout(r, 300));
   }
 }
@@ -52,10 +55,12 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
   const saveCustomer = async () => {
     if (!who) return;
     setBusy(true);
-    await reached('customers', who);
-    if (car) await reached('vehicles', car);
-    const ok = await attempt(() => changeJobCustomer(j.id, who, car), { ok: t('jobs.edit.customerDone', { name: jobName({ ...j, customer_id: who }) }) });
-    setBusy(false);
+    let ok = false;
+    try {
+      await reached('customers', who);
+      if (car) await reached('vehicles', car);
+      ok = await attempt(() => changeJobCustomer(j.id, who, car), { ok: t('jobs.edit.customerDone', { name: jobName({ ...j, customer_id: who }) }) });
+    } finally { setBusy(false); }
     if (ok) p.onClose();
   };
   const saveAddress = async () => {

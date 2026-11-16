@@ -20,7 +20,7 @@ vi.mock('./CarCheckSheet', () => ({ askCar: vi.fn(() => Promise.resolve(null)), 
 import { upsertLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
 import type { Job, Access } from '../../data/types';
-import { doFinish, doLeave, doArrive, startInvoice } from './actions';
+import { doFinish, doLeave, doArrive, startInvoice, drives } from './actions';
 import { doReturnEnd } from './returnTrip';
 
 const JOB = (o: Partial<Job> = {}) => ({ id: 'j1', number: 7, status: 'on_site', day: '2026-11-15', block: 'am', truck_id: 't1', customer_id: 'c1', vehicle_id: null, pay_later: false, pay_later_reason: null, waiver_signed_at: 'x', coffre_id: null, odometer_km: 1, ...o } as unknown as Job);
@@ -94,6 +94,28 @@ describe('« Je pars »', () => {
     expect(api.jobStep).toHaveBeenCalledWith('j1', 'leave');
     await new Promise((r) => setTimeout(r, 0));
     expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: { lat: 45.5, lng: -73.6 }, notify: true, resend: undefined });
+  });
+  it('« Routes partagées »: another mechanic (or an owner who is also a mechanic) pressing for a truck someone drives: no position from his phone, no day started for him (jobs-r4)', async () => {
+    // every truck is his (my_truck_ids with shared routes), but Saleh drives t1
+    access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1', 't2'] } as unknown as Access;
+    await doLeave(JOB({ status: 'booked' }), { mine: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(where.quickPosition).not.toHaveBeenCalled();
+    expect(api.shiftStart).not.toHaveBeenCalled();
+    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: undefined, notify: true, resend: undefined });
+    access.value = { id: 'owner', roles: ['mechanic'], owner: true, rights: {}, trucks: ['t1'] } as unknown as Access;
+    await doLeave(JOB({ status: 'booked' }), { mine: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(where.quickPosition).not.toHaveBeenCalled();
+    expect(api.shiftStart).not.toHaveBeenCalled();
+  });
+  it('a truck with no driver: the mechanic of that truck pressing is the one driving', async () => {
+    upsertLocal('trucks', [{ id: 't1', name: 'Camion', driver_id: null, active: true, sort: 0 }]);
+    access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1'] } as unknown as Access;
+    expect(drives(JOB(), { mine: true })).toBe(true);
+    expect(drives(JOB(), { mine: false })).toBe(false);
+    access.value = owner;
+    expect(drives(JOB(), { mine: false })).toBe(false);
   });
   it('a customer with no cell number: no « text to send by hand » sheet (jobs-a-17)', async () => {
     access.value = mechanic;
