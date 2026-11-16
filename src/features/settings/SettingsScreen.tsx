@@ -17,7 +17,7 @@ import { BookingSection } from './booking/BookingSection';
 import { TextsSection } from './TextsSection';
 import { WaiverSection } from './WaiverSection';
 import { LookSection } from './LookSection';
-import { ConnectSection } from './ConnectSection';
+import { ConnectSection } from './connect/ConnectSection';
 import { ExpensesSection } from './ExpensesSection';
 import { UpdatePanel } from '../../shared/app/UpdatePanel';
 import '../../shared/look/settings.css';
