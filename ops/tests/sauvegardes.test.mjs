@@ -532,3 +532,66 @@ test('restore --retablir: the app\'s « Effacer » undone on the rows asked (del
   assert.ok(new Date(d6.updated_at) > new Date(avant6), 'a row restored by its id gets a new updated_at: the phones take the night\'s values (infra-07)');
   assert.equal((await q(`select notes from public.customers where id = $1`, [e]))[0].notes, 'du jour', 'the other row is untouched');
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// After the loss of the project: the team's accounts again, with the SAME ids as their staff rows (infra-04)
+// ---------------------------------------------------------------------------------------------------------------
+test('accounts after a lost project: each person of staff.json gets an account with the same id (blocked when deactivated), never touched twice, and can sign in once a password is set', async () => {
+  const AUTH = 'http://127.0.0.1:54331/auth/v1';
+  const adm = (method, path, body) => fetch(`${AUTH}/admin/users${path}`, { method, headers: { apikey: K.service, authorization: `Bearer ${K.service}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const [a, b, c, d, e] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+  const mail = (x) => `ops-comptes-${x.slice(0, 8)}@exemple.ca`;
+  // « e » already has an account (a person who was invited again): it must stay as it is
+  assert.equal((await adm('POST', '', { id: e, email: mail(e), email_confirm: true })).status, 200);
+  const comptes = [a, b, e];
+  try {
+    const dos = dossier('comptes', { staff: [
+      { id: a, full_name: 'Alice Active', email: mail(a), active: true, deleted_at: null },
+      { id: b, full_name: 'Bob Désactivé', email: mail(b), active: false, deleted_at: null },
+      { id: c, full_name: 'Carl Sans Courriel', email: null, active: true, deleted_at: null },
+      { id: d, full_name: 'Dan Retiré', email: mail(d), active: true, deleted_at: '2026-11-10T12:00:00Z' },
+      { id: e, full_name: 'Eve Déjà Là', email: mail(e), active: true, deleted_at: null },
+    ] });
+    const env = { SUPABASE_URL: 'http://127.0.0.1:54331', SERVICE_ROLE_KEY: K.service };
+    const essai = await lancer('restaurer-comptes.mjs', [dos, '--essai'], env);
+    assert.match(essai.out, /ESSAI : rien n'a été fait/);
+    assert.equal((await q(`select count(*)::int n from auth.users where id = any($1)`, [[a, b]]))[0].n, 0, 'the try makes nothing');
+    const r = await lancer('restaurer-comptes.mjs', [dos], env);
+    assert.equal(r.code, 1, 'a person without e-mail is a problem to fix by hand: said, and the run is red');
+    assert.match(r.out, /créés \(1\) : Alice Active/);
+    assert.match(r.out, /créés bloqués \(désactivés\) \(1\) : Bob Désactivé/);
+    assert.match(r.out, /déjà là, pas touchés \(1\) : Eve Déjà Là/);
+    assert.match(r.out, /SANS COURRIEL .* Carl Sans Courriel/);
+    const u = await q(`select id::text, email, banned_until from auth.users where id = any($1) order by email`, [[a, b, c, d]]);
+    assert.deepEqual(u.map((x) => x.id).sort(), [a, b].sort(), 'the same ids as the staff rows; nobody deleted, nobody without e-mail');
+    assert.equal(u.find((x) => x.id === a).email, mail(a));
+    assert.equal(u.find((x) => x.id === a).banned_until, null);
+    assert.ok(new Date(u.find((x) => x.id === b).banned_until) > new Date('2100-01-01'), 'a deactivated person is blocked');
+    // a second run touches nothing
+    const r2 = await lancer('restaurer-comptes.mjs', [dos], env);
+    assert.match(r2.out, /déjà là, pas touchés \(3\)/);
+    // the account works: once a password is set (« Mot de passe oublié » does it in the app), the person signs in
+    assert.equal((await adm('PUT', `/${a}`, { password: 'Garage-2026-ok' })).status, 200);
+    const s = await fetch(`${AUTH}/token?grant_type=password`, { method: 'POST', headers: { apikey: K.anon, 'content-type': 'application/json' }, body: JSON.stringify({ email: mail(a), password: 'Garage-2026-ok' }) });
+    assert.equal(s.status, 200);
+    assert.equal((await s.json()).user.id, a, 'signed in under the id of the staff row');
+    // without the address or the key: said, nothing done
+    const m = await lancer('restaurer-comptes.mjs', [dos], { SUPABASE_URL: '', SERVICE_ROLE_KEY: '' });
+    assert.equal(m.code, 1); assert.match(m.err, /il faut SUPABASE_URL/);
+  } finally {
+    await q(`delete from auth.users where id = any($1)`, [comptes]);
+  }
+});
+
+test('the nightly backup says (a warning, never a failure) when a person of the team has no e-mail: her account could not be made again', async () => {
+  const s = await faux((quoi, b) => {
+    if (b.action === 'tables') return [200, { ok: true, at: 'x', tables: [{ name: 'staff', count: 3 }] }];
+    if (b.action === 'rows') return [200, { ok: true, rows: [{ id: '1', full_name: 'Avec', email: 'a@exemple.ca', deleted_at: null }, { id: '2', full_name: 'Sans Courriel', email: null, deleted_at: null }, { id: '3', full_name: 'Retiré', email: null, deleted_at: '2026-11-01T00:00:00Z' }], next: null }];
+    return [400, { ok: false, code: 'action', error: 'Action inconnue.' }];
+  });
+  const r = await lancer('sauvegarde.mjs', [join(dir, 'sans-courriel', 'donnees')], s.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /ATTENTION : staff : Sans Courriel n'a pas de courriel/);
+  assert.ok(!/Retiré/.test(r.out), 'a person removed from the team is not counted');
+  await s.fermer();
+});

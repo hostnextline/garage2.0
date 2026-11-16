@@ -73,8 +73,12 @@ Toujours vrai, quelle que soit la façon :
 ## Ce que la sauvegarde ne garde pas
 
 - Les **comptes de connexion** (Supabase Auth : courriels, mots de passe). Après la perte du projet, les fiches de
-  l'équipe reviennent mais personne ne peut se connecter tant que les comptes ne sont pas recréés avec les mêmes
-  identifiants (puis « Mot de passe oublié » pour chacun). Procédure à écrire (`REPRISE.md`, prévu).
+  l'équipe reviennent mais personne ne peut se connecter tant que les comptes ne sont pas recréés. `restaurer-comptes.mjs`
+  les recrée **avec les mêmes identifiants** que les fiches (tout ce qui pointe vers une personne reste juste), bloqués
+  pour les personnes désactivées, sans mot de passe et sans courriel envoyé ; puis chacun fait « Mot de passe oublié » :
+  `SUPABASE_URL=https://<projet>.supabase.co SERVICE_ROLE_KEY=<clé> node restaurer-comptes.mjs donnees --essai`, puis sans
+  `--essai`. À faire AVANT de restaurer les données. Une personne sans courriel ne peut pas être recréée : la sauvegarde
+  le dit chaque nuit (avertissement).
 - Les **clés des services** (table `secrets`) : GoHighLevel, Stripe (clé, webhook), notifications (VAPID : chaque
   téléphone devra réaccepter les notifications), Hermes, la clé des appels entrants. À retaper dans Réglages.
 - `rate_limits`, `incoming_calls`, `incoming_texts`, `push_subs` : des données de passage, exprès.

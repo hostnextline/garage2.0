@@ -155,6 +155,12 @@ async function copier() {
     writeFileSync(join(DOSSIER, `${name}.json`), rows.length ? '[\n' + rows.map((r) => JSON.stringify(r)).join(',\n') + '\n]\n' : '[]\n');
     resume.tables[name] = rows.length;
     console.log(`${name.padEnd(16)} ${rows.length}`);
+    if (name === 'staff') {
+      // after the loss of the project, an account is made again from its staff row (restaurer-comptes.mjs): a person
+      // without an e-mail could not get hers. Said every night (a warning: the backup itself is whole).
+      const sans = rows.filter((r) => r && r.deleted_at == null && !r.email);
+      if (sans.length) avis(`staff : ${sans.map((r) => r.full_name || r.id).join(', ')} ${sans.length > 1 ? "n'ont" : "n'a"} pas de courriel : après la perte du projet, son compte ne pourrait pas être refait (restaurer-comptes.mjs). Ajouter le courriel dans Réglages → Équipe.`);
+    }
     if (name === 'attachments') {
       // read back from the disk: a row without its picture, and this backup is refused
       const dir = join(DOSSIER, 'photos');

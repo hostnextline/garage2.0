@@ -194,7 +194,7 @@ revient seule : l'app d'hier marche avec le serveur de la refonte.
 | **une règle d'accès (policy) ou un déclencheur** | `alter policy … using (…) with check (…)` / `create or replace trigger …` avec le texte de F d'avant (jamais `drop`). | minutes | rien |
 | **une table, une colonne ou une fonction ajoutée** | rien : elle reste, inutilisée (jamais de `DROP` en ligne). Une colonne ajoutée a une valeur par défaut : l'app d'hier l'ignore. | — | l'objet inutilisé |
 | **des données abîmées** par la nouvelle logique | `snapshot_restore('avant_refonte', '{…}')` pour les tables concernées si 1.4 a été fait ; sinon `restaurer.mjs` depuis la sauvegarde de 1.1 : `--tables <t> --ids <id>,…` (les téléphones les revoient) ou `--remplacer` sur la seule table concernée (lire le README des sauvegardes : ce que ça fait et ne fait pas). Jamais toute la base. | minutes à 1 h | ce qui a été créé depuis (rien n'est effacé) |
-| **le projet lui-même** perdu | nouveau projet, migrations, restauration complète de la sauvegarde de 1.1, comptes recréés avec les mêmes identifiants, clés des services retapées (README des sauvegardes, « Ce que la sauvegarde ne garde pas »). Procédure complète à écrire (`REPRISE.md`). | heures | les mots de passe (chacun fait « Mot de passe oublié ») |
+| **le projet lui-même** perdu | nouveau projet, migrations, restauration complète de la sauvegarde de 1.1, comptes recréés avec les mêmes identifiants (`restaurer-comptes.mjs`, avant les données), clés des services retapées (README des sauvegardes, « Ce que la sauvegarde ne garde pas »). Procédure pas à pas encore à écrire (`REPRISE.md`). | heures | les mots de passe (chacun fait « Mot de passe oublié ») |
 
 ## 7. À copier dans le dépôt privé des sauvegardes (`hostnextline/garage2.0-sauvegardes`)
 
@@ -204,7 +204,8 @@ revient seule : l'app d'hier marche avec le serveur de la refonte.
 |---|---|---|
 | `ops/sauvegardes/sauvegarde.mjs` | `sauvegarde.mjs` (à la racine) | une photo par fichier (`donnees/photos/`), une table qui bouge est relue, l'avertissement avant 100 Mo, l'option `--fin` (done, puis le rapprochement ; rouge si « bad ») |
 | `ops/sauvegardes/restaurer.mjs` | `restaurer.mjs` | les colonnes de la sauvegarde seulement, les numéros qui ne reculent jamais, `--retablir`, `--ids`, aucun fichier sauté en silence, les tables `ops_backup_runs`, `ops_recon_runs`, `ops_recon_findings` |
-| `ops/sauvegardes/README.md` | `README.md` | ce que fait et ne fait pas chaque façon de restaurer |
+| `ops/sauvegardes/restaurer-comptes.mjs` | `restaurer-comptes.mjs` (nouveau) | recrée les comptes de l'équipe avec les mêmes identifiants après la perte du projet |
+| `ops/sauvegardes/README.md` | `README.md` | ce que fait et ne fait pas chaque façon de restaurer ; les comptes |
 | `ops/sauvegardes/.github/workflows/sauvegarde.yml` | `.github/workflows/sauvegarde.yml` | la dernière étape `node sauvegarde.mjs --fin donnees`, après le push |
 
 Vérifier la copie : `shasum -a 256 ops/sauvegardes/*.mjs` au commit C = les mêmes chiffres dans le dépôt des
