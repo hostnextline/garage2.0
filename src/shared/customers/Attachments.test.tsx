@@ -40,6 +40,14 @@ describe('pictures and documents in the conversation', () => {
     expect(box.querySelector('img')).toBeNull();
     expect(q('conversation-doc')[0].getAttribute('href')).toBe('https://x.test/media/8f2c91');
   });
+  it('a picture that does not load keeps the word « Document », not its file name (review attach-broken-image-label)', () => {
+    draw(['https://x.test/IMG_1234.jpg']);
+    act(() => { box.querySelector('img')!.dispatchEvent(new Event('error')); });
+    const doc = q('conversation-doc')[0];
+    expect(doc.getAttribute('href')).toBe('https://x.test/IMG_1234.jpg');
+    expect(doc.textContent).toContain('Document');
+    expect(doc.textContent).not.toContain('IMG_1234');
+  });
   it('a video or a voice note the browser cannot play becomes a link that opens it (comms-guide-12)', () => {
     draw(['https://x.test/note.amr', 'https://x.test/clip.3gp']);
     act(() => { for (const el of [...q('conversation-audio'), ...q('conversation-video')]) el.dispatchEvent(new Event('error')); });

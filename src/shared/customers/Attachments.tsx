@@ -31,7 +31,8 @@ function One(p: { url: string }) {
   return (
     <a class="conv-file-doc" href={p.url} target="_blank" rel="noopener noreferrer" data-testid="conversation-doc">
       <Paperclip size={18} aria-hidden="true" />
-      <span class="ellipsis">{(kind === 'file' || broken) && name ? name : t('conversation.file.doc')}</span>
+      {/* a picture that does not load keeps « Document », as before; a video or voice note shows its file name */}
+      <span class="ellipsis">{(kind === 'file' || ((kind === 'video' || kind === 'audio') && broken)) && name ? name : t('conversation.file.doc')}</span>
       <span class="conv-file-open">{t('conversation.file.open')}</span>
     </a>
   );

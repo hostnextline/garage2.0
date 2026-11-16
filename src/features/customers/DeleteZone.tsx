@@ -9,10 +9,12 @@ import { can } from '../../data/auth';
 import type { Customer } from '../../data/types';
 import { Button, attempt } from '../../ui';
 import { factsOf, isUpcoming } from '../../shared/customers/facts';
+import { currentDay } from '../../domain/oil/clock';
 
 export function DeleteZone(p: { c: Customer; onLeaving: (on: boolean) => void; onDeleted: () => void }) {
   if (!can('clients')) return null;
-  const upcoming = jobsOfCustomer(p.c.id).some((j) => isUpcoming(j));
+  // (the day is a signal: an appointment of yesterday no longer blocks after midnight)
+  const upcoming = jobsOfCustomer(p.c.id).some((j) => isUpcoming(j, currentDay.value));
   const owed = factsOf(p.c.id).owed;
   const blocked = upcoming ? t('customers.file.deleteBlockedJobs') : owed > 0 ? t('customers.file.deleteBlockedOwed', { amount: money(owed, lang.value) }) : null;
   const remove = async () => {

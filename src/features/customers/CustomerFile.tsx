@@ -11,6 +11,7 @@ import { customer, customerName, jobsOfCustomer } from '../../data/select';
 import { net } from '../../data/sync';
 import { Page, Panel, Button, BigStep, Empty, Skeleton } from '../../ui';
 import { factsOf, isUpcoming } from '../../shared/customers/facts';
+import { currentDay } from '../../domain/oil/clock';
 import { directionsUrl } from '../../shared/places/address';
 import { Flags } from '../../shared/customers/bits';
 import { NotesPanel } from './NotesPanel';
@@ -53,7 +54,8 @@ export function CustomerFile(p: { id: string; wanted?: string | null }) {
   const name = customerName(c);
   const tel = e164(c.phone) || (c.phone ? c.phone.replace(/[^\d+]/g, '') : '');
   const dir = directionsUrl(c);
-  const next = jobsOfCustomer(c.id).some((j) => isUpcoming(j));
+  // (the day is a signal: « Réserver » changes at midnight on an office computer left open overnight)
+  const next = jobsOfCustomer(c.id).some((j) => isUpcoming(j, currentDay.value));
   return (
     <Page class="customers-page" title={name} back="/customers" data-testid="customer-file"
       sub={<Flags c={c} owed={f.owed} noSms />}

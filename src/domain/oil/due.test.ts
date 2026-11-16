@@ -128,6 +128,15 @@ describe('appointments booked without a car (customers-b-03)', () => {
     const other = oilRows(input({ vehicles, jobs: [...done, job('j3', null, '2027-06-20', 'booked')], items: [item('j1', 's-oil'), item('j2', 's-oil'), item('j3', 's-tires', '', 'planned')] }));
     expect(other.map((r) => [r.key, r.next?.jobId])).toEqual([['v2', 'j3'], ['v1', 'j3']]);
   });
+  it('several cars none of which came: a coming oil change booked without a car also takes the visits with no car off the list (review oil-nocar-coming)', () => {
+    const vehicles = [car('v1', 'c1'), car('v2', 'c1')];
+    const past = job('j1', null, '2026-12-01');
+    const oil = oilRows(input({ vehicles, jobs: [past, job('j2', null, '2027-06-20', 'booked')], items: [item('j1', 's-oil'), item('j2', 's-oil', '', 'planned')] }));
+    expect(oil).toEqual([]);
+    // a coming visit without an oil change: still listed, with that visit as the next one
+    const other = oilRows(input({ vehicles, jobs: [past, job('j2', null, '2027-06-20', 'booked')], items: [item('j1', 's-oil'), item('j2', 's-tires', '', 'planned')] }));
+    expect(other.map((r) => [r.key, r.state, r.next?.jobId])).toEqual([['c:c1', 'call', 'j2']]);
+  });
 });
 
 describe('the stock', () => {
@@ -145,6 +154,16 @@ describe('the stock', () => {
     expect([...sold]).toEqual(['j5']);
     const rows = oilRows(input({ jobs: [job('j1', 'v1', '2027-03-01')], items: [items[0]], moves: [move('j1', 'i-oil')], stock }));
     expect(rows[0]).toMatchObject({ lastOil: '2027-03-01', due: '2027-09-01' });
+  });
+  it('a jug of oil sold on a line still counts when « Pièces utilisées » hold only the filter (review oil-used-any-move)', () => {
+    const jug = { ...item('j9', null, 'Bidon Mobil 1'), kind: 'part', item_id: 'i-oil', qty: 1 } as never;
+    expect([...oilJobIds([jug], SERVICES, [], stock)]).toEqual(['j9']);
+    expect([...oilJobIds([jug], SERVICES, [move('j9', 'i-fil', -1)], stock)]).toEqual(['j9']);
+    // the oil really taken still wins over the lines when it is recorded: 5 L sold but 1 L taken is a top-up
+    const litres = [{ ...stock[0], unit: 'L' } as InventoryItem, stock[2]];
+    const five = { ...item('j8', null, 'Mobil 1'), kind: 'part', item_id: 'i-oil', qty: 5 } as never;
+    expect([...oilJobIds([five], SERVICES, [move('j8', 'i-fil', -1)], litres)]).toEqual(['j8']);
+    expect([...oilJobIds([five], SERVICES, [move('j8', 'i-fil', -1), move('j8', 'i-oil', -1)], litres)]).toEqual([]);
   });
 });
 

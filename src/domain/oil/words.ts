@@ -1,6 +1,6 @@
 /* Reading an oil change of the ENGINE in the words of a line, a service or a stock item. Words only propose: a person
    can always say otherwise on the car (« L’huile a été changée à cette visite », « Pas de changement d’huile à cette
-   visite », see followup.ts). Pure, tested in words.test.ts. */
+   visite », see followup.ts). Pure, tested in due.test.ts. */
 import type { InventoryItem, JobItem, Service } from '../../data/types';
 
 /** the line statuses that count as work done or to do (not proposed, refused or taken off) */

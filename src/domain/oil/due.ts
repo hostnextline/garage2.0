@@ -87,7 +87,12 @@ export function oilJobIds(items: JobItem[], services: Service[], moves: Inventor
   // the oil really taken at the end of the job (« Pièces utilisées ») already holds what its lines sold: read one or the
   // other, never both (2 L sold + the same 2 L taken is not 4 L)
   const used = new Map<string, number>();
-  for (const m of moves) if (!m.deleted_at && m.job_id && m.reason === 'used') used.set(m.job_id, (used.get(m.job_id) || 0) + litresOf(m.item_id, -Number(m.delta)));
+  // (only engine oil taken counts: a job whose « Pièces utilisées » hold only the filter still reads the oil its lines sold)
+  for (const m of moves) {
+    if (m.deleted_at || !m.job_id || m.reason !== 'used') continue;
+    const l = litresOf(m.item_id, -Number(m.delta));
+    if (l > 0) used.set(m.job_id, (used.get(m.job_id) || 0) + l);
+  }
   const sold = new Map<string, number>();
   for (const i of items) if (!i.deleted_at && i.item_id && COUNTED.has(i.status) && !used.has(i.job_id)) sold.set(i.job_id, (sold.get(i.job_id) || 0) + litresOf(i.item_id, Number(i.qty ?? 1)));
   for (const [jobId, l] of [...used, ...sold]) if (l >= FULL_CHANGE_L && !topUp.has(jobId)) out.add(jobId);
@@ -178,11 +183,12 @@ export function oilRows(input: OilInput): OilRow[] {
     if (!a.lastOil || v.last_oil_on > a.lastOil) { a.lastOil = v.last_oil_on; a.oilJob = null; a.saidOn = v.last_oil_on; }
   }
 
-  // a coming appointment booked without a car shows on each of the customer's cars, and when it has an oil change none
-  // of them is called (the office would call someone who already booked)
+  // a coming appointment booked without a car shows on each of the customer's cars (and on the row of their visits with
+  // no car, « c:<customer> », when none of the cars is followed), and when it has an oil change none of them is called
+  // (the office would call someone who already booked)
   for (const [customerId, jobs] of comingNoCar) {
     for (const a of accs.values()) {
-      if (a.customerId !== customerId || !a.vehicleId) continue;
+      if (a.customerId !== customerId) continue;
       for (const j of jobs) {
         if (oilJobs.has(j.id)) a.nextOil = true;
         if (!a.next || j.day < a.next.day) a.next = j;
