@@ -14,7 +14,8 @@ import { customerPatch, emptyDraft } from '../../shared/customers/CustomerFields
 import { carIsEmpty, carRow } from '../../shared/vehicles/VehicleBits';
 import { plannedCars } from './draft';
 import { showsFix } from './check';
-import { visitJobs, kindFor, type VisitBase } from './visit';
+import { visitJobs, kindFor, callerUpdate, type VisitBase } from './visit';
+import type { Customer } from '../../data/types';
 import { sendVisit } from './send';
 import { outcome } from './outcome';
 import { farOfAnswer, inTime } from './far';
@@ -26,6 +27,9 @@ function whenSaid(c: BlockChoice, forced: boolean, l: 'fr' | 'en'): string {
   return choiceWords(forced && c.block === 'day' && !c.win_flex ? { day: c.day, block: 'day' } : c, l);
 }
 const FAR_WAIT_MS = 4000;
+/** the same moment (day, block, window or « flexible ») */
+const sameChoice = (x: BlockChoice | null, y: BlockChoice | null): boolean =>
+  x === y || (!!x && !!y && x.day === y.day && x.block === y.block && (x.win_start ?? null) === (y.win_start ?? null) && !!x.win_flex === !!y.win_flex);
 
 export interface Anchors { moment: MutableRef<HTMLElement | null> }
 /** the panel to fix for a new caller: the name and number, or the cars */
@@ -33,14 +37,18 @@ const panelOf = (testid: string) => (typeof document === 'undefined' ? null : do
 
 export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
   const sending = useRef(false);
+  // the form as it is on screen now: « Réserver » reads it again after waiting (the garde-route answer can take a few
+  // seconds), so what was typed meanwhile is what gets booked
+  const live = useRef(b);
+  live.current = b;
   // the garde-route question answered « Réserver quand même » for this moment: not asked again on a second try
   const farOk = useRef<string | null>(null);
   // a new caller's file and cars, made once (a refused moment can be chosen again without making them twice); what was
   // sent, so a name or a number fixed before the next try goes to the same file
-  const made = useRef<{ customer: string; sent: string; cars: Record<string, string> } | null>(null);
+  const made = useRef<{ customer: string; sent: Partial<Customer>; cars: Record<string, string> } | null>(null);
 
   /** true: go on (not far, no answer in time, or the person said so) */
-  const farAsk = async (c: BlockChoice): Promise<boolean> => {
+  const farAsk = async (c: BlockChoice, b: Booking): Promise<boolean> => {
     const key = `${c.day}|${c.block}`;
     if (farOk.current === key) return true;
     let q = farQuestion(b.d.far, c, 'book');
@@ -55,13 +63,16 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     return yes;
   };
 
-  const makeCaller = () => run(async () => {
+  const makeCaller = (b: Booking) => run(async () => {
     const { first, last, phone } = b.d.caller;
     const patch = customerPatch(emptyDraft({ first_name: first, last_name: last, phone, place: b.d.place }));
-    const sent = JSON.stringify(patch);
     const m = made.current;
-    if (!m) made.current = { customer: await saveCustomer(patch), sent, cars: {} };
-    else if (m.sent !== sent) { await saveCustomer({ ...patch, id: m.customer }); m.sent = sent; }
+    if (!m) made.current = { customer: await saveCustomer(patch), sent: patch, cars: {} };
+    else {
+      // only what was fixed; an address left empty keeps the file's (booking-a-09)
+      const fix = callerUpdate(m.sent, patch);
+      if (fix) { await saveCustomer({ ...fix, id: m.customer }); m.sent = { ...m.sent, ...fix }; }
+    }
     const mm = made.current!;
     for (const c of b.d.callCars) {
       if (carIsEmpty(c.draft)) continue;
@@ -74,17 +85,24 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
   });
 
   const go = async () => {
+    const tapped = live.current;
+    const choice = tapped.a.walkIn ? null : tapped.d.choice;
+    if (choice && !(await farAsk(choice, tapped))) return;
+    // what is on screen now. The moment changed or something was taken off while waiting: nothing is booked, the
+    // next tap asks for what is there
+    const b = live.current;
+    if (b.miss || !sameChoice(b.a.walkIn ? null : b.d.choice, choice)) return;
     const { a, d, l, bt } = b;
-    const choice = a.walkIn ? null : d.choice;
-    if (choice && !(await farAsk(choice))) return;
     let cid = d.customerId;
-    if (!cid) { const m = await makeCaller(); if (!m) return; cid = m.customer; }
+    if (!cid) { const m = await makeCaller(b); if (!m) return; cid = m.customer; }
     const carOf = (k: string) => (k && (vehicleRow(k) || made.current?.cars[k]) ? k : null);
     const cars = plannedCars(d, b.belongs);
     const base: VisitBase = {
       customer_id: cid, truck_id: b.effTruck || null, notes: d.notes.trim() || null,
       address: d.place.address.trim() || null, unit: d.place.unit?.trim() || null, postal_code: d.place.postal_code || null, lat: d.place.lat, lng: d.place.lng,
-      card_on_file: !!d.card, quote_id: b.quote?.id ?? null, source: b.quote ? 'quote' : a.walkIn ? 'walk_in' : 'phone', vehicle_kind: kindFor(b.need, cars.length, d.kind)
+      // the estimate goes with the visit's first appointment only: once a car of it is booked, the others go without it
+      // (the server refuses an estimate already booked: quote_done)
+      card_on_file: !!d.card, quote_id: d.bookedIds.length ? null : b.quote?.id ?? null, source: b.quote ? 'quote' : a.walkIn ? 'walk_in' : 'phone', vehicle_kind: kindFor(b.need, cars.length, d.kind)
     };
     const jobs = visitJobs(cars, base, { choice, taxes: settings.value.taxes, carOf });
     const results = await sendVisit(jobs, { walkIn: a.walkIn, choice, mayForce: b.mayForce }, {
@@ -97,7 +115,7 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     const o = outcome(results, { total: jobs.length, walkIn: a.walkIn, day: choice?.day ?? null, when }, { t, bt });
     for (const x of o.toasts) toast(x.text, { kind: x.kind, ms: x.ms });
     // the screen's state first (what was booked leaves it), then where the eyes go
-    if (!o.go && o.done.length) b.act({ t: 'booked', keys: o.done });
+    if (!o.go && o.done.length) b.act({ t: 'booked', keys: o.done, ids: jobs.filter((j) => o.done.includes(j.key)).map((j) => j.job.id!) });
     if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone }); calmScroll(at.moment.current); }
     if (o.go) navigate(o.go, { replace: true });
     // the customer's confirmation, for each appointment the server answered (a window: said above the text to send by hand)

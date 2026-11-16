@@ -116,7 +116,9 @@ describe('the booking screen', () => {
     await click(q('book-confirm'));
     expect(api.bookJob).toHaveBeenCalledTimes(2);
     expect(ui.toast).toHaveBeenCalledTimes(1);
-    expect(ui.toast.mock.calls[0][0]).toMatch(/À confirmer/);
+    // where the text is sent from, said right: the appointment, or the day before in « À confirmer pour demain »
+    expect(ui.toast.mock.calls[0][0]).toMatch(/Renvoyer le texto de confirmation/);
+    expect(ui.toast.mock.calls[0][0]).toMatch(/la veille dans « À confirmer pour demain »/);
     expect(nav.navigate).toHaveBeenCalledWith(`/agenda/${DAY}`, { replace: true });
     expect(texts.notifyCustomer).not.toHaveBeenCalled();
   });
@@ -145,6 +147,23 @@ describe('the booking screen', () => {
     expect(api.bookJob).not.toHaveBeenCalled();
   });
 
+  it('what is typed while « Réserver » waits for the garde-route answer is what gets booked', async () => {
+    let answer: (rows: unknown[]) => void = () => undefined;
+    api.suggestBlocks.mockImplementation(() => new Promise((r) => { answer = r; }));
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(api.bookJob).not.toHaveBeenCalled();
+    // a second service added while the server is asked
+    await click(q('stub-add'));
+    await act(async () => { answer([]); });
+    await wait();
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+    expect(api.bookJob.mock.calls[0][1]).toHaveLength(2);
+    expect(api.bookJob.mock.calls[0][0]).toMatchObject({ vehicle_id: 'v-1', duration_min: 90 });
+  });
+
   it('a new caller refused once, the number fixed before the retry: the same file gets the right number (booking-a-09)', async () => {
     api.saveCustomer.mockImplementation(async (c: Record<string, unknown>) => {
       const id = (c.id as string) || 'c-new';
@@ -152,21 +171,62 @@ describe('the booking screen', () => {
       return id;
     });
     await draw('call=1&start=job&phone=438%20555-0100&name=Mario');
+    const street = () => box.querySelector('[data-testid="call-address"] [data-testid="address-input"]') as HTMLInputElement;
+    await act(async () => { street().value = '99 rue Typed'; street().dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
     await click(q('stub-add'));
     await click(q('stub-pick'));
     api.bookJob.mockImplementationOnce(async () => { throw refusal('block_started'); });
     await click(q('book-confirm'));
     expect(api.saveCustomer).toHaveBeenCalledTimes(1);
-    // « Changer »: back to the caller's fields, the number fixed, « Réserver » again
+    expect(api.saveCustomer.mock.calls[0][0]).toMatchObject({ phone: '438 555-0100', address: '99 rue Typed' });
+    // « Changer »: back to the caller's fields (the address said during the call still there), the number fixed, « Réserver » again
     await click([...box.querySelectorAll('[data-testid="customer-picked"] button')].at(-1)!);
+    expect(street().value).toBe('99 rue Typed');
     const tel = box.querySelector('[data-testid="call-who"] input[type=tel]') as HTMLInputElement;
     await act(async () => { tel.value = '438 555-0199'; tel.dispatchEvent(new Event('input', { bubbles: true })); });
     await wait();
     await click(q('stub-pick'));
     await click(q('book-confirm'));
     expect(api.saveCustomer).toHaveBeenCalledTimes(2);
-    expect(api.saveCustomer.mock.calls[1][0]).toMatchObject({ id: 'c-new', phone: '438 555-0199' });
-    expect(api.bookJob.mock.calls.at(-1)![0]).toMatchObject({ customer_id: 'c-new' });
+    // only the number goes to the file: its address is never emptied
+    expect(api.saveCustomer.mock.calls[1][0]).toEqual({ id: 'c-new', phone: '438 555-0199' });
+    expect(api.bookJob.mock.calls.at(-1)![0]).toMatchObject({ customer_id: 'c-new', address: '99 rue Typed' });
+  });
+
+  it('an estimate for two cars, the second refused: the estimate’s own appointment does not stop the retry, which goes without the estimate (booking-a-08)', async () => {
+    const q2 = { id: 'q-2', number: 8, customer_id: 'c-2', vehicle_id: null, items: [{ description: 'Freins', qty: 1, unit_cents: 34999, taxable: true, service_id: null }], status: 'accepted', job_id: null };
+    upsertLocal('quotes', [q2], { force: true });
+    await draw('quote=q-2');
+    await wait(50);
+    const chip = (name: string) => [...box.querySelectorAll('[data-testid="vehicle-chips"] button')].find((b) => b.textContent?.includes(name)) ?? null;
+    await click(chip('Corolla'));
+    expect(lines()).toBe('Freins:34999');
+    await click(chip('Sienna'));
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    api.bookJob.mockImplementation(async (job: { id: string; vehicle_id: string }) => {
+      if (job.vehicle_id === 'v-2a') throw refusal('block_started');
+      return { queued: false, id: job.id, data: {} };
+    });
+    await click(q('book-confirm'));
+    const [first, second] = api.bookJob.mock.calls.map(([job]) => job);
+    expect(first).toMatchObject({ vehicle_id: 'v-2b', quote_id: 'q-2', source: 'quote' });
+    expect(second).toMatchObject({ vehicle_id: 'v-2a', quote_id: null });
+    // the server marks the estimate booked with the first appointment; the rows reach the phone
+    upsertLocal('jobs', [{ id: first.id, customer_id: 'c-2', vehicle_id: 'v-2b', day: DAY, block: 'am', status: 'booked' }], { force: true });
+    upsertLocal('quotes', [{ ...q2, status: 'converted', job_id: first.id }], { force: true });
+    await wait();
+    const button = q('book-confirm') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).not.toMatch(/déjà réservée/);
+    api.bookJob.mockClear();
+    api.bookJob.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id, data: {} }));
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+    expect(api.bookJob.mock.calls[0][0]).toMatchObject({ id: second.id, vehicle_id: 'v-2a', quote_id: null, source: 'quote' });
+    expect(nav.navigate).toHaveBeenCalledWith(`/job/${second.id}`, { replace: true });
   });
 
   it('an estimate already booked is not booked again (booking-a-08)', async () => {

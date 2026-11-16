@@ -14,6 +14,7 @@ import { Page, Panel, Field, PhoneInput, Button, Avatar, Rows, RowItem } from '.
 import { recentFirst, searchIndex } from '../../shared/customers/facts';
 import { Bit } from '../../shared/customers/bits';
 import { CALL_STARTS, callHref, callMatches, nextWhen } from './calls';
+import '../../shared/moment/booking.css';
 
 const ICON = { address: MapPin, car: Car, job: Wrench };
 const OVER = ['done', 'cancelled', 'no_show'];

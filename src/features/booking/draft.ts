@@ -47,6 +47,12 @@ export interface Draft {
   far: FarInfo | null;
   truckId: string | null;
   kind: VehicleKind;
+  /** the appointments this form booked (or kept on the phone to send), for the cars that left it. An estimate goes
+      with the first one only, and its own appointment does not make the estimate « already booked » for the cars
+      still to book (booking-a-08 with several cars) */
+  bookedIds: string[];
+  /** the new caller's file this form made: « Changer » back to the caller keeps what was said for them */
+  madeId: string | null;
 }
 
 export type Action =
@@ -78,13 +84,13 @@ export type Action =
   | { t: 'truck'; id: string | null }
   | { t: 'card'; on: boolean }
   | { t: 'refused'; banner: string | null; windowGone?: boolean }
-  | { t: 'booked'; keys: string[] };
+  | { t: 'booked'; keys: string[]; ids: string[] };
 
 export function initialDraft(o: { customerId: string | null; car: string; place: PlaceValue; caller: Caller; callCar: CallCar | null; choice: BlockChoice | null }): Draft {
   return {
     customerId: o.customerId, car: o.car, work: {}, caller: o.caller, callCars: o.callCar ? [o.callCar] : [], searchKnown: false, tried: false,
     place: o.place, placeOwner: o.customerId, placeFrom: o.customerId ? 'file' : 'none', notes: '', card: null,
-    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, truckId: null, kind: null
+    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, truckId: null, kind: null, bookedIds: [], madeId: null
   };
 }
 
@@ -160,15 +166,19 @@ export function reduce(d: Draft, a: Action): Draft {
       // an address typed before anybody was chosen (a new caller, then « C'est lui ») stays; one changed for another
       // customer goes back to the file of the one chosen now
       if (a.id) return { ...d, customerId: a.id, work, placeFrom: d.customerId ? 'file' : d.placeFrom };
-      // back to nobody: a new caller is back to their first car; the address and the card go with the customer
+      // back to nobody: a new caller is back to their first car; the address and the card go with the customer. The
+      // caller's own file, made by a first try: the address said during the call stays (it is theirs, and the next
+      // try sends it again)
       const to = d.callCars[0]?.id ?? NO_CAR;
-      return { ...d, customerId: null, car: to, work: moveWork(work, d.car, to), place: EMPTY_PLACE, placeOwner: null, placeFrom: 'none', card: null };
+      const back = { ...d, customerId: null, car: to, work: moveWork(work, d.car, to), placeOwner: null, card: null };
+      if (d.customerId && d.customerId === d.madeId && d.place.address.trim()) return { ...back, placeFrom: 'typed' };
+      return { ...back, place: EMPTY_PLACE, placeFrom: 'none' };
     }
     case 'customerRow': return customerRow(d, a);
     case 'queryCustomer': return d.customerId ? d : { ...d, customerId: a.id };
     // a new caller's file and cars are made: the screen now has this customer (a refused moment can be chosen again
     // without making them twice)
-    case 'made': return { ...d, customerId: a.customerId, placeOwner: a.customerId, car: a.cars.includes(d.car) ? d.car : NO_CAR, work: a.cars.includes(d.car) ? d.work : moveWork(d.work, d.car, NO_CAR) };
+    case 'made': return { ...d, customerId: a.customerId, madeId: a.customerId, placeOwner: a.customerId, car: a.cars.includes(d.car) ? d.car : NO_CAR, work: a.cars.includes(d.car) ? d.work : moveWork(d.work, d.car, NO_CAR) };
     case 'place': return { ...d, place: a.place, placeFrom: 'typed' };
     case 'placeFile': return { ...d, place: a.place, placeFrom: 'file' };
     case 'caller': return { ...d, caller: { ...d.caller, ...a.patch } };
@@ -218,7 +228,7 @@ export function reduce(d: Draft, a: Action): Draft {
     case 'card': return { ...d, card: a.on };
     case 'refused': return a.windowGone ? { ...d, choice: null, blockError: a.banner, reload: d.reload + 1 } : { ...d, blockError: a.banner };
     // what was booked (or kept on the phone to be sent) leaves the screen: the rest can be tried again in another moment
-    case 'booked': return { ...d, work: keepOnly(d.work, (k) => !a.keys.includes(k)) };
+    case 'booked': return { ...d, work: keepOnly(d.work, (k) => !a.keys.includes(k)), bookedIds: [...d.bookedIds, ...a.ids.filter((id) => !d.bookedIds.includes(id))] };
   }
 }
 

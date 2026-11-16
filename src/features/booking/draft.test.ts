@@ -62,8 +62,10 @@ describe('one job id per car, made once (booking-a-02)', () => {
     const ids = () => Object.fromEntries(plannedCars(d, mine(['v-1', 'v-2'])).map((c) => [c.key, c.jobId]));
     expect(ids()).toEqual({ 'v-2': 'id-v2', 'v-1': 'id-v1' });
     // the first tap booked v-1 only (v-2 was refused): the retry sends v-2 alone, with its own id
-    d = run(d, { t: 'booked', keys: ['v-1'] });
+    d = run(d, { t: 'booked', keys: ['v-1'], ids: ['id-v1'] });
     expect(ids()).toEqual({ 'v-2': 'id-v2' });
+    // the form remembers what it booked (the estimate went with it)
+    expect(d.bookedIds).toEqual(['id-v1']);
     // tapping the car that was booked does not bring it back with the old id
     d = run(d, { t: 'car', key: 'v-1', mint: 'y' });
     expect(ids()).toEqual({ 'v-2': 'id-v2' });
@@ -119,6 +121,30 @@ describe('« C’est lui » keeps what was said during the call (booking-a-05)',
     expect(d.car).toBe('call-1');
     expect(items(d)).toEqual(['Huile']);
     expect(d.place).toEqual(EMPTY_PLACE);
+  });
+});
+
+describe('the new caller’s own file, made by a refused first try (booking-a-09)', () => {
+  const made = () => run(fresh({ callCar: { id: 'call-1', draft: { year: '', make: '', model: '', vin: '', extra: {} }, mode: 'ymm' }, car: 'call-1' }),
+    { t: 'place', place: place('99 rue Typed') }, { t: 'items', items: [line('Huile')], mint: 'id-1' }, { t: 'made', customerId: 'c-new', cars: ['call-1'] },
+    { t: 'customerRow', id: 'c-new', cars: ['call-1'], place: place('99 rue Typed'), card: false });
+  it('« Changer » back to the caller to fix the number: the address said during the call stays', () => {
+    const d = run(made(), { t: 'pickCustomer', id: null });
+    expect(d.customerId).toBeNull();
+    expect(d.place.address).toBe('99 rue Typed');
+    expect(d.placeFrom).toBe('typed');
+    expect(d.car).toBe('call-1');
+    expect(items(d)).toEqual(['Huile']);
+  });
+  it('then « C’est lui » on another file: the address said stays too (as for any caller)', () => {
+    let d = run(made(), { t: 'pickCustomer', id: null }, { t: 'pickCustomer', id: 'c-julie' });
+    d = run(d, { t: 'customerRow', id: 'c-julie', cars: ['v-julie'], place: place('1 rue A'), card: false });
+    expect(d.place.address).toBe('99 rue Typed');
+  });
+  it('a customer this form did not make: the address goes with them (as before)', () => {
+    const d = run(fresh({ customerId: 'c-a', place: place('1 rue A') }), { t: 'place', place: place('2 rue changée') }, { t: 'pickCustomer', id: null });
+    expect(d.place).toEqual(EMPTY_PLACE);
+    expect(d.placeFrom).toBe('none');
   });
 });
 

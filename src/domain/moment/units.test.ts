@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { windowFor, type Range } from '../../lib/dates';
 import { unitMinutes } from './grid';
-import { possibleUnits, rowsByStart, unitOfWindow, unitStates, pageDays, pageOf, lastPage, cacheKey, byHour, moveFocus, windowStarts, windowListed, type WinRow } from './units';
+import { possibleUnits, rowsByStart, unitOfWindow, unitStates, pageDays, pageOf, lastPage, cacheKey, byHour, moveFocus, windowStarts, type WinRow } from './units';
 import { floatPlace } from '../../shared/moment/PickGrid';
 
 const DAY: Range = [480, 1200];
@@ -157,38 +157,56 @@ describe('the small map beside the unit pointed at', () => {
 });
 
 describe('the calendar with any numbers of Réglages (x-time-02)', () => {
-  /** the windows the server lists today: from the day's first hour, one per `step` (max(rounding, 15)), each with the
-      arrival it planned inside it (here: half an hour in, as on an empty day) */
-  const serverRows = (span: Range, len: number, step: number): WinRow[] => {
-    const out: WinRow[] = [];
-    for (let s = span[0]; s + len <= span[1]; s += step) out.push({ win_start: s, win_end: s + len, eta: s + 30, truck: 'T1', drive_min: 10 });
-    return out;
-  };
   const shaped = (before: number, after: number, round: number, span: Range = DAY) => (eta: number): Range => windowFor(eta, { before, after, round, dayStart: span[0], dayEnd: span[1] });
-  it('« avant » 30 with rounding 60: the day is not « complet » any more (2 units of 48 before)', () => {
-    const of = shaped(30, 180, 60);
-    const p = possibleUnits(DAY, serverRows(DAY, 210, 60), of);
-    expect(p.size).toBeGreaterThan(40);
-    // each unit opened is proven by a planned arrival inside the very window the customer will be told
-    for (const [m, r] of p) { const w = of(m); expect(r.eta!).toBeGreaterThanOrEqual(w[0]); expect(r.eta!).toBeLessThanOrEqual(w[1]); }
+  /** what suggest_windows_core tries since the planning migration: win_for of every quarter hour from the day's
+      first minute to its last (generate_series(start, end, 15)), each start once; every window fits on an empty day */
+  const serverRows = (span: Range, of: (eta: number) => Range): WinRow[] => {
+    const starts = new Set<number>();
+    for (let m = span[0]; m <= span[1]; m += 15) starts.add(of(m)[0]);
+    return [...starts].sort((a, b) => a - b).map((s) => ({ win_start: s, win_end: of(s)[1], eta: s + 30, truck: 'T1', drive_min: 10 }));
+  };
+  /** the picker's question for a window chosen (a unit tapped, a suggestion, a paste): is its start listed? */
+  const gone = (rows: WinRow[], start: number, of: (eta: number) => Range) => !rowsByStart(rows, of).has(start);
+  const shapes: [number, number, number][] = [];
+  for (const before of [0, 20, 30, 45, 60, 90]) for (const round of [15, 30, 60]) shapes.push([before, 180, round]);
+  shapes.push([60, 150, 60], [60, 200, 60]);
+  const spans: Range[] = [[480, 1200], [450, 1200], [480, 1230], [480, 1215]];
+
+  it('every « avant », rounding and first hour of the day: an empty day opens every unit (it was 2 of 48 with « avant » 30)', () => {
+    for (const span of spans) for (const [b, a, r] of shapes) {
+      const of = shaped(b, a, r, span);
+      const p = possibleUnits(span, serverRows(span, of), of);
+      expect({ span, b, a, r, open: p.size }).toEqual({ span, b, a, r, open: unitMinutes(span).length });
+    }
   });
-  it('a day starting at 7 h 30 with the default numbers: the same (4 units of 50 before)', () => {
-    const span: Range = [450, 1200];
-    expect(possibleUnits(span, serverRows(span, 240, 60), shaped(60, 180, 60, span)).size).toBeGreaterThan(40);
+  it('the windows the calendar asks for are exactly the ones the server tries', () => {
+    for (const span of spans) for (const [b, a, r] of shapes) {
+      const of = shaped(b, a, r, span);
+      expect(windowStarts(span, of)).toEqual(serverRows(span, of).map((x) => x.win_start));
+    }
+    expect(windowStarts(DAY, shaped(60, 180, 60))).toEqual([480, 540, 600, 660, 720, 780, 840, 900, 960]);
+    expect(windowStarts(DAY, shaped(30, 180, 60)).slice(0, 3)).toEqual([480, 510, 570]);
+  });
+  it('a unit opened, then tapped, is never « no longer possible »: the window told is the one the server checked', () => {
+    for (const span of spans) for (const [b, a, r] of shapes) {
+      const of = shaped(b, a, r, span);
+      const rows = serverRows(span, of).filter((_, i) => i % 3 !== 1);   // a busy day: some windows full
+      for (const [m, row] of possibleUnits(span, rows, of)) {
+        expect(row.win_start).toBe(of(m)[0]);
+        expect(gone(rows, of(m)[0], of)).toBe(false);
+      }
+    }
+  });
+  it('an older server on another grid: nothing is guessed from another window, so nothing opened bounces', () => {
+    const of = shaped(30, 180, 60);
+    const old: WinRow[] = [];
+    for (let s = 480; s + 210 <= 1200; s += 60) old.push({ win_start: s, win_end: s + 210, eta: s + 30, truck: 'T1', drive_min: 10 });
+    const p = possibleUnits(DAY, old, of);
+    expect([...p.keys()]).toEqual([480, 495]);
+    for (const m of p.keys()) expect(gone(old, of(m)[0], of)).toBe(false);
   });
   it('a server on the rule’s own grid is believed when it leaves a window out (nothing is guessed)', () => {
     const of = shaped(60, 180, 60);
     expect([...possibleUnits(DAY, [row(600, 630)], of).keys()]).toEqual([630, 645, 660, 675]);
-  });
-  it('the windows the rule can tell, by their start (what the server must try)', () => {
-    expect(windowStarts(DAY, shaped(60, 180, 60))).toEqual([480, 540, 600, 660, 720, 780, 840, 900, 960]);
-    expect(windowStarts(DAY, shaped(30, 180, 60)).slice(0, 3)).toEqual([480, 510, 570]);
-  });
-  it('a window chosen before the answer: still possible by the same reading', () => {
-    const of = shaped(30, 180, 60);
-    const rows = serverRows(DAY, 210, 60);
-    expect(windowListed(DAY, rows, 810, of, 210)).toBe(true);
-    expect(windowListed(DAY, [], 810, of, 210)).toBe(false);
-    expect(windowListed(DAY, [row(600, 630)], 660, shaped(60, 180, 60), 240)).toBe(false);
   });
 });

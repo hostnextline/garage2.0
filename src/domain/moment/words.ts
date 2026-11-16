@@ -91,7 +91,7 @@ export function weekdaysWords(dows: number[], l: Lang): string {
 }
 
 /** « 2 h 08 », « 45 min » — short enough for a small cell, in both languages */
-function shortDuration(min: number): string {
+export function shortDuration(min: number): string {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   if (!h) return `${m} min`;
   return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;

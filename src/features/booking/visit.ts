@@ -2,6 +2,7 @@
 import { bookSummary, toItemInputs, choicePayload } from '../../domain/moment/logic';
 import type { BlockChoice, VehicleKind } from '../../domain/moment/choice';
 import type { BookInput, ItemInput } from '../../data/api';
+import type { Customer } from '../../data/types';
 import type { TaxRates } from '../../lib/money';
 import type { PlannedCar } from './draft';
 
@@ -36,4 +37,19 @@ export function visitJobs(cars: PlannedCar[], base: VisitBase, o: { choice: Bloc
 export function forcedJob(job: BookInput, choice: BlockChoice): BookInput {
   const { win_start: _w, win_flex: _f, ...rest } = job;
   return { ...rest, ...choicePayload(choice, true), force: true };
+}
+
+/** the address fields of a customer's file */
+const PLACE_KEYS: readonly string[] = ['address', 'unit', 'postal_code', 'lat', 'lng', 'city'];
+/** a new caller's file made by a first try, then the name, the number or the address fixed before the next one: only
+    what changed since the last save goes to the file, and an address left empty never empties the file's (booking-a-09).
+    null: nothing to save */
+export function callerUpdate(before: Partial<Customer>, after: Partial<Customer>): Partial<Customer> | null {
+  const was = before as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(after)) {
+    if (!after.address && PLACE_KEYS.includes(k)) continue;
+    if (was[k] !== v) out[k] = v;
+  }
+  return Object.keys(out).length ? (out as Partial<Customer>) : null;
 }
