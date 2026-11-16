@@ -715,3 +715,52 @@ test('sql-planner-1 B6: block mode, hours with a hole inside the block are not p
     assert.ok(j.eta_min + 60 <= 570 || j.eta_min >= 630, `nobody during the hole: ${j.eta_min}`);
   }
 }));
+
+test('sql-planner-1 B11 / sql-windows-13, two connections: two devices moving the same appointment at once: the second is told it just moved', async () => {
+  const c = await pool.connect();
+  const opened = [];
+  const start = (await c.query(`select clock_timestamp() as t`)).rows[0].t;
+  const owner = randomUUID(), truck = randomUUID(), cust = randomUUID();
+  try {
+    await c.query(`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+      values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2, '', now(), now(), now(), '{}', '{}')`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.staff (id, full_name, short_name, roles, rights, email) values ($1, 'Hassan Conc', 'Hassan', '{owner}', '{}', $2)`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.trucks (id, name, active, sort) values ($1, 'Camion Conc', true, 0)`, [truck]);
+    for (let d = 0; d < 7; d++) await c.query(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, $3)`, [truck, d, JSON.stringify(DAY)]);
+    await c.query(`insert into public.customers (id, first_name, last_name, phone, lat, lng, address) values ($1, 'Conc', 'Test', '5145550000', $2, $3, '1 rue Test')`, [cust, ...near]);
+    const days = (await c.query(`select (public.local_today() + 30)::text d1, (public.local_today() + 31)::text d2, (public.local_today() + 32)::text d3`)).rows[0];
+    const open = async () => {
+      const k = await pool.connect(); opened.push(k);
+      await k.query('begin');
+      await k.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [JSON.stringify({ sub: owner, role: 'authenticated' }), owner]);
+      await k.query('set local role authenticated');
+      return k;
+    };
+    const k0 = await open();
+    const id = (await k0.query(`select public.book_job(p_op => $1, p_job => $2::jsonb) as r`, [randomUUID(), JSON.stringify({ customer_id: cust, day: days.d1, block: 'am', duration_min: 60 })])).rows[0].r.job_id;
+    await k0.query('commit');
+    const move = `select public.move_job(p_op => $1, p_job => $2, p_day => $3::date, p_block => 'am', p_truck => null) as r`;
+    const k1 = await open(), k2 = await open();
+    assert.equal((await k1.query(move, [randomUUID(), id, days.d2])).rows[0].r.changed, true);
+    const p2 = k2.query(move, [randomUUID(), id, days.d3]);
+    assert.equal(await within(p2, 400), 'waiting', 'the second device waits for the first');
+    await k1.query('commit');
+    const e = await p2.then(() => null, (x) => x);
+    assert.equal(e?.hint, 'changed', 'then it is told the appointment just moved');
+    await k2.query('rollback');
+    assert.equal((await c.query(`select day::text from public.jobs where id = $1`, [id])).rows[0].day, days.d2, 'where the first device put it');
+  } finally {
+    for (const k of opened) { await k.query('rollback').catch(() => {}); k.release(); }
+    await c.query(`select set_config('garage.rpc', 'on', false)`);
+    await c.query(`delete from public.job_items where job_id in (select id from public.jobs where customer_id = $1)`, [cust]);
+    await c.query(`delete from public.jobs where customer_id = $1`, [cust]);
+    await c.query(`delete from public.customers where id = $1`, [cust]);
+    await c.query(`delete from public.truck_week where truck_id = $1`, [truck]);
+    await c.query(`delete from public.trucks where id = $1`, [truck]);
+    await c.query(`delete from public.op_log where at >= $1`, [start]);
+    await c.query(`delete from public.activity where at >= $1`, [start]);
+    await c.query(`delete from auth.users where id = $1`, [owner]);
+    await c.query(`select set_config('garage.rpc', '', false)`);
+    c.release();
+  }
+});
