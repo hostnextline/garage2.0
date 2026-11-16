@@ -1,6 +1,14 @@
 /* « Besoins de la semaine » and its card on « La journée »; the « nothing here » line shared with « Inventaire ». Tokens only. */
 .inv-none { display: flex; align-items: center; gap: var(--sp-2); margin: 0; padding: var(--sp-2) var(--sp-5) var(--sp-5); color: var(--ink-2); }
 .inv-none svg { color: var(--ok); flex: none; }
+/* Three rules of « Inventaire » kept here, where they were always loaded with the card of « La journée »: the invoices'
+   screens use the same class names (.inv-summary of « Factures », .inv-filters, .inv-qty of the invoice lines) and
+   are drawn with them. Moving them to the inventory's own file changed « Factures » for whoever had not opened
+   « Inventaire » first. */
+.inv-summary { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); }
+.inv-filters { display: flex; flex-direction: column; gap: var(--sp-3); }
+.inv-qty { font-size: var(--t-md); white-space: nowrap; }
+.inv-qty.is-low { color: var(--warn); }
 
 /* ---------- « Besoins de la semaine »: the week, four numbers, what to buy, everything the week takes ---------- */
 .needs-weekbar { display: flex; align-items: center; gap: var(--sp-2); padding: 4px; border-radius: var(--r-pill); background: var(--glass); border: 1px solid var(--glass-edge);

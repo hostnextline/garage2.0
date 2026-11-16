@@ -19,6 +19,7 @@ import { stockLists } from './stockLists';
 import { useDefaultWeek } from '../../shared/stock/useWeekNeeds';
 import { weekWords } from '../../shared/stock/needsWords';
 import '../../shared/charts/charts.css';
+import '../../shared/stock/needs.css';
 import './inventory.css';
 
 export default function InventoryScreen({ query }: ScreenProps) {
