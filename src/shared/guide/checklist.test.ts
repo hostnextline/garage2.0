@@ -61,6 +61,15 @@ describe('the owner’s first steps', () => {
     m = byId(computeChecklist(input({ trucks: [trucks[0], { ...trucks[1], driver_id: 'adam' }, trucks[2]], trucksWithHours: ['t1', 't2'] })));
     expect(m.trucks.done).toBe(true);
   });
+  it('« Routes partagées »: the vehicles are nobody’s own, so no driver is asked (the step could never be done) (comms-guide-20)', () => {
+    const trucks = [{ id: 't1', name: 'Camion', active: true, driver_id: null }, { id: 't2', name: 'Voiture', active: true, driver_id: null }];
+    expect(byId(computeChecklist(input({ trucks, trucksWithHours: ['t1', 't2'] }))).trucks.done).toBe(false);
+    expect(byId(computeChecklist(input({ trucks, trucksWithHours: ['t1', 't2'], sharedRoutes: true }))).trucks.done).toBe(true);
+    expect(byId(computeChecklist(input({ trucks, trucksWithHours: ['t1'], sharedRoutes: true }))).trucks.detail).toEqual({ key: 'noHours', vars: { name: 'Voiture' } });
+  });
+  it('the office’s « L’agenda » shows an element the agenda really draws (« agenda-day » existed nowhere) (comms-guide-18)', () => {
+    expect(byId(computeChecklist(input({ roles: ['office'] }))).agenda.anchor).toBe('agenda-week');
+  });
   it('counts the team as invited with another person or an invitation waiting', () => {
     expect(byId(computeChecklist(input({ staff: [{ id: 'me', active: true }, { id: 'x', active: false }] }))).team.done).toBe(false);
     expect(byId(computeChecklist(input({ staff: [{ id: 'me', active: true }, { id: 'saleh', active: true }] }))).team.done).toBe(true);

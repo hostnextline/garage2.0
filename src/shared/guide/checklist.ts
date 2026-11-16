@@ -10,6 +10,8 @@ export interface GuideInput {
   taxesOn: boolean;
   services: { active: boolean; price_cents: number | null }[];
   trucks: { id: string; name: string; active: boolean; driver_id: string | null }[];
+  /** « Routes partagées »: the vehicles are nobody's own (mechanics switch during the day), so none needs a driver */
+  sharedRoutes?: boolean;
   /** truck ids that have working hours (a week with at least one range) */
   trucksWithHours: string[];
   staff: { id: string; active: boolean }[];
@@ -68,7 +70,7 @@ function ownerSteps(x: GuideInput): GuideStep[] {
   const servicesDetail: Detail | null = !active.length ? { key: 'noServices' } : unpriced ? { key: 'unpriced', vars: { n: unpriced } } : servicesDone ? null : { key: 'confirmPrices' };
 
   const trucks = x.trucks.filter((t) => t.active);
-  const noDriver = trucks.find((t) => !t.driver_id);
+  const noDriver = x.sharedRoutes ? undefined : trucks.find((t) => !t.driver_id);
   const noHours = trucks.find((t) => !x.trucksWithHours.includes(t.id));
   const trucksDetail: Detail | null = !trucks.length ? { key: 'noTruck' } : noDriver ? { key: 'noDriver', vars: { name: noDriver.name } } : noHours ? { key: 'noHours', vars: { name: noHours.name } } : null;
 
@@ -90,7 +92,7 @@ function officeSteps(x: GuideInput): GuideStep[] {
   return [
     { id: 'book', role: 'office', kind: 'data', done: x.jobs.some((j) => j.created_by === x.me.id), detail: null, href: '/book', anchor: 'book-customer' },
     { id: 'customers', role: 'office', kind: 'visit', done: !!x.marks.customers, detail: null, href: '/customers', anchor: 'customers-search' },
-    { id: 'agenda', role: 'office', kind: 'visit', done: !!x.marks.agenda, detail: null, href: '/agenda', anchor: 'agenda-day' }
+    { id: 'agenda', role: 'office', kind: 'visit', done: !!x.marks.agenda, detail: null, href: '/agenda', anchor: 'agenda-week' }
   ];
 }
 

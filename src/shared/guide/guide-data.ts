@@ -99,6 +99,7 @@ export function guideInput(): GuideInput | null {
     taxesOn: s.taxes?.enabled !== false,
     services: rowsOf<Service>('services').filter((x) => !x.deleted_at).map((x) => ({ active: !!x.active, price_cents: x.price_cents })),
     trucks: trucks.value.map((t) => ({ id: t.id, name: t.name, active: !!t.active, driver_id: t.driver_id })),
+    sharedRoutes: (s.booking as { shared_routes?: boolean }).shared_routes === true,
     trucksWithHours: [...withHours],
     staff: staffList.value.map((x) => ({ id: x.id, active: !!x.active })),
     invitations: c?.invitations ?? null,
