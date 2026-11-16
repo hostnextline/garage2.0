@@ -3,6 +3,7 @@
 import { signal } from '@preact/signals';
 import { t } from '../lib/i18n';
 import { errorMessage } from '../lib/errors';
+import { onActionFailed } from './actionFailed';
 
 export interface Toast { id: number; text: string; kind: 'info' | 'ok' | 'bad'; action?: { label: string; run: () => unknown }; ms: number }
 export const toasts = signal<Toast[]>([]);
@@ -17,6 +18,8 @@ export function toast(text: string, o: { kind?: Toast['kind']; action?: Toast['a
   return id;
 }
 export function dismissToast(id: number) { toasts.value = toasts.value.filter((x) => x.id !== id); }
+// a button or a form whose action threw without a word: the reason in a toast (never in silence)
+onActionFailed((e) => { toast(errorMessage(e), { kind: 'bad' }); });
 
 export function ToastHost() {
   return (

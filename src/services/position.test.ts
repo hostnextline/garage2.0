@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldSend, metersBetween, currentJobId, agoText, RULES, type Fix, type Sent } from './position';
+import { shouldSend, metersBetween, currentJobId, agoText, RULES, myRoute, setMyRoute, refreshMyRoute, type Fix, type Sent } from './position';
 import { lang } from '../lib/i18n';
 
 const T0 = Date.UTC(2026, 10, 4, 15, 0, 0);
@@ -99,5 +99,36 @@ describe('« il y a … »', () => {
     expect(agoText(T0 - 3 * 60_000, T0)).toBe('3 min ago');
     expect(agoText(T0 - 125 * 60_000, T0)).toBe('2 h 5 min ago');
     lang.value = 'fr';
+  });
+});
+
+describe('« Routes partagées »: the job of a position is on the route the person does', () => {
+  const jobs = [
+    { id: 'A', status: 'en_route' as const, truck_id: 'truck', day: '2026-11-17' },
+    { id: 'B', status: 'on_site' as const, truck_id: 'car', day: '2026-11-17' }
+  ];
+  it('Adam, on site at B with the car, is not put on Saleh’s job A (old logic took the first job en route of any vehicle)', () => {
+    expect(currentJobId(jobs, ['truck', 'car'], '2026-11-17', 'car')).toBe('B');
+    expect(currentJobId(jobs, ['truck', 'car'], '2026-11-17', null)).toBe('A');
+    expect(currentJobId(jobs, ['truck'], '2026-11-17', 'car')).toBe('A');
+  });
+});
+
+describe('the route I do (« La route que je fais »), changed during the day', () => {
+  it('a route written by « Ma journée » (its own copy, the same key) is the one counted, not the one read at start', () => {
+    setMyRoute('t1');
+    // « Ma journée » writes the key itself, without this module's signal
+    localStorage.setItem('his.myRoute', 't2');
+    expect(refreshMyRoute()).toBe('t2');
+    expect(myRoute.value).toBe('t2');
+    const jobs = [
+      { id: 'mine-t1', status: 'en_route' as const, truck_id: 't1', day: '2026-11-04' },
+      { id: 'mine-t2', status: 'en_route' as const, truck_id: 't2', day: '2026-11-04' }
+    ];
+    expect(currentJobId(jobs, ['t1', 't2'], '2026-11-04', myRoute.value)).toBe('mine-t2');
+    // « Les deux » again (the key removed)
+    localStorage.removeItem('his.myRoute');
+    expect(refreshMyRoute()).toBeNull();
+    expect(myRoute.value).toBeNull();
   });
 });

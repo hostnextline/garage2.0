@@ -3,7 +3,7 @@
 
 export type Group = 'day' | 'office' | 'garage';
 export type MoreFilter = 'all' | Group;
-export const FILTERS: MoreFilter[] = ['all', 'day', 'office', 'garage'];
+const FILTERS: MoreFilter[] = ['all', 'day', 'office', 'garage'];
 
 /** each part of the app has its own colour on the launcher (the icon's glass square), the same in light and dark */
 export const TILE_HUE: Record<string, string> = {

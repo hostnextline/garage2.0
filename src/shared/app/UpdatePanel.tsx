@@ -7,7 +7,7 @@ import { APP_VERSION, BUILT_AT } from '../../lib/config';
 import { Panel, Button, Banner, Kv } from '../../ui';
 import { updateReady, updateState, remoteVersion, checkForUpdate, applyUpdate, isImportant } from './pwa';
 
-export function versionLabel(version = APP_VERSION, builtAt = BUILT_AT, l = lang.value): string {
+function versionLabel(version = APP_VERSION, builtAt = BUILT_AT, l = lang.value): string {
   const when = builtAt ? stamp(builtAt, l) : '';
   const short = version && version !== 'dev' ? version.slice(0, 7) : t('shell.update.devVersion');
   return when ? `${when} (${short})` : short;
@@ -31,13 +31,15 @@ export function UpdatePanel(p: { 'data-testid'?: string; titled?: boolean } = {}
           </Banner>
         ) : s === 'none' ? (
           <Banner kind="ok" data-testid="update-none">{t('shell.update.none')}</Banner>
+        ) : s === 'downloading' ? (
+          <Banner kind="info" data-testid="update-downloading">{t('shell.update.downloading')}</Banner>
         ) : s === 'offline' ? (
           <Banner kind="warn" data-testid="update-offline">{t('shell.update.offline')}</Banner>
         ) : s === 'error' ? (
           <Banner kind="warn" data-testid="update-error">{t('shell.update.error')}</Banner>
         ) : null}
         {!ready && (
-          <Button icon={<RefreshCw size={18} class={s === 'checking' ? 'spin-slow' : ''} />} busy={s === 'checking'} onClick={() => void checkForUpdate()} data-testid="update-check">
+          <Button icon={<RefreshCw size={18} class={s === 'checking' ? 'spin-slow' : ''} />} busy={s === 'checking'} onClick={() => checkForUpdate()} data-testid="update-check">
             {s === 'checking' ? t('shell.update.checking') : t('shell.update.check')}
           </Button>
         )}

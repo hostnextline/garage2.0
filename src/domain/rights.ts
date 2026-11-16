@@ -1,4 +1,4 @@
-/* Who may open what (the server checks again; this only avoids a screen full of refusals). */
+/* Who may open what (the server checks again; this only avoids a screen full of refusals). Tested in rights.test.ts. */
 import { hasRole, can, isOwner, myTrucks } from '../data/auth';
 
 export const isField = () => hasRole('owner') || hasRole('office') || hasRole('mechanic');
@@ -26,5 +26,8 @@ export const may = {
   settings: () => true,
   settingsEdit: () => can('settings'),
   walkIn: () => can('book') || hasRole('mechanic'),
-  newCustomer: () => can('clients') || can('book')
+  // making a customer file or an estimate: the server lets only the field (owner, office, mechanic) insert them
+  // (customers_ins, quotes_ins: is_field()); a treasurer with « clients » used to be offered it and refused after
+  newCustomer: () => isField() && (can('clients') || can('book')),
+  newQuote: () => isField()
 };

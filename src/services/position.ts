@@ -50,9 +50,12 @@ export function shouldSend(last: Sent | null, fix: Fix, jobId: string | null, no
   return metersBetween(last, fix) >= r.moveM;
 }
 
-/** the job a position belongs to: the one the person drives to, else the one they work at (today, their trucks) */
-export function currentJobId(jobs: Pick<Job, 'id' | 'status' | 'truck_id' | 'day'>[], trucks: string[], day: string): string | null {
-  const mine = jobs.filter((j) => j.day === day && !!j.truck_id && trucks.includes(j.truck_id));
+/** the job a position belongs to: the one the person drives to, else the one they work at (today, their trucks).
+    With « Routes partagées » every vehicle is everybody's: the route the person said they do (« La route que je
+    fais ») decides, or a mechanic's position was put on another mechanic's job. */
+export function currentJobId(jobs: Pick<Job, 'id' | 'status' | 'truck_id' | 'day'>[], trucks: string[], day: string, route: string | null = null): string | null {
+  const ours = trucks.length > 1 && route && trucks.includes(route) ? [route] : trucks;
+  const mine = jobs.filter((j) => j.day === day && !!j.truck_id && ours.includes(j.truck_id));
   return (mine.find((j) => j.status === 'en_route') || mine.find((j) => j.status === 'on_site'))?.id ?? null;
 }
 
@@ -63,6 +66,26 @@ export function agoText(at: number | string | null | undefined, now = Date.now()
   const min = Math.floor(ms / 60_000);
   if (min < 60) return t('today.ago.min', { n: min });
   return t('today.ago.long', { time: duration(min, lang.value) });
+}
+
+/* ---------- the route this person does (« Routes partagées ») ---------- */
+const ROUTE_KEY = 'his.myRoute';
+const readRoute = (): string | null => { try { return localStorage.getItem(ROUTE_KEY); } catch { return null; } };
+/** the route this mechanic is doing now, when several are theirs (kept on the phone, the same key as « Ma journée »);
+    null: all of them */
+export const myRoute = signal<string | null>(readRoute());
+export function setMyRoute(id: string | null) {
+  myRoute.value = id;
+  try { if (id) localStorage.setItem(ROUTE_KEY, id); else localStorage.removeItem(ROUTE_KEY); } catch { /* private window */ }
+}
+/** « Ma journée » keeps its own copy of the choice and writes the same key: the route counted here is read again from
+    the phone before each position (and on a change made in another tab), so a route changed during the day is never
+    left at the one read when the app opened. The phone cannot keep it (private window): the signal is the truth. */
+export function refreshMyRoute(): string | null {
+  let kept: string | null;
+  try { kept = localStorage.getItem(ROUTE_KEY); } catch { return myRoute.value; }
+  if (kept !== myRoute.value) myRoute.value = kept;
+  return kept;
 }
 
 /* ---------- the sharing (browser) ---------- */
@@ -121,6 +144,8 @@ async function maybeSend(fix: Fix) {
 function onFix(p: GeolocationPosition) {
   const fix = readFix(p);
   lastFix = fix;
+  // the route may have changed in « Ma journée » since the last reading: the job of this position follows it at once
+  refreshMyRoute();
   if (sharing.value.status !== 'on') setStatus('on');
   void maybeSend(fix);
 }
@@ -158,8 +183,10 @@ function stop() {
 export function startPositionSharing() {
   if (started || typeof window === 'undefined' || typeof document === 'undefined') return;
   started = true;
+  window.addEventListener('storage', (e) => { if (e.key === null || e.key === ROUTE_KEY) refreshMyRoute(); });
   document.addEventListener('visibilitychange', () => {
     const v = document.visibilityState !== 'hidden';
+    if (v) refreshMyRoute();
     if (v && !visible.value) blocked = false;   // back from the phone's settings: ask again
     visible.value = v;
   });
@@ -173,7 +200,7 @@ export function startPositionSharing() {
     const a = me.value;
     const shift = a ? openShift(a.id) : undefined;
     const on = !!a && !!shift && !preview.value && visible.value;
-    const job = a ? currentJobId(allJobs.value, a.trucks || [], today()) : null;
+    const job = a ? currentJobId(allJobs.value, a.trucks || [], today(), myRoute.value) : null;
     untracked(() => {
       const changed = job !== jobNow;
       jobNow = job;

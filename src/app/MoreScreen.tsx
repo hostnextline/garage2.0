@@ -8,8 +8,7 @@ import { may } from '../domain/rights';
 import { t, lang } from '../lib/i18n';
 import { today } from '../lib/dates';
 import { money } from '../lib/money';
-import { me, signOut } from '../data/auth';
-import { pendingCount } from '../data/sync';
+import { me } from '../data/auth';
 import { jobsOn, invoicesList, lowStock } from '../data/select';
 import { Button, Avatar, Banner } from '../ui';
 import { computeChecklist, nextStep, progress, mainRole, type Role } from '../shared/guide/checklist';
@@ -17,6 +16,7 @@ import { guideInput, nextJobId, refreshChecks } from '../shared/guide/guide-data
 import { TILE_HUE, filtersFor, tilesFor, dueCents, unpaidCount, ratio, type MoreFilter } from './more';
 import { dayCounts } from '../domain/jobs/counts';
 import { callCount } from '../domain/oil/select';
+import { useSignOut } from '../shared/app/signOut';
 import './more.css';
 
 const FILTER_KEY = 'his.more.filter';
@@ -123,14 +123,7 @@ export default function MoreScreen() {
   const shown = tilesFor(items, filters.includes(filter) ? filter : 'all');
   const pick = (f: MoreFilter) => { setFilter(f); try { sessionStorage.setItem(FILTER_KEY, f); } catch { /* private mode */ } };
   const role: Role = a ? mainRole({ roles: (a.roles || []) as Role[], owner: !!a.owner }) : 'office';
-  const [warn, setWarn] = useState<number>(0);
-  const out = async () => {
-    if (!warn) {
-      const n = await pendingCount();
-      if (n > 0) { setWarn(n); return; }
-    }
-    await signOut(true);
-  };
+  const { warn, out } = useSignOut();
   return (
     <div class="page more" data-testid="more-screen">
       <h1 class="sr-only">{t('shell.nav.more')}</h1>

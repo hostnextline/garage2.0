@@ -18,3 +18,13 @@ const mqRoomy = typeof window !== 'undefined' && window.matchMedia ? window.matc
 /** wide enough for the time grid (≥ 760 px) */
 export const roomy = signal<boolean>(!!mqRoomy?.matches);
 mqRoomy?.addEventListener?.('change', (e) => { roomy.value = e.matches; });
+
+/* What the phone itself says about the network: the 'offline' event comes at once, long before a request fails (the
+   sync chip used to wait for the next failed pull, up to 3 minutes). */
+const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+/** the phone says it has a network (false: certainly offline; true: maybe online) */
+export const browserOnline = signal<boolean>(nav?.onLine !== false);
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => { browserOnline.value = true; });
+  window.addEventListener('offline', () => { browserOnline.value = false; });
+}

@@ -1,10 +1,16 @@
 /* Screens are addressed by the part after « # »: #/agenda/2026-11-04, #/job/<id>, #/book?customer=<id>.
    Links are plain <a href="#/…">; code calls navigate('/…'). Retour goes back in the app's own history when there
-   is some, else to the screen given as fallback. */
+   is some, else to the screen given as fallback.
+   - A new screen starts at the top; a change of the query only (a tab, a filter, a search) never moves the page.
+   - Going to another screen closes the open sheets first and removes their history steps (platform/history), so
+     « Retour » never meets a dead step.
+   - setQuery replaces the entry and keeps the open sheets' steps in it. */
 import { signal } from '@preact/signals';
-import { whenHistorySettled } from './history';
+import { whenHistorySettled, closeLayersForNavigation, stackOf } from './history';
 
 export interface Route { path: string; parts: string[]; query: URLSearchParams }
+export interface ScreenProps { params: Record<string, string>; query: URLSearchParams }
+export type QueryPatch = Record<string, string | number | null | undefined | false>;
 
 export function parseHash(hash: string): Route {
   let h = String(hash || '').replace(/^#/, '');
@@ -29,7 +35,7 @@ if (typeof window !== 'undefined') {
 }
 
 /** '#/job/abc' for an href */
-export function href(path: string, query?: Record<string, string | number | null | undefined | false>): string {
+export function href(path: string, query?: QueryPatch): string {
   let q = '';
   if (query) {
     const sp = new URLSearchParams();
@@ -40,15 +46,27 @@ export function href(path: string, query?: Record<string, string | number | null
   return '#' + (path.startsWith('/') ? path : '/' + path) + q;
 }
 
+const toHash = (to: string) => (to.startsWith('#') ? to : '#' + (to.startsWith('/') ? to : '/' + to));
+
 export function navigate(to: string, opts: { replace?: boolean } = {}) {
   whenHistorySettled(() => {
-    const target = to.startsWith('#') ? to : '#' + (to.startsWith('/') ? to : '/' + to);
-    if (target === location.hash && !opts.replace) { sync(); return; }
+    const target = toHash(to);
     const url = location.pathname + location.search + target;
-    if (opts.replace) history.replaceState({ d: depthOf() }, '', url);
-    else history.pushState({ d: depthOf() + 1 }, '', url);
+    const samePath = parseHash(target).path === route.value.path;
+    // another screen: the sheets open on this one close first, and their steps go (else « Retour » meets them)
+    if ((!opts.replace || !samePath) && closeLayersForNavigation() > 0) { whenHistorySettled(() => navigate(to, opts)); return; }
+    if (opts.replace) {
+      // the same screen (a tab, a filter): the open sheets keep their steps, the page does not move
+      const sheets = stackOf(history.state);
+      history.replaceState(sheets.length ? { d: depthOf(), sheets } : { d: depthOf() }, '', url);
+      sync();
+      if (!samePath) window.scrollTo({ top: 0 });
+      return;
+    }
+    if (target === location.hash) { sync(); return; }
+    history.pushState({ d: depthOf() + 1 }, '', url);
     sync();
-    window.scrollTo({ top: 0 });
+    if (!samePath) window.scrollTo({ top: 0 });
   });
 }
 /** « Retour »: one step back in the app, or the fallback screen when the app was opened right here */
@@ -58,12 +76,16 @@ export function goBack(fallback = '/') {
     else navigate(fallback, { replace: true });
   });
 }
-/** change the query of the current screen without a new history step (filters, tabs, the day shown) */
-export function setQuery(patch: Record<string, string | number | null | undefined | false>) {
-  const r = route.value;
-  const sp = new URLSearchParams(r.query);
+/** the query of the current screen with `patch` applied ('' / null / false remove a key) */
+export function patchQuery(query: URLSearchParams, patch: QueryPatch): string {
+  const sp = new URLSearchParams(query);
   for (const [k, v] of Object.entries(patch)) { if (v == null || v === false || v === '') sp.delete(k); else sp.set(k, String(v)); }
-  const s = sp.toString();
+  return sp.toString();
+}
+/** change the query of the current screen without a new history step (filters, tabs, the day shown): never scrolls */
+export function setQuery(patch: QueryPatch) {
+  const r = route.value;
+  const s = patchQuery(r.query, patch);
   navigate(r.path + (s ? '?' + s : ''), { replace: true });
 }
 
@@ -82,5 +104,3 @@ export function matchPath(pattern: string, path: string): Record<string, string>
   if (b.length > a.length) return null;
   return params;
 }
-
-export interface ScreenProps { params: Record<string, string>; query: URLSearchParams }

@@ -5,6 +5,7 @@
 import { signal, computed, effect } from '@preact/signals';
 import { access } from '../data/auth';
 import { settings } from '../data/select';
+import { tableSignal } from '../data/store';
 import { updateMe } from '../data/api';
 import { myPhoto, applyBackdrop } from './backdrop';
 
@@ -42,13 +43,23 @@ export const myLook = computed<Look | null>(() => {
   return p ? clean(p, teamLook.value) : null;
 });
 const deviceLook = signal<Look | null>(stored());
-export const look = computed<Look>(() => myLook.value || (access.value ? teamLook.value : deviceLook.value || DEFAULT));
+/** the garage's settings are on this phone (the team's look is known, not the default of an empty copy) */
+const teamKnown = computed(() => tableSignal('settings').value.has('1'));
+
+/** the look to show (pure: tested). The team's look counts only once the settings are read: before, a signed-in start
+    went stored look → H.I.S → team look, and wrote the wrong one on the phone in between. */
+export function resolveLook(o: { mine: Look | null; signedIn: boolean; teamKnown: boolean; team: Look; device: Look | null }): Look {
+  if (o.mine) return o.mine;
+  if (o.signedIn && o.teamKnown) return o.team;
+  return o.device || DEFAULT;
+}
+const look = computed<Look>(() => resolveLook({ mine: myLook.value, signedIn: !!access.value, teamKnown: teamKnown.value, team: teamLook.value, device: deviceLook.value }));
 
 const dark = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 const phoneDark = signal(!!dark?.matches);
 dark?.addEventListener?.('change', (e) => { phoneDark.value = e.matches; });
 
-export function resolvedMode(l: Look): 'light' | 'dark' {
+function resolvedMode(l: Look): 'light' | 'dark' {
   const th = THEMES.find((x) => x.key === l.theme);
   if (th?.fixed) return th.fixed;
   return l.mode === 'auto' ? (phoneDark.value ? 'dark' : 'light') : l.mode;

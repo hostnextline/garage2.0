@@ -1,11 +1,12 @@
 /* The menu of the agenda: a right-click on a computer, a long press (« appui long ») on a phone, iPhone included (Safari
    never sends a right-click: the press is timed here). A few actions next to the finger or the mouse. One menu at a
-   time, hosted once on the agenda; closes on a choice, a tap elsewhere, Escape, a scroll or a resize. */
+   time, hosted once by the frame; closes on a choice, a tap elsewhere, Escape, a scroll or a resize. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import './styles/menu.css';
 import { signal } from '@preact/signals';
+import { onEscape } from '../platform/escape';
 
 export interface MenuAction { key: string; label: string; icon?: ComponentChildren; run: () => void; testid?: string; /** a thin line above (a new group) */ sep?: boolean; danger?: boolean }
 interface Open { x: number; y: number; title?: string; actions: MenuAction[] }
@@ -61,27 +62,39 @@ export function pressProps(onPress: (x: number, y: number) => boolean | void) {
     onClickCapture: (e: MouseEvent) => { if (Date.now() - lastPress < 900) { e.preventDefault(); e.stopPropagation(); } }
   };
 }
-export function closeMenu() { menu.value = null; }
+function closeMenu() { menu.value = null; }
+
+/** a right-click on the invisible layer under an open menu. The late right-click Android sends after a long press lands
+    there (the layer appeared under the finger): it keeps the menu that just opened. A real right-click elsewhere closes
+    the menu and goes on to what is under the mouse, which opens its own menu there (as before the layer); nothing there
+    to offer: the browser's own menu. */
+function shadeContextMenu(e: MouseEvent) {
+  if (Date.now() - lastPress < 1200) { e.preventDefault(); return; }
+  const shade = e.currentTarget as HTMLElement | null;
+  closeMenu();
+  if (!shade || typeof document.elementsFromPoint !== 'function') { e.preventDefault(); return; }
+  const under = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el !== shade && !el.classList.contains('agenda-menu') && !el.closest('.agenda-menu'));
+  if (!under) { e.preventDefault(); return; }
+  const again = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY, screenX: e.screenX, screenY: e.screenY, button: 2, buttons: e.buttons });
+  under.dispatchEvent(again);
+  if (again.defaultPrevented) e.preventDefault();
+}
 
 export function ContextMenuHost() {
   const m = menu.value;
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!m) return;
-    const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) closeMenu(); };
     // the page may still be moving when the menu opens (the list brought into view, a phone's scroll momentum): a scroll
     // closes the menu only after a short moment
     const opened = Date.now();
     const scrolled = () => { if (Date.now() - opened > 400) closeMenu(); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') closeMenu(); };
-    document.addEventListener('pointerdown', away, true);
-    document.addEventListener('keydown', key);
+    const leaveEscape = onEscape(() => closeMenu());
     window.addEventListener('scroll', scrolled, true);
     window.addEventListener('resize', closeMenu);
     box.current?.querySelector<HTMLElement>('button')?.focus();
     return () => {
-      document.removeEventListener('pointerdown', away, true);
-      document.removeEventListener('keydown', key);
+      leaveEscape();
       window.removeEventListener('scroll', scrolled, true);
       window.removeEventListener('resize', closeMenu);
     };
@@ -92,18 +105,23 @@ export function ContextMenuHost() {
   const left = Math.max(8, Math.min(m.x, window.innerWidth - w - 8));
   const top = Math.max(8, Math.min(m.y, window.innerHeight - h - 8));
   // drawn on the page itself (document.body): inside the app's frame, a parent with a transform or a blur would move a « fixed »
-  // menu away from the finger (seen on phones)
+  // menu away from the finger (seen on phones). Under it, an invisible layer takes the tap that closes it: closing on the
+  // press let the click of that tap open the appointment under the finger.
   return createPortal(
-    <div ref={box} class="agenda-menu glass-strong" role="menu" aria-label={m.title} style={{ left: `${left}px`, top: `${top}px` }} data-testid="agenda-menu"
-      onContextMenu={(e) => e.preventDefault()}>
-      {m.title && <div class="agenda-menu-title">{m.title}</div>}
-      {m.actions.map((a) => (
-        <button key={a.key} type="button" role="menuitem" class={`agenda-menu-item${a.sep ? ' is-sep' : ''}${a.danger ? ' is-danger' : ''}`} data-testid={a.testid}
-          onClick={() => { closeMenu(); a.run(); }}>
-          {a.icon}<span>{a.label}</span>
-        </button>
-      ))}
-    </div>,
+    <>
+      <div class="agenda-menu-shade" aria-hidden="true" onClick={closeMenu} onContextMenu={shadeContextMenu}
+        onWheel={closeMenu} onTouchMove={closeMenu} />
+      <div ref={box} class="agenda-menu glass-strong" role="menu" aria-label={m.title} style={{ left: `${left}px`, top: `${top}px` }} data-testid="agenda-menu"
+        onContextMenu={(e) => e.preventDefault()}>
+        {m.title && <div class="agenda-menu-title">{m.title}</div>}
+        {m.actions.map((a) => (
+          <button key={a.key} type="button" role="menuitem" class={`agenda-menu-item${a.sep ? ' is-sep' : ''}${a.danger ? ' is-danger' : ''}`} data-testid={a.testid}
+            onClick={() => { closeMenu(); a.run(); }}>
+            {a.icon}<span>{a.label}</span>
+          </button>
+        ))}
+      </div>
+    </>,
     document.body
   );
 }
