@@ -1,11 +1,12 @@
-/* Small hooks of the section. */
+/* Small hooks of the kit. */
 import { useEffect, useState } from 'preact/hooks';
 
-/** the value, `ms` after it stopped changing (immediately when ms is 0) */
+/** the value, `ms` after it stopped changing (immediately when ms is 0: then no state is set, which used to draw the
+    screen a second time on every key) */
 export function useSettled<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
   useEffect(() => {
-    if (!ms) { setV(value); return; }
+    if (!ms) return;
     const tm = setTimeout(() => setV(value), ms);
     return () => clearTimeout(tm);
   }, [value, ms]);

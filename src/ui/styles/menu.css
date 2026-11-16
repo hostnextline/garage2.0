@@ -7,3 +7,5 @@
 .agenda-menu-item { min-height: 44px; }
 .agenda-menu-item.is-sep { margin-top: 5px; border-top: 1px solid var(--line); border-top-left-radius: 0; border-top-right-radius: 0; }
 .agenda-menu-item.is-danger { color: var(--bad); }
+/* under the open menu: takes the tap that closes it (nothing under the finger is pressed); invisible */
+.agenda-menu-shade { position: fixed; inset: 0; z-index: 79; background: transparent; }
