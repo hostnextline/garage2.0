@@ -19,14 +19,16 @@ export const coffre: typeof fr = {
   emptyText: 'On a family or friends job: menu ⋯, then “Paid by the Coffre”.',
   remove: 'Take out',
   removeConfirm: 'Tap again to take it out',
+  offline: 'The Coffre report needs the signal.',
+  offlineCached: 'No signal: report of {when}.',
+  error: 'The Coffre report does not load.',
   removed: 'Taken out of the Coffre: these jobs can have an invoice again',
   open: 'Coffre (family and friends)',
   openSub: 'The separate report, for the accountant',
   job: {
     banner: 'Paid by the Coffre (family and friends): no invoice, no taxes.',
     menu: 'Paid by the Coffre',
-    menuSub: 'Family and friends: no invoice, no taxes',
-    finish: 'Finish the job'
+    menuSub: 'Family and friends: no invoice, no taxes'
   },
   pay: { method: 'Coffre' },
   sheet: {
