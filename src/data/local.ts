@@ -64,6 +64,10 @@ export interface LocalDb {
 }
 
 const STORES = (): string[] => [...SYNCED, 'meta', 'outbox'];
+/** an aborted transaction: its requests and its end reject, which says nothing more than the error already thrown */
+const abort = (tx: { abort(): void; done: Promise<void> }) => { tx.done.catch(() => undefined); try { tx.abort(); } catch { /* already finished */ } };
+/** one request of a transaction: its failure fails the transaction (`tx.done`), which is what is awaited */
+const req = (p: Promise<unknown>) => { p.catch(() => undefined); };
 
 export function openLocal(uid: string): LocalDb {
   let handle: Promise<IDBPDatabase> | null = null;
@@ -127,16 +131,19 @@ export function openLocal(uid: string): LocalDb {
       if (c.meta && Object.keys(c.meta).length) names.add('meta');
       if (!names.size) return;
       const tx = db.transaction([...names], 'readwrite');
-      for (const r of c.rows || []) {
-        if (!r.put.length && !r.del.length) continue;
-        const s = tx.objectStore(r.table);
-        for (const row of r.put) void s.put(row);
-        for (const id of r.del) void s.delete(id);
-      }
-      if (c.meta) {
-        const m = tx.objectStore('meta');
-        for (const [k, v] of Object.entries(c.meta)) void (v === undefined ? m.delete(k) : m.put(v, k));
-      }
+      // an error while the requests are made does not abort a transaction by itself: all or nothing, by hand
+      try {
+        for (const r of c.rows || []) {
+          if (!r.put.length && !r.del.length) continue;
+          const s = tx.objectStore(r.table);
+          for (const row of r.put) req(s.put(row));
+          for (const id of r.del) req(s.delete(id));
+        }
+        if (c.meta) {
+          const m = tx.objectStore('meta');
+          for (const [k, v] of Object.entries(c.meta)) req(v === undefined ? m.delete(k) : m.put(v, k));
+        }
+      } catch (e) { abort(tx); throw e; }
       await tx.done;
     }),
     addEntry: (e) => use(async (db) => {
@@ -146,20 +153,23 @@ export function openLocal(uid: string): LocalDb {
     }),
     mutateEntry: <T,>(seq: number, fn: (cur: OutboxEntry | undefined) => EntryChange<T>) => use(async (db) => {
       const tx = db.transaction('outbox', 'readwrite');
-      const cur = (await tx.store.get(seq)) as OutboxEntry | undefined;
-      const out = fn(cur);
-      if (out.del) void tx.store.delete(seq);
-      else if (out.put) void tx.store.put({ ...out.put, seq });
+      let out: EntryChange<T>;
       let added: number | undefined;
-      if (out.add) { const { seq: _s, ...rest } = out.add; void _s; added = (await tx.store.add(rest)) as number; }
+      try {
+        const cur = (await tx.store.get(seq)) as OutboxEntry | undefined;
+        out = fn(cur);
+        if (out.del) req(tx.store.delete(seq));
+        else if (out.put) req(tx.store.put({ ...out.put, seq }));
+        if (out.add) { const { seq: _s, ...rest } = out.add; void _s; added = (await tx.store.add(rest)) as number; }
+      } catch (e) { abort(tx); throw e; }
       await tx.done;
       return { result: out.result, added };
     }),
     listEntries: () => use(async (db) => (await db.getAll('outbox')) as OutboxEntry[]),
     wipeRows: () => use(async (db) => {
       const tx = db.transaction([...SYNCED, 'meta'], 'readwrite');
-      for (const t of SYNCED) void tx.objectStore(t).clear();
-      void tx.objectStore('meta').clear();
+      for (const t of SYNCED) req(tx.objectStore(t).clear());
+      req(tx.objectStore('meta').clear());
       await tx.done;
     }),
     close() {
