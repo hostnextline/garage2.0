@@ -73,6 +73,8 @@ export const vehicles: typeof fr = {
     notFound: 'No VIN found in the photo. Get closer so the VIN fills the photo, with good light, then try again (or type it).',
     doubt: 'VIN read: {vin}',
     keep: 'Keep this VIN',
+    unsure: 'Uncertain reading: compare each character with the VIN plate before keeping it.',
+    readerFailed: 'The VIN reader did not load (network?). Try again in a moment, or type the VIN.',
     torchOn: 'Turn on the light',
     torchOff: 'Turn off the light',
     saved: 'VIN saved',

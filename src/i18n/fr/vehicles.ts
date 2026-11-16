@@ -73,6 +73,8 @@ export const vehicles = {
     notFound: 'Pas de NIV trouvé dans la photo. Rapproche-toi pour que le NIV remplisse la photo, bien éclairé, puis réessaie (ou tape-le).',
     doubt: 'NIV lu : {vin}',
     keep: 'Garder ce NIV',
+    unsure: 'Lecture incertaine : compare chaque caractère avec la plaque du NIV avant de le garder.',
+    readerFailed: 'Le lecteur du NIV ne s’est pas chargé (réseau ?). Réessaie dans un moment, ou tape le NIV.',
     torchOn: 'Allumer la lampe',
     torchOff: 'Éteindre la lampe',
     saved: 'NIV enregistré',

@@ -1,10 +1,9 @@
 /* Reading a VIN with the phone, on every phone (iPhone, Android, computer with a camera):
    - the barcode of the door-jamb sticker (Code 39 / Code 128 / Data Matrix / QR), live in the camera. The phone's own
      barcode reader when it has one (Android), else ZXing in WebAssembly (our own file, loaded the first time, then kept);
-   - the printed VIN (windshield plate, registration, insurance card) from a photo, read by tesseract.js. OCR mixes up
-     letters and digits: the VIN's check digit picks the right reading. */
-import { vinCheck } from '../../lib/text';
-import { vinFromCode } from './vehicleText';
+   - the printed VIN (windshield plate, registration, insurance card) from a photo, read by tesseract.js.
+   What counts as a VIN in what was read is decided in domain/vehicles/vinRead.ts. */
+import { findVin, type VinRead } from '../../domain/vehicles/vinRead';
 import { loadTesseract, shrinkPhoto } from '../export/ocr';
 
 export const FORMATS = ['code_39', 'code_128', 'data_matrix', 'qr_code', 'pdf417'] as const;
@@ -29,7 +28,7 @@ export function barcodeReader(): Promise<{ detector: Detector; native: boolean }
         const have = await Native.getSupportedFormats();
         const formats = FORMATS.filter((f) => have.includes(f));
         if (formats.includes('code_39') || formats.includes('data_matrix')) return { detector: new Native({ formats }), native: true };
-      } catch { /* use ZXing */ }
+      } catch { /* the phone's reader cannot say what it reads: ZXing below */ }
     }
     const [{ BarcodeDetector, prepareZXingModule }, wasm] = await Promise.all([
       import('barcode-detector/ponyfill'),
@@ -39,107 +38,55 @@ export function barcodeReader(): Promise<{ detector: Detector; native: boolean }
     prepareZXingModule({ overrides: { locateFile: (path: string, prefix: string) => (path.endsWith('.wasm') ? url : prefix + path) }, fireImmediately: false });
     return { detector: new BarcodeDetector({ formats: [...FORMATS] }) as unknown as Detector, native: false };
   })();
+  // a failed load (no signal the first time) is tried again next time, not kept
   detectorP.catch(() => { detectorP = null; });
   return detectorP;
 }
 
 /* ---------- the printed VIN (OCR) ---------- */
-const LEGAL = /^[A-HJ-NPR-Z0-9]$/;
-/** OCR letters a VIN never has: O and Q are 0, I is 1 */
-const FIX: Record<string, string> = { O: '0', Q: '0', I: '1' };
-/** look-alikes OCR swaps: tried when the check digit says the reading is wrong */
-const SWAP: Record<string, string[]> = {
-  '0': ['D', '8'], D: ['0'], '1': ['L', 'T', '7'], L: ['1'], T: ['1', '7'], '7': ['T', '1'], '5': ['S'], S: ['5'], '8': ['B', '0'], B: ['8'],
-  '2': ['Z'], Z: ['2'], '6': ['G'], G: ['6'], U: ['V'], V: ['U'], '4': ['A'], A: ['4'], '3': ['8'], M: ['N'], N: ['M'], K: ['X'], X: ['K']
-};
-const YEAR_CODES = 'ABCDEFGHJKLMNPRSTVWXY123456789';
-/** how much a 17-character reading looks like a real VIN (the check digit counts most) */
-export function vinScore(v: string): number {
-  let s = 0;
-  if (vinCheck(v) === 'ok') s += 10;
-  if (YEAR_CODES.includes(v[9])) s += 2;
-  if (/^\d{4}$/.test(v.slice(13))) s += 2;
-  if (/[1-5JKLSVWYZ39]/.test(v[0])) s += 1;
-  if (/[A-Z]/.test(v.slice(0, 3)) || /^\d[A-Z]/.test(v)) s += 1;
-  return s;
+/** the photo reader itself could not be loaded (tesseract.js and its language come from the network the first time):
+    the sheet says so, instead of « no VIN in the photo », which sent the mechanic retaking photos for nothing */
+export class ReaderUnavailable extends Error {
+  constructor(cause?: unknown) { super('vin-reader-unavailable'); this.name = 'ReaderUnavailable'; this.cause = cause; }
 }
-/** every 17-character window of a line of text, with O/Q/I fixed */
-function windows(line: string): string[] {
-  const s = line.toUpperCase().replace(/[^A-Z0-9]/g, '').split('').map((c) => FIX[c] || c).join('');
-  const out: string[] = [];
-  for (let i = 0; i + 17 <= s.length; i++) {
-    const w = s.slice(i, i + 17);
-    if (w.split('').every((c) => LEGAL.test(c))) out.push(w);
-  }
-  return out;
-}
-/** the same reading with one or two look-alike characters changed, so its check digit matches */
-function repaired(w: string): string | null {
-  const spots = w.split('').map((c, i) => (SWAP[c] ? i : -1)).filter((i) => i >= 0);
-  const found = new Set<string>();
-  for (const i of spots) {
-    for (const a of SWAP[w[i]]) {
-      const one = w.slice(0, i) + a + w.slice(i + 1);
-      if (vinCheck(one) === 'ok') found.add(one);
-    }
-  }
-  if (found.size === 1) return [...found][0];
-  if (found.size > 1) return [...found].sort((a, b) => vinScore(b) - vinScore(a))[0];
-  if (spots.length > 12) return null;
-  for (let x = 0; x < spots.length; x++) for (let y = x + 1; y < spots.length; y++) {
-    const i = spots[x], j = spots[y];
-    for (const a of SWAP[w[i]]) for (const b of SWAP[w[j]]) {
-      const two = w.slice(0, i) + a + w.slice(i + 1, j) + b + w.slice(j + 1);
-      if (vinCheck(two) === 'ok') found.add(two);
-    }
-  }
-  return found.size ? [...found].sort((a, b) => vinScore(b) - vinScore(a))[0] : null;
-}
-/** the VIN in the text read from a photo: ok when its check digit matches (a car from outside North America may not have one) */
-export function findVin(text: string): { vin: string; ok: boolean } | null {
-  const lines = String(text || '').split(/\r?\n/);
-  // a VIN cut in two by the reader (« 1HGCM826 33A004352 ») is found once the spaces are gone; two lines glued too
-  const sources = [...lines, ...lines.slice(1).map((l, i) => lines[i] + l)];
-  const read = sources.flatMap(windows);
-  const pick = (list: string[]) => list.reduce<string | null>((b, v) => (b == null || vinScore(v) > vinScore(b) ? v : b), null);
-  const direct = pick(read);
-  if (direct && vinCheck(direct) === 'ok') return { vin: direct, ok: true };
-  const fixed = pick(read.map(repaired).filter((x): x is string => !!x));
-  if (fixed) return { vin: fixed, ok: true };
-  return direct ? { vin: direct, ok: false } : null;
-}
+interface OcrWorker { recognize(i: string): Promise<{ data: { text: string } }>; setParameters?(p: Record<string, string>): Promise<unknown>; terminate(): Promise<unknown> }
 
-export interface VinReading { cancel: () => void; result: Promise<{ vin: string; ok: boolean } | null> }
-/** reads the VIN printed in a photo; `onProgress(0..1)` while it works */
+export interface VinReading { cancel: () => void; result: Promise<VinRead | null> }
+/** reads the VIN printed in a photo; `onProgress(0..1)` while it works. The result always settles: null when nothing
+    was read, when cancelled, or after `timeoutMs` (a terminated tesseract job may never answer: the sheet stayed on
+    « Lecture… » for ever, customers-b-16); rejects with ReaderUnavailable when the reader could not be loaded. */
 export function readVinPhoto(file: Blob, onProgress: (p: number) => void, timeoutMs = 90000): VinReading {
   let stopped = false;
-  let worker: { terminate(): Promise<unknown> } | null = null;
-  const stop = () => { const w = worker; worker = null; if (w) void w.terminate().catch(() => undefined); };
-  const result = (async () => {
-    const timer = setTimeout(() => { stopped = true; stop(); }, timeoutMs);
+  let worker: OcrWorker | null = null;
+  let halt: (v: null) => void = () => undefined;
+  const halted = new Promise<null>((done) => { halt = done; });
+  const stopWorker = () => { const w = worker; worker = null; if (w) void w.terminate().catch(() => undefined); };
+  const cancel = () => { stopped = true; stopWorker(); halt(null); };
+
+  const work = (async (): Promise<VinRead | null> => {
+    onProgress(0.02);
+    const photo = await shrinkPhoto(file, 2000, 0.9);
+    let w: OcrWorker;
     try {
-      onProgress(0.02);
-      const photo = await shrinkPhoto(file, 2000, 0.9);
       const T = await loadTesseract();
       if (stopped) return null;
-      const w = await T.createWorker('eng', 1, {
+      w = await T.createWorker('eng', 1, {
         logger: (m) => { if (!stopped && m.status === 'recognizing text') onProgress(0.3 + 0.7 * Math.max(0, Math.min(1, Number(m.progress) || 0))); },
         errorHandler: () => undefined
-      }) as unknown as { recognize(i: string): Promise<{ data: { text: string } }>; setParameters?(p: Record<string, string>): Promise<unknown>; terminate(): Promise<unknown> };
-      worker = w;
-      if (stopped) { stop(); return null; }
-      onProgress(0.3);
-      await w.setParameters?.({ tessedit_char_whitelist: 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789OQI ' }).catch(() => undefined);
-      const out = await w.recognize(photo.dataUrl);
-      stop();
-      if (stopped) return null;
-      return findVin(String(out?.data?.text || ''));
-    } finally {
-      clearTimeout(timer);
+      }) as unknown as OcrWorker;
+    } catch (e) {
+      throw new ReaderUnavailable(e);
     }
+    worker = w;
+    if (stopped) { stopWorker(); return null; }
+    onProgress(0.3);
+    // a VIN never has I, O, Q: they are still allowed here because OCR reads 0 as O, and vinRead fixes them
+    await w.setParameters?.({ tessedit_char_whitelist: 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789OQI ' }).catch(() => undefined);
+    const out = await w.recognize(photo.dataUrl);
+    return stopped ? null : findVin(String(out?.data?.text || ''));
   })();
-  return { result, cancel: () => { stopped = true; stop(); } };
-}
 
-/** the VIN in what a barcode reader saw (re-exported for the camera sheet) */
-export { vinFromCode };
+  const timer = setTimeout(cancel, timeoutMs);
+  const result = Promise.race([work, halted]).finally(() => { clearTimeout(timer); stopWorker(); });
+  return { result, cancel };
+}

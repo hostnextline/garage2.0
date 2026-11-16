@@ -69,3 +69,21 @@ describe('Année → Marque → Modèle', () => {
     expect(r.models).toEqual(['Corolla', 'Matrix']);
   });
 });
+
+describe('a list with one request that failed (customers-b-08)', () => {
+  beforeEach(() => { localStorage.clear(); engineRef.value = { status: 'ready', rows: [] }; });
+  it('is shown as short and asked again, never kept as complete', async () => {
+    const f = vi.fn(async (url: string) => {
+      const type = url.split('/vehicletype/')[1].split('?')[0];
+      if (type === 'truck') throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify(answer('FORD', type === 'car' ? ['Fusion', 'Mustang'] : ['Escape', 'Explorer'])), { status: 200 });
+    }) as unknown as typeof fetch;
+    const r = await modelsFor('Ford', 2016, f);
+    expect(r).toEqual({ models: ['Escape', 'Explorer', 'Fusion', 'Mustang'], complete: false });
+    expect(localStorage.getItem('his.models.ford.2016')).toBeNull();
+    const g = vi.fn(async (url: string) => new Response(JSON.stringify(answer('FORD', url.includes('/truck') ? ['F-150'] : ['Fusion'])), { status: 200 })) as unknown as typeof fetch;
+    const again = await modelsFor('Ford', 2016, g);
+    expect(g).toHaveBeenCalledTimes(3);
+    expect(again).toEqual({ models: ['F-150', 'Fusion'], complete: true });
+  });
+});
