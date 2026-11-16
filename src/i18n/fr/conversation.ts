@@ -22,6 +22,8 @@ export const conversation = {
     book: 'Réserver pour ce numéro',
     noFile: 'Pas encore de fiche',
     noWords: '📎 Photo ou document',
+    more: { one: 'Une autre conversation', other: '{n} autres conversations' },
+    pretend: 'C’est un texto d’essai («\u00a0Essayer\u00a0», dans Réglages)\u00a0: on ne peut pas y répondre.',
     off: 'Les textos ne sont pas branchés (Réglages, Branchements) : tu vois ce qui est arrivé, sans pouvoir répondre d’ici.',
     error: 'Le service de textos n’a pas répondu : voici ce qui est arrivé. La suite revient dans un instant.'
   },
