@@ -5,6 +5,7 @@ import { rowsOf } from '../../data/store';
 import { customersList, allJobs, invoicesList, quotesList, customerName } from '../../data/select';
 import type { Customer, CustomerNote, Invoice, Job, Vehicle } from '../../data/types';
 import { today } from '../../lib/dates';
+import { currentDay } from '../../domain/oil/clock';
 import { searchDoc, type SearchDoc } from './search';
 
 export interface CustomerFacts {
@@ -32,8 +33,9 @@ export function owedOn(v: Pick<Invoice, 'status' | 'total_cents' | 'paid_cents'>
 export function isUpcoming(j: Job, day = today()): boolean { return ACTIVE.has(j.status) && j.day >= day; }
 export function jobOrder(a: Job, b: Job): number { return a.day.localeCompare(b.day) || (BLOCK_ORDER[a.block] ?? 9) - (BLOCK_ORDER[b.block] ?? 9) || (a.stop_order ?? 99) - (b.stop_order ?? 99) || (a.eta_min ?? 9999) - (b.eta_min ?? 9999); }
 
-export const factsMap = computed<Map<string, CustomerFacts>>(() => {
-  const day = today();
+// (the day is a signal: the office computer left open overnight shows today's next appointment, not yesterday's)
+const factsMap = computed<Map<string, CustomerFacts>>(() => {
+  const day = currentDay.value;
   const now = Date.now();
   const out = new Map<string, CustomerFacts>();
   const get = (id: string | null | undefined): CustomerFacts | null => {

@@ -29,7 +29,7 @@ export function searchDoc(c: CustomerLike, cars: VehicleLike[] = []): SearchDoc 
   };
 }
 
-export function queryWords(q: string): string[] { return norm(q).split(/\s+/).filter(Boolean); }
+function queryWords(q: string): string[] { return norm(q).split(/\s+/).filter(Boolean); }
 /** only digits and the signs of a phone number: "514 555-0141", "(514) 555", "+1 514" */
 export function isNumberQuery(q: string): boolean { return /\d/.test(q) && /^[\d\s().+-]+$/.test(q.trim()); }
 function queryDigits(q: string): string {
@@ -63,7 +63,7 @@ export function rank(doc: SearchDoc, q: string): number {
   return doc.names.some((n) => n.startsWith(first)) || norm(doc.names.join(' ')).startsWith(norm(q)) ? 0 : 1;
 }
 
-export interface Ranked<T> { item: T; rank: number }
+interface Ranked<T> { item: T; rank: number }
 /** the items that match, best first. `items` come already in their order (recent, A–Z), which is kept between items
     of the same rank; `tie` may give another order. */
 export function searchList<T>(items: T[], q: string, docOf: (x: T) => SearchDoc | undefined, tie?: (a: T, b: T) => number, byRank = true): T[] {

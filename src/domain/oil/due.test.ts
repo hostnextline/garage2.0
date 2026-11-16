@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueDay, isOilItem, isOilStock, lastOilOf, oilJobIds, oilRows, oilWords, toCall, type OilInput } from './due';
+import { dueDay, isOilItem, isOilStock, lastOilOf, oilJobIds, oilOnlyAdded, oilRows, oilWords, toCall, type OilInput } from './due';
 import type { InventoryItem, InventoryMove } from '../../data/types';
 import type { Customer, Job, JobItem, Service, Vehicle } from '../../data/types';
 
@@ -45,6 +45,100 @@ describe('oilWords', () => {
   });
 });
 
+describe('oil only added or looked at is not an oil change (x-branches-12, the garage2.0-niv correction)', () => {
+  it('a top-up, a level check, a symptom', () => {
+    for (const w of ['Ajout d’huile', 'Ajouter 1 L d’huile', 'Appoint d’huile', 'Vérifier le niveau d’huile', 'Vérification du niveau d’huile', 'Niveau d’huile', 'Top up huile', 'Oil top-up', 'Top off oil',
+      'Oil level check', 'Check oil', 'Check oil level', 'Inspection huile', 'Témoin d’huile allumé', 'Lumière d’huile', 'Oil light on', 'Consomme de l’huile', 'Burns oil', 'Odeur d’huile brûlée', 'Diagnostic huile',
+      'Remplissage d’huile', 'Ajout 5W-30']) { expect(oilWords(w), w).toBe(false); expect(oilOnlyAdded(w), w).toBe(true); }
+  });
+  it('still one when the same words say the oil is changed, or another piece of the line does', () => {
+    for (const w of ['Changement d’huile (ajout de 5 L)', 'Vidange et vérification des niveaux', 'Oil change, check brakes', 'Vérifier les freins + changement d’huile', 'Check engine light + oil change',
+      'Changement d’huile avec vérification du niveau', 'Remplacement de l’huile', 'Top up des liquides + vidange']) { expect(oilWords(w), w).toBe(true); expect(oilOnlyAdded(w), w).toBe(false); }
+  });
+  it('a top-up taken from the stock does not count: under 3 litres, or a line that says the oil was only added', () => {
+    const stock = [{ id: 'i-l', name: 'Huile 5W-30', category: 'Huile', unit: 'L' }, { id: 'i-jug', name: 'Huile 5W-30 bidon', category: 'Huile', unit: 'bidon' }] as never[];
+    const mv = (job_id: string, item_id: string, delta: number) => ({ id: `${job_id}${item_id}${delta}`, job_id, item_id, delta, reason: 'used' }) as never;
+    const items = [item('j1', null, 'Entretien'), item('j2', null, 'Entretien'), item('j3', null, 'Ajout d’huile'), item('j4', null, 'Entretien'), item('j5', null, 'Entretien')];
+    const ids = oilJobIds(items, SERVICES, [mv('j1', 'i-l', -1), mv('j2', 'i-l', -4.5), mv('j3', 'i-l', -5), mv('j4', 'i-jug', -1), mv('j5', 'i-l', -1.5), mv('j5', 'i-l', -2)], stock);
+    expect([...ids].sort()).toEqual(['j2', 'j4', 'j5']);
+  });
+});
+
+describe('the litres of stock oil (x-branches-25)', () => {
+  const stock = [{ id: 'i-1l', name: 'Huile 5W-30 bouteille 1 L', category: 'Huile', unit: 'unité' }, { id: 'i-5l', name: 'Huile 5W-30 bidon 5 L', category: 'Huile', unit: 'unité' }] as never[];
+  const mv = (job_id: string, item_id: string, delta: number) => ({ id: `${job_id}${item_id}${delta}`, job_id, item_id, delta, reason: 'used' }) as never;
+  const sell = (job_id: string, item_id: string, qty: number) => ({ ...item(job_id, null, 'Huile'), id: `${job_id}-${item_id}`, kind: 'part', item_id, qty, description: 'Bouteille' }) as never;
+  it('a bottle of 1 L whose unit is « unité » is read from its name: a top-up', () => {
+    expect([...oilJobIds([item('j1', null, 'Freins')], SERVICES, [mv('j1', 'i-1l', -1)], stock)]).toEqual([]);
+    expect([...oilJobIds([item('j1', null, 'Freins')], SERVICES, [mv('j1', 'i-5l', -1)], stock)]).toEqual(['j1']);
+  });
+  it('the oil sold on the lines and the same oil taken at the end are not added twice', () => {
+    // 2 bottles sold, the same 2 taken at the end: 2 L, not 4
+    expect([...oilJobIds([sell('j1', 'i-1l', 2)], SERVICES, [mv('j1', 'i-1l', -2)], stock)]).toEqual([]);
+    // a coming job: only its lines are known
+    expect([...oilJobIds([sell('j2', 'i-1l', 4)], SERVICES, [], stock)]).toEqual(['j2']);
+  });
+});
+
+describe('words that are not an engine oil change (customers-b-04)', () => {
+  it('another fluid named elsewhere in the line, gear oil, parts, grease, a reset', () => {
+    for (const w of ['Vidange et remplissage de transmission', 'Vidange et remplissage du différentiel', 'Transmission : vidange', 'Freins : vidange du liquide', '75W-90', 'Huile 75W-90',
+      'Bouchon de vidange', 'Jauge d’huile', 'Boîtier de filtre à huile', 'Oil filter housing gasket', 'Graisse synthétique', 'Reset oil life']) expect(oilWords(w), w).toBe(false);
+  });
+  it('stock filed under « Huile » that is not engine oil', () => {
+    for (const it of [{ name: 'ATF Dexron VI', category: 'Huile' }, { name: 'Huile 75W-90', category: 'Huiles' }, { name: 'Huile 2 temps', category: 'Huile' }, { name: 'Lave-glace -40', category: 'Huile et liquides' }]) expect(isOilStock(it), it.name).toBe(false);
+    expect(isOilStock({ name: 'Mobil 1 0W-20', category: 'Huile' })).toBe(true);
+  });
+});
+
+describe('a person says « no oil change at this visit »', () => {
+  const jobs = [job('j0', 'v1', '2026-06-01'), job('j1', 'v1', '2026-12-01')];
+  const items = [item('j0', 's-oil'), item('j1', 's-oil')];
+  it('the visit no longer counts; the one before does; said again, it counts again', () => {
+    const before = oilRows(input({ jobs, items }));
+    expect(before[0]).toMatchObject({ lastOil: '2026-12-01', oilJob: 'j1', lastVisitJob: 'j1', lastVisitDenied: false, due: '2027-06-01' });
+    const denied = oilRows(input({ jobs, items, vehicles: [car('v1', 'c1', { oil_followup: { not_oil: ['j1'] } as never })] }));
+    expect(denied[0]).toMatchObject({ lastOil: '2026-06-01', oilJob: 'j0', lastVisit: '2026-12-01', lastVisitDenied: true, due: '2027-03-01', mark: null });
+    expect(lastOilOf(car('v1', 'c1', { oil_followup: { not_oil: ['j1'] } as never }), { today: TODAY, jobs, items, services: SERVICES })).toEqual({ day: '2026-06-01', ours: true });
+    const both = oilRows(input({ jobs, items, vehicles: [car('v1', 'c1', { oil_followup: { not_oil: ['j0', 'j1'] } as never })] }));
+    expect(both[0]).toMatchObject({ lastOil: null, oilJob: null, due: '2027-03-01' });
+  });
+  it('it lives beside a call noted, and is not itself a call', () => {
+    const rows = oilRows(input({ jobs, items, vehicles: [car('v1', 'c1', { oil_followup: { at: '2027-06-10T15:00:00.000Z', again_on: '2027-06-24', not_oil: ['j1'] } as never })] }));
+    expect(rows[0]).toMatchObject({ lastOil: '2026-06-01', callOn: '2027-06-24', state: 'soon' });
+    expect(rows[0].mark?.again_on).toBe('2027-06-24');
+  });
+  it('the day the customer gave is told apart from ours', () => {
+    const rows = oilRows(input({ jobs: [job('j1', 'v1', '2026-12-01')], items: [item('j1', 's-tires')], vehicles: [car('v1', 'c1', { last_oil_on: '2026-12-01' })] }));
+    expect(rows[0]).toMatchObject({ lastOil: '2026-12-01', oilJob: null, saidOn: '2026-12-01' });
+  });
+});
+
+describe('appointments booked without a car (customers-b-03)', () => {
+  it('a customer with one car: the visit counts for that car', () => {
+    const rows = oilRows(input({ jobs: [job('j0', 'v1', '2026-06-01'), job('j1', null, '2027-05-01')], items: [item('j0', 's-tires'), item('j1', 's-oil')] }));
+    expect(rows[0]).toMatchObject({ key: 'v1', lastOil: '2027-05-01', due: '2027-11-01', state: 'later' });
+    expect(lastOilOf(car('v1', 'c1'), { today: TODAY, jobs: [job('j1', null, '2027-05-01')], items: [item('j1', 's-oil')], services: SERVICES, vehicles: [car('v1', 'c1')] })).toEqual({ day: '2027-05-01', ours: true });
+  });
+  it('several cars: a coming oil change booked without a car takes them off the list; another coming visit shows on each', () => {
+    const vehicles = [car('v1', 'c1'), car('v2', 'c1')];
+    const done = [job('j1', 'v1', '2026-12-01'), job('j2', 'v2', '2026-11-01')];
+    const oil = oilRows(input({ vehicles, jobs: [...done, job('j3', null, '2027-06-20', 'booked')], items: [item('j1', 's-oil'), item('j2', 's-oil'), item('j3', 's-oil', '', 'planned')] }));
+    expect(oil).toHaveLength(0);
+    const other = oilRows(input({ vehicles, jobs: [...done, job('j3', null, '2027-06-20', 'booked')], items: [item('j1', 's-oil'), item('j2', 's-oil'), item('j3', 's-tires', '', 'planned')] }));
+    expect(other.map((r) => [r.key, r.next?.jobId])).toEqual([['v2', 'j3'], ['v1', 'j3']]);
+  });
+  it('several cars none of which came: a coming oil change booked without a car also takes the visits with no car off the list (review oil-nocar-coming)', () => {
+    const vehicles = [car('v1', 'c1'), car('v2', 'c1')];
+    const past = job('j1', null, '2026-12-01');
+    const oil = oilRows(input({ vehicles, jobs: [past, job('j2', null, '2027-06-20', 'booked')], items: [item('j1', 's-oil'), item('j2', 's-oil', '', 'planned')] }));
+    expect(oil).toEqual([]);
+    // a coming visit without an oil change: still listed, with that visit as the next one
+    const other = oilRows(input({ vehicles, jobs: [past, job('j2', null, '2027-06-20', 'booked')], items: [item('j1', 's-oil'), item('j2', 's-tires', '', 'planned')] }));
+    expect(other.map((r) => [r.key, r.state, r.next?.jobId])).toEqual([['c:c1', 'call', 'j2']]);
+  });
+});
+
 describe('the stock', () => {
   const stock = [{ id: 'i-oil', name: 'Huile 5W-30 synthétique', category: 'Huile' }, { id: 'i-oil2', name: '0W-20 Castrol', category: null }, { id: 'i-fil', name: 'Filtre à l’huile PH7317', category: 'Filtres' },
     { id: 'i-atf', name: 'Huile à transmission ATF', category: 'Huile' }, { id: 'i-pad', name: 'Plaquettes avant', category: 'Freins' }] as unknown as InventoryItem[];
@@ -56,10 +150,20 @@ describe('the stock', () => {
     const items = [item('j1', null, 'Entretien complet'), item('j2', null, 'Entretien complet'), item('j3', null, 'Freins'), item('j4', null, 'Entretien')];
     const ids = oilJobIds(items, SERVICES, [move('j1', 'i-oil'), move('j2', 'i-atf'), move('j3', 'i-pad'), move('j4', 'i-oil', 5, 'restock')], stock);
     expect([...ids]).toEqual(['j1']);
-    const sold = oilJobIds([{ ...item('j5', null, 'Bidon'), kind: 'part', item_id: 'i-oil2' } as never], SERVICES, [], stock);
+    const sold = oilJobIds([{ ...item('j5', null, 'Bidon'), kind: 'part', item_id: 'i-oil2', qty: 1 } as never], SERVICES, [], stock);
     expect([...sold]).toEqual(['j5']);
     const rows = oilRows(input({ jobs: [job('j1', 'v1', '2027-03-01')], items: [items[0]], moves: [move('j1', 'i-oil')], stock }));
     expect(rows[0]).toMatchObject({ lastOil: '2027-03-01', due: '2027-09-01' });
+  });
+  it('a jug of oil sold on a line still counts when « Pièces utilisées » hold only the filter (review oil-used-any-move)', () => {
+    const jug = { ...item('j9', null, 'Bidon Mobil 1'), kind: 'part', item_id: 'i-oil', qty: 1 } as never;
+    expect([...oilJobIds([jug], SERVICES, [], stock)]).toEqual(['j9']);
+    expect([...oilJobIds([jug], SERVICES, [move('j9', 'i-fil', -1)], stock)]).toEqual(['j9']);
+    // the oil really taken still wins over the lines when it is recorded: 5 L sold but 1 L taken is a top-up
+    const litres = [{ ...stock[0], unit: 'L' } as InventoryItem, stock[2]];
+    const five = { ...item('j8', null, 'Mobil 1'), kind: 'part', item_id: 'i-oil', qty: 5 } as never;
+    expect([...oilJobIds([five], SERVICES, [move('j8', 'i-fil', -1)], litres)]).toEqual(['j8']);
+    expect([...oilJobIds([five], SERVICES, [move('j8', 'i-fil', -1), move('j8', 'i-oil', -1)], litres)]).toEqual([]);
   });
 });
 
@@ -116,9 +220,12 @@ describe('oilRows', () => {
     expect(rows[0].state).toBe('stopped');
     expect(toCall(rows)).toHaveLength(0);
   });
+  // (changed with customers-b-03: this test used to keep a no-car visit of a one-car customer apart as « c:c1 »)
   it('a visit with no car counts only when none of the customer’s cars is followed', () => {
-    const alone = oilRows(input({ jobs: [job('j1', null, '2027-01-01')], items: [item('j1', 's-tires')] }));
+    const alone = oilRows(input({ vehicles: [], jobs: [job('j1', null, '2027-01-01')], items: [item('j1', 's-tires')] }));
     expect(alone[0]).toMatchObject({ key: 'c:c1', vehicleId: null, due: '2027-04-01' });
+    const one = oilRows(input({ jobs: [job('j1', null, '2027-01-01')], items: [item('j1', 's-tires')] }));
+    expect(one[0]).toMatchObject({ key: 'v1', vehicleId: 'v1', due: '2027-04-01' });
     const both = oilRows(input({ jobs: [job('j1', null, '2027-01-01'), job('j2', 'v1', '2027-02-01')], items: [] }));
     expect(both.map((r) => r.key)).toEqual(['v1']);
   });

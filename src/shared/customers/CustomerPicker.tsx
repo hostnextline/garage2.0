@@ -6,18 +6,19 @@ import { useEffect, useId, useMemo, useRef, useState } from 'preact/hooks';
 import { Search, X, UserPlus, Phone, Car } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { customer, customerName } from '../../data/select';
-import { saveCustomer } from '../../data/api';
-import { Avatar, Button, Sheet, Banner, Skeleton, run } from '../../ui';
+import { Avatar, Button, Skeleton } from '../../ui';
 import { net } from '../../data/sync';
 import { factsOf, searchIndex, recentFirst } from './facts';
 import { useSettled, useFocusOnMount } from '../../ui/hooks';
 import { searchList, draftFromQuery } from './search';
-import { CustomerFields, emptyDraft, checkDraft, hasErrors, customerPatch, type Draft, type DraftErrors } from './CustomerFields';
+import type { Draft } from './draft';
+import { QuickCreate } from './QuickCreate';
+import { mayCreateCustomer } from './create';
 import { Flags, Bit } from './bits';
 import { carName } from '../../domain/vehicles/words';
 import '../places/customers.css';
 
-export interface CustomerPickerProps {
+interface CustomerPickerProps {
   value: string | null;
   onPick: (customerId: string | null) => void;
   /** offer « Nouveau client » (a short form in a sheet) when the search finds nobody */
@@ -75,6 +76,8 @@ function PickerSearch(p: CustomerPickerProps) {
   const found = useMemo(() => searchList(all, typed, (c) => index.get(c.id)), [all, index, typed]);
   useFocusOnMount(p.autoFocus, () => input.current);
   const shown = found.slice(0, typed ? SHOWN : RECENT);
+  // only someone the server lets make a file is offered « Nouveau client »
+  const allowCreate = !!p.allowCreate && mayCreateCustomer();
   useEffect(() => setActive(0), [typed]);
 
   const pick = (id: string) => { p.onPick(id); };
@@ -88,7 +91,7 @@ function PickerSearch(p: CustomerPickerProps) {
       const list = now === typed ? shown : searchList(all, now, (c) => index.get(c.id)).slice(0, now ? SHOWN : RECENT);
       const choice = now === typed ? list[active] : list[0];
       if (choice) pick(choice.id);
-      else if (now && p.allowCreate) setCreating(draftFromQuery(now));
+      else if (now && allowCreate) setCreating(draftFromQuery(now));
     } else if (e.key === 'Escape' && q) { e.preventDefault(); e.stopPropagation(); setQ(''); }
   };
   const optId = (i: number) => `${base}-o${i}`;
@@ -131,41 +134,14 @@ function PickerSearch(p: CustomerPickerProps) {
       {typed && !found.length && (
         <div class="customers-picker-none" role="status">
           <span class="muted">{t('customers.picker.none', { q: typed })}</span>
-          {p.allowCreate && <Button variant="primary" icon={<UserPlus size={18} />} onClick={() => setCreating(draftFromQuery(typed))} data-testid="picker-create-typed">{t('customers.picker.create', { q: typed })}</Button>}
+          {allowCreate && <Button variant="primary" icon={<UserPlus size={18} />} onClick={() => setCreating(draftFromQuery(typed))} data-testid="picker-create-typed">{t('customers.picker.create', { q: typed })}</Button>}
         </div>
       )}
       {!all.length && !typed && <p class="muted small" style={{ margin: 0 }}>{t('customers.picker.noCustomers')}</p>}
-      {p.allowCreate && (found.length > 0 || !typed) && (
+      {allowCreate && (found.length > 0 || !typed) && (
         <Button variant="ghost" icon={<UserPlus size={18} />} onClick={() => setCreating(typed ? draftFromQuery(typed) : {})} class="customers-picker-new" data-testid="picker-new">{t('customers.newCustomer')}</Button>
       )}
       {creating && <QuickCreate initial={creating} onClose={() => setCreating(null)} onCreated={(id) => { setCreating(null); pick(id); }} />}
     </div>
-  );
-}
-
-/* ---------- the short sheet: prénom, nom, téléphone, adresse, langue ---------- */
-function QuickCreate(p: { initial: Partial<Draft>; onClose: () => void; onCreated: (id: string) => void }) {
-  const [d, setD] = useState<Draft>(() => emptyDraft(p.initial));
-  const [errors, setErrors] = useState<DraftErrors>({});
-  const [tried, setTried] = useState(false);
-  const set = (patch: Partial<Draft>) => { const n = { ...d, ...patch }; setD(n); if (tried) setErrors(checkDraft(n)); };
-  const create = async () => {
-    setTried(true);
-    const e = checkDraft(d);
-    setErrors(e);
-    if (hasErrors(e)) return;
-    const id = await run(() => saveCustomer(customerPatch(d)), { ok: t('customers.file.created') });
-    if (id) p.onCreated(id);
-  };
-  return (
-    <Sheet open onClose={p.onClose} title={t('customers.picker.createTitle')} data-testid="quick-create"
-      footer={<>
-        <Button onClick={p.onClose}>{t('common.cancel')}</Button>
-        <Button variant="primary" icon={<UserPlus size={18} />} onClick={create} data-testid="quick-create-ok">{t('customers.picker.createOk')}</Button>
-      </>}>
-      {tried && hasErrors(errors) && <Banner kind="bad">{t('customers.form.fix')}</Banner>}
-      <CustomerFields draft={d} set={set} errors={errors} short autoFocus={!p.initial.first_name}
-        dupAction={(c) => <Button onClick={() => p.onCreated(c.id)} data-testid="dup-pick">{t('customers.dup.pick', { name: c.first_name || customerName(c) })}</Button>} />
-    </Sheet>
   );
 }

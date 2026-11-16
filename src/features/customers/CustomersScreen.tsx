@@ -1,65 +1,58 @@
 /* Clients: search as you type (name, company, phone digits, street, postal code, plate, VIN, car), most recent
-   activity first or A to Z. Each line: the name, the phone, the car, the next appointment or the last visit, and
-   what to know in words (client absent, carte au dossier, English, doit…). Entrée opens the first customer found.
-   A mechanic only receives his own customers (the database decides). */
+   activity first or A to Z. Each line: CustomerRow.tsx. Entrée opens the first customer found. 60 lines, more as the
+   list scrolls; « Retour » from a file comes back to the same search and the same lines. A mechanic only receives his
+   own customers (the database decides). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { UserPlus, Phone, Car, Users, SearchX } from 'lucide-preact';
-import { may } from '../../domain/rights';
-import { navigate, setQuery, route, type ScreenProps } from '../../platform/router';
+import { UserPlus, Users, SearchX } from 'lucide-preact';
+import { navigate, setQuery, type ScreenProps } from '../../platform/router';
 import { touch } from '../../platform/media';
 import { t } from '../../lib/i18n';
-import { customersList, customerName } from '../../data/select';
+import { customersList } from '../../data/select';
 import { can } from '../../data/auth';
 import { net } from '../../data/sync';
-import type { Customer } from '../../data/types';
-import { Page, Panel, Rows, RowItem, Button, SearchInput, Seg, Empty, Skeleton, Avatar, Pill } from '../../ui';
-import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
-import { customerActions } from '../../shared/customers/shortcuts';
-import { factsOf, searchIndex, recentFirst, nameOrder, type CustomerFacts } from '../../shared/customers/facts';
+import { Page, Panel, Rows, Button, SearchInput, Seg, Empty, Skeleton } from '../../ui';
+import { factsOf, searchIndex, recentFirst, nameOrder } from '../../shared/customers/facts';
 import { useSettled, useFocusOnMount } from '../../ui/hooks';
 import { searchList, draftFromQuery } from '../../shared/customers/search';
-import { Flags, Bit, whenText, nextLine, lastLine } from '../../shared/customers/bits';
-import { dayWord } from '../../domain/moment/dayWords';
-import { carName } from '../../domain/vehicles/words';
+import { mayCreateCustomer } from '../../shared/customers/create';
+import { usePaged } from '../../shared/customers/usePaged';
+import { currentDay } from '../../domain/oil/clock';
+import { CustomerRow } from './CustomerRow';
+import { setQueryQuietly } from './quietQuery';
 import '../../shared/places/customers.css';
-
-const PAGE = 60;
 
 export default function CustomersScreen({ query }: ScreenProps) {
   const [q, setQ] = useState(() => query.get('q') || '');
   const sort: 'recent' | 'az' = query.get('sort') === 'az' ? 'az' : 'recent';
-  const [limit, setLimit] = useState(PAGE);
   const all = customersList.value;
   const index = searchIndex.value;
   const ordered = sort === 'az' ? nameOrder.value : recentFirst.value;
+  const day = currentDay.value;
   // a very long list is searched a moment after the last key, so typing stays smooth
   const typed = useSettled(q.trim(), all.length > 800 ? 120 : 0);
   const list = useMemo(() => searchList(ordered, typed, (c) => index.get(c.id), undefined, sort === 'recent'), [ordered, index, typed, sort]);
+  const paged = usePaged(`customers|${sort}|${typed}`, list.length);
   useFocusOnMount(!touch.value, () => document.querySelector<HTMLInputElement>('[data-tour="customers-search"] input'));
-  useEffect(() => setLimit(PAGE), [typed, sort]);
-  // the search stays in the address, so « Retour » from a file comes back to it
+  // the search stays in the address (without moving the page), so « Retour » from a file comes back to it; a tap that
+  // leaves the list before it is written (Entrée, a line, a shortcut) writes it first
+  const pending = useRef<string | null>(null);
   useEffect(() => {
-    const tm = setTimeout(() => { if ((route.value.query.get('q') || '') !== typed) setQuery({ q: typed || null }); }, 600);
-    return () => clearTimeout(tm);
+    const keep = () => { if (pending.current == null) return; const v = pending.current; pending.current = null; setQueryQuietly({ q: v || null }); };
+    pending.current = typed;
+    const tm = setTimeout(keep, 600);
+    document.addEventListener('click', keep, true);
+    return () => { clearTimeout(tm); document.removeEventListener('click', keep, true); pending.current = null; };
   }, [typed]);
-  // more lines as the list scrolls
-  const sentinel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setLimit((l) => l + PAGE); }, { rootMargin: '600px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [list.length > limit]);
+  const flush = () => { if (pending.current != null) { const v = pending.current; pending.current = null; setQueryQuietly({ q: v || null }); } };
 
   const ready = net.value.ready;
-  const shown = list.slice(0, limit);
+  const mayCreate = mayCreateCustomer();
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== 'Enter') return;
     // the very long list searches a moment after the keys: Entrée uses what is typed now
     const now = q.trim();
     const first = now === typed ? list[0] : searchList(ordered, now, (c) => index.get(c.id), undefined, sort === 'recent')[0];
-    if (now && first) { e.preventDefault(); navigate(`/customer/${first.id}`); }
+    if (now && first) { e.preventDefault(); if (now === typed) flush(); else setQueryQuietly({ q: now }); navigate(`/customer/${first.id}`); }
   };
   const create = (txt: string) => {
     const d = draftFromQuery(txt);
@@ -75,14 +68,14 @@ export default function CustomersScreen({ query }: ScreenProps) {
     body = (
       <Panel>
         <Empty icon={<Users />} title={mine ? t('customers.empty.mineTitle') : t('customers.empty.title')} text={mine ? t('customers.empty.mineText') : t('customers.empty.text')}
-          action={may.newCustomer() && <Button variant="primary" icon={<UserPlus size={18} />} href="#/customer/new">{t('customers.newCustomer')}</Button>} />
+          action={mayCreate && <Button variant="primary" icon={<UserPlus size={18} />} href="#/customer/new">{t('customers.newCustomer')}</Button>} />
       </Panel>
     );
   } else if (typed && !list.length) {
     body = (
       <Panel>
         <Empty icon={<SearchX />} title={t('customers.noMatch.title', { q: typed })} text={t('customers.noMatch.text')}
-          action={may.newCustomer() && <Button variant="primary" icon={<UserPlus size={18} />} href={create(typed)} data-testid="create-from-search">{t('customers.noMatch.create', { q: typed })}</Button>} />
+          action={mayCreate && <Button variant="primary" icon={<UserPlus size={18} />} href={create(typed)} data-testid="create-from-search">{t('customers.noMatch.create', { q: typed })}</Button>} />
       </Panel>
     );
   } else {
@@ -91,10 +84,10 @@ export default function CustomersScreen({ query }: ScreenProps) {
         <div class="customers-head" aria-hidden="true">
           <span /><span>{t('customers.columns.name')}</span><span>{t('customers.columns.phone')}</span><span>{t('customers.columns.car')}</span><span>{t('customers.columns.when')}</span>
         </div>
-        <Rows>{shown.map((c) => <CustomerRow key={c.id} c={c} f={factsOf(c.id)} />)}</Rows>
-        {list.length > limit && (
-          <div ref={sentinel} class="customers-more">
-            <Button onClick={() => setLimit((l) => l + PAGE)}>{t('customers.more', { n: list.length - limit })}</Button>
+        <Rows>{list.slice(0, paged.limit).map((c) => <CustomerRow key={c.id} c={c} f={factsOf(c.id)} day={day} />)}</Rows>
+        {paged.hasMore && (
+          <div ref={paged.sentinel} class="customers-more">
+            <Button onClick={paged.more}>{t('customers.more', { n: paged.left })}</Button>
           </div>
         )}
       </Panel>
@@ -104,7 +97,7 @@ export default function CustomersScreen({ query }: ScreenProps) {
   return (
     <Page class="customers-page" title={t('customers.title')} data-testid="customers-screen"
       sub={all.length ? (typed ? t('customers.found', { n: list.length }) : t('customers.count', { n: all.length })) : undefined}
-      actions={may.newCustomer() && all.length > 0 && <Button variant="primary" icon={<UserPlus size={18} />} href="#/customer/new" data-testid="new-customer">{t('customers.newCustomer')}</Button>}>
+      actions={mayCreate && all.length > 0 && <Button variant="primary" icon={<UserPlus size={18} />} href="#/customer/new" data-testid="new-customer">{t('customers.newCustomer')}</Button>}>
       {all.length > 0 && <div class="customers-tools">
         <div class="grow" onKeyDown={onKey}>
           <SearchInput value={q} onValue={setQ} placeholder={t('customers.searchPlaceholder')} data-tour="customers-search" />
@@ -115,41 +108,4 @@ export default function CustomersScreen({ query }: ScreenProps) {
       {body}
     </Page>
   );
-}
-
-/** right-click (computer) or long press (phone) on a customer: the shortcut menu */
-function rowMenu(c: Customer) {
-  const actions = () => customerActions(c, { edit: true });
-  return {
-    onContextMenu: (e: MouseEvent) => openMenu(e, actions(), customerName(c)),
-    ...pressProps((x, y) => { const a = actions(); if (!a.length) return false; openMenuAt(x, y, a, customerName(c)); })
-  };
-}
-
-function CustomerRow(p: { c: Customer; f: CustomerFacts }) {
-  const { c, f } = p;
-  const name = customerName(c);
-  const company = c.company && (c.first_name || c.last_name) ? c.company : null;
-  return (
-    <RowItem href={`#/customer/${c.id}`} class="customers-row" data-testid="customer-row" chevron events={rowMenu(c) as never}
-      start={<Avatar name={name} />}
-      title={<>{name}{company && <span class="customers-row-company">{company}</span>}</>}
-      sub={<>
-        <span class="customers-col">{c.phone ? <Bit icon={<Phone size={14} aria-hidden="true" />}>{c.phone}</Bit> : <span class="faint">{t('customers.noPhone')}</span>}</span>
-        <span class="customers-col">{f.cars.length > 0 && <Bit icon={<Car size={14} aria-hidden="true" />}>{carName(f.cars[0])}{f.cars.length > 1 ? ` ${t('customers.carMore', { n: f.cars.length - 1 })}` : ''}</Bit>}</span>
-        <span class="customers-col-flags">
-          {f.next ? <span class="customers-when-inline"><Pill tone="booked">{nextLine(f.next.day, f.next.block, f.next)}</Pill></span>
-            : f.last ? <span class="customers-when-inline faint">{lastLine(f.last.day)}</span> : null}
-          <Flags c={c} owed={f.owed} />
-        </span>
-      </>}
-      end={<When f={f} />} />
-  );
-}
-
-export function When(p: { f: CustomerFacts }) {
-  const { next, last } = p.f;
-  if (next) return <span class="customers-when is-next"><span>{t('customers.when.next')}</span><b>{whenText(next.day, next.block, next)}</b></span>;
-  if (last) return <span class="customers-when"><span>{t('customers.when.last')}</span><b>{dayWord(last.day)}</b></span>;
-  return <span class="customers-when" />;
 }
