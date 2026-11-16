@@ -224,11 +224,12 @@ export function reduce(d: Draft, a: Action): Draft {
 
 /* ---------- reading the draft ---------- */
 /** the cars to book, the car on screen first, then the others in the order their work was typed. `belongs`: the key
-    is a car this appointment may name (the customer's, or a new caller's typed car); NO_CAR always may */
+    is a car this appointment may name (the customer's, or a new caller's typed car); NO_CAR and the car on screen always
+    may (what is shown is what is booked: a car whose file is not on this device goes without its file, as before) */
 export interface PlannedCar { key: string; jobId: string; work: Work }
 export function plannedCars(d: Draft, belongs: (key: string) => boolean): PlannedCar[] {
   const keys = [d.car, ...Object.keys(d.work).filter((k) => k !== d.car)];
-  return keys.filter((k) => (k === NO_CAR || belongs(k)) && hasWork(d.work[k])).map((k) => ({ key: k, jobId: d.work[k].jobId, work: d.work[k] }));
+  return keys.filter((k) => (k === NO_CAR || k === d.car || belongs(k)) && hasWork(d.work[k])).map((k) => ({ key: k, jobId: d.work[k].jobId, work: d.work[k] }));
 }
 /** the other cars of the appointment that have work (shown as « Aussi : … ») */
 export function otherCars(d: Draft, belongs: (key: string) => boolean): PlannedCar[] {
