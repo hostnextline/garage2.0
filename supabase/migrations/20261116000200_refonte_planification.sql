@@ -9,9 +9,17 @@
 --    (« Ordre des arrêts », a move out of it), an operation on one appointment never un-places another one, an
 --    automatic re-plan (address found, cancellation, the evening's lock) leaves a block as it is rather than un-place.
 -- 2. « Plages d'arrivée »: the calendar's lattice, the stop numbers of a day already started, the hours with a break,
---    the flexible appointments (lock without pg_cron, who is still to be told), the switch back to the blocks.
+--    the flexible appointments (lock without pg_cron, who is still to be told), the switch back to the blocks (the
+--    block of the arrival, the window kept, whom to call), a re-plan that would make a promised stop late (the stored
+--    routes as the seed), « réservé quand même » in its window, the « garde-route » numbers of each window.
 -- 3. Operations kept on a phone in the other mode are converted as the switch converts an appointment.
--- 4. « Peu importe » (car or truck), « Routes partagées » (my vehicle first), an estimate booked once.
+-- 4. « Peu importe » (car or truck), « Routes partagées » (my vehicle first), an estimate booked once, a vehicle that
+--    loses the tire machine, what a move really changed (`tell`).
+--
+-- Sections: 0 helpers · 1 apply_plan · 2 set_stop_order · 3 move_job · 4 set_job_duration · 5 book_job · 6 flexible
+-- windows · 7 suggest_windows_core, suggest_core · 8 windows_switch · 9 my_truck_ids, walk_in, job_step · 10 plan_route
+-- (plan_block's body) and plan_block · 11 replan_block, replan_days · 12 trucks_kind_keep.
+-- New refusal codes: quote_done (book_job), no_truck (walk_in). No new table, no new column.
 
 -- ---------------------------------------------------------------------------------------------------------------------
 -- 0. Small helpers of this Part (server only)
