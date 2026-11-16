@@ -31,7 +31,7 @@ export function windowStarts(span: Range, windowOf: WindowOf): number[] {
     planned arrival falls inside the window proves it too (the same stop, held to this window, arrives at that time or
     earlier, which never makes anybody after it late). The window told stays the rule's: only the « possible » is read
     from the other row. A server on the same grid is believed when it leaves a window out. */
-export function rowForWindow<T extends WinRow>(win: Range, by: Map<number, T>, rows: readonly T[], offGrid: boolean): T | undefined {
+function rowForWindow<T extends WinRow>(win: Range, by: Map<number, T>, rows: readonly T[], offGrid: boolean): T | undefined {
   return by.get(win[0]) ?? (offGrid ? rows.find((r) => r.eta != null && r.eta >= win[0] && r.eta <= win[1]) : undefined);
 }
 const offGridOf = (by: Map<number, WinRow>, span: Range, windowOf: WindowOf) => {

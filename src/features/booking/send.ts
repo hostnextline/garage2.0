@@ -6,7 +6,7 @@ import type { BookInput, ItemInput } from '../../data/api';
 import { forcedJob, type VisitJob } from './visit';
 
 /** the refusals « Réserver quand même » can go past (owner and office) */
-export const FORCEABLE = ['block_full', 'truck_full'];
+const FORCEABLE = ['block_full', 'truck_full'];
 
 export type CarResult =
   /** `sentForced`: sent with « Réserver quand même » (no window asked: the server cut it); `forced`: the server put it

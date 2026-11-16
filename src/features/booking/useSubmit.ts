@@ -22,7 +22,7 @@ import { calmScroll } from './motion';
 import type { Booking } from './useBooking';
 
 /** what is said after the booking: the window asked for; « Réserver quand même »: the day, the app gives the window */
-export function whenSaid(c: BlockChoice, forced: boolean, l: 'fr' | 'en'): string {
+function whenSaid(c: BlockChoice, forced: boolean, l: 'fr' | 'en'): string {
   return choiceWords(forced && c.block === 'day' && !c.win_flex ? { day: c.day, block: 'day' } : c, l);
 }
 const FAR_WAIT_MS = 4000;

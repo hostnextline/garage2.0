@@ -19,7 +19,7 @@ export function workMinutes(items: ItemDraft[]): number {
 export function lineUnitCents(i: Pick<ItemDraft, 'kind' | 'unit_cents'>): number {
   return i.kind === 'discount' ? -Math.abs(i.unit_cents) : i.unit_cents;
 }
-export function draftLines(items: ItemDraft[]): Line[] {
+function draftLines(items: ItemDraft[]): Line[] {
   return items.map((i) => ({ qty: Number(i.qty) || 0, unitCents: lineUnitCents(i), taxable: i.taxable }));
 }
 export interface BookSummary extends Totals {
