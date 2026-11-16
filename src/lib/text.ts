@@ -39,17 +39,51 @@ export function provinceOfPostal(pc: string | null | undefined): string | null {
   return p ? PROV[p[0]] ?? null : null;
 }
 
-/** "180-8255 av. Mountain Sights" → { unit: '180', civic: '8255', rest } ; also "8255 Mountain Sights, app. 3" */
+/** « 4521-4523 rue Fabre », « 12-14 rue Fabre » are one building with two door numbers (a duplex), not a unit and a door:
+    same length, at most 20 apart. « 3-5 rue X » stays a unit and a door (too short to tell). The same rule as
+    shared/places/address.ts, so both can become this one. */
+export function isCivicRange(s: string): boolean {
+  const m = /^\s*(\d{2,6})\s*-\s*(\d{2,6})\b/.exec(s);
+  return !!m && m[1].length === m[2].length && Math.abs(Number(m[2]) - Number(m[1])) <= 20;
+}
+
+/* The words that announce a unit. A word only counts when it stands alone: « Logan », « Appleton », « Burton », « Bureau »
+   or « Localité » are street names, not « log. an », « app. leton »… (core-data-05). */
+const UNIT_WORD = '(?:appartement|appart\\.?|appt\\.?|app\\.?|apt\\.?|unité|unite|unit|suite|bureau|bur\\.?|local|logement|log\\.?)';
+/* What a unit looks like: it starts with a digit (« 3 », « 3B », « 400 »), or is 1-2 letters then a digit (« PH2 », « A-3 »),
+   or is ONE letter that ends its part of the address (« , unité A »). The end is Unicode-aware: JavaScript's \b takes « é »
+   for a gap, which is how « Localité » used to lose « it ». */
+const UNIT_VALUE = '(\\d[0-9A-Za-z-]{0,7}|[A-Za-z]{1,2}-?\\d[0-9A-Za-z-]{0,5}|[A-Za-z](?=\\s*(?:,|$)))(?![\\p{L}\\p{N}])';
+// the keyword is followed by « # » (« apt#3 », « app. # 3 »), a space, or directly by the number (« app3 »); « # » alone may
+// touch the number
+const AFTER_WORD = '(?:\\s*#\\s*|\\s+|(?=\\d))';
+const UNIT_AFTER = new RegExp(`^(.*?)(?:[,\\s]+${UNIT_WORD}${AFTER_WORD}|[,\\s]*#\\s*)${UNIT_VALUE}(.*)$`, 'iu');
+const UNIT_PART = new RegExp(`^(?:${UNIT_WORD}${AFTER_WORD}|#\\s*)${UNIT_VALUE}\\s*$`, 'iu');
+
+/** one part of an address between commas is only a unit (« app. 3 », « #12 », « unité A »), not a town or a street */
+export function isUnitPart(part: string): boolean { return UNIT_PART.test(String(part || '').trim()); }
+
+/** "180-8255 av. Mountain Sights" → { unit: '180', line: '8255 av. Mountain Sights' } ; also "8255 Mountain Sights, app. 3".
+    A civic range (« 4521-4523 rue Fabre ») is never read as a unit and a door; a unit written after it
+    (« 4521-4523 rue Fabre, app. 2 ») is still taken out, and the range stays in the line. */
 export function splitUnit(address: string): { unit: string | null; line: string } {
   const s = address.trim();
-  let m = /^([0-9A-Za-z]{1,6})\s*-\s*(\d{1,6}[A-Za-z]?\b.*)$/.exec(s);
-  if (m && /\d/.test(m[1])) return { unit: m[1], line: m[2].trim() };
-  m = /^(.*?)[,\s]+(?:app\.?|appt\.?|apt\.?|appartement|unité|unite|unit|suite|bureau|bur\.?|local|logement|log\.?|#)\s*([0-9A-Za-z-]{1,8})\b(.*)$/i.exec(s);
+  if (!isCivicRange(s)) {
+    const r = /^([0-9A-Za-z]{1,6})\s*-\s*(\d{1,6}[A-Za-z]?\b.*)$/.exec(s);
+    if (r && /\d/.test(r[1])) return { unit: r[1], line: r[2].trim() };
+  }
+  // the unit word needs a space, a comma or « # » before it, so the digits and dash of a range are never taken for one
+  const m = UNIT_AFTER.exec(s);
   if (m) return { unit: m[2], line: (m[1] + ' ' + m[3]).replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').trim().replace(/,$/, '') };
   return { unit: null, line: s };
 }
+// an ordinal street name (« 58e Avenue », « 1re rue », « 3rd Street ») starts with digits but is not a door number
+const ORDINAL = /^\s*\d{1,4}(?:e|er|re|ère|ème|eme|ieme|th|st|nd|rd)(?![\p{L}\p{N}])/iu;
+/** the door number (« 3-1250 rue Graham » → 1250); for a civic range, the first one; none for « 58e Avenue » */
 export function civicNumber(address: string): string | null {
-  const m = /^\s*(\d{1,6}[A-Za-z]?)\b/.exec(splitUnit(address).line);
+  const line = splitUnit(address).line;
+  if (ORDINAL.test(line)) return null;
+  const m = /^\s*(\d{1,6}[A-Za-z]?)\b/.exec(line);
   return m ? m[1] : null;
 }
 
@@ -90,15 +124,22 @@ export function vinYear(vin: string): number | null {
 export function fold(s: string | null | undefined): string {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
-/** every word of the query is found in the haystack (accents and case ignored) */
+// a piece of the query made of digits and the signs around numbers only: « 4243 », « 514-771 », « (514) », « #1042 »,
+// « 514/555-1234 »
+const DIGITS_ONLY = /^[\d#/().+-]+$/;
+/** every piece of the query is found (accents and case ignored, all of them). A piece of 3 digits or more is also found
+    inside the digits of ONE field (« 5551 » in « 514 555-1234 »), never across two fields joined together; the words of
+    the query still count (« tremblay 4243 » is not Bob Gagnon whose phone ends in 4243). */
 export function matches(query: string, ...fields: (string | null | undefined)[]): boolean {
-  const words = fold(query).split(/\s+/).filter(Boolean);
-  if (!words.length) return true;
+  const pieces = fold(query).split(/\s+/).filter(Boolean);
+  if (!pieces.length) return true;
   const hay = fold(fields.filter(Boolean).join(' '));
-  const qd = query.replace(/\D/g, '');
-  // digits are matched inside one field (a phone number), never across two fields joined together
-  if (qd.length >= 3 && fields.some((f) => String(f || '').replace(/\D/g, '').includes(qd))) return true;
-  return words.every((w) => hay.includes(w));
+  const fieldDigits = fields.map((f) => String(f || '').replace(/\D/g, '')).filter(Boolean);
+  return pieces.every((p) => {
+    if (hay.includes(p)) return true;
+    const d = p.replace(/\D/g, '');
+    return DIGITS_ONLY.test(p) && d.length >= 3 && fieldDigits.some((f) => f.includes(d));
+  });
 }
 export function initials(name: string | null | undefined): string {
   const p = String(name || '').trim().split(/\s+/).filter(Boolean);

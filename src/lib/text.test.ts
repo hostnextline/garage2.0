@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { phoneDigits, formatPhone, e164, postalCode, findPostal, provinceOfPostal, splitUnit, civicNumber, cleanVin, vinCheck, vinYear, matches, initials, fold } from './text';
+import { phoneDigits, formatPhone, e164, postalCode, findPostal, provinceOfPostal, splitUnit, civicNumber, isCivicRange, isUnitPart, cleanVin, vinCheck, vinYear,
+  matches, initials, fold, firstName, fullName, norm, squash, EMAIL_RE } from './text';
 
 describe('phone numbers', () => {
   it.each([['514-771-4243', '5147714243'], ['+1 (438) 901-6606', '4389016606'], ['1 438 901 6606', '4389016606'], ['438.901.6606', '4389016606']])('%s', (a, b) => expect(phoneDigits(a)).toBe(b));
@@ -30,6 +31,77 @@ describe('postal codes and addresses', () => {
     expect(civicNumber('180-8255 av. Mountain Sights')).toBe('8255');
     expect(civicNumber('av. Mountain Sights')).toBeNull();
   });
+  // core-data-05: these are street names, not a unit word glued to a unit
+  it.each([
+    '4500 avenue Appleton', '2100 rue Logan', '4855 avenue Burton', '75 chemin Bureau', '12 rue Unity', '10 rue Localité',
+    '55 rue Burnside', '300 rue des Appalaches', '77 rue Logement', '5 rue Burke, Laval', '1234 rue Apple', '60 rue Unité',
+    '2100 rue Logan, Montréal, QC H2L 1Y4', '8 rue Suiteville', '9 boul. Appart', '10 rue Apple Hill', '20 boul. Burlington'
+  ])('keeps the street « %s » whole', (a) => expect(splitUnit(a)).toEqual({ unit: null, line: a }));
+  it.each([
+    ['1200 rue Peel bureau 400, Montréal', '400', '1200 rue Peel, Montréal'],
+    ['8255 av. Mountain Sights, app. 3', '3', '8255 av. Mountain Sights'],
+    ['50 rue Jarry apt 3B', '3B', '50 rue Jarry'],
+    ['50 rue Jarry #12', '12', '50 rue Jarry'],
+    ['50 rue Jarry, unité A', 'A', '50 rue Jarry'],
+    ['50 rue Jarry, unité A, Montréal', 'A', '50 rue Jarry, Montréal'],
+    ['50 rue Jarry app3', '3', '50 rue Jarry'],
+    ['100 rue Logan app 4', '4', '100 rue Logan'],
+    ['100 rue Logan, local PH2', 'PH2', '100 rue Logan'],
+    ['100 rue Logan, appartement 12, Laval', '12', '100 rue Logan, Laval'],
+    ['3-1250 rue Graham', '3', '1250 rue Graham'],
+    ['10 rue Localité, log. 5', '5', '10 rue Localité'],
+    ['8255 av. Mountain Sights, unité 4, Montréal', '4', '8255 av. Mountain Sights, Montréal']
+  ])('still keeps the unit of « %s »', (a, unit, line) => expect(splitUnit(a)).toEqual({ unit, line }));
+  it('a civic range is one building with two doors, not a unit', () => {
+    expect(isCivicRange('4521-4523 rue Fabre')).toBe(true);
+    expect(isCivicRange('1250-1252 rue Graham')).toBe(true);
+    expect(isCivicRange('12-1250 rue Graham')).toBe(false);
+    expect(isCivicRange('1234-1290 rue Saint-Denis')).toBe(false);
+    expect(splitUnit('4521-4523 rue Fabre')).toEqual({ unit: null, line: '4521-4523 rue Fabre' });
+    expect(civicNumber('4521-4523 rue Fabre')).toBe('4521');
+    expect(civicNumber('180-8255 av. Mountain Sights')).toBe('8255');
+    expect(civicNumber('2100 rue Logan')).toBe('2100');
+    expect(splitUnit('12-14 rue Fabre')).toEqual({ unit: null, line: '12-14 rue Fabre' });
+    expect(splitUnit('3-5 rue Fabre')).toEqual({ unit: '3', line: '5 rue Fabre' });
+  });
+  // review lt-5: a unit written after a civic range is taken out; the range stays whole in the line
+  it('a unit after a civic range is still taken out', () => {
+    expect(splitUnit('4521-4523 rue Fabre, app. 2')).toEqual({ unit: '2', line: '4521-4523 rue Fabre' });
+    expect(splitUnit('22-24 rue Fabre app 3')).toEqual({ unit: '3', line: '22-24 rue Fabre' });
+    expect(splitUnit('4521-4523 rue Fabre #5, Montréal')).toEqual({ unit: '5', line: '4521-4523 rue Fabre, Montréal' });
+    expect(civicNumber('4521-4523 rue Fabre, app. 2')).toBe('4521');
+    expect(splitUnit('12-14 rue Logan')).toEqual({ unit: null, line: '12-14 rue Logan' });
+    expect(splitUnit('12-14 rue Fabre, Montréal')).toEqual({ unit: null, line: '12-14 rue Fabre, Montréal' });
+  });
+  it('a unit word followed by « # » is taken out with its number', () => {
+    expect(splitUnit('8255 av. Mountain Sights, apt#3')).toEqual({ unit: '3', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('8255 av. Mountain Sights, app. # 3')).toEqual({ unit: '3', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('8255 av. Mountain Sights, app. #3, Montréal')).toEqual({ unit: '3', line: '8255 av. Mountain Sights, Montréal' });
+    expect(isUnitPart('apt#3')).toBe(true);
+    expect(isUnitPart('app. # 12')).toBe(true);
+    // unchanged
+    expect(splitUnit('8255 av. Mountain Sights, app. 3')).toEqual({ unit: '3', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('8255 av. Mountain Sights #12')).toEqual({ unit: '12', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('2100 rue Logan')).toEqual({ unit: null, line: '2100 rue Logan' });
+  });
+  it('an ordinal street is not a door number', () => {
+    expect(civicNumber('58e Avenue, Laval')).toBeNull();
+    expect(civicNumber('1re rue, Sainte-Anne')).toBeNull();
+    expect(civicNumber('3rd Street')).toBeNull();
+    expect(civicNumber('144 58e Avenue')).toBe('144');
+    expect(civicNumber('1250A rue Graham')).toBe('1250A');
+    expect(civicNumber('3-1250 rue Graham')).toBe('1250');
+  });
+  it('tells a part of the address that is only a unit', () => {
+    expect(isUnitPart('app. 3')).toBe(true);
+    expect(isUnitPart(' #12 ')).toBe(true);
+    expect(isUnitPart('unité A')).toBe(true);
+    expect(isUnitPart('Bureau 400')).toBe(true);
+    expect(isUnitPart('Appleton')).toBe(false);
+    expect(isUnitPart('Localité')).toBe(false);
+    expect(isUnitPart('Logan')).toBe(false);
+    expect(isUnitPart('Montréal')).toBe(false);
+  });
 });
 
 describe('VIN', () => {
@@ -52,6 +124,50 @@ describe('search', () => {
     expect(matches('montreal', '8255 Mountain Sights, Montréal')).toBe(true);
     expect(matches('5551', 'Bob', '514 555-1234')).toBe(true);
     expect(matches('xyz', 'Bob')).toBe(false);
+    expect(matches('', 'Bob')).toBe(true);
+  });
+  it('a phone number is found however it is typed', () => {
+    expect(matches('514 555 1234', 'Bob', '514 555-1234')).toBe(true);
+    expect(matches('(514) 555-1234', 'Bob', '514 555-1234')).toBe(true);
+    expect(matches('5145551234', 'Bob', '514 555-1234')).toBe(true);
+    expect(matches('bob 1234', 'Bob', '514 555-1234')).toBe(true);
+  });
+  // core-data-31: the digits of a mixed query no longer answer alone
+  it('the words of a mixed query still count', () => {
+    expect(matches('tremblay 4243', 'Bob Gagnon', '514 771-4243')).toBe(false);
+    expect(matches('gagnon 4243', 'Bob Gagnon', '514 771-4243')).toBe(true);
+    expect(matches('h4p 2b5', 'Bob', '514 425-0000')).toBe(false);
+    expect(matches('h4p 2b5', 'Bob', '8255 av. Mountain Sights, H4P 2B5')).toBe(true);
+  });
+  // review lt-7: a number typed with « # » or « / » still finds it (as before the rebuild)
+  it('an invoice number with « # » or a phone with « / » is still found', () => {
+    expect(matches('#1042', 'Bob Gagnon', '1042')).toBe(true);
+    expect(matches('#1042', 'Bob Gagnon', 'F-1042')).toBe(true);
+    expect(matches('514/555-1234', 'Bob', '514 555-1234')).toBe(true);
+    expect(matches('#1042', 'Bob Gagnon', '1043')).toBe(false);
+    expect(matches('gagnon #1042', 'Bob Gagnon', '1042')).toBe(true);
+    expect(matches('tremblay #1042', 'Bob Gagnon', '1042')).toBe(false);
+    expect(matches('#10', 'Bob', '1042')).toBe(false); // fewer than 3 digits: only as text
+  });
+  it('digits are never matched across two fields joined together', () => {
+    expect(matches('5551', 'Bob 555', '1234')).toBe(false);
   });
   it('initials', () => { expect(initials('Hassan Jeha')).toBe('HJ'); expect(initials('')).toBe('?'); expect(fold('Éric')).toBe('eric'); });
+});
+
+describe('names and folded text', () => {
+  it('first name, full name, e-mail', () => {
+    expect(firstName('  Hassan Jeha ')).toBe('Hassan');
+    expect(firstName(null)).toBe('');
+    expect(fullName(' Jean ', null)).toBe('Jean');
+    expect(fullName('Jean', 'Tremblay')).toBe('Jean Tremblay');
+    expect(EMAIL_RE.test('a@b.ca')).toBe(true);
+    expect(EMAIL_RE.test('a@b')).toBe(false);
+  });
+  it('norm drops apostrophes, squash keeps letters and digits', () => {
+    expect(norm('O’Neil')).toBe('oneil');
+    expect(norm(null)).toBe('');
+    expect(squash('H3P 2C9')).toBe('h3p2c9');
+    expect(squash('FLT-001')).toBe('flt001');
+  });
 });
