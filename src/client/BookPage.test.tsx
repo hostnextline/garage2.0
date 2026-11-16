@@ -11,7 +11,7 @@ vi.mock('./api', async (orig) => {
   const real = await orig<typeof import('./api')>();
   return { ...real, callBook: async (action: string, body: Record<string, unknown> = {}) => { calls.push({ action, body }); return answer(action, body); } };
 });
-vi.mock('../features/customers/places', () => ({
+vi.mock('../shared/places/places', () => ({
   searchPlaces: async () => ({ error: null, places: [{ place: { address: '1250 rue Graham', unit: null, postal_code: null, city: 'Mont-Royal', lat: 45.5, lng: -73.6 },
     label: '1250 rue Graham', sub: 'Mont-Royal', exact: true, key: 'g', house: '1250', street: 'rue Graham', areas: ['Mont-Royal'] }] })
 }));

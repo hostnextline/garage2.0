@@ -7,7 +7,7 @@ import { e164 } from '../../lib/text';
 import { may, isField } from '../../domain/rights';
 import { navigate } from '../../platform/router';
 import type { MenuAction } from '../../ui/ContextMenu';
-import { directionsUrl } from './address';
+import { directionsUrl } from '../../shared/places/address';
 
 type Place = { address?: string | null; unit?: string | null; postal_code?: string | null; lat?: number | null; lng?: number | null };
 const go = (path: string) => () => navigate(path);

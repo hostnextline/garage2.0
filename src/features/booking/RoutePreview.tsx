@@ -6,10 +6,10 @@ import { createPortal } from 'preact/compat';
 import { t, lang } from '../../lib/i18n';
 import { duration } from '../../lib/dates';
 import { Sheet, Button, Banner } from '../../ui';
-import { MapView, type MapMarker, type MapLine } from '../map/MapView';
-import { assemble, UNPLACED_COLOR, type TruckRoute } from '../map/assemble';
-import { fromDevice } from '../map/device';
-import { useRoads, roadOf, roadTotal } from '../map/useRoads';
+import { MapView, type MapMarker, type MapLine } from '../../shared/map/MapView';
+import { assemble, UNPLACED_COLOR, type TruckRoute } from '../../shared/map/assemble';
+import { fromDevice } from '../../shared/map/device';
+import { useRoads, roadOf, roadTotal } from '../../shared/map/useRoads';
 import { staffName, activeTrucks } from '../../data/select';
 import { placeNewStop, NEW_STOP, type Spot } from './preview';
 

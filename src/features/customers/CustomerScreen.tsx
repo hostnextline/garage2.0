@@ -28,18 +28,18 @@ import { draftFromQuery } from './search';
 import { CustomerFields, emptyDraft, draftOf, customerPatch, checkDraft, hasErrors, changed, type Draft, type DraftErrors } from './CustomerFields';
 import { NotesPanel } from './NotesPanel';
 import { VehicleAddSheet, CarForm, EMPTY_CAR, carIsEmpty, carErrors, carRow, type AddDraft, type AddMode } from './VehicleBits';
-import { searchPlaces } from './AddressField';
-import { locate } from './locate';
+import { searchPlaces } from '../../shared/places/AddressField';
+import { locate } from '../../shared/places/locate';
 import { spreadToJobs } from '../../app/locator';
-import type { Suggestion } from './photon';
-import { oneLine, directionsUrl } from './address';
+import type { Suggestion } from '../../shared/places/photon';
+import { oneLine, directionsUrl } from '../../shared/places/address';
 import { Flags, Plate, Bit } from './bits';
 import { stampDay, dayOfIso, dateShort } from '../../domain/moment/dayWords';
 import { carName } from '../../domain/vehicles/words';
 import { lastOil } from '../../domain/oil/select';
 import { CarHistoryButton } from './CarHistory';
 import { km } from './vehicleText';
-import './customers.css';
+import '../../shared/places/customers.css';
 
 export default function CustomerScreen({ params, query }: ScreenProps) {
   if (params.id === 'new') return <NewCustomer query={query} />;

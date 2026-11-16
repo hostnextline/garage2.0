@@ -21,7 +21,7 @@ import { searchList, draftFromQuery } from './search';
 import { Flags, Bit, whenText, nextLine, lastLine } from './bits';
 import { dayWord } from '../../domain/moment/dayWords';
 import { carName } from '../../domain/vehicles/words';
-import './customers.css';
+import '../../shared/places/customers.css';
 
 const PAGE = 60;
 

@@ -13,7 +13,7 @@ import { Button, Field, DateInput, InputWithButton, IconButton, Sheet, Seg, Bann
 import { engineLine, vinFromCode } from './vehicleText';
 import { barcodeReader, hasCamera, readVinPhoto, type VinReading } from './vinScan';
 import { CarPicker } from './CarPicker';
-import './customers.css';
+import '../../shared/places/customers.css';
 import { VinSeen } from './VinHistory';
 
 /* ---------- reading a VIN on the server ---------- */

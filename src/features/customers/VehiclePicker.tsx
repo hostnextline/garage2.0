@@ -7,7 +7,7 @@ import { vehiclesOf, vehicleLabel } from '../../data/select';
 import { Button, Chips } from '../../ui';
 import { VehicleAddSheet } from './VehicleBits';
 import { carName } from '../../domain/vehicles/words';
-import './customers.css';
+import '../../shared/places/customers.css';
 
 export interface VehiclePickerProps {
   customerId: string | null;

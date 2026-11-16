@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { splitPasted, cityOf, oneLine, directionsUrl, isCivicRange } from './address';
-import { vinFromCode, km, parseKm } from './vehicleText';
+import { vinFromCode, km, parseKm } from '../../features/customers/vehicleText';
 
 describe('a pasted address', () => {
   it('keeps the unit apart', () => {

@@ -8,7 +8,7 @@ import { truck as truckRow, truckRanges } from '../../data/select';
 import { applyHours } from '../../data/api';
 import { flush, pull } from '../../data/sync';
 import { Sheet, Panel, Field, Select, Button, attempt } from '../../ui';
-import { TruckStartPanel } from '../hours/TruckStartPanel';
+import { TruckStartPanel } from '../../shared/places/TruckStartPanel';
 import { rangesWords } from '../../domain/moment/words';
 
 const DAY_END = 20 * 60;

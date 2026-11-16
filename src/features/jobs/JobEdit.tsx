@@ -11,7 +11,7 @@ import { vehicle, vehicleLabel, truckLabel, itemsOf, customer as customerRow, ve
 import { updateJob, changeJobCustomer } from '../../data/api';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { VehiclePicker } from '../customers/VehiclePicker';
-import { AddressField, EMPTY_PLACE, type PlaceValue } from '../customers/AddressField';
+import { AddressField, EMPTY_PLACE, type PlaceValue } from '../../shared/places/AddressField';
 import { jobCustomer, jobName, dayInSentence, momentWord, wt } from './select';
 import type { JobRights } from '../../domain/jobs/rights';
 import { editRights } from '../../domain/jobs/rights';

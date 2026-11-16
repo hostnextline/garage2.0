@@ -15,9 +15,9 @@ import { replaceHash, rememberGarage, recallGarage } from './link';
 import { Header, Footer, Note, Skeleton, CallUs, garageName } from './ui';
 import { duration, shortDate, longDay, today } from '../lib/dates';
 import { formatPhone } from '../lib/text';
-import { searchPlaces } from '../features/customers/places';
-import { locate } from '../features/customers/locate';
-import type { Suggestion } from '../features/customers/photon';
+import { searchPlaces } from '../shared/places/places';
+import { locate } from '../shared/places/locate';
+import type { Suggestion } from '../shared/places/photon';
 import { ErrorState } from './ViewPage';
 import {
   STEPS, stepNumber, serviceName, chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots,

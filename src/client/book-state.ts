@@ -2,8 +2,8 @@
 import { phoneDigits } from '../lib/text';
 import { totals } from '../lib/money';
 import type { CLang } from './i18n';
-import type { Suggestion } from '../features/customers/photon';
-import { wantedOf, sameStreet, sameTown, streetWords } from '../features/customers/locate';
+import type { Suggestion } from '../shared/places/photon';
+import { wantedOf, sameStreet, sameTown, streetWords } from '../shared/places/locate';
 
 export interface WebService {
   id: string; name_fr: string; name_en: string; category: string; price_cents: number | null; taxable?: boolean; duration_min: number;

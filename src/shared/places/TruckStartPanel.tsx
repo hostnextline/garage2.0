@@ -9,7 +9,7 @@ import { setTruckStart } from '../../data/api';
 import { flush, pull } from '../../data/sync';
 import type { TruckStart } from '../../data/types';
 import { Panel, Field, Input, Seg, Button, Banner, attempt } from '../../ui';
-import { AddressField, type PlaceValue } from '../customers/AddressField';
+import { AddressField, type PlaceValue } from './AddressField';
 
 type Mode = 'home' | 'own';
 interface Draft { mode: Mode; label: string; address: string; lat: number | null; lng: number | null }

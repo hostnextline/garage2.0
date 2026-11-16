@@ -4,7 +4,7 @@ import { chosenMinutes, chosenTotal, toggle, contactErrors, years, stepOfError, 
 import { parseLink } from './link';
 import { ct } from './i18n';
 import { onTypedStreet } from './book-state';
-import type { Suggestion } from '../features/customers/photon';
+import type { Suggestion } from '../shared/places/photon';
 
 const place = (label: string, street: string, lat: number | null = 45.5): Suggestion => ({ place: { address: label, unit: null, postal_code: null, lat, lng: lat == null ? null : -73.6 },
   label, sub: '', exact: true, key: label, house: '1250', street, areas: [] });

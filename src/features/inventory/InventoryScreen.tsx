@@ -10,11 +10,11 @@ import { inventoryList, lowStock, coffreStock } from '../../data/select';
 import { setQuery, type ScreenProps } from '../../platform/router';
 import type { InventoryItem } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, Help, BigStep, Seg, Banner } from '../../ui';
-import { BigMoney } from '../dashboard/charts';
+import { BigMoney } from '../../shared/charts/charts';
 import { itemValue, stockValue, toOrder } from '../../domain/stock/stock';
 import { ItemSheet, useQty } from './ItemSheet';
 import { defaultWeek, weekWords } from './needsView';
-import '../dashboard/charts.css';
+import '../../shared/charts/charts.css';
 import './inventory.css';
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();

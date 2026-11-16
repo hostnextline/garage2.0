@@ -12,7 +12,7 @@ import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
 import { jobFirstName, rememberLink, clockOf, keepAhead, wt } from './select';
 import type { JobRights } from '../../domain/jobs/rights';
-import { exportSignature, type Stroke } from './signature';
+import { exportSignature, type Stroke } from '../../shared/sign/signature';
 import { plannedParts, type UsedPart } from './parts';
 import { confirmParts } from './PartsSheet';
 import { askCar, saveCar } from './CarCheckSheet';

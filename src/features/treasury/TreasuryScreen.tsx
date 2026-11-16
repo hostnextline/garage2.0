@@ -13,15 +13,15 @@ import { settings, garageName } from '../../data/select';
 import { can, me } from '../../data/auth';
 import type { Expense } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Banner, Empty, Chips, Field, DateInput, SearchInput, Select, Skeleton, Help, toast } from '../../ui';
-import { BigMoney, HBars } from '../dashboard/charts';
-import { useReport } from '../dashboard/useReport';
+import { BigMoney, HBars } from '../../shared/charts/charts';
+import { useReport } from '../../shared/charts/useReport';
 import { PERIODS, isPeriod, periodRange, rangeLabel, type PeriodKey, type DayRange } from '../../domain/money/period';
 import { normalizeReport, type TreasuryReport } from './report';
 import { periodExpenses, filterCategories, matches, methodLabel, revenueLines, expenseLines } from './data';
-import { buildWorkbook, buildCsv, type ExportLabels } from './exports';
-import { XLSX_MIME } from './xlsx';
+import { buildWorkbook, buildCsv, type ExportLabels } from '../../shared/export/exports';
+import { XLSX_MIME } from '../../shared/export/xlsx';
 import { ExpenseSheet } from './ExpenseSheet';
-import '../dashboard/charts.css';
+import '../../shared/charts/charts.css';
 import './treasury.css';
 
 export default function TreasuryScreen({ query }: ScreenProps) {

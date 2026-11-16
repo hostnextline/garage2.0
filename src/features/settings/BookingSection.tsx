@@ -12,8 +12,8 @@ import { isOwner, hasRole } from '../../data/auth';
 import { Panel, Field, Input, PhoneInput, Banner, Button, Switch, Seg, ask, attempt, toast } from '../../ui';
 import { Copy, Share2, ExternalLink, CalendarCheck } from 'lucide-preact';
 import { appBase, movedTo } from '../../lib/config';
-import { AddressField, type PlaceValue } from '../customers/AddressField';
-import { MapView } from '../map/MapView';
+import { AddressField, type PlaceValue } from '../../shared/places/AddressField';
+import { MapView } from '../../shared/map/MapView';
 import { useSectionDraft, SaveBar, Section, NumInput, TimeInput, rangeError } from './SectionFrame';
 import { WIN_DEFAULTS, WIN_LIMITS, spanOf, withDaySpan, exampleWindow, spanTooShort, winRound } from './windows';
 

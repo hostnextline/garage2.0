@@ -16,7 +16,7 @@ import { Sheet, Panel, Button, Field, Input, PhoneInput, Chips, Seg, Switch, Ban
 import { ALL_ROLES, fromRoles, choiceOf, withChoice, activeOverrides, type Choice, type Overrides, type RoleRights } from '../../domain/team/rights';
 import { teamDo, rolesWords, type LinkAnswer, type LinkResult, type SendHow, type TeamList } from '../../domain/team/teamApi';
 import { HowSeg } from './LinkSheet';
-import { ago } from '../map/ago';
+import { ago } from '../../shared/map/ago';
 
 export const COLORS: { key: string; hex: string }[] = [
   { key: 'red', hex: '#D3000E' }, { key: 'blue', hex: '#2F6FD0' }, { key: 'green', hex: '#1F8A53' }, { key: 'amber', hex: '#B86E00' },

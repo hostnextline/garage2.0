@@ -1,7 +1,7 @@
 /* The rows of « Vue d'ensemble »: each appointment of the day with its stop number on the map and its truck's colour.
    Pure (tested in rows.test.ts). */
 import type { Job } from '../../data/types';
-import { UNPLACED_COLOR, type Assembled } from '../map/assemble';
+import { UNPLACED_COLOR, type Assembled } from '../../shared/map/assemble';
 import { t } from '../../lib/i18n';
 
 export interface OverviewRow { job: Job; n: number | null; color: string; truckName: string }

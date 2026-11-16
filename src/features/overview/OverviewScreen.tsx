@@ -15,10 +15,10 @@ import { jobsOn, customer as customerRow, customerName, vehicle as vehicleRow, v
 import type { JobStatus } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Empty, StatusPill, Pill } from '../../ui';
 import { isWindowJob, blockRange, outsideWindow } from '../jobs/select';
-import { useRoads, roadOf } from '../map/useRoads';
-import { MapView, type MapMarker, type MapLine } from '../map/MapView';
-import { assemble, normalize, UNPLACED_COLOR, type TeamMapAnswer } from '../map/assemble';
-import { fromDevice } from '../map/device';
+import { useRoads, roadOf } from '../../shared/map/useRoads';
+import { MapView, type MapMarker, type MapLine } from '../../shared/map/MapView';
+import { assemble, normalize, UNPLACED_COLOR, type TeamMapAnswer } from '../../shared/map/assemble';
+import { fromDevice } from '../../shared/map/device';
 import { dayCounts } from '../../domain/jobs/counts';
 import { overviewRows, type OverviewRow } from './rows';
 import './overview.css';

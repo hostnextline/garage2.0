@@ -12,8 +12,8 @@ import { invoicePaid, invoiceBalance, chargesTaxes, sections, afterCheck, type P
 import { linkHash, replaceHash, remember, recall, rememberGarage, recallGarage } from './link';
 import { Header, Footer, Note, Stamp, CallUs, Sums, Skeleton, PrintIdentity, garageName } from './ui';
 import { shortDate, today } from '../lib/dates';
-import { SignaturePad } from '../features/jobs/SignaturePad';
-import { hasEnoughInk, exportSignature, type Stroke } from '../features/jobs/signature';
+import { SignaturePad } from '../shared/sign/SignaturePad';
+import { hasEnoughInk, exportSignature, type Stroke } from '../shared/sign/signature';
 
 type Phase = { k: 'loading' } | { k: 'error'; code: string; garage: Garage | null } | { k: 'ready'; v: View };
 const CHECK_TRIES = 5;

@@ -24,8 +24,8 @@ vi.mock('../../ui', async (orig) => {
   const real = await orig<typeof import('../../ui')>();
   return { ...real, ask: async (o: { title: string; text?: string }) => { asked.push(o); return sayYes; } };
 });
-vi.mock('../map/MapView', () => ({ MapView: () => null }));
-vi.mock('../customers/AddressField', () => ({ AddressField: () => null }));
+vi.mock('../../shared/map/MapView', () => ({ MapView: () => null }));
+vi.mock('../../shared/places/AddressField', () => ({ AddressField: () => null }));
 import { BookingSection } from './BookingSection';
 import { drafts } from './SectionFrame';
 import { replaceLocal } from '../../data/store';

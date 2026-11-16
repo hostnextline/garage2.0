@@ -6,7 +6,7 @@ import { phoneDigits, formatPhone, EMAIL_RE } from '../../lib/text';
 import type { Customer, Lang } from '../../data/types';
 import { customersList, customerName } from '../../data/select';
 import { Field, Input, PhoneInput, Textarea, Seg, Switch, Banner } from '../../ui';
-import { AddressField, placeFields, EMPTY_PLACE, type PlaceValue } from './AddressField';
+import { AddressField, placeFields, EMPTY_PLACE, type PlaceValue } from '../../shared/places/AddressField';
 import { phoneOwners } from './dupes';
 import { cap } from './search';
 

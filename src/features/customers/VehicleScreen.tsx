@@ -27,7 +27,7 @@ import { specKeyOf } from '../../domain/vehicles/engineRef';
 import { km, parseKm, engineLine, sampleNumber } from './vehicleText';
 import { Plate } from './bits';
 import { carName } from '../../domain/vehicles/words';
-import './customers.css';
+import '../../shared/places/customers.css';
 
 const FUELS = ['essence', 'diesel', 'hybride', 'electrique', 'e85', 'gnc'];
 const DRIVES = ['fwd', 'rwd', 'awd', '4wd', '2wd'];

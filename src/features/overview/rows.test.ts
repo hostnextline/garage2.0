@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { overviewRows } from './rows';
-import { assemble, UNPLACED_COLOR } from '../map/assemble';
+import { assemble, UNPLACED_COLOR } from '../../shared/map/assemble';
 import type { Job } from '../../data/types';
 import { overview as fr } from '../../i18n/fr/overview';
 import { overview as en } from '../../i18n/en/overview';

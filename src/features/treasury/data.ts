@@ -10,9 +10,9 @@ import { t } from '../../lib/i18n';
 import { dayOf } from '../../lib/dates';
 import type { Expense, Invoice } from '../../data/types';
 import { inRange, type DayRange } from '../../domain/money/period';
-import { withTimeout } from '../dashboard/useReport';
-import type { Photo } from './ocr';
-import type { ExpenseLine, RevenueLine } from './exports';
+import { withTimeout } from '../../shared/charts/useReport';
+import type { Photo } from '../../shared/export/ocr';
+import type { ExpenseLine, RevenueLine } from '../../shared/export/exports';
 
 /** the garage's list (Réglages); the database starts every garage with this one */
 export const DEFAULT_CATEGORIES = ['Pièces', 'Huile et liquides', 'Carburant', 'Outils et équipement', 'Entretien des camions', 'Assurances', 'Publicité', 'Téléphone et internet', 'Frais bancaires', 'Repas', 'Autre'];

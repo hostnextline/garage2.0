@@ -11,9 +11,9 @@ import { settings, trucks, truckLabel, expensesList } from '../../data/select';
 import { net } from '../../data/sync';
 import type { Expense } from '../../data/types';
 import { Sheet, Form, Field, Input, Textarea, Select, MoneyInput, Seg, Chips, DateInput, Button, Banner, Spinner, Skeleton, toast, attempt, run } from '../../ui';
-import { Meter } from '../dashboard/charts';
+import { Meter } from '../../shared/charts/charts';
 import { parseReceipt, splitFromSubtotal, splitFromTotal, guessCategory, type ReceiptGuess } from './receipt';
-import { shrinkPhoto, readReceipt, type Photo, type Reading } from './ocr';
+import { shrinkPhoto, readReceipt, type Photo, type Reading } from '../../shared/export/ocr';
 import { categories, EXPENSE_METHODS, methodLabel, uploadReceipt, receiptImage, rememberReceipt } from './data';
 import { removeExpense, keepAfterSave } from '../../domain/money/expenses';
 

@@ -23,7 +23,7 @@ import type { Quote } from '../../data/types';
 import { Page, Panel, Field, Input, PhoneInput, Textarea, Check, Chips, Stepper, Button, BigStep, Banner, Kv, Money, toast, ask } from '../../ui';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { VehiclePicker } from '../customers/VehiclePicker';
-import { AddressField, type PlaceValue } from '../customers/AddressField';
+import { AddressField, type PlaceValue } from '../../shared/places/AddressField';
 import { CarForm, EMPTY_CAR, carIsEmpty, carErrors, carRow, type AddDraft, type AddMode } from '../customers/VehicleBits';
 import { customerPatch, emptyDraft } from '../customers/CustomerFields';
 import { phoneOwners } from '../customers/dupes';

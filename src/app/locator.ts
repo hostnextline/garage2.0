@@ -10,7 +10,7 @@ import { allJobs, customersList } from '../data/select';
 import { saveCustomer, updateJob } from '../data/api';
 import { net } from '../data/sync';
 import { today } from '../lib/dates';
-import { locate } from '../features/customers/locate';
+import { locate } from '../shared/places/locate';
 import type { Customer, Job } from '../data/types';
 import { may } from '../domain/rights';
 

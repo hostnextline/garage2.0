@@ -4,10 +4,10 @@ import { useMemo } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
 import { longDay } from '../../lib/dates';
 import { Sheet, Button, Banner } from '../../ui';
-import { MapView, type MapMarker, type MapLine } from '../map/MapView';
-import { assemble } from '../map/assemble';
-import { fromDevice } from '../map/device';
-import { useRoads, roadOf } from '../map/useRoads';
+import { MapView, type MapMarker, type MapLine } from '../../shared/map/MapView';
+import { assemble } from '../../shared/map/assemble';
+import { fromDevice } from '../../shared/map/device';
+import { useRoads, roadOf } from '../../shared/map/useRoads';
 import { staffName } from '../../data/select';
 
 export function DayRoute(p: { day: string; exclude?: string | null; onClose: () => void }) {

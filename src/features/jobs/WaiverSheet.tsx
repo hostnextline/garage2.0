@@ -9,8 +9,8 @@ import { settings, garageName, customerName } from '../../data/select';
 import { loadAttachment } from '../../data/api';
 import { Sheet, Button, Field, Input, Spinner, Banner } from '../../ui';
 import { dayOf } from '../../lib/dates';
-import { SignaturePad } from './SignaturePad';
-import { hasEnoughInk, type Stroke } from './signature';
+import { SignaturePad } from '../../shared/sign/SignaturePad';
+import { hasEnoughInk, type Stroke } from '../../shared/sign/signature';
 import { signWaiver } from './flow';
 import { jobCustomer, dayWord, clockOf } from './select';
 

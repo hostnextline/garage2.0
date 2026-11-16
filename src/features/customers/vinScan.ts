@@ -5,7 +5,7 @@
      letters and digits: the VIN's check digit picks the right reading. */
 import { vinCheck } from '../../lib/text';
 import { vinFromCode } from './vehicleText';
-import { loadTesseract, shrinkPhoto } from '../treasury/ocr';
+import { loadTesseract, shrinkPhoto } from '../../shared/export/ocr';
 
 export const FORMATS = ['code_39', 'code_128', 'data_matrix', 'qr_code', 'pdf417'] as const;
 export interface Detected { rawValue: string }

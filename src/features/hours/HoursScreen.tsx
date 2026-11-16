@@ -21,7 +21,7 @@ import { Page, Panel, Banner, Button, IconButton, Chips, Seg, Field, Stepper, Da
 import { errorMessage } from '../../data/api';
 import { HoursGrid, weekdayName } from './HoursGrid';
 import { TrucksPanel } from './TrucksPanel';
-import { TruckStartPanel } from './TruckStartPanel';
+import { TruckStartPanel } from '../../shared/places/TruckStartPanel';
 import { weekToPanes, changedDays, applyPlan, paneMinutes, FROM, TO, type Panes, type Mode } from './grid';
 import { spanEnds, rangesWords, weekdaysWords } from '../../domain/moment/words';
 import { focusAfterNav, restoreFocus } from '../../platform/focus';

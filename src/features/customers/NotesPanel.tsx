@@ -9,7 +9,7 @@ import { saveNote } from '../../data/api';
 import type { CustomerNote } from '../../data/types';
 import { Panel, Button, IconButton, Textarea, DateInput, Field, Pill, attempt } from '../../ui';
 import { dateShort, stampDay } from '../../domain/moment/dayWords';
-import './customers.css';
+import '../../shared/places/customers.css';
 
 export { addMonths };
 /** the next time it is that month and day (spring: tires off; fall: winter tires on) */

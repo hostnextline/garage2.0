@@ -8,7 +8,7 @@ import { saveTruck } from '../../data/api';
 import { uuid } from '../../data/sync';
 import type { Truck } from '../../data/types';
 import { Panel, Rows, RowItem, Button, Sheet, Field, Input, Select, Switch, attempt } from '../../ui';
-import { startWords } from './TruckStartPanel';
+import { startWords } from '../../shared/places/TruckStartPanel';
 
 /** the 8 colours a truck can take (data, the same in every theme) */
 export const TRUCK_COLORS: { key: string; hex: string }[] = [

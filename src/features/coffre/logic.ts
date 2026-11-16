@@ -3,8 +3,8 @@
    - the report the accountant exports apart (Excel and CSV): one line per entry, the totals. */
 import type { Cents } from '../../lib/money';
 import type { Day } from '../../lib/dates';
-import { buildXlsx, type Cell, type SheetDef } from '../treasury/xlsx';
-import { csvCell, csvMoney } from '../treasury/exports';
+import { buildXlsx, type Cell, type SheetDef } from '../../shared/export/xlsx';
+import { csvCell, csvMoney } from '../../shared/export/exports';
 
 export interface CoffreEntry {
   /** 'received': what family and friends gave; 'purchase': stock bought with Coffre money (customer = the item) */
