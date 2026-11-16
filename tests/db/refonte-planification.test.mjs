@@ -226,6 +226,71 @@ test('x-dualmode-11: a booking kept on a phone in the other mode is converted, n
   inside(je, 'the evening job');
 }));
 
+test('x-dualmode-11: a move kept on a phone in block mode, the same day, takes the window of the block asked (it was thrown away)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion 1', null, { [dow]: DAY }), t2 = await h.truck('Camion 2', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  await h.as(owner);
+  const a = await book(h, job(c, day, 'am'));                    // the morning, while the garage gave blocks
+  await windowsOn(h, owner);
+  let ja = await row(h, a.job_id);
+  assert.deepEqual([ja.block, ja.win_start, ja.win_end], ['day', 480, 720]);
+  // a phone still in block mode moves it to the afternoon of the same day (the 5-argument move)
+  const m = await h.rpc('move_job', { p_op: uuid(), p_job: a.job_id, p_day: day, p_block: 'pm', p_truck: null });
+  assert.notEqual(m.unchanged, true, 'not thrown away');
+  assert.deepEqual([m.changed, m.tell, m.window_changed], [false, true, true]);
+  ja = await row(h, a.job_id);
+  assert.deepEqual([ja.block, ja.win_start, ja.win_end, ja.win_flex], ['day', 720, 960, false]);
+  inside(ja, 'the afternoon');
+  // the same phone gives it the other truck, in the afternoon it shows: the window told stays
+  const other = ja.truck_id === t1 ? t2 : t1;
+  const k = await h.rpc('move_job', { p_op: uuid(), p_job: a.job_id, p_day: day, p_block: 'pm', p_truck: other });
+  ja = await row(h, a.job_id);
+  assert.deepEqual([ja.truck_id, ja.win_start, ja.win_end, k.tell, k.truck_changed], [other, 720, 960, false, true]);
+}));
+
+test('x-dualmode-11 (blocks): a window chosen inside the job’s own block on a phone in window mode is kept and to be told', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  await h.as(owner);
+  const a = await book(h, job(c, day, 'pm'));
+  // 13 h – 17 h: the afternoon (arrival around 14 h), the job's own block
+  const m = await h.rpc('move_job', { p_op: uuid(), p_job: a.job_id, p_day: day, p_block: 'day', p_truck: null, p_win_start: 780, p_win_flex: false });
+  assert.notEqual(m.unchanged, true, 'not thrown away');
+  assert.deepEqual([m.changed, m.tell, m.window_changed], [false, true, true]);
+  let ja = await row(h, a.job_id);
+  assert.deepEqual([ja.block, ja.win_start, ja.win_end], ['pm', 780, 1020], 'the window told is kept on the job');
+  // the block's very hours: nothing is kept on the job
+  const m2 = await h.rpc('move_job', { p_op: uuid(), p_job: a.job_id, p_day: day, p_block: 'day', p_truck: null, p_win_start: 720, p_win_flex: false });
+  ja = await row(h, a.job_id);
+  assert.deepEqual([ja.block, ja.win_start, ja.win_end, m2.window_changed], ['pm', null, null, true]);
+}));
+
+test('x-dualmode-11: a block’s « Ordre des arrêts » kept on a phone keeps the hand order of the day’s other stops', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  await windowsOn(h, owner);
+  const m1 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 1, eta: 500, ws: 480, we: 720 });
+  const m2 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 2, eta: 560, ws: 480, we: 720, lat: near2[0], lng: near2[1] });
+  const a1 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 3, eta: 760, ws: 720, we: 960 });
+  const a2 = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 4, eta: 820, ws: 720, we: 960, lat: near2[0], lng: near2[1] });
+  await h.as(owner);
+  await stopOrder(h, t1, day, 'day', [a2, a1]);                   // the afternoon put in order by hand, in window mode
+  // a phone still in block mode puts the morning in order
+  assert.equal((await stopOrder(h, t1, day, 'am', [m2, m1])).ok, true);
+  const hand = [];
+  for (const id of [m2, m1, a2, a1]) hand.push((await row(h, id)).manual_order);
+  assert.deepEqual(hand, [1, 2, 3, 4], 'the morning as asked, then the afternoon as it was');
+}));
+
 test('sql-planner-2-01: « Peu importe » goes on the truck when the car\'s own appointments fill it', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const day = await futureDay(h);
@@ -474,6 +539,48 @@ test('sql-windows-02: a later re-plan never makes late a stop its stored route r
   for (const id of ids) inside(await row(h, id), 'after another booking');
 }));
 
+/** how many plans were made from the start of the test's transaction (plan_route = the planner) */
+async function plans(h, who) {
+  return (await server(h, who, `select coalesce((select calls from pg_stat_xact_user_functions where schemaname = 'public' and funcname = 'plan_route'), 0)::int n`))[0].n;
+}
+
+test('review 1: a day held on its stored routes: each window offered is planned once (the plan from nothing, thrown away, was made too)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const kmLng = 1 / (111.2 * Math.cos((home.lat * Math.PI) / 180));
+  const ca = await h.customer('A', home.lat, home.lng - 2 * kmLng), cb = await h.customer('B', home.lat, home.lng - 1.9 * kmLng);
+  const ck = await h.customer('K', home.lat, home.lng + 20 * kmLng);
+  await windowsOn(h, owner);
+  for (const [cu, dur] of [[ca, 150], [cb, 30], [ck, 60]]) await book(h, { customer_id: cu, day, block: 'day', duration_min: dur, win_start: 480 });
+  await server(h, owner, `set local track_functions = 'pl'`);
+  const p0 = (await server(h, owner, `select public.plan_block($1::date, 'day') p`, [day]))[0].p;
+  assert.equal(p0.seeded, true, 'a plan from nothing would make a promised stop late: the day is held on its stored routes');
+  const tried = (await server(h, owner, `select count(distinct w.win_start)::int n from public.day_span() s, generate_series(s.start_min, s.end_min, 15) t(m) cross join lateral public.win_for(t.m) w`))[0].n;
+  const n0 = await plans(h, owner);
+  const rows = await h.rpc('suggest_windows', { p_lat: home.lat + 0.01, p_lng: home.lng, p_duration: 60, p_day: day, p_exclude: null, p_need: false, p_kind: null });
+  const n = (await plans(h, owner)) - n0;
+  assert.ok(rows.length > 0);
+  assert.ok(n <= 2 + tried, `${n} plans for ${tried} windows (the day twice, then each window once)`);
+}));
+
+test('review 1: « Peu importe », both vehicles full: the truck is not planned a second time for nothing', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const car = await h.truck('Voiture', null, { [dow]: [[480, 540]] }), truck = await h.truck('Camion', null, { [dow]: [[480, 540]] });
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  const c = await h.customer('Jean', ...near);
+  await put(h, owner, { customer: c, day, block: 'am', truck: car, order: 1, eta: 490, dur: 50, kind: 'car' });
+  await put(h, owner, { customer: c, day, block: 'am', truck, order: 1, eta: 490, dur: 50, kind: 'truck' });
+  await server(h, owner, `set local track_functions = 'pl'`);
+  const n0 = await plans(h, owner);
+  assert.equal((await h.fails(() => book(h, job(c, day, 'am'))))?.hint, 'block_full');
+  assert.equal((await plans(h, owner)) - n0, 2, 'the block, then the block with the stop: no vehicle had room, the truck included');
+}));
+
 test('sql-windows-03 / x-dualmode-06: window mode, a day already started: the stops left are numbered after the ones done', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const day = await today(h);
@@ -606,6 +713,25 @@ test('sql-planner-2-06: a vehicle that loses the tire machine: its coming tire w
   assert.deepEqual([jo.vehicle_kind, jo.updated_at], ['truck', stamp], 'a job already done is not rewritten');
 }));
 
+test('sql-planner-2 B6: tire work that finds no room on the truck stays on the car, and the agenda is told (needs_truck)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const car = await h.truck('Voiture', null, { [dow]: DAY }), truck = await h.truck('Camion', null, { [dow]: [[480, 560]] });
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  const c = await h.customer('Jean', ...near);
+  await put(h, owner, { customer: c, day, block: 'am', truck, order: 1, eta: 490, dur: 40, need: true, kind: 'truck' });
+  const j = await put(h, owner, { customer: c, day, block: 'am', truck: car, order: 1, eta: 500, dur: 60, kind: 'car' });
+  await h.as(null);
+  await h.q(`insert into public.job_items (job_id, kind, description, qty, unit_cents, status) values ($1, 'service', 'Montage de pneus', 1, 0, 'planned')`, [j]);
+  const jj = await row(h, j);
+  assert.deepEqual([jj.needs_machine, jj.truck_id], [true, car], 'no room on the truck: it stays on the car, nobody in « À placer »');
+  const said = () => h.q(`select data from public.activity where entity = 'job' and entity_id = $1 and action = 'needs_truck'`, [j]);
+  assert.deepEqual((await said()).map((x) => x.data.truck_id), [car]);
+  await h.q(`select public.replan_block($1::date, 'am')`, [day]);
+  assert.equal((await said()).length, 1, 'said once');
+}));
+
 test('sql-windows-04: window mode, a job booked « quand même » is not sent behind every stop of the day when it fits', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const day = await futureDay(h);
@@ -701,6 +827,22 @@ test('sql-windows-09: window mode, today, an appointment that no longer fits sti
   assert.deepEqual([(await row(h, j1)).truck_id, (await row(h, j2)).truck_id], [t1, t1], 'both stay on the truck');
 }));
 
+test('sql-windows-09: window mode, today, a flexible appointment that no longer fits counts as late on its truck (no window to be late for)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await today(h);
+  const week = {}; for (let d = 0; d < 7; d++) week[d] = [[480, 1020]];
+  const t1 = await h.truck('Camion', null, week);
+  const c = await h.customer('Jean', ...near), c2 = await h.customer('Paul', ...near2);
+  await windowsOn(h, owner);
+  await clock(h, owner, 900);
+  await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 1, eta: 905, ws: 840, we: 1080, dur: 60 });
+  const j2 = await put(h, owner, { customer: c2, day, block: 'day', truck: t1, order: 2, eta: 970, flex: true, dur: 120 });
+  const p = (await server(h, owner, `select public.plan_block($1::date, 'day') p`, [day]))[0].p;
+  assert.equal(p.jobs[j2]?.truck, t1, 'it stays on its truck');
+  assert.ok(!p.over.includes(j2));
+  assert.ok(p.late.includes(j2), 'late: a booking that pushes it past the hours is seen');
+}));
+
 test('sql-planner-1 B6: block mode, hours with a hole inside the block are not planned as one stretch', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const day = await futureDay(h);
@@ -714,6 +856,25 @@ test('sql-planner-1 B6: block mode, hours with a hole inside the block are not p
     const j = await row(h, id);
     assert.ok(j.eta_min + 60 <= 570 || j.eta_min >= 630, `nobody during the hole: ${j.eta_min}`);
   }
+}));
+
+test('sql-planner-1 B6: a block already started, « Ordre des arrêts »: the times walked again respect the hole in the hours', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await today(h);
+  const week = {}; for (let d = 0; d < 7; d++) week[d] = [[480, 570], [630, 720]];   // 8 h – 9 h 30, then 10 h 30 – 12 h
+  const t1 = await h.truck('Camion', null, week);
+  const c = await h.customer('Jean', ...near);
+  await clock(h, owner, 540);                                      // 9 h: the morning has started
+  const s1 = await put(h, owner, { customer: c, day, block: 'am', truck: t1, order: 1, eta: 545, dur: 30 });
+  const s2 = await put(h, owner, { customer: c, day, block: 'am', truck: t1, order: 2, eta: 585, dur: 30, lat: near2[0], lng: near2[1] });
+  await h.as(owner);
+  assert.equal((await stopOrder(h, t1, day, 'am', [s2, s1])).ok, true);
+  for (const id of [s2, s1]) {
+    const j = await row(h, id);
+    assert.equal(j.truck_id, t1);
+    assert.ok(j.eta_min + 35 <= 570 || j.eta_min >= 630, `not planned into the hole: ${j.eta_min}`);
+  }
+  assert.ok((await row(h, s2)).eta_min < (await row(h, s1)).eta_min, 'in the order asked');
 }));
 
 test('sql-planner-1 B11 / sql-windows-13, two connections: two devices moving the same appointment at once: the second is told it just moved', async () => {
@@ -764,3 +925,85 @@ test('sql-planner-1 B11 / sql-windows-13, two connections: two devices moving th
     c.release();
   }
 });
+
+/* ------------------------------------------------------------------------------------------------------------------
+   job_step, asked by the money rules (Part 26 « argent »: requests/srv-argent.md)
+   ------------------------------------------------------------------------------------------------------------------ */
+
+/** a job on Saleh's truck, on site, with one line of work */
+async function onSite(h) {
+  const owner = await h.person('Hassan', ['owner']), saleh = await h.person('Saleh', ['mechanic']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', saleh, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  await h.as(owner);
+  const id = (await book(h, job(c, day, 'am'), [{ description: 'Freins avant', unit_cents: 20000, qty: 1 }])).job_id;
+  await h.as(saleh);
+  for (const a of ['leave', 'arrive']) await h.rpc('job_step', { p_op: uuid(), p_job: id, p_action: a, p_data: {} });
+  return { owner, saleh, id };
+}
+const step = (h, id, action, data = {}) => h.rpc('job_step', { p_op: uuid(), p_job: id, p_action: action, p_data: data });
+const finishedInvoice = async (h, id) => {
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: id, p_refresh: true })).rows.invoices[0].id;
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
+  return inv;
+};
+
+test('sql-money-29 (asked by « argent »): the amount lost of a cancellation takes a discount off, whatever sign it was written with', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  await h.as(owner);
+  const r = await book(h, job(c, day, 'am'), [{ description: 'Freins avant', unit_cents: 20000, qty: 1 }]);
+  await h.as(null);
+  await h.q(`insert into public.job_items (job_id, kind, description, qty, unit_cents, status)
+    values ($1, 'discount', 'Rabais fidélité', 1, 2500, 'planned'), ($1, 'discount', 'Rabais', 2, -500, 'planned')`, [r.job_id]);
+  await h.as(owner);
+  await step(h, r.job_id, 'cancel');
+  assert.equal((await row(h, r.job_id)).lost_cents, 20000 - 2500 - 1000, 'a discount written positive took off nothing: it was added');
+}));
+
+test('sql-money-31 (asked by « argent »): « payer plus tard » given by the office holds when the job is finished again', () => tx(async (h) => {
+  const { owner, saleh, id } = await onSite(h);
+  await finishedInvoice(h, id);
+  await h.as(owner);
+  await step(h, id, 'finish', { pay_later: true, reason: 'Paie au mois' });
+  await step(h, id, 'back');                                         // « Défaire »: back on site
+  assert.equal((await row(h, id)).status, 'on_site');
+  await h.as(saleh);
+  assert.equal((await step(h, id, 'finish')).ok, true, 'the mechanic finishes again: the office already said « plus tard »');
+  assert.deepEqual([(await row(h, id)).status, (await row(h, id)).pay_later], ['done', true]);
+}));
+
+test('« Terminer quand même » (asked by « argent »): the office’s word reaches the guard of work not on the invoice, a mechanic’s does not', () => tx(async (h) => {
+  const { owner, saleh, id } = await onSite(h);
+  const inv = await finishedInvoice(h, id);
+  const total = await h.val(`select total_cents from public.invoices where id = $1`, [inv]);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: total, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
+  await h.as(null);
+  // the guard of Part 26 « argent » (jobs_unbilled_guard, another branch): a stand-in with its rule while it is not here
+  if (!(await h.val(`select count(*)::int from pg_trigger where tgrelid = 'public.jobs'::regclass and tgname = 'jobs_unbilled_guard'`))) {
+    await h.q(`create function public.test_unbilled_guard() returns trigger language plpgsql as $$
+      begin
+        if coalesce(current_setting('garage.unbilled_ok', true), '') <> 'on' and exists (select 1 from public.job_items i where i.job_id = new.id
+             and i.deleted_at is null and i.status in ('planned','done','approved') and i.description = 'Travail oublié') then
+          perform public.fail('unbilled', 'Un travail n’est pas sur la facture.');
+        end if;
+        return new;
+      end $$`);
+    await h.q(`create trigger jobs_unbilled_guard before update of status on public.jobs for each row
+      when (new.status = 'done' and old.status is distinct from 'done') execute function public.test_unbilled_guard()`);
+  }
+  // work added once the invoice is paid: on no line of it
+  await h.q(`insert into public.job_items (job_id, kind, description, qty, unit_cents, status) values ($1, 'service', 'Travail oublié', 1, 5000, 'planned')`, [id]);
+  await h.as(saleh);
+  assert.equal((await h.fails(() => step(h, id, 'finish', { unbilled_ok: true })))?.hint, 'unbilled', 'a mechanic cannot let it go');
+  await h.as(owner);
+  assert.equal((await h.fails(() => step(h, id, 'finish')))?.hint, 'unbilled', 'nothing said: refused');
+  assert.equal((await step(h, id, 'finish', { unbilled_ok: true })).ok, true, 'the office’s « Terminer quand même »');
+  assert.equal((await row(h, id)).status, 'done');
+  assert.equal(await h.val(`select coalesce(current_setting('garage.unbilled_ok', true), '')`), '', 'the word holds for that job only');
+}));
