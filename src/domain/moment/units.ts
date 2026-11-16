@@ -21,12 +21,36 @@ export function rowsByStart<T extends WinRow>(rows: readonly T[], windowOf: Wind
   }
   return out;
 }
+/** every window the garage's rule can tell for an arrival on the day's 15-minute grid, by its start (the list the
+    server must try, so that each unit can be answered: x-time-02) */
+export function windowStarts(span: Range, windowOf: WindowOf): number[] {
+  return [...new Set(unitMinutes(span).map((m) => windowOf(m)[0]))].sort((a, b) => a - b);
+}
+/** the server's row that says a window can be kept. Its own start listed: that row. A server that lists its windows on
+    another grid than the rule's (« avant » not a multiple of the rounding, a day starting on a half hour): a row whose
+    planned arrival falls inside the window proves it too (the same stop, held to this window, arrives at that time or
+    earlier, which never makes anybody after it late). The window told stays the rule's: only the « possible » is read
+    from the other row. A server on the same grid is believed when it leaves a window out. */
+export function rowForWindow<T extends WinRow>(win: Range, by: Map<number, T>, rows: readonly T[], offGrid: boolean): T | undefined {
+  return by.get(win[0]) ?? (offGrid ? rows.find((r) => r.eta != null && r.eta >= win[0] && r.eta <= win[1]) : undefined);
+}
+const offGridOf = (by: Map<number, WinRow>, span: Range, windowOf: WindowOf) => {
+  const mine = new Set(windowStarts(span, windowOf));
+  return [...by.keys()].some((s) => !mine.has(s));
+};
 /** the units of the day where this booking can arrive: arrival time → the server's row of its window */
 export function possibleUnits<T extends WinRow>(span: Range, rows: readonly T[], windowOf: WindowOf): Map<number, T> {
   const by = rowsByStart(rows, windowOf);
+  const offGrid = offGridOf(by, span, windowOf);
   const out = new Map<number, T>();
-  for (const m of unitMinutes(span)) { const r = by.get(windowOf(m)[0]); if (r) out.set(m, r); }
+  for (const m of unitMinutes(span)) { const r = rowForWindow(windowOf(m), by, rows, offGrid); if (r) out.set(m, r); }
   return out;
+}
+/** is this window (its start) still possible that day by the server's answer: the same reading as the calendar's
+    units, for a window chosen before the answer came (a suggestion, the address bar, a paste) */
+export function windowListed<T extends WinRow>(span: Range, rows: readonly T[], start: number, windowOf: WindowOf, len: number): boolean {
+  const by = rowsByStart(rows, windowOf);
+  return !!rowForWindow([start, start + len], by, rows, offGridOf(by, span, windowOf));
 }
 
 /** the unit that shows a window chosen: among the units whose window starts there, the nearest to the estimated
