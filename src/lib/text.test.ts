@@ -35,7 +35,7 @@ describe('postal codes and addresses', () => {
   it.each([
     '4500 avenue Appleton', '2100 rue Logan', '4855 avenue Burton', '75 chemin Bureau', '12 rue Unity', '10 rue Localité',
     '55 rue Burnside', '300 rue des Appalaches', '77 rue Logement', '5 rue Burke, Laval', '1234 rue Apple', '60 rue Unité',
-    '2100 rue Logan, Montréal, QC H2L 1Y4', '8 rue Suiteville', '9 boul. Appart'
+    '2100 rue Logan, Montréal, QC H2L 1Y4', '8 rue Suiteville', '9 boul. Appart', '10 rue Apple Hill', '20 boul. Burlington'
   ])('keeps the street « %s » whole', (a) => expect(splitUnit(a)).toEqual({ unit: null, line: a }));
   it.each([
     ['1200 rue Peel bureau 400, Montréal', '400', '1200 rue Peel, Montréal'],
@@ -49,7 +49,8 @@ describe('postal codes and addresses', () => {
     ['100 rue Logan, local PH2', 'PH2', '100 rue Logan'],
     ['100 rue Logan, appartement 12, Laval', '12', '100 rue Logan, Laval'],
     ['3-1250 rue Graham', '3', '1250 rue Graham'],
-    ['10 rue Localité, log. 5', '5', '10 rue Localité']
+    ['10 rue Localité, log. 5', '5', '10 rue Localité'],
+    ['8255 av. Mountain Sights, unité 4, Montréal', '4', '8255 av. Mountain Sights, Montréal']
   ])('still keeps the unit of « %s »', (a, unit, line) => expect(splitUnit(a)).toEqual({ unit, line }));
   it('a civic range is one building with two doors, not a unit', () => {
     expect(isCivicRange('4521-4523 rue Fabre')).toBe(true);
@@ -60,6 +61,16 @@ describe('postal codes and addresses', () => {
     expect(civicNumber('4521-4523 rue Fabre')).toBe('4521');
     expect(civicNumber('180-8255 av. Mountain Sights')).toBe('8255');
     expect(civicNumber('2100 rue Logan')).toBe('2100');
+    expect(splitUnit('12-14 rue Fabre')).toEqual({ unit: null, line: '12-14 rue Fabre' });
+    expect(splitUnit('3-5 rue Fabre')).toEqual({ unit: '3', line: '5 rue Fabre' });
+  });
+  it('an ordinal street is not a door number', () => {
+    expect(civicNumber('58e Avenue, Laval')).toBeNull();
+    expect(civicNumber('1re rue, Sainte-Anne')).toBeNull();
+    expect(civicNumber('3rd Street')).toBeNull();
+    expect(civicNumber('144 58e Avenue')).toBe('144');
+    expect(civicNumber('1250A rue Graham')).toBe('1250A');
+    expect(civicNumber('3-1250 rue Graham')).toBe('1250');
   });
   it('tells a part of the address that is only a unit', () => {
     expect(isUnitPart('app. 3')).toBe(true);

@@ -39,10 +39,11 @@ export function provinceOfPostal(pc: string | null | undefined): string | null {
   return p ? PROV[p[0]] ?? null : null;
 }
 
-/** « 4521-4523 rue Fabre » is one building with two door numbers (a duplex), not a unit and a door: same length, at most
-    20 apart */
+/** « 4521-4523 rue Fabre », « 12-14 rue Fabre » are one building with two door numbers (a duplex), not a unit and a door:
+    same length, at most 20 apart. « 3-5 rue X » stays a unit and a door (too short to tell). The same rule as
+    shared/places/address.ts, so both can become this one. */
 export function isCivicRange(s: string): boolean {
-  const m = /^\s*(\d{3,6})\s*-\s*(\d{3,6})\b/.exec(s);
+  const m = /^\s*(\d{2,6})\s*-\s*(\d{2,6})\b/.exec(s);
   return !!m && m[1].length === m[2].length && Math.abs(Number(m[2]) - Number(m[1])) <= 20;
 }
 
@@ -71,9 +72,13 @@ export function splitUnit(address: string): { unit: string | null; line: string 
   if (m) return { unit: m[2], line: (m[1] + ' ' + m[3]).replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').trim().replace(/,$/, '') };
   return { unit: null, line: s };
 }
-/** the door number; for a civic range, the first one */
+// an ordinal street name (« 58e Avenue », « 1re rue », « 3rd Street ») starts with digits but is not a door number
+const ORDINAL = /^\s*\d{1,4}(?:e|er|re|ère|ème|eme|ieme|th|st|nd|rd)(?![\p{L}\p{N}])/iu;
+/** the door number (« 3-1250 rue Graham » → 1250); for a civic range, the first one; none for « 58e Avenue » */
 export function civicNumber(address: string): string | null {
-  const m = /^\s*(\d{1,6}[A-Za-z]?)\b/.exec(splitUnit(address).line);
+  const line = splitUnit(address).line;
+  if (ORDINAL.test(line)) return null;
+  const m = /^\s*(\d{1,6}[A-Za-z]?)\b/.exec(line);
   return m ? m[1] : null;
 }
 
