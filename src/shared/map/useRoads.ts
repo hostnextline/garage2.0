@@ -15,7 +15,7 @@ const RETRY_MS = 61 * 1000;
 const PAUSE_MS = 350;
 
 /** the points of a truck's route: its start, then each stop that has a position */
-export function waypoints(tr: RoadTruck): LatLng[] {
+function waypoints(tr: RoadTruck): LatLng[] {
   return [...(tr.from ? [tr.from] : []), ...tr.stops.filter((s) => s.hasPos).map((s) => [s.lat!, s.lng!] as LatLng)];
 }
 

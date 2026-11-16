@@ -16,7 +16,7 @@ import { normalize, type TeamMapAnswer } from './assemble';
 import { fromDevice } from './device';
 import { withPositions, freshen, type Pos } from './teamMapData';
 
-export const REFRESH_MS = 30000;
+const REFRESH_MS = 30000;
 const KEEP_DAYS = 12;
 export type MapStatus = 'loading' | 'ok' | 'offline' | 'refused';
 interface Answer { data: TeamMapAnswer; at: number }

@@ -68,7 +68,6 @@ export const map: typeof fr = {
   },
   stops: {
     title: 'Stops of {name}',
-    all: 'All stops',
     when: '{block}, around {time}',
     noPos: 'Address not placed on the map'
   },
@@ -83,7 +82,6 @@ export const map: typeof fr = {
     unplaced: 'Not placed on a truck yet'
   },
   people: {
-    title: 'On the road',
     onSite: 'Working at {name}’s',
     stale: 'Last position {ago}'
   },

@@ -8,7 +8,7 @@ import { ago, minutesSince } from './ago';
 import type { MapMarker, MapLine } from './markers';
 
 /** a position older than that (and not at a customer's) is faded, « Dernière position il y a … » */
-export const STALE_MIN = 15;
+const STALE_MIN = 15;
 
 export interface MapUi {
   /** the stop chosen (its card is open) */
@@ -117,4 +117,4 @@ export function routeLayers(route: TruckRoute, o: { marked?: Set<string>; startL
   return { markers, lines };
 }
 /** the colour of a stop that stands out (the new appointment, the ones moved): the same in every theme */
-export const MARKED_COLOR = '#111827';
+const MARKED_COLOR = '#111827';

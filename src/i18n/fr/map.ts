@@ -68,7 +68,6 @@ export const map = {
   },
   stops: {
     title: 'Arrêts de {name}',
-    all: 'Tous les arrêts',
     when: '{block}, vers {time}',
     noPos: 'Adresse pas placée sur la carte'
   },
@@ -83,7 +82,6 @@ export const map = {
     unplaced: 'Pas encore placé sur un camion'
   },
   people: {
-    title: 'Sur la route',
     onSite: 'Au travail chez {name}',
     stale: 'Dernière position {ago}'
   },

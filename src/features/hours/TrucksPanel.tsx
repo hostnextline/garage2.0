@@ -15,7 +15,7 @@ import { comingTouched } from './trucks';
 import { startWords } from '../../shared/places/TruckStartPanel';
 
 /** the 8 colours a truck can take (data, the same in every theme) */
-export const TRUCK_COLORS: { key: string; hex: string }[] = [
+const TRUCK_COLORS: { key: string; hex: string }[] = [
   { key: 'red', hex: '#D3000E' }, { key: 'blue', hex: '#2F6FD0' }, { key: 'green', hex: '#1F8A53' }, { key: 'amber', hex: '#B86E00' },
   { key: 'violet', hex: '#7347D1' }, { key: 'teal', hex: '#0F7C82' }, { key: 'pink', hex: '#C2185B' }, { key: 'slate', hex: '#5D6B78' }
 ];

@@ -20,7 +20,7 @@ const MAX_LEGS = 1500;
 const MAX_ROUTES = 400;
 
 const k = (p: LatLng) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
-export const legKey = (a: LatLng, b: LatLng) => `${k(a)}>${k(b)}`;
+const legKey = (a: LatLng, b: LatLng) => `${k(a)}>${k(b)}`;
 const legs = new Map<string, LatLng[]>();
 const totals = new Map<string, { km: number; minutes: number }>();
 const failedAt = new Map<string, number>();
@@ -49,7 +49,7 @@ export function allKnown(pts: LatLng[]): boolean { return pts.length < 2 || pts.
 export function neverRouted(pts: LatLng[]): boolean { return pts.length > MAX_POINTS || refused.has(routeKey(pts)); }
 
 /** the points without a stop repeated at the same place right after itself (what the planner is asked) */
-export function distinctStops(pts: LatLng[]): LatLng[] {
+function distinctStops(pts: LatLng[]): LatLng[] {
   return pts.filter((p, i) => i === 0 || k(p) !== k(pts[i - 1]));
 }
 
