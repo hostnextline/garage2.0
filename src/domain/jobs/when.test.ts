@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Job } from '../../data/types';
-import { blockRange, momentWord, momentLabel, momentShort, promisedWindow, outsideWindow, keepWindow, wt, isWindowJob } from './select';
+import { blockRange, momentWord, momentShort, promisedWindow, outsideWindow, keepWindow, wt, isWindowJob } from './when';
 
 const J = (o: Partial<Job>): Job => ({ id: 'j', number: 1, day: '2026-11-17', block: 'pm', status: 'booked', eta_min: null, ...o } as Job);
 const win = J({ block: 'day', win_start: 840, win_end: 1080 });
@@ -11,7 +11,6 @@ describe('a job is shown by what it is: its block, or the window told to the cus
     expect(isWindowJob(J({}))).toBe(false);
     expect(blockRange(J({}), 'fr')).toBe('12 h à 16 h');
     expect(momentWord(J({}), 'fr')).toBe('après-midi');
-    expect(momentLabel(J({ block: 'am' }), 'fr')).toBe('Matin');
     expect(momentShort(J({ block: 'eve' }), 'fr')).toBe('Soir');
     expect(promisedWindow(J({}))).toBeNull();
     expect(keepWindow(J({}))).toBeNull();
@@ -20,7 +19,6 @@ describe('a job is shown by what it is: its block, or the window told to the cus
     expect(blockRange(win, 'fr')).toBe('entre 14 h et 18 h');
     expect(blockRange(win, 'en')).toBe('between 2 p.m. and 6 p.m.');
     expect(momentWord(win, 'fr')).toBe('entre 14 h et 18 h');
-    expect(momentLabel(win, 'fr')).toBe('Entre 14 h et 18 h');
     expect(momentShort(win, 'fr')).toBe('14 h–18 h');
     expect(momentShort(win, 'en')).toBe('2–6 p.m.');
     expect(momentShort(J({ block: 'day', win_start: 600, win_end: 840 }), 'en')).toBe('10 a.m.–2 p.m.');
@@ -57,5 +55,14 @@ describe('a job is shown by what it is: its block, or the window told to the cus
         expect(s, k).not.toMatch(/\bblocs?\b|\bblocks?\b/i);
       }
     }
+  });
+});
+
+describe('a window job whose twin text is missing says the base text, never a raw key (i18n-12)', () => {
+  it('falls back to the base text', () => {
+    // jobs.step.leave has no twin under jobs.win
+    expect(wt(win, 'jobs.step.leave', undefined, 'fr')).toBe('Je pars');
+    expect(wt(win, 'jobs.step.leave', undefined, 'en')).toBe('I’m leaving');
+    expect(wt(J({}), 'jobs.step.leave', undefined, 'fr')).toBe('Je pars');
   });
 });

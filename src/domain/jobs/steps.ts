@@ -3,14 +3,18 @@
 
    booked    → Je pars (not before the day; not while this truck has an unpaid job on site: the server refuses it)
    en_route  → Je suis arrivé
-   on_site   → the next missing piece, in order: the car's VIN (scanned, typed, or a car of the customer that has one), the signed authorization, the customer's answer to proposed work,
-               some work to bill, the invoice, the payment, then « Terminer la job »
+   on_site   → the next missing piece, in order: the car's VIN (scanned, typed, or a car of the customer that has one), the
+               signed authorization, the customer's answer to proposed work, some work to bill, the invoice, work added after
+               the invoice was finished (it must go on it first), the payment, then « Terminer la job »
    done      → nothing to press (the PAYÉ stamp; what is left to collect)
    cancelled, no_show → closed */
 import type { Job, JobItem, Invoice } from '../../data/types';
+import { BILLABLE, liveInvoice, draftIsStale, unbilledWork, billable } from './billing';
+
+export { BILLABLE, draftIsStale };
 
 export type StepKind =
-  | 'leave' | 'arrive' | 'vin' | 'waiver' | 'answer' | 'work' | 'invoice' | 'pay' | 'finish'
+  | 'leave' | 'arrive' | 'vin' | 'waiver' | 'answer' | 'work' | 'invoice' | 'unbilled' | 'pay' | 'finish'
   | 'blocked' | 'later' | 'done' | 'closed' | 'none';
 
 export interface StepRights {
@@ -28,10 +32,12 @@ export interface StepContext {
   blockedBy?: string | null;
   /** on site, and the job's car is not known by a VIN yet (vinStep.ts) */
   needVin?: boolean;
+  /** payments of this job still waiting on this phone (no signal), in cents: they count against what is left to collect */
+  paidWaiting?: number;
 }
 export interface NextStep {
   kind: StepKind;
-  /** answer: the proposed work waiting for the customer */
+  /** answer: the proposed work waiting for the customer; unbilled: the first line missing from the invoice */
   itemId?: string;
   /** blocked: the job to get paid first */
   jobId?: string;
@@ -43,38 +49,30 @@ export interface NextStep {
   payLater?: boolean;
   /** finish: the customer will pay later (not paid yet) */
   later?: boolean;
-  /** done: the invoice is paid */
+  /** done: the invoice is paid; unbilled: the invoice missing the work is already paid */
   paid?: boolean;
-  /** pay / done: what is left to collect, in cents */
+  /** pay / done / finish (later): what is left to collect, in cents */
   due?: number;
+  /** pay: part of it waits on this phone; finish: the payment that covers it waits on this phone (it leaves first) */
+  waiting?: boolean;
+  /** unbilled: how many lines of work are on no line of the finished invoice */
+  count?: number;
 }
-
-/** the work that goes on the invoice */
-export const BILLABLE = ['planned', 'done', 'approved'];
 
 type JobLike = Pick<Job, 'id' | 'status' | 'day' | 'waiver_signed_at' | 'pay_later'> & { coffre_id?: string | null };
 type ItemLike = Pick<JobItem, 'id' | 'status'> & { deleted_at?: string | null };
 type InvoiceLike = Pick<Invoice, 'status' | 'total_cents' | 'paid_cents' | 'lines'> & { deleted_at?: string | null };
 
-/** the invoice that counts: not cancelled, not deleted */
-function liveInvoice(v: InvoiceLike | null | undefined): InvoiceLike | null {
-  return v && v.status !== 'void' && !v.deleted_at ? v : null;
-}
-/** a draft made before the work changed: a billable line is missing from it, or a line's work is gone */
-export function draftIsStale(v: InvoiceLike | null | undefined, items: ItemLike[]): boolean {
-  if (!v || v.status !== 'draft') return false;
-  const billable = new Set(items.filter((i) => !i.deleted_at && BILLABLE.includes(i.status)).map((i) => i.id));
-  const onInvoice = new Set((v.lines || []).map((l) => l.item_id).filter((x): x is string => !!x));
-  for (const id of billable) if (!onInvoice.has(id)) return true;
-  for (const id of onInvoice) if (!billable.has(id)) return true;
-  return false;
-}
-
 export function nextStep(job: JobLike, items: ItemLike[], invoice: InvoiceLike | null | undefined, rights: StepRights, ctx: StepContext): NextStep {
   const inv = liveInvoice(invoice);
+  const waitingCents = Math.max(0, ctx.paidWaiting ?? 0);
+  const issued = !!inv && inv.status === 'issued';
+  const left = issued ? Math.max(0, inv!.total_cents - inv!.paid_cents) : 0;
+  const due = Math.max(0, left - waitingCents);
+  // a payment waiting on this phone covers the whole balance: it leaves before anything pressed after it
+  const covered = issued && waitingCents > 0 && due === 0;
   // paid by the « Coffre » (family and friends): no invoice, settled
-  const paid = (!!inv && inv.status === 'paid') || !!job.coffre_id;
-  const due = inv && inv.status === 'issued' ? Math.max(0, inv.total_cents - inv.paid_cents) : 0;
+  const paid = (!!inv && inv.status === 'paid') || !!job.coffre_id || covered;
   switch (job.status) {
     case 'cancelled':
     case 'no_show':
@@ -92,16 +90,26 @@ export function nextStep(job: JobLike, items: ItemLike[], invoice: InvoiceLike |
       if (!rights.act) return { kind: 'none' };
       if (ctx.needVin) return { kind: 'vin' };
       if (!job.waiver_signed_at) return { kind: 'waiver' };
-      if (paid) return { kind: 'finish' };
-      // « payer plus tard » was granted (the job came back from done): an issued invoice is enough
-      if (job.pay_later && inv && inv.status === 'issued') return { kind: 'finish', later: true, due };
-      if (inv && inv.status === 'issued') return rights.invoice ? { kind: 'pay', payLater: rights.payLater, due } : { kind: 'none' };
-      // no invoice yet, or a draft: the customer answers proposed work first (it is not billed until accepted)
+      if (job.coffre_id) return { kind: 'finish' };
       const open = items.filter((i) => !i.deleted_at);
+      // the customer answers proposed work first, whatever the invoice: accepted, it is billed; refused, it is not
       const waiting = open.find((i) => i.status === 'proposed');
       if (waiting) return { kind: 'answer', itemId: waiting.id };
+      // work added or accepted once the invoice was finished: it goes on the invoice before the payment and the end,
+      // never « Encaisser » the old amount nor « Terminer » with work nobody pays for
+      const missing = unbilledWork(open, inv);
+      if (missing.length) return { kind: 'unbilled', itemId: missing[0].id, count: missing.length, paid: inv!.status === 'paid' };
+      if (paid) return covered ? { kind: 'finish', waiting: true } : { kind: 'finish' };
+      if (issued) {
+        // « payer plus tard » already granted (the job came back from done): the server lets only those who may grant it
+        // finish without the payment; for the others, the payment is the next step
+        if (job.pay_later && rights.payLater) return { kind: 'finish', later: true, due };
+        if (!rights.invoice) return { kind: 'none' };
+        return waitingCents > 0 ? { kind: 'pay', payLater: rights.payLater, due, waiting: true } : { kind: 'pay', payLater: rights.payLater, due };
+      }
       if (!rights.invoice) return { kind: 'none' };
-      if (!open.some((i) => BILLABLE.includes(i.status))) return { kind: 'work' };
+      // nothing to bill yet: add work (a draft whose lines were typed on the invoice itself is ready to finish)
+      if (!billable(open).length && !(inv && (inv.lines || []).length)) return { kind: 'work' };
       return inv ? { kind: 'invoice', draft: true, stale: draftIsStale(inv, open) } : { kind: 'invoice', draft: false };
     }
   }

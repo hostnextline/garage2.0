@@ -25,6 +25,8 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
   const car = carLine(v);
   const oil = oilLine(facts, lang.value);
   const work = workLines(itemsOf(j.id), j.problem);
+  // the lines shown (« Ma journée »: three); the others are counted, never cut without a word
+  const shown = p.compact ? 3 : 12;
   return (
     <section class={`panel glass jobs-carfirst${p.compact ? ' is-compact' : ''}`} data-testid="job-carfirst" aria-label={t('jobs.carFirst.label')}>
       <div class="jobs-cf-car">
@@ -59,7 +61,7 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
       {work.length > 0 && (
         <div class="jobs-cf-work" data-testid="carfirst-work">
           <Wrench aria-hidden="true" />
-          <ul>{work.slice(0, p.compact ? 3 : 12).map((w, i) => <li key={i}>{w}</li>)}{p.compact && work.length > 3 && <li class="muted">{t('jobs.carFirst.more', { n: work.length - 3 })}</li>}</ul>
+          <ul>{work.slice(0, shown).map((w, i) => <li key={i}>{w}</li>)}{work.length > shown && <li class="muted">{t('jobs.carFirst.more', { n: work.length - shown })}</li>}</ul>
         </div>
       )}
     </section>

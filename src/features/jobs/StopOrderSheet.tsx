@@ -13,7 +13,7 @@ import { setStopOrder } from '../../data/api';
 import type { Job } from '../../data/types';
 import { Sheet, Button, IconButton, Banner, Pill, run } from '../../ui';
 import { jobName, isWindowJob, blockRange, momentWord, outsideWindow } from '../../shared/jobs/select';
-import { routeOf, putFirst, moveBy, isManual, sameOrder, brokenWindows } from './stopOrder';
+import { routeOf, putFirst, moveBy, isManual, sameOrder, brokenWindows } from '../../domain/jobs/stopOrder';
 import '../../shared/jobs/jobs.css';
 
 /** « Mettre en premier »: straight away, without the list */

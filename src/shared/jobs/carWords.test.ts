@@ -21,14 +21,16 @@ describe('« Le véhicule d’abord »', () => {
     expect(sure.missing).toEqual([]);
     expect(oilLine({ label: '', cylinders: null, values: { oil_visc: '5W-30', oil_l: 4.4 }, from: { oil_visc: 'sheet', oil_l: 'sheet' } }, 'fr').missing).toEqual(['filter']);
   });
-  it('the work: what is planned or accepted, not the declined ones nor the discounts; else the problem', () => {
+  it('the work: what is planned, accepted or proposed, not the declined ones nor the discounts; else the problem', () => {
     const items = [
       { description: 'Changement d’huile', status: 'planned', kind: 'service', qty: 1, deleted_at: null },
       { description: 'Pneus d’hiver', status: 'approved', kind: 'part', qty: 4, deleted_at: null },
       { description: 'Essuie-glaces', status: 'declined', kind: 'part', qty: 1, deleted_at: null },
-      { description: 'Rabais', status: 'planned', kind: 'discount', qty: 1, deleted_at: null }
+      { description: 'Rabais', status: 'planned', kind: 'discount', qty: 1, deleted_at: null },
+      // proposed, waiting for the customer: listed (what he may be asked to do)
+      { description: 'Plaquettes', status: 'proposed', kind: 'service', qty: 1, deleted_at: null }
     ] as never[];
-    expect(workLines(items, 'bruit')).toEqual(['Changement d’huile', '4 × Pneus d’hiver']);
+    expect(workLines(items, 'bruit')).toEqual(['Changement d’huile', '4 × Pneus d’hiver', 'Plaquettes']);
     expect(workLines([], ' Bruit au freinage ')).toEqual(['Bruit au freinage']);
   });
   it('every word exists in French and English', () => {

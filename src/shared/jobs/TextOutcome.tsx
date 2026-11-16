@@ -1,10 +1,12 @@
 /* When a text to the customer could not go (texts not set up, no cell number, the service refused): the message and
-   the link are ready, to send from the person's own phone (Messages, share, copy). Shown by Aujourd'hui and the job. */
+   the link are ready, to send from the person's own phone (Messages, share, copy). Drawn by one host (hosts.ts): dropped
+   when the person leaves for a screen that shows none, rather than popping up later somewhere else. */
 import { MessageSquareText, Share2, Copy } from 'lucide-preact';
 import { Sheet, Button, toast } from '../../ui';
 import { t } from '../../lib/i18n';
 import { e164 } from '../../lib/text';
-import { outcome } from './flow';
+import { outcome } from './texts';
+import { useHostTurn } from './hosts';
 
 /** copies a text; false when the phone refuses (then the person selects it by hand) */
 export async function copyText(text: string): Promise<boolean> {
@@ -25,10 +27,12 @@ export function smsHref(phone: string | null | undefined, body: string): string 
   return `sms:${e164(phone) || ''}?&body=${encodeURIComponent(body)}`;
 }
 
+const close = () => { outcome.value = null; };
+
 export function TextOutcomeHost() {
+  const mine = useHostTurn('text-outcome', close);
   const o = outcome.value;
-  if (!o) return null;
-  const close = () => { outcome.value = null; };
+  if (!o || !mine) return null;
   const body = (o.message || o.link || '').trim();
   const why = o.status === 'no_phone' ? t('jobs.text.no_phone') : o.status === 'error' ? t('jobs.text.error') : t('jobs.text.off');
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';

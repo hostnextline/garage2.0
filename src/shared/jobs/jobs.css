@@ -20,6 +20,11 @@
 }
 .jobs-step { display: flex; flex-direction: column; gap: var(--sp-2); }
 .jobs-step .bigstep { min-height: 84px; }
+/* the red button that just became the next step takes no tap for a moment (StepButton): no box of its own, and not the
+   kit's « disabled » grey during that pause */
+.jobs-stepbtn { display: contents; }
+.jobs-stepbtn.is-cooling .bigstep[disabled] { filter: none; cursor: default; }
+.jobs-stepbtn.is-cooling .bigstep[disabled] .bigstep-txt { opacity: 1; }
 /* the kit's BigStep as a link keeps the look of the button (no underline) */
 a.bigstep, a.bigstep:hover { text-decoration: none; }
 .jobs-h { font-size: var(--t-md); font-weight: 560; font-stretch: 104%; margin: 0; line-height: 1.25; }

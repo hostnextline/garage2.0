@@ -73,8 +73,10 @@ describe('nextStep: one answer for each state', () => {
     const withExtra = [item('i1', 'planned'), item('i2', 'proposed')];
     expect(nextStep(signed, withExtra, null, RIGHTS.mechanic, ctx)).toEqual({ kind: 'answer', itemId: 'i2' });
     expect(nextStep(signed, withExtra, INVOICES.draft, RIGHTS.mechanic, ctx)).toEqual({ kind: 'answer', itemId: 'i2' });
-    // once the invoice is finished, payment comes first (the proposal waits for another invoice)
-    expect(nextStep(signed, withExtra, INVOICES.issued, RIGHTS.mechanic, ctx).kind).toBe('pay');
+    // once the invoice is finished too: the answer comes before the payment (a job has one invoice: accepted, the work
+    // must go on it; before, « Encaisser » the old amount came first and the extra was never billed — jobs-b-02)
+    expect(nextStep(signed, withExtra, INVOICES.issued, RIGHTS.mechanic, ctx)).toEqual({ kind: 'answer', itemId: 'i2' });
+    expect(nextStep(signed, withExtra, INVOICES.paid, RIGHTS.mechanic, ctx)).toEqual({ kind: 'answer', itemId: 'i2' });
     // a deleted proposal does not wait for anything
     expect(nextStep(signed, [item('i1', 'planned'), item('i2', 'proposed', true)], null, RIGHTS.mechanic, ctx).kind).toBe('invoice');
     expect(nextStep(signed, [], null, RIGHTS.mechanic, ctx).kind).toBe('work');
@@ -82,9 +84,13 @@ describe('nextStep: one answer for each state', () => {
     expect(nextStep(signed, [item('i1', 'approved')], null, RIGHTS.mechanic, ctx).kind).toBe('invoice');
     expect(nextStep(signed, [item('i1', 'done')], null, RIGHTS.mechanic, ctx).kind).toBe('invoice');
   });
-  it('on site: « payer plus tard » already granted finishes with the invoice issued', () => {
+  it('on site: « payer plus tard » already granted finishes with the invoice issued, for those the server lets do it', () => {
     const later = job('on_site', { waiver: true, payLater: true });
-    expect(nextStep(later, work, INVOICES.issued, RIGHTS.mechanic, ctx)).toEqual({ kind: 'finish', later: true, due: 11498 });
+    expect(nextStep(later, work, INVOICES.issued, RIGHTS.office, ctx)).toEqual({ kind: 'finish', later: true, due: 11498 });
+    // the server refuses « Terminer » without payment to a mechanic (pay_first): his next step is the payment (jobs-a-05;
+    // before, he got « Terminer » and a refusal every time)
+    expect(nextStep(later, work, INVOICES.issued, RIGHTS.mechanic, ctx)).toEqual({ kind: 'pay', payLater: false, due: 11498 });
+    expect(nextStep(later, work, INVOICES.issued, RIGHTS.actOnly, ctx).kind).toBe('none');
     // but not without a finished invoice
     expect(nextStep(later, work, INVOICES.draft, RIGHTS.mechanic, ctx).kind).toBe('invoice');
     expect(nextStep(later, work, null, RIGHTS.mechanic, ctx).kind).toBe('invoice');
@@ -147,5 +153,54 @@ describe('draftIsStale', () => {
     expect(draftIsStale(draft(['a', 'b', 'c']), items)).toBe(true);
     expect(draftIsStale({ ...draft(['a']), status: 'issued' }, items)).toBe(false);
     expect(draftIsStale(null, items)).toBe(false);
+  });
+});
+
+describe('nextStep: work added after the invoice is finished is never left unbilled (jobs-a-01, jobs-b-02)', () => {
+  const signed = job('on_site', { waiver: true });
+  const extra = [item('i1', 'done'), item('i2', 'approved'), item('i3', 'planned')];
+  it('issued: the missing work comes before « Encaisser » the old amount', () => {
+    expect(nextStep(signed, extra, INVOICES.issued, RIGHTS.mechanic, ctx)).toEqual({ kind: 'unbilled', itemId: 'i2', count: 2, paid: false });
+    expect(nextStep(signed, extra, INVOICES.partial, RIGHTS.office, ctx).kind).toBe('unbilled');
+  });
+  it('paid: never « Terminer » while work is on no line of the invoice', () => {
+    expect(nextStep(signed, extra, INVOICES.paid, RIGHTS.mechanic, ctx)).toEqual({ kind: 'unbilled', itemId: 'i2', count: 2, paid: true });
+    // whoever may act sees why, even without the invoice right
+    expect(nextStep(signed, extra, INVOICES.paid, RIGHTS.actOnly, ctx).kind).toBe('unbilled');
+  });
+  it('work taken off, refused or deleted is not missing; a draft simply goes stale as before', () => {
+    expect(nextStep(signed, [item('i1', 'done'), item('i2', 'removed'), item('i3', 'declined'), item('i4', 'planned', true)], INVOICES.paid, RIGHTS.mechanic, ctx)).toEqual({ kind: 'finish' });
+    expect(nextStep(signed, extra, INVOICES.draft, RIGHTS.mechanic, ctx)).toEqual({ kind: 'invoice', draft: true, stale: true });
+    // a cancelled invoice is no invoice: a new one is made from all the work
+    expect(nextStep(signed, extra, INVOICES.void, RIGHTS.mechanic, ctx)).toEqual({ kind: 'invoice', draft: false });
+  });
+  it('the « Coffre » has no invoice: nothing is missing from it', () => {
+    expect(nextStep({ ...signed, coffre_id: 'c1' }, extra, null, RIGHTS.mechanic, ctx)).toEqual({ kind: 'finish' });
+  });
+});
+
+describe('nextStep: a payment waiting on the phone is not asked twice (jobs-a-02)', () => {
+  const signed = job('on_site', { waiver: true });
+  it('the whole balance waits: « Terminer » (it leaves after the payment), never « Encaisser » again', () => {
+    expect(nextStep(signed, work, INVOICES.issued, RIGHTS.mechanic, { ...ctx, paidWaiting: 11498 })).toEqual({ kind: 'finish', waiting: true });
+    expect(nextStep(signed, work, INVOICES.partial, RIGHTS.mechanic, { ...ctx, paidWaiting: 6498 })).toEqual({ kind: 'finish', waiting: true });
+  });
+  it('part of it waits: only the rest is asked', () => {
+    expect(nextStep(signed, work, INVOICES.issued, RIGHTS.mechanic, { ...ctx, paidWaiting: 5000 })).toEqual({ kind: 'pay', payLater: false, due: 6498, waiting: true });
+  });
+  it('done: what is left to collect counts the payment waiting', () => {
+    expect(nextStep(job('done'), work, INVOICES.issued, RIGHTS.office, { ...ctx, paidWaiting: 11498 })).toEqual({ kind: 'done', paid: true, due: 0 });
+  });
+  it('nothing waiting: as before', () => {
+    expect(nextStep(signed, work, INVOICES.issued, RIGHTS.mechanic, { ...ctx, paidWaiting: 0 })).toEqual({ kind: 'pay', payLater: false, due: 11498 });
+  });
+});
+
+describe('nextStep: a draft whose lines were typed on the invoice is ready to finish (jobs-a-18)', () => {
+  it('no billable work on the job, but the draft has lines: « Faire la facture », not « Ajouter du travail »', () => {
+    const signed = job('on_site', { waiver: true });
+    const typed = { status: 'draft' as const, total_cents: 5749, paid_cents: 0, lines: [line()] };
+    expect(nextStep(signed, [], typed, RIGHTS.mechanic, ctx)).toEqual({ kind: 'invoice', draft: true, stale: false });
+    expect(nextStep(signed, [], { ...typed, lines: [] }, RIGHTS.mechanic, ctx).kind).toBe('work');
   });
 });

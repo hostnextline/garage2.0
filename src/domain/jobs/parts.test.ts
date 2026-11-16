@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { plannedPartsOf } from './parts';
+import { plannedPartsOf, stepQty, qtyStep, qtyFloor } from './parts';
 
 const items: Record<string, { id: string; name: string; unit: string; qty: number; deleted_at: string | null }> = {
   oil: { id: 'oil', name: 'Huile 5W-30', unit: 'L', qty: 20, deleted_at: null },
@@ -25,5 +25,33 @@ describe('the parts a job takes', () => {
   it('two lines of the same service: the quantities add up', () => {
     const got = plannedPartsOf([line({ service_id: 'vidange' }), line({ service_id: 'vidange', status: 'approved' })], partsOf, (id) => items[id]);
     expect(got.find((p) => p.item_id === 'oil')?.qty).toBe(9);
+  });
+});
+
+describe('« Pièces utilisées »: the quantity buttons (jobs-b-15)', () => {
+  it('half a litre for what is measured, one for the rest', () => {
+    expect(qtyStep('L')).toBe(0.5);
+    expect(qtyStep('kg')).toBe(0.5);
+    expect(qtyStep('unité')).toBe(1);
+  });
+  it('a planned 4.7 L reaches 4.5, 5 and down to 0 (before: stuck between 0.2 and 4.7, never 0 nor 5)', () => {
+    expect(stepQty(4.7, false, 0.5)).toBe(4.5);
+    expect(stepQty(4.7, true, 0.5)).toBe(5);
+    expect(stepQty(0.2, false, 0.5)).toBe(0);
+    let q = 4.7;
+    for (let i = 0; i < 20; i++) q = stepQty(q, false, 0.5);
+    expect(q).toBe(0);
+  });
+  it('on the grid it moves by one step, as before', () => {
+    expect(stepQty(4.5, false, 0.5)).toBe(4);
+    expect(stepQty(4.5, true, 0.5)).toBe(5);
+    expect(stepQty(3, true, 1)).toBe(4);
+    expect(stepQty(0, false, 1)).toBe(0);
+  });
+  it('the floor keeps « − » offered off the grid only', () => {
+    expect(qtyFloor(4.7, 0.5)).toBe(-0.5);
+    expect(qtyFloor(4.5, 0.5)).toBe(0);
+    expect(qtyFloor(0, 0.5)).toBe(0);
+    expect(qtyFloor(2, 1)).toBe(0);
   });
 });
