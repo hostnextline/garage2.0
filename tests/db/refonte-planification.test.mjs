@@ -3,6 +3,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { tx, pool, futureDay, uuid } from './helpers.mjs';
+import { randomUUID } from 'node:crypto';
 
 after(() => pool.end());
 
@@ -621,3 +622,65 @@ test('sql-windows-04: window mode, a job booked « quand même » is not sent be
   assert.ok(jf.eta_min <= 720, `the forced morning job is in the morning: ${jf.eta_min}`);
   assert.equal(jf.stop_order, 1);
 }));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   Two real connections (committed data, deleted at the end)
+   ------------------------------------------------------------------------------------------------------------------ */
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const within = (p, ms) => Promise.race([p.then(() => 'done', () => 'failed'), sleep(ms).then(() => 'waiting')]);
+
+test('booking-a-08, two connections: the same estimate booked on two devices at the same instant makes one appointment', async () => {
+  const c = await pool.connect();
+  const opened = [];
+  const start = (await c.query(`select clock_timestamp() as t`)).rows[0].t;
+  const owner = randomUUID(), truck = randomUUID(), cust = randomUUID();
+  let quote = null;
+  try {
+    await c.query(`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+      values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2, '', now(), now(), now(), '{}', '{}')`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.staff (id, full_name, short_name, roles, rights, email) values ($1, 'Hassan Conc', 'Hassan', '{owner}', '{}', $2)`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.trucks (id, name, active, sort) values ($1, 'Camion Conc', true, 0)`, [truck]);
+    for (let d = 0; d < 7; d++) await c.query(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, $3)`, [truck, d, JSON.stringify(DAY)]);
+    await c.query(`insert into public.customers (id, first_name, last_name, phone, lat, lng, address) values ($1, 'Conc', 'Test', '5145550000', $2, $3, '1 rue Test')`, [cust, ...near]);
+    quote = (await c.query(`insert into public.quotes (customer_id, status) values ($1, 'accepted') returning id`, [cust])).rows[0].id;
+    const day = (await c.query(`select (public.local_today() + 30)::text d`)).rows[0].d;
+    const open = async () => {
+      const k = await pool.connect(); opened.push(k);
+      await k.query('begin');
+      await k.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [JSON.stringify({ sub: owner, role: 'authenticated' }), owner]);
+      await k.query('set local role authenticated');
+      return k;
+    };
+    const sql = `select public.book_job(p_op => $1, p_job => $2::jsonb, p_items => '[]'::jsonb) as r`;
+    const payload = (block) => JSON.stringify({ customer_id: cust, day, block, duration_min: 60, quote_id: quote });
+    const k1 = await open(), k2 = await open();
+    const r1 = (await k1.query(sql, [randomUUID(), payload('am')])).rows[0].r;
+    assert.equal(r1.ok, true);
+    const p2 = k2.query(sql, [randomUUID(), payload('pm')]);
+    assert.equal(await within(p2, 400), 'waiting', 'the second device waits for the first');
+    await k1.query('commit');
+    const e = await p2.then(() => null, (x) => x);
+    assert.equal(e?.hint, 'quote_done', 'then it is told the estimate is already booked');
+    await k2.query('rollback');
+    assert.equal((await c.query(`select count(*)::int n from public.jobs where quote_id = $1 and deleted_at is null`, [quote])).rows[0].n, 1);
+  } finally {
+    for (const k of opened) { await k.query('rollback').catch(() => {}); k.release(); }
+    await c.query(`select set_config('garage.rpc', 'on', false)`);
+    if (quote) {
+      await c.query(`update public.quotes set job_id = null where id = $1`, [quote]);
+      await c.query(`delete from public.job_items where job_id in (select id from public.jobs where quote_id = $1)`, [quote]);
+      await c.query(`delete from public.jobs where quote_id = $1`, [quote]);
+      await c.query(`delete from public.quotes where id = $1`, [quote]);
+    }
+    await c.query(`delete from public.jobs where customer_id = $1`, [cust]);
+    await c.query(`delete from public.customers where id = $1`, [cust]);
+    await c.query(`delete from public.truck_week where truck_id = $1`, [truck]);
+    await c.query(`delete from public.trucks where id = $1`, [truck]);
+    await c.query(`delete from public.op_log where at >= $1`, [start]);
+    await c.query(`delete from public.activity where at >= $1`, [start]);
+    await c.query(`delete from auth.users where id = $1`, [owner]);
+    await c.query(`select set_config('garage.rpc', '', false)`);
+    c.release();
+  }
+});
