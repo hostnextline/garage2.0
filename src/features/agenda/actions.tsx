@@ -4,7 +4,7 @@
    Each shortcut shows only to the people who may use it (the screen it opens checks again, as always). */
 import { Copy, ClipboardPaste, ExternalLink, CalendarPlus, CalendarClock, ReceiptText, CalendarDays, Map as MapIcon, Truck, Pencil } from 'lucide-preact';
 import type { Job } from '../../data/types';
-import { clock, type BlockKey, type Day } from '../../lib/dates';
+import { clock, today as todayOf, type BlockKey, type Day } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { may } from '../../domain/rights';
 import { navigate, href } from '../../platform/router';
@@ -13,16 +13,17 @@ import { customer as customerRow, invoiceOf, windowsOn, windowOf } from '../../d
 import { toast } from '../../ui';
 import { blockPhrase } from '../../domain/moment/words';
 import { dayWords } from './layout';
-import { today as todayOf } from '../../lib/dates';
 import { customerActions } from '../../shared/customers/shortcuts';
 import { jobRights, mayChangeTruck, mayEditJob } from '../../domain/jobs/rights';
 import { jobPerson } from '../../domain/jobs/words';
-import { copiedJob, copyJob, pasteHref, bookHref } from './copy';
+import { copiedRow, copyJob, pasteHref, bookHref } from './copy';
 import { dropWindowStart } from '../../domain/moment/grid';
 import { openMenu, openMenuAt, pressProps, type MenuAction } from '../../ui/ContextMenu';
+import { movesWaiting } from './move';
 
-/** a block takes a paste when it has not started and is open (a full block: the booking screen offers « quand même ») */
-export const mayPaste = (v: { started: boolean; open: boolean }) => may.book() && !!copiedJob.value && !v.started && v.open;
+/** a block takes a paste when it has not started and is open (a full block: the booking screen offers « quand même »),
+    while the appointment copied is still on this phone (else the booking screen would open empty) */
+export const mayPaste = (v: { started: boolean; open: boolean }) => may.book() && !!copiedRow() && !v.started && v.open;
 
 const go = (path: string) => () => navigate(path);
 const icon = (I: typeof Copy) => <I size={18} aria-hidden="true" />;
@@ -40,7 +41,8 @@ export function jobActions(j: Job): { title: string; actions: MenuAction[] } {
   add(may.book() && !!j.customer_id && { key: 'copy', label: t('agenda.menu.copy'), icon: icon(Copy), testid: 'menu-copy-job',
     run: () => { copyJob(j.id); toast(t(windowsOn.value ? 'agenda.copy.copiedDay' : 'agenda.copy.copied', { name }), { kind: 'ok' }); } });
   add(mayEditJob(j, r) && { key: 'edit', label: t('jobs.edit.menu'), icon: icon(Pencil), run: go(`/job/${j.id}?do=edit`), testid: 'menu-edit' });
-  add(j.status === 'booked' && r.move && { key: 'move', label: t('agenda.menu.move'), icon: icon(CalendarClock), run: go(`/job/${j.id}?do=move`), testid: 'menu-move' });
+  // a move of it still kept on the phone: no second one queued behind it (agenda-14)
+  add(j.status === 'booked' && r.move && !movesWaiting.value.has(j.id) && { key: 'move', label: t('agenda.menu.move'), icon: icon(CalendarClock), run: go(`/job/${j.id}?do=move`), testid: 'menu-move' });
   add(mayChangeTruck(j, r) && { key: 'truck', label: t('jobs.truck.menu'), icon: icon(Truck), run: go(`/job/${j.id}?do=truck`), testid: 'menu-truck' });
   // the customer (the same shortcuts as in the list of customers; directions to the appointment's own address)
   if (c) {

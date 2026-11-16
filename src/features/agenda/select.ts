@@ -1,10 +1,15 @@
-/* What this person sees in the agenda. A mechanic without the « agenda » right only receives his truck's jobs (the
-   database decides); the screen also keeps to his truck's lanes, so other trucks never look empty when they are not. */
+/* What the agenda shows of a day: who sees what, and each place of the day (a block, or the whole day with « Plages
+   d'arrivée ») with its trucks, its jobs and whether it still books.
+   A mechanic without the « agenda » right only receives his truck's jobs (the database decides); the screen also keeps
+   to his truck's lanes, so other trucks never look empty when they are not. */
 import { can, me, myTrucks } from '../../data/auth';
-import { jobsOn, blockLoad, activeTrucks, blocks, blockOfKey, settings, windowsOn, type TruckBlock } from '../../data/select';
+import { blockLoad, activeTrucks, blocks, blockOfKey, settings, windowsOn, truckRanges, type TruckBlock } from '../../data/select';
 import type { Job, Truck } from '../../data/types';
-import { nowMinute, type BlockKey, type Day } from '../../lib/dates';
-import { byArrival, dayState, isWindowDay } from './layout';
+import { nowMinute, overlapMinutes, type BlockKey, type Day } from '../../lib/dates';
+import { minuteOf } from '../../shared/jobs/select';
+import { byArrival, isWindowDay } from './layout';
+import { dayState, blockState, hasRoom, usedBy } from './load';
+import { jobsOfDay } from './days';
 
 export function seesAll(): boolean { return can('agenda'); }
 export function laneShown(truckId: string): boolean { return seesAll() || myTrucks().includes(truckId); }
@@ -20,6 +25,8 @@ export interface BlockView {
   /** the trucks in service that do not work in this block (said, so nobody looks for them) */
   idle: Truck[];
   open: boolean; started: boolean; past: boolean;
+  /** nobody works there (a block no truck works in; a day no truck has hours) */
+  closed: boolean;
   /** some truck still has room for a short job */
   room: boolean;
   jobs: number;
@@ -27,28 +34,42 @@ export interface BlockView {
 export function blockView(day: Day, b: { key: BlockKey; start: number; end: number }, todayDay: Day): BlockView {
   const load = blockLoad(day, b.key);
   const whole = b.key === 'day';
-  // a whole day: its stops by the hour (the planned arrival, then the stop number)
-  const lanes = load.trucks.filter((x) => laneShown(x.truck.id)).map((x) => (whole ? { ...x, jobs: [...x.jobs].sort(byArrival) } : x));
+  const minBlock = settings.value.booking.min_block_min;
+  const now = day === todayDay ? nowMinute() : null;
+  // today: a job under way counts only for the time it still needs (as the planner counts it), not whole against
+  // the hours left; a whole day: its stops by the hour (the planned arrival, then the stop number)
+  const lanes = load.trucks.filter((x) => laneShown(x.truck.id)).map((x) => {
+    const used = usedBy(x.jobs, now, (j) => minuteOf(j.arrived_at), settings.value.booking.unknown_min);
+    return { ...x, used, left: x.cap - used, jobs: whole ? [...x.jobs].sort(byArrival) : x.jobs };
+  });
   // a whole day is over at its last hour, not when it starts (a block is « commencé » at its first minute)
-  const st = whole ? dayState(day, todayDay, nowMinute(), [b.start, b.end], load.trucks.map((x) => x.cap), settings.value.booking.min_block_min) : load;
+  const st = whole
+    ? dayState(day, todayDay, nowMinute(), [b.start, b.end], load.trucks.map((x) => x.cap), minBlock, activeTrucks.value.some((tr) => overlapMinutes(truckRanges(tr.id, day), b.start, b.end) > 0))
+    : blockState(load);
   const unplaced = load.unplaced.filter(jobShown);
   const jobs = lanes.reduce((n, x) => n + x.jobs.length, 0) + unplaced.length;
   const idle = activeTrucks.value.filter((tr) => laneShown(tr.id) && !lanes.some((x) => x.truck.id === tr.id));
   return {
-    key: b.key, start: b.start, end: b.end, lanes, unplaced, idle, open: st.open, started: st.started, past: day < todayDay,
-    room: lanes.some((x) => x.cap >= 45 && x.left >= 45), jobs
+    key: b.key, start: b.start, end: b.end, lanes, unplaced, idle, open: st.open, started: st.started, closed: st.closed, past: day < todayDay,
+    room: hasRoom(lanes, minBlock), jobs
   };
 }
 /** the jobs of a day this person sees (cancelled and no-shows included) */
-export function dayJobs(day: Day): Job[] { return jobsOn(day).filter(jobShown); }
+export function dayJobs(day: Day): Job[] { return jobsOfDay(day).filter(jobShown); }
+/** how many jobs this person sees that day, the cancelled and no-shows left out */
+export function activeCount(day: Day): number { return dayJobs(day).filter((j) => !isOff(j)).length; }
 
 /** how a day is drawn. « Plages d'arrivée » (window: true): ONE view for the whole day, then the blocks that still hold
     jobs (right after the switch, or a copy of the phone not yet up to date); else its blocks, as always. */
-export interface DayPlan { window: boolean; views: BlockView[] }
+export interface DayPlan { day: Day; window: boolean; views: BlockView[] }
 export function dayPlan(day: Day, todayDay: Day): DayPlan {
-  const kinds = jobsOn(day).filter((j) => !isOff(j)).map((j) => j.block);
+  const kinds = jobsOfDay(day).filter((j) => !isOff(j)).map((j) => j.block);
   const byBlock = () => blocks.value.map((b) => blockView(day, b, todayDay));
-  if (!isWindowDay(day, todayDay, windowsOn.value, kinds)) return { window: false, views: byBlock() };
+  if (!isWindowDay(day, todayDay, windowsOn.value, kinds)) return { day, window: false, views: byBlock() };
   const left = kinds.some((k) => k !== 'day') ? byBlock().filter((v) => v.jobs > 0) : [];
-  return { window: true, views: [blockView(day, blockOfKey('day'), todayDay), ...left] };
+  return { day, window: true, views: [blockView(day, blockOfKey('day'), todayDay), ...left] };
+}
+/** the trucks that work a day (on a past day: the ones that had jobs) */
+export function workingTrucks(plan: DayPlan): number {
+  return new Set(plan.views.flatMap((v) => v.lanes.filter((x) => x.cap > 0 || x.jobs.length > 0).map((x) => x.truck.id))).size;
 }

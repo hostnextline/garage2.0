@@ -13,6 +13,7 @@ export const today = {
     worked: '{time} de travail',
     end: 'Terminer ma journée',
     endConfirm: 'Toucher encore pour terminer',
+    endConfirmTrip: 'Le suivi de {name} s’arrêtera : toucher encore',
     ended: 'Journée terminée à {time}',
     endedSub: '{time} de travail aujourd’hui',
     resume: 'Reprendre ma journée',
@@ -39,9 +40,9 @@ export const today = {
     now: 'En ce moment',
     open: 'Ouvrir la job',
     allDone: 'Plus d’arrêt aujourd’hui',
-    allDoneText: 'Tes jobs du jour sont faites. Termine ta journée en rentrant.',
     empty: 'Aucun rendez-vous aujourd’hui',
     emptyText: 'Rien à l’agenda de ton camion aujourd’hui.',
+    noneLeft: 'Les arrêts du jour ont été annulés, ou le client était absent.',
     noTruck: 'Aucun camion à ton nom',
     noTruckText: 'Demande au propriétaire de t’attribuer un camion (Équipe).',
     seeAgenda: 'Voir l’agenda'
@@ -57,6 +58,8 @@ export const today = {
     arrived: 'Je suis arrivé',
     arrivedSub: 'Le suivi s’arrête. Termine ta journée quand tu veux.',
     arrivedToast: 'Bien arrivé. Bonne fin de journée.',
+    home: 'Arrivé à {place} à {time}',
+    homeText: 'Le suivi est arrêté. Termine ta journée quand tu veux.',
     sent: 'Le garage a reçu ton heure d’arrivée.',
     sentEta: 'Le garage a reçu ton heure d’arrivée ({time}).',
     quiet: 'En route vers {place} (texto de retour éteint).',
@@ -65,6 +68,11 @@ export const today = {
     offline: 'Pas de signal : réessaie dans un instant.'
   },
   then: 'Ensuite',
+  /* the jobs of a past day still open */
+  open: {
+    title: { one: '{n} rendez-vous pas terminé', other: '{n} rendez-vous pas terminés' },
+    help: 'Les rendez-vous d’un jour passé encore réservés, en route ou sur place. Ouvre chacun pour le terminer, le déplacer, le marquer absent ou l’annuler.'
+  },
   closed: {
     show: { one: 'Voir l’arrêt terminé', other: 'Voir les {n} arrêts terminés' },
     hide: 'Cacher les arrêts terminés'
