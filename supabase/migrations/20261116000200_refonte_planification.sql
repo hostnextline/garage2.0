@@ -1069,3 +1069,172 @@ begin
   values (auth.uid(), 'settings', null, 'windows_switch', jsonb_build_object('on', p_on, 'converted', n, 'to_call', jsonb_array_length(v_call), 'kept', v_kept));
   return public.op_save(p_op, 'windows_switch', jsonb_build_object('ok', true, 'converted', n, 'on', p_on, 'to_call', v_call, 'kept', v_kept));
 end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 9. « My vehicle », work on the spot, the steps of a job
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- my_truck_ids (live text): in the order of Horaires, so « the first of my vehicles » is always the same one.
+CREATE OR REPLACE FUNCTION public.my_truck_ids()
+ RETURNS uuid[]
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  -- in a fixed order (the order of Horaires), so « the first of my vehicles » is always the same one (Part 26)
+  select coalesce(array_agg(t.id order by t.sort, t.name, t.id), '{}') from public.trucks t
+   where t.deleted_at is null
+     and (t.driver_id = auth.uid()
+       or (public.has_role('mechanic') and coalesce((select (st.booking->>'shared_routes')::boolean from public.settings st where st.id = 1), false)))
+$function$;
+
+-- walk_in (live text, patched in place by Part 25): the claim first; no vehicle said: the vehicle I drive, never an
+-- arbitrary one with « Routes partagées » (several vehicles and none driven: no_truck, the vehicle must be said).
+CREATE OR REPLACE FUNCTION public.walk_in(p_op uuid, p_job jsonb, p_items jsonb DEFAULT '[]'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_done jsonb; v_id uuid := coalesce(nullif(p_job->>'id', '')::uuid, gen_random_uuid());
+  v_truck uuid := nullif(p_job->>'truck_id', '')::uuid; v_block text; v_now int := public.now_min(); it jsonb; k int := 0; v_dur int;
+begin
+  v_done := public.op_begin(p_op, 'walk_in');
+  if v_done is not null then return v_done; end if;
+  if not public.is_field() then perform public.fail('not_allowed', 'Tu ne peux pas ouvrir une job.'); end if;
+  if v_truck is null then
+    -- Part 26: the vehicle I drive; with « Routes partagées » every vehicle is « mine », so it must be said when I drive
+    -- none of them and there are several (never an arbitrary one)
+    select t.id into v_truck from public.trucks t where t.driver_id = auth.uid() and t.active and t.deleted_at is null order by t.sort, t.name, t.id limit 1;
+    if v_truck is null and cardinality(public.my_truck_ids()) > 1
+       and coalesce((select (st.booking->>'shared_routes')::boolean from public.settings st where st.id = 1), false) then
+      perform public.fail('no_truck', 'Choisis le véhicule de cette job : la voiture ou le camion.');
+    end if;
+    if v_truck is null then v_truck := (public.my_truck_ids())[1]; end if;
+  end if;
+  if v_truck is not null and not (v_truck = any(public.my_truck_ids()) or public.can('book') or public.is_owner()) then
+    perform public.fail('not_allowed', 'Ce camion n’est pas le tien.');
+  end if;
+  if nullif(p_job->>'customer_id', '') is null then perform public.fail('no_customer', 'Choisis le client (ou crée sa fiche).'); end if;
+  if not public.customer_visible((p_job->>'customer_id')::uuid) then perform public.fail('not_allowed', 'Tu n’as pas accès à ce client.'); end if;
+  select x.key into v_block from public.blocks() x where v_now >= x.start_min and v_now < x.end_min;
+  if public.windows_on() then v_block := 'day'; elsif v_block is null then v_block := case when v_now < 720 then 'am' when v_now < 960 then 'pm' else 'eve' end; end if;
+  v_dur := greatest(15, least(720, coalesce(nullif(p_job->>'duration_min', '')::int,
+    (select sum(coalesce((e->>'duration_min')::int, 0)) from jsonb_array_elements(p_items) e), 60)));
+  perform set_config('garage.rpc', 'on', true);
+  insert into public.jobs (id, customer_id, vehicle_id, day, block, truck_id, truck_pinned, duration_min, status, problem, notes,
+    address, unit, postal_code, lat, lng, source, quote_id, arrived_at, started_at, created_by)
+  values (v_id, (p_job->>'customer_id')::uuid, nullif(p_job->>'vehicle_id', '')::uuid, public.local_today(), v_block, v_truck, v_truck is not null,
+    v_dur, 'on_site', nullif(p_job->>'problem', ''), nullif(p_job->>'notes', ''), nullif(p_job->>'address', ''), nullif(p_job->>'unit', ''),
+    nullif(p_job->>'postal_code', ''), nullif(p_job->>'lat', '')::double precision, nullif(p_job->>'lng', '')::double precision,
+    case when nullif(p_job->>'quote_id', '') is null then 'walk_in' else 'quote' end, nullif(p_job->>'quote_id', '')::uuid, now(), now(), auth.uid());
+  for it in select * from jsonb_array_elements(coalesce(p_items, '[]')) loop
+    k := k + 1;
+    insert into public.job_items (id, job_id, kind, service_id, item_id, description, qty, unit_cents, taxable, duration_min, status, sort)
+    values (coalesce(nullif(it->>'id', '')::uuid, gen_random_uuid()), v_id, coalesce(nullif(it->>'kind', ''), 'service'), nullif(it->>'service_id', '')::uuid,
+      nullif(it->>'item_id', '')::uuid, it->>'description', coalesce((it->>'qty')::numeric, 1), coalesce((it->>'unit_cents')::int, 0),
+      coalesce((it->>'taxable')::boolean, true), nullif(it->>'duration_min', '')::int, 'done', k);
+  end loop;
+  if nullif(p_job->>'quote_id', '') is not null then
+    update public.quotes set status = 'converted', job_id = v_id where id = (p_job->>'quote_id')::uuid;
+  end if;
+  return public.op_save(p_op, 'walk_in', jsonb_build_object('ok', true, 'job_id', v_id, 'rows', public.job_payload(v_id)));
+end $function$;
+
+-- job_step (live text, patched in place by Parts 24 quater and 25): the claim first; a cancellation or a « Client absent » plans the block again without throwing anybody to « À placer »;
+-- « Remettre à l'agenda » only when nobody else loses a place (or a window) for it, as a booking.
+CREATE OR REPLACE FUNCTION public.job_step(p_op uuid, p_job uuid, p_action text, p_data jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_done jsonb; j public.jobs; inv public.invoices; v_lost int; b record; v_plan jsonb; v_lat double precision; v_lng double precision;
+  v_plan0 jsonb;
+begin
+  v_done := public.op_begin(p_op, 'job_step');
+  if v_done is not null then return v_done; end if;
+  select * into j from public.jobs where id = p_job and deleted_at is null for update;
+  if not found then perform public.fail('not_found', 'Cette job n’existe plus.'); end if;
+  if not public.job_actor(j) then perform public.fail('not_allowed', 'Cette job n’est pas à toi.'); end if;
+  perform set_config('garage.rpc', 'on', true);
+  inv := public.job_invoice(j.id);
+  v_lost := coalesce(nullif(p_data->>'lost_cents', '')::int,
+    (select coalesce(sum(round(i.qty * i.unit_cents)), 0)::int from public.job_items i where i.job_id = j.id and i.deleted_at is null and i.status in ('planned','done','approved')));
+
+  case p_action
+  when 'leave' then
+    if j.status <> 'booked' then perform public.fail('bad_step', 'Cette job est déjà partie.'); end if;
+    if exists (select 1 from public.jobs o where o.id <> j.id and o.day = j.day and o.truck_id is not distinct from j.truck_id and j.truck_id is not null
+                 and o.status = 'on_site' and o.deleted_at is null and not public.job_paid(o.id) and not o.pay_later) then
+      perform public.fail('unpaid_here', 'La job d’avant n’est pas encore payée : encaisse-la avant de partir.');
+    end if;
+    update public.jobs set status = 'en_route', started_at = now() where id = j.id;
+  when 'arrive' then
+    if j.status <> 'en_route' then perform public.fail('bad_step', 'Touche d’abord « Je pars ».'); end if;
+    update public.jobs set status = 'on_site', arrived_at = now() where id = j.id;
+    update public.trips set status = 'arrived', ended_at = now() where job_id = j.id and status = 'active';
+  when 'finish' then
+    if j.status not in ('on_site','en_route') then perform public.fail('bad_step', 'Cette job n’est pas sur place.'); end if;
+    if not public.job_paid(j.id) then
+      if coalesce((p_data->>'pay_later')::boolean, false) then
+        if not (public.is_owner() or public.can('edit_invoices')) then
+          perform public.fail('pay_first', 'Paiement requis avant de partir. Seul le bureau peut laisser partir sans paiement.');
+        end if;
+        if inv.id is null or inv.status = 'draft' then perform public.fail('invoice_first', 'Termine la facture d’abord.'); end if;
+        update public.jobs set pay_later = true, pay_later_reason = nullif(p_data->>'reason', '') where id = j.id;
+      else
+        perform public.fail('pay_first', 'Paiement requis avant de partir : encaisse la facture.');
+      end if;
+    end if;
+    update public.jobs set status = 'done', finished_at = now(), arrived_at = coalesce(arrived_at, now()) where id = j.id;
+    update public.trips set status = 'arrived', ended_at = now() where job_id = j.id and status = 'active';
+    perform public.use_parts(j.id, p_data->'parts');
+  when 'cancel' then
+    if j.status not in ('booked','en_route') then perform public.fail('bad_step', 'Cette job ne peut plus être annulée.'); end if;
+    update public.jobs set status = 'cancelled', cancelled_at = now(), lost_cents = v_lost, lost_reason = nullif(p_data->>'reason', '') where id = j.id;
+    update public.trips set status = 'cancelled', ended_at = now() where job_id = j.id and status = 'active';
+    perform public.replan_block_safe(j.day, j.block);
+  when 'no_show' then
+    if j.status not in ('booked','en_route','on_site') then perform public.fail('bad_step', 'Cette job ne peut plus passer à « Client absent ».'); end if;
+    update public.jobs set status = 'no_show', cancelled_at = now(), lost_cents = v_lost, lost_reason = nullif(p_data->>'reason', '') where id = j.id;
+    update public.customers set no_shows = no_shows + 1 where id = j.customer_id;
+    update public.trips set status = 'cancelled', ended_at = now() where job_id = j.id and status = 'active';
+    perform public.replan_block_safe(j.day, j.block);
+  when 'reopen' then
+    if j.status not in ('cancelled','no_show') then perform public.fail('bad_step', 'Cette job est déjà à l’agenda.'); end if;
+    select * into b from public.blocks() x where x.key = j.block;
+    if not public.block_open(j.day, j.block) then
+      perform public.fail('block_started', 'Ce bloc est passé : déplace la job vers un autre moment.');
+    end if;
+    perform public.lock_block(j.day, j.block);
+    select coalesce(j.lat, c.lat), coalesce(j.lng, c.lng) into v_lat, v_lng from public.customers c where c.id = j.customer_id;
+    v_plan0 := public.plan_block(j.day, j.block, null, j.id);
+    v_plan := public.plan_block(j.day, j.block, jsonb_build_object('id', j.id, 'lat', v_lat, 'lng', v_lng, 'dur', j.duration_min), j.id);
+    if not coalesce((v_plan->'extra'->>'placed')::boolean, false)
+       or exists (select 1 from jsonb_array_elements_text(coalesce(v_plan->'over', '[]'::jsonb)) o where not (coalesce(v_plan0->'over', '[]'::jsonb) ? o))
+       or public.plan_late_new(v_plan0, v_plan) then
+      perform public.fail('block_full', case when j.block = 'day' then 'Cette journée est complète maintenant : déplace la job vers un autre moment.'
+                                             else 'Ce bloc est complet maintenant : déplace la job vers un autre moment.' end);
+    end if;
+    if j.status = 'no_show' then update public.customers set no_shows = greatest(0, no_shows - 1) where id = j.customer_id; end if;
+    update public.jobs set status = 'booked', cancelled_at = null, lost_cents = null, lost_reason = null, started_at = null, arrived_at = null where id = j.id;
+    perform public.apply_plan_keep(public.plan_block(j.day, j.block));
+  when 'back' then
+    if j.status = 'en_route' then
+      update public.jobs set status = 'booked', started_at = null where id = j.id;
+      update public.trips set status = 'cancelled', ended_at = now() where job_id = j.id and status = 'active';
+    elsif j.status = 'on_site' then
+      update public.jobs set status = 'en_route', arrived_at = null where id = j.id;
+    elsif j.status = 'done' and (public.is_owner() or public.can('book')) then
+      update public.jobs set status = 'on_site', finished_at = null where id = j.id;
+    else perform public.fail('bad_step', 'Rien à défaire.'); end if;
+  when 'waiver' then
+    if nullif(p_data->>'signer', '') is null then perform public.fail('signer', 'Écris le nom de la personne qui signe.'); end if;
+    update public.jobs set waiver_signed_at = now(), waiver_signer = p_data->>'signer', waiver_version = nullif(p_data->>'version', ''),
+      waiver_attachment = nullif(p_data->>'attachment_id', '')::uuid where id = j.id;
+  else
+    perform public.fail('bad_step', 'Étape inconnue.');
+  end case;
+  return public.op_save(p_op, 'job_step', jsonb_build_object('ok', true, 'action', p_action, 'rows', public.job_payload(j.id)));
+end $function$;

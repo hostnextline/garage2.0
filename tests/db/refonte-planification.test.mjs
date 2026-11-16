@@ -391,3 +391,57 @@ test('sql-windows-01 / x-dualmode-10: back to the blocks, a job goes to the bloc
   assert.deepEqual([jb2.block, jb2.win_start, jb2.win_end], ['day', 660, 900], 'the window told comes back');
   assert.deepEqual([ja2.win_start, ja2.win_end], [480, 720]);
 }));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   « My vehicle », work on the spot, the steps of a job
+   ------------------------------------------------------------------------------------------------------------------ */
+
+test('sql-planner-2-02 / booking-a-13: with « Routes partagées », work on the spot goes on the vehicle I drive, never an arbitrary one', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const saleh = await h.person('Saleh', ['mechanic']), adam = await h.person('Adam', ['mechanic']);
+  const week = {}; for (let d = 0; d < 7; d++) week[d] = DAY;
+  const tA = await h.truck('Camion', null, week);
+  const tB = await h.truck('Voiture', adam, week);
+  await h.q(`update public.trucks set sort = 1 where id = $1`, [tB]);
+  await h.q(`update public.settings set booking = booking || '{"shared_routes": true}'::jsonb where id = 1`);
+  const c = await h.customer('Jean', ...near);
+  await h.as(adam);
+  const w = await h.rpc('walk_in', { p_op: uuid(), p_job: { customer_id: c, duration_min: 30 }, p_items: [] });
+  assert.equal((await row(h, w.job_id)).truck_id, tB, 'the vehicle Adam drives');
+  await h.as(saleh);
+  assert.equal((await h.fails(() => h.rpc('walk_in', { p_op: uuid(), p_job: { customer_id: c, duration_min: 30 }, p_items: [] })))?.hint, 'no_truck', 'Saleh drives none: it must be said');
+  const w2 = await h.rpc('walk_in', { p_op: uuid(), p_job: { customer_id: c, duration_min: 30, truck_id: tA }, p_items: [] });
+  assert.equal((await row(h, w2.job_id)).truck_id, tA);
+  const ids = await h.val(`select public.my_truck_ids()`);
+  assert.deepEqual(ids, [tA, tB], 'in the order of Horaires');
+  void owner;
+}));
+
+test('sql-planner-1 B4: a cancellation never throws another appointment to « À placer »; putting it back must fit', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion', null, { [dow]: [[480, 720]] });
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const at = (km) => [home.lat + km / 111.2, home.lng];
+  const c = await h.customer('Jean', ...at(1));
+  // a morning already over its time (hours cut after it was planned): five stops on the truck
+  const ids = [];
+  for (let i = 0; i < 4; i++) ids.push(await put(h, owner, { customer: c, day, block: 'am', truck: t1, order: i + 1, eta: 480 + 70 * i, dur: 60, lat: at(1 + i)[0], lng: at(1 + i)[1] }));
+  const small = await put(h, owner, { customer: c, day, block: 'am', truck: t1, order: 5, eta: 760, dur: 15 });
+  await h.as(owner);
+  await h.rpc('job_step', { p_op: uuid(), p_job: small, p_action: 'cancel', p_data: {} });
+  await h.as(null);
+  for (const id of ids) assert.equal((await row(h, id)).truck_id, t1, 'still on the truck after the cancellation');
+  // put back, a stop that would push another one out: refused
+  await h.q(`delete from public.jobs where id = any($1::uuid[])`, [ids]);
+  const ca = await h.customer('A', ...at(10)), cb = await h.customer('B', ...at(3)), cc = await h.customer('C', ...at(1));
+  await h.as(owner);
+  const a = await book(h, job(ca, day, 'am', { duration_min: 90 }));
+  const b = await book(h, job(cb, day, 'am', { duration_min: 90 }));
+  await h.rpc('job_step', { p_op: uuid(), p_job: b.job_id, p_action: 'cancel', p_data: {} });
+  const cj = await book(h, job(cc, day, 'am', { duration_min: 90 }));
+  const e = await h.fails(() => h.rpc('job_step', { p_op: uuid(), p_job: b.job_id, p_action: 'reopen', p_data: {} }));
+  assert.equal(e?.hint, 'block_full');
+  assert.deepEqual([(await row(h, a.job_id)).truck_id, (await row(h, cj.job_id)).truck_id], [t1, t1], 'nobody lost a place');
+}));
