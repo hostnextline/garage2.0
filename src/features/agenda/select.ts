@@ -5,8 +5,7 @@
 import { can, me, myTrucks } from '../../data/auth';
 import { blockLoad, activeTrucks, blocks, blockOfKey, settings, windowsOn, truckRanges, type TruckBlock } from '../../data/select';
 import type { Job, Truck } from '../../data/types';
-import { nowMinute, overlapMinutes, type BlockKey, type Day } from '../../lib/dates';
-import { minuteOf } from '../../shared/jobs/select';
+import { nowMinute, minuteOf, overlapMinutes, type BlockKey, type Day } from '../../lib/dates';
 import { byArrival, isWindowDay } from './layout';
 import { dayState, blockState, hasRoom, usedBy } from './load';
 import { jobsOfDay } from './days';
@@ -18,6 +17,13 @@ export function jobShown(j: Pick<Job, 'truck_id' | 'created_by'>): boolean {
   return (j.truck_id != null && myTrucks().includes(j.truck_id)) || (!!j.created_by && j.created_by === me.value?.id);
 }
 export const isOff = (j: Pick<Job, 'status'>) => j.status === 'cancelled' || j.status === 'no_show';
+/** a job's arrival as minutes of the garage's day (Montréal), the same clock as nowMinute(): read on the device's own
+    clock, a phone set to another zone counted a job under way hours off */
+export function arrivedMinute(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const m = minuteOf(new Date(iso));
+  return Number.isFinite(m) ? m : null;
+}
 
 export interface BlockView {
   key: BlockKey; start: number; end: number;
@@ -39,7 +45,7 @@ export function blockView(day: Day, b: { key: BlockKey; start: number; end: numb
   // today: a job under way counts only for the time it still needs (as the planner counts it), not whole against
   // the hours left; a whole day: its stops by the hour (the planned arrival, then the stop number)
   const lanes = load.trucks.filter((x) => laneShown(x.truck.id)).map((x) => {
-    const used = usedBy(x.jobs, now, (j) => minuteOf(j.arrived_at), settings.value.booking.unknown_min);
+    const used = usedBy(x.jobs, now, (j) => arrivedMinute(j.arrived_at), settings.value.booking.unknown_min);
     return { ...x, used, left: x.cap - used, jobs: whole ? [...x.jobs].sort(byArrival) : x.jobs };
   });
   // a whole day is over at its last hour, not when it starts (a block is « commencé » at its first minute)
