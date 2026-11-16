@@ -2,12 +2,12 @@
    times are possible), then the arrival times of the day chosen, every 15 minutes, a line per hour, big enough for a
    thumb. A tap chooses the time; a long press opens the menu (« Voir sur la carte »). WindowPicker builds the days. */
 import { useEffect, useRef } from 'preact/hooks';
-import { ChevronLeft, ChevronRight } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, Route } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clock, parseDay, type Day } from '../../lib/dates';
 import { Skeleton } from '../../ui';
 import { byHour } from '../../domain/moment/units';
-import type { GridDay } from './PickGrid';
+import type { GridDay } from './windowDays';
 
 export interface PickListProps {
   days: GridDay[]; today: Day; selDay: Day | null; onDay: (d: Day) => void;
@@ -38,11 +38,11 @@ export function PickList(p: PickListProps) {
         <button type="button" class="pk-nav" onClick={p.onPrev} disabled={!p.canPrev} aria-label={t('booking.win.grid.prev')} data-testid="pick-prev"><ChevronLeft size={20} aria-hidden="true" /></button>
         <div class="pl-chips" ref={chips}>
           {p.days.map((x) => (
-            <button key={x.day} type="button" class={`pl-chip is-${x.kind}${x.day === p.selDay ? ' is-sel' : ''}${x.chosen != null ? ' has-chosen' : ''}`} aria-pressed={x.day === p.selDay} aria-label={p.dayLabel(x)}
+            <button key={x.day} type="button" class={`pl-chip is-${x.kind}${x.day === p.selDay ? ' is-sel' : ''}${x.chosen != null ? ' has-chosen' : ''}${x.far ? ' is-far' : ''}`} aria-pressed={x.day === p.selDay} aria-label={p.dayLabel(x)}
               onClick={() => p.onDay(x.day)} data-testid={`pick-daychip-${x.day}`}>
               <span class="pl-chip-wd">{x.day === p.today ? t('common.today') : wd.format(parseDay(x.day))}</span>
               <span class="pl-chip-num">{parseDay(x.day).getDate()}</span>
-              <span class="pl-chip-n">{x.kind === 'open' ? t('booking.win.grid.count', { n: x.windows }) : x.kind === 'loading' ? '…' : t(`booking.win.grid.state.${x.kind}`)}</span>
+              <span class="pl-chip-n">{x.far && x.kind === 'open' && <Route size={11} aria-hidden="true" />}{x.kind === 'open' ? t('booking.win.grid.count', { n: x.windows }) : x.kind === 'loading' ? '…' : t(`booking.win.grid.state.${x.kind}`)}</span>
             </button>
           ))}
         </div>

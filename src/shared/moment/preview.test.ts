@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bestPlace, placeNewStop, stopRank, moveStops, NEW_STOP } from './preview';
+import { bestPlace, placeNewStop, stopRank, moveStops, listIndex, NEW_STOP } from './preview';
 import type { TeamMapAnswer } from '../map/assemble';
 
 // the Centrale, then stops going east along a line; the new one between two of them
@@ -88,5 +88,31 @@ describe('« Plages d’arrivée »: a day booked by windows is one block', () =
     const two: TeamMapAnswer = { ...d, jobs: [...d.jobs, { ...job('x9', 'T2', 'day', 1, -73.55), eta_min: 600 }] };
     const r = moveStops(two, ['x9'], 'T1');
     expect(r.jobs.filter((j) => j.truck_id === 'T1').sort((a, b) => a.order! - b.order!).map((j) => j.id)).toEqual(['d1', 'd2', 'x9', 'd3']);
+  });
+});
+
+// booking-b-20: bestPlace only sees the stops with a position; after the last of them the new stop went at the very end,
+// after an evening stop with no position, so the tag said « Arrêt 3 sur 3 » while the map (block order) numbered it 2
+describe('a stop of the route without a position', () => {
+  const noPos = (id: string, block: string, order: number) => ({ ...job(id, 'T1', block, order, 0), lat: null, lng: null });
+  const d: TeamMapAnswer = { ...day, trucks: [day.trucks[0]], jobs: [job('a1', 'T1', 'am', 1, -73.68), noPos('e1', 'eve', 1)] };
+  const spot = { day: '2026-11-17', block: 'am', truckId: 'T1', lat: 45.5, lng: -73.60, name: '', address: '' };
+  it('a morning stop after the last located one still comes before the evening', () => {
+    expect(stopRank(d, spot)).toEqual({ n: 2, total: 3 });
+    const order = placeNewStop(d, spot).after.jobs.sort((a, b) => a.order! - b.order!).map((j) => j.id);
+    expect(order).toEqual(['a1', NEW_STOP, 'e1']);
+  });
+  it('the place in the whole list', () => {
+    const mine = [job('a1', 'T1', 'am', 1, -73.68), noPos('a2', 'am', 2), noPos('e1', 'eve', 1)];
+    expect(listIndex(mine, 0, 'am')).toBe(0);
+    expect(listIndex(mine, 1, 'am')).toBe(2);       // after the morning stops, before the evening
+    expect(listIndex(mine, 1, 'eve')).toBe(3);
+    expect(listIndex([noPos('p1', 'pm', 1)], 0, 'am')).toBe(0);
+  });
+  // review mp-6: « La voiture ferme » (CloseDaySheet) keeps the order it has always shown; b-20 is the booking preview's
+  it('« La voiture ferme » keeps its rule: after the last located stop, the moved stop goes at the end', () => {
+    const two: TeamMapAnswer = { ...d, trucks: day.trucks, jobs: [...d.jobs, { ...job('m1', 'T2', 'am', 1, -73.55) }] };
+    const r = moveStops(two, ['m1'], 'T1');
+    expect(r.jobs.filter((j) => j.truck_id === 'T1').sort((a, b) => a.order! - b.order!).map((j) => j.id)).toEqual(['a1', 'e1', 'm1']);
   });
 });

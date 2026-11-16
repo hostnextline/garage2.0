@@ -332,5 +332,12 @@ export const booking = {
     copied: 'Texto copié',
     copyFail: 'Garde le doigt sur le texte pour le copier.',
     share: 'Partager'
+  },
+  // refonte:moment-pickers
+  /** the moment pickers' own words (shared/moment) */
+  momentPickers: {
+    /** the server did not send the text on purpose (status « quiet »): nothing failed */
+    smsQuiet: 'Pas de texto : ce client ou ce type de texto est désactivé.'
   }
+  // fin refonte:moment-pickers
 };

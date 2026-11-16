@@ -1,49 +1,58 @@
 /* (On live since 2026-11-15, SWITCHED ON by the owner the same day for a trial week, 15-minute steps. The switch « Plages d'arrivée
    de 4 heures » is in Réglages → Réservations: off = the blocks as before, nothing lost.)
     « Plages d'arrivée » (Part 25): choose the day and the ARRIVAL TIME of an appointment on a time calendar.
-   On top, the best moments near the address (one per day, from the server). Then the calendar, 15 minutes per unit:
+   On top, the best moments near the address (one per day, from the server, never a far one). Then the calendar, 15
+   minutes per unit:
    - a computer (≥ 760 px): a time grid, one column per day, with the appointments already booked that day and the
      units where this booking can arrive (PickGrid);
    - a phone: a row of days, then the arrival times of the day chosen (PickList).
    A unit = an estimated arrival T; the customer is told the window `windowOf(T)` (an hour before, three after); the
    unit is possible when the server (`suggest_windows`, asked for each day shown) lists that window. Under the
-   calendar, for the day chosen: « Flexible », and the day alone when it has no window to offer.
+   calendar, for the day chosen: « Flexible », and the day alone when it has no window to offer (WindowDayPanel).
+   « Garde-route » as in blocks mode: a far day is marked, never offered, warned with « Plutôt … », and `onFar` lets the
+   screen ask before booking or moving.
    Same props as the block picker: the booking screen and « Déplacer » use it through BlockPicker. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, Check, MapPin, RefreshCw, Sparkles, Map as MapIcon, Car, Truck } from 'lucide-preact';
-import { today as todayOf, addDays, longDay, duration, isValidDay, nowMinute, clock } from '../../lib/dates';
+import { Check, RefreshCw } from 'lucide-preact';
+import { addDays, daysBetween, longDay, duration, clock } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { settings, job as jobRow, jobsOn, activeTrucks, daySpan, windowOf, blocks, truckRanges, truckColor } from '../../data/select';
-import { suggestBlocks, type Suggestion } from '../../data/api';
-import { net, isNetworkError } from '../../data/sync';
+import { settings, job as jobRow, activeTrucks, daySpan, windowOf } from '../../data/select';
+import { net } from '../../data/sync';
 import { isOwner, hasRole } from '../../data/auth';
-import { Banner, Button, Pill, Skeleton, Seg, Switch, ask, toast } from '../../ui';
-import { suggWindow } from '../../domain/moment/logic';
+import { Banner, Button, ask, toast } from '../../ui';
 import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
-import { jobBox, jobMinute, overlapColumns, workedUnits, unitCount, unitMinutes, unitIndex, unitMinute } from '../../domain/moment/grid';
-import { jobPerson } from '../../domain/jobs/words';
+import { farLimits, isFar, momentsByKey, sameMoment } from '../../domain/moment/logic';
 import { roomy } from '../../platform/media';
+import { spanEnds } from '../../domain/moment/words';
+import { choiceWords, winLen, type BlockChoice, type BlockPickerProps } from '../../domain/moment/choice';
+import { rowsByStart, unitOfWindow, pageDays, pageOf, lastPage, type Win } from '../../domain/moment/units';
 import { RoutePreview, type PreviewAsk } from './RoutePreview';
 import { DayRoute } from './DayRoute';
 import { stopRank } from './preview';
-import { fromDevice } from '../map/device';
-import { spanEnds } from '../../domain/moment/words';
-import { choiceWords, winLen, type BlockChoice, type BlockPickerProps } from '../../domain/moment/choice';
-import { possibleUnits, rowsByStart, unitOfWindow, unitStates, pageDays, pageOf, lastPage, type Win } from '../../domain/moment/units';
+import { dayOf } from './deviceDay';
 import { useDayWindows } from './useDayWindows';
-import { PickGrid, type GridDay, type DayKind } from './PickGrid';
+import { dayStamp, useWindowModels } from './useWindowModels';
+import { listDay, openingMinute, windowGone, type GridDay } from './windowDays';
+import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer, answers } from './hooks';
+import { askedKind, bothKinds, fitsJob, kindOf } from './vehicles';
+import { bestWindows, betterThan, betterWindowText, dayRows, dayScores, rowChoice, windowFar, type DayRow } from './moments';
+import { besideRow } from './place';
+import { ChosenBar, FarBanner, momentActions } from './parts';
+import { WindowSuggestions } from './WindowSuggestions';
+import { WindowDayPanel } from './WindowDayPanel';
+import { PickGrid } from './PickGrid';
 import { PickList } from './PickList';
 import './booking.css';
 
-type Row = Suggestion & { win: Win };
-type Status = 'loading' | 'ok' | 'offline' | 'error';
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 /** how many days fit side by side in the calendar's own width */
 const colsFor = (w: number) => (w >= 560 ? 7 : w >= 420 ? 5 : 4);
+/** the best moments look this far ahead (the scores of later days are asked with the page shown) */
+const SUGG_DAYS = 14;
 
 export function WindowPicker(p: BlockPickerProps) {
   const l = lang.value;
-  const today = todayOf();
+  const { today, now } = useClock();
   const horizon = Math.max(7, Number(settings.value.booking.horizon_days) || 120);
   const lastDay = addDays(today, horizon);
   const dur = Math.max(15, Math.round(p.duration || 60));
@@ -51,36 +60,23 @@ export function WindowPicker(p: BlockPickerProps) {
   const span = daySpan.value;
   const online = net.value.online;
   const hasPos = p.lat != null && p.lng != null;
-  const kindAsked = p.need ? null : p.kind ?? null;
-  const ofTruck = <T extends { truck: string | null }>(list: T[]) => (p.truckId ? list.filter((x) => !x.truck || x.truck === p.truckId) : list);
+  const trucks = activeTrucks.value;
+  const kinds = bothKinds(trucks);
+  const kind = askedKind(p, trucks);
   const list = (p.layout ?? (roomy.value ? 'grid' : 'list')) === 'list';
 
   /* ---------- the best moments: one per day, with its best window (server) ---------- */
-  const [sugg, setSugg] = useState<{ status: Status; list: Row[] }>({ status: 'loading', list: [] });
   const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    if (!online) { setSugg({ status: 'offline', list: [] }); return; }
-    let alive = true;
-    setSugg((s) => ({ status: 'loading', list: s.list }));
-    const tm = setTimeout(async () => {
-      try {
-        const got = await suggestBlocks(p.lat, p.lng, dur, today, 14, p.excludeJob ?? null, !!p.need, kindAsked);
-        if (!alive) return;
-        const rows: Row[] = [];
-        for (const x of ofTruck(got)) {
-          const win = isValidDay(String(x.day)) ? suggWindow(x, windowOf, len) : null;
-          if (win) rows.push({ ...x, block: 'day', win });
-        }
-        setSugg({ status: 'ok', list: rows.slice(0, 3) });
-      } catch (e) {
-        if (alive) setSugg({ status: isNetworkError(e) ? 'offline' : 'error', list: [] });
-      }
-    }, 350);
-    return () => { alive = false; clearTimeout(tm); };
-  }, [p.lat, p.lng, dur, p.excludeJob, p.truckId, p.need, p.kind, online, retry, p.reload]);
-
-  const kindOf = (truckId: string): 'car' | 'truck' => (activeTrucks.value.find((x) => x.id === truckId)?.tire_machine === false ? 'car' : 'truck');
-  const bothKinds = activeTrucks.value.some((x) => x.tire_machine === false) && activeTrucks.value.some((x) => x.tire_machine !== false);
+  const [bump, setBump] = useState(0);
+  const base = { lat: p.lat, lng: p.lng, duration: dur, exclude: p.excludeJob ?? null, need: !!p.need, kind, truckId: p.truckId };
+  const q = { ...base, from: today, days: SUGG_DAYS };
+  const sugg = useSuggestions(q, online, retry + (p.reload || 0));
+  const usable = hasAnswer(sugg);
+  // the list answers the question of now (not the last one, kept dimmed while a new answer is awaited)
+  const fresh = answers(sugg, q);
+  const rows = useMemo(() => dayRows(sugg.list, windowOf, len), [sugg.list, len]);
+  const best = useMemo(() => bestWindows(rows), [rows]);
+  const again = () => { setRetry((x) => x + 1); setBump((x) => x + 1); };
 
   /* ---------- the days shown ---------- */
   const root = useRef<HTMLDivElement>(null);
@@ -104,50 +100,29 @@ export function WindowPicker(p: BlockPickerProps) {
   useEffect(() => { if (p.value) { setDay(p.value.day); goTo(p.value.day); } }, [p.value?.day]);
 
   /* ---------- what the server says of each day shown ---------- */
-  const [bump, setBump] = useState(0);
-  const winsOf = useDayWindows(days, { lat: p.lat, lng: p.lng, duration: dur, kind: kindAsked, need: !!p.need, exclude: p.excludeJob ?? null }, online, bump + (p.reload || 0));
-  const again = () => { setRetry((x) => x + 1); setBump((x) => x + 1); };
+  const winsOf = useDayWindows(days, { lat: p.lat, lng: p.lng, duration: dur, kind, need: !!p.need, exclude: p.excludeJob ?? null }, online, bump + (p.reload || 0), dayStamp);
+
+  /* ---------- « garde-route »: the day's score (suggest_blocks), for the two weeks of the best moments and any later day shown ---------- */
+  const lateAt = days.findIndex((d) => daysBetween(today, d) >= SUGG_DAYS);
+  const later = useLaterScores(base, lateAt >= 0 ? days[lateAt] : null, lateAt >= 0 ? days.length - lateAt : 0, online, retry + (p.reload || 0));
+  const scores = useMemo(() => momentsByKey(dayScores(usable ? [...sugg.list, ...later] : later)), [sugg.list, later, usable]);
+  const scoreOf = (d: string) => scores.get(`${d}|day`);
+  /* the warning and the question before booking only from the answer to the question of now (booking-b-26) */
+  const freshScores = useMemo(() => (fresh ? scores : momentsByKey(dayScores(later))), [fresh, scores, later]);
 
   /* ---------- the days as the calendar draws them ---------- */
   const moving = p.excludeJob ? jobRow(p.excludeJob) : undefined;
-  const trucks = activeTrucks.value.filter((tr) => (p.truckId ? tr.id === p.truckId : p.need || p.kind === 'truck' ? tr.tire_machine !== false : p.kind === 'car' ? tr.tire_machine === false : true));
-  const now = nowMinute();
   const picked = p.value && p.value.block === 'day' && !p.value.win_flex && p.value.win_start != null ? p.value : null;
-  const model = (d: string): GridDay & { possible: Map<number, Suggestion> } => {
-    const w = winsOf(d);
-    const known = w.status === 'ok' || (w.status === 'loading' && w.rows.length > 0);
-    const possible = possibleUnits(span, ofTruck(w.rows), windowOf);
-    const worked = trucks.map((tr) => workedUnits(truckRanges(tr.id, d), span)).reduce<boolean[]>((a, x) => a.map((v, k) => v || x[k]), Array(unitCount(span)).fill(false));
-    const states = unitStates(span, { day: d, today, now, worked, possible: known ? possible : null });
-    const open = unitMinutes(span).filter((_m, i) => states[i] === 'open');
-    const kind: DayKind = states.every((s) => s === 'past') ? 'past' : !states.some((s) => s !== 'off' && s !== 'past') ? 'closed'
-      : w.status === 'offline' || w.status === 'error' ? 'failed' : !known ? 'loading' : open.length ? 'open' : 'full';
-    // the appointments already booked that day, at their planned arrival (the one being moved is left out)
-    const placed = jobsOn(d).filter((j) => j.status !== 'cancelled' && j.status !== 'no_show' && j.id !== p.excludeJob)
-      .map((j) => ({ j, at: jobMinute(j, blocks.value) })).filter((x): x is { j: typeof x.j; at: number } => x.at != null)
-      .map((x) => ({ ...x, box: jobBox(span, x.at, x.j.duration_min, 1) }));
-    const slots = overlapColumns(placed.map((x) => ({ id: x.j.id, start: x.box.top, end: x.box.top + x.box.height })));
-    const jobs = placed.map((x) => {
-      const name = jobPerson(x.j) || `#${x.j.number}`;
-      const s = slots.get(x.j.id) || { col: 0, cols: 1 };
-      return { id: x.j.id, top: x.box.top, height: x.box.height, col: s.col, cols: s.cols, color: truckColor(x.j.truck_id), name, label: t('booking.win.grid.job', { name, time: clock(x.at, l) }) };
-    });
-    const mine = picked && picked.day === d ? picked : null;
-    const nowAt = moving && moving.day === d && moving.block === 'day' ? moving.eta_min ?? (moving.win_start != null ? unitOfWindow(span, moving.win_start, null, windowOf) : null) : null;
-    const best = sugg.list.find((s) => s.day === d);
-    return {
-      day: d, status: w.status, stale: w.status === 'loading' && known, kind, states, open, windows: new Set(open.map((m) => windowOf(m)[0])).size, jobs, possible,
-      current: nowAt != null ? jobBox(span, nowAt, moving!.duration_min, 1) : null, currentM: nowAt != null ? unitMinute(span, unitIndex(span, nowAt)) : null,
-      chosen: mine ? unitOfWindow(span, mine.win_start!, mine.eta, windowOf) : null,
-      band: mine ? [mine.win_start!, mine.win_end != null && mine.win_end > mine.win_start! ? mine.win_end : mine.win_start! + len] : null,
-      best: best ? unitOfWindow(span, best.win[0], best.eta, windowOf) : null
-    };
-  };
-  // drawn again only when something of the days changes (not while « Choisi » is announced, a map opens…)
-  const sig = days.map((d) => { const w = winsOf(d); return `${d}:${w.status}:${w.rows.length}`; }).join('|');
-  const models = useMemo(() => days.map(model), [sig, span[0], span[1], p.value, p.truckId, p.kind, p.need, p.excludeJob, sugg.list, l,
-    Math.floor(now / 15), moving?.day, moving?.eta_min, moving?.win_start, days.map((d) => jobsOn(d).map((j) => `${j.id}${j.eta_min}${j.status}${j.truck_id}`).join()).join('|'), trucks.map((x) => x.id).join()]);
+  const models = useWindowModels({
+    days, today, now, span, len, windowOf, l, winsOf, trucks: trucks.filter((tr) => fitsJob(tr, p)), truckId: p.truckId ?? null,
+    picked, moving, exclude: p.excludeJob ?? null, bestOf: (d) => best.find((s) => s.day === d), farOf: (d) => isFar(scoreOf(d))
+  });
   const modelOf = (d: string | null) => models.find((x) => x.day === d) || null;
+
+  /* the same map in a small window while the mouse rests on one of the best moments (a computer) */
+  const canHover = useFinePointer();
+  const hov = useHover<BlockChoice>(350, canHover && hasPos);
+  const hoverAt = hov.hover ? besideRow(hov.hover.at, window.innerWidth, window.innerHeight) : null;
 
   /* ---------- choosing ---------- */
   const [said, setSaid] = useState('');
@@ -171,10 +146,9 @@ export function WindowPicker(p: BlockPickerProps) {
     if (yes) pick({ day: d, block: 'day' });
   };
   const [goto, setGoto] = useState<{ m: number; n: number } | null>(null);
-  const suggChoice = (s: Row): BlockChoice => ({ day: s.day, block: 'day', win_start: s.win[0], win_end: s.win[1], eta: s.eta ?? null, truck: s.truck });
-  const pickSugg = (s: Row) => {
-    setHover(null);
-    pick(suggChoice(s));
+  const pickSugg = (s: DayRow) => {
+    hov.off();
+    pick(rowChoice(s));
     goTo(s.day);
     const m = unitOfWindow(span, s.win[0], s.eta, windowOf);
     if (m != null) setGoto((g) => ({ m, n: (g?.n || 0) + 1 }));
@@ -183,8 +157,13 @@ export function WindowPicker(p: BlockPickerProps) {
   // the window to go back to when « Flexible » is switched off
   const lastWin = useRef<BlockChoice | null>(null);
   if (picked) lastWin.current = picked;
-  /* a phone lists one day's times: the day chosen, else the first day that has some */
-  const shown = list ? (modelOf(day) ? day : (models.find((x) => x.open.length > 0) || models[0])?.day ?? null) : day;
+  /* a phone lists one day's times: the day chosen, else the first day that has some (never another day's under the thumb) */
+  const held = useRef<{ page: string; day: string | null }>({ page: '', day: null });
+  const pageKey = `${days[0] || ''}|${per}`;
+  if (held.current.page !== pageKey) held.current = { page: pageKey, day: null };
+  const shown = list ? listDay(models, modelOf(day) ? day : null, held.current.day) : day;
+  // once a day's times are drawn on the phone, that day stays under the thumb until a tap (booking-b-04)
+  if (list && shown && modelOf(shown)?.open.length) held.current.day = shown;
   const sel = modelOf(shown);
   const here = !!p.value && p.value.day === shown && p.value.block === 'day';
   const flex = here && !!p.value!.win_flex;
@@ -198,158 +177,75 @@ export function WindowPicker(p: BlockPickerProps) {
     else pick({ day: shown, block: 'day' });
   };
   // a window chosen elsewhere (the agenda's grid, a paste) that the server no longer lists for this address
-  const pickedDay = picked ? modelOf(picked.day) : null;
-  const gone = !!picked && !!pickedDay && pickedDay.status === 'ok' && !rowsByStart(ofTruck(winsOf(picked.day).rows), windowOf).has(picked.win_start!);
-
+  const gone = windowGone(picked, picked ? modelOf(picked.day) : null, picked ? winsOf(picked.day).rows : [], p.truckId, windowOf);
   // it is taken off (the screen has nothing chosen again), and said until another time is chosen
   const [lost, setLost] = useState(false);
   useEffect(() => { if (gone) { setLost(true); p.onClear?.(); } }, [gone]);
   useEffect(() => { if (p.value) setLost(false); }, [p.value]);
 
-  /* « Voir sur la carte »: the button under the moment chosen, a right-click or a long press on a moment */
-  const [preview, setPreview] = useState<{ ask: PreviewAsk; choice: BlockChoice } | null>(null);
+  /* ---------- « garde-route » of the moment chosen ---------- */
+  const pickedScore = p.value ? freshScores.get(`${p.value.day}|day`) : undefined;
+  const pickedWins = picked ? winsOf(picked.day) : null;
+  const winScore = picked && pickedWins && pickedWins.status === 'ok' ? rowsByStart(pickedWins.rows, windowOf).get(picked.win_start!) : undefined;
+  const far = windowFar(p.value, pickedScore, winScore, farLimits(settings.value.booking), l);
+  const isCurrent = (s: DayRow) => !!moving && sameMoment(rowChoice(s), moving);
+  const better = far && pickedScore ? betterThan(pickedScore, rows, moving, rowChoice) : [];
+  useEffect(() => { p.onFar?.(far); }, [far?.day, far?.block, far?.text]);
+
+  /* ---------- « Voir sur la carte »: the button under the moment chosen, a right-click or a long press on a moment ---------- */
+  // `choice` null: a time that cannot be chosen (refused, closed, past) is only seen, never chosen from the map
+  const [preview, setPreview] = useState<{ ask: PreviewAsk; choice: BlockChoice | null } | null>(null);
   const askOf = (c: BlockChoice, when = choiceWords(c, l)): PreviewAsk => ({ day: c.day, block: 'day', truckId: p.truckId || c.truck || null, lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
     when, exclude: p.excludeJob ?? null, eta: c.eta ?? null });
   const see = (c: BlockChoice) => setPreview({ choice: c, ask: askOf(c) });
-  const actions = (c: BlockChoice) => [
-    { key: 'pick', label: t('booking.preview.pick'), icon: <Check size={18} />, run: () => pick(c), testid: 'menu-pick' },
-    ...(hasPos ? [{ key: 'map', label: t('booking.preview.see'), icon: <MapIcon size={18} />, run: () => see(c), testid: 'menu-see-map' }] : [])
-  ];
   /* a right-click anywhere on a day of the calendar: « Voir sur la carte » (with the new stop at that time when the address
      is known and a time is under the pointer, else the day's routes as they are); « Choisir ce moment » on a possible time */
   const [dayMap, setDayMap] = useState<string | null>(null);
   const dayMenu = (e: MouseEvent, d: string, m: number | null) => {
     const open = m != null && !!modelOf(d)?.possible.has(m);
     const c = m != null ? unitChoice(d, m) : null;
-    const day = longDay(d, l);
-    const title = `${day.charAt(0).toUpperCase()}${day.slice(1)}${m != null ? `, ${clock(m, l)}` : ''}`;
-    openMenu(e, [
-      ...(open && c ? [{ key: 'pick', label: t('booking.preview.pick'), icon: <Check size={18} />, run: () => pick(c), testid: 'menu-pick' }] : []),
-      { key: 'map', label: t('booking.preview.see'), icon: <MapIcon size={18} />, testid: 'menu-see-map',
-        run: () => { if (hasPos && c) setPreview({ choice: c, ask: askOf(c, t('booking.win.grid.around', { time: clock(m!, l) })) }); else setDayMap(d); } }
-    ], title);
+    const name = longDay(d, l);
+    const title = `${cap(name)}${m != null ? `, ${clock(m, l)}` : ''}`;
+    openMenu(e, momentActions(open && c ? () => pick(c) : null,
+      () => { if (hasPos && c) setPreview({ choice: open ? c : null, ask: askOf(c, t('booking.win.grid.around', { time: clock(m!, l) })) }); else setDayMap(d); }), title);
   };
-  const menuProps = (c: BlockChoice) => ({
-    onContextMenu: (e: MouseEvent) => openMenu(e, actions(c), choiceWords(c, l)),
-    ...pressProps((x, y) => { openMenuAt(x, y, actions(c), choiceWords(c, l)); })
-  });
-  /* the same map in a small window while the mouse rests on one of the best moments */
-  const [hover, setHover] = useState<{ ask: PreviewAsk; left: number; top: number } | null>(null);
-  const hoverTimer = useRef<number | undefined>(undefined);
-  const hoverProps = (c: BlockChoice) => (!hasPos || typeof matchMedia !== 'function' || !matchMedia('(hover: hover) and (pointer: fine)').matches ? {} : {
-    onMouseEnter: (e: MouseEvent) => {
-      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      clearTimeout(hoverTimer.current);
-      hoverTimer.current = window.setTimeout(() => {
-        const w = 360, h = 330;
-        // beside the row: on its left when there is room, else on its right; kept inside the window
-        const left = r.left - w - 12 >= 8 ? r.left - w - 12 : Math.min(window.innerWidth - w - 8, r.right + 12);
-        const top = Math.max(8, Math.min(window.innerHeight - h - 8, r.top - 40));
-        setHover({ left, top, ask: askOf(c) });
-      }, 350);
-    },
-    onMouseLeave: () => { clearTimeout(hoverTimer.current); setHover(null); }
-  });
-  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  const menuProps = (c: BlockChoice) => {
+    const actions = () => momentActions(() => pick(c), hasPos ? () => see(c) : null);
+    return { onContextMenu: (e: MouseEvent) => openMenu(e, actions(), choiceWords(c, l)), ...pressProps((x, y) => { openMenuAt(x, y, actions(), choiceWords(c, l)); }) };
+  };
 
   /* which stop of its route the appointment would be at each of the best moments (the phone's copy of the day) */
-  const ranks = useMemo(() => sugg.list.map((s) => {
-    if (p.lat == null || p.lng == null) return null;
-    const d = fromDevice(s.day);
-    const base = p.excludeJob ? { ...d, jobs: d.jobs.filter((j) => j.id !== p.excludeJob) } : d;
-    return stopRank(base, { day: s.day, block: 'day', truckId: p.truckId || s.truck, lat: p.lat, lng: p.lng, name: '', address: '', eta: s.eta ?? null });
-  }), [sugg.list, p.lat, p.lng, p.excludeJob, p.truckId]);
+  const ranks = useMemo(() => best.map((s) => (hasPos
+    ? stopRank(dayOf(s.day, p.excludeJob), { day: s.day, block: 'day', truckId: p.truckId || s.truck, lat: p.lat!, lng: p.lng!, name: '', address: '', eta: s.eta ?? null }) : null)),
+  [best, p.lat, p.lng, p.excludeJob, p.truckId]);
 
   /* ---------- words ---------- */
   const stateWord = (d: GridDay) => (d.kind === 'open' ? t('booking.win.grid.count', { n: d.windows }) : t(`booking.win.grid.state.${d.kind}`));
-  const dayLabel = (d: GridDay) => t('booking.win.grid.day', { day: longDay(d.day, l), state: stateWord(d) });
+  const dayLabel = (d: GridDay) => t('booking.win.grid.day', { day: longDay(d.day, l), state: stateWord(d) }) + (d.far && d.kind === 'open' ? `, ${t('booking.far.cell')}` : '');
   const unitLabel = (d: string, m: number, st: string = 'open') => {
     const w = windowOf(m);
     return st === 'no' ? t('booking.win.grid.unitNo', { day: longDay(d, l), time: clock(m, l) }) : t('booking.win.grid.unit', { day: longDay(d, l), time: clock(m, l), from: clock(w[0], l), to: clock(w[1], l) });
   };
-  const canPrev = page > 0;
-  const canNext = page < lastPage(today, lastDay, per);
-  const nav = { canPrev, canNext, onPrev: () => goTo(addDays(today, (page - 1) * per)), onNext: () => goTo(addDays(today, (page + 1) * per)) };
+  const nav = { canPrev: page > 0, canNext: page < lastPage(today, lastDay, per), onPrev: () => goTo(addDays(today, (page - 1) * per)), onNext: () => goTo(addDays(today, (page + 1) * per)) };
   const range = days.length ? t('booking.picker.range', spanEnds(days[0], days[days.length - 1], l, today)) : '';
-  // the hours brought into view when a page opens: the time chosen, else the first one possible
-  const chosenAt = models.find((x) => x.chosen != null)?.chosen ?? null;
-  const firstOpen = models.reduce<number | null>((a, x) => (x.open.length && (a == null || x.open[0] < a) ? x.open[0] : a), null);
-  const settled = models.some((x) => x.status !== 'loading' || x.stale);
-  const selClosed = !!sel && (sel.kind === 'closed' || sel.kind === 'past');
+  const chosenSub = [picked?.eta != null ? cap(t('booking.win.grid.around', { time: clock(unitOfWindow(span, picked.win_start!, picked.eta, windowOf) ?? picked.eta, l) })) : '', t('booking.picker.duration', { d: duration(dur, l) })];
 
   return (
     <div class={`bp${list ? '' : ' bp-wide'}`} ref={root} data-testid="block-picker" data-mode="windows" data-layout={list ? 'list' : 'grid'}>
       <p class="sr-only" aria-live="polite">{said}</p>
-
-      {/* what is chosen, said plainly */}
-      <div class={`bp-chosen${p.value ? ' is-on' : ''}`} data-testid="bp-chosen">
-        <CalendarCheck aria-hidden="true" />
-        <span class="bp-chosen-txt">
-          <span>{p.value ? t('booking.picker.chosen', { when: choiceWords(p.value, l) }) : t('booking.win.picker.nothing')}</span>
-          <span class="bp-chosen-sub">{[picked?.eta != null ? cap(t('booking.win.grid.around', { time: clock(unitOfWindow(span, picked.win_start!, picked.eta, windowOf) ?? picked.eta, l) })) : '', t('booking.picker.duration', { d: duration(dur, l) })].filter(Boolean).join(' · ')}</span>
-        </span>
-        {p.value && hasPos && <Button size="sm" variant="ghost" icon={<MapIcon />} onClick={() => see(p.value!)} data-testid="bp-see-map">{t('booking.preview.see')}</Button>}
-      </div>
-      {preview && <RoutePreview ask={preview.ask} onClose={() => setPreview(null)} onPick={() => pick(preview.choice)} />}
+      <ChosenBar on={!!p.value} text={p.value ? t('booking.picker.chosen', { when: choiceWords(p.value, l) }) : t('booking.win.picker.nothing')}
+        sub={chosenSub.filter(Boolean).join(' · ')} onSee={p.value && hasPos ? () => see(p.value!) : null} />
+      {preview && <RoutePreview ask={preview.ask} onClose={() => setPreview(null)} onPick={preview.choice ? () => pick(preview.choice!) : undefined} />}
       {dayMap && <DayRoute day={dayMap} exclude={p.excludeJob ?? null} onClose={() => setDayMap(null)} />}
-      {hover && !preview && <RoutePreview ask={hover.ask} float={{ left: hover.left, top: hover.top }} onClose={() => setHover(null)} />}
+      {hov.hover && hoverAt && !preview && <RoutePreview ask={askOf(hov.hover.item)} float={hoverAt} />}
       {(gone || (lost && !p.value)) && <Banner kind="warn" data-testid="win-gone">{t('booking.win.grid.gone')}</Banner>}
       {auto && modelOf(p.value!.day)?.kind === 'full' && <Banner kind="warn">{t('booking.win.picker.fullWarn')}</Banner>}
       {auto && modelOf(p.value!.day)?.kind !== 'full' && <Banner kind="info" data-testid="win-auto">{t('booking.win.autoNote')}</Banner>}
+      {far && <FarBanner text={far.text} better={better.map((b) => ({ key: `${b.moment.day}|${b.moment.win[0]}`, text: betterWindowText(b, today, l), onPick: () => pickSugg(b.moment) }))} />}
 
-      {/* the best moments: a click chooses one and brings the calendar to it */}
-      <section class="bp-sugg" aria-labelledby="bp-sugg-title">
-        <div class="bp-head bp-head-wrap">
-          <h3 id="bp-sugg-title" class="bp-title"><Sparkles size={18} aria-hidden="true" />{t('booking.win.picker.title')}</h3>
-          {/* the car or the truck: only when the garage has both; work for the tire machine locks it on the truck */}
-          {bothKinds && p.onKind && (
-            <div class="bp-kind" data-testid="bp-kind">
-              {p.need
-                ? <p class="small bp-note" data-testid="bp-kind-need">{t('booking.kind.need')}</p>
-                : <Seg<'any' | 'car' | 'truck'> value={p.kind || 'any'} onValue={(v) => p.onKind!(v === 'any' ? null : v)} label={t('booking.kind.label')}
-                    options={[{ value: 'any', label: t('booking.kind.any') }, { value: 'car', label: t('booking.kind.car') }, { value: 'truck', label: t('booking.kind.truck') }]} />}
-            </div>
-          )}
-          {(sugg.status === 'error' || sugg.status === 'offline') && online && (
-            <Button size="sm" variant="ghost" icon={<RefreshCw />} onClick={again}>{t('booking.picker.retry')}</Button>
-          )}
-        </div>
-        {sugg.status === 'ok' && !hasPos && <p class="faint small bp-note"><MapPin size={14} aria-hidden="true" /> {t('booking.picker.noPosition')}</p>}
-        {sugg.status === 'loading' && !sugg.list.length && <div class="bp-sugg-skel" aria-busy="true"><span class="sr-only">{t('booking.win.picker.loading')}</span><Skeleton h={44} lines={1} /></div>}
-        {sugg.status === 'offline' && <p class="muted small bp-note">{t('booking.win.picker.offline')}</p>}
-        {sugg.status === 'error' && <p class="muted small bp-note">{t('booking.win.picker.error')}</p>}
-        {sugg.status === 'ok' && !sugg.list.length && <p class="muted small bp-note" data-testid="win-sugg-none">{t('booking.win.picker.none', { d: duration(dur, l) })}</p>}
-        {sugg.list.length > 0 && sugg.status !== 'offline' && sugg.status !== 'error' && (
-          <div class={`bp-best-list${sugg.status === 'loading' ? ' is-stale' : ''}`} role="group" aria-label={t('booking.win.picker.title')} data-testid="win-suggs">
-            {sugg.list.map((s, i) => {
-              const c = suggChoice(s);
-              const on = isPicked(c);
-              const rank = ranks[i];
-              const bits = [
-                hasPos ? cap(s.drive_min <= 2 ? t('booking.picker.noDrive') : t('booking.picker.drive', { d: duration(s.drive_min, l) })) : '',
-                rank ? (rank.total === 1 ? t('booking.picker.orderOnly') : t('booking.picker.order', { n: rank.n, total: rank.total })) : ''
-              ].filter(Boolean);
-              const current = !!moving && moving.day === s.day && moving.block === 'day' && moving.win_start != null && moving.win_start === s.win[0];
-              return (
-                <button key={`${s.day}|${s.win[0]}`} type="button" class={`bp-best-row${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => pickSugg(s)} {...menuProps(c)} {...hoverProps(c)}
-                  data-testid={`win-sugg-${i}`} data-day={s.day} data-win={s.win[0]}>
-                  <span class="bp-sugg-title">
-                    {current ? <Pill tone="muted" dot={false}>{t('booking.win.picker.current')}</Pill> : i === 0 && <span class="bp-best-star" title={t('booking.picker.best')}>★<span class="sr-only">{t('booking.picker.best')} : </span></span>}
-                    {choiceWords(c, l)}
-                    {on && <Check size={18} class="bp-best-tick" aria-hidden="true" />}
-                  </span>
-                  <span class="bp-sugg-sub" title={bits.join(' · ')}>
-                    {/* said clearly: this moment is the car's, or the truck's (never a vehicle's or a mechanic's name) */}
-                    {bothKinds && s.truck && <span class={`bp-kind-tag is-${kindOf(s.truck)}`} data-testid="bp-sugg-kind">{kindOf(s.truck) === 'car' ? <Car size={14} aria-hidden="true" /> : <Truck size={14} aria-hidden="true" />}{t(`booking.kind.with.${kindOf(s.truck)}`)}</span>}
-                    {bits[0] && <span>{bits[0]}</span>}
-                    {rank && <span class="sr-only" data-testid="bp-sugg-order">{bits[bits.length - 1]}</span>}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <WindowSuggestions sugg={sugg} rows={best} dur={dur} hasPos={hasPos} online={online} kinds={kinds} kindOf={(id) => kindOf(trucks, id)}
+        need={p.need} kind={p.kind} onKind={p.onKind} isPicked={isPicked} isCurrent={isCurrent} ranks={ranks} onPick={pickSugg} onRetry={again}
+        rowProps={(c) => ({ ...menuProps(c), ...hov.props(`${c.day}|${c.win_start}`, c) })} />
 
       {/* the calendar */}
       <section class="bp-cal" aria-labelledby="bp-cal-title">
@@ -365,31 +261,11 @@ export function WindowPicker(p: BlockPickerProps) {
               onDayMenu={dayMenu}
               onUnit={(d, m, st) => { if (st === 'open') pick(unitChoice(d, m)); else if (st === 'no') void refused(d, m); }}
               askOf={(d, m) => (hasPos ? askOf(unitChoice(d, m), t('booking.win.grid.around', { time: clock(m, l) })) : null)}
-              range={range} {...nav} goto={goto} openAt={chosenAt ?? (settled ? firstOpen ?? (days.includes(today) ? Math.max(span[0], now - 30) : span[0]) : null)} pageKey={`${days[0] || ''}|${per}`} hint={t('booking.win.grid.hint')} force={mayForce} />}
+              range={range} {...nav} goto={goto} openAt={openingMinute(models, { today, now, span })} pageKey={pageKey} hint={t('booking.win.grid.hint')} force={mayForce} />}
         {list && sel && sel.chosen != null && picked && (
           <p class="pl-says" data-testid="pick-says"><Check size={18} aria-hidden="true" />{labelOf(sel.chosen)}</p>
         )}
-
-        {/* the day chosen: flexible, or the day alone when it has no time to offer */}
-        {sel && (
-          <div class="bp-dayp" data-testid="win-day-panel" data-day={sel.day}>
-            <div class="bp-head">
-              <h4 class="bp-title">{cap(longDay(sel.day, l))}</h4>
-            </div>
-            {!selClosed && <Switch checked={flex} onChange={setFlex} label={t('booking.win.flex')} hint={t('booking.win.flexHint')} data-testid="book-flex" />}
-            {sel.status === 'offline' && <p class="muted small bp-note">{t('booking.win.offlineDay')}</p>}
-            {sel.status === 'error' && <p class="muted small bp-note">{t('booking.win.errorDay')}</p>}
-            {sel.kind === 'full' && <p class="muted small bp-note" data-testid="win-none">{t('booking.win.noneDay', { d: duration(dur, l) })}</p>}
-            {/* no time to offer: the day alone (the app gives the window). A full day: « Réserver quand même » */}
-            {(sel.kind === 'failed' || (sel.kind === 'full' && mayForce)) && (
-              <div class="bp-dayp-more">
-                <Button size="sm" variant={auto && here ? 'primary' : undefined} icon={auto && here ? <Check /> : undefined} onClick={() => pick({ day: sel.day, block: 'day' })} data-testid="win-force">
-                  {sel.kind === 'full' ? t('booking.force.ok') : t('booking.win.dayOnly')}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+        {sel && <WindowDayPanel day={sel} dur={dur} flex={flex} onFlex={setFlex} dayAlone={auto && here} onDayAlone={() => pick({ day: sel.day, block: 'day' })} mayForce={mayForce} />}
       </section>
     </div>
   );

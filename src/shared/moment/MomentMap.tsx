@@ -4,18 +4,20 @@
    streets with the new appointment in its place for the block highlighted. Tapping a block picks it (the same choice
    as a calendar cell). From the phone's copy of the days; the scores are the server's (BlockPicker keeps them). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Check, Route, Car, Truck, ListOrdered } from 'lucide-preact';
+import { Check, Route, ListOrdered } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { tinyDay, longDay, duration, clockRange, type BlockKey } from '../../lib/dates';
 import { wide } from '../../platform/media';
-import { jobsBetween, customer, settings, activeTrucks, truckColor, staffName } from '../../data/select';
+import { allJobs, jobsBetween, customer, settings, activeTrucks, truckColor, staffName } from '../../data/select';
 import { Pill } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, UNPLACED_COLOR, type TruckRoute } from '../map/assemble';
-import { fromDevice } from '../map/device';
 import { useRoads, roadOf, roadTotal } from '../map/useRoads';
-import { placeNewStop, NEW_STOP } from './preview';
+import { placeNewStop, fmtKm, NEW_STOP, NEW_STOP_COLOR } from './preview';
+import { dayOf } from './deviceDay';
 import { MapHover } from './RoutePreview';
+import { bothKinds, kindOf as kindOfTruck } from './vehicles';
+import { KindTag } from './parts';
 import { isFar, momentsByKey, roadWords, type CellState, type Moment } from '../../domain/moment/logic';
 import { dayChips, defaultBlock, dayCounts, overviewPins } from '../../domain/moment/days';
 
@@ -36,8 +38,6 @@ export interface MomentMapProps {
   hoverProps?: (day: string, block: BlockKey) => Record<string, unknown>;
 }
 
-const NEW_COLOR = '#111827';
-const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
 
 export function MomentMap(p: MomentMapProps) {
   const l = lang.value;
@@ -52,7 +52,10 @@ export function MomentMap(p: MomentMapProps) {
   const hi: BlockKey | null = row ? (p.value && p.value.day === row.day ? p.value.block : defaultBlock(row.blocks, row.day, p.list)) : null;
 
   /* the appointments already there (the phone's copy) */
-  const jobs = days.length ? jobsBetween(days[0], days[days.length - 1]) : [];
+  // kept while the store does not change, so the memos below that depend on it hold between drawings
+  const all = allJobs.value;
+  const first = days[0], last = days[days.length - 1];
+  const jobs = useMemo(() => (first ? jobsBetween(first, last) : []), [all, first, last]);
   const chips = dayChips(p.cells, p.list, dayCounts(jobs, days, p.excludeJob));
   const pins = useMemo(() => (day && !p.pop ? [] : overviewPins(jobs, days, { exclude: p.excludeJob, posOf: (j) => customer(j.customer_id) })), [day, p.pop, jobs, days.join('|'), p.excludeJob]);
 
@@ -66,11 +69,7 @@ export function MomentMap(p: MomentMapProps) {
 
   /* ---------- a day: its routes, the new stop in each block ---------- */
   const truckOf = (block: BlockKey) => p.truckId || (day ? moments.get(`${day}|${block}`)?.truck : null) || null;
-  const base = useMemo(() => {
-    if (!day) return null;
-    const d = fromDevice(day);
-    return p.excludeJob ? { ...d, jobs: d.jobs.filter((j) => j.id !== p.excludeJob) } : d;
-  }, [day, p.excludeJob, jobs]);
+  const base = useMemo(() => (day ? dayOf(day, p.excludeJob) : null), [day, p.excludeJob, jobs]);
   const placedOf = (block: BlockKey) => placeNewStop(base!, { day: day!, block, truckId: truckOf(block), lat: p.lat, lng: p.lng, name: '', address: p.address });
   const perBlock = useMemo(() => {
     const out = {} as Record<string, { n: number; total: number; extraKm: number } | null>;
@@ -97,7 +96,7 @@ export function MomentMap(p: MomentMapProps) {
   const lines: MapLine[] = [];
   const home = settings.value.booking?.home;
   const blockName = (b: string) => t(`common.blocks.${b}`);
-  const newPin = (n: number | string | null, sub?: string): MapMarker => ({ id: NEW_STOP, kind: 'job', lat: p.lat, lng: p.lng, color: NEW_COLOR, number: n, active: true,
+  const newPin = (n: number | string | null, sub?: string): MapMarker => ({ id: NEW_STOP, kind: 'job', lat: p.lat, lng: p.lng, color: NEW_STOP_COLOR, number: n, active: true,
     label: t('booking.preview.newLabel'), sub, title: t('booking.preview.newLabel') });
   const overview = (): MapMarker[] => {
     // the overview: the starts, every coming appointment, the new address
@@ -143,8 +142,8 @@ export function MomentMap(p: MomentMapProps) {
   const roadA = trA ? roadTotal(trA) : null;
   const mine = trA?.stops.find((s) => s.id === NEW_STOP);
   // the route is the car's or the truck's: never a vehicle's or a mechanic's name
-  const both = activeTrucks.value.some((x) => x.tire_machine === false) && activeTrucks.value.some((x) => x.tire_machine !== false);
-  const kindOf = (id: string | null | undefined): 'car' | 'truck' => (activeTrucks.value.find((x) => x.id === id)?.tire_machine === false ? 'car' : 'truck');
+  const both = bothKinds(activeTrucks.value);
+  const kindOf = (id: string | null | undefined) => kindOfTruck(activeTrucks.value, id);
   const truckName = both ? t(kindOf(placed?.truckId) === 'car' ? 'booking.kind.ofCar' : 'booking.kind.ofTruck') : t('booking.kind.ofRoute');
 
   const dayWords = day ? longDay(day, l) : '';
@@ -225,7 +224,7 @@ export function MomentMap(p: MomentMapProps) {
                   <span class="bp-sugg-title">{blockName(c.key)}, {clockRange(c.start, c.end, l)}</span>
                   {off || c.state === 'full' ? <span class="bp-sugg-sub">{t(`booking.picker.state.${c.state}`, { d: duration(c.left, l) })}</span> : (
                     <>
-                      {both && tr && <span class={`bp-kind-tag is-${kindOf(tr)}`}>{kindOf(tr) === 'car' ? <Car size={16} aria-hidden="true" /> : <Truck size={16} aria-hidden="true" />}{t(`booking.kind.with.${kindOf(tr)}`)}</span>}
+                      {both && tr && <KindTag kind={kindOf(tr)} size={16} />}
                       {rank && <span class="bp-order-tag"><ListOrdered size={16} aria-hidden="true" />{rank.total === 1 ? t('booking.picker.orderOnly') : t('booking.picker.order', { n: rank.n, total: rank.total })}</span>}
                       {road && <span class="bp-sugg-sub">{road}</span>}
                       {isFar(m) && <span class="mm-block-far" data-testid="mm-block-far"><Route size={14} aria-hidden="true" />{t('booking.far.legend')}</span>}
