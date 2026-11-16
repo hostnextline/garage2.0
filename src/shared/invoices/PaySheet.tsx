@@ -67,9 +67,9 @@ function PayOpen(p: PaySheetProps) {
     return (
       <Sheet open onClose={close} title={title} sub={sub} footer={<Button variant="primary" onClick={close}>{t('common.close')}</Button>} data-testid="pay-sheet">
         {plan.mode === 'waiting'
-          ? <Banner kind="info" title={t('invoices.pay.waiting', { amount: money(view.waiting, l) })} data-testid="pay-waiting">{t('invoices.pay.waitingText')}</Banner>
+          ? <Banner kind="info" title={t('invoices.pay.waiting', { amount: money(view.waitingIn, l) })} data-testid="pay-waiting">{t('invoices.pay.waitingText')}</Banner>
           : plan.mode === 'refund-waiting'
-            ? <Banner kind="info" data-testid="pay-waiting">{t('invoices.pay.refund.waiting', { amount: money(-view.waiting, l) })}</Banner>
+            ? <Banner kind="info" data-testid="pay-waiting">{t('invoices.pay.refund.waiting', { amount: money(-view.waitingOut, l) })}</Banner>
             : plan.mode === 'refund-none'
               ? <Banner kind="ok">{t('invoices.pay.refund.none')}</Banner>
               : <Banner kind={plan.mode === 'paid' ? 'ok' : 'warn'}>{t(`invoices.pay.not.${plan.mode}`)}</Banner>}
@@ -96,7 +96,7 @@ function PayOpen(p: PaySheetProps) {
   };
 
   const theJob = raw.job_id ? jobRow(raw.job_id) : undefined;
-  const coffreOk = !refund && !!theJob && mayCoffre(theJob) && a.paid <= 0 && view.waiting === 0 && !coffreWaiting(waitingEntries(), theJob.id);
+  const coffreOk = !refund && !!theJob && mayCoffre(theJob) && a.paid <= 0 && view.waitingIn === 0 && view.waitingOut === 0 && !coffreWaiting(waitingEntries(), theJob.id);
   const toCoffre = () => {
     if (!theJob) return;
     close();
@@ -111,10 +111,10 @@ function PayOpen(p: PaySheetProps) {
       </>}>
       <div class="stack-lg">
         <div class="pay-due">
-          <span class="pay-due-label">{refund ? t('invoices.pay.refund.toGive') : a.paid > 0 || view.waiting > 0 ? t('invoices.pay.balance') : t('invoices.pay.toPay')}</span>
+          <span class="pay-due-label">{refund ? t('invoices.pay.refund.toGive') : a.paid > 0 || view.waitingIn > 0 ? t('invoices.pay.balance') : t('invoices.pay.toPay')}</span>
           <span class="pay-due-amount money" data-testid="pay-balance">{money(inPlay, l)}</span>
           {(refund || a.paid > 0) && <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>}
-          {!refund && view.waiting > 0 && <span class="muted small" data-testid="pay-waiting-part">{t('invoices.pay.waitingPart', { amount: money(view.waiting, l) })}</span>}
+          {!refund && view.waitingIn > 0 && <span class="muted small" data-testid="pay-waiting-part">{t('invoices.pay.waitingPart', { amount: money(view.waitingIn, l) })}</span>}
         </div>
         {refund && <Banner kind="info">{t('invoices.pay.refund.hint')}</Banner>}
 

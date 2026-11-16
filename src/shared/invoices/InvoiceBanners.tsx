@@ -20,10 +20,12 @@ export function OverBanner(p: { over: number; canRefund: boolean; onRefund: () =
   );
 }
 
-/** the job's billable work missing from a finished invoice, while the job is coming or under way */
-export function UnbilledBanner(p: { inv: Invoice; job: Job | undefined }) {
+/** the job's billable work missing from a finished invoice, while the job is coming or under way. Not while its
+    « Terminer la facture » waits on this phone (`finishing`): the server still has a draft, « Modifier la facture »
+    would be refused; it is said once the invoice is really finished. */
+export function UnbilledBanner(p: { inv: Invoice; job: Job | undefined; finishing?: boolean }) {
   const j = p.job;
-  if (!j || !jobOpen(j.status) || p.inv.status === 'draft' || p.inv.status === 'void') return null;
+  if (p.finishing || !j || !jobOpen(j.status) || p.inv.status === 'draft' || p.inv.status === 'void') return null;
   const missing = workMissing(p.inv.lines, itemsOf(j.id));
   if (!missing.length) return null;
   const reopen = mayReopen(p.inv, j);

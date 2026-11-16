@@ -32,7 +32,10 @@ export default function QuotesScreen({ query }: ScreenProps) {
   const [q, setQ] = useState('');
   const l = lang.value;
   const all = quotesList.value;
+  // read here, not only inside the memo: the screen stays subscribed to them while the memo is not worked out again
   const customers = tableSignal('customers').value;
+  const vehicles = tableSignal('vehicles').value;
+  const billing = settings.value.billing;
   const counts = useMemo(() => {
     const c: Record<QTab, number> = { active: 0, accepted: 0, converted: 0, declined: 0, all: all.length };
     for (const x of all) { if (x.status === 'open' || x.status === 'sent') c.active++; else if (x.status in c) c[x.status as QTab]++; }
@@ -40,7 +43,7 @@ export default function QuotesScreen({ query }: ScreenProps) {
   }, [all]);
   // searched and sorted once per change (not at every redraw)
   const list = useMemo(() => all.filter((x) => inTab(x, tab) && (!q.trim() || matches(q, quoteNumber(x), x.number != null ? String(x.number) : '', quoteWho(x), quoteCar(x), x.contact_phone, customer(x.customer_id)?.phone)))
-    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.number ?? 0) - Number(a.number ?? 0)), [all, customers, tab, q]);
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.number ?? 0) - Number(a.number ?? 0)), [all, customers, vehicles, billing, tab, q]);
   const canCreate = isField();
   const n = net.value;
   const day = today();

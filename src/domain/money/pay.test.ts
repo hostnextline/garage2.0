@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Invoice } from '../../data/types';
-import { payMode, amountProblem } from './pay';
+import { payMode, mayRefund, amountProblem } from './pay';
 
-const v = (status: Invoice['status'], due: number, over = 0, waiting = 0) => ({ inv: { status } as Invoice, due, over, waiting });
+const v = (status: Invoice['status'], due: number, over = 0, waitingIn = 0, waitingOut = 0) => ({ inv: { status } as Invoice, due, over, waitingIn, waitingOut });
 
 describe('what « Encaisser » offers', () => {
   it('the form for what is left to collect', () => {
@@ -21,7 +21,24 @@ describe('what « Encaisser » offers', () => {
   it('« Rembourser »: only what was paid too much', () => {
     expect(payMode(v('paid', 0, 2755), true)).toEqual({ mode: 'form', inPlay: 2755 });
     expect(payMode(v('paid', 0, 0), true).mode).toBe('refund-none');
-    expect(payMode(v('paid', 0, 0, -2755), true).mode).toBe('refund-waiting');
+    expect(payMode(v('paid', 0, 0, 0, -2755), true).mode).toBe('refund-waiting');
+  });
+  it('a payment and a refund both waiting are told apart, never added up (review inv-r4)', () => {
+    // a refund waits beside a payment: the refund sheet says the refund waits (the sum, 0, used to say « Rien à rembourser »)
+    expect(payMode(v('paid', 0, 0, 2755, -2755), true).mode).toBe('refund-waiting');
+    // a payment waits beside a bigger refund: « Encaisser » says the payment waits (the sum, < 0, used to say « Payée »)
+    expect(payMode(v('issued', 0, 0, 1000, -3000), false).mode).toBe('waiting');
+    // only a payment waits: « Rien à rembourser »
+    expect(payMode(v('paid', 0, 0, 1000, 0), true).mode).toBe('refund-none');
+  });
+  it('a cancelled invoice (or a draft) takes no refund: the server refuses it (review inv-r4)', () => {
+    expect(payMode(v('void', 0, 3000), true)).toEqual({ mode: 'void', inPlay: 0 });
+    expect(payMode(v('draft', 0, 3000), true)).toEqual({ mode: 'draft', inPlay: 0 });
+    expect(mayRefund({ inv: { status: 'void' } as Invoice, over: 3000, finishing: false })).toBe(false);
+    expect(mayRefund({ inv: { status: 'paid' } as Invoice, over: 3000, finishing: false })).toBe(true);
+    expect(mayRefund({ inv: { status: 'issued' } as Invoice, over: 3000, finishing: false })).toBe(true);
+    expect(mayRefund({ inv: { status: 'paid' } as Invoice, over: 3000, finishing: true })).toBe(false);
+    expect(mayRefund({ inv: { status: 'paid' } as Invoice, over: 0, finishing: false })).toBe(false);
   });
   it('the amount typed', () => {
     expect(amountProblem(null, 100)).toBe('amount');

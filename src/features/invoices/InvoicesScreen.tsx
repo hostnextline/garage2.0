@@ -36,15 +36,19 @@ export default function InvoicesScreen({ query }: ScreenProps) {
   const day = today();
 
   const counts = useMemo(() => tabCounts(all), [all]);
-  // the list and its amounts are worked out once per change (the invoices, the customers searched, the tax rates)
+  // the list and its amounts are worked out once per change (the invoices, the customers searched and the jobs that
+  // name them, the tax rates, the numbers' prefix). Read here, not only inside the memo: the screen stays subscribed
+  // to them while the memo is not worked out again.
   const customers = tableSignal('customers').value;
+  const jobs = tableSignal('jobs').value;
   const rates = settings.value.taxes;
+  const billing = settings.value.billing;
   const { list, total } = useMemo(() => {
     const range = listPeriodRange(period, day);
     const found = sortForTab(all.filter((v) => inTab(v, tab) && inListPeriod(listDate(v), range)
       && (!q.trim() || matches(q, invoiceLabel(v, l), v.number != null ? String(v.number) : '', invoiceWho(v), invoiceCustomer(v)?.company, invoiceCustomer(v)?.phone))), tab);
     return { list: found, total: footTotal(found.map((v) => ({ status: v.status, ...amountsOf(v) })), tab) };
-  }, [all, customers, rates, tab, period, q, l, day]);
+  }, [all, customers, jobs, rates, billing, tab, period, q, l, day]);
   const month = day.slice(0, 7);
   const monthPaid = rowsOf<Payment>('payments').filter((p) => !p.deleted_at && p.paid_at && dayOf(new Date(p.paid_at)).slice(0, 7) === month).reduce((s, p) => s + Number(p.amount_cents), 0);
   const o = owing.value;

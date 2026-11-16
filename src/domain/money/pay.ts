@@ -10,17 +10,23 @@ export type PayMode =
   | 'refund-none'     // « Rembourser »: nothing paid too much
   | 'refund-waiting'; // « Rembourser »: the refund taken here waits for the network
 
-/** what the sheet shows, and the amount in play (left to collect, or to give back) */
-export function payMode(v: Pick<InvoiceView, 'inv' | 'due' | 'over' | 'waiting'>, refund: boolean): { mode: PayMode; inPlay: number } {
-  if (refund) {
-    if (v.over > 0) return { mode: 'form', inPlay: v.over };
-    return { mode: v.waiting < 0 ? 'refund-waiting' : 'refund-none', inPlay: 0 };
-  }
+/** what the sheet shows, and the amount in play (left to collect, or to give back). The payments and the refunds
+    waiting are told apart (a payment waiting beside a refund waiting does not cancel it out). Nothing is taken on a
+    draft or a cancelled invoice, a refund neither (the server refuses both). */
+export function payMode(v: Pick<InvoiceView, 'inv' | 'due' | 'over' | 'waitingIn' | 'waitingOut'>, refund: boolean): { mode: PayMode; inPlay: number } {
   const s = v.inv.status;
   if (s === 'draft') return { mode: 'draft', inPlay: 0 };
   if (s === 'void') return { mode: 'void', inPlay: 0 };
+  if (refund) {
+    if (v.over > 0) return { mode: 'form', inPlay: v.over };
+    return { mode: v.waitingOut < 0 ? 'refund-waiting' : 'refund-none', inPlay: 0 };
+  }
   if (s === 'issued' && v.due > 0) return { mode: 'form', inPlay: v.due };
-  return { mode: v.waiting > 0 ? 'waiting' : 'paid', inPlay: 0 };
+  return { mode: v.waitingIn > 0 ? 'waiting' : 'paid', inPlay: 0 };
+}
+/** « Inscrire le remboursement » is offered: money to give back on an invoice that may still take a payment */
+export function mayRefund(v: Pick<InvoiceView, 'inv' | 'over' | 'finishing'>): boolean {
+  return v.over > 0 && !v.finishing && (v.inv.status === 'issued' || v.inv.status === 'paid');
 }
 
 /** what is wrong with the amount typed, if anything */

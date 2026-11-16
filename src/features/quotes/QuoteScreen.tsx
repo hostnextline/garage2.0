@@ -15,7 +15,7 @@ import { can, me } from '../../data/auth';
 import { t, lang } from '../../lib/i18n';
 import { today, stamp as stampText } from '../../lib/dates';
 import { Page, Panel, Button, Banner, Empty, Skeleton, Field, Textarea, DateInput, Seg, attempt, toast } from '../../ui';
-import { LinesEditor } from '../../shared/invoices/LinesEditor';
+import { LinesEditor, percentWords } from '../../shared/invoices/LinesEditor';
 import { LinesView } from '../../shared/invoices/LinesView';
 import { CatalogSheet } from '../../shared/invoices/CatalogSheet';
 import { useDraft } from '../../shared/invoices/useDraft';
@@ -25,6 +25,7 @@ import { quoteNumber } from '../../shared/invoices/select';
 import { quotePdfData } from '../../domain/money/document';
 import { quoteTotals, cleanItems, quoteIsEmpty, quoteExpired, defaultValidUntil, dropWhenLeft, changedOnly } from '../../domain/money/quote';
 import { keepKeys } from '../../domain/money/editLines';
+import { addLines } from '../../domain/money/draft';
 import { waitingEntries, rowWaiting } from '../../domain/money/waiting';
 import { QuotePill } from './QuotePill';
 import { QuoteWho } from './QuoteWho';
@@ -159,7 +160,7 @@ function QuoteEditor(p: { q: Quote }) {
           )}
         </div>
       </div>
-      <CatalogSheet open={catalog} onClose={() => setCatalog(false)} docLang={v.lang} onAdd={(add) => set({ items: [...d.peek().items, ...add] })} />
+      <CatalogSheet open={catalog} onClose={() => setCatalog(false)} docLang={v.lang} onAdd={(add) => set({ items: addLines(d.peek().items, add, percentWords()) })} />
       {pdf.sheet}
     </Page>
   );

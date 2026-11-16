@@ -7,7 +7,15 @@ import { act } from 'preact/test-utils';
 import type { OutboxEntry } from '../../data/local';
 
 const outbox = vi.hoisted(() => ({ list: [] as OutboxEntry[] }));
-vi.mock('../../domain/money/waiting', async (orig) => ({ ...(await orig<typeof import('../../domain/money/waiting')>()), waitingEntries: () => outbox.list }));
+// the outbox is pretended; what the server already answered is matched as in the app (no payment row here)
+vi.mock('../../domain/money/waiting', async (orig) => {
+  const m = await orig<typeof import('../../domain/money/waiting')>();
+  return {
+    ...m,
+    waitingEntries: () => outbox.list,
+    unsentPayments: (o: { invoiceId?: string | null; jobId?: string | null }) => m.notOnServer(m.paymentsWaiting(outbox.list, o), [], { known: () => undefined })
+  };
+});
 
 import { replaceLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
@@ -77,5 +85,40 @@ describe('« Terminer la facture » waiting for the network', () => {
     await wait();
     expect(q('pay-balance')?.textContent).toMatch(/114,98/);
     expect(q('pay-cash')).not.toBeNull();
+  });
+  it('work of the job not on it: no « Modifier la facture » while the finish waits (the server still has a draft) (review inv-r3)', async () => {
+    replaceLocal('job_items', [{ id: 'ji-x', job_id: 'j-1', kind: 'service', service_id: null, item_id: null, description: 'Pneus', qty: 1, unit_cents: 5000, taxable: true,
+      status: 'done', sort: 2, created_at: '2026-11-17T15:20:00Z', updated_at: '2026-11-17T15:20:00Z' }]);
+    replaceLocal('invoices', [inv({ status: 'draft', number: null, subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0, issued_at: null })]);
+    outbox.list = [rpc('invoice_finish', { p_invoice: 'f-1', p_op: 'y' })];
+    act(() => render(<InvoicePanel jobId="j-1" />, box));
+    await wait();
+    expect(q('invoice-pay')).not.toBeNull();
+    expect(q('invoice-unbilled')).toBeNull();
+    expect(q('invoice-reopen')).toBeNull();
+    // once the server finished it, the work not billed is said, with « Modifier la facture »
+    outbox.list = [];
+    replaceLocal('invoices', [inv()]);
+    await wait();
+    expect(q('invoice-unbilled')?.textContent).toContain('Pneus');
+    expect(q('invoice-unbilled')?.querySelector('[data-testid="invoice-reopen"]')).not.toBeNull();
+  });
+});
+
+describe('« Rembourser » (review inv-r4)', () => {
+  it('a refund waiting beside a payment waiting: the sheet says the refund waits, it is not cancelled out (never offered twice)', async () => {
+    replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 22996 })]);
+    outbox.list = [{ ...cash(-11498), op: 'op-r' }, { ...cash(11498), op: 'op-p' }];
+    act(() => render(<PaySheet open refund invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    expect(q('pay-confirm')).toBeNull();
+    expect(q('pay-waiting')?.textContent).toMatch(/114,98/);
+  });
+  it('a cancelled invoice that holds money: no refund form (the server refuses a payment on it)', async () => {
+    replaceLocal('invoices', [inv({ status: 'void', paid_cents: 3000 })]);
+    act(() => render(<PaySheet open refund invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    expect(q('pay-confirm')).toBeNull();
+    expect(q('pay-cash')).toBeNull();
   });
 });

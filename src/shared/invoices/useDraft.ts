@@ -42,6 +42,8 @@ export function useDraft<T>(server: T, sig: (v: T) => string, save: (v: T, base:
   const [recheck, setRecheck] = useState(0);
   const st = useRef({
     dirty: false, saving: 0, sentAt: 0, alive: true,
+    /** the last save was refused: what it sent is still to save, the server's version is not taken over it */
+    failed: false,
     timer: undefined as ReturnType<typeof setTimeout> | undefined, settle: undefined as ReturnType<typeof setTimeout> | undefined,
     cur: server, base: server, baseSig: sig(server), chain: Promise.resolve() as Promise<void>
   });
@@ -54,7 +56,7 @@ export function useDraft<T>(server: T, sig: (v: T) => string, save: (v: T, base:
 
   useEffect(() => {
     const s = st.current;
-    if (s.dirty || s.saving > 0 || busy) return;
+    if (s.dirty || s.saving > 0 || busy || s.failed) return;
     const left = s.sentAt + SETTLE_MS - Date.now();
     if (left > 0) { clearTimeout(s.settle); s.settle = setTimeout(() => setRecheck((n) => n + 1), left); return; }
     if (serverSig === sig(s.cur)) { s.base = server; s.baseSig = serverSig; return; }
@@ -73,9 +75,14 @@ export function useDraft<T>(server: T, sig: (v: T) => string, save: (v: T, base:
     if (s.alive) setPhase('saving');
     try {
       await saveRef.current(v, base);
+      // sent from the server's base: what a refused save had sent went with it
+      s.failed = false;
       if (s.alive && !s.dirty) setPhase('saved');
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
+      // nothing was saved: the base goes back to what the server has (the next change sends this one's too), and what
+      // was typed stays on screen with « Pas enregistré » (not replaced by the server's older version, not « Enregistré »)
+      if (s.baseSig === sig(v)) { s.base = base; s.baseSig = sig(base); s.failed = true; }
       if (s.alive && !s.dirty) setPhase('failed');
     } finally {
       s.saving--; s.sentAt = Date.now();
@@ -91,6 +98,7 @@ export function useDraft<T>(server: T, sig: (v: T) => string, save: (v: T, base:
   const change = (next: T) => {
     const s = st.current;
     s.cur = next;
+    s.failed = false;
     setValue(next);
     clearTimeout(s.timer);
     // back to what was last sent (a price field left without a change, a letter typed then erased): nothing to send
@@ -103,7 +111,7 @@ export function useDraft<T>(server: T, sig: (v: T) => string, save: (v: T, base:
   const reset = (next: T) => {
     const s = st.current;
     clearTimeout(s.timer);
-    s.dirty = false; s.cur = next; s.base = next; s.baseSig = sig(next);
+    s.dirty = false; s.failed = false; s.cur = next; s.base = next; s.baseSig = sig(next);
     setValue(next); setPhase('saved');
   };
   // leaving the screen: what was typed is saved
