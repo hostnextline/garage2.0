@@ -322,3 +322,47 @@ test('x-dualmode-02: lock_windows_due is not open to someone who is not on the t
   const e = await h.fails(() => h.rpc('lock_windows_due', {}));
   assert.ok(e && (e.hint === 'not_allowed' || /permission/.test(e.message)), 'refused: ' + e?.message);
 }));
+
+test('x-dualmode-03 / x-time-02: the windows offered are the ones the calendar asks for, whatever « avant » and the first hour', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: [[420, 1260]] });
+  await windowsOn(h, owner);
+  const shapes = [
+    { before: 30, after: 210, round: 60, blocks: null },
+    { before: 45, after: 195, round: 60, blocks: null },
+    { before: 50, after: 190, round: 15, blocks: null },
+    { before: 60, after: 180, round: 60, blocks: [[450, 720], [720, 960], [960, 1200]] },   // the day from 7 h 30
+  ];
+  for (const s of shapes) {
+    const blocks = (s.blocks || [[480, 720], [720, 960], [960, 1200]]).map(([a, b], i) => ({ key: ['am', 'pm', 'eve'][i], start: a, end: b }));
+    await server(h, owner, `update public.settings set booking = booking || $1::jsonb where id = 1`,
+      [JSON.stringify({ win_before_min: s.before, win_after_min: s.after, win_round_min: s.round, blocks })]);
+    const rows = await h.rpc('suggest_windows', { p_lat: near[0], p_lng: near[1], p_duration: 60, p_day: day, p_exclude: null, p_need: false, p_kind: null });
+    const offered = new Set(rows.map((x) => x.win_start));
+    const span = await server(h, owner, `select start_min, end_min from public.day_span()`);
+    const asked = await server(h, owner, `select distinct w.win_start from generate_series($1::int, $2::int, 15) t(m) cross join lateral public.win_for(t.m) w order by 1`, [span[0].start_min, span[0].end_min]);
+    const missing = asked.map((x) => x.win_start).filter((w) => !offered.has(w));
+    assert.deepEqual(missing, [], `avant ${s.before}, arrondi ${s.round}, day from ${span[0].start_min}: every window the calendar asks for is offered on an empty day`);
+  }
+}));
+
+test('sql-planner-2-01: « Peu importe »: the suggestions offer the block where only the truck has room', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const car = await h.truck('Voiture', null, { [dow]: [[480, 720]] });
+  const truck = await h.truck('Camion', null, { [dow]: [[480, 720]] });
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const at = (km) => [home.lat + km / 111.2, home.lng];
+  const cs = [];
+  for (const km of [1, 5, 6]) cs.push(await h.customer('Km' + km, ...at(km)));
+  await h.as(owner);
+  for (const cu of cs) assert.equal((await book(h, job(cu, day, 'am'))).truck_id, car);
+  const s = await h.rpc('suggest_blocks', { p_lat: at(8)[0], p_lng: at(8)[1], p_duration: 60, p_from: day, p_days: 1, p_exclude: null, p_limit: 6, p_need: false, p_kind: null });
+  const am = s.find((x) => x.block === 'am');
+  assert.ok(am, 'the morning is offered');
+  assert.equal(am.truck, truck);
+}));

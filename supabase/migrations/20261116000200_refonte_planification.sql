@@ -845,3 +845,129 @@ begin
   end if;
 exception when others then raise notice 'pg_cron not available: %', sqlerrm;
 end $$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 7. The moments offered
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- suggest_windows_core (live text): the windows tried are exactly the ones win_for cuts for the day's quarter hours (the
+-- booking calendar opens a quarter hour T when the server lists windowOf(T)): with « avant » 30 or 45, or a day that
+-- starts at 7 h 30, the calendar was nearly empty. « Peu importe » plans again for the truck (plan_extra).
+CREATE OR REPLACE FUNCTION public.suggest_windows_core(p_lat double precision, p_lng double precision, p_duration integer, p_day date, p_exclude uuid DEFAULT NULL::uuid, p_need boolean DEFAULT false, p_kind text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare p0 jsonb; p1 jsonb; out jsonb := '[]'; used0 int; used1 int; wait0 int; wait1 int; near int; v_near numeric := public.bset('near_km', 5);
+  x uuid := '00000000-0000-4000-8000-000000000000';
+  v_need boolean := coalesce(p_need, false) or coalesce((select j.needs_machine from public.jobs j where j.id = p_exclude), false);
+  v_kind text := coalesce(case when p_kind in ('car', 'truck') then p_kind end, (select j.vehicle_kind from public.jobs j where j.id = p_exclude));
+  v_dur int := greatest(15, least(720, coalesce(p_duration, 60)));
+  v_len int := public.win_len(); v_step int := greatest(public.bset('win_round_min', 60)::int, 15); v_ws int; sp record; k int := 0;
+  v_starts int[];
+begin
+  if not public.windows_on() or p_day is null or not public.block_open(p_day, 'day') then return '[]'::jsonb; end if;
+  if p_day > public.local_today() + public.bset('horizon_days', 120)::int then return '[]'::jsonb; end if;
+  select * into sp from public.day_span();
+  p0 := public.plan_block(p_day, 'day', null, p_exclude);
+  if jsonb_array_length(p0->'trucks') = 0 then return '[]'::jsonb; end if;
+  select coalesce(sum((t->>'used')::int), 0), coalesce(sum(coalesce((t->>'wait')::int, 0)), 0) into used0, wait0 from jsonb_array_elements(p0->'trucks') t;
+  select count(*) into near from public.jobs j left join public.customers c on c.id = j.customer_id
+    where j.day = p_day and j.block = 'day' and j.deleted_at is null and j.status not in ('cancelled','no_show')
+      and (p_exclude is null or j.id <> p_exclude)
+      and public.km_between(p_lat, p_lng, coalesce(j.lat, c.lat), coalesce(j.lng, c.lng)) <= v_near;
+  -- Part 26: the windows offered are exactly the ones win_for cuts for an arrival on the day's quarter hours (the app asks
+  -- for windowOf(T) of each quarter hour T), whatever « avant », the rounding and the day's first hour: one lattice
+  v_starts := array(select distinct w.win_start from generate_series(sp.start_min, sp.end_min, 15) t(m) cross join lateral public.win_for(t.m) w
+                    where w.win_start is not null order by 1);
+  foreach v_ws in array v_starts loop
+    exit when k >= 100;
+    k := k + 1;
+    if not (p_day = public.local_today() and public.now_min() > v_ws + v_len) then
+      -- « Peu importe »: the truck when the car-first plan does not fit (Part 26)
+      p1 := public.plan_extra(p_day, 'day', jsonb_build_object('id', x, 'lat', p_lat, 'lng', p_lng, 'dur', v_dur, 'need', v_need, 'kind', v_kind,
+        'ws', v_ws, 'we', v_ws + v_len), p_exclude, p0);
+      if public.plan_fits(p0, p1) then
+        select coalesce(sum((t->>'used')::int), 0), coalesce(sum(coalesce((t->>'wait')::int, 0)), 0) into used1, wait1 from jsonb_array_elements(p1->'trucks') t;
+        out := out || jsonb_build_array(jsonb_build_object('day', p_day, 'block', 'day', 'pos', k, 'drive_min', greatest(0, used1 - used0 - v_dur - (wait1 - wait0)),
+          'wait_min', greatest(0, wait1 - wait0), 'near', near, 'truck', p1->'extra'->>'truck',
+          'left', (select max((t->>'left')::int) from jsonb_array_elements(p1->'trucks') t),
+          'eta', (p1->'extra'->>'eta')::int, 'win_start', v_ws, 'win_end', v_ws + v_len));
+      end if;
+    end if;
+  end loop;
+  return coalesce((select jsonb_agg(e) from (select e from jsonb_array_elements(out) e
+    order by (e->>'drive_min')::int + (e->>'wait_min')::int, (e->>'win_start')::int) q), '[]'::jsonb);
+end $function$;
+
+-- suggest_core (live text): « Peu importe » plans again for the truck when the car-first plan does not fit (plan_extra).
+CREATE OR REPLACE FUNCTION public.suggest_core(p_lat double precision, p_lng double precision, p_duration integer, p_from date DEFAULT NULL::date, p_days integer DEFAULT 14, p_exclude uuid DEFAULT NULL::uuid, p_limit integer DEFAULT 6, p_need boolean DEFAULT false, p_kind text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare d date; b record; v_from date := greatest(coalesce(p_from, public.local_today()), public.local_today());
+  p0 jsonb; p1 jsonb; out jsonb := '[]'; used0 int; used1 int; near int; v_near numeric := public.bset('near_km', 5);
+  x uuid := '00000000-0000-4000-8000-000000000000';
+  -- the vehicle: what the work needs and what the person chose; moving a job, what the job already says
+  v_need boolean := coalesce(p_need, false) or coalesce((select j.needs_machine from public.jobs j where j.id = p_exclude), false);
+  v_kind text := coalesce(case when p_kind in ('car', 'truck') then p_kind end, (select j.vehicle_kind from public.jobs j where j.id = p_exclude));
+  -- the whole day (Part 25, « garde-route »)
+  v_maxhop numeric := public.bset('max_hop_min', 35);
+  v_maxday numeric := public.bset('max_day_drive_min', 105);
+  v_x jsonb := jsonb_build_object('id', x, 'lat', p_lat, 'lng', p_lng);
+  tk record; w0 jsonb; w1 jsonb; v_truck text; min0 int; min1 int; km0 numeric; km1 numeric; v_day int; v_hop int; v_stops int; v_far text;
+  -- « plages d'arrivée »
+  v_wm boolean := public.windows_on(); wait0 int; wait1 int; v_eta int; v_row jsonb;
+begin
+  for d in select generate_series(v_from, v_from + greatest(1, least(p_days, 60)) - 1, interval '1 day')::date loop
+    for b in select * from public.blocks() loop
+      if not public.block_open(d, b.key) then continue; end if;
+      p0 := public.plan_block(d, b.key, null, p_exclude);
+      if jsonb_array_length(p0->'trucks') = 0 then continue; end if;
+      -- « Peu importe »: the truck when the car-first plan does not fit (Part 26)
+      p1 := public.plan_extra(d, b.key, jsonb_build_object('id', x, 'lat', p_lat, 'lng', p_lng, 'dur', p_duration, 'need', v_need, 'kind', v_kind)
+        || case when v_wm then jsonb_build_object('ws', null, 'we', null) else '{}'::jsonb end, p_exclude, p0);
+      if not coalesce((p1->'extra'->>'placed')::boolean, false) then continue; end if;
+      if exists (select 1 from jsonb_array_elements_text(p1->'over') o where not ((p0->'over') ? o)) then continue; end if;
+      if public.plan_late_new(p0, p1) then continue; end if;
+      -- the truck it goes on must stay inside its hours (as book_job asks)
+      if exists (select 1 from jsonb_array_elements(p1->'trucks') t where t->>'id' = p1->'extra'->>'truck' and (t->>'left')::int < 0) then continue; end if;
+      select coalesce(sum((t->>'used')::int), 0), coalesce(sum(coalesce((t->>'wait')::int, 0)), 0) into used0, wait0 from jsonb_array_elements(p0->'trucks') t;
+      select coalesce(sum((t->>'used')::int), 0), coalesce(sum(coalesce((t->>'wait')::int, 0)), 0) into used1, wait1 from jsonb_array_elements(p1->'trucks') t;
+      select count(*) into near from public.jobs j left join public.customers c on c.id = j.customer_id
+        where j.day = d and j.block = b.key and j.deleted_at is null and j.status not in ('cancelled','no_show')
+          and (p_exclude is null or j.id <> p_exclude)
+          and public.km_between(p_lat, p_lng, coalesce(j.lat, c.lat), coalesce(j.lng, c.lng)) <= v_near;
+      -- the whole day of the vehicles of the block, without and with the appointment
+      v_truck := p1->'extra'->>'truck'; min0 := 0; min1 := 0; km0 := 0; km1 := 0; v_day := null; v_hop := null; v_stops := 0;
+      for tk in select (e->>'id')::uuid id from jsonb_array_elements(p1->'trucks') e loop
+        w0 := public.day_drive(d, tk.id, p0, null, p_exclude);
+        w1 := public.day_drive(d, tk.id, p1, v_x, p_exclude);
+        min0 := min0 + (w0->>'min')::int; min1 := min1 + (w1->>'min')::int;
+        km0 := km0 + (w0->>'km')::numeric; km1 := km1 + (w1->>'km')::numeric;
+        if tk.id::text = v_truck then
+          v_day := (w1->>'min')::int; v_hop := (w1->>'hop')::int; v_stops := greatest(0, (w1->>'stops')::int - 1);
+        end if;
+      end loop;
+      v_far := case when p_lat is null or p_lng is null or v_stops = 0 then null
+                    when v_maxhop > 0 and v_hop is not null and v_hop > v_maxhop then 'hop'
+                    when v_maxday > 0 and v_day > v_maxday then 'day' end;
+      v_row := jsonb_build_object('day', d, 'block', b.key, 'pos', b.pos, 'drive_min', greatest(0, used1 - used0 - p_duration - (wait1 - wait0)),
+        'near', near, 'truck', v_truck, 'left', (select max((t->>'left')::int) from jsonb_array_elements(p1->'trucks') t),
+        'add_min', greatest(0, min1 - min0), 'add_km', greatest(0, round(km1 - km0, 1)), 'day_min', v_day, 'hop_min', v_hop, 'stops', v_stops, 'far', v_far);
+      if v_wm then
+        v_eta := (p1->'extra'->>'eta')::int;
+        v_row := v_row || jsonb_build_object('eta', v_eta, 'wait_min', greatest(0, wait1 - wait0))
+          || coalesce((select jsonb_build_object('win_start', w.win_start, 'win_end', w.win_end) from public.win_for(v_eta) w), '{}'::jsonb);
+      end if;
+      out := out || jsonb_build_array(v_row);
+    end loop;
+  end loop;
+  -- the moments that are not far first, then the least driving added over the day (and the least waiting, with windows)
+  return coalesce((select jsonb_agg(e order by o) from (select e, row_number() over (
+      order by (e->>'far' is not null), (e->>'add_min')::int + coalesce((e->>'wait_min')::int, 0), (e->>'near')::int desc, e->>'day', (e->>'pos')::int) o
+    from jsonb_array_elements(out) e) q where o <= greatest(1, p_limit)), '[]'::jsonb);
+end $function$;
