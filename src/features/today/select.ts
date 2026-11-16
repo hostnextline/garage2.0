@@ -1,75 +1,42 @@
-/* Lookups of « Aujourd'hui »: my stops of the day, what each truck is doing now, the money to collect, the proposals
-   waiting for an answer, tomorrow's confirmations, today's payments. */
-import { signal } from '@preact/signals';
-import { useEffect, useState } from 'preact/hooks';
+/* What « Aujourd'hui » reads from the device's copy: my stops of a day, what each truck is doing now, the jobs left open on a
+   past day, the money to collect, the proposals waiting for an answer, tomorrow's confirmations, today's payments.
+   Plain functions over the table signals (a screen that calls them redraws when the data changes); the rules
+   themselves are in rules.ts. */
+import { computed } from '@preact/signals';
 import type { Job, JobItem, Invoice, Payment, Shift, Truck } from '../../data/types';
 import { rowsOf, getRow } from '../../data/store';
-import { allJobs, jobsOn, activeTrucks, openShift, positionOf, invoiceOf, customer, customerName, job as jobById } from '../../data/select';
+import { allJobs, jobsOn, activeTrucks, openShift, positionOf, invoicesList, jobTotals, customer, customerName, job as jobById } from '../../data/select';
 import { myTrucks, isOwner, hasRole, can } from '../../data/auth';
 import { today, addDays, dayOf } from '../../lib/dates';
+import { OPEN, isLive, pickDay, routeInUse, openBefore, collectList, invoicesByJob, type TodayRole, type Collect } from './rules';
+import { dayView, myRoute } from './prefs';
 
-export const OPEN = ['booked', 'en_route', 'on_site'];
-const live = (j: Job) => j.status !== 'cancelled' && j.status !== 'no_show';
-
-/** which « Aujourd'hui »: the mechanic's own day, the team's day (owner, office), or the money (treasurer only) */
-export type TodayRole = 'mechanic' | 'office' | 'treasurer';
-/** an owner (or the office) who is also a mechanic picks the day they look at: the team's or their own (kept on the phone).
-    Only the day shown changes: the rights stay the same in both views. */
-export type DayView = 'office' | 'mechanic';
-const VIEW_KEY = 'his.dayView';
-export const dayView = signal<DayView>((() => { try { return localStorage.getItem(VIEW_KEY) === 'mechanic' ? 'mechanic' : 'office'; } catch { return 'office'; } })());
-export function setDayView(v: DayView) {
-  dayView.value = v;
-  try { localStorage.setItem(VIEW_KEY, v); } catch { /* private window */ }
-}
 export const hasTwoViews = () => (isOwner() || hasRole('office')) && hasRole('mechanic');
-/** pure: which day, from who the person is and the view picked */
-export function pickDay(x: { owner: boolean; office: boolean; mechanic: boolean; treasurer: boolean; agenda: boolean }, view: DayView): TodayRole {
-  if (x.owner || x.office) return x.mechanic && view === 'mechanic' ? 'mechanic' : 'office';
-  if (x.mechanic) return 'mechanic';
-  if (x.treasurer) return 'treasurer';
-  return x.agenda ? 'office' : 'treasurer';
-}
 export function todayRole(): TodayRole {
   return pickDay({ owner: isOwner(), office: hasRole('office'), mechanic: hasRole('mechanic'), treasurer: hasRole('treasurer'), agenda: can('agenda') }, dayView.value);
 }
 
-/** re-draws every `ms` (time worked, « il y a 2 min ») */
-export function useTick(ms = 30_000): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const id = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(id); }, [ms]);
-  return now;
-}
-
-/** the route this mechanic is doing now, when several are theirs (kept on the phone); null: all of them */
-const ROUTE_KEY = 'his.myRoute';
-export const myRoute = signal<string | null>((() => { try { return localStorage.getItem(ROUTE_KEY); } catch { return null; } })());
-export function setMyRoute(id: string | null) {
-  myRoute.value = id;
-  try { if (id) localStorage.setItem(ROUTE_KEY, id); else localStorage.removeItem(ROUTE_KEY); } catch { /* private window */ }
-}
-
 /* ---------- the mechanic ---------- */
+/** my trucks that are in service (a vehicle switched off has no route to do) */
+export function myActiveTrucks(): string[] {
+  const active = new Set(activeTrucks.value.map((tr) => tr.id));
+  return myTrucks().filter((id) => active.has(id));
+}
+/** the route I do now: the one chosen on « Ma journée » while it is still valid; null = all of mine */
+export function currentRoute(): string | null {
+  return routeInUse(myRoute.value, myTrucks(), new Set(activeTrucks.value.map((tr) => tr.id)));
+}
 /** my trucks' jobs of a day, in order (block, then stop) */
 export function myJobsOn(day: string): Job[] {
-  const all = myTrucks();
-  // several routes are mine (« Routes partagées »): the one I am doing now, chosen on « Ma journée »
-  const mine = all.length > 1 && myRoute.value && all.includes(myRoute.value) ? [myRoute.value] : all;
+  const route = currentRoute();
+  const mine = route ? [route] : myTrucks();
   return jobsOn(day).filter((j) => !!j.truck_id && mine.includes(j.truck_id));
-}
-/** the stop to look at now: the one on site, else the one on the way, else the first booked */
-export function nextStopOf(list: Job[]): Job | undefined {
-  return list.find((j) => j.status === 'on_site') || list.find((j) => j.status === 'en_route') || list.find((j) => j.status === 'booked');
-}
-export function summaryOf(list: Job[]): { stops: number; drive: number; work: number } {
-  const l = list.filter(live);
-  return { stops: l.length, drive: l.reduce((n, j) => n + (j.travel_min ?? 0), 0), work: l.reduce((n, j) => n + (j.duration_min || 0), 0) };
 }
 /** the next day with work on my trucks (within two weeks) and its first stop */
 export function nextWorkDay(from: string): { day: string; first: Job } | null {
   for (let i = 1; i <= 14; i++) {
     const d = addDays(from, i);
-    const first = myJobsOn(d).find(live);
+    const first = myJobsOn(d).find(isLive);
     if (first) return { day: d, first };
   }
   return null;
@@ -80,10 +47,10 @@ export function shiftsOf(staffId: string, day = today()): Shift[] {
     .filter((s) => s.staff_id === staffId && !s.deleted_at && (!s.ended_at || dayOf(new Date(s.started_at)) === day))
     .sort((a, b) => a.started_at.localeCompare(b.started_at));
 }
-/** minutes worked: every shift, the open one until now */
-export function workedMinutes(shifts: Pick<Shift, 'started_at' | 'ended_at'>[], now = Date.now()): number {
-  const ms = shifts.reduce((n, s) => n + Math.max(0, (s.ended_at ? Date.parse(s.ended_at) : now) - Date.parse(s.started_at)), 0);
-  return Math.floor(ms / 60_000);
+/** the jobs of a past day still open: the mechanic's trucks' (all of them, whatever route is chosen today), or every
+    one for the owner and the office */
+export function openBeforeFor(todayDay: string, mineOnly: boolean): Job[] {
+  return openBefore(allJobs.value, todayDay, mineOnly ? myTrucks() : null);
 }
 
 /* ---------- the team ---------- */
@@ -92,7 +59,7 @@ export interface TruckNow {
   truck: Truck; jobs: Job[]; done: number; total: number; current?: Job; next?: Job; state: TruckState; shiftOpen: boolean; posAt: string | null;
 }
 export function truckNow(tr: Truck, day = today()): TruckNow {
-  const jobs = jobsOn(day).filter((j) => j.truck_id === tr.id && live(j));
+  const jobs = jobsOn(day).filter((j) => j.truck_id === tr.id && isLive(j));
   const done = jobs.filter((j) => j.status === 'done').length;
   const current = jobs.find((j) => j.status === 'en_route') || jobs.find((j) => j.status === 'on_site');
   const next = jobs.find((j) => j.status === 'booked');
@@ -102,21 +69,14 @@ export function truckNow(tr: Truck, day = today()): TruckNow {
   return { truck: tr, jobs, done, total: jobs.length, current, next, state, shiftOpen, posAt: shiftOpen && pos ? pos.at : null };
 }
 export function trucksNow(day = today()): TruckNow[] { return activeTrucks.value.map((tr) => truckNow(tr, day)); }
-/** today's jobs no truck could take */
-export function unplacedOn(day = today()): Job[] { return jobsOn(day).filter((j) => !j.truck_id && live(j)); }
+/** a day's jobs no truck could take */
+export function unplacedOn(day = today()): Job[] { return jobsOn(day).filter((j) => !j.truck_id && isLive(j)); }
 
-export interface Collect { job: Job; invoice?: Invoice; due: number }
-/** finished jobs not (fully) paid: « payer plus tard », or a payment still missing */
+/** each job's invoice, indexed once per change of the invoices (not once per job per redraw) */
+const invoiceIndex = computed(() => invoicesByJob(invoicesList.value));
+/** finished jobs not (fully) paid, or not billed at all */
 export function toCollect(): Collect[] {
-  return allJobs.value
-    .filter((j) => j.status === 'done')
-    .map((j) => {
-      const invoice = invoiceOf(j.id);
-      const due = invoice && invoice.status === 'issued' ? Math.max(0, invoice.total_cents - invoice.paid_cents) : 0;
-      return { job: j, invoice, due };
-    })
-    .filter((x) => (x.invoice ? x.invoice.status === 'issued' && x.due > 0 : x.job.pay_later))
-    .sort((a, b) => b.job.day.localeCompare(a.job.day) || b.job.number - a.job.number);
+  return collectList(allJobs.value, invoiceIndex.value, (id) => jobTotals(id).total);
 }
 /** proposed work waiting for the customer's answer, on jobs still open */
 export function proposalsWaiting(): { item: JobItem; job: Job }[] {
@@ -126,7 +86,7 @@ export function proposalsWaiting(): { item: JobItem; job: Job }[] {
     .filter((x) => !!x.job && OPEN.includes(x.job.status))
     .sort((a, b) => a.job.day.localeCompare(b.job.day) || a.job.number - b.job.number);
 }
-/** tomorrow's appointments whose customer did not get the confirmation text */
+/** a day's appointments whose customer did not get the confirmation text (tomorrow by default) */
 export function toConfirm(day = addDays(today(), 1)): Job[] {
   return jobsOn(day).filter((j) => j.status === 'booked' && !j.confirm_sent_at);
 }

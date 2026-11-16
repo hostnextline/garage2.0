@@ -12,6 +12,7 @@ export const today: typeof fr = {
     worked: '{time} of work',
     end: 'End my day',
     endConfirm: 'Tap again to end',
+    endConfirmTrip: '{name}’s tracking will stop: tap again',
     ended: 'Day ended at {time}',
     endedSub: '{time} of work today',
     resume: 'Resume my day',
@@ -40,6 +41,7 @@ export const today: typeof fr = {
     allDoneText: 'Your jobs of the day are done. End your day when you get back.',
     empty: 'No appointment today',
     emptyText: 'Nothing on your truck’s schedule today.',
+    noneLeft: 'The stops of the day were cancelled, or the customer was not there.',
     noTruck: 'No truck in your name',
     noTruckText: 'Ask the owner to give you a truck (Team).',
     seeAgenda: 'See the schedule'
@@ -55,6 +57,8 @@ export const today: typeof fr = {
     arrived: 'I have arrived',
     arrivedSub: 'The tracking stops. End your day whenever you want.',
     arrivedToast: 'Welcome back. Have a good evening.',
+    home: 'Arrived at {place} at {time}',
+    homeText: 'Tracking has stopped. End your day whenever you want.',
     sent: 'The garage got your arrival time.',
     sentEta: 'The garage got your arrival time ({time}).',
     quiet: 'On the way to {place} (return text switched off).',
@@ -63,6 +67,11 @@ export const today: typeof fr = {
     offline: 'No signal: try again in a moment.'
   },
   then: 'Then',
+  /* the jobs of a past day still open */
+  open: {
+    title: { one: '{n} appointment not finished', other: '{n} appointments not finished' },
+    help: 'Appointments of a past day still booked, on the way or on site. Open each one to finish it, move it, mark the customer absent or cancel it.'
+  },
   closed: {
     show: { one: 'See the finished stop', other: 'See the {n} finished stops' },
     hide: 'Hide the finished stops'
@@ -113,7 +122,8 @@ export const today: typeof fr = {
   },
   collect: {
     title: 'To collect',
-    help: 'Finished jobs whose invoice is not (fully) paid, for example when the customer will pay later.',
+    help: 'Finished jobs whose invoice is not (fully) paid, for example when the customer will pay later, and those with no invoice.',
+    noInvoice: 'No invoice',
     none: 'Everything is paid.',
     later: 'Will pay later',
     laterReason: 'Will pay later: {reason}',
