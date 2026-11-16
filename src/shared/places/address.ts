@@ -67,13 +67,14 @@ export function splitPasted(input: string): Pasted {
 const PROVINCE_WORDS = '(?:QC|ON|NB|NS|PE|NL|MB|SK|AB|BC|YT|NT|NU|Québec|Quebec|Ontario|Canada)';
 const ONLY_PROVINCE = new RegExp(`^${PROVINCE_WORDS}$`, 'i');
 const TRAILING_PROVINCE = new RegExp(`[\\s,]+${PROVINCE_WORDS}$`, 'i');
-const POSTAL_INSIDE = /\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\s?-?\d[ABCEGHJ-NPRSTV-Z]\d\b/i;
+/** the text without the postal codes written in it (« Montréal, QC H3P 2C9 » → « Montréal, QC ») */
+export const withoutPostal = (s: string) => s.replace(/\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\s?-?\d[ABCEGHJ-NPRSTV-Z]\d\b/gi, ' ');
 /** the city of « 1250 rue Graham, Mont-Royal, QC H3P 2C9 » → « Mont-Royal »; of « …, Montréal QC H2L 3C1 » → « Montréal » */
 export function cityOf(address: string | null | undefined): string | null {
   const parts = String(address || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (parts.length < 2) return null;
   for (let i = 1; i < parts.length; i++) {
-    const p = parts[i].replace(POSTAL_INSIDE, '').trim();
+    const p = withoutPostal(parts[i]).trim();
     if (!p || ONLY_PROVINCE.test(p)) continue;
     if (/^\d/.test(p) || /^(app|appt|apt|unité|unite|unit|suite|bureau|local|#)/i.test(p)) continue;
     return p.replace(TRAILING_PROVINCE, '').trim() || null;

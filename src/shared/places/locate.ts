@@ -6,7 +6,7 @@
    the town or the postal code (its first three characters) when they were given. Two different places that both fit
    are not chosen: the person picks (« Laquelle est la bonne ? »). */
 import { findPostal, postalCode, fold } from '../../lib/text';
-import { splitPasted, civicOf } from './address';
+import { splitPasted, civicOf, withoutPostal } from './address';
 import { photonQuery, metres, type Suggestion } from './photon';
 import { searchPlaces } from './places';
 
@@ -58,7 +58,7 @@ const PROVINCE = /^(qc|que|quebec|on|ont|ontario|nb|ns|pe|nl|mb|sk|ab|bc|yt|nt|n
 export function wantedOf(address: string, opts: { postal?: string | null; city?: string | null } = {}): Wanted {
   const { line, postal } = splitPasted(address);
   const pc = postalCode(opts.postal) || postal || findPostal(line);
-  const parts = line.replace(/\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\s?-?\d[ABCEGHJ-NPRSTV-Z]\d\b/gi, ' ').split(',').map((x) => x.trim()).filter(Boolean);
+  const parts = withoutPostal(line).split(',').map((x) => x.trim()).filter(Boolean);
   const first = parts[0] || '';
   const range = /^\s*(\d{1,6}[A-Za-z]?)\s*-\s*(\d{1,6}[A-Za-z]?)\s+(?=\D)/.exec(first);
   const civic = range ? range[1] : civicOf(first);
