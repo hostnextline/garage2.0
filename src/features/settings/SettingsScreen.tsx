@@ -20,7 +20,7 @@ import { LookSection } from './LookSection';
 import { ConnectSection } from './ConnectSection';
 import { ExpensesSection } from './ExpensesSection';
 import { UpdatePanel } from '../../shared/app/UpdatePanel';
-import './settings.css';
+import '../../shared/look/settings.css';
 
 export type SectionKey = 'company' | 'billing' | 'services' | 'booking' | 'texts' | 'waiver' | 'look' | 'connect' | 'expenses' | 'app';
 interface SectionDef { key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; /** for everyone on the team (no « settings » right needed) */ all?: boolean; tour?: string }

@@ -13,9 +13,9 @@ import { myLook, teamLook, setMyLook, type Look } from '../../services/theme';
 import { myPhoto, setMyPhoto, shrinkPhoto } from '../../services/backdrop';
 import { HIS_NIGHT, HIS_DAY } from '../../ui/backdrops';
 import { Page, Panel, Rows, RowItem, Field, Input, PhoneInput, Seg, Button, Banner, Avatar, ask, run, toast } from '../../ui';
-import { ThemeSwatches, LookChoices } from '../settings/LookSection';
+import { ThemeSwatches, LookChoices } from '../../shared/look/LookChoices';
 import { rolesWords, teamDo } from '../../domain/team/teamApi';
-import '../settings/settings.css';
+import '../../shared/look/settings.css';
 import './account.css';
 
 export default function AccountScreen(_p: ScreenProps) {
