@@ -1,14 +1,17 @@
 /* The installed app and its updates (the rules: version.ts).
    - A new version downloads quietly. The app puts it in place by itself when nothing can be lost: at start before the
-     person touched anything, or back on the screen after 30 minutes away, with no sheet open, nothing typed, nothing
-     being sent (a phone used to stay on an old version for days: a reload never activates a waiting worker).
+     person touched anything, or back on the screen after 30 minutes away, with no sheet open, nothing typed on the
+     screen shown (since the last change of screen), nothing being sent, and never while changes wait on a phone that
+     keeps them only in memory (a phone used to stay on an old version for days: a reload never activates a waiting
+     worker). Otherwise the version waits for a calmer moment (or « Mettre à jour maintenant »).
    - An important version (« [important] ») shows a banner above every screen until it is installed.
    - A version older than the oldest one accepted (version.json `min_built_at`) shows one screen: « Mets l'app à jour ».
    - « Vérifier les mises à jour » (Réglages, Mon compte) looks on demand and offers « Mettre à jour maintenant »; a
      version still downloading is said so (never « à jour »).
    - Only the tab that asked reloads: another open tab says « installée : recharger » instead of losing what is typed. */
-import { signal } from '@preact/signals';
+import { signal, effect } from '@preact/signals';
 import { layersOpen } from '../../platform/history';
+import { route } from '../../platform/router';
 import { reportError } from '../../platform/report';
 import { net } from '../../data/sync';
 import { parseRemote, isNewer, isImportant, isTooOld, mayApplyNow, checkVerdict, type RemoteVersion } from './version';
@@ -74,9 +77,20 @@ function typing(): boolean {
   const a = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
   return !!a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
 }
+/* typed or chosen in a field of the screen shown: cleared when the screen changes (a saved form moves on) */
+let edited = false;
+let editedOn = '';
+function noteEdit() { edited = true; editedOn = route.value.path; }
+/** what the reload would lose of the phone's own copy (read tolerantly: the data layer's fields arrive at the merge) */
+function storageState(): { storageLost: boolean; pending: number } {
+  const n = net.value as unknown as Record<string, unknown>;
+  const storageLost = n.storageBroken === true || n.storage === 'memory';
+  return { storageLost, pending: typeof n.pending === 'number' ? n.pending : 0 };
+}
 function tryApply(moment: 'start' | 'resume', awayMs: number) {
   const v = remoteVersion.value?.version || 'next';
-  const ok = mayApplyNow({ ready: updateReady.value, moment, awayMs, layersOpen: layersOpen.value, typing: typing(), sending: !!net.value.sending, appliedBefore: appliedBefore(v), touched });
+  const ok = mayApplyNow({ ready: updateReady.value, moment, awayMs, layersOpen: layersOpen.value, typing: typing(), sending: !!net.value.sending, appliedBefore: appliedBefore(v), touched,
+    edited: edited && editedOn === route.value.path, ...storageState() });
   if (ok) { remember(v); applyUpdate(); }
 }
 
@@ -84,6 +98,9 @@ export async function startPwa() {
   if (import.meta.env.DEV || !('serviceWorker' in navigator)) return;
   const bootAt = Date.now();
   document.addEventListener('pointerdown', () => { touched = true; }, { capture: true, once: true });
+  document.addEventListener('input', noteEdit, true);
+  document.addEventListener('change', noteEdit, true);
+  effect(() => { if (route.value.path !== editedOn) edited = false; });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
     if (hiddenAt) { tryApply('resume', Date.now() - hiddenAt); hiddenAt = 0; }

@@ -166,8 +166,9 @@ button.row-item:hover, a.row-item:hover { background: var(--sunken); }
   .sheet-back { align-items: center; padding: var(--sp-6); }
   .sheet { border-radius: 22px; max-height: 88dvh; }
 }
-/* a moment after a sheet closes: takes the second tap of a double tap (ui/shield.tsx); invisible */
-.tap-shield { position: fixed; inset: 0; z-index: 90; background: transparent; }
+/* a moment after a sheet closes: takes the second tap of a double tap (ui/shield.tsx); invisible. Above the screen and
+   its bars, under every layer that may open right after (a sheet, a question, a toast's « Annuler », a menu) */
+.tap-shield { position: fixed; inset: 0; z-index: 55; background: transparent; }
 @keyframes rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 

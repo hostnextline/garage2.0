@@ -70,12 +70,22 @@ export function agoText(at: number | string | null | undefined, now = Date.now()
 
 /* ---------- the route this person does (« Routes partagées ») ---------- */
 const ROUTE_KEY = 'his.myRoute';
+const readRoute = (): string | null => { try { return localStorage.getItem(ROUTE_KEY); } catch { return null; } };
 /** the route this mechanic is doing now, when several are theirs (kept on the phone, the same key as « Ma journée »);
     null: all of them */
-export const myRoute = signal<string | null>((() => { try { return localStorage.getItem(ROUTE_KEY); } catch { return null; } })());
+export const myRoute = signal<string | null>(readRoute());
 export function setMyRoute(id: string | null) {
   myRoute.value = id;
   try { if (id) localStorage.setItem(ROUTE_KEY, id); else localStorage.removeItem(ROUTE_KEY); } catch { /* private window */ }
+}
+/** « Ma journée » keeps its own copy of the choice and writes the same key: the route counted here is read again from
+    the phone before each position (and on a change made in another tab), so a route changed during the day is never
+    left at the one read when the app opened. The phone cannot keep it (private window): the signal is the truth. */
+export function refreshMyRoute(): string | null {
+  let kept: string | null;
+  try { kept = localStorage.getItem(ROUTE_KEY); } catch { return myRoute.value; }
+  if (kept !== myRoute.value) myRoute.value = kept;
+  return kept;
 }
 
 /* ---------- the sharing (browser) ---------- */
@@ -134,6 +144,8 @@ async function maybeSend(fix: Fix) {
 function onFix(p: GeolocationPosition) {
   const fix = readFix(p);
   lastFix = fix;
+  // the route may have changed in « Ma journée » since the last reading: the job of this position follows it at once
+  refreshMyRoute();
   if (sharing.value.status !== 'on') setStatus('on');
   void maybeSend(fix);
 }
@@ -171,8 +183,10 @@ function stop() {
 export function startPositionSharing() {
   if (started || typeof window === 'undefined' || typeof document === 'undefined') return;
   started = true;
+  window.addEventListener('storage', (e) => { if (e.key === null || e.key === ROUTE_KEY) refreshMyRoute(); });
   document.addEventListener('visibilitychange', () => {
     const v = document.visibilityState !== 'hidden';
+    if (v) refreshMyRoute();
     if (v && !visible.value) blocked = false;   // back from the phone's settings: ask again
     visible.value = v;
   });

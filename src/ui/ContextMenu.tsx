@@ -64,6 +64,22 @@ export function pressProps(onPress: (x: number, y: number) => boolean | void) {
 }
 function closeMenu() { menu.value = null; }
 
+/** a right-click on the invisible layer under an open menu. The late right-click Android sends after a long press lands
+    there (the layer appeared under the finger): it keeps the menu that just opened. A real right-click elsewhere closes
+    the menu and goes on to what is under the mouse, which opens its own menu there (as before the layer); nothing there
+    to offer: the browser's own menu. */
+function shadeContextMenu(e: MouseEvent) {
+  if (Date.now() - lastPress < 1200) { e.preventDefault(); return; }
+  const shade = e.currentTarget as HTMLElement | null;
+  closeMenu();
+  if (!shade || typeof document.elementsFromPoint !== 'function') { e.preventDefault(); return; }
+  const under = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el !== shade && !el.classList.contains('agenda-menu') && !el.closest('.agenda-menu'));
+  if (!under) { e.preventDefault(); return; }
+  const again = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY, screenX: e.screenX, screenY: e.screenY, button: 2, buttons: e.buttons });
+  under.dispatchEvent(again);
+  if (again.defaultPrevented) e.preventDefault();
+}
+
 export function ContextMenuHost() {
   const m = menu.value;
   const box = useRef<HTMLDivElement>(null);
@@ -93,7 +109,7 @@ export function ContextMenuHost() {
   // press let the click of that tap open the appointment under the finger.
   return createPortal(
     <>
-      <div class="agenda-menu-shade" aria-hidden="true" onClick={closeMenu} onContextMenu={(e) => { e.preventDefault(); closeMenu(); }}
+      <div class="agenda-menu-shade" aria-hidden="true" onClick={closeMenu} onContextMenu={shadeContextMenu}
         onWheel={closeMenu} onTouchMove={closeMenu} />
       <div ref={box} class="agenda-menu glass-strong" role="menu" aria-label={m.title} style={{ left: `${left}px`, top: `${top}px` }} data-testid="agenda-menu"
         onContextMenu={(e) => e.preventDefault()}>

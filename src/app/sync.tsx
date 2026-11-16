@@ -55,7 +55,7 @@ export function SyncSheet() {
       <div class="stack">
         {!v.online && <Banner kind="warn">{t('shell.sync.offlineLead')}</Banner>}
         {v.storageLost && <Banner kind="bad">{t('shell.sync.storage')}</Banner>}
-        {v.stuck > 0 && <Banner kind="warn">{t('shell.stuck', { n: v.stuck })}</Banner>}
+        {v.stuck > 0 && <Banner kind="warn">{t('shell.stuck', { n: v.stuck })}{v.stuckLabel ? ` — ${v.stuckLabel}` : ''}</Banner>}
         <p class="muted small" style={{ margin: 0 }}>
           {n.realtime ? t('shell.sync.live') : t('shell.sync.notLive')}
           {n.lastPull ? ` — ${t('shell.sync.lastPull', { when: stamp(n.lastPull, lang.value) })}` : ''}

@@ -56,11 +56,20 @@ export interface ApplyMoment {
   appliedBefore: boolean;
   /** the person already touched the screen since the app opened */
   touched: boolean;
+  /** something was typed or chosen in a field since the last change of screen (a booking half filled and left over lunch:
+      the focus is gone, the words are not saved). Optional: unknown = nothing typed */
+  edited?: boolean;
+  /** this phone keeps changes only in memory (private window, storage lost or full): a reload loses what waits */
+  storageLost?: boolean;
+  /** changes waiting on this phone */
+  pending?: number;
 }
 /** back to the screen after this long away: a waiting version may be put in place */
 export const RESUME_AFTER_MS = 30 * 60_000;
 export function mayApplyNow(m: ApplyMoment): boolean {
-  if (!m.ready || m.appliedBefore || m.layersOpen > 0 || m.typing || m.sending) return false;
+  if (!m.ready || m.appliedBefore || m.layersOpen > 0 || m.typing || m.sending || m.edited) return false;
+  // kept only in memory: a reload would throw away the changes still waiting
+  if (m.storageLost && (m.pending ?? 0) > 0) return false;
   if (m.moment === 'start') return !m.touched;
   return m.awayMs >= RESUME_AFTER_MS;
 }

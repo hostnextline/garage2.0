@@ -1,6 +1,7 @@
 /* The banners above every screen, in their own place (a banner that comes and goes never moves the screen's red
    button): the old address, « Voir l'app comme… », a lost session, a phone that cannot keep changes, an important
-   update waiting, a new version installed by another tab, the changes the server refused. */
+   update waiting, a new version installed by another tab, changes stuck at the head of the queue, the changes the
+   server refused. */
 import { Eye, LogIn, ArrowUpCircle, RefreshCw } from 'lucide-preact';
 import { t } from '../lib/i18n';
 import { navigate } from '../platform/router';
@@ -35,6 +36,11 @@ export function ShellBanners() {
       {installedElsewhere.value && (
         <Banner kind="info" title={t('shell.update.installed')}
           action={<Button size="sm" icon={<RefreshCw size={16} />} onClick={() => location.reload()}>{t('shell.reload')}</Button>} data-testid="update-installed" />
+      )}
+      {v.stuck > 0 && v.online && (
+        <Banner kind="warn" title={t('shell.stuck', { n: v.stuck })} action={<Button size="sm" onClick={() => { syncOpen.value = true; }}>{t('shell.failed.show')}</Button>} data-testid="stuck-banner">
+          {v.stuckLabel && <span class="small">{v.stuckLabel}</span>}
+        </Banner>
       )}
       {failed.length > 0 && (
         <Banner kind="bad" title={t('shell.failed.title', { n: failed.length })} action={<Button size="sm" onClick={() => { syncOpen.value = true; }}>{t('shell.failed.show')}</Button>} data-testid="failed-banner">

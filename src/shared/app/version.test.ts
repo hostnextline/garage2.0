@@ -34,6 +34,15 @@ describe('a waiting version is put in place by the app itself only when nothing 
     expect(mayApplyNow({ ...base, moment: 'start', awayMs: 0, touched: false })).toBe(true);
     expect(mayApplyNow({ ...base, moment: 'start', awayMs: 0, touched: true })).toBe(false);
   });
+  it('a screen half filled and not saved (a booking left over lunch, the focus gone) is never wiped by the update', () => {
+    expect(mayApplyNow({ ...base, typing: false, edited: true })).toBe(false);
+    expect(mayApplyNow({ ...base, edited: false })).toBe(true);
+  });
+  it('a phone keeping changes only in memory never reloads while changes wait', () => {
+    expect(mayApplyNow({ ...base, storageLost: true, pending: 2 })).toBe(false);
+    expect(mayApplyNow({ ...base, storageLost: true, pending: 0 })).toBe(true);
+    expect(mayApplyNow({ ...base, storageLost: false, pending: 2 })).toBe(true);
+  });
 });
 
 describe('« Vérifier les mises à jour »', () => {
