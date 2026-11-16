@@ -62,3 +62,9 @@ test('the cutover: the runbook and the read-only questions are there; the questi
   assert.equal((sql.match(/\bselect\b/gi) || []).length > 0, true);
   assert.match(sql, /as fingerprint;/);
 });
+
+test('the full test workflow runs the tests of ops too (on the work branches; never in the publishing path)', () => {
+  const y = lire('.github/workflows/tests-complets.yml');
+  assert.match(y, /node --test --test-concurrency=1 tests\/db\/\*\.test\.mjs tests\/api\/\*\.test\.mjs ops\/tests\/\*\.test\.mjs/);
+  assert.match(y, /branches-ignore: \[main, vercel, gh-pages, construction-v2\]/);
+});
