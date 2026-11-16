@@ -92,7 +92,9 @@ async function alertText(phone: string, name: string | null, words: string | nul
     const ids = ((people || []) as { id: string }[]).map((x) => x.id);
     if (!ids.length) return 0;
     const { data: subs } = await db.from('push_subs').select('id, endpoint, p256dh, auth').in('staff_id', ids);
-    const list = (subs || []) as { id: string; endpoint: string; p256dh: string; auth: string }[];
+    // a push address is whatever a browser gave: the server only posts to https (and to its own machine, for the tests)
+    const list = ((subs || []) as { id: string; endpoint: string; p256dh: string; auth: string }[])
+      .filter((s) => /^https:\/\/[^/\s]+\//i.test(s.endpoint) || /^http:\/\/127\.0\.0\.1(:\d+)?\//.test(s.endpoint));
     if (!list.length) return 0;
     const { data: known } = await db.from('customers').select('first_name, last_name').eq('phone_digits', phone.replace(/\D/g, '').slice(-10)).is('deleted_at', null).limit(1);
     const k = ((known || []) as { first_name: string | null; last_name: string | null }[])[0];

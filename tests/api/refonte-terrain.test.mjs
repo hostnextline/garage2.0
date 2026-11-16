@@ -405,3 +405,254 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
     if (stub) await db.query(RECON_UNSTUB);
   }
 });
+
+/* ---------- « Je pars »: whose trip, two at once, the way back sent twice ---------- */
+async function enrouteSetup(driverId) {
+  const dow = (await q(`select extract(dow from public.local_today())::int d`))[0].d;
+  const truck = randomUUID(); made.trucks.push(truck);
+  await q(`insert into public.trucks (id, name, active, driver_id) values ($1, 'Voiture test', true, $2)`, [truck, driverId]);
+  await q(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, '[[0,1440]]')`, [truck, dow]);
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, phone, lat, lng) values ($1, 'Lina', '438 556-0170', 45.53, -73.61)`, [cust]);
+  return { truck, cust };
+}
+async function enrouteJob(cust, truck, createdBy, status = 'en_route') {
+  const job = randomUUID();
+  await q(`insert into public.jobs (id, customer_id, day, block, truck_id, status, duration_min, created_by) values ($1, $2, public.local_today(), 'am', $3, $4, 60, $5)`, [job, cust, truck, status, createdBy]);
+  return job;
+}
+
+test('« Je pars »: the trip, the name in the text and the map are those of the person who leaves, not of the truck’s named driver; the office pressing for the driver uses HIS position; the job’s rows come back', async () => {
+  const adam = await member('Adam Partant', '{mechanic}');
+  const bilal = await member('Bilal Chauffeur', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(bilal.id);
+  // Adam takes Bilal's vehicle today (shared routes, or the job is his): he taps « Je pars »
+  const job = await enrouteJob(cust, truck, adam.id);
+  await rpc('shift_start', {}, adam.jwt);   // his day started: his phone sends its position
+  await clearLog();
+  const r = await fn('enroute', { action: 'start', job_id: job, base: BASE, pos: { lat: 45.50, lng: -73.66 } }, adam.jwt);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.match(r.message, /Adam/, 'the text names the one who leaves');
+  assert.doesNotMatch(r.message, /Bilal/);
+  assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [job]))[0].staff_id, adam.id);
+  const t = await rpc('public_track', { p_token: tokenOf(r.link) }, K.anon);
+  assert.equal(t.mechanic, 'Adam', 'the customer follows Adam');
+  assert.ok(t.pos && Math.abs(t.pos.lat - 45.50) < 1e-6, 'and Adam’s phone: ' + JSON.stringify(t.pos));
+  // the job's rows as they are now (they used to be always empty: job_payload is kept for the server)
+  assert.ok(r.rows && Array.isArray(r.rows.jobs) && r.rows.jobs[0]?.id === job && r.rows.trips.length === 1, 'rows: ' + JSON.stringify(r.rows).slice(0, 200));
+  // the owner, at the office, presses for Bilal's job: Bilal leaves; the arrival time is worked out from where BILAL is,
+  // never from the office's phone, and the office's position is not taken as the truck's
+  const job2 = await enrouteJob(cust, truck, owner);
+  await q(`insert into public.positions (id, lat, lng, at) values ($1, 45.52, -73.60, now()) on conflict (id) do update set lat = 45.52, lng = -73.60, at = now(), deleted_at = null`, [bilal.id]);
+  await clearLog();
+  const o = await fn('enroute', { action: 'start', job_id: job2, base: BASE, pos: { lat: 45.40, lng: -73.90 } }, ownerJwt);
+  assert.equal(o.ok, true, JSON.stringify(o));
+  assert.match(o.message, /Bilal/);
+  assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [job2]))[0].staff_id, bilal.id);
+  const osrm = (await mockLog()).filter((x) => x.svc === 'osrm');
+  assert.deepEqual(osrm.map((x) => x.pts[0]), [[-73.60, 45.52]], 'the route starts where Bilal is');
+  assert.equal((await q(`select count(*)::int n from public.positions where id = $1`, [owner]))[0].n, 0, 'the office is not on the map');
+  // naming who leaves: the owner may name Adam; a mechanic may not leave in somebody else's name
+  const job3 = await enrouteJob(cust, truck, adam.id);
+  assert.deepEqual([(await fn('enroute', { action: 'start', job_id: job3, base: BASE, driver_id: bilal.id }, adam.jwt)).code], ['not_allowed']);
+  const named = await fn('enroute', { action: 'start', job_id: job3, base: BASE, driver_id: adam.id }, ownerJwt);
+  assert.equal(named.ok, true, JSON.stringify(named));
+  assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [job3]))[0].staff_id, adam.id);
+  assert.equal((await fn('enroute', { action: 'start', job_id: job3, base: BASE, driver_id: randomUUID() }, ownerJwt)).code, 'not_found');
+});
+
+test('« Je pars » pressed on two phones at the same instant: one trip, one text, both answers ok (no « server problem »)', async () => {
+  const adam = await member('Adam Double', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(adam.id);
+  await q(`insert into public.secrets (key, value) values ('ghl_token', 'pit-abcdef1234567890'), ('ghl_location', 'LOC12345678') on conflict (key) do update set value = excluded.value`);
+  try {
+    for (let round = 0; round < 3; round++) {
+      const job = await enrouteJob(cust, truck, adam.id);
+      await clearLog();
+      const both = await Promise.all([1, 2].map(() => fn('enroute', { action: 'start', job_id: job, base: BASE, pos: { lat: 45.50, lng: -73.66 } }, adam.jwt)));
+      assert.deepEqual(both.map((x) => [x.status, x.ok]), [[200, true], [200, true]], JSON.stringify(both));
+      assert.deepEqual(both.map((x) => x.sms).sort(), ['already', 'sent'], JSON.stringify(both.map((x) => x.sms)));
+      assert.equal((await q(`select count(*)::int n from public.trips where job_id = $1`, [job]))[0].n, 1);
+      assert.equal((await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').length, 1, 'one text');
+    }
+  } finally {
+    await q(`delete from public.secrets where key like 'ghl%'`);
+  }
+});
+
+test('« Je pars vers la Centrale » sent twice with the same operation id (a lost answer, then a second tap): one trip, one text, the first link keeps working; after a failed text the same id tries again', async () => {
+  const adam = await member('Adam Retour', '{mechanic}');
+  const [{ booking: before }] = await q(`select booking from public.settings where id = 1`);
+  await q(`update public.settings set booking = booking || jsonb_build_object('return_phone', '514 771-4243',
+    'home', jsonb_build_object('label', 'Centrale', 'address', '1401 rue Legendre O, Montréal', 'lat', 45.5312898, 'lng', -73.6544639)) where id = 1`);
+  await q(`insert into public.secrets (key, value) values ('ghl_token', 'pit-abcdef1234567890'), ('ghl_location', 'LOC12345678') on conflict (key) do update set value = excluded.value`);
+  const texts = async () => (await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').length;
+  try {
+    const op = randomUUID();
+    await clearLog();
+    const one = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.50, lng: -73.66 }, op }, adam.jwt);
+    assert.deepEqual([one.ok, one.sms], [true, 'sent'], JSON.stringify(one));
+    const two = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.50, lng: -73.66 }, op }, adam.jwt);
+    assert.deepEqual([two.ok, two.sms, two.again, two.rows.trips.length], [true, 'already', true, 1], JSON.stringify(two));
+    assert.equal(await texts(), 1, 'one text');
+    assert.equal((await rpc('public_track', { p_token: tokenOf(one.link) }, K.anon)).status, 'active', 'the link of the first text still works');
+    assert.equal((await q(`select count(*)::int n from public.trips where staff_id = $1 and kind = 'return'`, [adam.id]))[0].n, 1);
+    assert.deepEqual(await q(`select status, kind from public.messages where id = $1`, [op]), [{ status: 'sent', kind: 'return_trip' }]);
+    // at the same instant, a new id: one of them makes the trip
+    const op2 = randomUUID();
+    await clearLog();
+    const par = await Promise.all([1, 2].map(() => fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.51, lng: -73.65 }, op: op2 }, adam.jwt)));
+    assert.deepEqual(par.map((x) => x.sms).sort(), ['already', 'sent'], JSON.stringify(par));
+    assert.equal(await texts(), 1);
+    // without an id (yesterday's app): as before, each tap is a new trip back
+    const plain = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.51, lng: -73.65 } }, adam.jwt);
+    assert.deepEqual([plain.ok, plain.sms], [true, 'sent']);
+    // the text fails (GoHighLevel refuses): the same id again sends it
+    await fetch(`${MOCK}/control?ghl=fail`);
+    const op3 = randomUUID();
+    const bad = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.51, lng: -73.65 }, op: op3 }, adam.jwt);
+    assert.equal(bad.sms, 'error', JSON.stringify(bad));
+    await fetch(`${MOCK}/control?ghl=ok`);
+    const retry = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.51, lng: -73.65 }, op: op3 }, adam.jwt);
+    assert.deepEqual([retry.ok, retry.sms], [true, 'sent'], JSON.stringify(retry));
+    assert.deepEqual(await q(`select status from public.messages where id = $1`, [op3]), [{ status: 'sent' }]);
+    // an id that is not one, or used by another person
+    assert.equal((await fn('enroute', { action: 'return', base: BASE, op: 'abc' }, adam.jwt)).code, 'bad_op');
+    assert.equal((await fn('enroute', { action: 'return', base: BASE, op }, ownerJwt)).code, 'op_reused');
+  } finally {
+    await fetch(`${MOCK}/control?ghl=ok`);
+    await q(`update public.settings set booking = $1 where id = 1`, [before]);
+    await q(`delete from public.secrets where key like 'ghl%'`);
+  }
+});
+
+/* ---------- the conversation: a text sent twice with the same operation id; the pretend number ---------- */
+test('conversation « send » with an operation id: the same text tapped twice (or at the same instant) leaves once; after a failure it goes on the next try; the « Essayer » number is never texted', async () => {
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, phone) values ($1, 'Rima', '438 556-0180')`, [cust]);
+  await q(`insert into public.secrets (key, value) values ('ghl_token', 'pit-abcdef1234567890'), ('ghl_location', 'LOC12345678') on conflict (key) do update set value = excluded.value`);
+  const texts = async () => (await mockLog()).filter((x) => x.svc === 'ghl' && x.path === '/conversations/messages').length;
+  try {
+    await clearLog();
+    const op = randomUUID();
+    const one = await fn('conversation', { action: 'send', customer_id: cust, message: 'On arrive vers 10 h.', op }, ownerJwt);
+    assert.deepEqual([one.ok, one.status], [true, 'sent'], JSON.stringify(one));
+    const two = await fn('conversation', { action: 'send', customer_id: cust, message: 'On arrive vers 10 h.', op }, ownerJwt);
+    assert.deepEqual([two.ok, two.status, two.again], [true, 'sent', true], JSON.stringify(two));
+    assert.equal(await texts(), 1, 'the customer gets it once');
+    assert.deepEqual(await q(`select status, body, customer_id from public.messages where id = $1`, [op]), [{ status: 'sent', body: 'On arrive vers 10 h.', customer_id: cust }]);
+    // at the same instant
+    await clearLog();
+    const op2 = randomUUID();
+    const par = await Promise.all([1, 2].map(() => fn('conversation', { action: 'send', customer_id: cust, message: 'Merci !', op: op2 }, ownerJwt)));
+    assert.equal(await texts(), 1, JSON.stringify(par));
+    assert.equal(par.filter((x) => x.again).length, 1);
+    assert.equal((await q(`select count(*)::int n from public.messages where body = 'Merci !'`))[0].n, 1);
+    // GoHighLevel refuses: the same id again sends it (still one row)
+    await fetch(`${MOCK}/control?ghl=fail`);
+    const op3 = randomUUID();
+    assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'Encore là ?', op: op3 }, ownerJwt)).status, 'error');
+    await fetch(`${MOCK}/control?ghl=ok`);
+    assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'Encore là ?', op: op3 }, ownerJwt)).status, 'sent');
+    assert.deepEqual(await q(`select status from public.messages where body = 'Encore là ?'`), [{ status: 'sent' }]);
+    // without an id: as before (each tap sends)
+    await clearLog();
+    assert.equal((await fn('conversation', { action: 'send', customer_id: cust, message: 'Sans numéro' }, ownerJwt)).status, 'sent');
+    assert.equal(await texts(), 1);
+    // the pretend number of « Essayer » (Client TEST): nobody is behind it
+    await clearLog();
+    const test = await fn('conversation', { action: 'send', phone: '+15145550100', message: 'Bonjour' }, ownerJwt);
+    assert.deepEqual([test.status, test.code], [400, 'test_number']);
+    assert.equal(await texts(), 0);
+  } finally {
+    await fetch(`${MOCK}/control?ghl=ok`);
+    await q(`delete from public.secrets where key like 'ghl%'`);
+  }
+});
+
+/* ---------- the team: links of a removed person, « Mot de passe oublié », what the owner types ---------- */
+test('a new-password link stops working once the person is removed (it used to lift his ban); removing someone cancels his links', async () => {
+  const gone = await member('Sami Parti', '{mechanic}');
+  const link = await fn('team', { action: 'reset-link', staff_id: gone.id, send: 'none', base: BASE }, ownerJwt);
+  assert.equal(link.ok, true, JSON.stringify(link));
+  // removed by another way than « Retirer » (the database rule alone): the old link is refused, the ban stays
+  await q(`update public.staff set active = false, deleted_at = now() where id = $1`, [gone.id]);
+  await q(`update auth.users set banned_until = now() + interval '100 years' where id = $1`, [gone.id]);
+  const r = await fn('team', { action: 'invite-accept', token: tokenOf(link.link), password: 'nouveau-mot-9' });
+  assert.deepEqual([r.ok, r.code], [false, 'used'], JSON.stringify(r));
+  assert.ok((await q(`select banned_until from auth.users where id = $1`, [gone.id]))[0].banned_until, 'still banned');
+  assert.equal((await signIn(gone.email, 'nouveau-mot-9')).access_token, undefined, 'cannot sign in');
+  // « Retirer »: the links he holds are cancelled at once
+  const gone2 = await member('Rami Parti', '{mechanic}');
+  const link2 = await fn('team', { action: 'reset-link', staff_id: gone2.id, send: 'none', base: BASE }, ownerJwt);
+  assert.equal((await fn('team', { action: 'remove', staff_id: gone2.id }, ownerJwt)).ok, true);
+  assert.equal((await fn('team', { action: 'invite-info', token: tokenOf(link2.link) })).code, 'used');
+  // a person still on the team: his link works as before
+  const here = await member('Nora Ici', '{office}');
+  const link3 = await fn('team', { action: 'reset-link', staff_id: here.id, send: 'none', base: BASE }, ownerJwt);
+  assert.equal((await fn('team', { action: 'invite-accept', token: tokenOf(link3.link), password: 'nouveau-mot-9' })).ok, true);
+  assert.ok((await signIn(here.email, 'nouveau-mot-9')).access_token);
+});
+
+test('« Mot de passe oublié »: finds the account whatever the capital letters; never cancels the link the owner just made; the owner’s link for a person with no e-mail is a clear refusal', async () => {
+  const mixed = await member('Lea Majuscule', '{office}', { staffEmail: null });
+  const typed = `Lea.Maj-${randomUUID().slice(0, 4)}@Test.Local`;
+  await q(`update public.staff set email = $1 where id = $2`, [typed, mixed.id]);
+  // the owner has a link without e-mail: refused with a word, not « server problem »
+  const none = await fn('team', { action: 'reset-link', staff_id: mixed.id, send: 'none', base: BASE }, ownerJwt);
+  assert.equal(none.ok, true, 'her file has an e-mail: ' + JSON.stringify(none));
+  const noMail = await member('Sans Courriel', '{mechanic}', { staffEmail: null });
+  const r0 = await fn('team', { action: 'reset-link', staff_id: noMail.id, send: 'none', base: BASE }, ownerJwt);
+  assert.deepEqual([r0.status, r0.code], [400, 'no_email'], JSON.stringify(r0));
+  // somebody types her address in « Mot de passe oublié » (in lower case): a link is made for her...
+  const before = (await q(`select count(*)::int n from public.invitations where kind = 'reset' and lower(email) = lower($1)`, [typed]))[0].n;
+  assert.equal((await fn('team', { action: 'forgot', email: typed.toLowerCase(), base: BASE })).ok, true);
+  assert.equal((await q(`select count(*)::int n from public.invitations where kind = 'reset' and lower(email) = lower($1)`, [typed]))[0].n, before + 1, 'found despite the capitals');
+  // ...and the owner's link still works
+  assert.equal((await fn('team', { action: 'invite-info', token: tokenOf(none.link) })).ok, true, 'the owner’s link is not cancelled');
+  assert.equal((await fn('team', { action: 'invite-accept', token: tokenOf(none.link), password: 'mot-de-lea-9' })).ok, true);
+});
+
+test('what the owner types in Équipe and Branchements: rights only as on / off, names escaped in the e-mail, the GoHighLevel keys never half saved', async () => {
+  const inv = await fn('team', { action: 'invite', email: `zoe-${randomUUID().slice(0, 6)}@test.local`, full_name: '<b>Zoé</b> Test', roles: ['office'],
+    rights: { book: true, agenda: 'oui', invoices: false, 'drop table': true }, send: 'none', base: BASE }, ownerJwt);
+  assert.equal(inv.ok, true, JSON.stringify(inv));
+  assert.deepEqual((await q(`select rights from public.invitations where id = $1`, [inv.id]))[0].rights, { book: true, invoices: false });
+  assert.doesNotMatch(inv.message.html, /<b>/, 'the name is text in the e-mail, not HTML');
+  assert.match(inv.message.html, /&lt;b&gt;Zoé&lt;\/b&gt;/);
+  assert.match(inv.message.text, /<b>Zoé<\/b>/, 'the plain text keeps what was typed');
+  // a good GoHighLevel key with a wrong account number: nothing is saved
+  await q(`delete from public.secrets where key like 'ghl%'`);
+  const half = await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'x' }, ownerJwt);
+  assert.equal(half.code, 'ghl_location');
+  assert.equal((await q(`select count(*)::int n from public.secrets where key like 'ghl%'`))[0].n, 0, 'the key is not saved alone');
+  assert.equal((await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678' }, ownerJwt)).ok, true);
+  assert.equal((await q(`select count(*)::int n from public.secrets where key like 'ghl%'`))[0].n, 2);
+  await q(`delete from public.secrets where key like 'ghl%'`);
+});
+
+/* ---------- Hermes' pairing ---------- */
+test('Hermes’ pairing: posts from anybody while no pairing is waiting do not block the real one; ten wrong codes burn the waiting code', async () => {
+  const fp = async (c) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(c))).toString('hex');
+  const key = 'k'.repeat(40);
+  try {
+    await q(`delete from public.rate_limits where key = 'hermes:pair'`);
+    await q(`delete from public.secrets where key like 'hermes%'`);
+    for (let i = 0; i < 12; i++) assert.equal((await fn('hermes', { action: 'pair', code: 'n-' + i, url: MOCK + '/hermes', key })).code, 'no_pair');
+    await q(`insert into public.secrets (key, value) values ('hermes_pair', $1)`, [`${await fp('le-bon-code')}|${new Date(Date.now() + 600000).toISOString()}`]);
+    for (let i = 0; i < 3; i++) assert.equal((await fn('hermes', { action: 'pair', code: 'faux-' + i, url: MOCK + '/hermes', key })).code, 'bad_pair');
+    const ok = await fn('hermes', { action: 'pair', code: 'le-bon-code', url: MOCK + '/hermes', key });
+    assert.equal(ok.ok, true, 'the real pairing goes through: ' + JSON.stringify(ok));
+    assert.equal((await q(`select value from public.secrets where key = 'hermes_key'`))[0].value, key);
+    // guessing: the 10th wrong code in the hour cancels the waiting one
+    await q(`delete from public.rate_limits where key = 'hermes:pair'`);
+    await q(`insert into public.secrets (key, value) values ('hermes_pair', $1) on conflict (key) do update set value = excluded.value`, [`${await fp('autre-code')}|${new Date(Date.now() + 600000).toISOString()}`]);
+    const codes = [];
+    for (let i = 0; i < 10; i++) codes.push((await fn('hermes', { action: 'pair', code: 'devine-' + i, url: MOCK + '/hermes', key })).code);
+    assert.deepEqual(codes, [...Array(9).fill('bad_pair'), 'busy']);
+    assert.equal((await fn('hermes', { action: 'pair', code: 'autre-code', url: MOCK + '/hermes', key })).code, 'no_pair', 'burned');
+  } finally {
+    await q(`delete from public.rate_limits where key = 'hermes:pair'`);
+    await q(`delete from public.secrets where key like 'hermes%'`);
+  }
+});
