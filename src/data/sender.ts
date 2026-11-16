@@ -16,7 +16,7 @@ import { sendEntry, REQUEST_MS, type Sent } from './send';
 import { net, setNet } from './net';
 import { ask } from './client';
 import { sampleServerTime } from './clock';
-import { AppError, classify, errorText } from '../lib/errors';
+import { AppError, classify, keptRefusal } from '../lib/errors';
 
 /** what the sender needs from its engine */
 export interface SenderHost {
@@ -151,7 +151,7 @@ export class Sender {
   }
   /** a refusal the person must see in the frame's « refusé » list although no screen waited for it */
   listRefusal(name: string, args: Record<string, unknown>, err: AppError, label?: string) {
-    this.h.outbox.add(this.entry({ kind: 'rpc', rpc: name, args, label, state: 'failed', error: errorText(err), err: { kind: err.kind, sub: err.sub, code: err.code, hint: err.hint, status: err.status } }), true);
+    this.h.outbox.add(this.entry({ kind: 'rpc', rpc: name, args, label, state: 'failed', ...keptRefusal(err) }), true);
     this.h.lock.poke('outbox');
   }
   /** runs `fn` with the answer once the operation `op` is confirmed */
@@ -279,7 +279,7 @@ export class Sender {
     const told = this.refusals.get(e.op) || [];
     this.refusals.delete(e.op);
     if (w?.watching) await this.h.outbox.done(it);
-    else await this.h.outbox.refuse(it, errorText(err), { kind: err.kind, sub: err.sub, code: err.code, hint: err.hint, status: err.status });
+    else { const k = keptRefusal(err); await this.h.outbox.refuse(it, k.error, k.err); }
     this.h.lock.poke('outbox');
     this.head = null;
     w?.reject(err);

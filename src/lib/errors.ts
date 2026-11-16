@@ -97,7 +97,15 @@ export function errorMessage(e: unknown): string {
   return t('common.genericError', { msg: said });
 }
 
-/** a refusal as it is kept with a change the server refused: the words to show, and what the server said */
+/** a refusal as it is kept with a change the server refused: the words to show, in the person's language now */
 export function errorText(e: unknown): string {
   return errorMessage(e).slice(0, 300);
+}
+
+/** what a refused change keeps: `error`, the words in the person's language at the moment of the refusal (read as they
+    are by anything that shows the entry, the previous version of the app too), and under `err` the refusal's code with
+    the server's own sentence (`said`), so that the « refusé » list can say it again in another language: words kept in
+    English could not be turned back into the server's French sentence once the person switches to French. */
+export function keptRefusal(e: AppError): { error: string; err: { kind: string; sub: string; code?: string; hint?: string; status?: number; said?: string } } {
+  return { error: errorText(e), err: { kind: e.kind, sub: e.sub, code: e.code, hint: e.hint, status: e.status, said: e.message ? e.message.slice(0, 300) : undefined } };
 }

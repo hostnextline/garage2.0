@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createTapGuard, ARM_DEAD_MS, CONFIRM_MS, COOL_MS } from './tapGuard';
+import { createTapGuard, tapPausesForTests, ARM_DEAD_MS, CONFIRM_MS, COOL_MS } from './tapGuard';
+
+// the guard's own tests: the real pauses (src/test-setup.ts turns them off for the other tests)
+tapPausesForTests(true);
 
 const guard = (confirm = false, blocked = false) => createTapGuard({ confirm: () => confirm, blocked: () => blocked });
 
