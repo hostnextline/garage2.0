@@ -91,18 +91,26 @@ describe('the phone’s list of times', () => {
 });
 
 describe('the hours brought into view when a page opens', () => {
-  const o = { today: 'd1', now: 900, span };
-  // booking-b-21: before, the first answer of any day decided (today's afternoon answering first hid the mornings)
-  it('waits until every day of the page has answered', () => {
-    const page = [g('d1', 'open', [870]), g('d2', 'loading'), g('d3', 'open', [570])];
+  const o = { today: 'd1', now: 600, span };
+  // booking-b-21: before, the first answer of any day decided (the grid opened at hours that changed with the order in
+  // which the days answered)
+  it('another page: waits until every day has answered, then the first possible time of the page', () => {
+    const page = [g('d2', 'open', [870]), g('d3', 'loading'), g('d4', 'open', [570])];
     expect(pageSettled(page)).toBe(false);
     expect(openingMinute(page, o)).toBeNull();
-    const done = [g('d1', 'open', [870]), g('d2', 'full'), g('d3', 'open', [570])];
-    expect(openingMinute(done, o)).toBe(570);
+    expect(openingMinute([g('d2', 'open', [870]), g('d3', 'full'), g('d4', 'open', [570])], o)).toBe(570);
+  });
+  it('the page of today: today’s first possible time as soon as today answered, whatever the others', () => {
+    expect(openingMinute([g('d1', 'loading'), g('d2', 'open', [495])], o)).toBeNull();
+    expect(openingMinute([g('d1', 'open', [645]), g('d2', 'loading')], o)).toBe(645);
+    expect(openingMinute([g('d1', 'open', [645]), g('d2', 'open', [495])], o)).toBe(645);
+    // nothing left today: the page decides once it is all in
+    expect(openingMinute([g('d1', 'full'), g('d2', 'loading')], o)).toBeNull();
+    expect(openingMinute([g('d1', 'full'), g('d2', 'open', [495])], o)).toBe(495);
   });
   it('the time chosen first; nothing possible: half an hour before now today, else the top of the day', () => {
     expect(openingMinute([{ ...g('d1', 'loading'), chosen: 885 }], o)).toBe(885);
-    expect(openingMinute([g('d1', 'full')], o)).toBe(870);
+    expect(openingMinute([g('d1', 'full')], o)).toBe(570);
     expect(openingMinute([g('d2', 'full')], o)).toBe(480);
     expect(pageSettled([g('d1', 'open', [600], 'loading', true)])).toBe(true);
   });

@@ -132,13 +132,18 @@ export function pageSettled(days: readonly Pick<GridDay, 'status' | 'stale'>[]):
   return days.every((d) => d.status !== 'loading' || d.stale);
 }
 
-/** the hours brought into view when a page opens: the time chosen, else the first possible time of the page, else
-    (nothing possible) half an hour before now today, or the top of the day; null while the page is not settled */
+/** the hours brought into view when a page opens: the time chosen; on the page of today, today's first possible time
+    (the hours around now: what the person on the phone with a customer looks at first) as soon as today has answered;
+    on another page, or when today has nothing left, the first possible time of the whole page once every day has
+    answered; nothing possible: half an hour before now today, or the top of the day. null: not decided yet. Before, the
+    first day to answer decided, so the grid opened at hours that changed with the order of the answers. */
 export function openingMinute(days: readonly Pick<GridDay, 'day' | 'status' | 'stale' | 'open' | 'chosen'>[], o: { today: Day; now: number; span: Range }): number | null {
   const chosen = days.find((x) => x.chosen != null)?.chosen ?? null;
   if (chosen != null) return chosen;
+  const today = days.find((x) => x.day === o.today);
+  if (today && pageSettled([today]) && today.open.length) return today.open[0];
   if (!pageSettled(days)) return null;
   const first = days.reduce<number | null>((a, x) => (x.open.length && (a == null || x.open[0] < a) ? x.open[0] : a), null);
   if (first != null) return first;
-  return days.some((x) => x.day === o.today) ? Math.max(o.span[0], o.now - 30) : o.span[0];
+  return today ? Math.max(o.span[0], o.now - 30) : o.span[0];
 }

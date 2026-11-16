@@ -182,6 +182,8 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .pk-dayhd.is-today .pk-dayhd-wd, .pk-dayhd.is-today .pk-dayhd-num { color: var(--accent-ink); }
 .pk-dayhd.is-past, .pk-dayhd.is-closed { color: var(--ink-3); }
 .pk-dayhd.is-sel { background: var(--accent-soft); border-bottom-color: var(--accent); }
+/* « garde-route »: a day far from the vehicle's other stops (still pickable): a small road in the warning colour */
+.pk-dayhd.is-far .pk-dayhd-state { color: var(--warn); }
 .pk-spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink-3); border-right-color: transparent; animation: spin 700ms linear infinite; }
 .pk-scroll { overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; max-height: clamp(324px, calc(100dvh - 400px), 648px); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .pk-body { display: grid; grid-template-columns: var(--time) minmax(0, 1fr); }
@@ -242,6 +244,9 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .pl-chip.has-chosen { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .pl-chip.is-sel { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .pl-chip.is-sel .pl-chip-wd, .pl-chip.is-sel .pl-chip-n { color: var(--on-accent); }
+.pl-chip.is-far:not(.is-sel) { border-style: dashed; border-color: var(--warn); }
+.pl-chip-n svg { margin-right: 2px; vertical-align: -1px; color: var(--warn); }
+.pl-chip.is-sel .pl-chip-n svg { color: var(--on-accent); }
 .pl-times { display: flex; flex-direction: column; gap: 6px; transition: opacity var(--dur) var(--ease); }
 .pl-times.is-stale { opacity: 0.55; }
 .pl-hour { display: grid; grid-template-columns: 40px repeat(4, minmax(0, 1fr)); gap: 5px; align-items: center; }
@@ -273,7 +278,6 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .bp-preview-facts b { font-weight: 600; }
 /* the small map beside the moment under the mouse (computers) */
 .bp-hover { position: fixed; z-index: 85; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 16px; background: var(--solid); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28); pointer-events: none; }
-.bp-hover-when { font-weight: 600; font-size: var(--t-sm); }
 .bp-hover .mv-wrap { border-radius: 10px; overflow: hidden; }
 /* small points and no labels in the small window: the streets and the routes stay visible */
 .bp-hover .mv-mk { transform: scale(0.56); transform-origin: 50% 50%; }
@@ -283,7 +287,6 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .bp-hover .mv-num { font-size: 19px; }
 .bp-hover-key { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--ink-2); }
 .bp-hover-key i { margin-left: 4px; width: 11px; height: 11px; border-radius: 50%; background: #111827; box-shadow: 0 0 0 2px var(--solid), 0 0 0 3px #111827; }
-.bp-hover-facts { font-size: var(--t-sm); color: var(--ink-2); }
 .bp-hover-far { font-size: var(--t-xs); font-weight: 600; color: var(--warn); }
 /* the car or the truck, above the moments offered */
 .bp-kind { margin-bottom: var(--sp-3); }
@@ -333,7 +336,7 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 @media (max-width: 560px) { .bp-best-list { grid-template-columns: 1fr; } }
 /* the map beside a moment hovered with a mouse */
 .bp-hover-map { position: fixed; z-index: 60; width: 360px; padding: var(--sp-3); border-radius: var(--r-lg); background: var(--solid); border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28); pointer-events: none; display: flex; flex-direction: column; gap: var(--sp-2); }
-.bp-hover-when { margin: 0; font-weight: 620; }
+.bp-hover-when { margin: 0; font-weight: 620; font-size: var(--t-sm); }
 .bp-hover-facts { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
 /* in the small hover map the stops are small dots (the big numbered ones hide the streets of a map this size) */
 .bp-hover-map .mv-num { transform: scale(0.6); transform-origin: center; font-size: 15px; }
