@@ -62,7 +62,7 @@ async function returnTrip(c: Caller, db: ReturnType<typeof adminDb>, b: Record<s
   const home = (own || s.booking?.home || {}) as Record<string, any>;
   if (!okPt(home)) fail('no_home', 'Le départ des camions n’a pas de position : choisis son adresse dans Réglages → Réservations.');
   const dest: Pt = { lat: home.lat, lng: home.lng };
-  const label: string = String(home.label || s.booking?.home?.label || 'Centrale');
+  const label: string = String((home as Record<string, any>).label || s.booking?.home?.label || 'Centrale');
   if (okPt(b.pos)) await c.db.rpc('report_position', { p_lat: b.pos.lat, p_lng: b.pos.lng, p_accuracy: null, p_heading: null, p_speed: null, p_job: null });
   const { data: live } = await db.from('positions').select('lat, lng, at').eq('id', c.id).is('deleted_at', null).maybeSingle();
   const from: Pt | null = okPt(b.pos) ? b.pos : (live && Date.parse((live as any).at) > Date.now() - 15 * 60000 ? { lat: (live as any).lat, lng: (live as any).lng } : null);

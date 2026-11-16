@@ -42,7 +42,7 @@ export async function verifyGithub(token: string): Promise<Record<string, unknow
     if (!jwk) return false;
     try {
       const key = await crypto.subtle.importKey('jwk', { ...jwk, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-      return await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), signed);
+      return await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]) as BufferSource, signed as BufferSource);
     } catch { return false; }
   };
   // GitHub changes its keys from time to time: one fresh look at them before saying no
