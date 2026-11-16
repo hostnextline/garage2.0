@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { choiceOf, withChoice, fromRoles, effectiveRight, effectiveRights, roleGives, ruleOf, activeOverrides, applyServerRules, resetServerRules } from './rights';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { RIGHTS, type Right } from '../../data/types';
+import { choiceOf, withChoice, fromRoles, effectiveRight, roleGives, ruleOf, activeOverrides, applyServerRules, resetServerRules } from './rights';
 
 describe('rights: 3 choices per person (Selon son rôle / Oui / Non)', () => {
   afterEach(() => resetServerRules());
@@ -25,7 +28,7 @@ describe('rights: 3 choices per person (Selon son rôle / Oui / Non)', () => {
   it('the owner has everything, whatever is stored', () => {
     expect(fromRoles(['owner'], 'settings')).toEqual({ kind: 'owner', value: true });
     expect(effectiveRight(['owner'], { settings: false }, 'settings')).toBe(true);
-    expect(Object.values(effectiveRights(['owner'], {}, {})).every(Boolean)).toBe(true);
+    expect(RIGHTS.every((r) => effectiveRight(['owner'], {}, r, {}))).toBe(true);
   });
 
   it("'always' rights stay on even when the person is set to « Non »", () => {
@@ -69,5 +72,41 @@ describe('rights: 3 choices per person (Selon son rôle / Oui / Non)', () => {
     expect(ruleOf('office', 'settings')).toBe('never');
     expect(ruleOf('office', 'book')).toBe('can');          // not in the answer: the copy
     expect(applyServerRules({ ok: true })).toBe(false);     // a wrong shape is ignored
+  });
+});
+
+/* The client copy must say what the database says (right_rule / right_default, in their LAST migration): a rule changed on
+   the server without the app would draw a wrong rights table (x-rights-25, settings-team-30). */
+describe('rights: the client copy is the database’s rule', () => {
+  afterEach(() => resetServerRules());
+  const dir = join(__dirname, '../../../supabase/migrations');
+  const sql = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort().map((f) => readFileSync(join(dir, f), 'utf8'));
+  const lastBody = (fn: string) => {
+    const re = new RegExp(`create or replace function public\\.${fn}\\([^)]*\\)[^$]*\\$\\$([\\s\\S]*?)\\$\\$`, 'g');
+    let body = '';
+    for (const file of sql) for (const m of file.matchAll(re)) body = m[1];
+    return body;
+  };
+  it('each (role, right) is always / can / never as in right_rule', () => {
+    const body = lastBody('right_rule');
+    expect(body).toContain('case p_right');
+    const sqlRule = (role: string, right: Right): string => {
+      const line = new RegExp(`when '${right}'\\s+then case p_role(.*?)end`).exec(body)?.[1] || '';
+      return new RegExp(`when '${role}' then '(\\w+)'`).exec(line)?.[1] || 'never';
+    };
+    for (const right of RIGHTS) for (const role of ['office', 'mechanic', 'treasurer'] as const) expect(`${role}.${right}=${ruleOf(role, right)}`).toBe(`${role}.${right}=${sqlRule(role, right)}`);
+  });
+  it('what each role gives at the start is right_default', () => {
+    const body = lastBody('right_default');
+    for (const role of ['office', 'mechanic', 'treasurer'] as const) {
+      const list = (new RegExp(`when '${role}'\\s+then p_right = any\\(array\\[([^\\]]*)\\]`).exec(body)?.[1] || '').match(/'(\w+)'/g)?.map((x) => x.slice(1, -1)).sort();
+      expect(list?.length).toBeGreaterThan(0);
+      expect(RIGHTS.filter((r) => ruleOf(role, r) !== 'never' && roleGives(role, r, {})).sort()).toEqual(list!.filter((r) => ruleOf(role, r as Right) !== 'never'));
+    }
+  });
+  it('the rights table of the server, once read, is what the screens draw', () => {
+    expect(ruleOf('mechanic', 'settings')).toBe('never');
+    applyServerRules({ rules: { office: { settings: 'can' }, mechanic: { settings: 'can' }, treasurer: {} } });
+    expect(ruleOf('mechanic', 'settings')).toBe('can');
   });
 });

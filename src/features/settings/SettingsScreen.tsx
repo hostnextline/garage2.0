@@ -9,31 +9,35 @@ import { wide } from '../../platform/media';
 import { t } from '../../lib/i18n';
 import { isOwner } from '../../data/auth';
 import { Page, Panel } from '../../ui';
-import { hasDraft } from './SectionFrame';
+import { hasDraft, settingsHere, SectionWait } from './SectionFrame';
 import { CompanySection } from './CompanySection';
 import { BillingSection } from './BillingSection';
-import { ServicesSection } from './ServicesSection';
-import { BookingSection } from './BookingSection';
+import { ServicesSection } from './services/ServicesSection';
+import { BookingSection } from './booking/BookingSection';
 import { TextsSection } from './TextsSection';
 import { WaiverSection } from './WaiverSection';
 import { LookSection } from './LookSection';
-import { ConnectSection } from './ConnectSection';
+import { ConnectSection } from './connect/ConnectSection';
 import { ExpensesSection } from './ExpensesSection';
 import { UpdatePanel } from '../../shared/app/UpdatePanel';
 import '../../shared/look/settings.css';
 
 export type SectionKey = 'company' | 'billing' | 'services' | 'booking' | 'texts' | 'waiver' | 'look' | 'connect' | 'expenses' | 'app';
-interface SectionDef { key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; /** for everyone on the team (no « settings » right needed) */ all?: boolean; tour?: string }
+interface SectionDef {
+  key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; tour?: string;
+  /** for everyone on the team (no « settings » right needed) */ all?: boolean;
+  /** a form over the settings row: drawn only once that row is on this device */ form?: boolean;
+}
 const SECTIONS: SectionDef[] = [
-  { key: 'company', icon: Building2, view: CompanySection, tour: 'settings-company' },
-  { key: 'billing', icon: Receipt, view: BillingSection },
+  { key: 'company', icon: Building2, view: CompanySection, form: true, tour: 'settings-company' },
+  { key: 'billing', icon: Receipt, view: BillingSection, form: true },
   { key: 'services', icon: Wrench, view: ServicesSection, tour: 'settings-services' },
-  { key: 'booking', icon: CalendarClock, view: BookingSection },
-  { key: 'texts', icon: MessageSquareText, view: TextsSection, tour: 'settings-texts' },
-  { key: 'waiver', icon: FileSignature, view: WaiverSection },
-  { key: 'look', icon: Palette, view: LookSection, owner: true, tour: 'settings-look' },
+  { key: 'booking', icon: CalendarClock, view: BookingSection, form: true },
+  { key: 'texts', icon: MessageSquareText, view: TextsSection, form: true, tour: 'settings-texts' },
+  { key: 'waiver', icon: FileSignature, view: WaiverSection, form: true },
+  { key: 'look', icon: Palette, view: LookSection, form: true, owner: true, tour: 'settings-look' },
   { key: 'connect', icon: PlugZap, view: ConnectSection, owner: true, tour: 'settings-connect' },
-  { key: 'expenses', icon: Tags, view: ExpensesSection },
+  { key: 'expenses', icon: Tags, view: ExpensesSection, form: true },
   { key: 'app', icon: RefreshCw, view: AppSection, all: true }
 ];
 
@@ -78,10 +82,11 @@ export default function SettingsScreen({ params }: ScreenProps) {
     return <Page title={t('settings.title')} help={t('settings.help')} data-testid="settings-screen">{nav}</Page>;
   }
   const View = current!.view;
+  const body = current!.form && !settingsHere() ? <SectionWait testid={`settings-${current!.key}`} /> : <View key={current!.key} />;
   if (!isWide) {
     return (
       <Page title={t(`settings.sections.${current!.key}.title`)} sub={t(`settings.sections.${current!.key}.sub`)} back="/settings" data-testid="settings-screen">
-        <View key={current!.key} />
+        {body}
       </Page>
     );
   }
@@ -91,7 +96,7 @@ export default function SettingsScreen({ params }: ScreenProps) {
         <aside class="settings-aside">{nav}</aside>
         <div class="settings-main">
           <h2 class="settings-main-title">{t(`settings.sections.${current!.key}.title`)}</h2>
-          <View key={current!.key} />
+          {body}
         </div>
       </div>
     </Page>

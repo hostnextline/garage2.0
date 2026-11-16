@@ -7,32 +7,36 @@ import { clock } from '../../lib/dates';
 export type MsgKind = 'booking' | 'moved' | 'en_route' | 'en_route_no_eta' | 'arrived' | 'arrived_no_pay' | 'invoice' | 'extras' | 'reminder' | 'payment_reminder' | 'return_trip' | 'window';
 export const MSG_KINDS: MsgKind[] = ['booking', 'moved', 'en_route', 'en_route_no_eta', 'arrived', 'arrived_no_pay', 'extras', 'invoice', 'payment_reminder', 'reminder', 'window', 'return_trip'];
 /** the kinds that exist only while the garage books by arrival windows (hidden, and never written to the settings, otherwise) */
-export const WINDOW_KINDS: MsgKind[] = ['window'];
+const WINDOW_KINDS: MsgKind[] = ['window'];
 export function kindsFor(windowsOn: boolean): MsgKind[] { return MSG_KINDS.filter((k) => windowsOn || !WINDOW_KINDS.includes(k)); }
+/** « Rappel la veille » is not offered in Réglages: nothing sends it yet (no scheduled sender on the server), so its switch
+    promised texts that never left (x-deadcode-02). The kind, its starting text and a stored switch are kept as they are. */
+const NOT_SENT: MsgKind[] = ['reminder'];
+/** the texts Réglages → Textos shows */
+export function shownKinds(windowsOn: boolean): MsgKind[] { return kindsFor(windowsOn).filter((k) => !NOT_SENT.includes(k)); }
 /** the on/off switch a kind follows (the text « en route » without an arrival time follows « en route »; the same for « arrivé ») */
 export const SWITCH_OF: Record<MsgKind, string> = {
   booking: 'booking', moved: 'moved', en_route: 'en_route', en_route_no_eta: 'en_route', arrived: 'arrived', arrived_no_pay: 'arrived',
   invoice: 'invoice', extras: 'extras', reminder: 'reminder', payment_reminder: 'payment_reminder', return_trip: 'return_trip', window: 'window'
 };
-export const SWITCHES = ['booking', 'moved', 'en_route', 'arrived', 'extras', 'invoice', 'payment_reminder', 'reminder', 'window', 'return_trip'] as const;
 /** what the server does when a switch was never set (messages.on[kind] missing) */
 export const DEFAULT_ON: Record<string, boolean> = { booking: true, moved: true, en_route: true, arrived: true, extras: true, invoice: true, payment_reminder: true, reminder: false, return_trip: true, window: true };
 
 export const ALL_VARS = ['prenom', 'garage', 'jour', 'bloc', 'debut', 'fin', 'total', 'services', 'soustotal', 'payer', 'lien', 'mecano', 'heure', 'minutes', 'vehicule', 'montant', 'numero', 'date', 'telephone', 'lieu', 'plage'] as const;
 export type VarName = (typeof ALL_VARS)[number];
 const BASE: VarName[] = ['prenom', 'garage', 'jour', 'debut', 'fin', 'lien', 'telephone'];
-/** the words each text really gets from the server (others would come out empty) */
+/** the words each text really gets from the server (supabase/functions/notify and enroute; others would come out empty) */
 export const VARS_OF: Record<MsgKind, VarName[]> = {
   booking: [...BASE, 'bloc', 'plage', 'services', 'soustotal', 'total'],
-  moved: [...BASE, 'bloc', 'plage', 'total'],
+  moved: [...BASE, 'bloc', 'plage', 'services', 'soustotal', 'total'],
   en_route: ['prenom', 'mecano', 'garage', 'heure', 'minutes', 'lien'],
   en_route_no_eta: ['prenom', 'mecano', 'garage', 'lien'],
-  arrived: ['prenom', 'mecano', 'garage', 'total', 'montant', 'lien', 'telephone'],
-  arrived_no_pay: ['prenom', 'mecano', 'garage', 'total', 'montant', 'lien', 'telephone'],
+  arrived: ['prenom', 'mecano', 'garage', 'total', 'montant', 'lien', 'telephone', 'payer'],
+  arrived_no_pay: ['prenom', 'mecano', 'garage', 'total', 'montant', 'lien', 'telephone', 'payer'],
   extras: [...BASE, 'mecano', 'vehicule', 'montant'],
-  invoice: [...BASE, 'numero', 'total', 'montant', 'date'],
-  payment_reminder: [...BASE, 'numero', 'total', 'montant', 'date'],
-  reminder: [...BASE, 'plage'],
+  invoice: [...BASE, 'numero', 'total', 'montant', 'date', 'payer'],
+  payment_reminder: [...BASE, 'numero', 'total', 'montant', 'date', 'payer'],
+  reminder: [...BASE, 'bloc', 'plage'],
   window: [...BASE, 'plage'],
   return_trip: ['mecano', 'lieu', 'garage', 'heure', 'minutes', 'lien']
 };
@@ -82,11 +86,10 @@ export function momentVars(o: { window: readonly [number, number] | null; block:
 }
 
 const TOKEN = /\{(\w+)\}/g;
-/** the text as the customer would get it: known words replaced; an unknown {word} stays visible (so a typo shows) */
-export function fillPreview(tpl: string, vars: Partial<Record<string, string | number | null | undefined>>): string {
-  return String(tpl || '').replace(TOKEN, (m, k: string) => (vars[k] != null ? String(vars[k]) : m)).replace(/\s{2,}/g, ' ').trim();
-}
-/** the same, in pieces, so the screen can mark the unknown words */
+/** a text on one line, as a phone shows it in a list (several spaces and line breaks become one space) */
+export const flatText = (s: string) => String(s || '').replace(/\s{2,}/g, ' ').trim();
+/** the text as the customer would get it, in pieces: known words replaced; an unknown {word} stays visible and marked
+    (so a typo shows) */
 export function previewParts(tpl: string, vars: Partial<Record<string, string | number | null | undefined>>): { text: string; unknown?: string }[] {
   const out: { text: string; unknown?: string }[] = [];
   const s = String(tpl || '').replace(/\s{2,}/g, ' ').trim();

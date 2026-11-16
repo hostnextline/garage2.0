@@ -1,6 +1,6 @@
 /* « Ce que chaque rôle peut faire »: Bureau, Mécanicien, Trésorier × the rights, with a switch where the owner decides.
    Computer: one table. Phone: one role at a time. The owner always has everything. */
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { Check } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { RIGHTS, type Right } from '../../data/types';
@@ -15,12 +15,20 @@ export function RoleTable() {
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<TeamRole>('office');
   const valueOf = (role: TeamRole, right: Right) => pending[`${role}.${right}`] ?? roleGives(role, right, rr);
+  // one call at a time per switch: a second tap while the first is on its way is ignored, so two opposite calls never
+  // race each other and the switch shows the value sent until its answer came (settings-team-19)
+  const busy = useRef(new Set<string>());
   const toggle = async (role: TeamRole, right: Right) => {
     const key = `${role}.${right}`;
+    if (busy.current.has(key)) return;
+    busy.current.add(key);
     const on = !valueOf(role, right);
     setPending((x) => ({ ...x, [key]: on }));
-    await run(() => setRoleRight(role, right, on), { ok: t('team.table.saved') });
-    setPending((x) => { const y = { ...x }; delete y[key]; return y; });
+    try { await run(() => setRoleRight(role, right, on), { ok: t('team.table.saved') }); }
+    finally {
+      busy.current.delete(key);
+      setPending((x) => { const y = { ...x }; delete y[key]; return y; });
+    }
   };
   const cell = (role: TeamRole, right: Right) => {
     const rule = ruleOf(role, right);

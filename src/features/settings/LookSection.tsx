@@ -9,9 +9,9 @@ import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
 export function LookSection() {
   const saved: Look = teamLook.value;
-  const { draft: d, set, dirty, reset } = useSectionDraft<Look>('look', saved);
+  const { draft: d, set, dirty, changes, reset } = useSectionDraft<Look>('look', saved);
   const save = async () => {
-    if (await attempt(() => saveSettings('appearance', { ...(settings.value.appearance || {}), theme: d.theme, mode: d.mode, glass: d.glass }), { ok: t('settings.saved') })) reset();
+    if (await attempt(() => saveSettings('appearance', { ...(settings.value.appearance || {}), ...changes }), { ok: t('settings.saved') })) reset();
   };
   return (
     <Section testid="settings-look" bar={<SaveBar dirty={dirty} onSave={save} onReset={reset} />}>

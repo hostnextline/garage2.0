@@ -14,7 +14,7 @@ type Company = Record<(typeof FIELDS)[number], string>;
 export function CompanySection() {
   const c = settings.value.company || {};
   const saved = Object.fromEntries(FIELDS.map((k) => [k, String((c as Record<string, unknown>)[k] ?? '')])) as Company;
-  const { draft: d, set, dirty, reset } = useSectionDraft<Company>('company', saved);
+  const { draft: d, set, dirty, changes, reset } = useSectionDraft<Company>('company', saved);
   const [err, setErr] = useState<Partial<Record<keyof Company, string>>>({});
   const field = (k: keyof Company) => (v: string) => { set((x) => ({ ...x, [k]: v })); if (err[k]) setErr({ ...err, [k]: undefined }); };
 
@@ -24,8 +24,9 @@ export function CompanySection() {
     if (d.email.trim() && !EMAIL_RE.test(d.email.trim())) e.email = t('settings.company.badEmail');
     setErr(e);
     if (Object.keys(e).length) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
+    // only the fields changed here: one changed meanwhile on another device keeps its new value
     const next: Record<string, unknown> = { ...(settings.value.company || {}) };
-    for (const k of FIELDS) next[k] = cleanText(d[k]);
+    for (const k of Object.keys(changes) as (keyof Company)[]) next[k] = cleanText(d[k]);
     if (await attempt(() => saveSettings('company', next), { ok: t('settings.saved') })) reset();
   };
 
