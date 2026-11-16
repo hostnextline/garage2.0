@@ -20,7 +20,8 @@
 --
 -- Every check reads the books AS THEY ARE NOW (the day only chooses the sheet and the dates written on the findings), so
 -- running any day again gives the same list, and a difference repaired closes at the next run, whatever day it runs for.
--- A check that throws becomes a finding of its own (« <check>.error ») and the other checks still run.
+-- A check that throws becomes a finding of its own (« <check>.error ») and the other checks still run; the differences
+-- that family had found stay as they were (open or « vu »): not checked is not repaired.
 --
 -- The checks (check_id = family + number + what; the family decides who sees it: M and S = money and stock):
 --   M1.sum  bad   an invoice's lines, subtotal, taxes and total do not add up (the rule of the trigger invoice_totals)
@@ -32,6 +33,7 @@
 --   M2.void bad   a cancelled or deleted invoice still holds money
 --   M3.double / M3.gap / M3.deleted / M3.counter / M3.nonumber   bad   invoice numbers: unique, no hole, none thrown
 --                 away with its invoice, the counter ahead of the last number, a finished invoice has its number and date
+--                 (a hole is one finding per run of missing numbers, the 50 newest; older ones in one « M3.gapmore »)
 --   M4.orphan bad a payment on nothing, or on another job's invoice;  M4.card bad « carte en ligne » without its Stripe
 --                 session;  M4.waiting bad a payment waiting on a job whose invoice is finished;  M4.closed warn a
 --                 payment waiting on a finished / cancelled job that has no finished invoice;  M4.double warn the same
@@ -41,8 +43,8 @@
 --   M7.sum bad    an expense: before taxes + TPS + TVQ is not the total (or an amount below zero);  M7.stock bad  stock
 --                 « payé par la Trésorerie » without its expense;  M7.stockgone warn  its expense was deleted, the stock stayed
 --   M8.link bad   a Coffre entry and its jobs do not point to each other;  M8.money bad  a Coffre job has an invoice or
---                 money;  M8.balance bad  more spent from the Coffre than received;  M8.stock bad  a Coffre purchase
---                 without its stock entry
+--                 money;  M8.balance info  more spent from the Coffre than noted as received (normal with 0 $ family jobs);
+--                 M8.stock bad  a Coffre purchase without its stock entry
 --   M9.quote warn a converted estimate without its job
 --   D1.past warn  a past job still booked, en route or on site;  D1.stamp warn  a status without its time;  D1.trips warn
 --                 two trips under way for one person
@@ -321,8 +323,15 @@ begin
     perform public.recon_trip('M3');
     v_t := clock_timestamp();
     with k as (select next_value from public.counters where name = 'invoice'),
-    b as (select min(v.number) as lo, greatest(max(v.number), coalesce((select next_value - 1 from k), 0)) as hi, max(v.number) as mx
-          from public.invoices v where v.number is not null)
+    b as (select max(v.number) as mx from public.invoices v where v.number is not null),
+    -- the holes as runs of missing numbers (gaps and islands): between two numbers in use, and after the last one up to the
+    -- counter. One finding per run, the 50 newest; the older runs together in one finding (a counter set far ahead by a
+    -- bad restore is ONE finding, not thousands).
+    nums as (select distinct v.number as n from public.invoices v where v.number is not null),
+    holes as (select x.g0, x.g1, row_number() over (order by x.g0 desc) as rk
+              from (select s.n + 1 as g0, s.nn - 1 as g1 from (select n, lead(n) over (order by n) as nn from nums) s where s.nn > s.n + 1
+                    union all
+                    select b.mx + 1, k.next_value - 1 from b cross join k where b.mx is not null and k.next_value - 1 > b.mx) x)
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M3.double' c, 'bad' s, null::text t, null::uuid e, 'n' || v.number k,
              format('Le numéro de facture %s est sur %s factures : dis-le au responsable de l’app.', public.recon_inv_no(v.number), count(*)) fr,
@@ -330,12 +339,25 @@ begin
              jsonb_build_object('number', v.number, 'n', count(*)) d
       from public.invoices v where v.number is not null group by v.number having count(*) > 1
       union all
-      select 'M3.gap', 'bad', null, null, 'n' || n,
-             format('Le numéro de facture %s manque : aucune facture ne l’a. Vérifie si une facture a été effacée, et note-le pour le comptable.', public.recon_inv_no(n)),
-             format('Invoice number %s is missing: no invoice has it. Check whether an invoice was deleted, and note it for the accountant.', public.recon_inv_no(n, 'en')),
-             jsonb_build_object('number', n)
-      from b cross join lateral generate_series(b.lo, b.hi) n
-      where b.lo is not null and b.hi - b.lo < 200000 and not exists (select 1 from public.invoices v where v.number = n)
+      select 'M3.gap', 'bad', null, null, 'n' || h.g0,
+             case when h.g0 = h.g1
+                  then format('Le numéro de facture %s manque : aucune facture ne l’a. Vérifie si une facture a été effacée, et note-le pour le comptable.', public.recon_inv_no(h.g0))
+                  else format('Les numéros de facture %s à %s manquent (%s numéros) : aucune facture ne les a. Vérifie si des factures ont été effacées ou si le compteur a sauté, et note-le pour le comptable.',
+                              public.recon_inv_no(h.g0), public.recon_inv_no(h.g1), h.g1 - h.g0 + 1) end,
+             case when h.g0 = h.g1
+                  then format('Invoice number %s is missing: no invoice has it. Check whether an invoice was deleted, and note it for the accountant.', public.recon_inv_no(h.g0, 'en'))
+                  else format('Invoice numbers %s to %s are missing (%s numbers): no invoice has them. Check whether invoices were deleted or the counter jumped, and note it for the accountant.',
+                              public.recon_inv_no(h.g0, 'en'), public.recon_inv_no(h.g1, 'en'), h.g1 - h.g0 + 1) end,
+             jsonb_build_object('number', h.g0, 'to', h.g1, 'n', h.g1 - h.g0 + 1)
+      from holes h where h.rk <= 50
+      union all
+      select 'M3.gapmore', 'bad', null, null, 'more',
+             format('Il manque aussi %s autres séries de numéros de facture, plus anciennes (%s numéros, jusqu’à %s) : dis-le au responsable de l’app, et note-le pour le comptable.',
+                    count(*), sum(h.g1 - h.g0 + 1), public.recon_inv_no(max(h.g1))),
+             format('%s more, older runs of invoice numbers are missing too (%s numbers, up to %s): tell the person in charge of the app, and note it for the accountant.',
+                    count(*), sum(h.g1 - h.g0 + 1), public.recon_inv_no(max(h.g1), 'en')),
+             jsonb_build_object('runs', count(*), 'n', sum(h.g1 - h.g0 + 1), 'to', max(h.g1))
+      from holes h where h.rk > 50 having count(*) > 0
       union all
       select 'M3.deleted', 'bad', 'invoices', v.id, null,
              format('La facture %s a été effacée alors qu’elle avait un numéro : son numéro manque dans les livres. Note-le pour le comptable (la prochaine fois, annule-la plutôt).', public.recon_inv_no(v.number)),
@@ -466,15 +488,29 @@ begin
   begin
     perform public.recon_trip('M7');
     v_t := clock_timestamp();
-    with mv as (select m.id, m.item_id, m.delta, m.created_at, i.name from public.inventory_moves m join public.inventory_items i on i.id = m.item_id
+    with mv as materialized (select m.id, m.item_id, m.delta, m.created_at, i.name from public.inventory_moves m join public.inventory_items i on i.id = m.item_id
                 where m.deleted_at is null and m.reason = 'restock' and m.note like '%Payé par la Trésorerie'),
     -- the expense of a purchase: the one that names the move (expenses.move_id, when that column exists), else the one made
-    -- in the same transaction (inventory_buy writes both at the same instant)
-    ex as (select mv.id as move_id,
-                  (select e.deleted_at is null from public.expenses e
-                   where to_jsonb(e)->>'move_id' = mv.id::text or (e.created_at = mv.created_at and e.category = 'Pièces')
-                   order by (e.deleted_at is null) desc limit 1) as alive
-           from mv)
+    -- in the same transaction (inventory_buy writes both at the same instant). Each expense is read ONCE (to_jsonb only
+    -- here), and moves and expenses are matched by GROUPING them on the shared key, never by a join: the time is moves +
+    -- expenses (one sort each) whatever plan the database picks (a join here was moves × moves × expenses when the
+    -- planner, without statistics, took nested loops: 16 s for 100 purchases and 400 expenses).
+    e1 as materialized (select e.created_at, e.category, e.deleted_at is null as alive, to_jsonb(e)->>'move_id' as move_id
+                        from public.expenses e),
+    -- by instant (inst): the moves and the « Pièces » expenses made at that instant
+    inst as (select t.ts, array_agg(t.mid) filter (where t.mid is not null) as mids, bool_or(t.alive) as alive, count(t.alive) as ne
+           from (select mv.created_at as ts, mv.id::text as mid, null::boolean as alive from mv
+                 union all
+                 select x.created_at, null, x.alive from e1 x where x.category = 'Pièces') t
+           group by t.ts),
+    hit as (select mv.id::text as mid, null::boolean as alive, true as is_move from mv
+            union all
+            select x.move_id, x.alive, false from e1 x where x.move_id is not null
+            union all
+            select unnest(a.mids), a.alive, false from inst a where a.ne > 0 and a.mids is not null),
+    -- per move, alive: true = a live expense, false = only deleted ones, null = none at all; only the moves with a problem
+    ex as (select h.mid as move_id, bool_or(h.alive) as alive from hit h group by h.mid
+           having bool_or(h.is_move) and bool_or(h.alive) is distinct from true)
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M7.sum' c, 'bad' s, 'expenses' t, e.id e, null::text k,
              format('La dépense %s du %s ne s’additionne pas (avant taxes %s + TPS %s + TVQ %s, total %s) : ouvre la dépense et corrige les montants du reçu.',
@@ -500,7 +536,7 @@ begin
                   else format('The expense of the stock purchase « %s » (%s, on %s) was deleted, but the stock stayed: put the expense back, or take the stock out.',
                               mv.name, mv.delta, to_char(mv.created_at at time zone 'America/Toronto', 'YYYY-MM-DD')) end,
              jsonb_build_object('item_id', mv.item_id, 'qty', mv.delta)
-      from mv join ex on ex.move_id = mv.id where ex.alive is distinct from true
+      from ex join mv on mv.id::text = ex.move_id
     ) f;
     v_all := v_all || v_part;
     v_ms := v_ms || jsonb_build_object('M7', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
@@ -542,9 +578,11 @@ begin
                           where p.deleted_at is null and (p.job_id = j.id or pv.job_id = j.id)) pay
       where j.deleted_at is null and j.coffre_id is not null and (i.id is not null or pay.s <> 0)
       union all
-      select 'M8.balance', 'bad', null, null, 'balance',
-             format('Le Coffre est à %s : il a été dépensé plus que reçu. Vérifie les entrées et les achats du Coffre.', public.recon_money_fr(b.s)),
-             format('The Coffre is at %s: more was spent than received. Check the Coffre''s entries and purchases.', public.recon_money_en(b.s)),
+      -- info only: the app lets a Coffre job be noted at 0 $ (« 0 $ si rien ») and buys Coffre stock without looking at the
+      -- balance, so a Coffre under zero is a normal state, not a mistake (a daily « bad » here would cry wolf)
+      select 'M8.balance', 'info', null, null, 'balance',
+             format('Le Coffre est à %s : il a été dépensé plus que ce qui y a été noté comme reçu. Si c’est normal (des jobs de famille à 0 $), il n’y a rien à faire ; sinon, vérifie les entrées et les achats du Coffre.', public.recon_money_fr(b.s)),
+             format('The Coffre is at %s: more was spent than what was noted as received. If that is normal (family jobs at $0), there is nothing to do; otherwise, check the Coffre''s entries and purchases.', public.recon_money_en(b.s)),
              jsonb_build_object('balance', b.s)
       from (select coalesce(sum(case when kind = 'purchase' then -amount_cents else amount_cents end), 0)::bigint as s from public.coffre where deleted_at is null) b
       where b.s < 0
@@ -553,10 +591,10 @@ begin
              format('L’achat du Coffre « %s » du %s n’a pas son entrée de stock : ajoute l’entrée dans le stock du Coffre.', coalesce(k.item_name, '?'), k.received_on),
              format('The Coffre purchase « %s » of %s has no stock entry: add the entry in the Coffre''s stock.', coalesce(k.item_name, '?'), k.received_on),
              jsonb_build_object('item_id', k.item_id, 'qty', k.qty, 'amount', k.amount_cents)
-      from public.coffre k
+      from public.coffre k cross join lateral (select to_jsonb(k)->>'move_id' as mid) km    -- read once per purchase
       where k.deleted_at is null and k.kind = 'purchase' and k.item_id is not null
         and not exists (select 1 from public.inventory_moves m where m.deleted_at is null and m.reason = 'restock' and m.item_id = k.item_id
-                          and (m.id::text = to_jsonb(k)->>'move_id' or m.created_at = k.created_at))
+                          and (m.id::text = km.mid or m.created_at = k.created_at))
     ) f;
     v_all := v_all || v_part;
     v_ms := v_ms || jsonb_build_object('M8', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
@@ -731,8 +769,8 @@ begin
         where x.diff <> x.base
       ) f;
       v_all := v_all || v_part;
-    v_ms := v_ms || jsonb_build_object('S1', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
     end if;
+    v_ms := v_ms || jsonb_build_object('S1', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('S1', sqlerrm);
   end;
 
@@ -778,8 +816,9 @@ begin
 end $$;
 
 -- ───────────────────────────── counts and status of a run ─────────────────────────────
--- counts = { bad, warn, info, acked, limited: { bad, warn, info, acked } } over the differences not closed (limited = the money and
--- stock ones, what « Trésorerie » sees) plus what the run itself noted (new, closed, errors, checks, ms). Status: bad when an open
+-- counts = { bad, warn, info, acked, limited: { bad, warn, info, acked, new, closed, errors, seen } } over the differences not closed
+-- (limited = the money and stock ones, what « Trésorerie » sees) plus what the run itself noted (new, closed, errors, seen,
+-- checks_ms, ms). Status: bad when an open
 -- difference is bad, warn when one is warn, else ok (« tout balance »). A difference seen (« vu ») no longer colours the day.
 create or replace function public.recon_tally(p_run uuid) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -798,7 +837,11 @@ begin
   into v_counts
   from public.ops_recon_findings where state <> 'closed';
   v_status := case when (v_counts->>'bad')::int > 0 then 'bad' when (v_counts->>'warn')::int > 0 then 'warn' else 'ok' end;
-  update public.ops_recon_runs set counts = counts || v_counts, status = v_status where id = p_run;
+  -- « limited » is merged, not replaced: it also holds what the run noted for « Trésorerie » (new, closed, errors, seen)
+  update public.ops_recon_runs
+     set counts = counts || (v_counts - 'limited') || jsonb_build_object('limited', coalesce(counts->'limited', '{}'::jsonb) || (v_counts->'limited')),
+         status = v_status
+   where id = p_run;
   return (select jsonb_build_object('status', r.status, 'counts', r.counts) from public.ops_recon_runs r where r.id = p_run);
 end $$;
 
@@ -820,10 +863,17 @@ declare
   v_day date := coalesce(p_day, public.local_today() - 1);
   v_t0 timestamptz := clock_timestamp();
   v jsonb; v_run uuid; v_new int; v_closed int; v_errors int; v_t jsonb;
+  v_new_l int; v_closed_l int; v_errors_l int; v_seen int; v_seen_l int;
+  v_failed text[];    -- the check families that threw this time (« M2 » for « M2.error »): their differences are left as they were
+  v_mark date;        -- the day written on what is seen (first_day / last_day)
 begin
-  -- one run at a time (the cron, the backup and « Vérifier maintenant » may meet)
+  -- one run at a time (the cron, the backup and « Vérifier maintenant » may meet); recon_ack and recon_add take the same
+  -- lock first, so the three always lock in the same order (the lock, the run row, the findings) and never deadlock
   perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
   v := public.recon_collect(v_day);     -- ONE query: every check sees the same snapshot
+  -- the checks read the books AS THEY ARE NOW: running an old day again never dates a difference back before the newest
+  -- day already reconciled
+  v_mark := greatest(v_day, coalesce((select max(r.day) from public.ops_recon_runs r), v_day));
 
   delete from public.ops_recon_runs where day = v_day;     -- running a day again replaces that day's run
   insert into public.ops_recon_runs (day, source, started_at, sheet)
@@ -847,33 +897,48 @@ begin
         from jsonb_to_recordset(coalesce(v->'findings', '[]'::jsonb)) as x(c text, s text, t text, e uuid, k text, fr text, en text, d jsonb)) y
   order by key;
 
-  select count(*) into v_new from recon_seen n
+  select count(*), count(*) filter (where public.recon_for_treasury(n.c)) into v_new, v_new_l from recon_seen n
   where not exists (select 1 from public.ops_recon_findings f where f.key = n.key and f.state <> 'closed');
-  select count(*) into v_errors from recon_seen where c like '%.error';
+  select count(*), count(*) filter (where public.recon_for_treasury(c)),
+         count(*) filter (where c like '%.error'), count(*) filter (where c like '%.error' and public.recon_for_treasury(c)),
+         coalesce(array_agg(distinct split_part(c, '.', 1)) filter (where c like '%.error'), '{}')
+    into v_seen, v_seen_l, v_errors, v_errors_l, v_failed
+    from recon_seen;
 
-  -- seen again: the same row (last_day moves); closed before: open again; « vu » stays while the words stay the same
+  -- seen again: the same row (last_day moves, first_day stays); closed before: open again from this day; « vu » stays while
+  -- the words stay the same (an « info » never opens again for new words: it never colours the day, its count just moves)
   insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, last_run)
-  select key, c, s, t, e, fr, en, d, v_day, v_day, v_run from recon_seen
+  select key, c, s, t, e, fr, en, d, v_mark, v_mark, v_run from recon_seen
   on conflict (key) do update set
     check_id = excluded.check_id, severity = excluded.severity, entity_table = excluded.entity_table, entity_id = excluded.entity_id,
     data = excluded.data, last_run = excluded.last_run, outside = false, updated_at = now(), closed_at = null,
-    first_day = case when f.state = 'closed' then excluded.first_day else least(f.first_day, excluded.first_day) end,
+    first_day = case when f.state = 'closed' then excluded.first_day else f.first_day end,
     last_day = case when f.state = 'closed' then excluded.last_day else greatest(f.last_day, excluded.last_day) end,
     state = case when f.state = 'closed' then 'open'
-                 when f.state = 'acked' and f.message_fr is distinct from excluded.message_fr then 'open' else f.state end,
-    acked_by = case when f.state = 'closed' or f.message_fr is distinct from excluded.message_fr then null else f.acked_by end,
-    acked_at = case when f.state = 'closed' or f.message_fr is distinct from excluded.message_fr then null else f.acked_at end,
+                 when f.state = 'acked' and (f.severity is distinct from excluded.severity
+                                             or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr)) then 'open'
+                 else f.state end,
+    acked_by = case when f.state = 'closed' or f.severity is distinct from excluded.severity
+                         or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr) then null else f.acked_by end,
+    acked_at = case when f.state = 'closed' or f.severity is distinct from excluded.severity
+                         or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr) then null else f.acked_at end,
     message_fr = excluded.message_fr, message_en = excluded.message_en;
 
   -- no longer true: closed by itself. A check made outside (recon_add) closes when it was not added again for a day.
-  update public.ops_recon_findings f set state = 'closed', closed_at = now(), updated_at = now()
-  where f.state <> 'closed'
-    and ((not f.outside and f.last_run is distinct from v_run) or (f.outside and f.last_day < v_day - 1));
-  get diagnostics v_closed = row_count;
+  -- A family that threw this time was NOT checked: its differences stay as they were (open or « vu »), never closed as if
+  -- the books were repaired.
+  with c as (
+    update public.ops_recon_findings f set state = 'closed', closed_at = now(), updated_at = now()
+    where f.state <> 'closed'
+      and ((not f.outside and f.last_run is distinct from v_run and split_part(f.check_id, '.', 1) <> all (v_failed))
+           or (f.outside and f.last_day < v_day - 1))
+    returning f.check_id)
+  select count(*), count(*) filter (where public.recon_for_treasury(c.check_id)) into v_closed, v_closed_l from c;
 
   update public.ops_recon_runs set finished_at = clock_timestamp(),
-    counts = jsonb_build_object('new', v_new, 'closed', v_closed, 'errors', v_errors, 'seen', (select count(*) from recon_seen), 'checks_ms', coalesce(v->'ms', '{}'::jsonb),
-                                'ms', round(extract(epoch from clock_timestamp() - v_t0) * 1000)::int)
+    counts = jsonb_build_object('new', v_new, 'closed', v_closed, 'errors', v_errors, 'seen', v_seen, 'checks_ms', coalesce(v->'ms', '{}'::jsonb),
+                                'ms', round(extract(epoch from clock_timestamp() - v_t0) * 1000)::int,
+                                'limited', jsonb_build_object('new', v_new_l, 'closed', v_closed_l, 'errors', v_errors_l, 'seen', v_seen_l))
   where id = v_run;
   v_t := public.recon_tally(v_run);
   return jsonb_build_object('run_id', v_run, 'day', v_day, 'status', v_t->>'status', 'counts', v_t->'counts');
@@ -886,6 +951,8 @@ create or replace function public.recon_add(p_run uuid, p_check text, p_severity
 language plpgsql security definer set search_path = public as $$
 declare r public.ops_recon_runs; v_key text; v_id uuid;
 begin
+  -- the lock of recon_run first: its run cannot be replaced under it, and the lock order stays the same (no deadlock)
+  perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
   select * into r from public.ops_recon_runs where id = p_run;
   if not found then perform public.fail('not_found', 'Ce rapprochement n’existe plus.'); end if;
   if coalesce(trim(p_check), '') = '' or p_severity is null or p_severity not in ('bad', 'warn', 'info') or coalesce(trim(p_message_fr), '') = '' then
@@ -898,12 +965,16 @@ begin
   on conflict (key) do update set
     severity = excluded.severity, entity_table = excluded.entity_table, entity_id = excluded.entity_id, data = excluded.data,
     last_run = excluded.last_run, outside = true, updated_at = now(), closed_at = null,
-    first_day = case when f.state = 'closed' then excluded.first_day else least(f.first_day, excluded.first_day) end,
+    first_day = case when f.state = 'closed' then excluded.first_day else f.first_day end,
     last_day = case when f.state = 'closed' then excluded.last_day else greatest(f.last_day, excluded.last_day) end,
     state = case when f.state = 'closed' then 'open'
-                 when f.state = 'acked' and f.message_fr is distinct from excluded.message_fr then 'open' else f.state end,
-    acked_by = case when f.state = 'closed' or f.message_fr is distinct from excluded.message_fr then null else f.acked_by end,
-    acked_at = case when f.state = 'closed' or f.message_fr is distinct from excluded.message_fr then null else f.acked_at end,
+                 when f.state = 'acked' and (f.severity is distinct from excluded.severity
+                                             or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr)) then 'open'
+                 else f.state end,
+    acked_by = case when f.state = 'closed' or f.severity is distinct from excluded.severity
+                         or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr) then null else f.acked_by end,
+    acked_at = case when f.state = 'closed' or f.severity is distinct from excluded.severity
+                         or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr) then null else f.acked_at end,
     message_fr = excluded.message_fr, message_en = excluded.message_en
   returning id into v_id;
   perform public.recon_tally(p_run);
@@ -956,6 +1027,9 @@ begin
   if not (v_owner or public.can('treasury')) then
     perform public.fail('not_allowed', 'Le rapprochement est pour le propriétaire et la Trésorerie.');
   end if;
+  -- the lock of recon_run first (then the finding, then the run row): the same order as recon_run, so « vu » and a run
+  -- that meet wait for each other instead of deadlocking (Postgres would abort one of them, maybe the nightly run)
+  perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
   select * into f from public.ops_recon_findings where id = p_finding for update;
   if not found or not (v_owner or public.recon_for_treasury(f.check_id)) then
     perform public.fail('not_found', 'Cette différence n’existe plus.');

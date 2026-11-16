@@ -117,6 +117,31 @@ test('recon: a real day (paid job, Coffre job, coming job, stock bought both way
   assert.deepEqual([s.coffre_in_cents, s.coffre_out_cents, s.to_receive_cents], [3000, 2000, 0]);
 }));
 
+test('recon: a family job put in the Coffre at 0 $ and Coffre stock bought (the Coffre goes under zero) is no false alarm; « vu », it stays « vu » at the next purchase', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.owner);
+  const jobD = await g.book(g.family);
+  for (const a of ['leave', 'arrive']) await h.rpc('job_step', { p_op: uuid(), p_job: jobD, p_action: a, p_data: {} });
+  await h.one(`select public.coffre_add($1, $2::uuid[], 0) as r`, [uuid(), [jobD]]);     // « 0 $ si rien »
+  await h.rpc('job_step', { p_op: uuid(), p_job: jobD, p_action: 'finish', p_data: { parts: [] } });
+  await h.rpc('inventory_buy', { p_op: uuid(), p_item: g.coil, p_qty: 10, p_total_cents: 5000, p_from: 'coffre', p_vendor: null, p_note: null });
+  const r = await run(h);
+  const f = await open(h);
+  assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
+  assert.equal(r.status, 'ok', show(f));
+  const bal = f.find((x) => x.check_id === 'M8.balance');
+  assert.ok(bal, show(f));
+  assert.match(bal.message_fr, /^Le Coffre est à -40,00 \$/);
+  await h.as(g.owner);
+  await h.rpc('recon_ack', { p_finding: bal.id, p_note: null });
+  await h.as(g.owner);
+  await h.rpc('inventory_buy', { p_op: uuid(), p_item: g.coil, p_qty: 2, p_total_cents: 1000, p_from: 'coffre', p_vendor: null, p_note: null });
+  await run(h);
+  const again = (await open(h)).find((x) => x.check_id === 'M8.balance');
+  assert.deepEqual([again.id, again.state], [bal.id, 'acked'], 'the amount moved, the « vu » stays (info)');
+  assert.match(again.message_fr, /^Le Coffre est à -50,00 \$/);
+}));
+
 // ───────────────────────────── money ─────────────────────────────
 
 test('recon M1: an invoice whose amounts do not add up (bad), whose taxes are not the rates (warn); repaired, it closes', () => tx(async (h) => {
@@ -215,6 +240,35 @@ test('recon M3: invoice numbers — a hole, a numbered invoice deleted, the coun
   await raw(h, `update public.invoices set deleted_at = null where id = $1`, [inv]);
   await run(h);
   assert.equal(await stateOf(h, n[0].key), 'closed');
+}));
+
+test('recon M3: holes are said as runs of numbers — a counter jumped far is ONE finding; many holes are the 50 newest and one « and more »', () => tx(async (h) => {
+  const g = await garage(h);
+  const base = (await run(h), await open(h));
+  const no = Number(await h.val(`select number from public.invoices where id = $1`, [g.invoice]));
+  const pad = (n) => `F-${String(n).padStart(4, '0')}`;
+  // the counter set 50000 numbers ahead (a bad restore): one finding, not 50000
+  await raw(h, `update public.counters set next_value = $1 where name = 'invoice'`, [no + 50001]);
+  let n = await sees(h, base);
+  assert.deepEqual(ids(n), ['M3.gap'], show(n));
+  assert.equal(n[0].message_fr, `Les numéros de facture ${pad(no + 1)} à ${pad(no + 50000)} manquent (50000 numéros) : aucune facture ne les a. Vérifie si des factures ont été effacées ou si le compteur a sauté, et note-le pour le comptable.`);
+  assert.match(n[0].message_en, /^Invoice numbers F-\d+ to F-\d+ are missing \(50000 numbers\)/);
+  await raw(h, `update public.counters set next_value = $1 where name = 'invoice'`, [no + 1]);
+  await run(h);
+  assert.equal(await stateOf(h, n[0].key), 'closed');
+  // 60 holes one number wide (every other number used, by cancelled invoices): the 50 newest, then one finding for the 10 older
+  await raw(h, `insert into public.invoices (customer_id, number, status, voided_at, lines) select $1, $2::bigint + 2 * k, 'void', now(), '[]' from generate_series(1, 60) k`, [g.customer, no]);
+  await raw(h, `update public.counters set next_value = $1 where name = 'invoice'`, [no + 121]);
+  n = await sees(h, base);
+  assert.equal(n.filter((x) => x.check_id === 'M3.gap').length, 50, show(n));
+  assert.deepEqual([...new Set(ids(n))], ['M3.gap', 'M3.gapmore'], show(n));
+  const more = n.find((x) => x.check_id === 'M3.gapmore');
+  assert.match(more.message_fr, new RegExp(`^Il manque aussi 10 autres séries de numéros de facture, plus anciennes \\(10 numéros, jusqu’à ${pad(no + 19)}\\)`));
+  assert.ok(n.some((x) => x.message_fr.startsWith(`Le numéro de facture ${pad(no + 119)} manque`)), 'the newest hole is said one by one');
+  await raw(h, `delete from public.invoices where number > $1 and status = 'void'`, [no]);
+  await raw(h, `update public.counters set next_value = $1 where name = 'invoice'`, [no + 1]);
+  await run(h);
+  for (const x of n) assert.equal(await stateOf(h, x.key), 'closed');
 }));
 
 test('recon M4: a payment on nothing, a card without its session, a payment left on the job, a payment taken twice', () => tx(async (h) => {
@@ -328,11 +382,13 @@ test('recon M8: the Coffre — a link broken, a Coffre job with money, more spen
   await raw(h, `delete from public.payments where job_id = $1`, [g.jobB]);
   await run(h);
   assert.equal(await stateOf(h, n[0].key), 'closed');
-  // more spent than received (30 $ in, 20 $ + 15 $ out)
+  // more spent than received (30 $ in, 20 $ + 15 $ out): said, as info only (the app allows it: 0 $ family jobs)
   await h.c.query(`insert into public.coffre (kind, amount_cents, received_on, item_name) values ('purchase', 1500, public.local_today(), 'Lave-glace')`);
   n = await sees(h, base);
   assert.deepEqual(ids(n), ['M8.balance'], show(n));
   assert.match(n[0].message_fr, /^Le Coffre est à -5,00 \$/);
+  assert.equal(n[0].severity, 'info');
+  assert.equal((await run(h)).status, 'ok', 'a Coffre under zero never colours the day');
   await h.c.query(`update public.coffre set deleted_at = now() where item_name = 'Lave-glace'`);
   await run(h);
   assert.equal(await stateOf(h, n[0].key), 'closed');
@@ -443,7 +499,9 @@ test('recon S1: the stock against its moves — the first run takes the baseline
   const g = await garage(h);
   // a difference that was already there before the first run: noted, not said
   await raw(h, `update public.inventory_items set qty = qty + 2 where id = $1`, [g.filter]);
-  const base = (await run(h), await open(h));
+  const first = await run(h);
+  assert.ok('S1' in first.counts.checks_ms, 'the first run (the baseline) says its time too');
+  const base = await open(h);
   assert.deepEqual(base.filter((x) => x.check_id.startsWith('S1')), []);
   assert.equal(Number(await h.val(`select value from public.ops_recon_baseline where check_id = 'S1' and entity_id = $1`, [g.filter])), 2);
   // a quantity changed without a move
@@ -505,6 +563,81 @@ test('recon: a check that throws is a finding of its own and the others still ru
   await run(h);
   assert.equal(await stateOf(h, 'M3.error:'), 'closed');
 }));
+
+test('recon: a check that throws leaves its differences as they were — « vu » stays « vu »; checked again and repaired, it closes', () => tx(async (h) => {
+  const g = await garage(h);
+  await raw(h, `update public.invoices set paid_cents = paid_cents - 2000 where id = $1`, [g.invoice]);
+  await run(h);
+  const [f] = (await open(h)).filter((x) => x.check_id === 'M2.paid');
+  await h.as(g.owner);
+  await h.rpc('recon_ack', { p_finding: f.id, p_note: 'Vu avec le client' });
+  // M2 throws tonight: its difference was NOT checked, so it is not « repaired »
+  await server(h);
+  await h.c.query(`select set_config('garage.recon_fail', 'M2', true)`);
+  const r = await run(h);
+  const during = await h.one(`select state, acked_by, note from public.ops_recon_findings where id = $1`, [f.id]);
+  assert.deepEqual([during.state, during.acked_by, during.note], ['acked', g.owner, 'Vu avec le client']);
+  assert.equal(await stateOf(h, 'M2.error:'), 'open');
+  assert.deepEqual([r.counts.errors, r.counts.closed], [1, 0]);
+  // M2 works again, the difference is still there: still the same « vu »
+  await h.c.query(`select set_config('garage.recon_fail', '', true)`);
+  await run(h);
+  const after2 = await h.one(`select state, acked_by from public.ops_recon_findings where id = $1`, [f.id]);
+  assert.deepEqual([after2.state, after2.acked_by], ['acked', g.owner]);
+  assert.equal(await stateOf(h, 'M2.error:'), 'closed');
+  // repaired: closed
+  await raw(h, `update public.invoices set paid_cents = paid_cents + 2000 where id = $1`, [g.invoice]);
+  await run(h);
+  assert.equal(await stateOf(h, f.key), 'closed');
+}));
+
+test('recon: running an old day again never dates a difference back (the checks read the books as they are now)', () => tx(async (h) => {
+  const g = await garage(h);
+  const today = await h.val(`select public.local_today()::text`);
+  const old = await h.val(`select (public.local_today() - 20)::text`);
+  await run(h);
+  // a difference made today, first seen by a run of a day 20 days back: dated today
+  await raw(h, `update public.invoices set paid_cents = paid_cents - 2000 where id = $1`, [g.invoice]);
+  await run(h, old);
+  let [f] = (await open(h)).filter((x) => x.check_id === 'M2.paid');
+  assert.deepEqual([f.first_day, f.last_day], [today, today]);
+  // already open: an old day run again keeps its first day
+  await run(h);
+  await run(h, old);
+  [f] = (await open(h)).filter((x) => x.check_id === 'M2.paid');
+  assert.deepEqual([f.first_day, f.last_day], [today, today]);
+}));
+
+test('recon_ack and recon_add take the run lock first (the same order as recon_run: « vu » during a run waits, never deadlocks)', async () => {
+  /** can another connection take the run lock right now? */
+  const free = async () => {
+    const b = await pool.connect();
+    try {
+      await b.query('begin');
+      return (await b.query(`select pg_try_advisory_xact_lock(hashtext('garage.recon_run')) as ok`)).rows[0].ok;
+    } finally { await b.query('rollback').catch(() => {}); b.release(); }
+  };
+  // « vu »: a run and a finding made by hand (no recon_run in this transaction, so the lock comes from recon_ack alone)
+  await tx(async (h) => {
+    const owner = await h.person('Hassan Jeha', ['owner']);
+    await server(h);
+    await h.c.query(`insert into public.ops_recon_runs (day, source, finished_at) values (public.local_today() - 40, 'test', now())`);
+    const id = await h.val(`insert into public.ops_recon_findings (key, check_id, severity, message_fr, message_en, first_day, last_day)
+      values ('M2.paid:lock-test', 'M2.paid', 'bad', 'x', 'x', public.local_today() - 40, public.local_today() - 40) returning id`);
+    assert.equal(await free(), true, 'nobody holds it before');
+    await h.as(owner);
+    await h.rpc('recon_ack', { p_finding: id, p_note: null });
+    assert.equal(await free(), false, 'recon_ack holds the run lock until it commits');
+  });
+  // recon_add: the run it adds to cannot be replaced under it
+  await tx(async (h) => {
+    await server(h);
+    const run2 = await h.val(`insert into public.ops_recon_runs (day, source, finished_at) values (public.local_today() - 40, 'test', now()) returning id`);
+    assert.equal(await free(), true);
+    await h.c.query(`select public.recon_add($1, 'backup_late', 'warn', null, null, 'x', 'x', '{}'::jsonb)`, [run2]);
+    assert.equal(await free(), false, 'recon_add holds the run lock until it commits');
+  });
+});
 
 test('recon: one row per difference — seen again it keeps its row (last_day moves), « vu » stays, new words open it again, gone it closes, back it opens', () => tx(async (h) => {
   const g = await garage(h);
@@ -590,6 +723,10 @@ test('recon_summary: the owner sees everything, « Trésorerie » the money and 
   const t = await h.rpc('recon_summary', { p_days: 14 });
   assert.deepEqual(t.findings.map((f) => f.check_id), ['M7.sum', 'stripe_amount']);
   assert.deepEqual([t.last_run.counts.bad, t.last_run.counts.warn], [1, 1]);
+  // what the run noted, for her too: only what her list holds (the data differences are not counted for her)
+  assert.deepEqual([t.last_run.counts.seen, t.last_run.counts.new, t.last_run.counts.closed, t.last_run.counts.errors], [1, 1, 0, 0]);
+  assert.ok(o.last_run.counts.seen >= 2 && o.last_run.counts.new >= 2, JSON.stringify(o.last_run.counts));
+  assert.equal(t.last_run.counts.limited, undefined);
   // « vu » by the treasurer on a data difference: not hers
   const d1 = o.findings.find((f) => f.check_id === 'D1.past').id;
   assert.equal((await h.fails(() => h.rpc('recon_ack', { p_finding: d1, p_note: null })))?.hint, 'not_found');
@@ -652,12 +789,27 @@ test('recon: a few thousand rows are checked in well under a second', () => tx(a
   await raw(h, `update public.counters set next_value = 2501 where name = 'invoice'`);
   await raw(h, `insert into public.inventory_items (id, name, qty) select gen_random_uuid(), 'Pièce ' || n, 4 from generate_series(1, 300) n`);
   await raw(h, `insert into public.inventory_moves (item_id, delta, reason) select i.id, 1, 'restock' from public.inventory_items i, generate_series(1, 4) k where i.name like 'Pièce %'`);
+  // 300 stock purchases paid by the Trésorerie (the move and its expense « Pièces » made at the same instant, as inventory_buy
+  // does) among 1000 expenses; 100 Coffre purchases with their stock entry (M7 and M8 match moves and expenses: linear, not squared)
+  await raw(h, `insert into public.inventory_items (id, name, qty) select gen_random_uuid(), 'Achat ' || n, 1 from generate_series(1, 300) n`);
+  await raw(h, `insert into public.inventory_moves (item_id, delta, reason, note, created_at)
+    select i.id, 1, 'restock', 'Lordco — Payé par la Trésorerie', now() - make_interval(mins => substr(i.name, 7)::int) from public.inventory_items i where i.name like 'Achat %'`);
+  await raw(h, `insert into public.expenses (day, vendor, category, subtotal_cents, tps_cents, tvq_cents, total_cents, method, created_at)
+    select public.local_today() - (n % 30), 'Lordco', 'Pièces', 4349, 217, 434, 5000, 'credit', now() - make_interval(mins => n) from generate_series(1, 300) n`);
+  await raw(h, `insert into public.expenses (day, vendor, category, subtotal_cents, tps_cents, tvq_cents, total_cents, method)
+    select public.local_today() - (n % 30), 'Shell', 'Essence', 4349, 217, 434, 5000, 'credit' from generate_series(1, 700) n`);
+  await raw(h, `insert into public.inventory_items (id, name, qty, pool) select gen_random_uuid(), 'Coffre ' || n, 1, 'coffre' from generate_series(1, 100) n`);
+  await raw(h, `insert into public.inventory_moves (item_id, delta, reason, created_at)
+    select i.id, 1, 'restock', now() - make_interval(mins => substr(i.name, 8)::int) from public.inventory_items i where i.name like 'Coffre %'`);
+  await raw(h, `insert into public.coffre (kind, amount_cents, received_on, item_id, item_name, qty, created_at)
+    select 'purchase', 100, public.local_today(), i.id, i.name, 1, now() - make_interval(mins => substr(i.name, 8)::int) from public.inventory_items i where i.name like 'Coffre %'`);
   await run(h);   // the first run takes the baseline
   const t0 = Date.now();
   const r = await run(h);
   const ms = Date.now() - t0;
   const f = await open(h);
+  console.log(`recon_run: ${ms} ms on ${await h.val(`select (select count(*) from public.jobs) + (select count(*) from public.invoices) + (select count(*) from public.payments) + (select count(*) from public.inventory_moves) + (select count(*) from public.inventory_items) + (select count(*) from public.expenses) + (select count(*) from public.coffre)`)} rows (server ${r.counts.ms} ms; by check: ${JSON.stringify(r.counts.checks_ms)})`);
   assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
   assert.ok(ms < 1000, `recon_run took ${ms} ms`);
-  console.log(`recon_run: ${ms} ms on ${await h.val(`select (select count(*) from public.jobs) + (select count(*) from public.invoices) + (select count(*) from public.payments) + (select count(*) from public.inventory_moves) + (select count(*) from public.inventory_items)`)} rows (server ${r.counts.ms} ms; by check: ${JSON.stringify(r.counts.checks_ms)})`);
+  assert.equal(await h.val(`select count(*)::int from public.ops_recon_findings where state <> 'closed' and check_id like 'M7.%'`), 0, 'each purchase found its expense');
 }));
