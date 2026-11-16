@@ -213,10 +213,13 @@ declare
   v_base_set boolean := exists (select 1 from public.ops_recon_baseline b where b.check_id = 'S1' and b.entity_id = '00000000-0000-0000-0000-000000000000');
   v_baseline jsonb;
   v_sheet jsonb;
+  v_t timestamptz;
+  v_ms jsonb := '{}'::jsonb;    -- how long each check took (ms), kept in the run's counts
 begin
   -- ══════ M1: each invoice adds up (the rule of invoice_totals: a discount always takes off) ══════
   begin
     perform public.recon_trip('M1');
+    v_t := clock_timestamp();
     with l as (
       select v.id, x.l,
              (case when x.l->>'kind' = 'discount' then -abs(round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)))
@@ -256,12 +259,14 @@ begin
       where v.deleted_at is null and v.status in ('issued', 'paid') and (v.tps_cents <> w.tps or v.tvq_cents <> w.tvq)
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M1', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M1', sqlerrm);
   end;
 
   -- ══════ M2: « payé » is the sum of the payments, the status follows; drafts and cancelled invoices hold no money ══════
   begin
     perform public.recon_trip('M2');
+    v_t := clock_timestamp();
     with p as (select invoice_id, sum(amount_cents)::bigint as s, count(*) as n from public.payments where deleted_at is null and invoice_id is not null group by invoice_id),
     v as (select v.*, coalesce(p.s, 0) as pay, coalesce(p.n, 0) as n from public.invoices v left join p on p.invoice_id = v.id)
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
@@ -307,12 +312,14 @@ begin
       from v where (v.status = 'void' or v.deleted_at is not null) and v.pay <> 0
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M2', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M2', sqlerrm);
   end;
 
   -- ══════ M3: invoice numbers ══════
   begin
     perform public.recon_trip('M3');
+    v_t := clock_timestamp();
     with k as (select next_value from public.counters where name = 'invoice'),
     b as (select min(v.number) as lo, greatest(max(v.number), coalesce((select next_value - 1 from k), 0)) as hi, max(v.number) as mx
           from public.invoices v where v.number is not null)
@@ -353,12 +360,14 @@ begin
       from public.invoices v where v.deleted_at is null and v.status in ('issued', 'paid') and (v.number is null or v.issued_at is null)
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M3', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M3', sqlerrm);
   end;
 
   -- ══════ M4: each payment sits on the right document ══════
   begin
     perform public.recon_trip('M4');
+    v_t := clock_timestamp();
     with fin as (select v.job_id, v.id, v.number from public.invoices v where v.deleted_at is null and v.status in ('issued', 'paid') and v.job_id is not null),
     p as (select p.*, j.number as job_no, j.status as job_status, j.coffre_id, v.job_id as inv_job, v.number as inv_no
           from public.payments p left join public.jobs j on j.id = p.job_id left join public.invoices v on v.id = p.invoice_id
@@ -409,29 +418,26 @@ begin
                     public.recon_money_en(b.amount_cents), public.recon_method_word(b.method, 'en'),
                     case when b.invoice_id is not null then 'invoice ' || public.recon_inv_no(b.inv_no, 'en') else 'job ' || b.job_no end),
              jsonb_build_object('amount', b.amount_cents, 'method', b.method, 'invoice_id', b.invoice_id, 'job_id', b.job_id)
-      from p b
-      where b.amount_cents > 0 and exists (
-        select 1 from public.payments a
-        where a.deleted_at is null and a.id <> b.id and a.method = b.method and a.amount_cents = b.amount_cents
-          and (case when b.invoice_id is not null then a.invoice_id = b.invoice_id else a.invoice_id is null and a.job_id = b.job_id end)
-          and (a.paid_at, a.id) < (b.paid_at, b.id) and b.paid_at - a.paid_at <= interval '2 minutes')
+      from (select p.*, lag(p.paid_at) over (partition by coalesce(p.invoice_id, p.job_id), p.invoice_id is null, p.method, p.amount_cents order by p.paid_at, p.id) as prev_at
+            from p where p.amount_cents > 0 and (p.invoice_id is not null or p.job_id is not null)) b
+      where b.prev_at is not null and b.paid_at - b.prev_at <= interval '2 minutes'
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M4', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M4', sqlerrm);
   end;
 
   -- ══════ M5: every finished job is billed and paid (or known as « payer plus tard ») ══════
   begin
     perform public.recon_trip('M5');
-    with inv as (select v.job_id, v.id, v.number, v.status, v.total_cents, v.paid_cents, v.created_at
-                 from public.invoices v where v.deleted_at is null and v.status <> 'void' and v.job_id is not null)
+    v_t := clock_timestamp();
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M5.unbilled' c, 'bad' s, 'jobs' t, j.id e, null::text k,
              format('La job %s du %s est terminée, mais elle n’a pas de facture : fais sa facture et encaisse-la (ou mets-la au Coffre).', j.number, j.day) fr,
              format('Job %s of %s is done, but it has no invoice: make its invoice and get it paid (or put it in the Coffre).', j.number, j.day) en,
              jsonb_build_object('job', j.number, 'day', j.day, 'pay_later', j.pay_later) d
       from public.jobs j
-      where j.deleted_at is null and j.status = 'done' and j.coffre_id is null and not exists (select 1 from inv where inv.job_id = j.id)
+      where j.deleted_at is null and j.status = 'done' and j.coffre_id is null and not exists (select 1 from public.invoices i where i.job_id = j.id and i.deleted_at is null and i.status <> 'void')
       union all
       select 'M5.draft', 'warn', 'jobs', j.id, null,
              format('La job %s du %s est terminée, mais sa facture est encore un brouillon%s : termine la facture.', j.number, j.day,
@@ -439,7 +445,7 @@ begin
              format('Job %s of %s is done, but its invoice is still a draft%s: finish the invoice.', j.number, j.day,
                     case when i.created_at < now() - interval '2 days' then ' for more than 2 days' else '' end),
              jsonb_build_object('job', j.number, 'day', j.day, 'invoice_id', i.id, 'number', i.number, 'total', i.total_cents)
-      from public.jobs j join inv i on i.job_id = j.id and i.status = 'draft'
+      from public.jobs j join public.invoices i on i.job_id = j.id and i.deleted_at is null and i.status = 'draft'
       where j.deleted_at is null and j.status = 'done' and j.coffre_id is null
       union all
       select 'M5.unpaid', 'warn', 'jobs', j.id, null,
@@ -448,16 +454,18 @@ begin
              format('Job %s of %s is done, but its invoice %s is not paid (%s left) and nobody allowed « pay later »: get it paid, or note why.',
                     j.number, j.day, public.recon_inv_no(i.number, 'en'), public.recon_money_en(i.total_cents - i.paid_cents)),
              jsonb_build_object('job', j.number, 'day', j.day, 'invoice_id', i.id, 'number', i.number, 'due', i.total_cents - i.paid_cents)
-      from public.jobs j join inv i on i.job_id = j.id and i.status = 'issued'
+      from public.jobs j join public.invoices i on i.job_id = j.id and i.deleted_at is null and i.status = 'issued'
       where j.deleted_at is null and j.status = 'done' and j.coffre_id is null and not j.pay_later and i.paid_cents < i.total_cents
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M5', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M5', sqlerrm);
   end;
 
   -- ══════ M7: expenses add up; stock paid by the Trésorerie has its expense ══════
   begin
     perform public.recon_trip('M7');
+    v_t := clock_timestamp();
     with mv as (select m.id, m.item_id, m.delta, m.created_at, i.name from public.inventory_moves m join public.inventory_items i on i.id = m.item_id
                 where m.deleted_at is null and m.reason = 'restock' and m.note like '%Payé par la Trésorerie'),
     -- the expense of a purchase: the one that names the move (expenses.move_id, when that column exists), else the one made
@@ -495,12 +503,14 @@ begin
       from mv join ex on ex.move_id = mv.id where ex.alive is distinct from true
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M7', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M7', sqlerrm);
   end;
 
   -- ══════ M8: the Coffre ══════
   begin
     perform public.recon_trip('M8');
+    v_t := clock_timestamp();
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M8.link' c, 'bad' s, 'coffre' t, k.id e, x.id::text k,
              format('Une entrée du Coffre du %s nomme la job %s, mais cette job %s : dis-le au responsable de l’app.', k.received_on, coalesce(j.number::text, '?'),
@@ -549,12 +559,14 @@ begin
                           and (m.id::text = to_jsonb(k)->>'move_id' or m.created_at = k.created_at))
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M8', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M8', sqlerrm);
   end;
 
   -- ══════ M9: a converted estimate has its job ══════
   begin
     perform public.recon_trip('M9');
+    v_t := clock_timestamp();
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M9.quote' c, 'warn' s, 'quotes' t, q.id e, null::text k,
              format('L’estimation %s est marquée « convertie », mais elle n’a pas de job : réserve la job, ou remets l’estimation ouverte.', q.number) fr,
@@ -564,12 +576,14 @@ begin
       where q.deleted_at is null and q.status = 'converted' and (j.id is null or j.deleted_at is not null)
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M9', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M9', sqlerrm);
   end;
 
   -- ══════ D1: past jobs closed, each status with its time, one trip at a time ══════
   begin
     perform public.recon_trip('D1');
+    v_t := clock_timestamp();
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'D1.past' c, 'warn' s, 'jobs' t, j.id e, null::text k,
              format('La job %s du %s est encore « %s » : termine-la, annule-la ou déplace-la.', j.number, j.day, public.recon_status_word(j.status, 'fr')) fr,
@@ -593,12 +607,14 @@ begin
       group by t.staff_id having count(*) > 1
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('D1', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('D1', sqlerrm);
   end;
 
   -- ══════ D2: the coming days ══════
   begin
     perform public.recon_trip('D2');
+    v_t := clock_timestamp();
     with c as (select j.* from public.jobs j where j.deleted_at is null and j.day >= v_today and j.status in ('booked', 'en_route', 'on_site'))
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'D2.order' c, 'warn' s, 'trucks' t, c.truck_id e, c.day || '|' || c.block || '|' || c.stop_order k,
@@ -637,12 +653,14 @@ begin
       from c where c.status = 'booked' and c.truck_id is null having count(*) > 0
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('D2', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('D2', sqlerrm);
   end;
 
   -- ══════ D3: the car and the invoice belong to the job's customer ══════
   begin
     perform public.recon_trip('D3');
+    v_t := clock_timestamp();
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'D3.car' c, 'warn' s, 'jobs' t, j.id e, null::text k,
              format('La voiture de la job %s du %s est au dossier d’un autre client : ouvre la job et choisis la bonne voiture.', j.number, j.day) fr,
@@ -659,12 +677,14 @@ begin
       where i.deleted_at is null and i.status <> 'void' and i.customer_id is distinct from j.customer_id
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('D3', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('D3', sqlerrm);
   end;
 
   -- ══════ D4: doubles (info only) ══════
   begin
     perform public.recon_trip('D4');
+    v_t := clock_timestamp();
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'D4.phone' c, 'info' s, 'customers' t, (array_agg(c.id order by c.created_at desc, c.id))[1] e, c.phone_digits k,
              format('%s dossiers de clients ont le même numéro de téléphone (%s) : si c’est la même personne, garde un seul dossier.', count(*), max(c.phone)) fr,
@@ -681,12 +701,14 @@ begin
       group by upper(trim(w.vin)) having count(*) > 1
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('D4', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('D4', sqlerrm);
   end;
 
   -- ══════ S1: stock on hand = the sum of its moves (against the baseline: only a CHANGE is said) ══════
   begin
     perform public.recon_trip('S1');
+    v_t := clock_timestamp();
     if not v_base_set then
       -- the very first run: the differences of today become the baseline, nothing is said
       select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'value', x.diff)), '[]'::jsonb) into v_baseline
@@ -709,6 +731,7 @@ begin
         where x.diff <> x.base
       ) f;
       v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('S1', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
     end if;
   exception when others then v_all := v_all || public.recon_error('S1', sqlerrm);
   end;
@@ -716,6 +739,7 @@ begin
   -- ══════ S2: negative stock; a stock item sold on a finished job and never taken out ══════
   begin
     perform public.recon_trip('S2');
+    v_t := clock_timestamp();
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'S2.negative' c, 'warn' s, 'inventory_items' t, i.id e, null::text k,
              format('Le stock de « %s » est sous zéro (%s %s) : compte l’article et corrige avec « Compter ».', i.name, trim_scale(i.qty), i.unit) fr,
@@ -728,26 +752,29 @@ begin
              format('Job %s of %s sold %s from the stock, but nothing left the stock: check the parts used and fix the stock.', j.number, j.day, x.names),
              jsonb_build_object('job', j.number, 'day', j.day, 'items', x.items)
       from public.jobs j
-      cross join lateral (select string_agg(distinct it.name, ', ') as names, jsonb_agg(distinct i.item_id) as items
-                          from public.job_items i join public.inventory_items it on it.id = i.item_id and it.deleted_at is null
-                          where i.job_id = j.id and i.deleted_at is null and i.item_id is not null and i.status in ('planned', 'done', 'approved')) x
-      where j.deleted_at is null and j.status = 'done' and j.finished_at >= now() - interval '14 days' and x.names is not null
-        and not exists (select 1 from public.inventory_moves m where m.job_id = j.id and m.reason = 'used' and m.deleted_at is null)
+      join (select i.job_id, string_agg(distinct it.name, ', ') as names, jsonb_agg(distinct i.item_id) as items
+            from public.job_items i join public.inventory_items it on it.id = i.item_id and it.deleted_at is null
+            where i.deleted_at is null and i.item_id is not null and i.status in ('planned', 'done', 'approved')
+            group by i.job_id) x on x.job_id = j.id
+      left join (select distinct m.job_id from public.inventory_moves m where m.reason = 'used' and m.deleted_at is null and m.job_id is not null) u on u.job_id = j.id
+      where j.deleted_at is null and j.status = 'done' and j.finished_at >= now() - interval '14 days' and u.job_id is null
     ) f;
     v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('S2', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('S2', sqlerrm);
   end;
 
   -- the day's sheet, in the same snapshot
   begin
     perform public.recon_trip('sheet');
+    v_t := clock_timestamp();
     v_sheet := public.recon_sheet(p_day);
   exception when others then
     v_sheet := '{}'::jsonb;
     v_all := v_all || public.recon_error('M0', sqlerrm);
   end;
 
-  return jsonb_build_object('findings', v_all, 'sheet', v_sheet) || case when v_baseline is not null then jsonb_build_object('baseline', v_baseline) else '{}'::jsonb end;
+  return jsonb_build_object('findings', v_all, 'sheet', v_sheet, 'ms', v_ms) || case when v_baseline is not null then jsonb_build_object('baseline', v_baseline) else '{}'::jsonb end;
 end $$;
 
 -- ───────────────────────────── counts and status of a run ─────────────────────────────
@@ -845,7 +872,7 @@ begin
   get diagnostics v_closed = row_count;
 
   update public.ops_recon_runs set finished_at = clock_timestamp(),
-    counts = jsonb_build_object('new', v_new, 'closed', v_closed, 'errors', v_errors, 'seen', (select count(*) from recon_seen),
+    counts = jsonb_build_object('new', v_new, 'closed', v_closed, 'errors', v_errors, 'seen', (select count(*) from recon_seen), 'checks_ms', coalesce(v->'ms', '{}'::jsonb),
                                 'ms', round(extract(epoch from clock_timestamp() - v_t0) * 1000)::int)
   where id = v_run;
   v_t := public.recon_tally(v_run);

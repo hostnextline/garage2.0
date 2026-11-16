@@ -659,5 +659,5 @@ test('recon: a few thousand rows are checked in well under a second', () => tx(a
   const f = await open(h);
   assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
   assert.ok(ms < 1000, `recon_run took ${ms} ms`);
-  console.log(`recon_run: ${ms} ms on ${await h.val(`select (select count(*) from public.jobs) + (select count(*) from public.invoices) + (select count(*) from public.payments) + (select count(*) from public.inventory_moves) + (select count(*) from public.inventory_items)`)} rows (server ${r.counts.ms} ms)`);
+  console.log(`recon_run: ${ms} ms on ${await h.val(`select (select count(*) from public.jobs) + (select count(*) from public.invoices) + (select count(*) from public.payments) + (select count(*) from public.inventory_moves) + (select count(*) from public.inventory_items)`)} rows (server ${r.counts.ms} ms; by check: ${JSON.stringify(r.counts.checks_ms)})`);
 }));
