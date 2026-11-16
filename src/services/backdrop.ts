@@ -2,11 +2,7 @@
    for the app (tests/tools/render-backdrops.cjs). Each person can put their own photo instead (their truck, their
    garage): it stays on this device only, made smaller first so it opens fast and fits in the phone's storage. */
 import { signal } from '@preact/signals';
-import nightUrl from '../ui/styles/backdrops/his-night.webp';
-import dayUrl from '../ui/styles/backdrops/his-day.webp';
 
-export const HIS_NIGHT = nightUrl;
-export const HIS_DAY = dayUrl;
 const KEY = 'his.backdrop.photo';
 
 function read(): string | null { try { return localStorage.getItem(KEY); } catch { return null; } }

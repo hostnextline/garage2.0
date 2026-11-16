@@ -25,7 +25,7 @@ import { TruckStartPanel } from './TruckStartPanel';
 import { weekToPanes, changedDays, applyPlan, paneMinutes, FROM, TO, type Panes, type Mode } from './grid';
 import { rangesWords, weekdaysWords } from './words';
 import { spanEnds } from '../booking/when';
-import { focusAfterNav, restoreFocus } from '../agenda/focus';
+import { focusAfterNav, restoreFocus } from '../../platform/focus';
 import './hours.css';
 
 /** the next date (from today) that falls on that weekday */

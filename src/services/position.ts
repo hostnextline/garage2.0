@@ -6,13 +6,13 @@
    - A refusal of the phone (permission) is explained in plain words; it is tried again when the app comes back.
    The rules are pure functions (tested); startPositionSharing() runs the rest once for the whole app. */
 import { signal, effect, untracked } from '@preact/signals';
-import type { Job } from '../../data/types';
-import { me, preview } from '../../data/auth';
-import { openShift, allJobs } from '../../data/select';
-import { reportPosition } from '../../data/api';
-import { pull } from '../../data/sync';
-import { today, duration } from '../../lib/dates';
-import { t, lang } from '../../lib/i18n';
+import type { Job } from '../data/types';
+import { me, preview } from '../data/auth';
+import { openShift, allJobs } from '../data/select';
+import { reportPosition } from '../data/api';
+import { pull } from '../data/sync';
+import { today, duration } from '../lib/dates';
+import { t, lang } from '../lib/i18n';
 
 /* ---------- the rules (pure) ---------- */
 export interface Fix { lat: number; lng: number; accuracy: number | null; heading?: number | null; speed?: number | null; at: number }

@@ -2,9 +2,9 @@
    button that opens it. Closing the note hides it until the app is opened again. Shown on the sign-in screen too. */
 import { useState } from 'preact/hooks';
 import { ExternalLink, X } from 'lucide-preact';
-import { t } from '../lib/i18n';
-import { movedTo } from '../lib/config';
-import { Banner, Button, IconButton } from '../ui';
+import { t } from '../../lib/i18n';
+import { movedTo } from '../../lib/config';
+import { Banner, Button, IconButton } from '../../ui';
 import './moved.css';
 
 const KEY = 'his.moved.hidden';

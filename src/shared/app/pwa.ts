@@ -2,9 +2,9 @@
    shows at the top of the screen. « Vérifier les mises à jour » (Réglages, Mon compte) looks for one on demand and offers
    « Mettre à jour maintenant ». Only an important version (a commit marked « [important] ») brings a notification. */
 import { signal } from '@preact/signals';
-import { APP_VERSION, BUILT_AT } from '../lib/config';
-import { t } from '../lib/i18n';
-import { toast } from '../ui';
+import { APP_VERSION, BUILT_AT } from '../../lib/config';
+import { t } from '../../lib/i18n';
+import { toast } from '../../ui';
 
 /** a new version is downloaded and waits to be used */
 export const updateReady = signal(false);

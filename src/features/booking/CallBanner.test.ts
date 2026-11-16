@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { callToShow, callLink, CALL_SHOWN_MS, type IncomingCall } from './CallBanner';
+import { callToShow, CALL_SHOWN_MS } from './CallBanner';
+import { callLink, type IncomingCall } from '../../services/bubbles';
 
 const now = Date.parse('2026-11-12T15:00:00Z');
 const call = (id: string, agoMs: number, name: string | null = null): IncomingCall => ({ id, phone: '+15145550100', name, at: new Date(now - agoMs).toISOString() });

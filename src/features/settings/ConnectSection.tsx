@@ -5,9 +5,8 @@ import { MessageSquareText, MessageCircle, CreditCard, Send, Unplug, PhoneCall, 
 import { t, lang } from '../../lib/i18n';
 import { phoneDigits } from '../../lib/text';
 import { access, callFn, refreshAccess } from '../../data/auth';
-import { checkCalls, callsOn } from '../booking/CallBanner';
-import { checkTexts, textsOn } from '../conversation/TextHost';
-import { pushState, pushOn, pushOff, type PushState } from '../conversation/push';
+import { checkCalls, callsOn, checkTexts, textsOn } from '../../services/bubbles';
+import { pushState, pushOn, pushOff, type PushState } from '../../services/push';
 import { team, errorMessage, updateMe } from '../../data/api';
 import { Panel, Field, Input, PhoneInput, Button, Pill, Banner, Skeleton, Switch, toast } from '../../ui';
 import { teamDo } from '../team/teamApi';

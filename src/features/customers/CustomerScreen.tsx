@@ -9,7 +9,7 @@ import { ConversationSheet } from '../conversation/ConversationSheet';
 import { may, isField } from '../../domain/rights';
 import { navigate, setQuery, type ScreenProps } from '../../platform/router';
 import { touch } from '../../platform/media';
-import { useFocusOnMount } from './hooks';
+import { useFocusOnMount } from '../../ui/hooks';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { e164 } from '../../lib/text';

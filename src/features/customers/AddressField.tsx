@@ -11,7 +11,7 @@ import { photonQuery, type Suggestion } from './photon';
 import { searchPlaces } from './places';
 import { locate } from './locate';
 import { splitPasted, cityOf, unitApart } from './address';
-import { useFocusOnMount } from './hooks';
+import { useFocusOnMount } from '../../ui/hooks';
 import './customers.css';
 
 export interface PlaceValue { address: string; unit: string | null; postal_code: string | null; lat: number | null; lng: number | null; city?: string | null }

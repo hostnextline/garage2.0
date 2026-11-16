@@ -13,7 +13,7 @@ import { GuideCard } from '../guide/GuideCard';
 import { TextOutcomeHost } from '../jobs/TextOutcome';
 import { PartsHost } from '../jobs/PartsSheet';
 import { CarCheckHost } from '../jobs/CarCheckSheet';
-import { startPositionSharing } from './position';
+import { startPositionSharing } from '../../services/position';
 import { todayRole, hasTwoViews, dayView, setDayView, type DayView } from './select';
 import { isOwner } from '../../data/auth';
 import { MechanicDay } from './MechanicDay';

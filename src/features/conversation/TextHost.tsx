@@ -10,15 +10,14 @@ import { Minus, X, Send, UserRound, CalendarPlus, MessageCircle } from 'lucide-p
 import { t, lang } from '../../lib/i18n';
 import { stamp } from '../../lib/dates';
 import { formatPhone } from '../../lib/text';
-import { sb, isOwner, preview, access } from '../../data/auth';
+import { sb } from '../../data/auth';
 import { customersList, customerName } from '../../data/select';
 import { conversation, conversationPhone, sendChat, sendChatPhone, errorMessage, type ChatMessage } from '../../data/api';
 import { wide } from '../../platform/media';
 import { REALTIME } from '../../lib/config';
 import { Avatar, IconButton, toast } from '../../ui';
 import { phoneOwners } from '../customers/dupes';
-import { callLink } from '../booking/CallBanner';
-import { hermesOpen, setHermesOpen } from '../hermes/host';
+import { hermesOpen, setHermesOpen, callLink, textsOn, onCheckTexts } from '../../services/bubbles';
 import { nextChats, openChat, minimiseChat, closeChat, unread, heads, textsOf, phoneId, lines, FRESH_MS, type Chat, type IncomingText } from './texts';
 import { Attachments } from './Attachments';
 import './conversation.css';
@@ -47,13 +46,6 @@ function since(): string {
   } catch { return new Date(Date.now() - FRESH_MS).toISOString(); }
 }
 
-let ask: (() => void) | null = null;
-/** look now (after « Essayer » in Réglages) */
-export const checkTexts = () => ask?.();
-
-/** the texts come to this account: an owner who switched them on for themself (Réglages → Branchements) */
-export function textsOn(): boolean { return isOwner() && !preview.value && access.value?.prefs?.texts === true; }
-
 export function TextHost() {
   const on = textsOn();
   const [texts, setTexts] = useState<IncomingText[]>([]);
@@ -69,12 +61,12 @@ export function TextHost() {
       setChats(nextChats(chats.value, list, since(), wide.value && !hermesOpen.value));
     };
     const look = () => void load().catch(() => undefined);
-    ask = look;
+    onCheckTexts(look);
     look();
     const timer = setInterval(look, ASK_MS);
     document.addEventListener('visibilitychange', look);
     const ch = REALTIME ? sb.channel('incoming-texts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'incoming_texts' }, look).subscribe() : null;
-    return () => { alive = false; ask = null; clearInterval(timer); document.removeEventListener('visibilitychange', look); if (ch) void sb.removeChannel(ch); };
+    return () => { alive = false; onCheckTexts(null); clearInterval(timer); document.removeEventListener('visibilitychange', look); if (ch) void sb.removeChannel(ch); };
   }, [on]);
   if (!on) return null;
 

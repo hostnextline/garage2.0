@@ -1,7 +1,7 @@
 /* « Installer l'app sur ton téléphone »: the browser's own install button when it offers one (Android, computer),
    else the two or three taps to do (iPhone: Partager, Sur l'écran d'accueil; Android: ⋮, Installer l'app). */
 import { computed } from '@preact/signals';
-import { installEvent, appInstalled } from '../../app/pwa';
+import { installEvent, appInstalled } from '../../shared/app/pwa';
 import { Download, Share, EllipsisVertical, Copy, ExternalLink } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { appBase, movedTo } from '../../lib/config';

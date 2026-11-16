@@ -21,7 +21,7 @@ import { mayEditJob } from '../jobs/JobEdit';
 import { jobPerson } from './move';
 import { copiedJob, copyJob, pasteHref, bookHref } from './copy';
 import { dropWindowStart } from './grid';
-import { openMenu, openMenuAt, pressProps, type MenuAction } from './ContextMenu';
+import { openMenu, openMenuAt, pressProps, type MenuAction } from '../../ui/ContextMenu';
 
 /** a block takes a paste when it has not started and is open (a full block: the booking screen offers « quand même ») */
 export const mayPaste = (v: { started: boolean; open: boolean }) => may.book() && !!copiedJob.value && !v.started && v.open;

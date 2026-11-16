@@ -134,7 +134,7 @@ describe('pictures and documents of a text', () => {
   });
 });
 
-import { pushAbility } from './push';
+import { pushAbility } from '../../services/push';
 describe('the alert while the app is closed: what a device can do', () => {
   const base = { sw: true, push: true, notif: true, permission: 'default', ios: false, standalone: false };
   it('ready, blocked, an iPhone that must install the app first, or a browser that cannot', () => {

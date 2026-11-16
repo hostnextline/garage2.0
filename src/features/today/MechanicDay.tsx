@@ -17,7 +17,7 @@ import { CarFirst } from '../jobs/CarFirst';
 import { StepButton, PRESSABLE } from '../jobs/StepButton';
 import { stepOf, jobRights, dayWord, clockOf, seen, outsideWindow, blockRange } from '../jobs/select';
 import { doReturn, doReturnEnd } from '../jobs/flow';
-import { sharing, retryPosition, agoText } from './position';
+import { sharing, retryPosition, agoText } from '../../services/position';
 import { OPEN, myJobsOn, nextStopOf, summaryOf, nextWorkDay, shiftsOf, workedMinutes, useTick, myRoute, setMyRoute } from './select';
 
 /* ---------- the shift ---------- */

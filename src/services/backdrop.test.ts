@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { fitSize, HIS_NIGHT, HIS_DAY } from './backdrop';
+import { fitSize } from './backdrop';
+import { HIS_NIGHT, HIS_DAY } from '../ui/backdrops';
 
 describe('behind the glass', () => {
   it('a photo is made smaller to at most 1600 px on its longest side, never bigger', () => {

@@ -6,33 +6,21 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { PhoneCall, X } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { formatPhone } from '../../lib/text';
-import { sb, access, isOwner, preview } from '../../data/auth';
+import { sb } from '../../data/auth';
 import { customersList, customerName } from '../../data/select';
 import { navigate } from '../../platform/router';
 import { REALTIME } from '../../lib/config';
 import { Button, IconButton } from '../../ui';
 import { phoneOwners } from '../customers/dupes';
 import './booking.css';
+import { type IncomingCall, callLink, callsOn, onCheckCalls } from '../../services/bubbles';
 
-export interface IncomingCall { id: string; phone: string; name: string | null; at: string }
 /** a call stays on screen this long */
 export const CALL_SHOWN_MS = 3 * 60 * 1000;
 /** the newest call still worth showing (not closed by the person, not too old) */
 export function callToShow(list: IncomingCall[], closed: Set<string>, now: number): IncomingCall | null {
   return list.filter((c) => !closed.has(c.id) && now - Date.parse(c.at) < CALL_SHOWN_MS).sort((a, b) => b.at.localeCompare(a.at))[0] || null;
 }
-/** Appel entrant with the number (10 digits) and the name already there */
-export function callLink(c: Pick<IncomingCall, 'phone' | 'name'>): string {
-  const d = c.phone.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
-  return `/call?phone=${encodeURIComponent(d)}${c.name ? `&name=${encodeURIComponent(c.name)}` : ''}`;
-}
-
-let ask: (() => void) | null = null;
-/** look now (after « Essayer » in Réglages) */
-export const checkCalls = () => ask?.();
-
-/** this account gets the incoming calls: an owner who switched them on */
-export function callsOn(): boolean { return isOwner() && !preview.value && access.value?.prefs?.calls === true; }
 
 export function CallHost() {
   const on = callsOn();
@@ -49,12 +37,12 @@ export function CallHost() {
       if (alive) setTick((x) => x + 1);
     };
     const look = () => void load().catch(() => undefined);
-    ask = look;
+    onCheckCalls(look);
     look();
     const timer = setInterval(look, 10 * 1000);
     document.addEventListener('visibilitychange', look);
     const ch = REALTIME ? sb.channel('incoming-calls').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'incoming_calls' }, look).subscribe() : null;
-    return () => { alive = false; ask = null; clearInterval(timer); document.removeEventListener('visibilitychange', look); if (ch) void sb.removeChannel(ch); };
+    return () => { alive = false; onCheckCalls(null); clearInterval(timer); document.removeEventListener('visibilitychange', look); if (ch) void sb.removeChannel(ch); };
   }, [on]);
   const call = on ? callToShow(calls, closed.current, Date.now()) : null;
   if (!call) return null;

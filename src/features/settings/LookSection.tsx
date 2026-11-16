@@ -3,9 +3,9 @@
 import { t, lang } from '../../lib/i18n';
 import { saveSettings } from '../../data/api';
 import { settings } from '../../data/select';
-import { THEMES, teamLook, myLook, type Look, type ThemeKey, type Mode, type Glass } from '../../app/theme';
+import { THEMES, teamLook, myLook, type Look, type ThemeKey, type Mode, type Glass } from '../../services/theme';
 import { Panel, Seg, Field, Banner, Button, attempt } from '../../ui';
-import { HIS_NIGHT, HIS_DAY } from '../../app/backdrop';
+import { HIS_NIGHT, HIS_DAY } from '../../ui/backdrops';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
 /* the looks as small showrooms: H.I.S three times (light, dark, automatic: follows the phone), then the luxury themes */

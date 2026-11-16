@@ -1,6 +1,6 @@
 /* Mon compte (#/account): my name and phone, the app's language, my look (the team's, or my own with live swatches),
    installing the app, signing out (warns about changes not sent yet), deleting my account. */
-import { UpdatePanel } from '../../app/UpdatePanel';
+import { UpdatePanel } from '../../shared/app/UpdatePanel';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { LogOut, Smartphone, Trash2, ImageUp, RotateCcw } from 'lucide-preact';
 import type { ScreenProps } from '../../platform/router';
@@ -9,8 +9,9 @@ import { access, me, preview, signOut, refreshAccess, isOwner } from '../../data
 import { updateMe, memberUpdate, errorMessage } from '../../data/api';
 import { pendingCount } from '../../data/sync';
 import { trucks } from '../../data/select';
-import { myLook, teamLook, setMyLook, type Look } from '../../app/theme';
-import { myPhoto, setMyPhoto, shrinkPhoto, HIS_NIGHT, HIS_DAY } from '../../app/backdrop';
+import { myLook, teamLook, setMyLook, type Look } from '../../services/theme';
+import { myPhoto, setMyPhoto, shrinkPhoto } from '../../services/backdrop';
+import { HIS_NIGHT, HIS_DAY } from '../../ui/backdrops';
 import { Page, Panel, Rows, RowItem, Field, Input, PhoneInput, Seg, Button, Banner, Avatar, ask, run, toast } from '../../ui';
 import { ThemeSwatches, LookChoices } from '../settings/LookSection';
 import { rolesWords, teamDo } from '../team/teamApi';

@@ -17,7 +17,7 @@ import { InvoicePanel } from '../invoices/InvoicePanel';
 import { PaySheet } from '../invoices/PaySheet';
 import { CoffreSheet } from '../coffre/CoffreSheet';
 import { CarFirst } from './CarFirst';
-import { startPositionSharing } from '../today/position';
+import { startPositionSharing } from '../../services/position';
 import type { NextStep } from './nextStep';
 import { jobRights, stepOf, jobName, jobCustomer, whenLine, proposedOf, seen } from './select';
 import { startInvoice, letGo } from './flow';

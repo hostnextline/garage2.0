@@ -15,7 +15,7 @@ import { wide } from '../../platform/media';
 import type { Job } from '../../data/types';
 import { sendText } from '../jobs/flow';
 import { jobName, jobFirstName, jobCustomer, shortDayWord, blockRange, clockOf, minuteOf, isWindowJob, outsideWindow } from '../jobs/select';
-import { agoText } from './position';
+import { agoText } from '../../services/position';
 import { trucksNow, unplacedOn, toCollect, proposalsWaiting, toConfirm, paymentsOn, useTick, type TruckNow } from './select';
 import { ShiftCard } from './MechanicDay';
 import { NeedsCard } from '../inventory/needsView';

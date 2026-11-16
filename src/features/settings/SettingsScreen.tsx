@@ -19,7 +19,7 @@ import { WaiverSection } from './WaiverSection';
 import { LookSection } from './LookSection';
 import { ConnectSection } from './ConnectSection';
 import { ExpensesSection } from './ExpensesSection';
-import { UpdatePanel } from '../../app/UpdatePanel';
+import { UpdatePanel } from '../../shared/app/UpdatePanel';
 import './settings.css';
 
 export type SectionKey = 'company' | 'billing' | 'services' | 'booking' | 'texts' | 'waiver' | 'look' | 'connect' | 'expenses' | 'app';

@@ -7,11 +7,9 @@ import { Bot, X } from 'lucide-preact';
 import { access, preview } from '../../data/auth';
 import { t } from '../../lib/i18n';
 import './hermes.css';
+import { hermesOpen, setHermesOpen } from '../../services/bubbles';
 
-export const hermesOpen = signal(false);
 export const hermesBusy = signal(false);
-const remember = (v: boolean) => { try { localStorage.setItem('his-hermes-open', v ? '1' : '0'); } catch { /* private window */ } };
-export function setHermesOpen(v: boolean) { hermesOpen.value = v; remember(v); }
 
 export function mayHermes(): boolean { return !!access.value && !preview.value; }
 

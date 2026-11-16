@@ -15,11 +15,11 @@ import { relativeDay } from '../booking/when';
 import { fillOf, freeWords, fillWords, weekOfDay } from './layout';
 import { dayPlan, dayJobs, isOff, type BlockView } from './select';
 import type { TruckBlock } from '../../data/select';
-import { focusAfterNav } from './focus';
+import { focusAfterNav } from '../../platform/focus';
 import { jobMenu, blockMenu, mayPaste, jobPress, blockPress } from './actions';
 import { pasteHref } from './copy';
 import type { Job } from '../../data/types';
-import { roomy } from './screen';
+import { roomy } from '../../platform/media';
 import { unitCount, workedUnits, jobMinute } from './grid';
 import { GridColumn, NowLine, TimeAxis, useGridDrag, useOpeningScroll, type Place } from './TimeGrid';
 

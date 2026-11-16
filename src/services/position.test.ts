@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shouldSend, metersBetween, currentJobId, agoText, RULES, type Fix, type Sent } from './position';
-import { lang } from '../../lib/i18n';
+import { lang } from '../lib/i18n';
 
 const T0 = Date.UTC(2026, 10, 4, 15, 0, 0);
 const HOME = { lat: 45.5005053, lng: -73.6577429 };

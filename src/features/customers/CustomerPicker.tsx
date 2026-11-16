@@ -10,7 +10,7 @@ import { saveCustomer } from '../../data/api';
 import { Avatar, Button, Sheet, Banner, Skeleton, run } from '../../ui';
 import { net } from '../../data/sync';
 import { factsOf, searchIndex, recentFirst } from './facts';
-import { useSettled, useFocusOnMount } from './hooks';
+import { useSettled, useFocusOnMount } from '../../ui/hooks';
 import { searchList, draftFromQuery } from './search';
 import { CustomerFields, emptyDraft, checkDraft, hasErrors, customerPatch, type Draft, type DraftErrors } from './CustomerFields';
 import { Flags, Bit, carName } from './bits';

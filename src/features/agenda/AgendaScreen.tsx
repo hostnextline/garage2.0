@@ -15,7 +15,7 @@ import { DayView, DatePick } from './DayView';
 import { WeekGrid } from './WeekGrid';
 import { shiftWeek, weekTitle, sameWeek } from './layout';
 import { dayPlan, dayJobs, isOff, seesAll } from './select';
-import { focusAfterNav, restoreFocus } from './focus';
+import { focusAfterNav, restoreFocus } from '../../platform/focus';
 import { copiedJob, clearCopy } from './copy';
 import { jobPerson } from './move';
 import { MoveWindowHost } from './MoveWindowSheet';

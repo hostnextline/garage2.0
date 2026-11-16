@@ -1,7 +1,7 @@
 /* The alert while the app is closed (« Texto entrant »): this device asks its maker's notification service for an address,
    and gives it to the server (table push_subs); the server function « ring » then sends each new text there, and the
    service worker (public/push-sw.js) shows it. Per device: to do again on each phone or computer that should be told. */
-import { sb, callFn } from '../../data/auth';
+import { sb, callFn } from '../data/auth';
 
 /** on / off on this device; « denied »: notifications are blocked for the app in the device's settings; « install »: an
     iPhone or iPad where the app is not on the home screen yet (Apple only alerts an installed app); « unsupported » */

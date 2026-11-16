@@ -9,7 +9,7 @@ import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
 import { cellState, isFar, farLimits, farInfo, momentsByKey, offered, betterMoments, betterText, roadWords, type CellState, type FarInfo } from './logic';
-import { openMenu, openMenuAt, pressProps } from '../agenda/ContextMenu';
+import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
 import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';

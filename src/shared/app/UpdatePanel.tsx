@@ -1,10 +1,10 @@
 /* « Mise à jour de l'app »: which version this phone has, « Vérifier les mises à jour », and « Mettre à jour maintenant »
    when a new version is ready. Shown in Réglages and in Mon compte (every phone updates itself). */
 import { RefreshCw, ArrowUpCircle } from 'lucide-preact';
-import { t, lang } from '../lib/i18n';
-import { stamp } from '../lib/dates';
-import { APP_VERSION, BUILT_AT } from '../lib/config';
-import { Panel, Button, Banner, Kv } from '../ui';
+import { t, lang } from '../../lib/i18n';
+import { stamp } from '../../lib/dates';
+import { APP_VERSION, BUILT_AT } from '../../lib/config';
+import { Panel, Button, Banner, Kv } from '../../ui';
 import { updateReady, updateState, remoteVersion, checkForUpdate, applyUpdate, isImportant } from './pwa';
 
 export function versionLabel(version = APP_VERSION, builtAt = BUILT_AT, l = lang.value): string {

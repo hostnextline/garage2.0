@@ -9,7 +9,7 @@ import { me, preview } from '../../data/auth';
 import { openShift, truck, invoiceOf, settings, customer as customerRow } from '../../data/select';
 import { toast, ask, askText, attempt, run, whenHistorySettled } from '../../ui';
 import { t } from '../../lib/i18n';
-import { quickPosition } from '../today/position';
+import { quickPosition } from '../../services/position';
 import { jobFirstName, rememberLink, clockOf, keepAhead, wt, type JobRights } from './select';
 import { exportSignature, type Stroke } from './signature';
 import { plannedParts, type UsedPart } from './parts';
