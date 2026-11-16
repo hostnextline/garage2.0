@@ -3,7 +3,7 @@ import { UNITS, FROM, TO, STEP, weekToPanes, panesToRanges, paintRect, togglePan
 import { cellsToRanges, rangesToCells, dow } from '../../lib/dates';
 import { hours as fr } from '../../i18n/fr/hours';
 import { hours as en } from '../../i18n/en/hours';
-import { sameShape } from '../booking/dict-check';
+import { sameShape } from '../../lib/dict-check';
 
 describe('the window of panes', () => {
   it('has 32 panes of 30 minutes from 6 h to 22 h', () => {

@@ -1,7 +1,7 @@
 /* Agenda: pure helpers for the week and the day (layout.test.ts). */
 import { weekDays, weekStart, addDays, daysBetween, duration, parseDay, clock, longDay, type Day, type BlockKey, type Range } from '../../lib/dates';
 import { t, type Lang } from '../../lib/i18n';
-import { blockPhraseLower, relativeDay, windowWords } from '../booking/when';
+import { blockPhraseLower, relativeDay, windowWords } from '../../domain/moment/words';
 
 /** the 7 days shown (Sunday → Saturday) around a day */
 export function weekOfDay(day: Day): Day[] { return weekDays(day); }
@@ -32,21 +32,6 @@ export interface Fill { pct: number; over: boolean; left: number; used: number; 
 export function fillOf(used: number, cap: number): Fill {
   const pct = cap > 0 ? Math.min(1, Math.max(0, used / cap)) : used > 0 ? 1 : 0;
   return { pct, over: used > cap, left: cap - used, used, cap };
-}
-/** « 2 h 08 », « 45 min » — short enough for a small cell, in both languages */
-export function shortDuration(min: number): string {
-  const h = Math.floor(min / 60), m = Math.round(min % 60);
-  if (!h) return `${m} min`;
-  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
-}
-/** « 1 h 20 de libre », « Complet », « Complet, 20 min de trop », « Ne travaille plus dans ce bloc » */
-export function freeWords(used: number, cap: number, l: Lang, short = false, wholeDay = false): string {
-  if (cap <= 0) return used > 0 ? t(wholeDay ? 'agenda.lane.offShiftDay' : 'agenda.lane.offShift', undefined, l) : t('agenda.lane.closed', undefined, l);
-  const left = cap - used;
-  const d = (x: number) => (short ? shortDuration(x) : duration(x, l));
-  if (left > 0) return t('agenda.lane.free', { d: d(left) }, l);
-  if (left === 0 || short) return t('agenda.lane.full', undefined, l);
-  return t('agenda.lane.over', { d: d(-left) }, l);
 }
 /** for screen readers: « 2 h 40 prises sur 4 h » */
 export function fillWords(used: number, cap: number, l: Lang): string {

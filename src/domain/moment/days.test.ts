@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayChips, defaultBlock, dayCounts, overviewPins, comingJobs, isOpen, type DayRow, type PinJob } from './momentDays';
+import { dayChips, defaultBlock, dayCounts, overviewPins, comingJobs, isOpen, type DayRow, type PinJob } from './days';
 import type { Moment } from './logic';
 
 const rows: DayRow[] = [

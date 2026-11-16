@@ -4,7 +4,7 @@ import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
 import { today, daysBetween, parseDay, tinyDay, type BlockKey } from '../../lib/dates';
 import { vehicleLabel } from '../../data/select';
-import { windowWords } from '../booking/when';
+import { windowWords } from '../../domain/moment/words';
 import type { Customer, Vehicle } from '../../data/types';
 import { Pill } from '../../ui';
 

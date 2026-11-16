@@ -12,7 +12,7 @@ import type { Job } from '../../data/types';
 import { may } from '../../domain/rights';
 import { jobStatusWord, toast } from '../../ui';
 import { dropRefusal, winInfo, winShort, winTiny, type DropRefusal } from './layout';
-import { UNIT, unitCount, unitMinutes, unitIndex, minuteAt, unitsAt, jobBox, jobMinute, overlapColumns, openingUnit, type Box, type Slot } from './grid';
+import { UNIT, unitCount, unitMinutes, unitIndex, minuteAt, unitsAt, jobBox, jobMinute, overlapColumns, openingUnit, type Box, type Slot } from '../../domain/moment/grid';
 import { moveFlow, moveToTime, jobPerson } from './move';
 import { jobMenu, jobPress, unitMenu, unitBookHref, placeWords } from './actions';
 

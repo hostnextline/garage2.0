@@ -11,22 +11,15 @@ import { money } from '../../lib/money';
 import { matches } from '../../lib/text';
 import { Button, IconButton, Sheet, Field, Input, MoneyInput, Check as CheckBox, Seg, Stepper, SearchInput, Money, Empty, Skeleton } from '../../ui';
 import { net } from '../../data/sync';
-import { draftOfService, workMinutes } from './logic';
-import { dayMonth } from './when';
+import { draftOfService, workMinutes, type ItemDraft } from '../../domain/moment/logic';
+import { dayMonth } from '../../domain/moment/words';
 import './booking.css';
 
-export interface ItemDraft {
-  id?: string; kind: ItemKind; service_id: string | null; item_id?: string | null; description: string; qty: number; unit_cents: number;
-  taxable: boolean; duration_min: number | null; note?: string | null;
-}
 export interface ServicePickerProps {
   value: ItemDraft[]; onValue: (items: ItemDraft[]) => void; lang?: 'fr' | 'en'; allowCustom?: boolean;
   /** the screen shows its own total (with taxes): leave out the line under the chosen services */
   hideTotal?: boolean;
 }
-
-/** minutes of work of the chosen lines (services without a duration count 45 min) */
-export function itemsDuration(items: ItemDraft[]): number { return items.reduce((n, i) => n + (i.duration_min ?? (i.kind === 'service' ? 45 : 0)) * (i.kind === 'service' ? Math.max(1, i.qty) : 1), 0); }
 
 function categoryTitle(cat: string): string {
   const k = `booking.svc.categories.${cat}`;

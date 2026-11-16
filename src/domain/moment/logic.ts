@@ -3,11 +3,10 @@
 import { totals, type Line, type TaxRates, type Totals } from '../../lib/money';
 import { isValidDay, duration, type BlockKey, type Day } from '../../lib/dates';
 import { t, type Lang } from '../../lib/i18n';
-import { blockPhraseLower } from './when';
-import type { Job, Quote, Service, JobItem } from '../../data/types';
+import { blockPhraseLower } from './words';
+import type { Job, Quote, Service, JobItem, ItemKind } from '../../data/types';
 import type { ItemInput } from '../../data/api';
-import type { ItemDraft } from './ServicePicker';
-import type { BlockChoice } from './BlockPicker';
+import type { BlockChoice } from './choice';
 
 /* ---------- what is still missing before « Réserver » ---------- */
 export type Missing = 'customer' | 'work' | 'block' | null;
@@ -257,3 +256,10 @@ export function roadWords(m: { drive_min: number; add_min?: number; add_km?: num
   if (m.add_min == null || m.add_km == null) return t('booking.picker.drive', { d }, l);
   return t('booking.picker.driveKm', { d, km: m.add_km.toLocaleString(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }) }, l);
 }
+
+export interface ItemDraft {
+  id?: string; kind: ItemKind; service_id: string | null; item_id?: string | null; description: string; qty: number; unit_cents: number;
+  taxable: boolean; duration_min: number | null; note?: string | null;
+}
+/** minutes of work of the chosen lines (services without a duration count 45 min) */
+export function itemsDuration(items: ItemDraft[]): number { return items.reduce((n, i) => n + (i.duration_min ?? (i.kind === 'service' ? 45 : 0)) * (i.kind === 'service' ? Math.max(1, i.qty) : 1), 0); }

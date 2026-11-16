@@ -23,8 +23,7 @@ import { HoursGrid, weekdayName } from './HoursGrid';
 import { TrucksPanel } from './TrucksPanel';
 import { TruckStartPanel } from './TruckStartPanel';
 import { weekToPanes, changedDays, applyPlan, paneMinutes, FROM, TO, type Panes, type Mode } from './grid';
-import { rangesWords, weekdaysWords } from './words';
-import { spanEnds } from '../booking/when';
+import { spanEnds, rangesWords, weekdaysWords } from '../../domain/moment/words';
 import { focusAfterNav, restoreFocus } from '../../platform/focus';
 import './hours.css';
 

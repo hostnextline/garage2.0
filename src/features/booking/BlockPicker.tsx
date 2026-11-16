@@ -8,20 +8,20 @@ import { blocks, blockLoad, settings, job as jobRow, activeTrucks, windowsOn } f
 import { suggestBlocks } from '../../data/api';
 import { net, isNetworkError } from '../../data/sync';
 import { Banner, Button, Pill, Skeleton, Seg } from '../../ui';
-import { cellState, isFar, farLimits, farInfo, momentsByKey, offered, betterMoments, betterText, roadWords, type CellState, type FarInfo } from './logic';
+import { cellState, isFar, farLimits, farInfo, momentsByKey, offered, betterMoments, betterText, roadWords, type CellState, type FarInfo } from '../../domain/moment/logic';
 import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
 import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';
 import { fromDevice } from '../map/device';
-import { blockPhraseWithHours, spanEnds } from './when';
+import { blockPhraseWithHours, spanEnds } from '../../domain/moment/words';
 export type { FarInfo };
-import type { BlockPickerProps } from './choice';
+import type { BlockPickerProps } from '../../domain/moment/choice';
 import { WindowPicker } from './WindowPicker';
 import './booking.css';
 
-export type { BlockChoice, BlockPickerProps, VehicleKind } from './choice';
-export { choiceWords } from './choice';
+export type { BlockChoice, BlockPickerProps, VehicleKind } from '../../domain/moment/choice';
+export { choiceWords } from '../../domain/moment/choice';
 
 /** the moment of an appointment: a block (matin, après-midi, soir), or with « Plages d'arrivée » a day and its window */
 export function BlockPicker(p: BlockPickerProps) {

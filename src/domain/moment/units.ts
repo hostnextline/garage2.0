@@ -3,7 +3,7 @@
    garage's rule: an hour before the rounded time, three after, kept inside the day). The unit is possible when the
    server lists, for that day, a window that starts where `windowOf(T)` starts. */
 import { addDays, daysBetween, type Day, type Range } from '../../lib/dates';
-import { UNIT, unitMinutes } from '../agenda/grid';
+import { UNIT, unitMinutes } from './grid';
 
 export { UNIT };
 export type Win = [number, number];

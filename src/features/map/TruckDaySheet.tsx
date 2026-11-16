@@ -9,7 +9,7 @@ import { applyHours } from '../../data/api';
 import { flush, pull } from '../../data/sync';
 import { Sheet, Panel, Field, Select, Button, attempt } from '../../ui';
 import { TruckStartPanel } from '../hours/TruckStartPanel';
-import { rangesWords } from '../hours/words';
+import { rangesWords } from '../../domain/moment/words';
 
 const DAY_END = 20 * 60;
 /** the day's hours with a new start: what ends before it goes, the first part left starts then; no hours: start → 20 h */

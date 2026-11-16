@@ -16,8 +16,8 @@ import { fromDevice } from '../map/device';
 import { useRoads, roadOf, roadTotal } from '../map/useRoads';
 import { placeNewStop, NEW_STOP } from './preview';
 import { MapHover } from './RoutePreview';
-import { isFar, momentsByKey, roadWords, type CellState, type Moment } from './logic';
-import { dayChips, defaultBlock, dayCounts, overviewPins } from './momentDays';
+import { isFar, momentsByKey, roadWords, type CellState, type Moment } from '../../domain/moment/logic';
+import { dayChips, defaultBlock, dayCounts, overviewPins } from '../../domain/moment/days';
 
 export interface MomentMapProps {
   lat: number; lng: number; address: string;

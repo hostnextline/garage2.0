@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, isFar, farLimits, farText, farInfo, momentsByKey, offered, betterMoments, betterText, farQuestion, roadWords, type LoadLike, type Moment } from './logic';
-import { blockPhrase, blockPhraseLower, relativeDay } from './when';
+import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, isFar, farLimits, farText, farInfo, momentsByKey, offered, betterMoments, betterText, farQuestion, roadWords, type LoadLike, type Moment, type ItemDraft } from './logic';
+import { blockPhrase, blockPhraseLower, relativeDay } from './words';
 import { QC_TAXES } from '../../lib/money';
-import type { ItemDraft } from './ServicePicker';
 import type { Service } from '../../data/types';
 import { booking as fr } from '../../i18n/fr/booking';
 import { booking as en } from '../../i18n/en/booking';
-import { sameShape } from './dict-check';
+import { sameShape } from '../../lib/dict-check';
 
 const line = (o: Partial<ItemDraft>): ItemDraft => ({ kind: 'service', service_id: 's-1', description: 'Changement d’huile', qty: 1, unit_cents: 8999, taxable: true, duration_min: 45, ...o });
 const choice = { day: '2026-11-05', block: 'pm' as const };

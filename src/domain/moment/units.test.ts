@@ -1,9 +1,9 @@
 /* The time calendar of the booking screen: which units are possible, unit ↔ arrival ↔ window, the days, the cache. */
 import { describe, it, expect } from 'vitest';
 import { windowFor, type Range } from '../../lib/dates';
-import { unitMinutes } from '../agenda/grid';
+import { unitMinutes } from './grid';
 import { possibleUnits, rowsByStart, unitOfWindow, unitStates, pageDays, pageOf, lastPage, cacheKey, byHour, moveFocus, type WinRow } from './units';
-import { floatPlace } from './PickGrid';
+import { floatPlace } from '../../features/booking/PickGrid';
 
 const DAY: Range = [480, 1200];
 const rule = (round: number, span: Range = DAY) => (eta: number): Range => windowFor(eta, { before: 60, after: 180, round, dayStart: span[0], dayEnd: span[1] });

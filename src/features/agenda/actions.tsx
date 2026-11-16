@@ -11,7 +11,7 @@ import { navigate, href } from '../../platform/router';
 import { wide } from '../../platform/media';
 import { customer as customerRow, invoiceOf, windowsOn, windowOf } from '../../data/select';
 import { toast } from '../../ui';
-import { blockPhrase } from '../booking/when';
+import { blockPhrase } from '../../domain/moment/words';
 import { dayWords } from './layout';
 import { today as todayOf } from '../../lib/dates';
 import { customerActions } from '../customers/shortcuts';
@@ -20,7 +20,7 @@ import { mayChangeTruck } from '../jobs/JobParts';
 import { mayEditJob } from '../jobs/JobEdit';
 import { jobPerson } from './move';
 import { copiedJob, copyJob, pasteHref, bookHref } from './copy';
-import { dropWindowStart } from './grid';
+import { dropWindowStart } from '../../domain/moment/grid';
 import { openMenu, openMenuAt, pressProps, type MenuAction } from '../../ui/ContextMenu';
 
 /** a block takes a paste when it has not started and is open (a full block: the booking screen offers « quand même ») */

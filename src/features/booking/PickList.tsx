@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clock, parseDay, type Day } from '../../lib/dates';
 import { Skeleton } from '../../ui';
-import { byHour } from './units';
+import { byHour } from '../../domain/moment/units';
 import type { GridDay } from './PickGrid';
 
 export interface PickListProps {

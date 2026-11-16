@@ -9,14 +9,15 @@ import { longDay, parseDay, today as todayOf, type Day, type Range } from '../..
 import { blocks, daySpan, windowsOn, truckColor, truckLabel, truckRanges, truck as truckRow, staffName, activeTrucks } from '../../data/select';
 import type { Job } from '../../data/types';
 import { may } from '../../domain/rights';
-import { dropRefusal, freeWords, weekTitle } from './layout';
+import { dropRefusal, weekTitle } from './layout';
+import { freeWords } from '../../domain/moment/words';
 import { dayJobs, isOff, laneShown, type DayPlan } from './select';
 import { Meter } from './DayView';
 import { Chip } from './Chip';
 import { moveFlow } from './move';
 import { blockMenu, blockPress, mayPaste, placeWords } from './actions';
 import { pasteHref, bookHref } from './copy';
-import { unitCount, workedUnits, jobMinute } from './grid';
+import { unitCount, workedUnits, jobMinute } from '../../domain/moment/grid';
 import { GridColumn, TimeAxis, useGridDrag, useOpeningScroll, canDragJob, type Drag, type Place } from './TimeGrid';
 
 /** a short name for a truck in a small cell: its driver (« Saleh »), or the first word of its name */

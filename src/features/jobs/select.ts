@@ -4,7 +4,7 @@ import { signal } from '@preact/signals';
 import type { Job, JobItem, Customer, JobStatus } from '../../data/types';
 import { net } from '../../data/sync';
 import { me, can, hasRole, isOwner, myTrucks } from '../../data/auth';
-import { windowWords } from '../booking/when';
+import { windowWords } from '../../domain/moment/words';
 import { vehicle as vehicleRow, customer, customerName, itemsOf, invoiceOf, jobsOn, blockOfKey, truck, staffName, messagesOf, settings } from '../../data/select';
 import { today, addDays, longDay, shortDate, clock, clockRange } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';

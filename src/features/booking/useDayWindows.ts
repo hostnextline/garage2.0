@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { suggestWindows, type Suggestion } from '../../data/api';
 import { isNetworkError } from '../../data/sync';
-import { cacheKey } from './units';
+import { cacheKey } from '../../domain/moment/units';
 
 export type WinStatus = 'loading' | 'ok' | 'offline' | 'error';
 export interface DayWins { status: WinStatus; rows: Suggestion[] }

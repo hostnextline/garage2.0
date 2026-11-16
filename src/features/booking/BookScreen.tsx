@@ -31,14 +31,14 @@ import { customersList } from '../../data/select';
 import { phoneDigits } from '../../lib/text';
 import type { CallStart } from './CallScreen';
 import { OilHint } from '../jobs/CarFirst';
-import { ServicePicker, type ItemDraft } from './ServicePicker';
+import { ServicePicker } from './ServicePicker';
 import { BlockPicker, choiceWords, type BlockChoice, type VehicleKind, type FarInfo } from './BlockPicker';
-import { winLen } from './choice';
+import { winLen } from '../../domain/moment/choice';
 import { broad } from './screen';
-import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, farQuestion, BLOCK_REFUSALS } from './logic';
-import { blockPhrase } from './when';
+import { carDraftLabel, missingPiece, bookSummary, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, refusalCode, clampDuration, needsMachine, choicePayload, farQuestion, BLOCK_REFUSALS, type ItemDraft } from '../../domain/moment/logic';
+import { blockPhrase } from '../../domain/moment/words';
 import { notifyCustomer, wantsText } from './notify';
-import { forgetRefusal, noLongWaitOffline } from './outbox';
+import { forgetRefusal, noLongWaitOffline } from '../../domain/moment/outbox';
 import './booking.css';
 
 /** the refusals « Réserver quand même » can go past */

@@ -11,8 +11,8 @@ import { may } from '../../domain/rights';
 import { href, navigate } from '../../platform/router';
 import { Panel, Button, IconButton, Empty } from '../../ui';
 import { JobTicket } from '../jobs/JobTicket';
-import { relativeDay } from '../booking/when';
-import { fillOf, freeWords, fillWords, weekOfDay } from './layout';
+import { relativeDay, freeWords } from '../../domain/moment/words';
+import { fillOf, fillWords, weekOfDay } from './layout';
 import { dayPlan, dayJobs, isOff, type BlockView } from './select';
 import type { TruckBlock } from '../../data/select';
 import { focusAfterNav } from '../../platform/focus';
@@ -20,7 +20,7 @@ import { jobMenu, blockMenu, mayPaste, jobPress, blockPress } from './actions';
 import { pasteHref } from './copy';
 import type { Job } from '../../data/types';
 import { roomy } from '../../platform/media';
-import { unitCount, workedUnits, jobMinute } from './grid';
+import { unitCount, workedUnits, jobMinute } from '../../domain/moment/grid';
 import { GridColumn, NowLine, TimeAxis, useGridDrag, useOpeningScroll, type Place } from './TimeGrid';
 
 /** a ticket with its right-click menu (copy, open); the ticket itself says the window told to the customer, « Flexible »

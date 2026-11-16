@@ -8,8 +8,8 @@ import { createPortal, memo } from 'preact/compat';
 import { ChevronLeft, ChevronRight } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clock, nowMinute, parseDay, type Day, type Range } from '../../lib/dates';
-import { unitCount, unitIndex, unitMinutes, unitsAt, type Box } from '../agenda/grid';
-import { moveFocus, type UnitState, type Win } from './units';
+import { unitCount, unitIndex, unitMinutes, unitsAt, type Box } from '../../domain/moment/grid';
+import { moveFocus, type UnitState, type Win } from '../../domain/moment/units';
 import { RoutePreview, floatStyle, type FloatAt, type PreviewAsk } from './RoutePreview';
 import type { WinStatus } from './useDayWindows';
 

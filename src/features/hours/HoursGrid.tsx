@@ -8,7 +8,7 @@ import { t, lang } from '../../lib/i18n';
 import { clock, parseDay, type Range } from '../../lib/dates';
 import { blocks, windowsOn, daySpan } from '../../data/select';
 import { UNITS, FROM, TO, STEP, DOWS, isOn, paintRect, togglePane, panesToRanges, type Panes } from './grid';
-import { rangesWords } from './words';
+import { rangesWords } from '../../domain/moment/words';
 
 export interface HoursGridProps {
   panes: Panes;

@@ -10,9 +10,9 @@ import { t, lang } from '../../lib/i18n';
 import { today, type BlockKey, type Day } from '../../lib/dates';
 import { ask, run, toast } from '../../ui';
 import { moveQuestion, winShort } from './layout';
-import { windowPhrase } from '../booking/when';
+import { windowPhrase } from '../../domain/moment/words';
 import { notifyCustomer, wantsText } from '../booking/notify';
-import { forgetRefusal, noLongWaitOffline } from '../booking/outbox';
+import { forgetRefusal, noLongWaitOffline } from '../../domain/moment/outbox';
 
 export function jobPerson(j: Pick<Job, 'customer_id'>): string {
   const c = customerRow(j.customer_id);

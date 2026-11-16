@@ -14,7 +14,7 @@ import { Page, Panel, Field, PhoneInput, Button, Avatar } from '../../ui';
 import { recentFirst, searchIndex } from '../customers/facts';
 import { searchList, type SearchDoc } from '../customers/search';
 import { Bit } from '../customers/bits';
-import { windowWords } from './when';
+import { windowWords } from '../../domain/moment/words';
 import './booking.css';
 
 /** the block of an appointment in words; booked by window (« Plages d'arrivée »): its window, or flexible */

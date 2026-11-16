@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { weekOfDay, shiftWeek, sameWeek, weekTitle, fillOf, freeWords, moveQuestion, dropRefusal, isWindowDay, dayState, byPlan, byArrival, winInfo, winShort, winTiny, dayWords, moveDayTitle, windowChoices } from './layout';
+import { weekOfDay, shiftWeek, sameWeek, weekTitle, fillOf, moveQuestion, dropRefusal, isWindowDay, dayState, byPlan, byArrival, winInfo, winShort, winTiny, dayWords, moveDayTitle, windowChoices } from './layout';
+import { freeWords } from '../../domain/moment/words';
 import { agenda as fr } from '../../i18n/fr/agenda';
 import { agenda as en } from '../../i18n/en/agenda';
-import { sameShape } from '../booking/dict-check';
+import { sameShape } from '../../lib/dict-check';
 
 describe('the week', () => {
   it('goes Sunday → Saturday around any day', () => {

@@ -3,7 +3,7 @@
 import { today as todayOf, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { blocks, settings } from '../../data/select';
-import { blockPhrase, blockPhraseWithHours, windowPhrase, windowWords } from './when';
+import { blockPhrase, blockPhraseWithHours, windowPhrase, windowWords } from './words';
 import { choiceWindow, WIN_LEN, type FarInfo } from './logic';
 
 export interface BlockChoice {

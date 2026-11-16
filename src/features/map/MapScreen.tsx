@@ -22,7 +22,7 @@ import { assemble, normalize, minuteOf, UNPLACED_COLOR, type TeamMapAnswer, type
 import type { JobStatus } from '../../data/types';
 import { fromDevice } from './device';
 import { MapDay } from './MapDay';
-import { windowWords } from '../booking/when';
+import { windowWords } from '../../domain/moment/words';
 import { useRoads, roadOf, roadTotal } from './useRoads';
 import { ago, minutesSince } from './ago';
 import './map.css';

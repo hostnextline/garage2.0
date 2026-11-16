@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { UNIT, unitCount, unitMinute, unitIndex, unitMinutes, minuteAt, unitsAt, jobBox, jobMinute, overlapColumns, workedUnits, dropWindowStart, openingUnit } from './grid';
 import { windowFor, type Range } from '../../lib/dates';
-import { sameWindowPlace, refusalCode, FULL_CODES } from './move';
-import { pasteHref, bookHref } from './copy';
+import { sameWindowPlace, refusalCode, FULL_CODES } from '../../features/agenda/move';
+import { pasteHref, bookHref } from '../../features/agenda/copy';
 
 const DAY: Range = [480, 1200];   // 8 h → 20 h
 

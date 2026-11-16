@@ -6,7 +6,7 @@ import { signal } from '@preact/signals';
 import { MessageSquare, Copy, Share2 } from 'lucide-preact';
 import { notify, errorMessage } from '../../data/api';
 import { job as jobRow, customer as customerRow, settings } from '../../data/select';
-import { choiceWords } from './choice';
+import { choiceWords } from '../../domain/moment/choice';
 import { t } from '../../lib/i18n';
 import { e164 } from '../../lib/text';
 import type { Job } from '../../data/types';
