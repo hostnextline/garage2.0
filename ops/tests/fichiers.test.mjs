@@ -50,3 +50,15 @@ test('the Mac test stack (tests/stack/mac): every script parses, the stack lives
   for (const s of ['lib/common.sh', 'install.sh', 'bin/pgtool']) assert.match(lire(`${M}/${s}`), /\$\{HIS_STACK:-\$HOME\/\.his-stack\}/, `${s}: one variable, default under the home folder`);
   assert.ok(existsSync(join(ROOT, M, 'README.md')));
 });
+
+test('the cutover: the runbook and the read-only questions are there; the questions write nothing', () => {
+  const rb = lire('ops/live/CUTOVER.md');
+  for (const x of ['raise exception', 'ESSAI OK', 'sha256', 'schema_migrations', 'Promote to Production', 'deployed.avant.json', 'fonctions_avant.sql', 'garage2.0-sauvegardes', '--fin'])
+    assert.ok(rb.includes(x), 'CUTOVER.md speaks of ' + x);
+  const sql = lire('ops/live/2026-11-16_verifications.sql').replace(/--.*$/gm, '');
+  // read only: no statement that writes or changes the schema (the words inside a query string are checked too)
+  assert.ok(!/\b(insert|update|delete|truncate|drop|alter|create|grant|revoke|vacuum|copy|call|do)\b\s/i.test(sql.replace(/\bupdated?_at\b/g, '')), 'the questions only read');
+  assert.ok(!/\b(nextval|setval|set_config|pg_terminate_backend|pg_cancel_backend)\s*\(/i.test(sql), 'no function that changes something');
+  assert.equal((sql.match(/\bselect\b/gi) || []).length > 0, true);
+  assert.match(sql, /as fingerprint;/);
+});
