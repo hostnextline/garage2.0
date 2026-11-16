@@ -57,12 +57,15 @@ export function readNet(n: unknown, browserOnline = true): NetView {
   return { chip, online, pending, failed, sessionLost, storageLost, stuck: st.n, stuckLabel: st.label, stuckWhy: st.why };
 }
 
-/** a refused change, in the person's language: the refusal's code when the entry keeps it (under `err` in the data
-    layer's entries, at the top in older ones), else what was stored */
+/** a refused change, in the person's language now: the refusal's code when the entry keeps it (under `err` in the data
+    layer's entries, at the top in older ones) with the server's own sentence (`err.said`; older entries: what was
+    stored), else what was stored. `error` alone holds the words of the moment of the refusal: read back as « what the
+    server said », English words would be shown as they are to a person who switched to French. */
 export function refusalText(e: { label?: string | null; error?: string | null; code?: unknown; hint?: unknown; err?: unknown }): string {
   const err = (e.err && typeof e.err === 'object' ? e.err : {}) as Loose;
   const code = typeof err.code === 'string' ? err.code : typeof e.code === 'string' ? e.code : undefined;
   const hint = typeof err.hint === 'string' ? err.hint : typeof e.hint === 'string' ? e.hint : undefined;
-  const why = code || hint ? errorMessage({ code, hint, message: e.error || '' }) : String(e.error || '');
+  const said = typeof err.said === 'string' && err.said ? err.said : e.error || '';
+  const why = code || hint ? errorMessage({ code, hint, message: said }) : String(e.error || '');
   return e.label ? t('shell.failed.line', { label: e.label, error: why }) : why;
 }

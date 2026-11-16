@@ -8,6 +8,7 @@ import { net, setNet } from './net';
 import { openLocal, type OutboxEntry } from './local';
 import type { LockManagerLike } from './lock';
 import { readRescue } from './rescue';
+import { lang, t } from '../lib/i18n';
 
 let srv: FakeServer;
 const engines: Engine[] = [];
@@ -173,8 +174,26 @@ describe('the outbox', () => {
     srv.offline = false;
     await e.send.flush();
     await until(() => net.value.failed.length === 1);
-    expect(net.value.failed[0].error).toBe('Ce bloc est passé.');
+    // the words are those of the person's language at the moment of the refusal (here English: the dictionary has
+    // words for « past »); the server's own sentence is kept beside them, so the list can say it in French later
+    expect(lang.value).toBe('en');
+    expect(net.value.failed[0].error).toBe(t('errors.past'));
+    expect(net.value.failed[0].error).not.toBe('errors.past');
     expect(net.value.failed[0].err?.hint).toBe('past');
+    expect(net.value.failed[0].err?.said).toBe('Ce bloc est passé.');
+  });
+
+  it('a refusal whose code has no words keeps the server’s sentence', async () => {
+    const e = await boot(nextUid());
+    srv.rpc('job_step', () => { throw Object.assign(new Error('Le camion est au garage.'), { code: 'zz_no_words' }); });
+    srv.offline = true;
+    setNet({ online: false });
+    await e.send.callRpc('job_step', { p_job: 'j1', p_action: 'reopen' });
+    srv.offline = false;
+    await e.send.flush();
+    await until(() => net.value.failed.length === 1);
+    expect(net.value.failed[0].error).toBe('Le camion est au garage.');
+    expect(net.value.failed[0].err?.said).toBe('Le camion est au garage.');
   });
 
   it('a refusal while the screen waits is thrown to it, not listed twice', async () => {

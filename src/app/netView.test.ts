@@ -65,6 +65,33 @@ describe('a refused change, in the person’s language', () => {
     const k = t('errors.not_found');
     expect(refusalText({ ...e, label: null })).toBe(k !== 'errors.not_found' ? k : 'Introuvable');
   });
+  it('kept in English, read after switching to French: the server’s own sentence, never the English words', () => {
+    // as the data layer keeps it for a person in English: the words of the moment, the server's sentence under err.said
+    const e = refused({ kind: 'refusal', sub: 'rule', code: 'past', hint: 'past', said: 'Ce bloc est passé.' }, 'That day is over: choose today or later.');
+    lang.value = 'en';
+    expect(refusalText({ ...e, label: null })).toBe(t('errors.past'));
+    lang.value = 'fr';
+    expect(refusalText({ ...e, label: null })).toBe('Ce bloc est passé.');
+  });
+  it('kept in French, read after switching to English: the dictionary’s words', () => {
+    lang.value = 'en';
+    const e = refused({ kind: 'refusal', sub: 'rule', code: 'past', hint: 'past', said: 'Ce bloc est passé.' }, 'Ce bloc est passé.');
+    expect(refusalText({ ...e, label: null })).toBe(t('errors.past'));
+    expect(t('errors.past')).not.toBe('errors.past');
+  });
+  it('a code without words: the server’s sentence, in either language', () => {
+    const e = refused({ kind: 'refusal', sub: 'rule', code: 'no_such_words', hint: 'no_such_words', said: 'Phrase du serveur.' }, 'Phrase du serveur.');
+    lang.value = 'en';
+    expect(refusalText({ ...e, label: null })).toBe('Phrase du serveur.');
+    lang.value = 'fr';
+    expect(refusalText({ ...e, label: null })).toBe('Phrase du serveur.');
+  });
+  it('a database refusal kept in English is not wrapped twice in French', () => {
+    lang.value = 'fr';
+    const raw = 'duplicate key value violates unique constraint "x"';
+    const e = refused({ kind: 'refusal', sub: 'duplicate', code: '23505', status: 409, said: raw }, `Something went wrong: ${raw}`);
+    expect(refusalText({ ...e, label: null })).toBe(t('common.genericError', { msg: raw }));
+  });
   it('an entry without err shows what was stored', () => {
     expect(refusalText({ label: 'Réservation', error: 'raison' })).toBe('Réservation : raison');
   });
