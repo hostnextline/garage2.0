@@ -1,6 +1,7 @@
 /* The words of a stop on the map (list, card, legend): when it is planned, whether it is outside the window told to the
    customer, and the road in km and time. Pure (the phone's copy of a job is passed in), tested in stopWords.test.ts. */
 import { t, lang, type Lang } from '../../lib/i18n';
+import { errorMessage, isNetworkError } from '../../lib/errors';
 import { clock } from '../../lib/dates';
 import { windowWords } from '../../domain/moment/words';
 import type { Stop } from '../../shared/map/assemble';
@@ -42,4 +43,9 @@ const COMING = new Set(['booked', 'en_route', 'on_site']);
     on): never « Adresse pas trouvée » for a search that was not made */
 export function findable(lost: Stop[], day: string, now: string, onPhone: (id: string) => boolean): Stop[] {
   return day >= now ? lost.filter((s) => COMING.has(s.status) && onPhone(s.id)) : [];
+}
+
+/** « Trouver » failed: « pas de réseau » only when it is the network; a real failure says what it is (mh-8) */
+export function findFailed(e: unknown): string {
+  return isNetworkError(e) ? t('map.lost.offline') : errorMessage(e);
 }

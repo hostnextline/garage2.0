@@ -5,11 +5,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 
-const h = vi.hoisted(() => ({ calls: [] as { name: string; args: unknown[] }[], move: (() => Promise.resolve({ queued: false })) as () => Promise<{ queued: boolean }> }));
+const h = vi.hoisted(() => ({ calls: [] as { name: string; args: unknown[] }[], move: (() => Promise.resolve({ queued: false })) as (job: string) => Promise<{ queued: boolean }> }));
 vi.mock('../../data/api', async (orig) => ({
   ...(await orig<typeof import('../../data/api')>()),
   applyHours: async (...args: unknown[]) => { h.calls.push({ name: 'applyHours', args }); return { queued: false, data: { ok: true, changed: 1 } }; },
-  moveJob: async (...args: unknown[]) => { h.calls.push({ name: 'moveJob', args }); return h.move(); }
+  moveJob: async (...args: unknown[]) => { h.calls.push({ name: 'moveJob', args }); return h.move(String(args[0])); }
 }));
 vi.mock('../../data/sync', async (orig) => ({ ...(await orig<typeof import('../../data/sync')>()), pull: async () => undefined, flush: async () => undefined }));
 vi.mock('../../shared/map/MapView', () => ({ MapView: () => null }));
@@ -99,5 +99,56 @@ describe('Horaires: « La voiture ferme »', () => {
     await click(q('close-day-move'));
     expect(h.calls.map((c) => c.name)).toEqual(['moveJob', 'applyHours']);
     expect(q('close-day-sheet')).toBeNull();
+  });
+
+  /* a second appointment that morning, after the first in the route */
+  const two = () => replaceLocal('jobs', [
+    { id: 'j1', number: 7, customer_id: null, truck_id: 'car', day: DAY, block: 'am', status: 'booked', stop_order: 1, duration_min: 45, eta_min: 540 },
+    { id: 'j2', number: 8, customer_id: null, truck_id: 'car', day: DAY, block: 'am', status: 'booked', stop_order: 2, duration_min: 45, eta_min: 600 }
+  ] as never);
+  const moved = () => h.calls.filter((c) => c.name === 'moveJob').map((c) => c.args[0]);
+  it('a move refused « plein »: the next « Déplacer » moves the others, then the hours (mh-1, mh-2)', async () => {
+    two();
+    h.move = (id) => (id === 'j1' ? Promise.reject(Object.assign(new Error('Ce camion n’a plus de place dans ce bloc.'), { code: 'P0001', hint: 'truck_full' })) : Promise.resolve({ queued: false }));
+    await show();
+    await closeTheMorning();
+    await click(q('close-day-move'));
+    expect(moved()).toEqual(['j1']);
+    expect(q('close-day-sheet')).toBeTruthy();
+    expect(q('close-day-list')!.textContent).toContain('plein');
+    await click(q('close-day-move'));
+    expect(moved()).toEqual(['j1', 'j2']);
+    expect(h.calls.map((c) => c.name)).toEqual(['moveJob', 'moveJob', 'applyHours']);
+    expect(q('close-day-sheet')).toBeNull();
+    expect(toasts.value.some((x) => /1 rendez-vous sur 2/.test(x.text))).toBe(true);
+  });
+  it('a move kept on the phone is not offered again: the next « Déplacer » never queues it twice (mh-5)', async () => {
+    two();
+    h.move = (id) => Promise.resolve({ queued: id === 'j1' });
+    await show();
+    await closeTheMorning();
+    await click(q('close-day-move'));
+    expect(moved()).toEqual(['j1']);
+    expect(q('close-day-list')!.textContent).toContain('gardé sur le téléphone');
+    await click(q('close-day-move'));
+    expect(moved()).toEqual(['j1', 'j2']);
+    expect(h.calls.map((c) => c.name)).toEqual(['moveJob', 'moveJob', 'applyHours']);
+  });
+  it('« Appliquer » tapped after midnight on a screen drawn the day before: the hours go from the new day (mh-4)', async () => {
+    replaceLocal('jobs', []);
+    await show();
+    // « En permanence »: one more half hour in the evening of a weekday
+    await act(async () => { down(box.querySelector(`[data-testid="hours-grid"] [data-d="2"][data-u="720"]`)!); });
+    await wait();
+    const next = addDays(today(), 1);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(Date.now() + 86400000));
+    try {
+      expect(today()).toBe(next);
+      await click(q('hours-apply-btn'));
+    } finally { vi.useRealTimers(); }
+    const call = h.calls.find((c) => c.name === 'applyHours');
+    expect(call?.args[1]).toBe('always');
+    expect(call?.args[3]).toBe(next);
   });
 });

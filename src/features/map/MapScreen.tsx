@@ -26,7 +26,7 @@ import { Stage, PullUp } from './MapStage';
 import { Legend } from './MapLegend';
 import { StopList } from './StopList';
 import { StopCard, type ChosenStop } from './StopCard';
-import { lostStops, findable } from './stopWords';
+import { lostStops, findable, findFailed } from './stopWords';
 import './map.css';
 
 const timeOf = (ms: number) => minuteOf(new Date(ms).toISOString()) ?? nowMinute(new Date(ms));
@@ -85,8 +85,11 @@ export default function MapScreen({ query }: ScreenProps) {
   const findLost = async () => {
     setFinding(true);
     try {
-      const r = await run(() => locateMissing({ only: { jobs: toFind.map((s) => s.id) }, force: true }), { quiet: true });
-      if (!r || r.offline) toast(t('map.lost.offline'), { kind: 'bad' });
+      let r: Awaited<ReturnType<typeof locateMissing>>;
+      // « pas de réseau » only for no network; a real failure says what it is (mh-8)
+      try { r = await locateMissing({ only: { jobs: toFind.map((s) => s.id) }, force: true }); }
+      catch (e) { toast(findFailed(e), { kind: 'bad' }); return; }
+      if (r.offline) toast(t('map.lost.offline'), { kind: 'bad' });
       else if (r.found) {
         toast(t('map.lost.found', { n: r.found }), { kind: 'ok' });
         // the positions found are on this phone already: on the map now; the server's answer follows

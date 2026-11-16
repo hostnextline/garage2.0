@@ -3,7 +3,8 @@
    never slides it to the other vehicle by itself: Horaires asks (CloseDaySheet), and « Départ et heure » on the map asks
    before closing them. Pure (what the phone knows of rights and room is passed in).
    Only what the phone can know: the server's planner still has the last word (a block that only shrinks, the room of the
-   other vehicle when several move together); a move it refuses stops the closing (HoursScreen). */
+   other vehicle: the phone's estimate never hides a move, the planner's real insertion may still take it); a move it
+   refuses stops the closing (HoursScreen), and that appointment is then offered no more (`stayed`), with the reason. */
 import { dow, type Block, type Day, type Range } from '../../lib/dates';
 import type { Job, Truck } from '../../data/types';
 import { compareStops, type Orderable } from './stopOrder';
@@ -46,45 +47,50 @@ export function otherKind(trucks: Truck[], truckId: string): Truck[] {
 }
 
 /** why an appointment stays (it goes to « À placer » if the hours are closed anyway): the tire machine, the other vehicle
-    closed then, no right to move it there, its moment already started, no room left there */
-export type StayWhy = 'machine' | 'closed' | 'rights' | 'started' | 'full';
+    closed then, no right to move it there, its moment already started, no room left there (the server said so), the
+    server refused it for another reason, its move is kept on the phone and will be sent later */
+export type StayWhy = 'machine' | 'closed' | 'rights' | 'started' | 'full' | 'refused' | 'waiting';
 export interface Move { job: Job; target: string | null; why: StayWhy | null }
-/** what the phone knows of the other vehicle's block that day: the minutes still free, and whether it has started */
-export interface Room { left: number; started: boolean }
+/** what the phone knows of the other vehicle's block that day: whether it has started (the room is the planner's to say) */
+export interface Room { started: boolean }
 export interface MoveRules {
   /** may this person put appointments of this vehicle on that one (move_job's rule) */
   mayMove?: (targetId: string) => boolean;
-  /** the room of a vehicle in a block that day (blockLoad), the job itself left out */
+  /** the other vehicle's block that day (blockLoad), the job itself left out; null: nothing known */
   roomOf?: (targetId: string, job: Job) => Room | null;
-  /** the driving counted for a job moved onto a route (its real driving is not known yet) */
-  travelMin?: number;
+  /** appointments whose move the server already refused (or still holds on the phone) in this closing: never offered again */
+  stayed?: ReadonlyMap<string, StayWhy>;
 }
 /** where each appointment can go: a vehicle of the other kind open in its block that day, or (arrival windows) working
     inside the window told: the appointment keeps its day and its window (work for the tire machine never goes to the car).
-    Only offered when the person may move it there and the block, not started, still has room for it and for the ones
-    already sent there before it. */
+    Only offered when the person may move it there and the block has not started. The room is NOT judged here: the
+    phone's estimate (straight lines, a fixed driving time) says « full » where the planner's real insertion may fit it,
+    so the move is offered and a « truck_full » / « block_full » refusal comes back through `stayed` (map-hours-01). */
 export function movesFor(hit: Job[], targets: Truck[], rangesOf: (truckId: string, day: Day) => Range[], blockOf: (k: Job['block']) => Block, rules: MoveRules = {}): Move[] {
-  const taken = new Map<string, number>();
   return hit.map((job): Move => {
+    const said = rules.stayed?.get(job.id);
+    if (said) return { job, target: null, why: said };
     const able = targets.filter((x) => !(job.needs_machine && isCar(x)));
     if (!able.length) return { job, target: null, why: 'machine' };
     const open = able.filter((x) => jobOpen(rangesOf(x.id, job.day), job, blockOf));
     if (!open.length) return { job, target: null, why: 'closed' };
     const allowed = rules.mayMove ? open.filter((x) => rules.mayMove!(x.id)) : open;
     if (!allowed.length) return { job, target: null, why: 'rights' };
-    let why: StayWhy = 'full';
-    for (const x of allowed) {
-      const room = rules.roomOf?.(x.id, job);
-      if (!room) return { job, target: x.id, why: null };
-      if (room.started) { why = 'started'; continue; }
-      const key = `${x.id}|${job.day}|${job.block}`;
-      const need = (job.duration_min || 0) + (rules.travelMin ?? 0);
-      if (room.left - (taken.get(key) || 0) < need) continue;
-      taken.set(key, (taken.get(key) || 0) + need);
-      return { job, target: x.id, why: null };
-    }
-    return { job, target: null, why };
+    const ready = allowed.find((x) => !rules.roomOf?.(x.id, job)?.started);
+    return ready ? { job, target: ready.id, why: null } : { job, target: null, why: 'started' };
   });
+}
+
+/** why the server refused a move (its short code: `hint` from the database, `code` from a function) */
+export function refusedWhy(e: unknown): StayWhy {
+  const err = e as { hint?: string; code?: string } | null;
+  const code = String(err?.hint || (/^[a-z_]+$/.test(String(err?.code || '')) ? err?.code : '') || '');
+  if (code === 'not_allowed') return 'rights';
+  if (code === 'block_started' || code === 'not_booked') return 'started';
+  if (code === 'block_closed') return 'closed';
+  if (code === 'truck_full' || code === 'block_full' || code === 'window_full') return 'full';
+  if (code === 'needs_truck') return 'machine';
+  return 'refused';
 }
 
 /** move_job's rule, as the phone knows it: « book », or both vehicles are this person's (his own, or every one with

@@ -110,11 +110,14 @@ export function MapView(p: MapViewProps) {
       const s = st.current;
       st.current = null;
       if (s) {
-        s.layer.clearLayers();
         s.markers.clear();
         s.lines = [];
-        s.map.off();
-        s.map.remove();
+        // Leaflet may throw while it is busy (a zoom animation): the screen goes anyway (mh-7)
+        try {
+          s.layer.clearLayers();
+          s.map.off();
+          s.map.remove();
+        } catch { /* already half gone */ }
       }
     };
   }, [attempt]);
@@ -148,6 +151,7 @@ export function MapView(p: MapViewProps) {
   }, [phase, p.markers, p.lines, (p.focus || []).join('|'), p.fitKey, p.refit]);
 
   function drawLines(s: State, lines: MapLine[]) {
+    let remade = -1;   // the first line drawn anew: it went on top, so the ones after it go on top again, in order (mh-9)
     lines.forEach((l, i) => {
       const cur = s.lines[i];
       if (cur && sameLine(cur.line, l)) return;
@@ -159,10 +163,11 @@ export function MapView(p: MapViewProps) {
         cur.line = l;
         return;
       }
-      if (cur) { cur.casing.remove(); cur.stroke.remove(); }
+      if (cur) { cur.casing.remove(); cur.stroke.remove(); if (remade < 0) remade = i; }
       s.lines[i] = { line: l, casing: s.L.polyline(l.points, casingStyle(l)).addTo(s.layer), stroke: s.L.polyline(l.points, strokeStyle(l)).addTo(s.layer) };
     });
     for (const gone of s.lines.splice(lines.length)) { gone.casing.remove(); gone.stroke.remove(); }
+    if (remade >= 0) for (const d of s.lines.slice(remade + 1)) { d.casing.bringToFront(); d.stroke.bringToFront(); }
   }
 
   function drawMarkers(s: State, markers: MapMarker[]) {

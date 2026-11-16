@@ -68,4 +68,16 @@ describe('useTeamMap', () => {
     expect(seen!.status).toBe('offline');
     expect(seen!.source).toBe('server');
   });
+  it('the same inputs give the same map: drawing the screen again does not make a new one (mh-6)', async () => {
+    await act(async () => { render(<Probe day="2026-11-20" />, box); });
+    const first = seen!.data;
+    await act(async () => { render(<Probe day="2026-11-20" />, box); });
+    expect(seen!.data).toBe(first);   // the phone's copy, not built again
+    answers[answers.length - 1].resolve(job('server-x'));
+    await flushP();
+    const answered = seen!.data;
+    expect(answered.jobs[0].id).toBe('server-x');
+    await act(async () => { render(<Probe day="2026-11-20" />, box); });
+    expect(seen!.data).toBe(answered);
+  });
 });

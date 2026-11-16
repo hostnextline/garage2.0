@@ -46,7 +46,7 @@ export const hours = {
     none: 'Aucun de ces rendez-vous ne peut aller sur l’autre véhicule. Si tu fermes, ils passent dans « À placer » de l’agenda.',
     someStay: { one: '{n} ne peut pas y aller : il passera dans « À placer ».', other: '{n} ne peuvent pas y aller : ils passeront dans « À placer ».' },
     goes: 'Va sur {to}',
-    stays: { machine: 'Reste à placer : demande le camion', closed: 'Reste à placer : l’autre véhicule est fermé à ce moment-là', rights: 'Reste à placer : tu ne peux pas le mettre sur l’autre véhicule', started: 'Reste à placer : ce moment est déjà commencé', full: 'Reste à placer : l’autre véhicule est plein à ce moment-là' },
+    stays: { machine: 'Reste à placer : demande le camion', closed: 'Reste à placer : l’autre véhicule est fermé à ce moment-là', rights: 'Reste à placer : tu ne peux pas le mettre sur l’autre véhicule', started: 'Reste à placer : ce moment est déjà commencé', full: 'Reste à placer : l’autre véhicule est plein à ce moment-là', refused: 'Reste à placer : le déplacement a été refusé', waiting: 'Déplacement gardé sur le téléphone : il partira avec le réseau' },
     mapTitle: 'La nouvelle route pour {to}',
     day: 'Quel jour',
     stops: { one: '{n} arrêt ce jour-là.', other: '{n} arrêts ce jour-là.' },
