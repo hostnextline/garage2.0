@@ -56,12 +56,12 @@ export const booking: typeof fr = {
   confirm: 'Book',
   confirmWalkIn: 'Open the job',
   walkInSub: 'Now, here',
-  missing: { customer: 'Pick the customer', work: 'Add a service or describe the problem', block: 'Pick the block' },
+  missing: { customer: 'Pick the customer', work: 'Add a service or describe the problem', block: 'Pick the block', quote: 'This estimate is already booked', truck: 'Pick the truck' },
   cars: {
     also: 'Also in this appointment:',
-    chip: '{car}: {n} jobs',
+    chip: { one: '{car}: {n} item', other: '{car}: {n} items' },
     done: { one: 'Booked: {when}', other: '{n} vehicles booked: {when}' },
-    partial: 'Booked for {n} vehicle(s) out of {total}. Choose another block for the others.'
+    partial: { one: 'Booked for {n} vehicle out of {total}. Choose another block for the others.', other: 'Booked for {n} vehicles out of {total}. Choose another block for the others.' }
   },
   force: {
     title: 'This block is full',
@@ -73,7 +73,7 @@ export const booking: typeof fr = {
   },
   done: 'Booked: {when}',
   doneWalkIn: 'Job opened',
-  queued: 'Booking kept on this phone: it will be placed as soon as the network is back (if the block is full, you will see why).',
+  queued: 'Booking kept on this phone: it will be placed as soon as the network is back (if the block is full, you will see why). The confirmation text does not go by itself: send it from « To confirm » in Today once the booking is placed.',
   queuedWalkIn: 'Job kept on this phone: it will be created as soon as the network is back.',
   refusedBlock: 'Pick another block.',
   mechanicTruck: 'The job goes on your truck: {name}.',
@@ -86,10 +86,10 @@ export const booking: typeof fr = {
     missing: 'This estimate is not on this phone. Check the network, or book without it.'
   },
   when: {
-    today: { am: 'This morning', pm: 'This afternoon', eve: 'This evening' },
-    tomorrow: { am: 'Tomorrow morning', pm: 'Tomorrow afternoon', eve: 'Tomorrow evening' },
-    yesterday: { am: 'Yesterday morning', pm: 'Yesterday afternoon', eve: 'Yesterday evening' },
-    block: { am: 'morning', pm: 'afternoon', eve: 'evening' },
+    today: { am: 'This morning', pm: 'This afternoon', eve: 'This evening', day: 'Today' },
+    tomorrow: { am: 'Tomorrow morning', pm: 'Tomorrow afternoon', eve: 'Tomorrow evening', day: 'Tomorrow' },
+    yesterday: { am: 'Yesterday morning', pm: 'Yesterday afternoon', eve: 'Yesterday evening', day: 'Yesterday' },
+    block: { am: 'morning', pm: 'afternoon', eve: 'evening', day: 'during the day' },
     weekday: '{day} {block}',
     date: '{day}, {block}'
   },
@@ -237,9 +237,9 @@ export const booking: typeof fr = {
     },
     summary: { noBlock: 'No time chosen' },
     missing: { block: 'Choose the time' },
-    cars: { partial: 'Booked for {n} of {total} vehicle(s). Choose another time for the others.' },
+    cars: { partial: { one: 'Booked for {n} of {total} vehicles. Choose another time for the others.', other: 'Booked for {n} of {total} vehicles. Choose another time for the others.' } },
     force: { title: 'This day is full', cancel: 'Choose another time' },
-    queued: 'Booking kept on the phone: it will be placed as soon as the network is back (if the day is full, you will see why).',
+    queued: 'Booking kept on the phone: it will be placed as soon as the network is back (if the day is full, you will see why). The confirmation text does not go by itself: send it from « To confirm » in Today once the booking is placed.',
     refusedBlock: 'Choose another time.',
     full: 'This window is no longer possible: the mechanic can no longer arrive within those hours. Choose another window.',
     auto: 'window given by the app',

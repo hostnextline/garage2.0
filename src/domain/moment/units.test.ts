@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { windowFor, type Range } from '../../lib/dates';
 import { unitMinutes } from './grid';
-import { possibleUnits, rowsByStart, unitOfWindow, unitStates, pageDays, pageOf, lastPage, cacheKey, byHour, moveFocus, type WinRow } from './units';
+import { possibleUnits, rowsByStart, unitOfWindow, unitStates, pageDays, pageOf, lastPage, cacheKey, byHour, moveFocus, windowStarts, windowListed, type WinRow } from './units';
 import { floatPlace } from '../../shared/moment/PickGrid';
 
 const DAY: Range = [480, 1200];
@@ -153,5 +153,42 @@ describe('the small map beside the unit pointed at', () => {
     const narrow = floatPlace({ top: 100, bottom: 118 }, { left: 150, right: 240 }, 420, 900);
     expect(narrow.top).toBe(130);
     expect(narrow.left).toBe(52);
+  });
+});
+
+describe('the calendar with any numbers of Réglages (x-time-02)', () => {
+  /** the windows the server lists today: from the day's first hour, one per `step` (max(rounding, 15)), each with the
+      arrival it planned inside it (here: half an hour in, as on an empty day) */
+  const serverRows = (span: Range, len: number, step: number): WinRow[] => {
+    const out: WinRow[] = [];
+    for (let s = span[0]; s + len <= span[1]; s += step) out.push({ win_start: s, win_end: s + len, eta: s + 30, truck: 'T1', drive_min: 10 });
+    return out;
+  };
+  const shaped = (before: number, after: number, round: number, span: Range = DAY) => (eta: number): Range => windowFor(eta, { before, after, round, dayStart: span[0], dayEnd: span[1] });
+  it('« avant » 30 with rounding 60: the day is not « complet » any more (2 units of 48 before)', () => {
+    const of = shaped(30, 180, 60);
+    const p = possibleUnits(DAY, serverRows(DAY, 210, 60), of);
+    expect(p.size).toBeGreaterThan(40);
+    // each unit opened is proven by a planned arrival inside the very window the customer will be told
+    for (const [m, r] of p) { const w = of(m); expect(r.eta!).toBeGreaterThanOrEqual(w[0]); expect(r.eta!).toBeLessThanOrEqual(w[1]); }
+  });
+  it('a day starting at 7 h 30 with the default numbers: the same (4 units of 50 before)', () => {
+    const span: Range = [450, 1200];
+    expect(possibleUnits(span, serverRows(span, 240, 60), shaped(60, 180, 60, span)).size).toBeGreaterThan(40);
+  });
+  it('a server on the rule’s own grid is believed when it leaves a window out (nothing is guessed)', () => {
+    const of = shaped(60, 180, 60);
+    expect([...possibleUnits(DAY, [row(600, 630)], of).keys()]).toEqual([630, 645, 660, 675]);
+  });
+  it('the windows the rule can tell, by their start (what the server must try)', () => {
+    expect(windowStarts(DAY, shaped(60, 180, 60))).toEqual([480, 540, 600, 660, 720, 780, 840, 900, 960]);
+    expect(windowStarts(DAY, shaped(30, 180, 60)).slice(0, 3)).toEqual([480, 510, 570]);
+  });
+  it('a window chosen before the answer: still possible by the same reading', () => {
+    const of = shaped(30, 180, 60);
+    const rows = serverRows(DAY, 210, 60);
+    expect(windowListed(DAY, rows, 810, of, 210)).toBe(true);
+    expect(windowListed(DAY, [], 810, of, 210)).toBe(false);
+    expect(windowListed(DAY, [row(600, 630)], 660, shaped(60, 180, 60), 240)).toBe(false);
   });
 });

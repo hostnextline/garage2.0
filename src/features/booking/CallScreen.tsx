@@ -1,39 +1,22 @@
 /* « Appel entrant » (#/call): the phone rings. Type the number: a customer we know shows right away (name, car, address,
    their next appointment) with « Réserver pour … », their file, their appointment. Somebody new: « Par quoi on commence ? »
    L'adresse (when can we be in their area), La voiture, or La job (what it costs, how long): the booking screen opens in
-   that order, the number already typed, the name asked last (#/book?call=1&start=…&phone=…). */
+   that order, the number already typed, the name asked last (#/book?call=1&start=…&phone=…). The rules: calls.ts. */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { MapPin, Car, Wrench, CalendarPlus, UserRound, CalendarClock } from 'lucide-preact';
 import type { ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { today, shortDate } from '../../lib/dates';
-import { phoneDigits, formatPhone } from '../../lib/text';
+import { formatPhone } from '../../lib/text';
 import { customerName, vehiclesOf, vehicleLabel, jobsOfCustomer } from '../../data/select';
-import type { Customer, Job } from '../../data/types';
-import { Page, Panel, Field, PhoneInput, Button, Avatar } from '../../ui';
+import type { Customer } from '../../data/types';
+import { Page, Panel, Field, PhoneInput, Button, Avatar, Rows, RowItem } from '../../ui';
 import { recentFirst, searchIndex } from '../../shared/customers/facts';
-import { searchList, type SearchDoc } from '../../shared/customers/search';
 import { Bit } from '../../shared/customers/bits';
-import { windowWords } from '../../domain/moment/words';
-import '../../shared/moment/booking.css';
+import { CALL_STARTS, callHref, callMatches, nextWhen } from './calls';
 
-/** the block of an appointment in words; booked by window (« Plages d'arrivée »): its window, or flexible */
-function nextWhen(j: Pick<Job, 'block' | 'win_start' | 'win_end' | 'win_flex'>, l: 'fr' | 'en'): string {
-  if (j.block === 'day' && j.win_start != null && j.win_end != null) return windowWords([j.win_start, j.win_end], l);
-  if (j.block === 'day' && j.win_flex) return windowWords(null, l);
-  return t(`common.blocks.${j.block}`).toLowerCase();
-}
-
-export type CallStart = 'address' | 'car' | 'job';
-export const CALL_STARTS: CallStart[] = ['address', 'car', 'job'];
-/** the booking screen for a new caller, starting with what they talk about first */
-export const callHref = (start: CallStart, phone: string, name = '') => `#/book?call=1&start=${start}${phone.trim() ? `&phone=${encodeURIComponent(phone.trim())}` : ''}${name.trim() ? `&name=${encodeURIComponent(name.trim())}` : ''}`;
-
-/** the customers whose number has these digits (3 at least), the best first */
-export function callMatches(all: Customer[], typed: string, docOf: (c: Customer) => SearchDoc | undefined): Customer[] {
-  const d = phoneDigits(typed) || typed.replace(/\D/g, '');
-  return d.length >= 3 ? searchList(all, d, docOf).slice(0, 5) : [];
-}
+const ICON = { address: MapPin, car: Car, job: Wrench };
+const OVER = ['done', 'cancelled', 'no_show'];
 
 export default function CallScreen(p: ScreenProps) {
   // #/call?phone=…&name=… (the « Appel entrant » banner of a call on the GoHighLevel number): the number already typed
@@ -42,10 +25,9 @@ export default function CallScreen(p: ScreenProps) {
   const [phone, setPhone] = useState(() => (qPhone ? formatPhone(qPhone) : ''));
   useEffect(() => { if (qPhone) setPhone(formatPhone(qPhone)); }, [qPhone]);
   const found = useMemo(() => callMatches(recentFirst.value, phone, (c) => searchIndex.value.get(c.id)), [phone, recentFirst.value, searchIndex.value]);
-  const ICON = { address: MapPin, car: Car, job: Wrench };
   return (
     <Page title={t('booking.call.title')} sub={t('booking.call.sub')} back="/agenda" data-testid="call-screen">
-      <div class="stack call">
+      <div class="stack">
         <Panel>
           <Field label={t('booking.call.phone')} hint={t('booking.call.phoneHint')}>
             <PhoneInput value={phone} onValue={setPhone} autoFocus />
@@ -60,18 +42,15 @@ export default function CallScreen(p: ScreenProps) {
           </Panel>
         )}
 
-        <Panel title={found.length ? t('booking.call.notThem') : t('booking.call.newTitle')} sub={name && !found.length ? t('booking.ring.newNamed', { name }) : t('booking.call.newSub')}>
-          <div class="call-starts">
+        <Panel flush title={found.length ? t('booking.call.notThem') : t('booking.call.newTitle')} sub={name && !found.length ? t('booking.ring.newNamed', { name }) : t('booking.call.newSub')}>
+          {/* three big rows, one per line: a finger finds them while the other hand holds the phone */}
+          <Rows>
             {CALL_STARTS.map((s) => {
               const Icon = ICON[s];
-              return (
-                <a key={s} class="call-start" href={callHref(s, phone, name)} data-testid={`call-start-${s}`}>
-                  <span class="call-start-icon" aria-hidden="true"><Icon size={26} /></span>
-                  <span class="call-start-txt"><b>{t(`booking.call.start.${s}`)}</b><span>{t(`booking.call.start.${s}Sub`)}</span></span>
-                </a>
-              );
+              return <RowItem key={s} href={callHref(s, phone, name)} start={<Icon size={24} aria-hidden="true" />} title={t(`booking.call.start.${s}`)}
+                sub={t(`booking.call.start.${s}Sub`)} chevron data-testid={`call-start-${s}`} />;
             })}
-          </div>
+          </Rows>
         </Panel>
       </div>
     </Page>
@@ -84,10 +63,10 @@ function Known(p: { c: Customer }) {
   const l = lang.value;
   const cars = vehiclesOf(c.id);
   const now = today();
-  const next = jobsOfCustomer(c.id).filter((j) => j.day >= now && !['done', 'cancelled', 'no_show'].includes(j.status)).sort((a, b) => a.day.localeCompare(b.day))[0];
+  const next = jobsOfCustomer(c.id).filter((j) => j.day >= now && !OVER.includes(j.status)).sort((a, b) => a.day.localeCompare(b.day))[0];
   const first = (c.first_name || '').trim() || customerName(c);
   return (
-    <div class="row-item call-known" role="listitem" data-testid="call-known">
+    <div class="row-item" role="listitem" data-testid="call-known">
       <Avatar name={customerName(c)} />
       <div class="grow stack" style={{ gap: '6px' }}>
         <div>

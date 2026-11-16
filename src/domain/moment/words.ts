@@ -23,7 +23,7 @@ export function blockPhrase(day: Day, block: BlockKey, todayDay: Day, l: Lang): 
 export function blockPhraseLower(day: Day, block: BlockKey, todayDay: Day, l: Lang): string {
   const s = blockPhrase(day, block, todayDay, l);
   // English weekdays and months keep their capital
-  return l === 'en' && !/^(This|Tomorrow|Yesterday)\b/.test(s) ? s : low(s);
+  return l === 'en' && !/^(This|Today|Tomorrow|Yesterday)\b/.test(s) ? s : low(s);
 }
 /** « Demain matin, 8 h à 12 h » */
 export function blockPhraseWithHours(day: Day, block: BlockKey, start: number, end: number, todayDay: Day, l: Lang): string {
@@ -68,7 +68,7 @@ export function windowWords(win: [number, number] | null, l: Lang): string {
 /* Hours in words: « 8 h à 12 h et 13 h à 20 h », « Fermé », « Mardi et samedi ». */
 const LF = new Map<string, Intl.ListFormat>();
 /** « a, b et c » / « a, b, and c » */
-export function listWords(items: string[], l: Lang): string {
+function listWords(items: string[], l: Lang): string {
   if (items.length < 2) return items[0] || '';
   const k = l;
   let f = LF.get(k);
@@ -91,7 +91,7 @@ export function weekdaysWords(dows: number[], l: Lang): string {
 }
 
 /** « 2 h 08 », « 45 min » — short enough for a small cell, in both languages */
-export function shortDuration(min: number): string {
+function shortDuration(min: number): string {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   if (!h) return `${m} min`;
   return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
