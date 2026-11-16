@@ -12,14 +12,13 @@ import { Sheet, Button, Banner, Chips, Pill } from '../../ui';
 import { MapView } from '../../shared/map/MapView';
 import { assemble } from '../../shared/map/assemble';
 import { routeLayers } from '../../shared/map/layers';
+import { fmtKm } from '../../shared/map/distance';
 import { fromDevice } from '../../shared/map/device';
 import { useRoads, roadOf, roadTotal } from '../../shared/map/useRoads';
 import { moveStops } from '../../shared/moment/preview';
 import type { Move } from '../../shared/map/closing';
 import { momentWord } from '../../shared/jobs/select';
 
-const KM = new Map<string, Intl.NumberFormat>();
-const fmtKm = (n: number, l: string) => { let f = KM.get(l); if (!f) { f = new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }); KM.set(l, f); } return f.format(n); };
 const kindWord = (truckId: string | null, form: 'of' | 'to') => t(`hours.closing.${form}.${truckRow(truckId)?.tire_machine === false ? 'car' : 'truck'}`);
 
 export function CloseDaySheet(p: { truckId: string; moves: Move[]; busy?: boolean; onMove: () => Promise<unknown>; onJustClose: () => Promise<unknown>; onClose: () => void }) {
