@@ -1,7 +1,8 @@
-/* « Appel entrant » from GoHighLevel (an owner who switched it on for their own account: `prefs.calls`, « Recevoir les appels dans mon compte »): a call that comes in on the garage's number shows here, on
-   every screen, with the number and the name GoHighLevel knows (or our own customer's). « Ouvrir » opens Appel entrant with
-   the number already typed. A banner, never a jump: the screen in use stays. The calls are noted by the server function
-   « ring » in incoming_calls: told at once (realtime), and asked every 10 s while the app is in view. */
+/* « Appel entrant » from GoHighLevel (an owner who switched it on for their own account: `prefs.calls`, « Recevoir les
+   appels dans mon compte »): a call that comes in on the garage's number shows here, on every screen, with the number
+   and the name GoHighLevel knows (or our own customer's). « Ouvrir » opens Appel entrant with the number already typed.
+   A banner, never a jump: the screen in use stays. The calls are noted by the server function « ring » in
+   incoming_calls: told at once (realtime), and asked every 10 s while the app is in view. */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { PhoneCall, X } from 'lucide-preact';
 import { t } from '../../lib/i18n';
@@ -12,15 +13,15 @@ import { navigate } from '../../platform/router';
 import { REALTIME } from '../../lib/config';
 import { Button, IconButton } from '../../ui';
 import { phoneOwners } from '../../shared/customers/dupes';
-import '../../shared/moment/booking.css';
 import { type IncomingCall, callLink, callsOn, onCheckCalls } from '../../services/bubbles';
+import { CALL_SHOWN_MS, callToShow } from './calls';
+/* The banner's own rules. The shared booking stylesheet is still loaded here, at the start of the app, because the
+   « texto à envoyer » sheet (shared/moment/notify.tsx) draws its bubble with it on screens that load no picker (the
+   agenda): it can leave once that sheet brings its own stylesheet. */
+import '../../shared/moment/booking.css';
+import './CallBanner.css';
 
-/** a call stays on screen this long */
-export const CALL_SHOWN_MS = 3 * 60 * 1000;
-/** the newest call still worth showing (not closed by the person, not too old) */
-export function callToShow(list: IncomingCall[], closed: Set<string>, now: number): IncomingCall | null {
-  return list.filter((c) => !closed.has(c.id) && now - Date.parse(c.at) < CALL_SHOWN_MS).sort((a, b) => b.at.localeCompare(a.at))[0] || null;
-}
+const POLL_MS = 10 * 1000;
 
 export function CallHost() {
   const on = callsOn();
@@ -30,16 +31,23 @@ export function CallHost() {
   useEffect(() => {
     if (!on) return;
     let alive = true;
+    // only the newest question's answer counts (a slow answer must not put back a list a newer one replaced)
+    let asked = 0;
     const load = async () => {
       if (document.visibilityState === 'hidden') return;
+      const mine = ++asked;
       const { data } = await sb.from('incoming_calls').select('id, phone, name, at').gte('at', new Date(Date.now() - CALL_SHOWN_MS).toISOString()).order('at', { ascending: false }).limit(3);
-      if (alive && data) setCalls(data as IncomingCall[]);
-      if (alive) setTick((x) => x + 1);
+      if (!alive || mine !== asked) return;
+      if (data) setCalls(data as IncomingCall[]);
+      // the clock moves even when nothing new came: a call older than 3 minutes leaves
+      setTick((x) => x + 1);
     };
-    const look = () => void load().catch(() => undefined);
+    // a look that fails (no signal) keeps what is shown: the next one, 10 s later or on realtime, asks again
+    const keepShown = () => undefined;
+    const look = () => void load().catch(keepShown);
     onCheckCalls(look);
     look();
-    const timer = setInterval(look, 10 * 1000);
+    const timer = setInterval(look, POLL_MS);
     document.addEventListener('visibilitychange', look);
     const ch = REALTIME ? sb.channel('incoming-calls').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'incoming_calls' }, look).subscribe() : null;
     return () => { alive = false; onCheckCalls(null); clearInterval(timer); document.removeEventListener('visibilitychange', look); if (ch) void sb.removeChannel(ch); };
