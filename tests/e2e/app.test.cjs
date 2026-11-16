@@ -349,12 +349,29 @@ step('the owner: truck hours for one day, an invitation, the company name, an es
   await page.getByTestId('settings-save').click();
   for (let i = 0; i < 20 && !h.sql(`select company->>'name' from public.settings`).includes('(test)'); i++) await page.waitForTimeout(500);
   assert.equal(h.sql(`select company->>'name' from public.settings`), 'Mécanique Mobile H.I.S (test)');
+  // English: the owner picks it in Mon compte; it shows at once, reaches his account and stays after a reload
+  const ownerLang = () => h.sql(`select lang from public.staff where id = '${who.owner.id}'`);
+  await page.goto(h.APP + '#/account');
+  await page.getByTestId('account-lang').locator('button', { hasText: 'English' }).click();
+  await page.getByText('Today').first().waitFor({ timeout: 5000 });
+  for (let i = 0; i < 20 && ownerLang() !== 'en'; i++) await page.waitForTimeout(500);
+  assert.equal(ownerLang(), 'en', 'his account says English');
+  await page.reload();
+  await page.getByTestId('app').waitFor();
+  await page.getByText('Today').first().waitFor({ timeout: 5000 });
   await ctx.close();
-  // English
-  const en = await h.openW({ kind: 'phone', locale: 'en-CA' });
+  // on another phone, even one set to French, his account's English follows him (the phone's language only decides
+  // until the person is known: a new phone used to keep the phone's language for ever, i18n-01 / app-shell-08)
+  const en = await h.openW({ kind: 'phone', locale: 'fr-CA' });
   await h.signIn(en.page, who.owner.email, PW);
   await en.page.getByText('Today').first().waitFor();
   await h.shot(en.page, 'e2e-6-english');
+  // back to French in Mon compte (the next steps read the owner's screens in French)
+  await en.page.goto(h.APP + '#/account');
+  await en.page.getByTestId('account-lang').locator('button', { hasText: 'Français' }).click();
+  await en.page.getByText('Aujourd’hui').first().waitFor({ timeout: 5000 });
+  for (let i = 0; i < 20 && ownerLang() !== 'fr'; i++) await en.page.waitForTimeout(500);
+  assert.equal(ownerLang(), 'fr', 'his account says French again');
   noErrors(en.page);
   await en.ctx.close();
 });
