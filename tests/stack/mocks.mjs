@@ -1,6 +1,14 @@
 // Fake outside services for the tests (port 8021): GoHighLevel, Stripe, OSRM, NHTSA vPIC, Hermes. They answer like the real ones
 // and keep a log of every call (GET /log, POST /log/clear) so the tests can check what would have been sent.
 // GET /control?ghl=fail makes GoHighLevel refuse the next messages; ?ghl=ok puts it back.
+// GET /control?stripe=refunds makes Stripe's list of refunds answer 500, ?stripe=all every Stripe call; ?stripe=ok puts it back.
+// Stripe, as the real one behaves: a card page (Checkout session) is open, complete or expired (POST …/expire), and an
+// expired one cannot be paid; the same Idempotency-Key with other parameters is refused (400 idempotency_error);
+// « charge.refunded » carries the charge WITHOUT the list of its refunds (they are read with GET /v1/refunds).
+//   GET /pay/<session>[?twice=1][&replay=1][&quiet=1] the customer pays (twice: two notices; replay: the same notice again;
+//                                                     quiet: Stripe's notice never comes)
+//   GET /refund/<session>[?amount=][&status=pending][&twice=1]   the garage gives money back from Stripe's own screens
+//   GET /refund-update/<refund>?status=succeeded|failed          Stripe says what became of a refund
 import http from 'node:http';
 import { createHmac, generateKeyPairSync, createSign } from 'node:crypto';
 
@@ -17,22 +25,28 @@ function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'gar
   const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
   return `${head}.${body}.${sig}`;
 }
-const state = { ghl: 'ok', sessions: new Map(), hook: null, n: 0, chats: new Map() };
+const state = { ghl: 'ok', stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map() };
 const chat = (cid) => { if (!state.chats.has(cid)) state.chats.set(cid, []); return state.chats.get(cid); };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
 const formParse = (s) => { const o = {}; for (const p of s.split('&').filter(Boolean)) { const [k, v = ''] = p.split('='); o[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' ')); } return o; };
 
-async function stripeHook(session) {
+/** a signed notice to the garage's own function, as Stripe sends it */
+async function stripeHook(object, type = 'checkout.session.completed', id = 'evt_' + (++state.n)) {
   if (!state.hook) return;
-  const event = { id: 'evt_' + (++state.n), type: 'checkout.session.completed', data: { object: session } };
+  const event = { id, object: 'event', api_version: '2024-06-20', type, data: { object } };
   const raw = JSON.stringify(event);
   const t = Math.floor(Date.now() / 1000);
   const sig = createHmac('sha256', state.hook.secret).update(`${t}.${raw}`).digest('hex');
   const r = await fetch('http://127.0.0.1:54331/functions/v1/stripe', { method: 'POST', headers: { 'stripe-signature': `t=${t},v1=${sig}`, 'content-type': 'application/json' }, body: raw });
-  log.push({ svc: 'stripe-webhook', status: r.status, event: event.id, body: await r.text() });
-  return { raw, t, sig, status: r.status };
+  const body = await r.text();
+  log.push({ svc: 'stripe-webhook', status: r.status, event: event.id, type, body });
+  return { raw, t, sig, status: r.status, id: event.id, body };
 }
+/** the charge of a paid card page, as « charge.refunded » carries it since Stripe's version 2022-11-15: no `refunds` */
+const chargeOf = (s) => ({ id: 'ch_' + s.id, object: 'charge', payment_intent: s.payment_intent, amount: s.amount_total, currency: 'cad', status: 'succeeded',
+  amount_refunded: state.refunds.filter((r) => r.payment_intent === s.payment_intent && r.status === 'succeeded').reduce((n, r) => n + r.amount, 0),
+  refunded: false, metadata: {} });
 
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
@@ -40,7 +54,11 @@ http.createServer(async (req, res) => {
   const p = u.pathname;
   if (p === '/log') return send(res, 200, log);
   if (p === '/log/clear') { log.length = 0; return send(res, 200, { ok: true }); }
-  if (p === '/control') { if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl'); return send(res, 200, state.ghl); }
+  if (p === '/control') {
+    if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl');
+    if (u.searchParams.get('stripe')) state.stripe = u.searchParams.get('stripe');
+    return send(res, 200, { ghl: state.ghl, stripe: state.stripe });
+  }
 
   // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
   if (p.startsWith('/push/')) {
@@ -86,16 +104,44 @@ http.createServer(async (req, res) => {
     if (!/^Bearer (sk|rk)_(test|live)_/.test(req.headers.authorization || '')) return send(res, 401, { error: { message: 'Invalid API Key' } });
     if (p === '/stripe/v1/webhook_endpoints' && req.method === 'POST') { state.hook = { id: 'we_' + (++state.n), secret: 'whsec_test_' + state.n, url: f.url }; return send(res, 200, state.hook); }
     if (p.startsWith('/stripe/v1/webhook_endpoints/') && req.method === 'DELETE') return send(res, 200, { deleted: true });
+    if (state.stripe === 'all' || (state.stripe === 'refunds' && p === '/stripe/v1/refunds')) return send(res, 500, { error: { type: 'api_error', message: 'An unknown error occurred' } });
     if (p === '/stripe/v1/checkout/sessions' && req.method === 'POST') {
+      // the same key again: the same answer for the same request, a refusal for another one (as Stripe does)
+      const idem = req.headers['idempotency-key'];
+      if (idem && state.idem.has(idem)) {
+        const was = state.idem.get(idem);
+        if (was.raw !== raw) return send(res, 400, { error: { type: 'idempotency_error', message: 'Keys for idempotent requests can only be used with the same parameters they were first used with.' } });
+        return send(res, 200, was.session);
+      }
       const id = 'cs_test_' + (++state.n);
-      const md = {}; for (const [k, v] of Object.entries(f)) { const m = /^metadata\[(\w+)\]$/.exec(k); if (m) md[m[1]] = v; }
+      const md = {}; for (const [k, v] of Object.entries(f)) { const m = /^metadata\[(\w+)\]$/.exec(k); if (m && v !== '') md[m[1]] = v; }
       const s = { id, object: 'checkout.session', url: `http://127.0.0.1:8021/pay/${id}`, status: 'open', payment_status: 'unpaid',
-        amount_total: Number(f['line_items[0][price_data][unit_amount]']), currency: 'cad', metadata: md, success_url: f.success_url, cancel_url: f.cancel_url, payment_intent: 'pi_' + id };
+        amount_total: Number(f['line_items[0][price_data][unit_amount]']), currency: 'cad', metadata: md, success_url: f.success_url, cancel_url: f.cancel_url,
+        expires_at: Number(f.expires_at) || Math.floor(Date.now() / 1000) + 86400, payment_intent: 'pi_' + id };
       state.sessions.set(id, s);
+      if (idem) state.idem.set(idem, { raw, session: s });
+      return send(res, 200, s);
+    }
+    // the card pages of a payment (GET /v1/checkout/sessions?payment_intent=…), as Stripe lists them
+    if (p === '/stripe/v1/checkout/sessions' && req.method === 'GET') {
+      const pi = u.searchParams.get('payment_intent');
+      return send(res, 200, { object: 'list', url: '/v1/checkout/sessions', has_more: false, data: [...state.sessions.values()].filter((s) => !pi || s.payment_intent === pi).reverse() });
+    }
+    const x = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)\/expire$/.exec(p);
+    if (x && req.method === 'POST') {
+      const s = state.sessions.get(x[1]);
+      if (!s) return send(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } });
+      if (s.status !== 'open') return send(res, 400, { error: { type: 'invalid_request_error', message: 'Only Checkout Sessions with a status in ["open"] can be expired.' } });
+      s.status = 'expired';
       return send(res, 200, s);
     }
     const m = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)$/.exec(p);
-    if (m && req.method === 'GET') { const s = state.sessions.get(m[1]); return s ? send(res, 200, s) : send(res, 404, { error: { message: 'No such session' } }); }
+    if (m && req.method === 'GET') { const s = state.sessions.get(m[1]); return s ? send(res, 200, s) : send(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } }); }
+    // the refunds of a payment (newest first, like Stripe)
+    if (p === '/stripe/v1/refunds' && req.method === 'GET') {
+      const pi = u.searchParams.get('payment_intent');
+      return send(res, 200, { object: 'list', url: '/v1/refunds', has_more: false, data: state.refunds.filter((r) => r.payment_intent === pi).slice().reverse() });
+    }
     return send(res, 404, { error: { message: 'no route' } });
   }
   // the customer "pays" on the fake Stripe page: the session is paid and the signed notice goes to the garage
@@ -103,10 +149,34 @@ http.createServer(async (req, res) => {
     const id = p.split('/').pop();
     const s = state.sessions.get(id);
     if (!s) return send(res, 404, { error: 'no session' });
+    if (s.status === 'expired') return send(res, 410, { error: 'expired' });      // a closed page cannot be paid any more
     s.status = 'complete'; s.payment_status = 'paid';
+    if (u.searchParams.get('quiet')) return send(res, 200, { ok: true, hook: null });   // the notice is late or lost
     const h = await stripeHook(s);
-    if (u.searchParams.get('twice')) await stripeHook(s);
-    return send(res, 200, { ok: true, hook: h?.status });
+    if (u.searchParams.get('twice')) await stripeHook(s);                                         // a second notice about the same page
+    if (u.searchParams.get('replay')) await stripeHook(s, 'checkout.session.completed', h?.id);   // the very same notice again
+    return send(res, 200, { ok: true, hook: h?.status, result: h?.body });
+  }
+  // the garage gives money back (all or part) from Stripe's own screens: the signed « charge.refunded » notice goes to
+  // the garage — the charge, WITHOUT its refunds; ?status=pending: a refund still on its way
+  if (p.startsWith('/refund/')) {
+    const id = p.split('/').pop();
+    const s = state.sessions.get(id);
+    if (!s || s.payment_status !== 'paid') return send(res, 404, { error: 'not paid' });
+    const refund = { id: 're_' + (++state.n) + 'test', object: 'refund', amount: Number(u.searchParams.get('amount')) || s.amount_total, currency: 'cad',
+      charge: 'ch_' + s.id, payment_intent: s.payment_intent, status: u.searchParams.get('status') || 'succeeded', created: Math.floor(Date.now() / 1000) };
+    state.refunds.push(refund);
+    const h = await stripeHook(chargeOf(s), 'charge.refunded');
+    if (u.searchParams.get('twice')) await stripeHook(chargeOf(s), 'charge.refunded');             // a second notice about the same refund
+    return send(res, 200, { ok: true, hook: h?.status, result: h?.body, refund: refund.id, event: h?.id });
+  }
+  // Stripe says what became of a refund (« charge.refund.updated » carries the refund itself)
+  if (p.startsWith('/refund-update/')) {
+    const refund = state.refunds.find((r) => r.id === p.split('/').pop());
+    if (!refund) return send(res, 404, { error: 'no refund' });
+    refund.status = u.searchParams.get('status') || 'succeeded';
+    const h = await stripeHook(refund, 'charge.refund.updated');
+    return send(res, 200, { ok: true, hook: h?.status, result: h?.body });
   }
 
   // ---- GitHub OIDC ----

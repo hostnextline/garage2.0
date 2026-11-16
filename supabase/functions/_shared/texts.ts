@@ -118,6 +118,10 @@ export function payNowWords(on: boolean, lang: Lang): string {
   return on ? (lang === 'en' ? ' (and pay now if you wish)' : ' (et la payer maintenant si vous le voulez)') : '';
 }
 export function first(name?: string | null): string { return String(name || '').trim().split(/\s+/)[0] || ''; }
+/** the day (YYYY-MM-DD) of a moment in Montréal: an invoice finished at 19 h 30 is that evening's, not the next day's */
+export function localDay(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
 /** minutes after midnight, Montréal time, of a moment */
 export function localMinute(d: Date): number {
   const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(d);
