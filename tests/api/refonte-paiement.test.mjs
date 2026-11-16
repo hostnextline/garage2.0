@@ -386,3 +386,46 @@ test('a text whose link could not be kept is not sent (never a text with a dead 
   // the link can be kept again: the text goes
   assert.equal((await fn('notify', { kind: 'extras', job_id: job, base: BASE }, ownerJwt)).status, 'sent');
 });
+
+/* ---------- the customer's page (client): what the page is told ---------- */
+
+test('the database not answering: the customer is not told the link is invalid (500 with a reference, the link still works after)', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  await q(`revoke select on public.public_links from service_role`);
+  let r;
+  try { r = await fn('client', { action: 'view', token: t }); } finally { await q(`grant select on public.public_links to service_role`); }
+  assert.deepEqual([r.status, r.code], [500, 'server'], JSON.stringify(r));
+  assert.doesNotMatch(String(r.error), /lien/);
+  assert.equal((await fn('client', { action: 'view', token: t })).ok, true);
+});
+
+test('extra work can no longer be accepted on the page once the appointment is cancelled (409 closed, still to answer)', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  const extra = (await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed') returning id`, [job]))[0].id;
+  await q(`update public.jobs set status = 'cancelled' where id = $1`, [job]);
+  const r = await fn('client', { action: 'answer', token: t, item_id: extra, accept: true, confirm: true });
+  assert.deepEqual([r.status, r.ok, r.code], [409, false, 'closed'], JSON.stringify(r));
+  assert.equal((await q(`select status from public.job_items where id = $1`, [extra]))[0].status, 'proposed');
+});
+
+test('back from Stripe: « check » says what became of the card page (paid even when Stripe’s notice never came; unknown when Stripe is down)', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  assert.equal((await fn('client', { action: 'check', token: t })).session, 'none');
+  const p = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.equal((await fn('client', { action: 'check', token: t })).session, 'open');
+  // Stripe not answering: the page still opens, « unknown »
+  await fetch(`${MOCK}/control?stripe=all`);
+  let d;
+  try { d = await fn('client', { action: 'check', token: t }); } finally { await fetch(`${MOCK}/control?stripe=ok`); }
+  assert.deepEqual([d.status, d.ok, d.session], [200, true, 'unknown'], JSON.stringify(d));
+  // paid, but Stripe's notice is late: the page itself records it, once
+  assert.equal((await mockGet(`/pay/${sessionOf(p.url)}?quiet=1`)).hook, null);
+  const c = await fn('client', { action: 'check', token: t });
+  assert.deepEqual([c.ok, c.session, c.pay.available], [true, 'paid', false], JSON.stringify(c));
+  assert.equal((await q(`select count(*)::int n from public.payments where stripe_session = $1`, [sessionOf(p.url)]))[0].n, 1);
+  assert.equal((await fn('client', { action: 'check', token: t })).session, 'none', 'the paid page is forgotten by the link');
+  assert.equal((await q(`select count(*)::int n from public.payments where stripe_session = $1`, [sessionOf(p.url)]))[0].n, 1, 'still once');
+});

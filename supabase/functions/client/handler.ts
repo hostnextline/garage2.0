@@ -22,7 +22,9 @@ type Row = Record<string, any>;
 async function linkOf(token: unknown): Promise<Row> {
   const t = String(token || '');
   if (!/^[A-Za-z0-9_-]{20,80}$/.test(t)) fail('bad_link', 'Ce lien est incomplet. Demandez-en un nouveau au garage.');
-  const { data } = await adminDb().from('public_links').select('*').eq('token_hash', await sha256hex(t)).maybeSingle();
+  // the database not answering is a server problem: never « this link is no longer valid » to a customer whose link is good
+  const { data, error } = await adminDb().from('public_links').select('*').eq('token_hash', await sha256hex(t)).maybeSingle();
+  if (error) throw error;
   const l = data as Row | null;
   if (!l || l.revoked_at) fail('bad_link', 'Ce lien n’est plus valide. Demandez-en un nouveau au garage.', 404);
   if (Date.parse(l.expires_at) < Date.now()) fail('expired', 'Ce lien a expiré. Demandez-en un nouveau au garage.', 410);
@@ -51,17 +53,21 @@ async function view(l: Row) {
       items: items.map((i) => ({ description: i.description, qty: Number(i.qty || 1), unit_cents: Number(i.unit_cents || 0) })),
       totals: taxesOf(s, items), valid_until: (q as Row).valid_until || null };
   }
-  const { data: job } = await db.from('jobs').select('*').eq('id', l.job_id).maybeSingle();
+  const { data: job, error: ej } = await db.from('jobs').select('*').eq('id', l.job_id).maybeSingle();
+  if (ej) throw ej;
   const j = job as Row | null;
   if (!j || j.deleted_at) fail('gone', 'Ce dossier n’existe plus.', 404);
-  const [{ data: cust }, { data: items }, { data: inv }, { data: pays }, { data: veh }, { data: trip }] = await Promise.all([
+  const reads = await Promise.all([
     db.from('customers').select('first_name, lang').eq('id', j.customer_id).maybeSingle(),
     db.from('job_items').select('*').eq('job_id', j.id).is('deleted_at', null).order('sort'),
     db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle(),
     db.from('payments').select('amount_cents, method, paid_at, invoice_id').eq('job_id', j.id).is('deleted_at', null),
     j.vehicle_id ? db.from('vehicles').select('year, make, model').eq('id', j.vehicle_id).maybeSingle() : Promise.resolve({ data: null }),
-    db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').maybeSingle()
+    db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').is('deleted_at', null).limit(1).maybeSingle()
   ]);
+  // a read that failed would show a wrong page (no lines, nothing paid, nothing to pay): a server problem instead
+  for (const r of reads) if (r.error) throw r.error;
+  const [{ data: cust }, { data: items }, { data: inv }, { data: pays }, { data: veh }, { data: trip }] = reads;
   const its = (items || []) as Row[];
   // a block job: its block's hours; a 'day' job (« Plages d’arrivée »): the window promised, or « flexible » (no hours yet)
   const win = jobWindow(j as never);
