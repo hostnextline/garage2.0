@@ -1,9 +1,13 @@
-/* « Copier / Coller un rendez-vous »: an appointment copied (right-click on it, or ⋯ on the job sheet) is pasted into a
-   block (right-click on the block, or « Coller ici »): the booking screen opens with the same customer, car, address,
-   work, problem and notes, in that block, and the person confirms with « Réserver » (the usual rules, nothing booked
-   behind their back). The copy stays on this phone for the visit (sessionStorage). */
-import { signal } from '@preact/signals';
+/* « Copier / Coller un rendez-vous »: an appointment copied (right-click or long press on it in the agenda) is pasted into
+   a block or a day (right-click on it, or « Coller ici »): the booking screen opens with the same customer, car,
+   address, work, problem and notes, in that place, and the person confirms with « Réserver » (the usual rules, nothing
+   booked behind their back). The copy stays on this phone for the visit (sessionStorage), and only while this person
+   is signed in and the phone still holds the appointment. */
+import { effect, signal } from '@preact/signals';
 import { href } from '../../platform/router';
+import { me } from '../../data/auth';
+import { job as jobRow } from '../../data/select';
+import type { Job } from '../../data/types';
 import type { BlockKey, Day } from '../../lib/dates';
 
 const KEY = 'his.agenda.copy';
@@ -15,12 +19,26 @@ export const copiedJob = signal<string | null>(load());
 
 export function copyJob(id: string) {
   copiedJob.value = id;
-  try { sessionStorage.setItem(KEY, id); } catch { /* kept for this screen only */ }
+  try { sessionStorage.setItem(KEY, id); } catch { /* storage refused (private window): kept for this visit only */ }
 }
 export function clearCopy() {
   copiedJob.value = null;
-  try { sessionStorage.removeItem(KEY); } catch { /* nothing kept */ }
+  try { sessionStorage.removeItem(KEY); } catch { /* storage refused: nothing was kept there either */ }
 }
+/** the appointment copied, when this phone holds it (another account's copy, or a job no longer here: none) */
+export function copiedRow(): Job | undefined {
+  const id = copiedJob.value;
+  return id ? jobRow(id) : undefined;
+}
+
+// signing out (or another person signing in on the same tab) forgets the copy: it was the other person's
+let signedIn: string | null = null;
+effect(() => {
+  const id = me.value?.id ?? null;
+  if (signedIn && id !== signedIn) clearCopy();
+  if (id) signedIn = id;
+});
+
 /** the booking screen, with the copy and the block chosen (« Plages d'arrivée »: the day, block 'day'; the window is
     chosen there, or already said with `win`: the start of the window of the unit clicked on the time grid) */
 export function pasteHref(day: Day, block: BlockKey, id: string | null = copiedJob.value, win: number | null = null): string {

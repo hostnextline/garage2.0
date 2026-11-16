@@ -39,8 +39,6 @@ export const agenda = {
     map: 'Carte de la journée'
   },
   copy: {
-    copy: 'Copier le rendez-vous',
-    open: 'Ouvrir le rendez-vous',
     copied: 'Rendez-vous de {name} copié. Clic droit (ou appui long) sur un bloc, ou « Coller ici ».',
     paste: 'Coller ici',
     pasteHere: 'Coller ici',
@@ -124,6 +122,8 @@ export const agenda = {
     textSms: 'Un texto avertira {name} du changement.',
     ok: 'Déplacer',
     done: 'Job déplacée',
+    unchanged: 'Rien à changer : le rendez-vous est déjà à cette place.',
+    textLater: 'Le texto au client partira quand le déplacement sera envoyé.',
     started: 'Ce bloc est déjà commencé : choisis un bloc à venir.',
     closed: 'Ce bloc est fermé : aucun camion ne travaille.',
     notBooked: 'Seule une job réservée, pas encore partie, se déplace.',

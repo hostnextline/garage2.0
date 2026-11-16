@@ -38,7 +38,6 @@ export const today: typeof fr = {
     now: 'Right now',
     open: 'Open the job',
     allDone: 'No more stops today',
-    allDoneText: 'Your jobs of the day are done. End your day when you get back.',
     empty: 'No appointment today',
     emptyText: 'Nothing on your truck’s schedule today.',
     noneLeft: 'The stops of the day were cancelled, or the customer was not there.',

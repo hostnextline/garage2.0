@@ -39,12 +39,19 @@ export function fillWords(used: number, cap: number, l: Lang): string {
 }
 
 /* ---------- moving a job by dragging it ---------- */
+/** a place in a sentence: « mardi matin »; a whole day (a job booked by window left on a day of blocks): « mardi »,
+    since the block words have no « day » (they would print their raw key) */
+function placeInSentence(p: { day: Day; block: BlockKey }, todayDay: Day, l: Lang): string {
+  if (p.block !== 'day') return blockPhraseLower(p.day, p.block, todayDay, l);
+  const d = dayWords(p.day, todayDay, l);
+  return l === 'en' ? d : d.charAt(0).toLowerCase() + d.slice(1);
+}
 /** « Déplacer la job de Julie de mardi matin à jeudi après-midi ? » */
 export function moveQuestion(name: string, from: { day: Day; block: BlockKey }, to: { day: Day; block: BlockKey }, todayDay: Day, l: Lang): string {
   return t('agenda.move.question', {
     name: name || t('agenda.move.someone', undefined, l),
-    from: blockPhraseLower(from.day, from.block, todayDay, l),
-    to: blockPhraseLower(to.day, to.block, todayDay, l)
+    from: placeInSentence(from, todayDay, l),
+    to: placeInSentence(to, todayDay, l)
   }, l);
 }
 export type DropRefusal = 'same' | 'started' | 'closed' | 'not_booked' | null;
@@ -58,27 +65,13 @@ export function dropRefusal(job: { day: Day; block: BlockKey; status: string }, 
   return null;
 }
 
-/** how many days a day is from today, in words for the strip (« Aujourd'hui », « Demain »…) — '' when far */
-export function dayDistance(day: Day, todayDay: Day): number { return daysBetween(todayDay, day); }
-
 /* ---------- « Plages d'arrivée »: a day drawn as one piece, each job with the window told to its customer ---------- */
 /** is this day drawn as ONE day (windows) or by blocks? Windows: the garage books by windows and the day is today or
     later, or the day already holds a job booked for « the day ». A past day of blocks keeps its three blocks. */
 export function isWindowDay(day: Day, todayDay: Day, windowsOn: boolean, jobBlocks: readonly BlockKey[]): boolean {
   return (windowsOn && day >= todayDay) || jobBlocks.includes('day');
 }
-/** a whole day as a booking place: over once its last hour has passed (not when it starts, as a block does); open
-    while a truck still has enough hours left in it */
-export function dayState(day: Day, todayDay: Day, now: number, span: Range, caps: readonly number[], minBlock: number): { started: boolean; open: boolean } {
-  const started = day < todayDay || (day === todayDay && now >= span[1]);
-  const need = Math.min(minBlock, span[1] - span[0]);
-  return { started, open: !started && caps.some((c) => c > 0 && c >= need) };
-}
 type Planned = { stop_order: number | null; eta_min: number | null; number: number };
-/** the stops in the order planned: the stop number, then the estimated arrival */
-export function byPlan(a: Planned, b: Planned): number {
-  return ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || ((a.eta_min ?? 9999) - (b.eta_min ?? 9999)) || (a.number - b.number);
-}
 /** the stops by the hour: the planned arrival first (none: last), then the stop number (the list of a phone) */
 export function byArrival(a: Planned, b: Planned): number {
   return ((a.eta_min ?? 9999) - (b.eta_min ?? 9999)) || ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || (a.number - b.number);

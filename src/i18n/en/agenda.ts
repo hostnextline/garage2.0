@@ -39,8 +39,6 @@ export const agenda: typeof fr = {
     map: 'Map of the day'
   },
   copy: {
-    copy: 'Copy the appointment',
-    open: 'Open the appointment',
     copied: '{name}’s appointment copied. Right-click (or press and hold) a block, or “Paste here”.',
     paste: 'Paste here',
     pasteHere: 'Paste here',
@@ -124,6 +122,8 @@ export const agenda: typeof fr = {
     textSms: 'A text will let {name} know about the change.',
     ok: 'Move',
     done: 'Job moved',
+    unchanged: 'Nothing to change: the appointment is already there.',
+    textLater: 'The text to the customer goes once the move is sent.',
     started: 'This block has already started: pick a block to come.',
     closed: 'This block is closed: no truck works.',
     notBooked: 'Only a booked job that has not left yet can be moved.',

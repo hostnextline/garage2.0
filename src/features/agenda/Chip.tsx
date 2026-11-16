@@ -3,7 +3,7 @@
 import { TriangleAlert } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { duration } from '../../lib/dates';
-import { truckColor, itemsOf, customer as customerRow } from '../../data/select';
+import { truckColor, customer as customerRow } from '../../data/select';
 import type { Job } from '../../data/types';
 import { jobStatusWord } from '../../ui';
 import { winInfo, winShort } from './layout';
@@ -11,14 +11,14 @@ import { isOff } from './select';
 import { etaWord } from '../../shared/jobs/select';
 import { jobPerson } from '../../domain/jobs/words';
 import { jobMenu, jobPress } from './actions';
+import { firstWork } from './work';
 
 /** a job as a small ticket: the stop number on the stub, the person and the work */
 export function Chip(p: { job: Job; unplaced?: boolean; draggable: boolean; dragging: boolean; onDragStart: (j: Job, e: DragEvent) => void; onDragEnd: () => void }) {
   const j = p.job;
   const l = lang.value;
   const name = jobPerson(j) || customerRow(j.customer_id)?.phone || `#${j.number}`;
-  const first = itemsOf(j.id).find((i) => i.status !== 'removed' && i.status !== 'declined');
-  const work = j.status !== 'booked' ? jobStatusWord(j.status, l) : first?.description || j.problem || '';
+  const work = j.status !== 'booked' ? jobStatusWord(j.status, l) : firstWork(j.id) || j.problem || '';
   const stub = p.unplaced ? '?' : j.stop_order ?? '–';
   // « Plages d'arrivée »: the window told to the customer, « Flexible », « Hors plage »
   const w = isOff(j) ? null : winInfo(j);

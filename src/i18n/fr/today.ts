@@ -40,7 +40,6 @@ export const today = {
     now: 'En ce moment',
     open: 'Ouvrir la job',
     allDone: 'Plus d’arrêt aujourd’hui',
-    allDoneText: 'Tes jobs du jour sont faites. Termine ta journée en rentrant.',
     empty: 'Aucun rendez-vous aujourd’hui',
     emptyText: 'Rien à l’agenda de ton camion aujourd’hui.',
     noneLeft: 'Les arrêts du jour ont été annulés, ou le client était absent.',
