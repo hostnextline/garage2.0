@@ -685,6 +685,12 @@ create index if not exists trips_staff on public.trips(staff_id);               
 create index if not exists public_links_job on public.public_links(job_id);                       -- the links of a job (revoked when its customer changes)
 create index if not exists payments_job on public.payments(job_id) where job_id is not null;      -- payments waiting on a job, payment_visible
 create index if not exists op_log_at on public.op_log(at);                                        -- housekeeping (60 days)
+create index if not exists invoices_job on public.invoices(job_id);                               -- invoice_visible / payment_visible (the row rules of invoices, payments)
+create index if not exists inventory_moves_job on public.inventory_moves(job_id) where job_id is not null;  -- use_parts, the parts of a job
+create index if not exists job_items_service on public.job_items(service_id) where service_id is not null; -- a service's lines (web_book « again », reports)
+create index if not exists job_items_item on public.job_items(item_id) where item_id is not null; -- an item's lines (inventory_delete)
+create index if not exists messages_customer on public.messages(customer_id);                     -- the texts of a customer
+create index if not exists rate_limits_at on public.rate_limits(at);                              -- housekeeping (2 days)
 
 -- =====================================================================================================================
 -- 5. WHO MAY CALL WHAT (audit D1, x-security-20, sql-foundation-18)
