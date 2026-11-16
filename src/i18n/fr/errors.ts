@@ -1,5 +1,10 @@
-/* Refusals, by the short code the server sends (database « hint », server functions « code »).
-   In French the server's own sentence is shown (it is more precise); these are used when it has none. */
+/* Refusals, by the short code the server sends (database « hint » of public.fail, server functions « code »).
+   French shows the server's own sentence when it sent one (it is more precise); English shows these words.
+   Every code raised in supabase/migrations and supabase/functions must have its words here, in both languages:
+   src/i18n/errors.test.ts reads the sources and fails on a code without words.
+   Two groups refine a code that means something else in one place:
+   - at.<source>.<code>: the code as raised by that SQL function or server function (one code, several meanings);
+   - day.<code>: the block codes when the garage books by arrival windows (the server then says « journée »). */
 export const errors = {
   preview: 'Tu regardes l’app comme quelqu’un d’autre : rien ne peut être changé. Reviens à toi pour modifier.',
   not_allowed: 'Tu n’as pas accès à cette action. Parle au propriétaire.',
@@ -52,7 +57,8 @@ export const errors = {
   vpic: 'Le décodeur de NIV ne répond pas. Écris l’année, la marque et le modèle à la main.',
   ghl_token: 'La clé GoHighLevel commence par « pit- ».',
   ghl_location: 'Le numéro du compte GoHighLevel (Location ID) n’a pas l’air bon.',
-  stripe_key: 'La clé Stripe commence par « sk_live_ », « sk_test_ » ou « rk_ ».',
+  // the server takes live keys only (one database: a test payment would mark a real invoice paid)
+  stripe_key: 'La clé Stripe commence par « sk_live_ » ou « rk_live_ » (pas de clé de test).',
   template: 'Ce modèle de texto est vide.',
   gone: 'Ce lien n’est plus valide.',
   nothing: 'Rien à faire.',
@@ -62,5 +68,111 @@ export const errors = {
   confirm: 'Confirme d’abord.',
   action: 'Action inconnue.',
   truck: 'Ce camion n’existe plus. Choisis-en un autre.',
-  server: 'Le serveur ne répond pas comme prévu. Réessaie dans un moment.'
+  server: 'Le serveur ne répond pas comme prévu. Réessaie dans un moment.',
+
+  // booking, route and appointments
+  bad_window: 'Cette plage n’est pas dans les heures de la journée : choisis-en une autre.',
+  needs_truck: 'Ce travail demande le camion (montage ou balancement des pneus) : la voiture ne peut pas le faire.',
+  quote_done: 'Cette estimation est déjà réservée : ouvre son rendez-vous.',
+  no_truck: 'Choisis le véhicule : la voiture ou le camion.',
+  no_position: 'Cette adresse n’est pas trouvée sur la carte. Choisis-la dans la liste.',
+  no_home: 'Le départ des camions n’a pas de position : choisis son adresse dans Réglages, Réservations.',
+  bad_list: 'La liste des arrêts n’est pas bonne. Rouvre-la.',
+  changed: 'Un des rendez-vous n’est plus dans cette route (parti, fini ou déplacé). Rouvre la liste.',
+  past: 'Cette journée est passée : choisis aujourd’hui ou plus tard.',
+  closed: 'Ce rendez-vous est terminé ou annulé : il ne se change plus.',
+  started: 'Le client ne change plus une fois le camion parti : annule et réserve pour le bon client.',
+  same: 'C’est déjà le client de ce rendez-vous.',
+  bad_vehicle: 'Ce véhicule n’est pas à ce client. Choisis un de ses véhicules.',
+  no_window: 'Ce rendez-vous n’a pas encore de plage d’arrivée : choisis-la d’abord.',
+  not_on_site: 'Le mécano n’est pas encore arrivé chez ce client : touche d’abord « Je suis arrivé ».',
+
+  // invoices and payments
+  invoice_done: 'La facture est terminée : touche « Modifier la facture » d’abord.',
+  below_paid: 'Le client a déjà payé plus que ce total : le total ne peut pas être plus bas.',
+  unbilled: 'Un travail n’est pas sur la facture : touche « Modifier la facture » pour l’ajouter, ou marque-le « Pas fait », avant de terminer.',
+  numbered: 'Une facture qui a un numéro ne se supprime pas : annule-la (son numéro reste dans les livres).',
+  too_much: 'Ce paiement dépasse ce qui reste à payer. Rafraîchis la facture.',
+  refund_too_much: 'Tu ne peux pas remettre au client plus que ce qu’il a payé.',
+  refund_first: 'De l’argent remis au client est noté sur ce paiement : retire d’abord cette remise.',
+  amount_changed: 'Le montant a changé : regarde le nouveau total avant de répondre.',
+  pay_unavailable: 'Le paiement par carte ne marche pas en ce moment : encaisse sur place.',
+  signed: 'Il n’y a plus rien à signer ici.',
+  bad_amount: 'Écris le montant.',
+
+  // Coffre (family and friends) and stock
+  coffre_job: 'Cette job est au Coffre (famille et amis) : elle n’a pas de facture.',
+  already: 'Cette job est déjà au Coffre.',
+  bad_job: 'Cette job est annulée : elle ne va pas au Coffre.',
+  has_payment: 'Cette job a déjà un paiement : retire-le d’abord, ou garde-la en facture.',
+  no_job: 'Choisis les jobs payées par le Coffre.',
+  too_many: 'Il y en a trop à la fois : choisis-en moins.',
+  bad_from: 'Un article du garage se paie par la Trésorerie, un article du Coffre par le Coffre.',
+  bad_qty: 'Écris une quantité plus grande que zéro.',
+  pool_fixed: 'Un article reste dans son stock (garage ou Coffre) : crée-en un nouveau.',
+
+  // customers and team
+  customer_busy: 'Ce client a un rendez-vous à venir : déplace-le ou annule-le avant de supprimer la fiche.',
+  customer_owes: 'Ce client a une facture à payer : encaisse-la ou annule-la avant de supprimer la fiche.',
+  bad_role: 'Ce rôle n’existe pas. Coche un rôle de la liste.',
+  no_email: 'Cette personne n’a pas de courriel dans sa fiche : ajoute-le pour lui envoyer un lien.',
+
+  // texts, calls and the customer's conversation
+  no_phone: 'Ce numéro n’est pas complet : écris les 10 chiffres.',
+  sms_off: 'Ce client ne veut pas de textos : appelle-le.',
+  too_long: 'Ce message est trop long (1000 caractères au plus).',
+  test_number: 'C’est le numéro de l’essai : personne ne recevrait ce texto.',
+
+  // Hermes
+  owner_only: 'Seul le propriétaire voit les questions de l’équipe.',
+  hermes_off: 'Hermes n’est pas encore branché sur le serveur.',
+  hermes_down: 'Hermes ne répond pas. Réessaie dans un instant.',
+  hermes_error: 'Hermes a un problème. Réessaie dans un instant.',
+  hermes_empty: 'Hermes n’a rien répondu. Réessaie.',
+  bad_url: 'L’adresse de Hermes doit commencer par https.',
+  bad_pair: 'Ce code de branchement n’est pas le bon. Vérifie-le.',
+  no_pair: 'Aucun branchement de Hermes n’est attendu : recommence le branchement.',
+  pair_expired: 'Le code de branchement a expiré : demandes-en un nouveau.',
+
+  // online booking (the customer's page has its own words for these; here for the team)
+  web_off: 'La réservation en ligne est fermée pour le moment.',
+  far: 'Choisis une adresse de la liste, dans le secteur du garage.',
+  no_service: 'Choisis au moins un service.',
+
+  // the server, outside services and the nightly tools
+  busy: 'Trop de demandes en même temps. Réessaie dans quelques minutes.',
+  timeout: 'Un service extérieur ne répond pas. Réessaie dans un instant.',
+  stripe_down: 'Stripe ne répond pas. Réessaie dans un instant.',
+  stripe_refused: 'Stripe a refusé. Vérifie la clé et réessaie.',
+  bad_key: 'Cette clé n’est pas la bonne. Vérifie-la.',
+  github: 'GitHub ne répond pas. Réessaie dans un instant.',
+  table: 'Table inconnue.',
+  event: 'L’avis de Stripe est illisible.',
+  bad_op: 'Le numéro d’opération n’est pas bon. Réessaie.',
+  op_reused: 'Ce numéro d’opération a déjà servi. Réessaie.',
+  bad_day: 'Choisis une date qui n’est pas dans le futur.',
+  bad_run: 'Le compte rendu de la sauvegarde n’est pas bon.',
+  bad_finding: 'Une différence doit dire sa vérification, sa gravité et son message.',
+  not_ready: 'Cette partie n’est pas encore installée sur le serveur.',
+
+  /** a code that means something else when this SQL function or server function raises it */
+  at: {
+    conversation: { empty: 'Écris le message.' },
+    hermes: { empty: 'Écris ta question.' },
+    extra_answer: { signature: 'La signature ne correspond pas à cette job.' },
+    notify: { not_booked: 'Ce rendez-vous n’est plus à venir.', nothing: 'Rien à envoyer : ajoute le travail d’abord.' },
+    windows_switch: { bad_mode: 'Choisis : les plages d’arrivée, ou les blocs.' },
+    team: { exists: 'Cette personne a déjà un compte.' },
+    invoice_reopen: { closed: 'La job est terminée : la facture ne se modifie plus. Annule-la pour en faire une nouvelle.' },
+    set_job_duration: { block_full: 'Avec cette durée, la job ne rentre plus dans le bloc. Déplace-la ou raccourcis-la.' },
+    set_truck_start: { no_truck: 'Ce camion n’existe plus. Choisis-en un autre.' },
+    coffre_add: { too_many: 'Au plus 30 jobs à la fois.' }
+  },
+  /** the block codes when the garage books by arrival windows (Réglages, Réservations) */
+  day: {
+    bad_block: 'Le garage donne maintenant une plage d’arrivée de 4 heures : choisis une plage au lieu d’un bloc.',
+    block_full: 'Cette journée est complète : la route ne rentre plus dans le temps. Choisis une autre journée.',
+    block_closed: 'Cette journée est fermée : aucun camion ne travaille.',
+    block_started: 'Cette journée est finie : choisis une autre journée.'
+  }
 };
