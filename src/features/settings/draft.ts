@@ -1,6 +1,10 @@
-/* « Changements non enregistrés »: a section is dirty when what is on screen differs from what is saved.
-   An empty text, a missing value and spaces around words do not count as a change; key order does not matter;
-   the order of a list does. Pure functions (draft.test.ts). */
+/* « Changements non enregistrés »: what a section shows is the saved value with the person's own changes on top.
+   - A draft holds ONLY the fields the person changed. Every other field follows the saved value, so a change made
+     meanwhile on another device shows here and is never written back from an old copy (settings-team-01).
+   - A field leaves the draft as soon as it equals the saved value again (typed back, or saved elsewhere).
+   - What counts as a change: spaces around words, an empty text and a missing value do not; key order does not;
+     the order of a list does.
+   Pure functions (draft.test.ts). */
 
 export function normalize(v: unknown): unknown {
   if (v === null || v === undefined) return undefined;
@@ -23,11 +27,23 @@ export function sameValue(a: unknown, b: unknown): boolean {
 export function isDirty(saved: unknown, draft: unknown): boolean {
   return !sameValue(saved, draft);
 }
-/** the names of the top-level fields that changed (to mark them on screen) */
-export function changedKeys(saved: Record<string, unknown> | null | undefined, draft: Record<string, unknown> | null | undefined): string[] {
-  const keys = new Set([...Object.keys(saved || {}), ...Object.keys(draft || {})]);
-  return [...keys].filter((k) => !sameValue(saved?.[k], draft?.[k])).sort();
+
+/** the fields of `next` that differ from `saved`: the draft to keep (empty = nothing to save) */
+export function changesOf<T extends object>(saved: T, next: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of Object.keys(next) as (keyof T)[]) if (!sameValue(saved[k], next[k])) out[k] = next[k];
+  return out;
 }
+/** what the screen shows: the saved value, with the person's changes on top */
+export function withChanges<T extends object>(saved: T, changes: Partial<T> | null | undefined): T {
+  return changes ? { ...saved, ...changes } : saved;
+}
+/** true when the two drafts name the same fields with the same values (nothing to write back to the store) */
+export function sameChanges(a: object, b: object): boolean {
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => k in b && sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
 /** a text ready to store: trimmed, null when empty */
 export function cleanText(s: string | null | undefined): string | null {
   const v = String(s ?? '').trim();

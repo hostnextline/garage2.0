@@ -1,12 +1,12 @@
-/* « Plages d'arrivée » in Réglages → Réservations: the small rules of the panel (pure, settings.test.ts). */
-import { windowFor, type BlockKey, type Range } from '../../lib/dates';
+/* « Plages d'arrivée » in Réglages → Réservations: the small rules of the panel (pure, windows.test.ts). */
+import { windowFor, type BlockKey, type Range } from '../../../lib/dates';
 
 export interface BlockHours { key: BlockKey; start: number; end: number }
 export interface WinNums { before: number | null; after: number | null; round: number | null }
 export const WIN_DEFAULTS = { before: 60, after: 180, round: 60 } as const;
 export const WIN_LIMITS = { before: [0, 180], after: [30, 360] } as const;
 /** « Arrondi »: the windows start on the hour, the half hour or the quarter hour */
-export const WIN_ROUNDS = [60, 30, 15] as const;
+const WIN_ROUNDS = [60, 30, 15] as const;
 /** the rounding kept: one of the three choices, else the hour */
 export function winRound(v: unknown): number { const n = Number(v); return (WIN_ROUNDS as readonly number[]).includes(n) ? n : WIN_DEFAULTS.round; }
 

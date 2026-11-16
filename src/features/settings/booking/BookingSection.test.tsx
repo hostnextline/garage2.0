@@ -7,33 +7,36 @@ import { act } from 'preact/test-utils';
 const calls: { name: string; args: unknown[] }[] = [];
 const asked: { title: string; text?: string }[] = [];
 let sayYes = true;
-vi.mock('../../data/api', async (orig) => {
-  const real = await orig<typeof import('../../data/api')>();
+let lockAnswer: Record<string, unknown> = { ok: true, fixed: 2 };
+const notifyAnswers: Record<string, Record<string, unknown>> = {};
+vi.mock('../../../data/api', async (orig) => {
+  const real = await orig<typeof import('../../../data/api')>();
   return {
     ...real,
     windowsSwitch: async (on: boolean) => { calls.push({ name: 'windowsSwitch', args: [on] }); return { ok: true, converted: 7 }; },
-    lockWindows: async (day: string) => { calls.push({ name: 'lockWindows', args: [day] }); return { ok: true, fixed: 2 }; },
+    lockWindows: async (day: string) => { calls.push({ name: 'lockWindows', args: [day] }); return lockAnswer; },
+    notify: async (kind: string, id: string) => { calls.push({ name: 'notify', args: [kind, id] }); return notifyAnswers[id] ?? { ok: true, status: 'sent' }; },
     saveSettings: async (part: string, value: unknown) => { calls.push({ name: 'saveSettings', args: [part, value] }); }
   };
 });
-vi.mock('../../data/sync', async (orig) => {
-  const real = await orig<typeof import('../../data/sync')>();
+vi.mock('../../../data/sync', async (orig) => {
+  const real = await orig<typeof import('../../../data/sync')>();
   return { ...real, pull: async (t: string) => { calls.push({ name: 'pull', args: [t] }); }, flush: async () => undefined };
 });
-vi.mock('../../ui', async (orig) => {
-  const real = await orig<typeof import('../../ui')>();
+vi.mock('../../../ui', async (orig) => {
+  const real = await orig<typeof import('../../../ui')>();
   return { ...real, ask: async (o: { title: string; text?: string }) => { asked.push(o); return sayYes; } };
 });
-vi.mock('../../shared/map/MapView', () => ({ MapView: () => null }));
-vi.mock('../../shared/places/AddressField', () => ({ AddressField: () => null }));
+vi.mock('../../../shared/map/MapView', () => ({ MapView: () => null }));
+vi.mock('../../../shared/places/AddressField', () => ({ AddressField: () => null }));
 import { BookingSection } from './BookingSection';
-import { drafts } from './SectionFrame';
-import { replaceLocal } from '../../data/store';
-import { access } from '../../data/auth';
-import { toasts } from '../../ui/toast';
-import { addDays, today } from '../../lib/dates';
-import { lang } from '../../lib/i18n';
-import type { Access } from '../../data/types';
+import { drafts } from '../SectionFrame';
+import { replaceLocal } from '../../../data/store';
+import { access } from '../../../data/auth';
+import { toasts } from '../../../ui/toast';
+import { addDays, today } from '../../../lib/dates';
+import { lang } from '../../../lib/i18n';
+import type { Access } from '../../../data/types';
 
 const BLOCKS = [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }];
 const who = (roles: string[]): Access => ({ id: 'u1', full_name: 'Test', short_name: 'Test', email: null, phone: null, roles, owner: roles.includes('owner'), lang: 'fr', prefs: {}, color: null,
@@ -51,7 +54,7 @@ const click = async (el: Element | undefined) => { expect(el).toBeTruthy(); awai
 const type = async (id: string, v: string) => { const el = q(id)[0] as HTMLInputElement; await act(async () => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }); };
 const show = async () => { await act(async () => { render(null, box); render(<BookingSection />, box); }); await wait(); };
 
-beforeEach(() => { lang.value = 'fr'; calls.length = 0; asked.length = 0; sayYes = true; drafts.value = {}; toasts.value = []; });
+beforeEach(() => { lang.value = 'fr'; calls.length = 0; asked.length = 0; sayYes = true; drafts.value = {}; toasts.value = []; lockAnswer = { ok: true, fixed: 2 }; replaceLocal('jobs', []); replaceLocal('customers', []); });
 
 describe('Réglages → Réservations : plages d’arrivée', () => {
   it('off: the panel explains, the blocks editor is there, nothing about windows is written when saving', async () => {
@@ -108,7 +111,9 @@ describe('Réglages → Réservations : plages d’arrivée', () => {
     await type('windows-day-start', '09:00');
     await click(q('settings-save')[0]);
     const saved = calls.find((c) => c.name === 'saveSettings')!.args[1] as Record<string, unknown>;
-    expect([saved.win_before_min, saved.win_after_min, saved.win_round_min, saved.windows_on]).toEqual([30, 210, 60, true]);
+    // only what was changed is written: the rounding nobody touched is not added (before the rebuild every field of the
+    // section was written, from whatever copy the screen held: settings-team-01)
+    expect([saved.win_before_min, saved.win_after_min, saved.win_round_min, saved.windows_on]).toEqual([30, 210, undefined, true]);
     expect(saved.blocks).toEqual([{ key: 'am', start: 540, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }]);
   });
   it('a number out of range, or a day shorter than a window, is not saved', async () => {
@@ -122,5 +127,51 @@ describe('Réglages → Réservations : plages d’arrivée', () => {
     await click(q('settings-save')[0]);
     expect(calls.some((c) => c.name === 'saveSettings')).toBe(false);
     expect(sp(box.textContent)).toContain('plus courte qu’une plage');
+  });
+
+  it('« Fixer les plages »: every flexible customer with a window is texted; the ones not told are listed to text by hand', async () => {
+    seed({ windows_on: true }, ['office']);
+    const tomorrow = addDays(today(), 1);
+    const flex = (id: string, customer_id: string) => ({ id, number: 1, customer_id, day: tomorrow, block: 'day', status: 'booked', win_flex: true, win_start: 840, win_end: 1080 });
+    replaceLocal('jobs', [flex('j1', 'c1'), flex('j2', 'c2')] as never);
+    replaceLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'Roy' }, { id: 'c2', first_name: 'Karim', last_name: 'Haddad' }] as never);
+    lockAnswer = { ok: true, fixed: 1, jobs: ['j1'], untold: ['j3'] };
+    notifyAnswers.j2 = { ok: false, status: 'off', message: 'Bonjour Karim…', phone: '5145551234' };
+    notifyAnswers.j3 = { ok: false, code: 'not_booked' };
+    await show();
+    await click(q('windows-lock')[0]);
+    await wait(); await wait();
+    const told = calls.filter((c) => c.name === 'notify').map((c) => c.args[1]).sort();
+    expect(told).toEqual(['j1', 'j2', 'j3']);
+    const list = q('windows-untold')[0];
+    expect(list).toBeTruthy();
+    expect(sp(list.textContent)).toContain('Karim Haddad');
+    expect(sp(list.textContent)).not.toContain('Julie');
+    expect(list.querySelector('a')?.getAttribute('href')).toContain('sms:5145551234');
+  });
+});
+
+describe('Réglages → Réservations : two devices (settings-team-01)', () => {
+  it('a number typed here, the start moved meanwhile elsewhere: saving keeps the new start', async () => {
+    seed({});
+    await show();
+    await type('booking-horizon_days', '90');
+    // the office moved the start on its phone; it reaches this device by realtime
+    seed({ home: { label: 'Centrale', address: '1401 rue Legendre O.', lat: 45.5312898, lng: -73.6544639 } });
+    await wait();
+    await click(q('settings-save')[0]);
+    const saved = calls.find((c) => c.name === 'saveSettings')!.args[1] as { horizon_days: number; home: { address: string; lat: number } };
+    expect(saved.horizon_days).toBe(90);
+    expect(saved.home.address).toBe('1401 rue Legendre O.');
+    expect(saved.home.lat).toBe(45.5312898);
+  });
+  it('a garde-route limit stored at 0 stays 0 when another number is saved (settings-team-10)', async () => {
+    seed({ max_hop_min: 0, max_day_drive_min: 0 });
+    await show();
+    expect((q('booking-max_hop_min')[0] as HTMLInputElement).value).toBe('0');
+    await type('booking-horizon_days', '90');
+    await click(q('settings-save')[0]);
+    const saved = calls.find((c) => c.name === 'saveSettings')!.args[1] as Record<string, unknown>;
+    expect([saved.max_hop_min, saved.max_day_drive_min]).toEqual([0, 0]);
   });
 });

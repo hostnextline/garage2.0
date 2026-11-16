@@ -13,12 +13,15 @@ interface Waiver { fr: string; en: string }
 export function WaiverSection() {
   const w = settings.value.waiver || { version: '1', fr: '', en: '' };
   const saved: Waiver = { fr: w.fr || '', en: w.en || '' };
-  const { draft: d, set, dirty, reset } = useSectionDraft<Waiver>('waiver', saved);
+  const { draft: d, set, dirty, changes, reset } = useSectionDraft<Waiver>('waiver', saved);
   const [l, setL] = useState<Lang>('fr');
   const version = String(w.version || '1');
   const changed = !sameValue(saved, d);
   const save = async () => {
-    const ok = await attempt(() => saveSettings('waiver', { ...w, version: changed ? nextVersion(version) : version, fr: d.fr.trim(), en: d.en.trim() }), { ok: t('settings.saved') });
+    // the language not touched keeps the text stored now; the version is counted from the one stored now
+    const now = settings.value.waiver || w;
+    const patch = Object.fromEntries((Object.keys(changes) as (keyof Waiver)[]).map((k) => [k, d[k].trim()]));
+    const ok = await attempt(() => saveSettings('waiver', { ...now, ...patch, version: changed ? nextVersion(String(now.version || '1')) : String(now.version || '1') }), { ok: t('settings.saved') });
     if (ok) reset();
   };
   const text = d[l];

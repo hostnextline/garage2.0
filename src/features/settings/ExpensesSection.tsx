@@ -9,8 +9,11 @@ import { Panel, Input, IconButton, Button, Empty, attempt, toast } from '../../u
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
 export function ExpensesSection() {
-  const saved = (settings.value.expense_categories || []).map(String);
-  const { draft: d, set, dirty, reset } = useSectionDraft<string[]>('expenses', saved);
+  // the list is one value (its order counts): kept whole in the draft
+  const saved = { list: (settings.value.expense_categories || []).map(String) };
+  const { draft, set: setDraft, dirty, reset } = useSectionDraft<{ list: string[] }>('expenses', saved);
+  const d = draft.list;
+  const set = (fn: (x: string[]) => string[]) => setDraft((x) => ({ list: fn(x.list) }));
   const [name, setName] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const dupes = new Set(d.map((x) => fold(x)).filter((x, i, a) => x && a.indexOf(x) !== i));
