@@ -134,6 +134,8 @@ export interface StoreWriter {
   remove(t: TableName, ids: string[]): void;
   loadAll(rows: Partial<Record<TableName, Row[]>>, w: Waiting): void;
   setWaiting(w: Waiting): void;
+  /** every screen reading a table draws once more, in one draw (the day changed, time moved on) */
+  redraw(): void;
   /** still the engine on screen (a late answer of a signed-out account is dropped) */
   readonly live: boolean;
 }
@@ -149,6 +151,7 @@ export function bindStore(token: object): StoreWriter {
       batch(() => { waiting = w; for (const t of SYNCED) load(t, rows[t] || []); });
     },
     setWaiting: (w) => { if (live()) setWaiting(w); },
+    redraw: () => { if (live()) batch(() => { for (const t of SYNCED) if (views[t].value.size) views[t].value = new Map(views[t].value); }); },
     get live() { return live(); }
   };
 }

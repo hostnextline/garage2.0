@@ -106,6 +106,8 @@ export class Engine {
   private arrivalsTimer: ReturnType<typeof setTimeout> | null = null;
   private rereads = new Map<TableName, Set<string>>();
   private rereadTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastDraw = Date.now();
+  private lastDay = today();
 
   constructor(readonly client: SupabaseClient, readonly uid: string, private readonly o: EngineOptions) {
     this.writer = bindStore(this.token);
@@ -199,6 +201,7 @@ export class Engine {
   }
   private onVisible() {
     if (document.visibilityState === 'hidden') { this.hiddenAt = Date.now(); return; }
+    this.timeMoved(true);
     void this.pullAll();
     void this.flush();
     void this.watchMyJobs(true);
@@ -207,6 +210,18 @@ export class Engine {
   private cycle() {
     if (!net.value.realtime || Date.now() - this.lastPullAt >= LIVE_CYCLE_MS) void this.pullAll();
     void this.watchMyJobs();
+    this.timeMoved(false);
+  }
+  /** a pull that brings nothing new no longer redraws the screens; what depends on the time of day (« aujourd'hui », a
+      block that started, a promotion that ended) still follows it: one draw when the day changes, when the app comes
+      back to the screen, and every 3 minutes while it is on screen (the old pulls did it 23 draws at a time) */
+  private timeMoved(back: boolean) {
+    const day = today();
+    const shown = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    if (day === this.lastDay && !back && !(shown && Date.now() - this.lastDraw >= LIVE_CYCLE_MS)) return;
+    this.lastDay = day;
+    this.lastDraw = Date.now();
+    this.writer.redraw();
   }
 
   /* ---------- the store and the device copy ---------- */
