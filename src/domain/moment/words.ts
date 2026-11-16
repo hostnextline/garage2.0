@@ -23,7 +23,7 @@ export function blockPhrase(day: Day, block: BlockKey, todayDay: Day, l: Lang): 
 export function blockPhraseLower(day: Day, block: BlockKey, todayDay: Day, l: Lang): string {
   const s = blockPhrase(day, block, todayDay, l);
   // English weekdays and months keep their capital
-  return l === 'en' && !/^(This|Tomorrow|Yesterday)\b/.test(s) ? s : low(s);
+  return l === 'en' && !/^(This|Today|Tomorrow|Yesterday)\b/.test(s) ? s : low(s);
 }
 /** « Demain matin, 8 h à 12 h » */
 export function blockPhraseWithHours(day: Day, block: BlockKey, start: number, end: number, todayDay: Day, l: Lang): string {

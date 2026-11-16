@@ -56,12 +56,12 @@ export const booking = {
   confirm: 'Réserver',
   confirmWalkIn: 'Ouvrir la job',
   walkInSub: 'Maintenant, ici',
-  missing: { customer: 'Choisis le client', work: 'Ajoute un service ou décris le problème', block: 'Choisis le bloc' },
+  missing: { customer: 'Choisis le client', work: 'Ajoute un service ou décris le problème', block: 'Choisis le bloc', quote: 'Cette estimation est déjà réservée', truck: 'Choisis le camion' },
   cars: {
     also: 'Aussi dans ce rendez-vous :',
-    chip: '{car} : {n} travaux',
+    chip: { one: '{car} : {n} travail', other: '{car} : {n} travaux' },
     done: { one: 'Réservé : {when}', other: '{n} véhicules réservés : {when}' },
-    partial: 'Réservé pour {n} véhicule(s) sur {total}. Choisis un autre bloc pour les autres.'
+    partial: { one: 'Réservé pour {n} véhicule sur {total}. Choisis un autre bloc pour les autres.', other: 'Réservé pour {n} véhicules sur {total}. Choisis un autre bloc pour les autres.' }
   },
   force: {
     title: 'Ce bloc est plein',
@@ -73,7 +73,7 @@ export const booking = {
   },
   done: 'Réservé : {when}',
   doneWalkIn: 'Job ouverte',
-  queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si le bloc est plein, tu verras la raison).',
+  queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si le bloc est plein, tu verras la raison). Le texto de confirmation ne part pas tout seul : envoie-le depuis « À confirmer » dans Aujourd’hui une fois la réservation placée.',
   queuedWalkIn: 'Job gardée sur le téléphone : elle sera créée dès que le réseau revient.',
   refusedBlock: 'Choisis un autre bloc.',
   mechanicTruck: 'La job ira sur ton camion : {name}.',
@@ -86,10 +86,10 @@ export const booking = {
     missing: 'Cette estimation n’est pas sur ce téléphone. Vérifie le réseau, ou réserve sans elle.'
   },
   when: {
-    today: { am: 'Ce matin', pm: 'Cet après-midi', eve: 'Ce soir' },
-    tomorrow: { am: 'Demain matin', pm: 'Demain après-midi', eve: 'Demain soir' },
-    yesterday: { am: 'Hier matin', pm: 'Hier après-midi', eve: 'Hier soir' },
-    block: { am: 'matin', pm: 'après-midi', eve: 'soir' },
+    today: { am: 'Ce matin', pm: 'Cet après-midi', eve: 'Ce soir', day: 'Aujourd’hui' },
+    tomorrow: { am: 'Demain matin', pm: 'Demain après-midi', eve: 'Demain soir', day: 'Demain' },
+    yesterday: { am: 'Hier matin', pm: 'Hier après-midi', eve: 'Hier soir', day: 'Hier' },
+    block: { am: 'matin', pm: 'après-midi', eve: 'soir', day: 'dans la journée' },
     weekday: '{day} {block}',
     date: '{day}, {block}'
   },
@@ -237,9 +237,9 @@ export const booking = {
     },
     summary: { noBlock: 'Aucun moment choisi' },
     missing: { block: 'Choisis le moment' },
-    cars: { partial: 'Réservé pour {n} véhicule(s) sur {total}. Choisis un autre moment pour les autres.' },
+    cars: { partial: { one: 'Réservé pour {n} véhicule sur {total}. Choisis un autre moment pour les autres.', other: 'Réservé pour {n} véhicules sur {total}. Choisis un autre moment pour les autres.' } },
     force: { title: 'Cette journée est pleine', cancel: 'Choisir un autre moment' },
-    queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si la journée est pleine, tu verras la raison).',
+    queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si la journée est pleine, tu verras la raison). Le texto de confirmation ne part pas tout seul : envoie-le depuis « À confirmer » dans Aujourd’hui une fois la réservation placée.',
     refusedBlock: 'Choisis un autre moment.',
     full: 'Cette plage n’est plus possible : le mécano ne peut plus arriver dans ces heures-là. Choisis une autre plage.',
     auto: 'plage donnée par l’app',

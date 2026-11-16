@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { missingPiece, bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, isFar, farLimits, farText, farInfo, momentsByKey, offered, betterMoments, betterText, farQuestion, roadWords, type LoadLike, type Moment, type ItemDraft } from './logic';
+import { bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, isFar, farLimits, farText, farInfo, momentsByKey, offered, betterMoments, betterText, farQuestion, roadWords, type LoadLike, type Moment, type ItemDraft } from './logic';
 import { blockPhrase, blockPhraseLower, relativeDay } from './words';
 import { QC_TAXES } from '../../lib/money';
 import type { Service } from '../../data/types';
@@ -8,19 +8,6 @@ import { booking as en } from '../../i18n/en/booking';
 import { sameShape } from '../../lib/dict-check';
 
 const line = (o: Partial<ItemDraft>): ItemDraft => ({ kind: 'service', service_id: 's-1', description: 'Changement d’huile', qty: 1, unit_cents: 8999, taxable: true, duration_min: 45, ...o });
-const choice = { day: '2026-11-05', block: 'pm' as const };
-
-describe('what is missing before « Réserver »', () => {
-  it('asks for the customer first, then the work, then the block', () => {
-    expect(missingPiece({ customerId: null, items: [], problem: '', choice: null })).toBe('customer');
-    expect(missingPiece({ customerId: 'c', items: [], problem: '  ', choice })).toBe('work');
-    expect(missingPiece({ customerId: 'c', items: [line({})], problem: '', choice: null })).toBe('block');
-    expect(missingPiece({ customerId: 'c', items: [], problem: 'Bruit en freinant', choice })).toBe(null);
-  });
-  it('a walk-in needs no block', () => {
-    expect(missingPiece({ customerId: 'c', items: [line({})], problem: '', choice: null }, true)).toBe(null);
-  });
-});
 
 describe('the summary', () => {
   it('adds the work time and the price with taxes (TPS 5 %, TVQ 9,975 %)', () => {
@@ -43,6 +30,13 @@ describe('the summary', () => {
     expect(bookSummary([line({})], QC_TAXES, { override: 150 }).minutes).toBe(150);
     expect(clampDuration(5)).toBe(15);
     expect(clampDuration(2000)).toBe(720);
+  });
+  it('a rebate takes off: a discount whatever its sign, and a service priced below zero (x-money-05)', () => {
+    const rebate = line({ service_id: 's-r', description: 'Rabais fidélité', unit_cents: -2000, duration_min: 0 });
+    const s = bookSummary([line({ unit_cents: 10000 }), rebate], QC_TAXES);
+    expect(s.subtotal).toBe(8000);
+    expect(s.total).toBe(9198);
+    for (const unit_cents of [2000, -2000]) expect(bookSummary([line({ unit_cents: 10000 }), line({ kind: 'discount', service_id: null, unit_cents })], QC_TAXES).subtotal).toBe(8000);
   });
   it('flags the prices to confirm, untaxed lines and taxes turned off', () => {
     const s = bookSummary([line({ service_id: 's-x', unit_cents: 0 })], QC_TAXES, { priceless: (id) => id === 's-x' });
@@ -120,6 +114,14 @@ describe('days in words', () => {
     expect(blockPhraseLower('2026-11-07', 'pm', today, 'en')).toBe('Saturday afternoon');
     expect(blockPhraseLower('2026-11-05', 'am', today, 'en')).toBe('tomorrow morning');
   });
+  it('a whole day (« Plages d’arrivée »): words, never a raw key (x-dualmode-21, i18n-14)', () => {
+    expect(blockPhrase('2026-11-03', 'day', today, 'fr')).toBe('Hier');
+    expect(blockPhrase('2026-11-05', 'day', today, 'fr')).toBe('Demain');
+    expect(blockPhrase('2026-11-06', 'day', today, 'fr')).toBe('Vendredi dans la journée');
+    expect(blockPhrase('2026-11-19', 'day', today, 'fr')).toBe('Jeudi 19 novembre, dans la journée');
+    expect(blockPhraseLower('2026-11-04', 'day', today, 'en')).toBe('today');
+    expect(blockPhrase('2026-11-19', 'day', today, 'en')).not.toMatch(/booking\./);
+  });
   it('French and English have the same keys and the same {placeholders}', () => {
     expect(sameShape(fr, en)).toEqual([]);
   });
@@ -169,7 +171,7 @@ describe('carDraftLabel', () => {
   });
 });
 
-import { suggWindow, choiceWindow, choicePayload, moveWindow, sameMoment, distinctWindows, dayLoad, BLOCK_REFUSALS, WIN_LEN } from './logic';
+import { suggWindow, choiceWindow, choicePayload, moveWindow, sameMoment, BLOCK_REFUSALS, WIN_LEN } from './logic';
 import { choiceWords } from './choice';
 describe('« Plages d’arrivée »: a day and its 4-hour window', () => {
   const ofEta = (eta: number): [number, number] => [Math.round(eta / 60) * 60 - 60, Math.round(eta / 60) * 60 + 180];
@@ -214,22 +216,11 @@ describe('« Plages d’arrivée »: a day and its 4-hour window', () => {
     expect(sameMoment({ day: 'e', block: 'day', win_start: 600 }, j)).toBe(false);
     expect(sameMoment({ day: 'd', block: 'am' }, { day: 'd', block: 'am' })).toBe(true);
   });
-  it('the hours of a day: each window once, the best first', () => {
-    const rows = [{ eta: 900, win_start: 840, win_end: 1080 }, { eta: 930, win_start: 840, win_end: 1080 }, { eta: 600 }, {}];
-    expect(distinctWindows(rows, ofEta).map((r) => r.win)).toEqual([[840, 1080], [540, 780]]);
+  it('the window of a choice: its own, else its start and the length; flexible has none', () => {
     expect(choiceWindow({ win_start: 840, win_end: 1080 })).toEqual([840, 1080]);
     expect(choiceWindow({ win_start: 840 })).toEqual([840, 1080]);
     expect(choiceWindow({ win_flex: true, win_start: 840 })).toBe(null);
     expect(choiceWindow(null)).toBe(null);
-  });
-  it('a whole day is still open in the afternoon; past once there is no time left for a job', () => {
-    const lane = { truck: { id: 'a' }, cap: 300, used: 0, left: 300, jobs: [] };
-    const load: LoadLike = { trucks: [lane], open: false, started: true };       // what a block says after 8 h
-    const o = { past: false, isToday: true, dayEnd: 1200, minBlock: 45 };
-    expect(cellState(dayLoad(load, { ...o, now: 900 }), 60, 20).state).toBe('ok');
-    expect(cellState(dayLoad(load, { ...o, now: 1170 }), 60, 20).state).toBe('started');
-    expect(cellState(dayLoad(load, { ...o, past: true, isToday: false, now: 600 }), 60, 20).state).toBe('started');
-    expect(cellState(dayLoad({ ...load, trucks: [{ ...lane, cap: 0, left: 0 }] }, { ...o, isToday: false, now: 600 }), 60, 20).state).toBe('closed');
   });
   it('a window the server can no longer keep sends the person back to the picker', () => {
     expect(BLOCK_REFUSALS).toContain('window_full');

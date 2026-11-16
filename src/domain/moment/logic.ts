@@ -1,4 +1,4 @@
-/* Booking: the pure rules behind the form (what is missing, what it costs, what the block picker shows).
+/* Booking: the pure rules behind the form (what it costs, how long, the lines, the moment chosen, what the block picker shows).
    No signals here, so they are easy to test (logic.test.ts). */
 import { totals, type Line, type TaxRates, type Totals } from '../../lib/money';
 import { isValidDay, duration, type BlockKey, type Day } from '../../lib/dates';
@@ -8,24 +8,19 @@ import type { Job, Quote, Service, JobItem, ItemKind } from '../../data/types';
 import type { ItemInput } from '../../data/api';
 import type { BlockChoice } from './choice';
 
-/* ---------- what is still missing before « Réserver » ---------- */
-export type Missing = 'customer' | 'work' | 'block' | null;
-export interface DraftCore { customerId: string | null; items: ItemDraft[]; problem: string; choice: BlockChoice | null }
-/** the first missing piece, in the order of the form (a walk-in has no block) */
-export function missingPiece(d: DraftCore, walkIn = false): Missing {
-  if (!d.customerId) return 'customer';
-  if (!d.items.length && !d.problem.trim()) return 'work';
-  if (!walkIn && !d.choice) return 'block';
-  return null;
-}
-
 /* ---------- what it takes and what it costs ---------- */
-/** minutes of work of the chosen lines (services without a duration count 45 min) — same rule as itemsDuration */
+/** minutes of work of the chosen lines: a service counts its minutes (45 without) times its quantity; any other line
+    its own minutes once */
 export function workMinutes(items: ItemDraft[]): number {
   return items.reduce((n, i) => n + (i.duration_min ?? (i.kind === 'service' ? 45 : 0)) * (i.kind === 'service' ? Math.max(1, i.qty) : 1), 0);
 }
+/** the unit price of a line as it counts in a total: a discount always takes off (whatever sign it was typed or copied
+    with); any other line keeps its own sign (a service priced below zero in Réglages is a rebate too) */
+export function lineUnitCents(i: Pick<ItemDraft, 'kind' | 'unit_cents'>): number {
+  return i.kind === 'discount' ? -Math.abs(i.unit_cents) : i.unit_cents;
+}
 export function draftLines(items: ItemDraft[]): Line[] {
-  return items.map((i) => ({ qty: Number(i.qty) || 0, unitCents: (i.kind === 'discount' ? -1 : 1) * Math.abs(i.unit_cents), taxable: i.taxable }));
+  return items.map((i) => ({ qty: Number(i.qty) || 0, unitCents: lineUnitCents(i), taxable: i.taxable }));
 }
 export interface BookSummary extends Totals {
   /** minutes the planner books: the lines, or the duration chosen by hand, or 60 when there is nothing to count */
@@ -126,25 +121,6 @@ export function sameMoment(c: BlockChoice, j: Pick<Job, 'day' | 'block' | 'win_s
   if (c.win_flex || j.win_flex) return !!c.win_flex && !!j.win_flex && j.win_start == null;
   return c.win_start != null && c.win_start === j.win_start;
 }
-/** the windows of a day as the picker lists them: each start once (the first = the best), only those with hours */
-export function distinctWindows<T extends { eta?: number | null; win_start?: number | null; win_end?: number | null }>(rows: T[], ofEta: (eta: number) => Win, len = WIN_LEN): (T & { win: Win })[] {
-  const seen = new Set<number>();
-  const out: (T & { win: Win })[] = [];
-  for (const r of rows) {
-    const win = suggWindow(r, ofEta, len);
-    if (!win || seen.has(win[0])) continue;
-    seen.add(win[0]);
-    out.push({ ...r, win });
-  }
-  return out;
-}
-/** a whole day as one block: it has « started » only once it is past, or today with no time left to start a job
-    (a block has started as soon as its first hour comes; a day still takes bookings in the afternoon) */
-export function dayLoad<T extends LoadLike>(load: T, o: { past: boolean; isToday: boolean; now: number; dayEnd: number; minBlock: number }): T {
-  const started = o.past || (o.isToday && o.now > o.dayEnd - o.minBlock);
-  return { ...load, started, open: !started && load.trucks.some((x) => x.cap >= o.minBlock) };
-}
-
 /* ---------- how a block looks in the picker ---------- */
 export type CellState = 'ok' | 'tight' | 'full' | 'closed' | 'started';
 export interface LoadLike {
@@ -261,5 +237,5 @@ export interface ItemDraft {
   id?: string; kind: ItemKind; service_id: string | null; item_id?: string | null; description: string; qty: number; unit_cents: number;
   taxable: boolean; duration_min: number | null; note?: string | null;
 }
-/** minutes of work of the chosen lines (services without a duration count 45 min) */
-export function itemsDuration(items: ItemDraft[]): number { return items.reduce((n, i) => n + (i.duration_min ?? (i.kind === 'service' ? 45 : 0)) * (i.kind === 'service' ? Math.max(1, i.qty) : 1), 0); }
+/** the same as workMinutes, by its older name (the job's work panel) */
+export const itemsDuration = workMinutes;
