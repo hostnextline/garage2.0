@@ -68,7 +68,7 @@ export function windowWords(win: [number, number] | null, l: Lang): string {
 /* Hours in words: « 8 h à 12 h et 13 h à 20 h », « Fermé », « Mardi et samedi ». */
 const LF = new Map<string, Intl.ListFormat>();
 /** « a, b et c » / « a, b, and c » */
-function listWords(items: string[], l: Lang): string {
+export function listWords(items: string[], l: Lang): string {
   if (items.length < 2) return items[0] || '';
   const k = l;
   let f = LF.get(k);
