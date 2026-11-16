@@ -40,6 +40,8 @@ function raisedCodes(source: string, lang: 'sql' | 'ts'): Raised {
     // a helper that passes on its own parameter (fail(code, …) { throw new Fail(code, …) }) raises nothing itself
     const ident = /^([A-Za-z_]\w*)\s*,/.exec(rest)?.[1];
     if (ident && new RegExp(`function\\s+\\w+\\s*\\(\\s*${ident}\\s*:`).test(text.slice(Math.max(0, m.index - 200), m.index))) continue;
+    // a function that passes on a database refusal (fail(String(e.hint), …)): its code is raised by the SQL, checked above
+    if (/^(String\()?\w+\.hint\b/.test(rest)) continue;
     notLiteral.push(rest.slice(0, 60).split('\n')[0]);
   }
   // a function may also answer a refusal by hand
