@@ -5,6 +5,7 @@
 import { signal } from '@preact/signals';
 import { fr } from '../i18n/fr';
 import { en } from '../i18n/en';
+import { setMoneyLang } from './money';
 
 export type Lang = 'fr' | 'en';
 type Dict = typeof fr;
@@ -24,6 +25,8 @@ export function startLang(): Lang {
 }
 
 export const lang = signal<Lang>(startLang());
+// an amount typed without a language is read the team member's way (« 1,000 » is a thousand in English, a slip in French)
+lang.subscribe(setMoneyLang);
 
 export function setLang(l: Lang) {
   lang.value = l;
@@ -43,6 +46,8 @@ function walk(d: unknown, path: string): unknown {
 }
 // t() runs thousands of times per screen: each key is walked once per language, then remembered (the dictionaries never change)
 const found: Record<Lang, Map<string, unknown>> = { fr: new Map(), en: new Map() };
+// a language that is neither (null from the data, a cast string) reads French, the app's own language, as it always did
+const known = (l: unknown): Lang => (l === 'en' ? 'en' : 'fr');
 function lookup(l: Lang, key: string): unknown {
   const seen = found[l];
   if (seen.has(key)) return seen.get(key);
@@ -67,14 +72,16 @@ function render(v: unknown, vars: Vars | undefined, l: Lang): string {
 /** t('job.next.leave') ; t('agenda.jobsToday', { n: 3 }) ; plural forms: { one: '…', other: '…' } chosen by vars.n.
     A key with no words in either language comes back as the key itself. */
 export function t(key: string, vars?: Vars, l: Lang = lang.value): string {
-  const v = lookup(l, key);
-  return v === undefined ? key : render(v, vars, l);
+  const k = known(l);
+  const v = lookup(k, key);
+  return v === undefined ? key : render(v, vars, k);
 }
 /** the same, or undefined when the dictionaries have no words for this key (a code from the server, a kind from the data):
     the caller then shows its own fallback instead of comparing the answer with the key */
 export function tMaybe(key: string, vars?: Vars, l: Lang = lang.value): string | undefined {
-  const v = lookup(l, key);
-  return v === undefined ? undefined : render(v, vars, l);
+  const k = known(l);
+  const v = lookup(k, key);
+  return v === undefined ? undefined : render(v, vars, k);
 }
 /** the same, in a given language (customer messages, invoices) */
 export function tl(l: Lang, key: string, vars?: Vars): string { return t(key, vars, l); }

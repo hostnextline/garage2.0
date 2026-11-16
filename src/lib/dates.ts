@@ -23,11 +23,23 @@ const DAY_MS = 86400000;
 const garageClock = new Intl.DateTimeFormat('en-CA', {
   timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
 });
-function garageParts(d: Date): { day: Day; minute: Minute } | null {
-  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+// Intl is slow next to the old getters (screens call dayOf over every payment, today() once per service): the answer is
+// remembered per minute of time, which is exact since Montréal's offset is whole hours. The memory is emptied when it grows.
+type Parts = { day: Day; minute: Minute };
+const partsByMinute = new Map<number, Parts>();
+function garageParts(d: Date): Parts | null {
+  if (!(d instanceof Date)) return null;
+  const ms = d.getTime();
+  if (Number.isNaN(ms)) return null;
+  const key = Math.floor(ms / 60000);
+  const hit = partsByMinute.get(key);
+  if (hit) return hit;
   const p: Record<string, string> = {};
   for (const x of garageClock.formatToParts(d)) p[x.type] = x.value;
-  return { day: `${p.year}-${p.month}-${p.day}`, minute: (Number(p.hour) % 24) * 60 + Number(p.minute) };
+  const parts: Parts = { day: `${p.year}-${p.month}-${p.day}`, minute: (Number(p.hour) % 24) * 60 + Number(p.minute) };
+  if (partsByMinute.size >= 5000) partsByMinute.clear();
+  partsByMinute.set(key, parts);
+  return parts;
 }
 
 /** the garage's day of an instant ('' when the date is not valid) */

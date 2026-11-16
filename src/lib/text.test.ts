@@ -64,6 +64,26 @@ describe('postal codes and addresses', () => {
     expect(splitUnit('12-14 rue Fabre')).toEqual({ unit: null, line: '12-14 rue Fabre' });
     expect(splitUnit('3-5 rue Fabre')).toEqual({ unit: '3', line: '5 rue Fabre' });
   });
+  // review lt-5: a unit written after a civic range is taken out; the range stays whole in the line
+  it('a unit after a civic range is still taken out', () => {
+    expect(splitUnit('4521-4523 rue Fabre, app. 2')).toEqual({ unit: '2', line: '4521-4523 rue Fabre' });
+    expect(splitUnit('22-24 rue Fabre app 3')).toEqual({ unit: '3', line: '22-24 rue Fabre' });
+    expect(splitUnit('4521-4523 rue Fabre #5, Montréal')).toEqual({ unit: '5', line: '4521-4523 rue Fabre, Montréal' });
+    expect(civicNumber('4521-4523 rue Fabre, app. 2')).toBe('4521');
+    expect(splitUnit('12-14 rue Logan')).toEqual({ unit: null, line: '12-14 rue Logan' });
+    expect(splitUnit('12-14 rue Fabre, Montréal')).toEqual({ unit: null, line: '12-14 rue Fabre, Montréal' });
+  });
+  it('a unit word followed by « # » is taken out with its number', () => {
+    expect(splitUnit('8255 av. Mountain Sights, apt#3')).toEqual({ unit: '3', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('8255 av. Mountain Sights, app. # 3')).toEqual({ unit: '3', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('8255 av. Mountain Sights, app. #3, Montréal')).toEqual({ unit: '3', line: '8255 av. Mountain Sights, Montréal' });
+    expect(isUnitPart('apt#3')).toBe(true);
+    expect(isUnitPart('app. # 12')).toBe(true);
+    // unchanged
+    expect(splitUnit('8255 av. Mountain Sights, app. 3')).toEqual({ unit: '3', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('8255 av. Mountain Sights #12')).toEqual({ unit: '12', line: '8255 av. Mountain Sights' });
+    expect(splitUnit('2100 rue Logan')).toEqual({ unit: null, line: '2100 rue Logan' });
+  });
   it('an ordinal street is not a door number', () => {
     expect(civicNumber('58e Avenue, Laval')).toBeNull();
     expect(civicNumber('1re rue, Sainte-Anne')).toBeNull();
@@ -118,6 +138,16 @@ describe('search', () => {
     expect(matches('gagnon 4243', 'Bob Gagnon', '514 771-4243')).toBe(true);
     expect(matches('h4p 2b5', 'Bob', '514 425-0000')).toBe(false);
     expect(matches('h4p 2b5', 'Bob', '8255 av. Mountain Sights, H4P 2B5')).toBe(true);
+  });
+  // review lt-7: a number typed with « # » or « / » still finds it (as before the rebuild)
+  it('an invoice number with « # » or a phone with « / » is still found', () => {
+    expect(matches('#1042', 'Bob Gagnon', '1042')).toBe(true);
+    expect(matches('#1042', 'Bob Gagnon', 'F-1042')).toBe(true);
+    expect(matches('514/555-1234', 'Bob', '514 555-1234')).toBe(true);
+    expect(matches('#1042', 'Bob Gagnon', '1043')).toBe(false);
+    expect(matches('gagnon #1042', 'Bob Gagnon', '1042')).toBe(true);
+    expect(matches('tremblay #1042', 'Bob Gagnon', '1042')).toBe(false);
+    expect(matches('#10', 'Bob', '1042')).toBe(false); // fewer than 3 digits: only as text
   });
   it('digits are never matched across two fields joined together', () => {
     expect(matches('5551', 'Bob 555', '1234')).toBe(false);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { totals, parseMoney, money, moneyInput, roundCents, QC_TAXES } from './money';
+import { totals, parseMoney, setMoneyLang, money, moneyInput, roundCents, QC_TAXES } from './money';
 
 describe('taxes TPS/TVQ', () => {
   it('computes the promo at 199,99 $ like the price sign says', () => {
@@ -52,6 +52,18 @@ describe('reading an amount typed by a person', () => {
     expect(parseMoney('$1,250', 'en')).toBe(125000);
     expect(parseMoney('1.000', 'en')).toBeNull();
     expect(parseMoney('59,999', 'fr')).toBeNull();
+  });
+  it('without lib/i18n loaded (the customer page), an amount without a language is read the French way', () => {
+    expect(parseMoney('59,999')).toBeNull();
+    expect(parseMoney('1,000')).toBeNull();
+    expect(parseMoney('1,000', 'en')).toBe(100000);
+  });
+  it('setMoneyLang changes the default; anything but « en » is French', () => {
+    setMoneyLang('en');
+    expect(parseMoney('1,000')).toBe(100000);
+    setMoneyLang('es');
+    expect(parseMoney('1,000')).toBeNull();
+    setMoneyLang('fr');
   });
   it('several thousand groups, or a group with decimals, are still thousands', () => {
     expect(parseMoney('1,234,567')).toBe(123456700);

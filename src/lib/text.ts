@@ -54,21 +54,26 @@ const UNIT_WORD = '(?:appartement|appart\\.?|appt\\.?|app\\.?|apt\\.?|unité|uni
    or is ONE letter that ends its part of the address (« , unité A »). The end is Unicode-aware: JavaScript's \b takes « é »
    for a gap, which is how « Localité » used to lose « it ». */
 const UNIT_VALUE = '(\\d[0-9A-Za-z-]{0,7}|[A-Za-z]{1,2}-?\\d[0-9A-Za-z-]{0,5}|[A-Za-z](?=\\s*(?:,|$)))(?![\\p{L}\\p{N}])';
-// the keyword is followed by a space (optionally « # ») or directly by the number (« app3 »); « # » alone may touch the number
-const UNIT_AFTER = new RegExp(`^(.*?)(?:[,\\s]+${UNIT_WORD}(?:\\s+#?\\s*|(?=\\d))|[,\\s]*#\\s*)${UNIT_VALUE}(.*)$`, 'iu');
-const UNIT_PART = new RegExp(`^(?:${UNIT_WORD}(?:\\s+#?\\s*|(?=\\d))|#\\s*)${UNIT_VALUE}\\s*$`, 'iu');
+// the keyword is followed by « # » (« apt#3 », « app. # 3 »), a space, or directly by the number (« app3 »); « # » alone may
+// touch the number
+const AFTER_WORD = '(?:\\s*#\\s*|\\s+|(?=\\d))';
+const UNIT_AFTER = new RegExp(`^(.*?)(?:[,\\s]+${UNIT_WORD}${AFTER_WORD}|[,\\s]*#\\s*)${UNIT_VALUE}(.*)$`, 'iu');
+const UNIT_PART = new RegExp(`^(?:${UNIT_WORD}${AFTER_WORD}|#\\s*)${UNIT_VALUE}\\s*$`, 'iu');
 
 /** one part of an address between commas is only a unit (« app. 3 », « #12 », « unité A »), not a town or a street */
 export function isUnitPart(part: string): boolean { return UNIT_PART.test(String(part || '').trim()); }
 
 /** "180-8255 av. Mountain Sights" → { unit: '180', line: '8255 av. Mountain Sights' } ; also "8255 Mountain Sights, app. 3".
-    A civic range (« 4521-4523 rue Fabre ») has no unit. */
+    A civic range (« 4521-4523 rue Fabre ») is never read as a unit and a door; a unit written after it
+    (« 4521-4523 rue Fabre, app. 2 ») is still taken out, and the range stays in the line. */
 export function splitUnit(address: string): { unit: string | null; line: string } {
   const s = address.trim();
-  if (isCivicRange(s)) return { unit: null, line: s };
-  let m = /^([0-9A-Za-z]{1,6})\s*-\s*(\d{1,6}[A-Za-z]?\b.*)$/.exec(s);
-  if (m && /\d/.test(m[1])) return { unit: m[1], line: m[2].trim() };
-  m = UNIT_AFTER.exec(s);
+  if (!isCivicRange(s)) {
+    const r = /^([0-9A-Za-z]{1,6})\s*-\s*(\d{1,6}[A-Za-z]?\b.*)$/.exec(s);
+    if (r && /\d/.test(r[1])) return { unit: r[1], line: r[2].trim() };
+  }
+  // the unit word needs a space, a comma or « # » before it, so the digits and dash of a range are never taken for one
+  const m = UNIT_AFTER.exec(s);
   if (m) return { unit: m[2], line: (m[1] + ' ' + m[3]).replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').trim().replace(/,$/, '') };
   return { unit: null, line: s };
 }
@@ -119,8 +124,9 @@ export function vinYear(vin: string): number | null {
 export function fold(s: string | null | undefined): string {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
-// a piece of the query made of digits and phone punctuation only: « 4243 », « 514-771 », « (514) »
-const DIGITS_ONLY = /^[\d().+-]+$/;
+// a piece of the query made of digits and the signs around numbers only: « 4243 », « 514-771 », « (514) », « #1042 »,
+// « 514/555-1234 »
+const DIGITS_ONLY = /^[\d#/().+-]+$/;
 /** every piece of the query is found (accents and case ignored, all of them). A piece of 3 digits or more is also found
     inside the digits of ONE field (« 5551 » in « 514 555-1234 »), never across two fields joined together; the words of
     the query still count (« tremblay 4243 » is not Bob Gagnon whose phone ends in 4243). */

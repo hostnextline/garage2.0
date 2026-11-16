@@ -206,3 +206,27 @@ for (const zone of ZONES) {
     });
   });
 }
+
+/* review lt-6: the Montréal day and minute are remembered per minute of time (Intl is slow); the answers must not move */
+describe('the garage clock remembers its answers', () => {
+  it('every second of a minute gets that minute, the next minute gets the next one', () => {
+    expect(minuteOf(at('2026-11-15T04:30:00.000Z'))).toBe(23 * 60 + 30);
+    expect(minuteOf(at('2026-11-15T04:30:59.999Z'))).toBe(23 * 60 + 30);
+    expect(dayOf(at('2026-11-15T04:30:59.999Z'))).toBe('2026-11-14');
+    expect(minuteOf(at('2026-11-15T04:31:00.000Z'))).toBe(23 * 60 + 31);
+    expect(minuteOf(at('2026-11-15T04:59:59.999Z'))).toBe(23 * 60 + 59);
+    expect(dayOf(at('2026-11-15T05:00:00.000Z'))).toBe('2026-11-15');
+    expect(minuteOf(at('2026-11-15T05:00:00.000Z'))).toBe(0);
+  });
+  it('before 1970 too (a negative time)', () => {
+    expect(dayOf(at('1969-12-31T23:59:30Z'))).toBe('1969-12-31');
+    expect(minuteOf(at('1969-12-31T23:59:30Z'))).toBe(18 * 60 + 59);
+  });
+  it('the same answer asked again, and after the memory is emptied', () => {
+    const first = stamp('2026-11-16T00:30:00Z');
+    for (let i = 0; i < 6000; i++) minuteOf(new Date(Date.UTC(2026, 0, 1) + i * 60000)); // fills and empties it
+    expect(stamp('2026-11-16T00:30:00Z')).toBe(first);
+    expect(minuteOf(new Date(Date.UTC(2026, 0, 1) + 5999 * 60000))).toBe((5999 + 19 * 60) % 1440); // 1 Jan 2026 0 h UTC = 19 h EST
+    expect(today(at('2026-11-15T04:30:00Z'))).toBe('2026-11-14');
+  });
+});

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { t, tl, tMaybe, lang, setLang, startLang, dictKeys, DICTS } from './i18n';
+import type { Lang } from './i18n';
 import { sameShape } from './dict-check';
 
 afterEach(() => {
@@ -21,6 +22,19 @@ describe('translate', () => {
     setLang('fr');
     expect(tl('en', 'common.hours', { n: 3 })).toBe('3 hours');
     expect(t('common.hours', { n: 3 }, 'en')).toBe('3 hours');
+  });
+  // review lt-4: a language from the data that is neither (null, 'es') used to read French; it must not throw
+  it('a language that is neither French nor English reads French', () => {
+    const odd = ['xx', 'es', null, undefined, ''] as unknown as Lang[];
+    for (const l of odd) {
+      if (l === undefined) continue; // undefined is the default parameter: the current language
+      expect(t('common.done', undefined, l)).toBe('Terminé');
+      expect(tl(l, 'common.langs.fr')).toBe('Français');
+      expect(tMaybe('common.done', undefined, l)).toBe('Terminé');
+      expect(tMaybe('no.such.key', undefined, l)).toBeUndefined();
+      expect(t('common.hours', { n: 1.5 }, l)).toBe(t('common.hours', { n: 1.5 }, 'fr'));
+    }
+    expect(t('common.done', undefined, 'en')).not.toBe('Terminé'); // English still reads English
   });
   it('replaces placeholders; a missing value leaves nothing', () => {
     expect(t('common.genericError', { msg: 'boum' }, 'fr')).toBe('Quelque chose n’a pas marché : boum');

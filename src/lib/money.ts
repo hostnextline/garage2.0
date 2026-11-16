@@ -33,6 +33,12 @@ export function totals(lines: Line[], rates: TaxRates = QC_TAXES): Totals {
   return { subtotal, taxable, tps, tvq, total: subtotal + tps + tvq };
 }
 
+// the language of the person using the app, for parseMoney without a language. lib/i18n keeps it in step with its `lang`
+// (money.ts imports nothing, so the customer page, which reads amounts but not the team's dictionaries, stays light).
+let uiLang = 'fr';
+/** the language parseMoney follows when it is not given one (set by lib/i18n each time the language changes) */
+export function setMoneyLang(l: string): void { uiLang = l === 'en' ? 'en' : 'fr'; }
+
 /** the largest amount the database keeps (a Postgres integer of cents) */
 const MAX_CENTS = 2147483647;
 
@@ -40,8 +46,10 @@ const MAX_CENTS = 2147483647;
     One comma or point followed by exactly three digits and nothing else is refused: in Québec French the comma is the
     decimal mark, so « 59,999 » is a slip (a doubled key with gloves on), not 59 999 $ (core-data-20). In English
     (`lang` 'en') « 1,000 » keeps meaning a thousand. Thousands written with a space, or a group followed by decimals
-    (« 1.234,50 », « 1,234.50 »), are read as before. */
+    (« 1.234,50 », « 1,234.50 »), are read as before. Without `lang`, the team's current language decides (lib/i18n tells
+    it through setMoneyLang), so a form typed in English keeps « 1,000 » = 1 000 $. */
 export function parseMoney(input: string, lang?: string): Cents | null {
+  const l = lang ?? uiLang;
   if (input == null) return null;
   let s = String(input).trim().replace(/[\s\u00a0\u202f]/g, '').replace(/\$/g, '').replace(/CAD$/i, '');
   if (!s) return null;
@@ -55,7 +63,7 @@ export function parseMoney(input: string, lang?: string): Cents | null {
   if (group && dec && group === dec) return null;
   // a lone separator before three digits: thousands only for an English comma
   const groups = whole.split(/[.,]/).length - 1;
-  if (groups === 1 && !dec && !(lang === 'en' && group === ',')) return null;
+  if (groups === 1 && !dec && !(l === 'en' && group === ',')) return null;
   const c = Number(whole.replace(/[.,]/g, '') || '0') * 100 + (frac ? Number(frac.padEnd(2, '0')) : 0);
   if (!Number.isFinite(c) || c > MAX_CENTS) return null;
   return neg ? -c : c;
