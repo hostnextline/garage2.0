@@ -101,3 +101,15 @@ describe('« il y a … »', () => {
     lang.value = 'fr';
   });
 });
+
+describe('« Routes partagées »: the job of a position is on the route the person does', () => {
+  const jobs = [
+    { id: 'A', status: 'en_route' as const, truck_id: 'truck', day: '2026-11-17' },
+    { id: 'B', status: 'on_site' as const, truck_id: 'car', day: '2026-11-17' }
+  ];
+  it('Adam, on site at B with the car, is not put on Saleh’s job A (old logic took the first job en route of any vehicle)', () => {
+    expect(currentJobId(jobs, ['truck', 'car'], '2026-11-17', 'car')).toBe('B');
+    expect(currentJobId(jobs, ['truck', 'car'], '2026-11-17', null)).toBe('A');
+    expect(currentJobId(jobs, ['truck'], '2026-11-17', 'car')).toBe('A');
+  });
+});

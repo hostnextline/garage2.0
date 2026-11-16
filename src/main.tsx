@@ -39,7 +39,8 @@ try { if (localStorage.getItem('his.lastuid')) preloadRoute(parseHash(location.h
 const demo = import.meta.env.DEV && wantsDemo(location.search, location.hash);
 void runBoot({
   demo,
-  startDemo: async () => { const { startDemo } = await import('./dev/demo'); await startDemo(); },
+  // written so the production build drops the demo entirely (import.meta.env.DEV is false there)
+  startDemo: import.meta.env.DEV ? async () => { const { startDemo } = await import('./dev/demo'); await startDemo(); } : async () => undefined,
   finishOAuth, startAuth, startPwa,
   report: (e) => reportError(e, 'boot', 'boot'),
   failed: () => { bootFailed.value = true; }

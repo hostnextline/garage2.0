@@ -2,7 +2,6 @@
    They used to vanish (a blank screen, a frozen one, nothing in any log). Now each one is written to the console,
    counted, kept in a short list for this visit, and handed to whoever listens (the data layer can send them to the
    server). Never throws: reporting an error must not become a second error. */
-import { signal } from '@preact/signals';
 
 export type ErrorKind = 'render' | 'error' | 'rejection' | 'chunk' | 'boot' | 'action';
 export interface ErrorReport {
@@ -18,8 +17,10 @@ export interface ErrorReport {
   count: number;
 }
 
-/** how many unexpected errors this visit met (deduplicated ones count once per quiet window) */
-export const errorCount = signal(0);
+/* no signal here: the customer's page loads this (through the Button) and stays light */
+let counted = 0;
+/** how many unexpected errors this visit met (the same one within the quiet window counts once) */
+export function errorCount(): number { return counted; }
 
 const KEEP = 20;
 /** the same error again within this window is counted on the first report, not reported again */
@@ -72,7 +73,7 @@ export function reportError(err: unknown, where: string, kind: ErrorKind = 'erro
     if (lastSeen.size > 200) lastSeen.delete(lastSeen.keys().next().value as string);
     recent.push(report);
     if (recent.length > KEEP) recent.shift();
-    errorCount.value = errorCount.value + 1;
+    counted++;
     try { console.error(`[H.I.S] ${kind} @ ${where}: ${message}`, err); } catch { /* a console that refuses */ }
     for (const sink of sinks) { try { sink(report); } catch { /* one listener's failure is not the app's */ } }
   } catch { /* reporting must never throw */ }
@@ -87,7 +88,7 @@ export function onErrorReport(sink: (r: ErrorReport) => void): () => void {
 export function recentErrors(): ErrorReport[] { return recent.slice(); }
 
 /** for tests: forget everything */
-export function resetReports() { recent.length = 0; lastSeen.clear(); sinks.clear(); errorCount.value = 0; }
+export function resetReports() { recent.length = 0; lastSeen.clear(); sinks.clear(); counted = 0; }
 
 let installed = false;
 /** window 'error' (a script error) and 'unhandledrejection' (a promise nobody caught): reported, never lost */

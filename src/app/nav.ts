@@ -37,7 +37,7 @@ export const QUICK: QuickAction[] = [
   { key: 'call', href: '#/call', icon: PhoneIncoming, show: may.book },
   { key: 'book', href: '#/book', icon: CalendarPlus, show: may.book },
   { key: 'walkIn', href: '#/book?walkin=1', icon: Wrench, show: may.walkIn },
-  { key: 'quote', href: '#/quote/new', icon: FileText, show: may.quotes },
+  { key: 'quote', href: '#/quote/new', icon: FileText, show: may.newQuote },
   { key: 'customer', href: '#/customer/new', icon: UserPlus, show: may.newCustomer },
   { key: 'expense', href: '#/treasury?add=1', icon: ReceiptText, show: may.treasury }
 ];

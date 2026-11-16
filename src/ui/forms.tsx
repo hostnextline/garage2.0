@@ -7,6 +7,7 @@ import { parseMoney, moneyInput } from '../lib/money';
 import { formatPhone } from '../lib/text';
 import { lang, t } from '../lib/i18n';
 import { Help } from './Help';
+import { actionFailed } from './actionFailed';
 
 /* ---------- the label around a field ---------- */
 export interface FieldProps {
@@ -256,7 +257,20 @@ export function DateInput(p: { value: string | null | undefined; onValue: (v: st
 
 /** a form that never reloads the page. Enter in a field « clicks » the form's submit button: put the action on that
     button's onClick (one submission only) and give the form onSubmit={() => undefined}, or put it here and use a
-    submit button without onClick — never both (it would run twice). */
+    submit button without onClick — never both (it would run twice). An onSubmit that returns a promise is not run
+    again while it is pending (Enter twice used to record a purchase twice); a failure is told, never swallowed. */
 export function Form(p: { onSubmit: () => unknown; children: ComponentChildren; class?: string; id?: string }) {
-  return <form class={p.class} id={p.id} noValidate onSubmit={(e) => { e.preventDefault(); void p.onSubmit(); }}>{p.children}</form>;
+  const pending = useRef(false);
+  const submit = (e: Event) => {
+    e.preventDefault();
+    if (pending.current) return;
+    let r: unknown;
+    try { r = p.onSubmit(); } catch (err) { failed(err); return; }
+    if (r && typeof (r as Promise<unknown>).then === 'function') {
+      pending.current = true;
+      (r as Promise<unknown>).then(() => undefined, failed).finally(() => { pending.current = false; });
+    }
+  };
+  return <form class={p.class} id={p.id} noValidate onSubmit={submit}>{p.children}</form>;
 }
+const failed = (err: unknown) => actionFailed(err, 'form');

@@ -50,9 +50,12 @@ export function shouldSend(last: Sent | null, fix: Fix, jobId: string | null, no
   return metersBetween(last, fix) >= r.moveM;
 }
 
-/** the job a position belongs to: the one the person drives to, else the one they work at (today, their trucks) */
-export function currentJobId(jobs: Pick<Job, 'id' | 'status' | 'truck_id' | 'day'>[], trucks: string[], day: string): string | null {
-  const mine = jobs.filter((j) => j.day === day && !!j.truck_id && trucks.includes(j.truck_id));
+/** the job a position belongs to: the one the person drives to, else the one they work at (today, their trucks).
+    With « Routes partagées » every vehicle is everybody's: the route the person said they do (« La route que je
+    fais ») decides, or a mechanic's position was put on another mechanic's job. */
+export function currentJobId(jobs: Pick<Job, 'id' | 'status' | 'truck_id' | 'day'>[], trucks: string[], day: string, route: string | null = null): string | null {
+  const ours = trucks.length > 1 && route && trucks.includes(route) ? [route] : trucks;
+  const mine = jobs.filter((j) => j.day === day && !!j.truck_id && ours.includes(j.truck_id));
   return (mine.find((j) => j.status === 'en_route') || mine.find((j) => j.status === 'on_site'))?.id ?? null;
 }
 
@@ -63,6 +66,16 @@ export function agoText(at: number | string | null | undefined, now = Date.now()
   const min = Math.floor(ms / 60_000);
   if (min < 60) return t('today.ago.min', { n: min });
   return t('today.ago.long', { time: duration(min, lang.value) });
+}
+
+/* ---------- the route this person does (« Routes partagées ») ---------- */
+const ROUTE_KEY = 'his.myRoute';
+/** the route this mechanic is doing now, when several are theirs (kept on the phone, the same key as « Ma journée »);
+    null: all of them */
+export const myRoute = signal<string | null>((() => { try { return localStorage.getItem(ROUTE_KEY); } catch { return null; } })());
+export function setMyRoute(id: string | null) {
+  myRoute.value = id;
+  try { if (id) localStorage.setItem(ROUTE_KEY, id); else localStorage.removeItem(ROUTE_KEY); } catch { /* private window */ }
 }
 
 /* ---------- the sharing (browser) ---------- */
@@ -173,7 +186,7 @@ export function startPositionSharing() {
     const a = me.value;
     const shift = a ? openShift(a.id) : undefined;
     const on = !!a && !!shift && !preview.value && visible.value;
-    const job = a ? currentJobId(allJobs.value, a.trucks || [], today()) : null;
+    const job = a ? currentJobId(allJobs.value, a.trucks || [], today(), myRoute.value) : null;
     untracked(() => {
       const changed = job !== jobNow;
       jobNow = job;

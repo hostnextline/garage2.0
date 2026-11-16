@@ -4,10 +4,8 @@
    An action that fails without showing its own message is reported and said in a toast: nothing fails in silence. */
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { errorMessage } from '../lib/errors';
-import { reportError } from '../platform/report';
+import { actionFailed } from './actionFailed';
 import { createTapGuard, ARM_DEAD_MS, CONFIRM_MS, COOL_MS } from './tapGuard';
-import { toast } from './toast';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Clickable = (e: MouseEvent) => unknown;
@@ -64,10 +62,7 @@ function useTap(onClick: Clickable | undefined, confirm: string | undefined, blo
   return { busy, armed, waiting, click };
 }
 /** an action that threw past its own handling: kept in the error log and told in the person's words */
-function failed(err: unknown) {
-  reportError(err, 'button', 'action');
-  toast(errorMessage(err), { kind: 'bad' });
-}
+const failed = (err: unknown) => actionFailed(err, 'button');
 
 export interface ButtonProps {
   variant?: ButtonVariant;
