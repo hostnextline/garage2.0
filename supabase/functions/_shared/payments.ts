@@ -2,13 +2,21 @@
 // whatever happens. Money given back from Stripe's own screens comes back the same way: a negative card payment, once
 // per refund.
 //
-// The rule of this file: money Stripe took is NEVER lost and never asked for again and again.
+// The rule of this file: money Stripe took is NEVER lost, never counted twice and never asked for again and again.
 //   recorded     payment_add took it (on the invoice named, or on the job when that invoice was cancelled, removed or
 //                reopened meanwhile: the next finished invoice of the job takes it)                       → 'applied'
+//                Since Part 27 (20261116000100_refonte_argent.sql) the database takes EVERY card payment and refund
+//                itself (the invoice, else the job's finished invoice, else waiting on the job, else on nothing) and,
+//                when it is not where it was meant to go, writes its own note (activity « payment_unmatched ») in the
+//                same transaction as the money: nothing more is written here then, and the nightly reconciliation
+//                lists a payment that waits on a closed job or on nothing.
 //   known        the same Stripe page or refund was already recorded                                      → 'already'
-//   parked       the database refuses it for good (nothing left to hang it on): it is written in the history
-//                (activity « payment_parked », with everything needed to enter it by hand) and on the job's texts,
-//                for the office and the daily reconciliation                                              → 'parked'
+//   parked       the database refuses it for good (today's database before Part 27, or a refusal nobody foresaw):
+//                it is written in the history (activity « payment_parked », with everything needed to enter it by
+//                hand) and on the job's texts, for the office                                             → 'parked'
+//                Kept aside is FINAL for that page or refund: the office enters it by hand, so the books never take
+//                it by themselves afterwards (a later notice, the customer's page, a refund notice), even once the
+//                database would: it would be counted twice. The refunds of a page kept aside are kept aside beside it.
 //   not ours     no payment of the app behind it                                                          → 'ignored'
 //   a hiccup     (the database or Stripe did not answer) is thrown: the caller answers 5xx and Stripe tries again.
 import { adminDb } from './db.ts';
@@ -58,16 +66,22 @@ async function note(action: 'payment_moved' | 'payment_parked', e: Entry, reason
   const { error: em } = await db.from('messages').insert({ job_id: e.job, kind: 'payment_check', channel: 'web', status: 'skipped', error: 'note', body });
   if (em) console.error('payments: job text not written', e.session, String(em.message).slice(0, 200));
 }
+/** that Stripe page (or refund) was kept aside for the office before */
+async function parkedBefore(session: string): Promise<boolean> {
+  const { data: known, error } = await adminDb().from('activity').select('id').eq('action', 'payment_parked').eq('data->>session', session).limit(1);
+  if (error) throw error;
+  return !!known?.length;
+}
 /** kept aside once: the history row of that Stripe page (or refund) is written only if it is not there yet */
 async function park(e: Entry, why: string): Promise<Applied> {
-  const { data: known, error } = await adminDb().from('activity').select('id').eq('action', 'payment_parked').eq('data->>session', e.session).limit(1);
-  if (error) throw error;
-  if (!known?.length) await note('payment_parked', e, why);
+  if (!(await parkedBefore(e.session))) await note('payment_parked', e, why);
   return 'parked';
 }
 
 /** payment_add, never refusing money already moved */
 async function record(e: Entry): Promise<Applied> {
+  // kept aside for the office already: it stays so (the office enters it by hand), never in the books a second time
+  if (await parkedBefore(e.session)) return 'parked';
   const db = adminDb();
   const add = (invoice: string | null) => db.rpc('payment_add', { p_op: e.op, p_invoice: invoice, p_amount_cents: e.amount, p_method: 'card_online',
     p_reference: e.reference, p_job: e.job, p_session: e.session });

@@ -489,20 +489,73 @@ test('pay-same-link-orphan: the same link asking twice for the same amount gets 
   assert.equal((await openPages(job)).length, 1, 'no page left payable that no link remembers');
 });
 
+/** The books refuse every card payment of that Stripe page, and of its refunds, for good: a refusal of public.fail, as
+    the database before Part 27 answered a page nothing could hold. Part 27's payment_add takes them all (see the
+    « with Part 27 » tests), so this is how the function's own « keep aside for the office » path is reached. */
+async function refuseInBooks(session) {
+  const id = String(session).replace(/'/g, "''");
+  await q(`create or replace function public.t_refuse_card() returns trigger language plpgsql as $f$ begin
+    if split_part(new.stripe_session, '#', 1) = '${id}' then perform public.fail('not_found', 'Refusé pour le test.'); end if;
+    return new; end $f$`);
+  await q(`create trigger t_refuse_card before insert on public.payments for each row execute function public.t_refuse_card()`);
+}
+async function acceptInBooks() {
+  await q(`drop trigger if exists t_refuse_card on public.payments`);
+  await q(`drop function if exists public.t_refuse_card()`);
+}
+/** the history (activity) cannot be written for those actions for a moment: the disk is full (SQLSTATE 53100) */
+async function historyFull(actions) {
+  await q(`create or replace function public.t_fail_parked() returns trigger language plpgsql as $f$ begin
+    if new.action = any(array[${actions.map((a) => `'${a}'`).join(',')}]) then raise exception 'disque plein' using errcode = '53100'; end if;
+    return new; end $f$`);
+  await q(`create trigger t_fail_parked before insert on public.activity for each row execute function public.t_fail_parked()`);
+}
+async function historyBack() {
+  await q(`drop trigger if exists t_fail_parked on public.activity`);
+  await q(`drop function if exists public.t_fail_parked()`);
+}
+const inBooks = async (session) => q(`select amount_cents, job_id, invoice_id, reference from public.payments where stripe_session = $1`, [session]);
+const notesOf = async (action, session) => q(`select entity, entity_id, data from public.activity where action = $1 and data->>'session' = $2 order by id`, [action, session]);
+
 test('parked-note-unchecked: a payment kept aside whose history row cannot be written is NOT marked handled: 5xx, Stripe sends it again, then it is noted', async () => {
   const s = await ghostPage(3100);
-  await q(`create or replace function public.t_fail_parked() returns trigger language plpgsql as $f$ begin if new.action = 'payment_parked' then raise exception 'disque plein'; end if; return new; end $f$`);
-  await q(`create trigger t_fail_parked before insert on public.activity for each row execute function public.t_fail_parked()`);
+  await refuseInBooks(s.id);
+  try {
+    await historyFull(['payment_parked']);
+    let first;
+    await clearLog();
+    try { first = await mockGet(`/pay/${s.id}`); } finally { await historyBack(); }
+    assert.equal(first.hook, 500, 'Stripe must try again: ' + JSON.stringify(first));
+    const ev = (await mockLog()).filter((x) => x.svc === 'stripe-webhook').map((h) => h.event);
+    assert.equal((await q(`select count(*)::int n from public.stripe_events where id = any($1)`, [ev]))[0].n, 0, 'not marked handled');
+    // Stripe's next try: kept aside and written for the office, once
+    assert.equal((await mockGet(`/pay/${s.id}`)).hook, 200);
+    assert.equal((await notesOf('payment_parked', s.id)).length, 1);
+  } finally { await acceptInBooks(); }
+  // the books would take it now (Part 27 applied meanwhile): kept aside stays kept aside, the office enters it by hand,
+  // so another notice about that page never puts it in the books a second time
+  assert.equal((await mockGet(`/pay/${s.id}`)).hook, 200);
+  assert.deepEqual(await inBooks(s.id), [], 'never in the books behind the office’s back');
+  assert.equal((await notesOf('payment_parked', s.id)).length, 1, 'still noted once');
+});
+
+test('parked-note-unchecked, with Part 27: the database keeps the payment and its note together; the note cannot be written = nothing written, 5xx; the next try = in the books once, noted once', async () => {
+  // a card page whose job does not exist: Part 27's payment_add keeps it on nothing, with its note « payment_unmatched »
+  const s = await ghostPage(3300);
+  await historyFull(['payment_unmatched', 'payment_parked']);
   let first;
   await clearLog();
-  try { first = await mockGet(`/pay/${s.id}`); }
-  finally { await q(`drop trigger if exists t_fail_parked on public.activity`); await q(`drop function if exists public.t_fail_parked()`); }
+  try { first = await mockGet(`/pay/${s.id}`); } finally { await historyBack(); }
   assert.equal(first.hook, 500, 'Stripe must try again: ' + JSON.stringify(first));
   const ev = (await mockLog()).filter((x) => x.svc === 'stripe-webhook').map((h) => h.event);
   assert.equal((await q(`select count(*)::int n from public.stripe_events where id = any($1)`, [ev]))[0].n, 0, 'not marked handled');
-  // Stripe's next try: kept aside and written for the office, once
-  assert.equal((await mockGet(`/pay/${s.id}`)).hook, 200);
-  assert.equal((await q(`select count(*)::int n from public.activity where action = 'payment_parked' and data->>'session' = $1`, [s.id]))[0].n, 1);
+  assert.deepEqual(await inBooks(s.id), [], 'no money without its note');
+  // Stripe's next try (twice: two notices about the same page)
+  assert.equal((await mockGet(`/pay/${s.id}?twice=1`)).hook, 200);
+  assert.deepEqual((await inBooks(s.id)).map((p) => [p.amount_cents, p.job_id, p.invoice_id]), [[3300, null, null]], 'in the books once, on nothing (the nightly reconciliation lists it: M4.orphan)');
+  const notes = await notesOf('payment_unmatched', s.id);
+  assert.deepEqual(notes.map((n) => [n.data.why, n.data.amount]), [['no_job', 3300]], 'noted once, by the database');
+  assert.equal((await notesOf('payment_parked', s.id)).length, 0, 'never also kept aside by the function (it would be entered by hand: counted twice)');
 });
 
 test('refund-of-unrecorded-payment: a refund whose payment notice never came records the payment first, then the refund', async () => {
@@ -519,12 +572,39 @@ test('refund-of-unrecorded-payment: a refund whose payment notice never came rec
 
 test('refund-of-unrecorded-payment: a refund of a payment kept aside for the office is kept aside beside it (once), never silently dropped', async () => {
   const s = await ghostPage(5200);
-  assert.equal((await mockGet(`/pay/${s.id}`)).hook, 200);
+  await refuseInBooks(s.id);
+  try {
+    assert.equal((await mockGet(`/pay/${s.id}`)).hook, 200);
+    assert.equal((await notesOf('payment_parked', s.id)).length, 1, 'the payment is kept aside');
+  } finally { await acceptInBooks(); }
+  // the money is given back from Stripe's screens, once the books would take that page (Part 27 applied meanwhile)
   const r = await mockGet(`/refund/${s.id}?amount=5200&twice=1`);
   assert.equal(r.hook, 200, r.result);
-  const notes = await q(`select data from public.activity where action = 'payment_parked' and data->>'session' = $1`, [`${s.id}#${r.refund}`]);
+  const notes = await notesOf('payment_parked', `${s.id}#${r.refund}`);
   assert.equal(notes.length, 1, 'written once for the office: ' + JSON.stringify(notes));
   assert.deepEqual([notes[0].data.kind, notes[0].data.amount_cents, notes[0].data.reference], ['refund', -5200, r.refund]);
+  // both by hand for the office, together: neither the payment nor its refund is put in the books behind its back
+  assert.deepEqual([await inBooks(s.id), await inBooks(`${s.id}#${r.refund}`)], [[], []]);
+  assert.equal((await notesOf('payment_parked', s.id)).length, 1);
+});
+
+test('refund-of-unrecorded-payment, with Part 27: a page nothing can hold is in the books on nothing, noted once by the database; its refund goes beside it, once, noted too', async () => {
+  const s = await ghostPage(5400);
+  assert.equal((await mockGet(`/pay/${s.id}?twice=1`)).hook, 200);
+  const paid = await inBooks(s.id);
+  assert.deepEqual(paid.map((p) => [p.amount_cents, p.job_id, p.invoice_id]), [[5400, null, null]]);
+  assert.equal((await notesOf('payment_unmatched', s.id)).length, 1);
+  const r = await mockGet(`/refund/${s.id}?amount=5400&twice=1`);
+  assert.equal(r.hook, 200, r.result);
+  const back = await inBooks(`${s.id}#${r.refund}`);
+  assert.deepEqual(back.map((p) => [p.amount_cents, p.job_id, p.invoice_id, p.reference]), [[-5400, null, null, r.refund]], 'beside the payment, once');
+  const unmatched = await notesOf('payment_unmatched', `${s.id}#${r.refund}`);
+  assert.deepEqual(unmatched.map((n) => [n.data.why, n.data.amount, n.data.reference]), [['no_job', -5400, r.refund]], 'noted once for the owner');
+  const refund = await notesOf('payment_refund', `${s.id}#${r.refund}`);
+  assert.equal(refund.length, 1);
+  assert.equal(refund[0].data.of, (await q(`select id from public.payments where stripe_session = $1`, [s.id]))[0].id, 'the refund names the payment it gives back');
+  assert.equal((await q(`select count(*)::int n from public.activity where action = 'payment_parked' and data->>'session' like $1`, [`${s.id}%`]))[0].n, 0, 'nothing kept aside twice');
+  assert.equal((await q(`select sum(amount_cents)::int s from public.payments where split_part(stripe_session, '#', 1) = $1`, [s.id]))[0].s, 0, 'the books say what Stripe holds: nothing');
 });
 
 test('refund-no-key-loops: a refund notice while the garage has no Stripe key is written for the owner and answered 2xx (no retry loop)', async () => {
