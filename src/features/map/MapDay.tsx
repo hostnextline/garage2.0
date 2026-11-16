@@ -19,10 +19,13 @@ export function mapDayName(day: Day, now: Day = today(), l: string = lang.value)
 
 export function MapDay(p: { day: Day; onDay: (d: Day) => void }) {
   const input = useRef<HTMLInputElement>(null);
+  // the phone's own date picker; a browser without showPicker (or refusing it) opens it with a click on the field
   const pick = () => {
-    const el = input.current;
+    const el = input.current as (HTMLInputElement & { showPicker?: () => void }) | null;
     if (!el) return;
-    try { (el as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { el.focus(); el.click(); }
+    const fallback = () => { el.focus(); el.click(); };
+    if (typeof el.showPicker !== 'function') { fallback(); return; }
+    try { el.showPicker(); } catch { fallback(); }
   };
   const isToday = p.day === today();
   return (

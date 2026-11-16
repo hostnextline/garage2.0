@@ -33,7 +33,9 @@ export const hours: typeof fr = {
     dirtyOk: 'Drop them',
     days: 'Day to draw',
     keys: 'Arrows to move, Space to light up or turn off a pane.',
-    outside: 'These hours include time before 6 a.m. or after 10 p.m.: it stays as it is.'
+    outside: 'These hours include time before 6 a.m. or after 10 p.m.: it stays as it is.',
+    /* « one day » mode: the window shows that date's real hours (map-hours-04) */
+    dayTitle: '{day}'
   },
   closing: {
     title: { one: '{n} appointment affected', other: '{n} appointments affected' },
@@ -44,7 +46,7 @@ export const hours: typeof fr = {
     none: 'None of these appointments can go to the other vehicle. If you close, they go to “To place” in the schedule.',
     someStay: { one: '{n} cannot go there: it will go to “To place”.', other: '{n} cannot go there: they will go to “To place”.' },
     goes: 'Goes to {to}',
-    stays: { machine: 'Stays to place: needs the truck', closed: 'Stays to place: the other vehicle is closed then' },
+    stays: { machine: 'Stays to place: needs the truck', closed: 'Stays to place: the other vehicle is closed then', rights: 'Stays to place: you cannot put it on the other vehicle', started: 'Stays to place: that time has already started', full: 'Stays to place: the other vehicle is full then' },
     mapTitle: 'The new route for {to}',
     day: 'Which day',
     stops: { one: '{n} stop that day.', other: '{n} stops that day.' },
@@ -52,7 +54,10 @@ export const hours: typeof fr = {
     move: { one: 'Move to {to}', other: 'Move all {n} to {to}' },
     only: 'Close without moving',
     done: { one: '{n} appointment moved to {to}', other: '{n} appointments moved to {to}' },
-    donePart: '{n} of {total} appointments moved to {to}. The others are in “To place” in the schedule.'
+    donePart: '{n} of {total} appointments moved to {to}. The others are in “To place” in the schedule.',
+    /* a move refused or not answered: nothing is closed (map-hours-01, -07) */
+    refused: { zero: 'The move was refused: {reason} Nothing is closed.', one: '{n} appointment moved, then a refusal: {reason} Nothing is closed.', other: '{n} appointments moved, then a refusal: {reason} Nothing is closed.' },
+    waiting: 'No answer from the server for the move: nothing is closed. Try again when the network is back.'
   },
   apply: {
     title: 'Apply',
@@ -77,7 +82,9 @@ export const hours: typeof fr = {
     doneDay: 'Hours changed for {day}',
     doneWeeks: 'Hours changed for {weeks}',
     doneAlways: 'Usual hours changed',
-    queued: 'Hours kept on this phone: they go out as soon as the network is back.'
+    queued: 'Hours kept on this phone: they go out as soon as the network is back.',
+    nothingChanged: 'Nothing changed: those days already had these hours.',
+    blind: 'You do not see all of this truck’s appointments: those that no longer fit will go to “To place” in the schedule.'
   },
   exceptions: {
     title: 'Changed days',
@@ -85,7 +92,11 @@ export const hours: typeof fr = {
     none: 'No changed day: the usual week counts everywhere.',
     revert: 'Back to the usual hours',
     reverted: '{day} follows the usual hours again',
-    usual: 'Usual: {hours}'
+    usual: 'Usual: {hours}',
+    /* the usual hours of that day leave out appointments booked on it (map-hours-08) */
+    askTitle: { one: '{n} appointment no longer fits the usual hours', other: '{n} appointments no longer fit the usual hours' },
+    askText: 'On {day}, these appointments go to “To place” in the schedule if no other vehicle can take them.',
+    askOk: 'Go back anyway'
   },
   start: {
     title: 'Where this truck leaves from',
@@ -127,6 +138,11 @@ export const hours: typeof fr = {
     added: 'Truck added',
     driverOf: 'Driver: {name}',
     noDriverShort: 'No driver',
+    /* out of service, or no tire machine any more, with appointments still coming (map-hours-08) */
+    askTitle: { one: '{n} coming appointment is affected', other: '{n} coming appointments are affected' },
+    askOffText: 'Out of service, this vehicle no longer gets appointments: these go to another vehicle if it has room, otherwise to “To place” in the schedule.',
+    askMachineText: 'Without the tire machine, this vehicle does not keep mounting or balancing: these appointments go to another vehicle if it has room, otherwise to “To place” in the schedule.',
+    askOk: 'Save anyway',
     colors: { red: 'Red', blue: 'Blue', green: 'Green', amber: 'Amber', violet: 'Violet', teal: 'Teal', pink: 'Raspberry', slate: 'Slate' }
   }
 };

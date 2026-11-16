@@ -32,7 +32,13 @@ export const map = {
     start: 'Il part à',
     after: 'Après : {hours}',
     save: 'Changer l’heure',
-    saved: 'Départ à {time} ce jour-là. Les rendez-vous sont replacés.'
+    saved: 'Départ à {time} ce jour-là. Les rendez-vous sont replacés.',
+    /* the new start leaves out appointments already booked: asked first (map-hours-02) */
+    askTitle: { one: '{n} rendez-vous ne rentre plus ce jour-là', other: '{n} rendez-vous ne rentrent plus ce jour-là' },
+    askText: 'Avec ce départ, ces rendez-vous sortent des heures de ce camion : {who}. L’app essaie de les mettre sur un autre véhicule; sinon ils passent dans « À placer » de l’agenda.',
+    askOk: 'Changer quand même',
+    blind: 'Tu ne vois pas tous les rendez-vous de ce camion : ceux qui ne rentrent plus passeront dans « À placer » de l’agenda.',
+    nothing: 'Rien n’a changé ce jour-là.'
   },
   legend: {
     title: 'Les camions',
@@ -62,7 +68,6 @@ export const map = {
   },
   stops: {
     title: 'Arrêts de {name}',
-    all: 'Tous les arrêts',
     when: '{block}, vers {time}',
     noPos: 'Adresse pas placée sur la carte'
   },
@@ -77,7 +82,6 @@ export const map = {
     unplaced: 'Pas encore placé sur un camion'
   },
   people: {
-    title: 'Sur la route',
     onSite: 'Au travail chez {name}',
     stale: 'Dernière position {ago}'
   },

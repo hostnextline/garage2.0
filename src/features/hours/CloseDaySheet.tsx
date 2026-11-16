@@ -1,27 +1,32 @@
 /* « La voiture ferme » (Horaires → « Appliquer » when the new hours close a day or a block that has appointments, and the
    garage has a vehicle of the other kind): every appointment touched, the other vehicle's route that day with them in it
    (the phone's copy, streets from the route planner), and the choice: move them, close without moving (they go to
-   « À placer »), or cancel. Never a vehicle's or a mechanic's name: « la voiture », « le camion ». */
+   « À placer »), or cancel. Never a vehicle's or a mechanic's name: « la voiture », « le camion ».
+   While the moves and the hours are on their way the sheet stays open and its buttons wait (busy): a refused move leaves
+   it open with what is left to decide. */
 import { useMemo, useState } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
 import { duration, longDay } from '../../lib/dates';
 import { customer as customerRow, customerName, staffName, truck as truckRow } from '../../data/select';
 import { Sheet, Button, Banner, Chips, Pill } from '../../ui';
-import { MapView, type MapMarker, type MapLine } from '../../shared/map/MapView';
+import { MapView } from '../../shared/map/MapView';
 import { assemble } from '../../shared/map/assemble';
+import { routeLayers } from '../../shared/map/layers';
+import { fmtKm } from '../../shared/map/distance';
 import { fromDevice } from '../../shared/map/device';
 import { useRoads, roadOf, roadTotal } from '../../shared/map/useRoads';
 import { moveStops } from '../../shared/moment/preview';
-import type { Move } from './closing';
+import type { Move } from '../../shared/map/closing';
 import { momentWord } from '../../shared/jobs/select';
 
-const fmtKm = (n: number, l: string) => new Intl.NumberFormat(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }).format(n);
 const kindWord = (truckId: string | null, form: 'of' | 'to') => t(`hours.closing.${form}.${truckRow(truckId)?.tire_machine === false ? 'car' : 'truck'}`);
 
-export function CloseDaySheet(p: { truckId: string; moves: Move[]; onMove: () => void; onJustClose: () => void; onClose: () => void }) {
+export function CloseDaySheet(p: { truckId: string; moves: Move[]; busy?: boolean; onMove: () => Promise<unknown>; onJustClose: () => Promise<unknown>; onClose: () => void }) {
   const l = lang.value;
   const days = [...new Set(p.moves.map((m) => m.job.day))];
-  const [day, setDay] = useState(days[0]);
+  const [picked, setDay] = useState(days[0]);
+  // the list can shrink (a move refused after others went): the day shown is always one of the list
+  const day = days.includes(picked) ? picked : days[0];
   const going = p.moves.filter((m) => m.target);
   const staying = p.moves.length - going.length;
   const target = going.find((m) => m.job.day === day)?.target || going[0]?.target || null;
@@ -32,24 +37,15 @@ export function CloseDaySheet(p: { truckId: string; moves: Move[]; onMove: () =>
   }, [day, target, p.moves]);
   useRoads(route ? [route] : []);
   const road = route ? roadTotal(route) : null;
-  const moved = new Set(going.map((m) => m.job.id));
-  const markers: MapMarker[] = [];
-  const lines: MapLine[] = [];
-  if (route?.from) markers.push({ id: 'from', kind: route.start ? 'customer' : 'home', lat: route.from[0], lng: route.from[1], color: route.color, label: route.start?.label || t('booking.preview.start') });
-  for (const s of route?.stops || []) {
-    if (!s.hasPos) continue;
-    const isMoved = moved.has(s.id);
-    markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: isMoved ? '#111827' : route!.color, number: s.n, done: s.done, active: isMoved, label: isMoved ? s.name : undefined, title: `${s.n}. ${s.name}` });
-  }
-  for (const leg of route?.legs || []) lines.push({ points: roadOf(leg), color: route!.color, weight: 4, opacity: leg.kind === 'done' ? 0.32 : 0.85 });
+  const { markers, lines } = route ? routeLayers(route, { marked: new Set(going.map((m) => m.job.id)), startLabel: t('booking.preview.start'), road: roadOf }) : { markers: [], lines: [] };
   const from = kindWord(p.truckId, 'of');
   const to = kindWord(target, 'to');
   return (
     <Sheet open onClose={p.onClose} title={t('hours.closing.title', { n: p.moves.length })} sub={t('hours.closing.sub', { from })} data-testid="close-day-sheet"
       footer={<>
-        <Button onClick={p.onClose}>{t('common.cancel')}</Button>
-        <Button onClick={p.onJustClose} data-testid="close-day-only">{t('hours.closing.only')}</Button>
-        {going.length > 0 && <Button variant="primary" onClick={p.onMove} data-testid="close-day-move">{t('hours.closing.move', { n: going.length, to })}</Button>}
+        <Button onClick={p.onClose} disabled={p.busy}>{t('common.cancel')}</Button>
+        <Button onClick={p.onJustClose} disabled={p.busy} data-testid="close-day-only">{t('hours.closing.only')}</Button>
+        {going.length > 0 && <Button variant="primary" onClick={p.onMove} disabled={p.busy} data-testid="close-day-move">{t('hours.closing.move', { n: going.length, to })}</Button>}
       </>}>
       <div class="stack">
         <Banner kind={going.length ? 'info' : 'warn'} data-testid="close-day-ask">

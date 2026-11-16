@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { blockOpen, closedJobs, otherKind, movesFor, windowOpen, jobOpen } from './closing';
+import { blockOpen, closedJobs, otherKind, movesFor, windowOpen, jobOpen, mayMoveBetween, holdsJobsOf } from './closing';
 import { DEFAULT_BLOCKS, type Range } from '../../lib/dates';
 import type { Job, Truck } from '../../data/types';
 
@@ -59,5 +59,33 @@ describe('a vehicle closes, « Plages d\'arrivée » (block \'day\'): the window
     const hit = [w('mid', [780, 1020]), w('late', [840, 1080])];
     const m = movesFor(hit, [truck], () => [[480, 840]], dayBlock);
     expect(m.map((x) => [x.job.id, x.target, x.why])).toEqual([['mid', 'truck', null], ['late', null, 'closed']]);
+  });
+});
+
+describe('a vehicle closes: only what can really work is offered (map-hours-01)', () => {
+  const hit = [job('a', '2026-11-17', 'am', { duration_min: 60 }), job('b', '2026-11-17', 'am', { duration_min: 60 }), job('c', '2026-11-17', 'pm', { duration_min: 60 })];
+  const open = (): Range[] => [[480, 1200]];
+  it('a mechanic without « book » whose truck is not his: nothing is offered, each says why', () => {
+    const m = movesFor(hit, [truck], open, blockOf, { mayMove: () => false });
+    expect(m.map((x) => [x.target, x.why])).toEqual([[null, 'rights'], [null, 'rights'], [null, 'rights']]);
+  });
+  it('the other vehicle has room for one of the morning: the first goes, the second stays « full »', () => {
+    const roomOf = (_t: string, j: Job) => (j.block === 'am' ? { left: 90, started: false } : { left: 240, started: false });
+    const m = movesFor(hit, [truck], open, blockOf, { roomOf, travelMin: 20 });
+    expect(m.map((x) => [x.job.id, x.target, x.why])).toEqual([['a', 'truck', null], ['b', null, 'full'], ['c', 'truck', null]]);
+  });
+  it('a moment already started there: not offered', () => {
+    const m = movesFor([hit[0]], [truck], open, blockOf, { roomOf: () => ({ left: 500, started: true }) });
+    expect(m[0]).toMatchObject({ target: null, why: 'started' });
+  });
+  it('move_job’s rule: « book », or both vehicles his', () => {
+    expect(mayMoveBetween('car', 'truck', { book: true, mine: [] })).toBe(true);
+    expect(mayMoveBetween('car', 'truck', { book: false, mine: ['car'] })).toBe(false);
+    expect(mayMoveBetween('car', 'truck', { book: false, mine: ['car', 'truck'] })).toBe(true);
+  });
+  it('who holds every appointment of a vehicle on the phone', () => {
+    expect(holdsJobsOf('truck', { owner: false, agenda: false, mine: ['car'] })).toBe(false);
+    expect(holdsJobsOf('truck', { owner: false, agenda: true, mine: [] })).toBe(true);
+    expect(holdsJobsOf('car', { owner: false, agenda: false, mine: ['car'] })).toBe(true);
   });
 });
