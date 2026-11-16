@@ -150,3 +150,19 @@ describe('asking again', () => {
     expect((await locate('160 khalil gibran', { fresh: true })).status).toBe('none');   // asked again
   });
 });
+
+describe('a side of the street the person did not type (customers-a-12)', () => {
+  const SHER_OUEST = house('5000', 'Rue Sherbrooke Ouest', 'Montréal', 'H3Z 1H1', -73.6, 45.48);
+  it('is not taken by itself: the person chooses', () => {
+    const r = bestPlace(suggestionsOf({ features: [SHER_OUEST] }, '5000 rue Sherbrooke'), wantedOf('5000 rue Sherbrooke, Montréal'));
+    expect(r.place).toBeNull();
+    expect(r.choices.map((c) => c.street)).toEqual(['rue Sherbrooke Ouest']);
+  });
+  it('is taken when typed, or when the postal code typed agrees', () => {
+    expect(bestPlace(suggestionsOf({ features: [SHER_OUEST] }, '5000 rue Sherbrooke O'), wantedOf('5000 rue Sherbrooke O, Montréal')).quality).toBe('door');
+    expect(bestPlace(suggestionsOf({ features: [SHER_OUEST] }, '5000 rue Sherbrooke'), wantedOf('5000 rue Sherbrooke', { postal: 'H3Z 2A1' })).quality).toBe('door');
+  });
+  it('a street without a side is taken as before', () => {
+    expect(bestPlace(suggestionsOf({ features: [KHALIL_160] }, '160 khalil gibran'), wantedOf('160 khalil gibran')).quality).toBe('door');
+  });
+});

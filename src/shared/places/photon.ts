@@ -1,7 +1,8 @@
 /* Addresses from Photon (OpenStreetMap search, photon.komoot.io): its answers written the Québec way,
    « 1250 rue Graham, Mont-Royal, QC H3P 2C9 », with the position for the planner and the map. */
-import { postalCode, provinceOfPostal, civicNumber, findPostal } from '../../lib/text';
-import type { PlaceValue } from './AddressField';
+import { postalCode, provinceOfPostal, findPostal, fold } from '../../lib/text';
+import { civicOf, unitApart } from './address';
+import type { PlaceValue } from './place';
 
 export interface PhotonFeature {
   geometry?: { coordinates?: number[] | null } | null;
@@ -36,7 +37,6 @@ const PROVINCES: Record<string, string> = {
   manitoba: 'MB', saskatchewan: 'SK', alberta: 'AB', 'colombie-britannique': 'BC', 'british columbia': 'BC', yukon: 'YT',
   'territoires du nord-ouest': 'NT', 'northwest territories': 'NT', nunavut: 'NU'
 };
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 export function provinceCode(state: string | null | undefined, postal?: string | null): string | null {
   if (state) {
     const s = fold(state);
@@ -121,7 +121,7 @@ export function suggestionOf(f: PhotonFeature, typedCivic: string | null = null)
 export function suggestionsOf(json: unknown, query: string): Suggestion[] {
   const feats = (json as { features?: PhotonFeature[] } | null)?.features;
   if (!Array.isArray(feats)) return [];
-  const civic = civicNumber(query);
+  const civic = civicOf(query);
   const all = feats.map((f) => suggestionOf(f, civic)).filter((s): s is Suggestion => !!s);
   // the exact door first, then the streets; the same door in the same city only once
   all.sort((a, b) => Number(b.exact) - Number(a.exact));
@@ -131,7 +131,7 @@ export function suggestionsOf(json: unknown, query: string): Suggestion[] {
 
 /** what is sent to Photon: the street line (no unit, no postal code, which it reads badly) */
 export function photonQuery(address: string): string {
-  let s = address.replace(/\s+/g, ' ').trim();
+  let s = unitApart(address.replace(/\s+/g, ' ')).line;
   const pc = findPostal(s);
   if (pc) s = s.replace(new RegExp(pc.replace(' ', '\\s?-?'), 'i'), ' ');
   return s.replace(/\s+,/g, ',').replace(/[,\s]+$/, '').replace(/\s{2,}/g, ' ').trim();
