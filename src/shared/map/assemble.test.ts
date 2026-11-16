@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { assemble, normalize, minuteOf, PALETTE, type TeamMapAnswer } from './assemble';
 
 const HOME = { lat: 45.5005, lng: -73.6577, label: 'Centrale', address: '8255 av. Mountain Sights' };
-const at = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+// a moment of a November day in Montréal (UTC-5), written so the tests give the same answer in any time zone
+// (before the rebuild this helper used the phone's own zone, the bug map-hours-23 was hidden by it)
+const at = (h: number, m: number) => `2026-11-16T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00-05:00`;
 
 function answer(): TeamMapAnswer {
   return {
@@ -159,5 +161,68 @@ describe('the map with « Plages d\'arrivée » (block \'day\')', () => {
   });
   it('an answer without windows (blocks, or an older server) is read as before', () => {
     expect(normalize(answer()).jobs.every((j) => !('win_start' in j))).toBe(true);
+  });
+});
+
+describe('team map: the person is tied to what he is doing, not to the truck he usually drives (« Routes partagées »)', () => {
+  // Adam usually drives the Voiture; today he drives the Camion to Amira, while Saleh works at Patrick's with the Voiture
+  function swapped(): TeamMapAnswer {
+    return {
+      home: HOME,
+      trucks: [{ id: 't-camion', name: 'Camion', color: '#D3000E', driver_id: 'u-saleh' }, { id: 't-voiture', name: 'Voiture', color: '#2F6FD0', driver_id: 'u-adam' }],
+      jobs: [
+        { id: 'x', number: 1, truck_id: 't-camion', order: 1, eta_min: 600, status: 'en_route', block: 'am', name: 'Amira', address: null, lat: 45.53, lng: -73.67 },
+        { id: 'y', number: 2, truck_id: 't-voiture', order: 1, eta_min: 590, status: 'on_site', block: 'am', name: 'Patrick', address: null, lat: 45.47, lng: -73.62 }
+      ],
+      people: [
+        { id: 'u-adam', name: 'Adam', color: null, lat: 45.51, lng: -73.66, at: at(10, 0), job_id: 'x' },
+        { id: 'u-saleh', name: 'Saleh', color: null, lat: 45.4701, lng: -73.6201, at: at(10, 0), job_id: 'y' }
+      ],
+      trips: [{ job_id: 'x', staff_id: 'u-adam', eta_at: at(10, 20), km: 4, minutes: 9, route: null }]
+    };
+  }
+  it('Adam is drawn where his phone is, on his way to Amira with the Camion; Saleh is at Patrick’s with the Voiture', () => {
+    const m = assemble(swapped());
+    const adam = m.people.find((p) => p.id === 'u-adam')!;
+    expect(adam.onSite).toBeNull();
+    expect([adam.lat, adam.lng]).toEqual([45.51, -73.66]);
+    expect(adam.truckId).toBe('t-camion');
+    const saleh = m.people.find((p) => p.id === 'u-saleh')!;
+    expect(saleh.onSite).toEqual({ jobId: 'y', name: 'Patrick' });
+    expect(saleh.truckId).toBe('t-voiture');
+  });
+  it('the Camion’s trip without a road starts from Adam, who drives it, not from Saleh, its usual driver', () => {
+    const camion = assemble(swapped()).trucks.find((t) => t.id === 't-camion')!;
+    expect(camion.legs[0]).toEqual({ points: [[45.51, -73.66], [45.53, -73.67]], kind: 'trip' });
+  });
+  it('a position with no job never takes a job someone else’s phone is at', () => {
+    const a = swapped();
+    a.people[0] = { ...a.people[0], job_id: null };
+    a.trips = [];
+    const adam = assemble(a).people.find((p) => p.id === 'u-adam')!;
+    expect(adam.onSite).toBeNull();                 // « y » is Saleh's, even though Adam is the Voiture's driver
+    expect([adam.lat, adam.lng]).toEqual([45.51, -73.66]);
+  });
+});
+
+describe('team map: times in Montréal whatever the phone’s time zone', () => {
+  it('reads a moment as Montréal minutes (winter and summer)', () => {
+    expect(minuteOf('2026-11-16T15:40:00Z')).toBe(10 * 60 + 40);   // UTC-5
+    expect(minuteOf('2026-07-16T14:40:00Z')).toBe(10 * 60 + 40);   // UTC-4
+    expect(minuteOf('2026-11-16T05:05:00Z')).toBe(5);              // just after midnight
+  });
+});
+
+describe('team map: one order of the stops', () => {
+  it('a stop done out of order comes before the stops still to do in its block', () => {
+    const m = assemble({
+      home: HOME, trucks: [{ id: 't1', name: 'Camion', color: null, driver_id: null }], people: [], trips: [],
+      jobs: [
+        { id: 'first', number: 1, truck_id: 't1', order: 1, eta_min: 500, status: 'booked', block: 'am', name: 'A', address: null, lat: 45.5, lng: -73.6 },
+        { id: 'done', number: 2, truck_id: 't1', order: 2, eta_min: 560, status: 'done', block: 'am', name: 'B', address: null, lat: 45.51, lng: -73.61 },
+        { id: 'pm', number: 3, truck_id: 't1', order: 1, eta_min: 760, status: 'booked', block: 'pm', name: 'C', address: null, lat: 45.52, lng: -73.62 }
+      ]
+    });
+    expect(m.trucks[0].stops.map((s) => [s.id, s.n])).toEqual([['done', 1], ['first', 2], ['pm', 3]]);
   });
 });

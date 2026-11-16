@@ -3,6 +3,7 @@
    never slides it to the other vehicle by itself: Horaires asks (CloseDaySheet). Pure. */
 import { dow, type Block, type Day, type Range } from '../../lib/dates';
 import type { Job, Truck } from '../../data/types';
+import { compareStops, type Orderable } from '../../shared/map/stopOrder';
 
 /** these hours still cover a part of that block */
 export const blockOpen = (rs: Range[] = [], b: Block) => rs.some(([s, e]) => s < b.end && e > b.start);
@@ -21,11 +22,10 @@ export function jobOpen(rs: Range[] = [], j: Timed, blockOf: (k: Job['block']) =
   const win: Range = j.win_start != null && j.win_end != null ? [j.win_start, j.win_end] : [day?.start ?? 0, day?.end ?? 1440];
   return windowOpen(rs, win, j.duration_min || 0);
 }
-const ORDER: Record<string, number> = { am: 0, pm: 1, eve: 2 };
-/** inside a day: morning, afternoon, evening; the jobs booked by arrival window by their stop, then their arrival */
-const inDay = (a: Job, b: Job) => (a.block === 'day' && b.block === 'day'
-  ? (a.stop_order ?? 999) - (b.stop_order ?? 999) || (a.eta_min ?? a.win_start ?? 9999) - (b.eta_min ?? b.win_start ?? 9999)
-  : (ORDER[a.block] ?? 9) - (ORDER[b.block] ?? 9) || (a.stop_order ?? 999) - (b.stop_order ?? 999));
+/** a job as the one stop order reads it (a job by arrival window not planned yet: the start of its window) */
+const orderable = (j: Job): Orderable => ({ block: j.block, status: j.status, order: j.stop_order ?? null, etaMin: j.eta_min ?? j.win_start ?? null, number: j.number ?? null });
+/** inside a day: the order of the route, as the map shows it */
+const inDay = (a: Job, b: Job) => compareStops(orderable(a), orderable(b));
 
 /** the booked appointments of this vehicle that the new hours (`week`: the weekdays changed) no longer hold on these dates:
     their block is closed, or (arrival windows) the vehicle can no longer be there inside the window told */

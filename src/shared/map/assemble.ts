@@ -1,7 +1,11 @@
 /* The team map, from the answer of team_map(p_day) (or the same shape built from the phone's copy):
-   for each truck its numbered stops in stop order (matin, après-midi, soir), the route from the Centrale through the
+   for each truck its numbered stops in stop order (stopOrder.ts), the route from the Centrale through the
    stops (straight lines; the active trip's real route when there is one), the live positions of the people.
+   A person is tied to what he is doing (his position's job, his trip), the truck's nominal driver only last: with
+   « Routes partagées » the mechanics swap vehicles during the day.
    Pure functions: no screen, no server (tested in assemble.test.ts). */
+import { TZ } from '../../lib/dates';
+import { sortStops } from './stopOrder';
 
 export type LatLng = [number, number];
 export interface TeamMapAnswer {
@@ -61,9 +65,6 @@ export interface Assembled {
 
 export const PALETTE = ['#D3000E', '#2F6FD0', '#1F8A53', '#B86E00', '#7347D1', '#0F7C82', '#C2185B', '#5D6B78'];
 export const UNPLACED_COLOR = '#5D6B78';
-// a day of arrival windows (every job 'day'): the stop order, then the arrival. Blocks and 'day' jobs never share a day
-// after the switch; if they did, the 'day' ones come after the blocks.
-const BLOCK_ORDER: Record<string, number> = { am: 0, pm: 1, eve: 2, day: 3 };
 
 const num = (x: unknown): number | null => {
   if (x === null || x === undefined || x === '') return null;
@@ -109,20 +110,20 @@ export function normalize(raw: unknown): TeamMapAnswer {
   };
 }
 
-/** minutes after midnight (the phone's clock, Montréal) of a moment */
+let tzClock: Intl.DateTimeFormat | null = null;
+/** minutes after midnight in Montréal of a moment: the planned arrivals of the server are Montréal minutes, so a live
+    arrival must be too, whatever the time zone the phone is set to */
 export function minuteOf(iso: string | null | undefined): number | null {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.getHours() * 60 + d.getMinutes();
+  if (Number.isNaN(d.getTime())) return null;
+  tzClock ??= new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+  const parts = tzClock.formatToParts(d);
+  const part = (type: string) => Number(parts.find((x) => x.type === type)?.value);
+  const h = part('hour'), m = part('minute');
+  return Number.isFinite(h) && Number.isFinite(m) ? (h % 24) * 60 + m : null;
 }
 
-function sortStops<T extends { block: string; order: number | null; etaMin: number | null; number: number | null }>(list: T[]): T[] {
-  return list.slice().sort((a, b) =>
-    ((BLOCK_ORDER[a.block] ?? 9) - (BLOCK_ORDER[b.block] ?? 9))
-    || ((a.order ?? 999) - (b.order ?? 999))
-    || ((a.etaMin ?? 9999) - (b.etaMin ?? 9999))
-    || ((a.number ?? 0) - (b.number ?? 0)));
-}
 const near = (a: LatLng, b: LatLng) => Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
 
 export interface AssembleOptions {
@@ -162,6 +163,8 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
     const next = stops.find((s) => !s.done) || null;
     const trip = (next && myTrips.find((tr) => tr.jobId === next.id)) || myTrips[0] || null;
     const driverPerson = t.driver_id ? a.people.find((p) => p.id === t.driver_id) : undefined;
+    // a trip without its road starts from the person who drives it, not from whoever is the truck's nominal driver
+    const tripPerson = (tr: TripInfo) => (tr.staffId ? a.people.find((p) => p.id === tr.staffId) : undefined) ?? driverPerson;
     const legs: Leg[] = [];
     const start = t.start ? { lat: t.start.lat, lng: t.start.lng, label: t.start.label || '', address: t.start.address || '' } : null;
     const from: LatLng | null = start ? [start.lat, start.lng] : homePt;
@@ -173,7 +176,8 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
       if (tr) {
         let pts: LatLng[] = tr.route.length >= 2 ? tr.route.slice() : [];
         if (!pts.length) {
-          const from: LatLng | null = driverPerson ? [driverPerson.lat, driverPerson.lng] : prev;
+          const who = tripPerson(tr);
+          const from: LatLng | null = who ? [who.lat, who.lng] : prev;
           pts = from ? [from, to] : [];
         }
         if (pts.length && !near(pts[pts.length - 1], to)) pts.push(to);
@@ -193,11 +197,20 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
 
   const unplaced: Stop[] = sortStops(a.jobs.filter((j) => !j.truck_id || !truckIds.has(j.truck_id)).map(toStop)).map((s, k) => ({ ...s, n: k + 1 }));
 
+  const jobOf = (id: string | null | undefined) => (id ? a.jobs.find((j) => j.id === id) : undefined);
+  // the jobs someone's phone says he is at: never given to another person as « his truck's job on site »
+  const claimed = new Set(a.people.map((p) => p.job_id).filter((id): id is string => !!id));
   const people: Person[] = a.people.map((p, i) => {
-    const tr = a.trucks.find((t) => t.driver_id === p.id) || (p.job_id ? a.trucks.find((t) => a.jobs.some((j) => j.id === p.job_id && j.truck_id === t.id)) : undefined);
+    const posJob = jobOf(p.job_id);
+    const tripJob = jobOf(a.trips.find((x) => x.staff_id === p.id)?.job_id);
+    const linked = posJob || tripJob;
+    // his truck: the one of the job he is at or driving to; the truck he is the nominal driver of only when nothing says more
+    const tr = (linked?.truck_id ? a.trucks.find((t) => t.id === linked.truck_id) : undefined) || (!linked ? a.trucks.find((t) => t.driver_id === p.id) : undefined);
     const truckColor = tr ? (trucks.find((x) => x.id === tr.id)?.color || tr.color) : null;
-    // on site: the job he is working at (his position's job, else his truck's job on site), and he is shown at that address
-    const site = a.jobs.find((j) => j.status === 'on_site' && (j.id === p.job_id || (!!tr && j.truck_id === tr.id)));
+    // on site: the job of his own position; a position without a job (the phone slept while he works) takes his truck's
+    // job on site that nobody else's phone is at
+    const site = posJob ? (posJob.status === 'on_site' ? posJob : undefined)
+      : !tripJob && tr ? a.jobs.find((j) => j.status === 'on_site' && j.truck_id === tr.id && !claimed.has(j.id)) : undefined;
     const at = site && okLat(site.lat) && okLng(site.lng) ? { lat: site.lat as number, lng: site.lng as number } : { lat: p.lat, lng: p.lng };
     return {
       id: p.id, name: p.name || nameOf(p.id) || '', color: p.color || truckColor || PALETTE[(i + 3) % PALETTE.length],
@@ -207,12 +220,4 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
   });
 
   return { home, trucks, unplaced, people, trips, count: a.jobs.length };
-}
-
-/** every point worth keeping in view for one truck (its stops, its driver, its trip) */
-export function pointsOf(truck: TruckRoute, people: Person[]): LatLng[] {
-  const pts: LatLng[] = truck.stops.filter((s) => s.hasPos).map((s) => [s.lat!, s.lng!] as LatLng);
-  const p = people.find((x) => x.id === truck.driverId || x.truckId === truck.id);
-  if (p) pts.push([p.lat, p.lng]);
-  return pts;
 }
