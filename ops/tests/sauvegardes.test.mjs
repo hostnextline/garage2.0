@@ -403,3 +403,129 @@ test('restore with --remplacer: a row that an old backup holds twice does not br
   assert.equal((await q(`select notes from public.customers where id = $1`, [id]))[0].notes, 'avant', 'the row is back as the backup holds it');
   assert.equal((await q(`select count(*)::int n from public.customers where id = $1`, [apres]))[0].n, 1, '--remplacer deletes nothing: a customer made after the backup stays');
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// The restore across a change of the schema (infra-01), the numbers after a restore (infra-05), and the app's
+// « Effacer » undone (infra-06)
+// ---------------------------------------------------------------------------------------------------------------
+/** a backup folder made here: { table: rows } (a _resume.json that counts them) */
+function dossier(nom, tables) {
+  const dos = join(dir, nom, 'donnees');
+  mkdirSync(dos, { recursive: true });
+  for (const [t, rows] of Object.entries(tables)) writeFileSync(join(dos, `${t}.json`), JSON.stringify(rows));
+  writeFileSync(join(dos, '_resume.json'), JSON.stringify({ quand: '2026-11-14T08:23:00.000Z', tables: Object.fromEntries(Object.entries(tables).map(([t, r]) => [t, r.length])) }));
+  return dos;
+}
+/** writes the SQL of a restore and runs it: { code, err } of the script, then psql's error (or '') */
+async function restaurer(dos, args = []) {
+  const r = await lancer('restaurer.mjs', [dos, ...args]);
+  if (r.code !== 0) return { ...r, sql: '' };
+  const f = join(dir, `r-${randomUUID()}.sql`);
+  writeFileSync(f, r.out);
+  try { psql(f); return { ...r, sql: '' }; } catch (e) { return { ...r, sql: String(e.stderr || e.message) }; }
+}
+const sans = (row, ...cles) => { const x = { ...row }; for (const k of cles) delete x[k]; return x; };
+
+test('restore of a backup made BEFORE a column was added: only the backup\'s columns are written (a row put back takes the default, a row replaced keeps its value)', async () => {
+  // two customers as a backup of before « sms_ok » (required, default true) and « email » existed would hold them
+  const [a, b] = (await q(`insert into public.customers (first_name, phone, email, notes, sms_ok) values ('Avant', '4385550201', 'avant@exemple.ca', 'la nuit', false), ('Bientôt', '4385550202', 'b@exemple.ca', 'la nuit', false) returning id`)).map((x) => x.id);
+  clients.push(a, b);
+  const rows = (await q(`select to_jsonb(c) j from public.customers c where id = any($1) order by id`, [[a, b]])).map((x) => sans(x.j, 'sms_ok', 'email'));
+  const dos = dossier('colonnes', { customers: rows });
+  // the day after: « b » deleted for good, « a » changed
+  await q(`delete from public.customers where id = $1`, [b]);
+  await q(`update public.customers set notes = 'changée' where id = $1`, [a]);
+  // default mode: « b » comes back, with the default of the column the backup did not know (before: not-null error, nothing restored)
+  const r = await restaurer(dos, ['--tables', 'customers']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.sql, '', 'the SQL ran: ' + r.sql);
+  const bb = (await q(`select sms_ok, email, notes from public.customers where id = $1`, [b]))[0];
+  assert.ok(bb, '« b » is back');
+  assert.equal(bb.sms_ok, true, 'a column added after the backup takes its default');
+  assert.equal(bb.email, null);
+  assert.equal(bb.notes, 'la nuit');
+  // --remplacer: « a » goes back to the night's notes, and keeps what the backup did not know (before: email set to null)
+  const r2 = await restaurer(dos, ['--tables', 'customers', '--remplacer']);
+  assert.equal(r2.code, 0, r2.err);
+  assert.equal(r2.sql, '', 'the SQL ran: ' + r2.sql);
+  const aa = (await q(`select sms_ok, email, notes from public.customers where id = $1`, [a]))[0];
+  assert.equal(aa.notes, 'la nuit', 'the backup\'s value is back');
+  assert.equal(aa.email, 'avant@exemple.ca', 'a column the backup did not have is left as it is');
+  assert.equal(aa.sms_ok, false, 'a required column the backup did not have is left as it is');
+});
+
+test('restore: a required column with no default that the backup did not have stops everything, names it, and changes nothing', async () => {
+  const c = randomUUID();
+  const ligne = (await q(`select to_jsonb(x) j from (select $1::uuid as id, 'Sans note'::text as first_name, '4385550203'::text as phone, 'fr'::text as lang, now() as created_at, now() as updated_at) x`, [c]))[0].j;
+  clients.push(c);
+  const note = { id: randomUUID(), customer_id: c, created_at: '2026-11-14T10:00:00Z', updated_at: '2026-11-14T10:00:00Z', deleted_at: null };   // no « body »
+  const dos = dossier('requise', { customers: [ligne], customer_notes: [note] });
+  const r = await restaurer(dos, ['--tables', 'customers,customer_notes']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.sql, /la colonne customer_notes\.body est obligatoire et sans valeur par défaut, mais elle n'existait pas encore dans cette sauvegarde/);
+  assert.equal((await q(`select count(*)::int n from public.customers where id = $1`, [c]))[0].n, 0, 'nothing was changed: the customer of the same restore did not come in either');
+});
+
+test('restore: the numbers taken from a sequence go UP to the highest restored one (a fresh database), never down', async () => {
+  // an activity row of a backup whose id is ahead of this database's sequence (what every row is in a new project)
+  const seq = Number((await q(`select last_value from public.activity_id_seq`))[0].last_value);
+  const id = seq + 500;
+  const act = (await q(`select to_jsonb(x) j from (select $1::bigint as id, 'restau-test'::text as action, 'customer'::text as entity, now() as at) x`, [id]))[0].j;
+  // jobs: the restore must not bring job_number_seq down to the highest job number (numbers given then rolled back)
+  await q(`select nextval('public.job_number_seq') from generate_series(1, 3)`);
+  const avantJobs = Number((await q(`select last_value from public.job_number_seq`))[0].last_value);
+  const dos = dossier('sequences', { jobs: [], activity: [act] });
+  try {
+    const r = await restaurer(dos, ['--tables', 'jobs,activity']);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.sql, '', 'the SQL ran: ' + r.sql);
+    assert.ok(Number((await q(`select last_value from public.activity_id_seq`))[0].last_value) >= id, 'activity_id_seq is past the restored row');
+    const neuf = (await q(`insert into public.activity (action, entity) values ('restau-test', 'customer') returning id`))[0].id;
+    assert.ok(Number(neuf) > id, 'the next row takes a new number: no duplicate key');
+    assert.equal(Number((await q(`select last_value from public.job_number_seq`))[0].last_value), avantJobs, 'job_number_seq never goes down');
+  } finally {
+    await q(`delete from public.activity where action = 'restau-test'`);
+  }
+});
+
+test('restore --retablir: the app\'s « Effacer » undone on the rows asked (deleted_at empty, updated_at new: the phones see them), nothing else written', async () => {
+  const [d, e] = (await q(`insert into public.customers (first_name, phone, notes) values ('Effacé', '4385550204', 'la nuit'), ('Effacé aussi', '4385550205', 'la nuit') returning id`)).map((x) => x.id);
+  clients.push(d, e);
+  const rows = (await q(`select to_jsonb(c) j from public.customers c where id = any($1)`, [[d, e]])).map((x) => x.j);
+  const dos = dossier('retablir', { customers: rows });
+  // the day after: a note changed, then both deleted the app's way
+  await q(`update public.customers set notes = 'du jour' where id = $1`, [d]);
+  await q(`update public.customers set deleted_at = now() where id = any($1)`, [[d, e]]);
+  const avant = (await q(`select updated_at from public.customers where id = $1`, [d]))[0].updated_at;
+  // the default restore brings back nothing the app deleted (the row is still there): said in the README
+  const r0 = await restaurer(dos, ['--tables', 'customers']);
+  assert.equal(r0.sql, '', r0.sql);
+  assert.ok((await q(`select deleted_at from public.customers where id = $1`, [d]))[0].deleted_at, 'the default mode does not undelete');
+  const r = await restaurer(dos, ['--tables', 'customers', '--ids', d, '--retablir']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.sql, '', 'the SQL ran: ' + r.sql);
+  assert.ok(!/session_replication_role/.test(r.out), 'the automatic steps stay on');
+  const dd = (await q(`select deleted_at, notes, updated_at from public.customers where id = $1`, [d]))[0];
+  assert.equal(dd.deleted_at, null, 'back in the app');
+  assert.equal(dd.notes, 'du jour', 'nothing of the backup is written over the row');
+  assert.ok(new Date(dd.updated_at) > new Date(avant), 'updated_at is new: every phone pulls it again');
+  assert.ok((await q(`select deleted_at from public.customers where id = $1`, [e]))[0].deleted_at, 'a row not asked for stays deleted');
+  // mistakes are said, nothing is written
+  const m1 = await lancer('restaurer.mjs', [dos, '--retablir']);
+  assert.equal(m1.code, 1); assert.match(m1.err, /--retablir demande --tables/);
+  const m2 = await lancer('restaurer.mjs', [dos, '--tables', 'customers', '--ids', randomUUID()]);
+  assert.equal(m2.code, 1); assert.match(m2.err, /cet id n'est dans aucun des fichiers nommés/);
+  const m3 = await lancer('restaurer.mjs', [dos, '--ids', d]);
+  assert.equal(m3.code, 1); assert.match(m3.err, /--ids demande --tables/);
+  const m4 = await lancer('restaurer.mjs', [dos, '--tables', 'customers', '--remplacer', '--retablir']);
+  assert.equal(m4.code, 1); assert.match(m4.err, /ne vont pas ensemble/);
+  const deja = dossier('retablir-deja', { customers: rows.map((x) => (x.id === e ? { ...x, deleted_at: '2026-11-13T12:00:00Z' } : x)) });
+  const m5 = await lancer('restaurer.mjs', [deja, '--tables', 'customers', '--ids', e, '--retablir']);
+  assert.equal(m5.code, 1); assert.match(m5.err, /était déjà effacé le soir de la sauvegarde/);
+  // --ids with --remplacer: only that row goes back to the night
+  await q(`update public.customers set notes = 'du jour' where id = any($1)`, [[d, e]]);
+  const r6 = await restaurer(dos, ['--tables', 'customers', '--ids', d, '--remplacer']);
+  assert.equal(r6.sql, '', r6.sql);
+  assert.equal((await q(`select notes from public.customers where id = $1`, [d]))[0].notes, 'la nuit');
+  assert.equal((await q(`select notes from public.customers where id = $1`, [e]))[0].notes, 'du jour', 'the other row is untouched');
+});
