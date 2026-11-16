@@ -123,3 +123,64 @@ describe('Réserver en ligne, « Plages d’arrivée »', () => {
     expect(q('book-slot')).toHaveLength(2);
   });
 });
+
+describe('Réserver en ligne, when something goes wrong', () => {
+  it('a failed first request of the moments says so with « Réessayer », never « Aucun autre moment libre » (client-page-08)', async () => {
+    let fail = true;
+    answer = (a) => {
+      if (a === 'info') return info(false);
+      if (a === 'slots') { if (fail) throw new ClientError('network', 'Failed to fetch'); return { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] }; }
+      return {};
+    };
+    await toSlots();
+    expect(sp(box.textContent)).toContain('Pas de réseau');
+    expect(sp(box.textContent)).not.toContain('Aucun autre moment libre');
+    expect(q('book-more')).toHaveLength(0);
+    fail = false;
+    await click(q('book-retry')[0]);
+    expect(q('book-slot')).toHaveLength(1);
+    expect(q('book-retry')).toHaveLength(0);
+  });
+  it('« busy » (429) on the moments: the words and « Réessayer », not « no moment » (client-page-08)', async () => {
+    answer = (a) => { if (a === 'info') return info(false); if (a === 'slots') throw new ClientError('busy', 'x'); return {}; };
+    await toSlots();
+    expect(sp(box.textContent)).toContain('beaucoup de réservations');
+    expect(q('book-retry')).toHaveLength(1);
+    expect(sp(box.textContent)).not.toContain('Aucun autre moment libre');
+  });
+  it('« Voir d’autres dates » looks past an empty fortnight instead of giving up (client-page-14)', async () => {
+    answer = (a, b) => {
+      if (a === 'info') return info(false);
+      if (a === 'slots') {
+        if (!b.from) return { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] };
+        // the next two weeks are closed (holidays); the fortnight after has room
+        return { ok: true, from: b.from, days: 14, slots: String(b.from) >= D(28) ? [{ day: D(30), block: 'am', near: false }] : [] };
+      }
+      return {};
+    };
+    await toSlots();
+    await click(q('book-more')[0]);
+    await wait();
+    expect(q('book-slot')).toHaveLength(2);
+    expect(sp(box.textContent)).not.toContain('Aucun autre moment libre');
+    expect(q('book-more')).toHaveLength(1);
+  });
+  it('an answer without the customer’s link is not « C’est réservé » (client-page-17)', async () => {
+    answer = (a, b) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] }
+      : { ok: true, link: null, day: b.day, block: b.block, text: 'skipped' };
+    await toSlots();
+    await click(q('book-slot')[0]);
+    await fillContact();
+    expect(q('book-done')).toHaveLength(0);
+    expect(q('book-unconfirmed')).toHaveLength(1);
+    expect(sp(box.textContent)).not.toContain('C’est réservé');
+  });
+  it('the first « Réserver » with a field missing puts the focus on it (client-page-27)', async () => {
+    answer = (a) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] } : {};
+    await toSlots();
+    await click(q('book-slot')[0]);
+    await click(q('book-submit')[0]);
+    expect(document.activeElement).toBe(q('book-first')[0]);
+    expect(calls.some((c) => c.action === 'book')).toBe(false);
+  });
+});

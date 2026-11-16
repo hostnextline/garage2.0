@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextFrom, mergeSlots, stepNumber, serviceName,
-  EMPTY_CONTACT, windowMode, dayOffers, flexSlot, slotWindow, slotKey, bookWhen, type WebService, type WebSlot } from './book-state';
+  EMPTY_CONTACT, windowMode, dayOffers, flexSlot, slotWindow, slotKey, bookWhen, afterPage, pastHorizon, whenWords, bookedWhen, type WebService, type WebSlot } from './book-state';
 import { parseLink } from '../link';
 import { ct } from '../i18n';
 import { onTypedStreet } from './book-state';
@@ -141,5 +141,45 @@ describe('Réserver en ligne: « Plages d’arrivée »', () => {
     }
     expect(ct('fr', 'book.slots.flex')).toBe('Je suis disponible toute la journée');
     expect(ct('fr', 'book.slots.otherHours')).toBe('Voir d’autres heures');
+  });
+});
+
+describe('Réserver en ligne: « Voir d’autres dates » to the horizon (client-page-14)', () => {
+  const T = '2026-12-14';
+  it('a later fortnight with nothing free is skipped by itself, a few at a time', () => {
+    // the holidays: the page of the 28th is empty; the page looks at the next fortnight at once
+    expect(afterPage('2026-12-28', 0, T, 120, 0, 3)).toEqual({ next: '2027-01-11', again: true, end: false });
+    // after a few skips the page stops asking (the server counts each ask) but « Voir d’autres dates » stays
+    expect(afterPage('2027-01-11', 0, T, 120, 3, 3)).toEqual({ next: '2027-01-25', again: false, end: false });
+  });
+  it('says « Aucun autre moment libre » only past the garage’s horizon', () => {
+    expect(afterPage('2027-04-05', 0, T, 120, 0, 3)).toEqual({ next: '2027-04-19', again: false, end: true });
+    expect(pastHorizon('2027-04-19', T, 120)).toBe(true);
+    expect(pastHorizon('2027-01-11', T, 120)).toBe(false);
+    // an older server without horizon_days: 120 days
+    expect(pastHorizon('2027-01-11', T, undefined)).toBe(false);
+  });
+  it('the first page, empty or not, is never skipped nor the end', () => {
+    expect(afterPage(null, 0, T, 120, 0, 3)).toEqual({ next: '2026-12-28', again: false, end: false });
+    expect(afterPage('2026-12-28', 2, T, 120, 0, 3)).toEqual({ next: '2027-01-11', again: false, end: false });
+  });
+});
+
+describe('Réserver en ligne: the words of a moment', () => {
+  const BLOCKS = [{ key: 'pm', start: 720, end: 960 }];
+  const sp = (s: string) => s.replace(/\s/g, ' ');
+  it('a block by its hours, a window, or « Dans la journée »', () => {
+    expect(sp(whenWords({ block: 'pm' }, BLOCKS, 'fr'))).toBe('Entre 12 h et 16 h');
+    expect(whenWords({ block: 'eve' }, BLOCKS, 'fr')).toBe('Soir');
+    expect(sp(whenWords({ block: 'day', win_start: 540, win_end: 780 }, BLOCKS, 'fr'))).toBe('Entre 9 h et 13 h');
+    expect(whenWords({ block: 'day', flex: true }, BLOCKS, 'en')).toBe('During the day');
+  });
+  it('the moment the server kept: its window, else the window chosen (older server), else flexible', () => {
+    const chosen = { day: '2026-11-20', block: 'day', near: false, win_start: 540, win_end: 780 };
+    const done = { ok: true as const, link: 'x', day: '2026-11-20', block: 'day', text: 'sent' };
+    expect(bookedWhen({ ...done, win_start: 600, win_end: 840 }, chosen)).toEqual({ block: 'day', win_start: 600, win_end: 840 });
+    expect(bookedWhen(done, chosen)).toBe(chosen);
+    expect(bookedWhen({ ...done, flex: true }, chosen)).toEqual({ block: 'day', flex: true });
+    expect(bookedWhen({ ...done, block: 'pm' }, null)).toMatchObject({ block: 'pm' });
   });
 });
