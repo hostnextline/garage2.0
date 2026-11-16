@@ -11,6 +11,8 @@
 import { serve, json, body, fail } from '../_shared/http.ts';
 import { adminDb, settings, secret } from '../_shared/db.ts';
 import { sha256hex, newToken } from '../_shared/tokens.ts';
+import { sumLines } from '../_shared/money.ts';
+import { visitorMark } from '../_shared/visitor.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
 import { money, fill, first, type Lang, servicesList, subtotalWords, whenText, jobWindow } from '../_shared/texts.ts';
@@ -24,6 +26,13 @@ function garageOf(s: Row) {
   return { name: s.company?.name || 'Mécanique Mobile H.I.S', phone: s.company?.phone || null, email: s.company?.email || null,
     address: s.company?.address || null };
 }
+/** a real day of the calendar written YYYY-MM-DD (never « 2026-02-31 ») */
+function realDay(x: unknown): boolean {
+  if (typeof x !== 'string' || !DAY.test(x)) return false;
+  const [y, m, d] = x.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
 function num(x: unknown): number | null { const n = Number(x); return x === null || x === undefined || x === '' || !Number.isFinite(n) ? null : n; }
 function services(x: unknown): string[] {
   return Array.isArray(x) ? [...new Set(x.map(String).filter((v) => UUID.test(v)))].slice(0, 10) : [];
@@ -33,11 +42,9 @@ async function rpc(name: string, args: Row) {
   if (error) throw error;
   return data;
 }
-/** who is asking, as a fingerprint (never the address itself) */
-async function ipOf(req: Request): Promise<string | null> {
-  const ip = (req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || '').split(',')[0].trim();
-  return ip ? (await sha256hex(`web-book:${ip}`)).slice(0, 24) : null;
-}
+/** who is asking, as a fingerprint for the day (never the address itself; made with a secret of the server, so the
+    address cannot be found back from it) */
+const ipOf = (req: Request): Promise<string | null> => visitorMark(req, 'web-book', true);
 /** the brake: false when this visitor (or everyone) asked too often */
 async function allowed(key: string, windowSec: number, max: number): Promise<boolean> {
   return (await rpc('rate_hit', { p_key: key, p_window_sec: windowSec, p_max: max })) === true;
@@ -46,12 +53,8 @@ async function allowed(key: string, windowSec: number, max: number): Promise<boo
 async function robot(ip: string | null, reason: string) {
   try { await adminDb().from('activity').insert({ entity: 'web', entity_id: null, action: 'web_robot', data: { reason, ip } }); } catch { /* a log only */ }
 }
-function taxed(lines: Row[], s: Row): number {
-  let sub = 0, tx = 0;
-  for (const l of lines) { const t = Math.round(Number(l.qty || 1) * Number(l.unit_cents || 0)); sub += t; if (l.taxable !== false) tx += t; }
-  const on = s.taxes?.enabled !== false && tx > 0;
-  return sub + (on ? Math.round(tx * (s.taxes?.tps ?? 0.05)) + Math.round(tx * (s.taxes?.tvq ?? 0.09975)) : 0);
-}
+/** the total of lines, the same way everywhere (a discount counts negative): _shared/money.ts */
+const taxed = (lines: Row[], s: Row): number => sumLines(lines, s).total;
 
 async function info() {
   const s = await settings();
@@ -89,6 +92,8 @@ async function book(req: Request, b: Row) {
   }
   // a person may fumble a few times (phone, address…); a script making customers by the dozen may not
   if (!(await allowed(`book:${ip || 'noip'}`, 3600, 12))) fail('busy', BUSY, 429);
+  // a day that is not a date never reaches the database (it answered « the server had a problem »)
+  if (!realDay(b.day)) fail('bad_block', 'Choisissez une date dans la liste.');
   const lang: Lang = b.lang === 'en' ? 'en' : 'fr';
   // the customer's link is made with the booking itself (same transaction): a job never exists without it
   const token = newToken(24);
@@ -131,7 +136,8 @@ async function book(req: Request, b: Row) {
       const { data: items } = await db.from('job_items').select('description, kind, qty, unit_cents, taxable, status, sort').eq('job_id', jobId).is('deleted_at', null).order('sort');
       const cardOn = !!(await secret('stripe_key'));
       const message = fill(w.tpl, {
-        prenom: first(cu.first_name || b.first_name) || '', garage: s.company?.name || 'Mécanique Mobile H.I.S', telephone: s.company?.phone || '',
+        // the person who booked is greeted by the name they typed (a spouse on a shared number is not « Bonjour Marc »)
+        prenom: first(typeof b.first_name === 'string' ? b.first_name : '') || first(cu.first_name) || '', garage: s.company?.name || 'Mécanique Mobile H.I.S', telephone: s.company?.phone || '',
         ...w.vars,
         payer: '', total: money(taxed((items || []) as Row[], s), lang), lien: link,
         services: servicesList((items || []) as never, lang), soustotal: subtotalWords((items || []) as never, lang)
