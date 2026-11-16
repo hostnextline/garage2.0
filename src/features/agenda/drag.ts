@@ -29,47 +29,49 @@ export interface Drag {
   take: () => Job | null;
 }
 
+/** the drag's functions, made once per grid (the memoised columns and blocks keep them); `setJob` tells the grid which
+    job is dragged (it redraws then), `say` speaks a refusal */
+export function makeDrag(setJob: (j: Job | null) => void, say: (words: string) => void = (w) => toast(w)): Omit<Drag, 'job'> {
+  const over = signal<Over | null>(null);
+  let dragged: Job | null = null;
+  let refused: { why: Refusal; whole: boolean } | null = null;
+  const clear = () => { refused = null; dragged = null; setJob(null); over.value = null; };
+  return {
+    over,
+    hover: (o, why, whole) => {
+      refused = why && why !== 'same' ? { why, whole } : null;
+      const cur = over.peek();
+      if (!cur || cur.key !== o.key || cur.minute !== o.minute || cur.ok !== o.ok) over.value = o;
+    },
+    leave: (key) => {
+      refused = null;
+      if (over.peek()?.key === key) over.value = null;
+    },
+    start: (j, e) => {
+      if (!e.dataTransfer) return;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', j.id);
+      dragged = j;
+      // let the browser take the picture of the job before the grid changes
+      setTimeout(() => { if (dragged === j) setJob(j); }, 0);
+    },
+    end: () => {
+      const r = refused;
+      clear();
+      if (!r) return;
+      if (r.why === 'started') say(t(r.whole ? 'agenda.move.startedDay' : 'agenda.move.started'));
+      else if (r.why === 'closed') say(t(r.whole ? 'agenda.move.closedDay' : 'agenda.move.closed'));
+      else if (r.why === 'not_booked') say(t('agenda.move.notBooked'));
+      else if (r.why === 'past') say(t('agenda.move.pastTime'));
+    },
+    take: () => { const j = dragged; clear(); return j; }
+  };
+}
+
 export function useGridDrag(): Drag {
   const [job, setJob] = useState<Job | null>(null);
-  // the same functions for the whole life of the grid (the memoised columns and blocks keep them); they read the job
-  // being dragged from a ref, set with the state
-  const jobRef = useRef<Job | null>(null);
   const fns = useRef<Omit<Drag, 'job'> | null>(null);
-  if (!fns.current) {
-    const over = signal<Over | null>(null);
-    let refused: { why: Refusal; whole: boolean } | null = null;
-    const clear = () => { refused = null; jobRef.current = null; setJob(null); over.value = null; };
-    fns.current = {
-      over,
-      hover: (o, why, whole) => {
-        refused = why && why !== 'same' ? { why, whole } : null;
-        const cur = over.peek();
-        if (!cur || cur.key !== o.key || cur.minute !== o.minute || cur.ok !== o.ok) over.value = o;
-      },
-      leave: (key) => {
-        refused = null;
-        if (over.peek()?.key === key) over.value = null;
-      },
-      start: (j, e) => {
-        if (!e.dataTransfer) return;
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', j.id);
-        jobRef.current = j;
-        // let the browser take the picture of the job before the grid changes
-        setTimeout(() => { if (jobRef.current === j) setJob(j); }, 0);
-      },
-      end: () => {
-        const r = refused;
-        clear();
-        if (!r) return;
-        if (r.why === 'started') toast(t(r.whole ? 'agenda.move.startedDay' : 'agenda.move.started'));
-        else if (r.why === 'closed') toast(t(r.whole ? 'agenda.move.closedDay' : 'agenda.move.closed'));
-        else if (r.why === 'not_booked') toast(t('agenda.move.notBooked'));
-        else if (r.why === 'past') toast(t('agenda.move.pastTime'));
-      },
-      take: () => { const j = jobRef.current; clear(); return j; }
-    };
-  }
+  if (!fns.current) fns.current = makeDrag(setJob);
   return { job, ...fns.current };
 }
 
