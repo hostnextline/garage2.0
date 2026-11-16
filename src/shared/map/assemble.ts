@@ -26,6 +26,8 @@ export interface Stop {
   block: string; order: number | null; etaMin: number | null; status: string; name: string; address: string;
   /** the window told to the customer of a job booked by arrival window (block 'day'); null: a block job, or no window yet */
   win?: [number, number] | null;
+  /** booked by arrival window with no window yet (« flexible »): known only when the answer says so */
+  flex?: boolean;
   lat: number | null; lng: number | null; hasPos: boolean;
   done: boolean;
   /** the mechanic is on the way or there */
@@ -148,7 +150,8 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
     id: j.id, number: j.number, truckId: j.truck_id, block: j.block, order: j.order, etaMin: j.eta_min, status: j.status,
     name: j.name || '', address: j.address || '', lat: okLat(j.lat) ? j.lat : null, lng: okLng(j.lng) ? j.lng : null,
     hasPos: okLat(j.lat) && okLng(j.lng), done: j.status === 'done', live: j.status === 'en_route' || j.status === 'on_site',
-    ...(j.block === 'day' && j.win_start != null && j.win_end != null ? { win: [j.win_start, j.win_end] as [number, number] } : {})
+    ...(j.block === 'day' && j.win_start != null && j.win_end != null ? { win: [j.win_start, j.win_end] as [number, number] } : {}),
+    ...(j.block === 'day' && j.win_flex === true && (j.win_start == null || j.win_end == null) ? { flex: true } : {})
   });
   const truckIds = new Set(a.trucks.map((t) => t.id));
   const peopleOn = new Set(a.people.map((p) => p.id));
