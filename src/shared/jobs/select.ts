@@ -50,7 +50,7 @@ export function itemsSeen(jobId: string): JobItem[] {
   return answers.size ? list.map((i) => withAnswer(i, answers)) : list;
 }
 /** the cents of this job's payments still waiting on this phone */
-export function paidWaitingOf(j: Pick<Job, 'id'>): number {
+function paidWaitingOf(j: Pick<Job, 'id'>): number {
   return paidWaiting(pendingJobs(), j.id, invoiceOf(j.id)?.id);
 }
 /** « Faire la facture » was asked and waits for signal */

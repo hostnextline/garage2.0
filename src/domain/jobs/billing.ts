@@ -6,7 +6,7 @@ import { lineTotal } from '../../lib/money';
 /** the work that goes on the invoice */
 export const BILLABLE = ['planned', 'done', 'approved'];
 /** a job still coming or under way: its work and its appointment may still change */
-export const OPEN_STATUSES: readonly JobStatus[] = ['booked', 'en_route', 'on_site'];
+const OPEN_STATUSES: readonly JobStatus[] = ['booked', 'en_route', 'on_site'];
 export const isOpen = (s: JobStatus): boolean => OPEN_STATUSES.includes(s);
 
 type ItemLike = Pick<JobItem, 'id' | 'status'> & { deleted_at?: string | null };

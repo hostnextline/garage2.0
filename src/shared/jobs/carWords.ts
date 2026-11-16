@@ -3,6 +3,7 @@ import type { Vehicle, JobItem } from '../../data/types';
 import type { CarFacts } from '../../domain/stock/needs';
 import { oilGrade } from '../../domain/stock/needs';
 import { t } from '../../lib/i18n';
+import { BILLABLE } from '../../domain/jobs/billing';
 
 /** « 2015 Volkswagen Golf » and « 1.8 L TSI, 4 cyl. » */
 export function carLine(v: Pick<Vehicle, 'year' | 'make' | 'model' | 'trim' | 'engine' | 'displacement' | 'cylinders'> | undefined | null): { name: string; detail: string } {
@@ -27,10 +28,11 @@ export function oilLine(f: CarFacts, lang: string): { known: boolean; main: stri
   return { known: !!grade, main: grade ? t('jobs.carFirst.oil', { grade }) : '', sub: [litres, filter].filter(Boolean).join(', '), toConfirm, missing };
 }
 
-/** the work to do: the planned and accepted lines (not the declined ones, not the discounts), else the problem told */
+/** the work to do: the planned and accepted lines, and the proposals still waiting for the customer (the mechanic sees
+    what he may be asked to do); not the declined ones, not the discounts; else the problem told */
 export function workLines(items: Pick<JobItem, 'description' | 'status' | 'kind' | 'qty' | 'deleted_at'>[], problem: string | null | undefined): string[] {
   const out = items
-    .filter((i) => !i.deleted_at && ['planned', 'done', 'approved', 'proposed'].includes(i.status) && i.kind !== 'discount')
+    .filter((i) => !i.deleted_at && (BILLABLE.includes(i.status) || i.status === 'proposed') && i.kind !== 'discount')
     .map((i) => `${Number(i.qty) > 1 ? `${Number(i.qty)} × ` : ''}${i.description}`.trim())
     .filter(Boolean);
   if (!out.length && problem?.trim()) out.push(problem.trim());

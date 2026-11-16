@@ -17,7 +17,7 @@ import { copyText } from '../../shared/jobs/TextOutcome';
 import { stopFirst } from './StopOrderSheet';
 import { afterSheet } from './scroll';
 
-export interface MenuSheetProps {
+interface MenuSheetProps {
   job: Job; rights: JobRights; open: boolean; onClose: () => void;
   onMove: () => void; onOrder: () => void; onCoffre?: () => void; onTruck?: () => void; onEdit?: () => void;
 }
