@@ -33,6 +33,10 @@ const AS_PERSON = [
 ];
 /** made tonight by the daily reconciliation (another migration): open to the team, the check is inside. Present or not. */
 const RECON = ['recon_summary', 'recon_ack', 'recon_now'];
+/** existed before tonight, re-made and opened to the team by an earlier migration of tonight (its check inside):
+ *  lock_windows_due (20261116000200_refonte_planification, the windows locked by the app where there is no pg_cron).
+ *  Open with that migration, closed without it; the D1 loop of 20261116000300 leaves it as it finds it. */
+const TONIGHT = ['lock_windows_due'];
 /** the public key (the customer's tracking page) */
 const ANON = ['public_track'];
 
@@ -46,10 +50,18 @@ test('the signed-in app may run exactly the functions it calls and the ones its 
   const open = await openTo(h, 'authenticated');
   const present = new Set((await h.q(`select distinct proname n from pg_proc where pronamespace = 'public'::regnamespace`)).map((r) => r.n));
   const expected = sorted([...APP, ...AS_PERSON, ...RECON.filter((n) => present.has(n))]);
-  const extra = open.filter((n) => !expected.includes(n));
+  const extra = open.filter((n) => !expected.includes(n) && !TONIGHT.includes(n));
   const missing = expected.filter((n) => !open.includes(n));
   assert.deepEqual(extra, [], 'open to the app but not in the list (close it, or add it to APP / AS_PERSON with the reason): ' + extra.join(', '));
   assert.deepEqual(missing, [], 'in the list but closed to the app: ' + missing.join(', '));
+}));
+
+test('lock_windows_due is open to the team exactly when its version checks the caller (left as srv-planif set it)', () => tx(async (h) => {
+  const r = await h.one(`select has_function_privilege('authenticated', 'public.lock_windows_due()', 'execute') open,
+    pg_get_functiondef('public.lock_windows_due()'::regprocedure) ~ 'is_staff\\(\\)' checks,
+    has_function_privilege('anon', 'public.lock_windows_due()', 'execute') anon`);
+  assert.equal(r.open, r.checks, r.checks ? 'the version that checks the team must stay open to the app' : 'the version that checks nobody must stay closed');
+  assert.equal(r.anon, false);
 }));
 
 test('the public key runs one function, and nothing runs through PUBLIC', () => tx(async (h) => {

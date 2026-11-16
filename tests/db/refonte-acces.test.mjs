@@ -151,6 +151,15 @@ test('sql-misc-04: a settings save never reopens « Réserver en ligne »; only 
   await h.q(`update public.settings set booking = booking - 'web' where id = 1`);
   b = await h.val(`select booking from public.settings where id = 1`);
   assert.equal(b.web?.on, false);
+  // a write with the server key (an Edge Function, a script through the API) does not reopen it either
+  await h.as(null);
+  await h.q(`set local role service_role`);
+  await h.q(`update public.settings set booking = jsonb_set(booking, '{web}', '{"on": true, "max_km": 50}'::jsonb) where id = 1`);
+  await h.q(`reset role`);
+  b = await h.val(`select booking from public.settings where id = 1`);
+  assert.equal(b.web.on, false, 'still closed after a server-key write');
+  assert.equal(b.web.max_km, 50, 'the other numbers of « web » are saved');
+  await h.as(office);
   // the switch
   assert.equal(code(await h.fails(() => h.rpc('web_switch', { p_op: uuid(), p_on: true }))), 'not_allowed');
   await h.as(owner);
@@ -174,6 +183,12 @@ test('x-security-03: a phone number corrected closes the links of the open appoi
     [randomUUID(), job_id, quote_id]);
   const lJob = await link(job, null), lDone = await link(done, null), lQuote = await link(null, q);
   const revoked = async (id) => (await h.val(`select revoked_at from public.public_links where id = $1`, [id])) !== null;
+  // the coming appointment was signed through the link (one tap: estimate + authorization); another one at the door
+  await h.q(`update public.jobs set estimate_signed_at = now(), estimate_signer = 'Un inconnu', estimate_cents = 9999,
+    waiver_signed_at = now(), waiver_signer = 'Un inconnu', waiver_version = '1', waiver_via = 'online' where id = $1`, [job]);
+  const door = await h.val(`insert into public.jobs (customer_id, day, block, status, source) values ($1, $2, 'pm', 'booked', 'phone') returning id`, [g.customer, g.day]);
+  await h.q(`update public.jobs set waiver_signed_at = now(), waiver_signer = 'Jean Tremblay', waiver_version = '1' where id = $1`, [door]);
+  assert.equal(await h.val(`select waiver_via from public.jobs where id = $1`, [door]), 'phone');
   await h.as(g.owner);
   // the same digits written another way: nothing closes
   await h.q(`update public.customers set phone = '(514) 555-1234' where id = $1`, [g.customer]);
@@ -188,6 +203,13 @@ test('x-security-03: a phone number corrected closes the links of the open appoi
   assert.equal(await revoked(lDone), false, 'a finished job keeps its link (the invoice, the card payment)');
   assert.equal(await h.val(`select confirm_sent_at from public.jobs where id = $1`, [job]), null, 'the booking text may go again');
   assert.equal(await h.val(`select count(*)::int from public.activity where entity_id = $1 and action = 'phone_changed'`, [g.customer]), 1);
+  // what was signed through the old number's link no longer counts: signed again at the door; the door's signature stays
+  const s = await h.one(`select estimate_signed_at, estimate_signer, estimate_cents, waiver_signed_at, waiver_signer, waiver_via from public.jobs where id = $1`, [job]);
+  assert.deepEqual(s, { estimate_signed_at: null, estimate_signer: null, estimate_cents: null, waiver_signed_at: null, waiver_signer: null, waiver_via: null });
+  const d = await h.one(`select waiver_signed_at, waiver_signer, waiver_via from public.jobs where id = $1`, [door]);
+  assert.ok(d.waiver_signed_at); assert.equal(d.waiver_signer, 'Jean Tremblay'); assert.equal(d.waiver_via, 'phone');
+  const act = await h.val(`select data from public.activity where entity_id = $1 and action = 'phone_changed'`, [g.customer]);
+  assert.deepEqual(act.signature_removed, [job], 'the office sees which appointment lost its signature');
 }));
 
 // =====================================================================================================================
@@ -255,6 +277,14 @@ test('rights_table for the team only; access_of with the person’s short name, 
   const a = await h.val(`select public.access_of($1)`, [m]);
   assert.equal(a.short_name, 'Adam'); assert.equal(a.color, '#ff0000');
   assert.ok(a.trucks.includes(t1) && a.trucks.includes(t2), '« Routes partagées »: every vehicle');
+  // a value that is not yes / no there never stops the preview
+  await h.as(null);
+  await h.q(`update public.settings set booking = booking || '{"shared_routes": "peut-être"}'::jsonb where id = 1`);
+  await h.as(owner);
+  assert.deepEqual((await h.val(`select public.access_of($1)`, [m])).trucks, [], 'not yes: only the truck the person drives (none)');
+  await h.as(null);
+  await h.q(`update public.settings set booking = booking || '{"shared_routes": true}'::jsonb where id = 1`);
+  await h.as(owner);
   const me = await h.val(`select public.my_access()`);
   assert.ok(Math.abs(new Date(me.now).getTime() - Date.now()) < 120000);
   // a blocked person (session still alive) gets no table of rights
@@ -368,6 +398,24 @@ test('sql-misc-01/05: a phone number alone never puts a job on somebody’s file
   assert.ok(j.vehicle_id, 'a car is made on the new file');
   assert.equal(await h.val(`select count(*)::int from public.vehicles where customer_id = $1`, [known]), 0, 'nothing on the other file');
   assert.equal(await h.val(`select count(*)::int from public.jobs where customer_id = $1`, [known]), 0);
+}));
+
+test('audit A3 (the retry path): « the same booking sent again » needs the same name too; the same phone and address alone never link another person’s appointment', () => tx(async (h) => {
+  const w = await webGarage(h);
+  const t1 = randomUUID(), t2 = randomUUID(), t3 = randomUUID();
+  const a = await w.web(w.form({ token_hash: t1 }));
+  assert.equal(a.ok, true); assert.equal(a.again, false);
+  // the page retried (same person): the job already made, the new link on it
+  const again = await w.web(w.form({ first_name: 'SOPHIE', token_hash: t2 }));
+  assert.equal(again.again, true); assert.equal(again.job_id, a.job_id);
+  assert.equal(await h.val(`select job_id from public.public_links where token_hash = $1`, [t2]), a.job_id);
+  // somebody else on the same phone and address, the same moment and work, within the 10 minutes
+  const other = await w.web(w.form({ first_name: 'Marc', last_name: 'Roy', token_hash: t3 }));
+  assert.equal(other.again, false, 'not « sent again »');
+  assert.notEqual(other.job_id, a.job_id);
+  assert.notEqual(other.customer_id, a.customer_id);
+  assert.equal(other.shared_phone, true);
+  assert.equal(await h.val(`select job_id from public.public_links where token_hash = $1`, [t3]), other.job_id, 'his link opens his own appointment');
 }));
 
 test('sql-misc-13: a day, a position or a year that is not one is refused in words, never a raw error', () => tx(async (h) => {

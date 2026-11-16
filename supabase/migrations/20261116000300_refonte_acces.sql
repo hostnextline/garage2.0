@@ -10,7 +10,8 @@
 --     customers           a file with a coming appointment or a finished invoice not paid is not deleted (the rule lived
 --                         in the screen only, on the phone's own copy); a person without « Clients » can create a customer;
 --                         a phone number corrected closes the customer's links texted to the old one (open jobs, open
---                         estimates) and lets the booking text go again
+--                         estimates), clears what was signed online on a booked appointment (signed again at the
+--                         door) and lets the booking text go again
 --     attachments         written once (a signature could be replaced after the fact); no SVG (a picture that runs code)
 --     push_subs           a device's alert address follows the person who asks last (a second owner got a raw error)
 --     settings.booking    web.on (the public booking page) changes only through web_switch: a settings save from a
@@ -137,9 +138,14 @@ create trigger push_subs_takeover before insert on public.push_subs
 -- site) and of their estimates still open are closed, and a booked appointment may be confirmed again (the app then
 -- offers to resend the text, to the new number, with a new link). A finished job's links stay (the customer's invoice
 -- and the card payment's return use them). Only the digits count: « 514 555-1234 » → « (514) 555-1234 » closes nothing.
+-- What was signed through such a link on an appointment still booked (the estimate signed online, and the authorization
+-- of work when it was signed online: waiver_via = 'online') may be a stranger's tap: it is cleared the way « Changer de
+-- client » clears it (job_customer), so the mechanic has it signed at the door; the proof of that signature stays in the
+-- history (activity signed_online) and the line phone_changed says which appointments lost it. A signature taken at the
+-- door (waiver_via = 'phone') stays.
 create or replace function public.customers_phone_links() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare v_links int := 0; n int;
+declare v_links int := 0; n int; v_unsigned jsonb;
 begin
   if old.phone_digits is null or new.phone_digits is not distinct from old.phone_digits then return null; end if;
   update public.public_links l set revoked_at = now()
@@ -150,9 +156,21 @@ begin
   update public.jobs set confirm_sent_at = null
    where customer_id = new.id and status = 'booked' and deleted_at is null and confirm_sent_at is not null;
   get diagnostics n = row_count;
-  if v_links > 0 or n > 0 then
+  with cleared as (
+    update public.jobs j set
+      estimate_signed_at = null, estimate_signer = null, estimate_attachment = null, estimate_cents = null,
+      waiver_signed_at = case when j.waiver_via = 'online' then null else j.waiver_signed_at end,
+      waiver_signer = case when j.waiver_via = 'online' then null else j.waiver_signer end,
+      waiver_version = case when j.waiver_via = 'online' then null else j.waiver_version end,
+      waiver_attachment = case when j.waiver_via = 'online' then null else j.waiver_attachment end
+     where j.customer_id = new.id and j.status = 'booked' and j.deleted_at is null
+       and (j.estimate_signed_at is not null or (j.waiver_via = 'online' and j.waiver_signed_at is not null))
+    returning j.id)
+  select jsonb_agg(id) into v_unsigned from cleared;
+  if v_links > 0 or n > 0 or v_unsigned is not null then
     insert into public.activity (actor, entity, entity_id, action, data)
-    values (auth.uid(), 'customer', new.id, 'phone_changed', jsonb_build_object('links_closed', v_links, 'to_confirm', n));
+    values (auth.uid(), 'customer', new.id, 'phone_changed', jsonb_build_object('links_closed', v_links, 'to_confirm', n)
+      || case when v_unsigned is not null then jsonb_build_object('signature_removed', v_unsigned) else '{}'::jsonb end);
   end if;
   return null;
 end $$;
@@ -165,10 +183,14 @@ create trigger customers_phone_links after update of phone on public.customers
 -- ---------- settings.booking.web.on: the public booking page opens and closes through web_switch only (sql-misc-04) ----------
 -- The app saves « booking » as one whole object built from the phone's copy: a phone whose copy is older than the day
 -- the page was closed (or a change queued offline) would put « on: true » back, with nobody seeing it. A person's
--- settings save now keeps the value the server has. The server's own writes (a restore, a test) are not held.
+-- settings save, and any write with the server key (an Edge Function, a script through the API), now keeps the value
+-- the server has. Only web_switch changes it. Not held: a write by the database's own administrator (a migration, a test,
+-- the SQL console, and the restore script ops/sauvegardes/restaurer.mjs run with psql, which leaves an existing settings
+-- row alone unless asked to replace it: --remplacer then writes the backup's web.on too — said in the report).
+-- Only web.on is kept, not the whole of « web »: the panel « Réservation en ligne » still saves its other numbers.
 create or replace function public.settings_web_guard() returns trigger language plpgsql set search_path = public as $$
 begin
-  if coalesce(current_setting('garage.web', true), '') <> 'on' and public.by_person()
+  if coalesce(current_setting('garage.web', true), '') <> 'on' and (public.by_person() or current_user = 'service_role')
      and (new.booking->'web'->'on') is distinct from (old.booking->'web'->'on') then
     new.booking := case
       when old.booking->'web' ? 'on'
@@ -366,7 +388,7 @@ language sql stable security definer set search_path = public as $$
                  where t.deleted_at is null
                    and (t.driver_id = s.id
                      or ('mechanic' = any(s.roles) and s.active and s.deleted_at is null
-                         and coalesce((select (st.booking->>'shared_routes')::boolean from public.settings st where st.id = 1), false)))))
+                         and coalesce((select public.right_flag(st.booking->'shared_routes') from public.settings st where st.id = 1), false)))))
     from public.staff s where s.id = p_staff) end
 $$;
 
@@ -434,7 +456,8 @@ end $$;
 
 -- ---------- report_position: the job of a position is one still under way (sql-foundation-26) ----------
 -- The phone sends no job once the work is finished; the row kept the last job for ever, so the map tied the person to
--- a finished job's truck. A job sent stays the position's job only while it is en route or on site.
+-- a finished job's truck. A position sent without a job keeps the one it had only while that job is en route or on
+-- site; a job the phone sends is taken as sent (the phone sends one only while it is under way).
 create or replace function public.report_position(p_lat double precision, p_lng double precision, p_accuracy integer default null, p_heading integer default null, p_speed integer default null, p_job uuid default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare last record; v_job uuid := p_job;
@@ -556,9 +579,13 @@ begin
   -- one customer at a time per phone number (the brakes and the « again » check are counted under this lock)
   perform pg_advisory_xact_lock(hashtext('web:' || v_digits));
 
-  -- the same booking sent again (the page retried after a hiccup): the job already made, never a second one
+  -- the same booking sent again (the page retried after a hiccup): the job already made, never a second one. The same
+  -- person too (the same first or last name on the job's file, as for the customer below): the answer carries a new
+  -- link to that job, so the same phone and address alone must not open another person's appointment.
   select j.id, j.customer_id into v_again, v_again_cust from public.jobs j join public.customers c on c.id = j.customer_id
   where c.phone_digits = v_digits and j.source = 'web' and j.status = 'booked' and j.deleted_at is null
+    and (public.fold_name(c.first_name) = public.fold_name(v_first)
+      or (v_last is not null and public.fold_name(c.last_name) = public.fold_name(v_last)))
     and j.day = v_day and j.block = v_block and lower(coalesce(j.address, '')) = lower(v_addr) and j.created_at > now() - interval '10 minutes'
     and (select coalesce(array_agg(ji.service_id order by ji.service_id), '{}'::uuid[]) from public.job_items ji
          where ji.job_id = j.id and ji.deleted_at is null and ji.service_id is not null)
@@ -705,7 +732,10 @@ create index if not exists rate_limits_at on public.rate_limits(at);            
 --   b) every function that existed before tonight is closed to the public key and to the app, then opened by name:
 --      the list below is exactly what the app calls and what the row rules, the guards and the non-definer functions
 --      need to run as the signed-in person (tests/db/refonte-droits.test.mjs keeps the same list and fails on any
---      difference). A function made tonight by another migration keeps the grants its own migration gave it;
+--      difference). A function MADE tonight by another migration (a name not in the list) keeps the grants its own
+--      migration gave it. A function that existed before and that an earlier migration of tonight re-made AND opened
+--      to the app on purpose is named in v_tonight: its grant to the app is left as that migration set it (neither
+--      taken away nor given here: without that migration it stays as it was, closed);
 --   c) from now on a function, a table or a sequence made by a migration is closed to the public key and to the app
 --      until that migration opens it (grant … to authenticated).
 do $grants$
@@ -748,6 +778,11 @@ declare
     'job_items_editable','job_visible','km_between','local_now','local_today','me','my_truck_ids','now_min','payment_visible',
     'ranges_first','ranges_from','ranges_norm','ranges_overlap','right_default','right_of','right_rule','sees_calls',
     'truck_hours_editable','truck_ranges','words_need_machine'];
+  -- re-made and opened to the app by an earlier migration of tonight (its own check inside): left as that migration set it
+  --   lock_windows_due   20261116000200_refonte_planification (srv-planif): the app locks the due windows itself where
+  --                      the database has no pg_cron; that version refuses whoever is not on the team. The version of
+  --                      before tonight checks nobody: without that migration it stays closed to the app.
+  v_tonight text[] := array['lock_windows_due'];
   -- the public key (the customer's tracking page): one function
   v_anon text[] := array['public_track'];
 begin
@@ -756,6 +791,10 @@ begin
   for f in select p.oid::regprocedure as sig, p.proname as name from pg_proc p
             where p.pronamespace = 'public'::regnamespace and p.prokind in ('f', 'p') and p.proname = any(v_known)
   loop
+    if f.name = any(v_tonight) then
+      execute format('revoke all on function %s from anon', f.sig);
+      continue;
+    end if;
     execute format('revoke all on function %s from anon, authenticated', f.sig);
     if f.name = any(v_app) then execute format('grant execute on function %s to authenticated', f.sig); end if;
     if f.name = any(v_anon) then execute format('grant execute on function %s to anon', f.sig); end if;
