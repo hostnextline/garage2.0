@@ -45,7 +45,7 @@ describe('a settings part saved whole is merged with the server\'s when it is se
     await start();
     // another device changes the detour meanwhile; this one, offline, changes the speed from what it shows
     srv.offline = true;
-    const shown = (getRow('settings', '1') as { booking: Record<string, unknown> }).booking;
+    const shown = getRow<{ id: string; booking: Record<string, unknown> }>('settings', '1')!.booking;
     await saveSettings('booking', { ...shown, speed_kmh: 40 });
     srv.put('settings', { id: '1', booking: { speed_kmh: 35, detour: 1.5, blocks: [] } });
     srv.offline = false;
