@@ -1,8 +1,12 @@
 /* One invoice (#/invoice/:id), drawn with the device's copy: who is offered what beside the document. The server is
    pretended (nothing is sent). */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
+
+// « Annuler la facture » asks for the reason: the question is pretended (answered « no »), the refusal toast is watched
+const ui = vi.hoisted(() => ({ askText: vi.fn(async () => null), toast: vi.fn() }));
+vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ...ui }));
 import { replaceLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
 import { lang } from '../../lib/i18n';
@@ -25,6 +29,7 @@ const owner: Access = { id: 'u-1', full_name: 'Hassan', short_name: null, email:
 const mechanic: Access = { ...owner, id: 'u-2', full_name: 'Saleh', roles: ['mechanic'], owner: false, trucks: ['t-1'] };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   lang.value = 'fr';
   access.value = owner;
   replaceLocal('customers', []);
@@ -64,5 +69,27 @@ describe('« Trop-perçu » on the invoice screen (review argent-app-02)', () =>
     await draw();
     expect(q('invoice-over')?.textContent).toContain('inscris-la ici');
     expect(q('invoice-refund')).not.toBeNull();
+  });
+});
+
+describe('« Annuler la facture » (review argent-app-07)', () => {
+  it('a payment and its refund add up to zero: the invoice can be cancelled (the reason is asked); money left on it holds it', async () => {
+    replaceLocal('jobs', [job()]);
+    replaceLocal('invoices', [inv()]);
+    replaceLocal('payments', [pay('p-1', 10000), pay('p-2', -10000, { paid_at: '2026-11-17T16:00:00Z', created_at: '2026-11-17T16:00:00Z' })]);
+    await draw();
+    expect(q('invoice-summary')?.parentElement?.textContent).not.toContain('retire-les d’abord');
+    await act(async () => { q('invoice-void')!.click(); });
+    await wait();
+    expect(ui.askText).toHaveBeenCalledTimes(1);
+    expect(ui.toast).not.toHaveBeenCalled();
+    // 100 $ paid, 40 $ given back: 60 $ are still on it
+    vi.clearAllMocks();
+    act(() => replaceLocal('payments', [pay('p-1', 10000), pay('p-2', -4000, { paid_at: '2026-11-17T16:00:00Z', created_at: '2026-11-17T16:00:00Z' })]));
+    await wait();
+    await act(async () => { q('invoice-void')!.click(); });
+    await wait();
+    expect(ui.askText).not.toHaveBeenCalled();
+    expect(ui.toast).toHaveBeenCalledWith(expect.stringContaining('a des paiements'), { kind: 'bad' });
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Invoice } from '../../data/types';
-import { payMode, mayRefund, amountProblem } from './pay';
+import { payMode, mayRefund, amountProblem, holdsMoney } from './pay';
 
 const v = (status: Invoice['status'], due: number, over = 0, waitingIn = 0, waitingOut = 0) => ({ inv: { status } as Invoice, due, over, waitingIn, waitingOut });
 
@@ -45,5 +45,15 @@ describe('what « Encaisser » offers', () => {
     expect(amountProblem(0, 100)).toBe('amount');
     expect(amountProblem(101, 100)).toBe('tooMuch');
     expect(amountProblem(100, 100)).toBeNull();
+  });
+});
+
+describe('« Annuler la facture » (review argent-app-07)', () => {
+  it('payments that add up to zero (a payment and its refund) do not hold it; money on it, or a payment waiting here, does', () => {
+    expect(holdsMoney([], [])).toBe(false);
+    expect(holdsMoney([{ amount_cents: 10000 }, { amount_cents: -10000 }], [])).toBe(false);
+    expect(holdsMoney([{ amount_cents: 10000 }], [])).toBe(true);
+    expect(holdsMoney([{ amount_cents: 10000 }, { amount_cents: -4000 }], [])).toBe(true);
+    expect(holdsMoney([], [{ cents: 10000 }])).toBe(true);
   });
 });

@@ -15,7 +15,7 @@ import { stamp as stampText } from '../../lib/dates';
 import { Panel, Button, Banner, Totals, InvoicePill, Stamp, askText, run, toast } from '../../ui';
 import { invoicePdfData } from '../../domain/money/document';
 import { waitingEntries, unsentPayments, finishEntries, waitingForNetwork } from '../../domain/money/waiting';
-import { mayRefund } from '../../domain/money/pay';
+import { mayRefund, holdsMoney } from '../../domain/money/pay';
 import type { InvoiceView } from '../../domain/money/view';
 import { paymentsOfInvoice, canEditInvoiceOf, canManageInvoices, methodWord, invoiceCustomer } from './select';
 import { ReopenButton } from './Reopen';
@@ -51,7 +51,7 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
   const send = async () => { const r = await sendText('invoice', job.id, paid ? t('invoices.send.receiptSent') : undefined); if (r) setManual(r); };
   const makePdf = () => pdf.make(() => invoicePdfData({ invoice: inv, customer: invoiceCustomer(inv), vehicle: vehicle(job.vehicle_id), km: job.odometer_km, payments: pays, settings: settings.value }));
   const cancel = async () => {
-    if (pays.length) { toast(t('invoices.void.hasPayments'), { kind: 'bad' }); return; }
+    if (holdsMoney(pays, waiting)) { toast(t('invoices.void.hasPayments'), { kind: 'bad' }); return; }
     const reason = await askText({ title: t('invoices.void.title', { n: number }), text: t('invoices.void.text'), label: t('invoices.void.reason'), ok: t('invoices.void.ok'), danger: true });
     if (reason == null) return;
     await run(() => voidInvoice(inv.id, reason), { ok: t('invoices.void.done', { n: number }) });

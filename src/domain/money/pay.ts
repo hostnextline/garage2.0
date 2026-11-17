@@ -29,6 +29,13 @@ export function mayRefund(v: Pick<InvoiceView, 'inv' | 'over' | 'finishing'>): b
   return v.over > 0 && !v.finishing && (v.inv.status === 'issued' || v.inv.status === 'paid');
 }
 
+/** « Annuler la facture » is held by money still on it: payments that do not add up to zero (a payment and its refund
+    do not hold it: the server's invoice_void accepts them), or a payment taken on this phone that has not reached the
+    server (it would land on a cancelled invoice and be refused) */
+export function holdsMoney(pays: { amount_cents: number }[], waiting: { cents: number }[]): boolean {
+  return waiting.length > 0 || pays.reduce((n, p) => n + Number(p.amount_cents || 0), 0) !== 0;
+}
+
 /** what is wrong with the amount typed, if anything */
 export function amountProblem(amount: number | null, inPlay: number): 'amount' | 'tooMuch' | null {
   if (amount == null || amount <= 0) return 'amount';
