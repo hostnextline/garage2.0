@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { addDays, addMonths, weekStart, weekDays, dow, clock, clockRange, duration, parseHm, hm, isValidDay, mergeRanges, overlapMinutes,
   cellsToRanges, rangesToCells, daysBetween, longDay, shortDate, tinyDay, monthName, parseDay, dayOf, minuteOf, today, nowMinute, stamp,
   windowFor } from './dates';
@@ -228,5 +228,34 @@ describe('the garage clock remembers its answers', () => {
     expect(stamp('2026-11-16T00:30:00Z')).toBe(first);
     expect(minuteOf(new Date(Date.UTC(2026, 0, 1) + 5999 * 60000))).toBe((5999 + 19 * 60) % 1440); // 1 Jan 2026 0 h UTC = 19 h EST
     expect(today(at('2026-11-15T04:30:00Z'))).toBe('2026-11-14');
+  });
+  /* review fluidite-02: the memory used to be emptied at 5,000 minutes, so a screen going over more payments than that
+     (a year or two of a busy garage) asked Intl again for every one at every redraw (about 12 times slower) */
+  it('a second pass over 8,000 different moments does not ask Intl again', () => {
+    const spy = vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts');
+    try {
+      // 8,000 payments, one every 97 minutes: about a year and a half of distinct minutes, hours and days
+      const moments = Array.from({ length: 8000 }, (_, i) => new Date(Date.UTC(2025, 0, 1) + i * 97 * 60000 + 13000));
+      const first = moments.map((d) => `${dayOf(d)} ${minuteOf(d)}`);
+      spy.mockClear();
+      const second = moments.map((d) => `${dayOf(d)} ${minuteOf(d)}`);
+      expect(spy).not.toHaveBeenCalled();
+      expect(second).toEqual(first);
+    } finally { spy.mockRestore(); }
+  });
+  it('the answers kept are the same as Intl\'s, minute by minute, across both nights the clock changes', () => {
+    const ask = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const truth = (d: Date) => {
+      const p: Record<string, string> = {};
+      for (const x of ask.formatToParts(d)) p[x.type] = x.value;
+      return `${p.year}-${p.month}-${p.day} ${(Number(p.hour) % 24) * 60 + Number(p.minute)}`;
+    };
+    for (const night of ['2026-03-08T00:00:00Z', '2026-11-01T00:00:00Z', '2027-03-14T00:00:00Z', '2027-11-07T00:00:00Z']) {
+      const t0 = Date.parse(night);
+      for (let m = 0; m < 24 * 60; m += 7) {
+        const d = new Date(t0 + m * 60000 + 59000);
+        expect(`${dayOf(d)} ${minuteOf(d)}`).toBe(truth(d));
+      }
+    }
   });
 });

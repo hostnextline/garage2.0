@@ -23,23 +23,33 @@ const DAY_MS = 86400000;
 const garageClock = new Intl.DateTimeFormat('en-CA', {
   timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
 });
-// Intl is slow next to the old getters (screens call dayOf over every payment, today() once per service): the answer is
-// remembered per minute of time, which is exact since Montréal's offset is whole hours. The memory is emptied when it grows.
+// Intl is slow next to the old getters (screens call dayOf over every payment at each redraw, today() once per service).
+// So Intl is asked only for Montréal's offset from UTC, once per hour of time: the clock changes at 2 h local, which is
+// always a whole UTC hour (07:00 or 06:00 UTC), so one hour of time never holds two offsets. Day and minute are then
+// plain arithmetic. 50,000 hours (more than five years of distinct hours) are kept; past that the oldest one is
+// forgotten, never the whole memory at once (review fluidite-02: emptying it at 5,000 made a long scan 12 times slower).
 type Parts = { day: Day; minute: Minute };
-const partsByMinute = new Map<number, Parts>();
+const HOUR_MS = 3600000;
+const HOURS_KEPT = 50000;
+const offsetByHour = new Map<number, number>();
+function offsetAt(ms: number): number {
+  const h = Math.floor(ms / HOUR_MS);
+  let off = offsetByHour.get(h);
+  if (off === undefined) {
+    const p: Record<string, string> = {};
+    for (const x of garageClock.formatToParts(new Date(h * HOUR_MS))) p[x.type] = x.value;
+    off = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute)) - h * HOUR_MS;
+    if (offsetByHour.size >= HOURS_KEPT) { const oldest = offsetByHour.keys().next().value; if (oldest !== undefined) offsetByHour.delete(oldest); }
+    offsetByHour.set(h, off);
+  }
+  return off;
+}
 function garageParts(d: Date): Parts | null {
   if (!(d instanceof Date)) return null;
   const ms = d.getTime();
   if (Number.isNaN(ms)) return null;
-  const key = Math.floor(ms / 60000);
-  const hit = partsByMinute.get(key);
-  if (hit) return hit;
-  const p: Record<string, string> = {};
-  for (const x of garageClock.formatToParts(d)) p[x.type] = x.value;
-  const parts: Parts = { day: `${p.year}-${p.month}-${p.day}`, minute: (Number(p.hour) % 24) * 60 + Number(p.minute) };
-  if (partsByMinute.size >= 5000) partsByMinute.clear();
-  partsByMinute.set(key, parts);
-  return parts;
+  const local = new Date(ms + offsetAt(ms)); // Montréal's wall clock, read with the UTC getters
+  return { day: dayOfUtc(local), minute: local.getUTCHours() * 60 + local.getUTCMinutes() };
 }
 
 /** the garage's day of an instant ('' when the date is not valid) */
