@@ -74,3 +74,19 @@ describe('a tap on a text alert', () => {
     expect(chatOf('+15145550188')?.state).toBe('min');
   });
 });
+
+describe('the alert repaired by itself', () => {
+  it('an owner who takes the calls only (texts off): the device address is checked too', async () => {
+    access.value = owner({ calls: true }, 'owner-calls');
+    await draw();
+    expect(h.repaired).toEqual(['owner-calls']);
+  });
+  it('the texts: checked; neither texts nor calls: nothing', async () => {
+    access.value = owner({ texts: true }, 'owner-texts');
+    await draw();
+    await act(() => render(null, box));
+    access.value = owner({}, 'owner-none');
+    await draw();
+    expect(h.repaired).toEqual(['owner-texts']);
+  });
+});
