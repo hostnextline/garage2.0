@@ -36,7 +36,9 @@ export function VinVisits(p: { visits: VinVisit[]; owners: boolean }) {
   return (
     <div class="rows" role="list" data-testid="vin-visits">
       {p.visits.map((x) => {
-        const coming = x.status === 'booked' || x.day > now;
+        // « À venir »: a day still to come (today included for a visit booked); a visit left « booked » on a day gone
+        // by did not happen yet and will not: it is not « à venir » (customers-b-19)
+        const coming = x.day > now || (x.status === 'booked' && x.day >= now);
         const body = (
           <>
             <span class="row-title">
