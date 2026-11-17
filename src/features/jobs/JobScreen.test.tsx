@@ -34,6 +34,8 @@ import { WaiverSheet } from './WaiverSheet';
 import { takeOff } from './work/WorkPanel';
 import { TruckSheet } from './TruckSheet';
 import { placeMissing } from './HeadPanel';
+import { ItemSheet } from './work/ItemSheet';
+import { jobRights } from '../../domain/jobs/rights';
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -167,5 +169,31 @@ describe('« pas de position » under the address (jobs-a-12)', () => {
     expect(placeMissing({ address: null, lat: null }, { address: '1 rue Maison', lat: 45.5 })).toBe(false);
     expect(placeMissing({ address: null, lat: null }, { address: '1 rue Maison', lat: null })).toBe(true);
     expect(placeMissing({ address: '', lat: null }, undefined)).toBe(false);
+  });
+});
+
+describe('a billed line whose invoice may not be opened again here (invoices 1, S53)', () => {
+  const job = { id: 'j1', status: 'on_site', day: '2030-01-15', block: 'am', truck_id: 't1', created_by: null } as unknown as Job;
+  const line = { id: 'i1', job_id: 'j1', status: 'done', description: 'Huile', qty: 1, unit_cents: 11498, sort: 1 } as unknown as JobItem;
+  const inv = (paid: number) => ({ id: 'v1', job_id: 'j1', number: 12, status: 'paid', total_cents: 11498, paid_cents: paid,
+    lines: [{ item_id: 'i1', description: 'Huile', qty: 1, unit_cents: 11498 }] });
+  const open = async () => {
+    access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1'] } as unknown as Access;
+    upsertLocal('jobs', [job]);
+    upsertLocal('job_items', [line]);
+    await act(() => render(<ItemSheet job={job} item={line} rights={jobRights(job)} onClose={() => undefined} onAnswer={() => undefined} />, box));
+  };
+  it('paid exactly: « rouvre-la : » and the « Modifier la facture » button', async () => {
+    upsertLocal('invoices', [inv(11498) as never]);
+    await open();
+    expect(q('item-locked')!.textContent).toContain(t('invoices.reopen.itemPaid'));
+    expect(q('invoice-reopen')).not.toBeNull();
+  });
+  it('paid more than its total: « demande au bureau », no button (before: « rouvre-la : » with nothing after it)', async () => {
+    upsertLocal('invoices', [inv(20000) as never]);
+    await open();
+    expect(q('invoice-reopen')).toBeNull();
+    expect(q('item-locked')!.textContent).toContain(t('invoices.reopen.itemLocked'));
+    expect(q('item-locked')!.textContent).not.toContain(t('invoices.reopen.itemPaid'));
   });
 });
