@@ -39,7 +39,7 @@ import { replaceLocal, upsertLocal } from '../../data/store';
 import { access } from '../../data/auth';
 import { net } from '../../data/sync';
 import { lang } from '../../lib/i18n';
-import { today, addDays } from '../../lib/dates';
+import { today, addDays, longDay, clock, minuteOf } from '../../lib/dates';
 import type { Access, Customer, Expense, Invoice } from '../../data/types';
 
 let person = 0;
@@ -167,10 +167,13 @@ describe('Trésorerie: « Rapprochement d’hier »', () => {
     expect(location.hash).not.toBe('#/invoice/i7');
   });
   const title = () => q('treasury-recon')[0].querySelector('h2, h3, .panel-title')?.textContent ?? q('treasury-recon')[0].textContent ?? '';
+  /** the night's check of a day finishes the next day at 07:40 UTC (cron 'garage-recon') */
+  const night = (day: string) => `${addDays(day, 1)}T07:40:00Z`;
+  const panelText = () => q('treasury-recon')[0].textContent ?? '';
   const warn = { id: 'f2', check_id: 'M5', severity: 'warn', entity_table: null, entity_id: null, message_fr: 'Une dépense sans reçu.', message_en: 'x', first_day: '2026-11-10', last_day: '2026-11-14', state: 'open' };
   it('review rapprochement-05: with a difference open, the day’s sheet (cash received per person) is still shown, with its day', async () => {
     const day = addDays(today(), -1);
-    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day, status: 'warn', finished_at: `${day}T23:59:00Z`, counts: {}, sheet: SHEET }, runs: [], findings: [warn] }));
+    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day, status: 'warn', finished_at: night(day), counts: {}, sheet: SHEET }, runs: [], findings: [warn] }));
     await show();
     expect(q('recon-ok').length).toBe(0);
     expect(q('recon-finding').length).toBe(1);
@@ -189,12 +192,42 @@ describe('Trésorerie: « Rapprochement d’hier »', () => {
   });
   it('review rapprochement-05: the night’s check did not run: « Dernier rapprochement », the sheet with its day; in English too', async () => {
     const day = addDays(today(), -3);
-    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day, status: 'ok', finished_at: `${day}T23:59:00Z`, counts: {}, sheet: SHEET }, runs: [], findings: [] }));
+    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day, status: 'ok', finished_at: night(day), counts: {}, sheet: SHEET }, runs: [], findings: [] }));
     await show();
     expect(title()).toMatch(/Dernier rapprochement/);
     lang.value = 'en';
     await wait();
     expect(title()).toMatch(/Latest reconciliation/);
     expect(q('recon-sheet-day')[0].textContent).toMatch(/^Day of /);
+  });
+  it('review treasury-recon-r2-1: « Vérifier maintenant » at 14 h yesterday, read today before the night’s check: not the whole day', async () => {
+    const day = addDays(today(), -1);
+    // 19:00 UTC = 14 h (EST) or 15 h (EDT) in Montréal, on that same day
+    const at = `${day}T19:00:00Z`;
+    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day, status: 'ok', finished_at: at, counts: {}, sheet: SHEET }, runs: [], findings: [] }));
+    await show();
+    const cap = q('recon-sheet-day')[0].textContent ?? '';
+    expect(cap).toBe(`Journée du ${longDay(day, 'fr')}, jusqu’à ${clock(minuteOf(new Date(at)), 'fr')}`);
+    expect(cap).toMatch(/jusqu’à 1[45] h$/);
+    expect(q('recon-sheet').length).toBe(1);
+    lang.value = 'en';
+    await wait();
+    expect(q('recon-sheet-day')[0].textContent).toMatch(/^Day of .*, until [23] p\.m\.$/);
+  });
+  it('review treasury-recon-r2-2: no finish time: « Journée du » once in the panel (the sub line), no caption repeating it', async () => {
+    const day = addDays(today(), -1);
+    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day, status: 'ok', finished_at: null, counts: {}, sheet: SHEET }, runs: [], findings: [] }));
+    await show();
+    expect(panelText().match(/Journée du/g)?.length).toBe(1);
+    expect(q('recon-sheet-day').length).toBe(0);
+    expect(q('recon-sheet').length).toBe(1);
+  });
+  it('review treasury-recon-r2-2: with the finish time in the sub line, the caption still gives the day', async () => {
+    const day = addDays(today(), -1);
+    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day, status: 'ok', finished_at: night(day), counts: {}, sheet: SHEET }, runs: [], findings: [] }));
+    await show();
+    expect(panelText()).toMatch(/Vérifié le /);
+    expect(panelText().match(/Journée du/g)?.length).toBe(1);
+    expect(q('recon-sheet-day')[0].textContent).toBe(`Journée du ${longDay(day, 'fr')}`);
   });
 });

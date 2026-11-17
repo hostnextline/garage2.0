@@ -5,7 +5,7 @@
    shows the last answer kept on the phone, or nothing. */
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { longDay, stamp, today } from '../../lib/dates';
+import { clock, longDay, stamp, today } from '../../lib/dates';
 import { Refused } from '../../lib/errors';
 import { rpcNow } from '../../data/api';
 import { me, preview } from '../../data/auth';
@@ -14,7 +14,7 @@ import { expensesList } from '../../data/select';
 import type { Payment } from '../../data/types';
 import { Panel, Rows, RowItem, Button, Banner, Pill, attempt } from '../../ui';
 import { useReport } from '../../shared/charts/useReport';
-import { normalizeRecon, isMissingFunction, shownFindings, allBalanced, findingText, findingTarget, runWhen, type ReconAnswer, type ReconFinding, type ReconSheet } from '../../domain/recon/recon';
+import { normalizeRecon, isMissingFunction, shownFindings, allBalanced, findingText, findingTarget, runWhen, sheetCaption, type ReconAnswer, type ReconFinding, type ReconSheet } from '../../domain/recon/recon';
 import { methodLabel } from './select';
 
 async function loadRecon(): Promise<ReconAnswer> {
@@ -48,6 +48,11 @@ export function ReconPanel(p: { onOpenExpense: (id: string) => void }) {
   // the title says which day is shown: « Vérifier maintenant » also checks today, and then today so far is what comes back
   const when = run ? runWhen(run.day, today()) : 'yesterday';
   const title = when === 'today' ? t('treasury.recon.titleToday') : when === 'older' ? t('treasury.recon.titleOlder') : t('treasury.recon.title');
+  // the sheet's caption: today so far, a day seen only up to an hour, or the whole day; none when the sub line says it already
+  const cap = run ? sheetCaption(run, today()) : null;
+  const caption = !cap ? null : cap.kind === 'today' ? t('treasury.recon.sheetToday')
+    : cap.kind === 'until' ? t('treasury.recon.dayUntil', { day: longDay(cap.day, l), time: clock(cap.minute, l) })
+    : t('treasury.recon.day', { day: longDay(cap.day, l) });
   const ack = (f: ReconFinding) => attempt(() => change('recon_ack', { p_finding: f.id, p_note: null }), { ok: t('treasury.recon.seenDone') }).then((ok) => { if (ok) r.reload(); });
   // the whole check can take a while on the server
   const checkNow = () => attempt(() => change('recon_now', {}, 60000), { ok: t('treasury.recon.checkDone') }).then((ok) => { if (ok) r.reload(); });
@@ -66,11 +71,9 @@ export function ReconPanel(p: { onOpenExpense: (id: string) => void }) {
           </Rows>
         )}
         {/* the day's sheet (cash received per person…) always, also while differences are open: it is the treasurer's
-            only view of the cash of the day; its caption says which day it is */}
+            only view of the cash of the day; its caption says which day it is, and up to when */}
         {run?.sheet && <>
-          <p class="muted small" style={{ margin: 0 }} data-testid="recon-sheet-day">
-            {when === 'today' ? t('treasury.recon.sheetToday') : t('treasury.recon.day', { day: longDay(run.day, l) })}
-          </p>
+          {caption && <p class="muted small" style={{ margin: 0 }} data-testid="recon-sheet-day">{caption}</p>}
           <SheetLines s={run.sheet} l={l} />
         </>}
         <div class="row-wrap">

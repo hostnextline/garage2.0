@@ -136,6 +136,7 @@ export const treasury = {
     checked: 'Vérifié le {when}',
     day: 'Journée du {day}',
     sheetToday: 'Aujourd’hui jusqu’ici',
+    dayUntil: 'Journée du {day}, jusqu’à {time}',
     allGood: 'Tout balance',
     allGoodText: 'Aucune différence pour cette journée.',
     toLook: { one: '1 chose à vérifier', other: '{n} choses à vérifier' },

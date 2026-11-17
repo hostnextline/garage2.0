@@ -136,6 +136,7 @@ export const treasury: typeof fr = {
     checked: 'Checked {when}',
     day: 'Day of {day}',
     sheetToday: 'Today so far',
+    dayUntil: 'Day of {day}, until {time}',
     allGood: 'Everything balances',
     allGoodText: 'No difference for that day.',
     toLook: { one: '1 thing to check', other: '{n} things to check' },

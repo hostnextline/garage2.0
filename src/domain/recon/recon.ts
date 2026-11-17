@@ -3,7 +3,7 @@
    and decides what the panel shows. Pure (no drawing), tested in recon.test.ts: the Trésorerie panel draws it, and the
    frame may count the open differences (openCount) for the « Plus » tile. */
 import type { Cents } from '../../lib/money';
-import { addDays, type Day } from '../../lib/dates';
+import { addDays, dayOf, minuteOf, type Day, type Minute } from '../../lib/dates';
 
 export type ReconStatus = 'ok' | 'warn' | 'bad';
 export type Severity = 'bad' | 'warn' | 'info';
@@ -144,4 +144,22 @@ export type RunWhen = 'yesterday' | 'today' | 'older';
 export function runWhen(day: string, today: Day): RunWhen {
   if (day >= today) return 'today';
   return day === addDays(today, -1) ? 'yesterday' : 'older';
+}
+
+/** the caption above the day's sheet, only when it adds something to the panel's sub line:
+    - `today`: the run is about today (« Aujourd'hui jusqu'ici »);
+    - `until`: a run that finished on its own day (Montréal) only saw that day up to then: « Vérifier maintenant » at 9 h
+      Monday, read Tuesday before the night's check (or offline, from the answer kept on the phone), is NOT the whole
+      Monday (review treasury-recon-r2-1); the night's check finishes the next day, so it is the whole day;
+    - `day`: the whole day (« Journée du … »), under the sub line « Vérifié le … »;
+    - null: no finish time, so the sub line already says « Journée du … » (the same words twice otherwise, r2-2). */
+export type SheetCaption = { kind: 'today' } | { kind: 'until'; day: Day; minute: Minute } | { kind: 'day'; day: Day } | null;
+export function sheetCaption(run: Pick<ReconRun, 'day' | 'finished_at'>, today: Day): SheetCaption {
+  if (runWhen(run.day, today) === 'today') return { kind: 'today' };
+  if (!run.finished_at) return null;
+  const done = new Date(run.finished_at);
+  const doneDay = dayOf(done);
+  // a finish time that is not a date: the sub line says nothing useful, the caption gives the day
+  if (!doneDay) return { kind: 'day', day: run.day };
+  return doneDay <= run.day ? { kind: 'until', day: run.day, minute: minuteOf(done) } : { kind: 'day', day: run.day };
 }
