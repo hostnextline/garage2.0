@@ -1146,6 +1146,26 @@ test('sql-windows-22: window mode, today, a job on the way whose truck is past i
   assert.equal((await row(h, done)).stop_order, 1);
 }));
 
+test('sql-planner-1-06: a booking never takes the place of an appointment that a fresh plan of its block no longer fits', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion', null, { [dow]: DAY });
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const kmLng = 1 / (111.2 * Math.cos((home.lat * Math.PI) / 180));
+  const ca = await h.customer('A', home.lat, home.lng + 6 * kmLng), cb = await h.customer('B', home.lat, home.lng + 3 * kmLng);
+  const cc = await h.customer('C', home.lat, home.lng + 0.5 * kmLng);
+  // what is stored: A and B on the truck (a re-plan skipped by the chain left them so); a fresh plan fits A only
+  const a = await put(h, owner, { customer: ca, day, block: 'am', truck: t1, order: 1, eta: 500, dur: 180, lat: home.lat, lng: home.lng + 6 * kmLng });
+  const b = await put(h, owner, { customer: cb, day, block: 'am', truck: t1, order: 2, eta: 690, dur: 60, lat: home.lat, lng: home.lng + 3 * kmLng });
+  const p0 = (await server(h, owner, `select public.plan_block($1::date, 'am') p`, [day]))[0].p;
+  assert.deepEqual(p0.over, [b], 'a fresh plan of the morning no longer fits B');
+  await h.as(owner);
+  const r = await book(h, job(cc, day, 'am', { duration_min: 15 }));
+  assert.equal(r.ok, true, 'a small booking that fits');
+  assert.deepEqual([(await row(h, a)).truck_id, (await row(h, b)).truck_id], [t1, t1], 'B keeps its truck (it was thrown to « À placer »)');
+}));
+
 /** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
  *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
 async function liveRef(h, list) {
