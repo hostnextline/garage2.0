@@ -41,6 +41,71 @@ const TONIGHT = ['lock_windows_due'];
 /** the public key (the customer's tracking page) */
 const ANON = ['public_track'];
 
+/** Yesterday's app: what /Users/hassan/garage2.0-refonte (acf46c3, the app live runs until the cutover, the phones that
+ *  keep it open for hours after, and the one a rollback publishes again) calls, frozen here from its source the way
+ *  the test below scans today's: src/ (its data layer adds p_op to every queued call but vin_history, shift_start,
+ *  shift_end), its customer page (src/client/api.ts: a plain fetch of /rest/v1/rpc/public_track with the public key)
+ *  and its server functions (supabase/functions: as the person through userDb, or with the server key through adminDb),
+ *  which run against the new database until the new ones are deployed. [role, function, the argument names it sends].
+ *  Not listed: job_payload, which its enroute asks as the person and which has been closed to the app since Part 13
+ *  (x-rights-21: the answer was already null, nothing changes). */
+const OLD = [
+  // src/data (callRpc, sb.rpc, rpcNow) — the signed-in app
+  ['authenticated', 'access_of', ['p_staff']],
+  ['authenticated', 'apply_hours', ['p_op', 'p_from', 'p_mode', 'p_truck', 'p_week', 'p_weeks']],
+  ['authenticated', 'book_job', ['p_op', 'p_items', 'p_job']],
+  ['authenticated', 'coffre_add', ['p_op', 'p_amount', 'p_day', 'p_jobs', 'p_note']],
+  ['authenticated', 'coffre_remove', ['p_op', 'p_id']],
+  ['authenticated', 'coffre_report', ['p_from', 'p_to']],
+  ['authenticated', 'dashboard', ['p_month']],
+  ['authenticated', 'extra_answer', ['p_op', 'p_accept', 'p_attachment', 'p_item', 'p_via']],
+  ['authenticated', 'inventory_buy', ['p_op', 'p_from', 'p_item', 'p_note', 'p_qty', 'p_total_cents', 'p_vendor']],
+  ['authenticated', 'inventory_delete', ['p_op', 'p_item']],
+  ['authenticated', 'invoice_finish', ['p_op', 'p_invoice']],
+  ['authenticated', 'invoice_for_job', ['p_op', 'p_job', 'p_refresh']],
+  ['authenticated', 'invoice_reopen', ['p_op', 'p_invoice']],
+  ['authenticated', 'invoice_void', ['p_op', 'p_invoice', 'p_reason']],
+  ['authenticated', 'job_customer', ['p_op', 'p_customer', 'p_job', 'p_vehicle']],
+  ['authenticated', 'job_item_price', ['p_op', 'p_item', 'p_unit_cents']],
+  ['authenticated', 'job_step', ['p_op', 'p_action', 'p_data', 'p_job']],
+  ['authenticated', 'lock_windows', ['p_op', 'p_day']],
+  ['authenticated', 'member_update', ['p_op', 'p_patch', 'p_staff']],
+  ['authenticated', 'move_job', ['p_op', 'p_block', 'p_day', 'p_job', 'p_truck']],
+  ['authenticated', 'move_job', ['p_op', 'p_block', 'p_day', 'p_job', 'p_truck', 'p_win_flex', 'p_win_start']],
+  ['authenticated', 'my_access', []],
+  ['authenticated', 'payment_add', ['p_op', 'p_amount_cents', 'p_invoice', 'p_job', 'p_method', 'p_reference', 'p_session']],
+  ['authenticated', 'payment_remove', ['p_op', 'p_payment']],
+  ['authenticated', 'report_position', ['p_accuracy', 'p_heading', 'p_job', 'p_lat', 'p_lng', 'p_speed']],
+  ['authenticated', 'rights_table', []],
+  ['authenticated', 'set_job_duration', ['p_op', 'p_duration', 'p_job']],
+  ['authenticated', 'set_role_rights', ['p_op', 'p_on', 'p_right', 'p_role']],
+  ['authenticated', 'set_stop_order', ['p_op', 'p_block', 'p_day', 'p_jobs', 'p_truck']],
+  ['authenticated', 'set_truck_start', ['p_op', 'p_start', 'p_truck']],
+  ['authenticated', 'shift_end', []],
+  ['authenticated', 'shift_start', []],
+  ['authenticated', 'suggest_blocks', ['p_days', 'p_duration', 'p_exclude', 'p_from', 'p_kind', 'p_lat', 'p_limit', 'p_lng', 'p_need']],
+  ['authenticated', 'suggest_windows', ['p_day', 'p_duration', 'p_exclude', 'p_kind', 'p_lat', 'p_lng', 'p_need']],
+  ['authenticated', 'team_map', ['p_day']],
+  ['authenticated', 'treasury_report', ['p_from', 'p_to']],
+  ['authenticated', 'update_me', ['p_patch']],
+  ['authenticated', 'vin_history', ['p_customer', 'p_vin']],
+  ['authenticated', 'walk_in', ['p_op', 'p_items', 'p_job']],
+  ['authenticated', 'windows_switch', ['p_op', 'p_on']],
+  // its server functions as the person (_shared/db.ts caller(), notify, enroute)
+  ['authenticated', 'invoice_for_job', ['p_job', 'p_op', 'p_refresh']],
+  ['authenticated', 'job_step', ['p_action', 'p_data', 'p_job', 'p_op']],
+  // its customer page, with the public key
+  ['anon', 'public_track', ['p_token']],
+  // its server functions with the server key (book, ring, hermes, team, stripe through _shared/payments.ts)
+  ['service_role', 'rate_hit', ['p_key', 'p_max', 'p_window_sec']],
+  ['service_role', 'web_services', []],
+  ['service_role', 'web_suggest', ['p_days', 'p_from', 'p_lat', 'p_limit', 'p_lng', 'p_services']],
+  ['service_role', 'web_book', ['p']],
+  ['service_role', 'remove_member', ['p_staff']],
+  ['service_role', 'payment_add', ['p_amount_cents', 'p_invoice', 'p_job', 'p_method', 'p_op', 'p_reference', 'p_session']],
+  ['service_role', 'invoice_for_job', ['p_job', 'p_op', 'p_refresh']]
+];
+
 const sorted = (a) => [...new Set(a)].sort();
 
 async function openTo(h, role) {
@@ -95,6 +160,35 @@ test('every function the app’s source calls is open to the app', () => tx(asyn
   assert.deepEqual(closed, [], 'called by the app but closed: ' + closed.join(', '));
   const notListed = [...called].filter((n) => !APP.includes(n)).sort();
   assert.deepEqual(notListed, [], 'called by the app but missing from APP: ' + notListed.join(', '));
+  // the customer page has no account: a plain fetch of /rest/v1/rpc/<name> with the public key (src/client/api.ts)
+  const pub = new Set();
+  for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/\/rest\/v1\/rpc\/([a-z_][a-z0-9_]*)/g)) if (!/\/demo\.ts$/.test(f)) pub.add(m[1]);
+  assert.ok(pub.has('public_track'), 'the scan finds the customer page’s call');
+  const anon = new Set(await openTo(h, 'anon'));
+  assert.deepEqual([...pub].filter((n) => !anon.has(n)).sort(), [], 'called by the customer page but closed to the public key');
+  assert.deepEqual([...pub].filter((n) => !ANON.includes(n)).sort(), [], 'called by the customer page but missing from ANON');
+}));
+
+test('yesterday’s app keeps every function it calls: one function answers each of its calls, with the arguments it sends, open to the role that calls it', () => tx(async (h) => {
+  // what PostgREST does with a named call: the functions of that name whose arguments hold every name sent and whose
+  // other arguments have a default; none = « not found », two = « ambiguous », one = it runs if the role may
+  const fns = await h.q(`select p.oid, p.proname n, p.pronargs, p.pronargdefaults,
+      coalesce((select array_agg(p.proargnames[i] order by i) from generate_subscripts(p.proargnames, 1) i
+        where p.proargmodes is null or p.proargmodes[i] in ('i', 'b', 'v')), '{}') args
+    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prokind = 'f' and p.proname = any($1)`, [[...new Set(OLD.map((c) => c[1]))]]);
+  const wrong = [];
+  for (const [role, name, sent] of OLD) {
+    const fits = fns.filter((f) => f.n === name && sent.every((a) => f.args.includes(a))
+      && f.args.slice(0, f.pronargs - f.pronargdefaults).every((a) => sent.includes(a)));
+    if (fits.length !== 1) { wrong.push(`${name}(${sent.join(', ')}): ${fits.length} function(s) answer`); continue; }
+    const may = await h.val(`select has_function_privilege($1, $2::oid, 'execute')`, [role, fits[0].oid]);
+    if (!may) wrong.push(`${name}(${sent.join(', ')}): closed to ${role}`);
+  }
+  assert.deepEqual(wrong, [], 'yesterday’s app would be refused:\n' + wrong.join('\n'));
+  // and the list is the one today's rules expect for the app (a name of yesterday no longer in APP would be closed)
+  const gone = sorted(OLD.filter((c) => c[0] === 'authenticated').map((c) => c[1])).filter((n) => !APP.includes(n));
+  assert.deepEqual(gone, [], 'called by yesterday’s app, missing from APP: ' + gone.join(', '));
+  assert.deepEqual(sorted(OLD.filter((c) => c[0] === 'anon').map((c) => c[1])), ANON);
 }));
 
 test('every function a row rule or a column default uses is open to the app', () => tx(async (h) => {
