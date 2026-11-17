@@ -11,6 +11,7 @@ import { holdsEveryJob } from '../../domain/stock/scope';
 import { rowsOf } from '../../data/store';
 import type { EngineSpec, JobItem, ServicePart } from '../../data/types';
 import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
+import { sheetOf } from '../../domain/vehicles/sheet';
 import { weekNeeds, defaultWeekOf, type WeekNeeds } from '../../domain/stock/needs';
 
 function groupBy<T>(rows: T[], key: (r: T) => string | null | undefined): Map<string, T[]> {
@@ -44,7 +45,10 @@ export function useWeekNeeds(from: Day): WeekNeeds {
       ...weekNeeds({
         from: start, to: addDays(from, 6), jobs: allJobs.value, itemsOf: (id) => items.get(id) || [],
         service: (id) => service(id), partsOf: (id) => parts.get(id) || [], vehicle: (id) => vehicle(id),
-        spec: (k) => (k ? specs.get(k) : undefined), refRows: engineRef.value.rows, inventory: inventoryList.value
+        spec: (k) => (k ? specs.get(k) : undefined),
+        // the sheet the car's file and the job card show (R166): its own, else the one confirmed for a car alike
+        sheet: (v) => (v.spec_key && specs.get(v.spec_key)) || sheetOf(v)?.spec,
+        refRows: engineRef.value.rows, inventory: inventoryList.value
       }),
       from
     };

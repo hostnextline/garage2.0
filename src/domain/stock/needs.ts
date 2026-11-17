@@ -130,6 +130,9 @@ export interface NeedsInput {
   partsOf: (serviceId: string) => ServicePart[];
   vehicle: (id: string | null) => Vehicle | undefined;
   spec: (key: string | null) => EngineSpec | undefined;
+  /** the sheet a car shows (its own, else the one confirmed for another car alike: `sheetOf`); when absent, its own
+      sheet only (`spec(v.spec_key)`) */
+  sheet?: (v: Vehicle) => EngineSpec | undefined;
   refRows: EngineRow[];
   inventory: InventoryItem[];
 }
@@ -165,7 +168,7 @@ export function weekNeeds(x: NeedsInput): WeekNeeds {
   const factsOf = (v: Vehicle | undefined) => {
     if (!v) return carFacts(undefined, undefined, x.refRows);
     let f = factsCache.get(v.id);
-    if (!f) { f = carFacts(v, x.spec(v.spec_key), x.refRows); factsCache.set(v.id, f); }
+    if (!f) { f = carFacts(v, x.sheet ? x.sheet(v) : x.spec(v.spec_key), x.refRows); factsCache.set(v.id, f); }
     return f;
   };
 
