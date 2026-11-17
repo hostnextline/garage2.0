@@ -286,6 +286,17 @@ describe('the booking screen', () => {
     expect(api.bookJob.mock.calls[0][0]).toMatchObject({ customer_id: 'c-new', address: '99 rue Typed', lat: 45.51, lng: -73.62 });
   });
 
+  it('a new caller with work typed, then « C’est lui » on a customer with one car: the work stays (places-vehicles-r2-1)', async () => {
+    await draw('call=1&start=job');
+    await click(q('stub-add'));
+    expect(lines()).toBe('Huile:8999');
+    const tel = box.querySelector('[data-testid="call-who"] input[type=tel]') as HTMLInputElement;
+    await act(async () => { tel.value = '514 555-0141'; tel.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    await click(q('call-same'));
+    expect(lines()).toBe('Huile:8999');
+  });
+
   it('an estimate for two cars, the second refused: the estimate’s own appointment does not stop the retry, which goes without the estimate (booking-a-08)', async () => {
     const q2 = { id: 'q-2', number: 8, customer_id: 'c-2', vehicle_id: null, items: [{ description: 'Freins', qty: 1, unit_cents: 34999, taxable: true, service_id: null }], status: 'accepted', job_id: null };
     upsertLocal('quotes', [q2], { force: true });
