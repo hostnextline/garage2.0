@@ -31,8 +31,12 @@ export async function caller(req: Request): Promise<Caller> {
   if (!access) fail('no_access', 'Ton compte n’a pas (ou plus) accès au garage.', 403);
   return { id: data.user.id, jwt, db, access };
 }
+/** a secret of the garage (a service's key…), null when it is not set. The database not answering is thrown: never
+    « not set » (card payment « not offered », texts « off », a refund notice kept aside, a backup repository pinned
+    again) because of a hiccup */
 export async function secret(key: string): Promise<string | null> {
-  const { data } = await adminDb().from('secrets').select('value').eq('key', key).maybeSingle();
+  const { data, error } = await adminDb().from('secrets').select('value').eq('key', key).maybeSingle();
+  if (error) throw error;
   return (data as { value?: string } | null)?.value ?? null;
 }
 export async function setSecret(key: string, value: string | null, by: string | null) {

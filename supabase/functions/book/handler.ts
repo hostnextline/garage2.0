@@ -124,16 +124,21 @@ async function book(req: Request, b: Row) {
   let text = 'off';
   try {
     if (again) {
-      const { data: prev } = await db.from('messages').select('id').eq('job_id', jobId).eq('kind', 'booking').eq('status', 'sent').limit(1);
+      const { data: prev, error: ep } = await db.from('messages').select('id').eq('job_id', jobId).eq('kind', 'booking').eq('status', 'sent').limit(1);
+      if (ep) throw ep;
       if (prev?.length) return { ok: true, link, day: res.day, block: res.block, ...extra, text: 'already', again };
     }
     const s = await settings();
-    const { data: cust } = await db.from('customers').select('*').eq('id', res.customer_id).maybeSingle();
+    // a read that fails sends no text at all (caught below: « text: error », noted on the job), never a text to nobody
+    // or one that says « selon le travail sur place » for priced work
+    const { data: cust, error: ec } = await db.from('customers').select('*').eq('id', res.customer_id).maybeSingle();
+    if (ec) throw ec;
     const cu = (cust || {}) as Row;
     const tpl = String(s.messages?.[lang]?.booking || s.messages?.fr?.booking || '');
     if (tpl) {
       const w = whenText(tpl, when as never, s.booking?.blocks, lang);
-      const { data: items } = await db.from('job_items').select('description, kind, qty, unit_cents, taxable, status, sort').eq('job_id', jobId).is('deleted_at', null).order('sort');
+      const { data: items, error: ei } = await db.from('job_items').select('description, kind, qty, unit_cents, taxable, status, sort').eq('job_id', jobId).is('deleted_at', null).order('sort');
+      if (ei) throw ei;
       const cardOn = !!(await secret('stripe_key'));
       const message = fill(w.tpl, {
         // the person who booked is greeted by the name they typed (a spouse on a shared number is not « Bonjour Marc »)

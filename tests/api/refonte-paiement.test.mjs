@@ -62,10 +62,10 @@ before(async () => {
   assert.equal(sk.ok, true, JSON.stringify(sk));
   truck = randomUUID(); made.trucks.push(truck);
   await q(`insert into public.trucks (id, name, active) values ($1, 'Camion Complet', true)`, [truck]);
-  await fetch(`${MOCK}/control?stripe=ok&ghl=ok`);
+  await fetch(`${MOCK}/control?stripe=ok&ghl=ok&ghl_ms=0`);
 });
 after(async () => {
-  await fetch(`${MOCK}/control?stripe=ok&ghl=ok`);
+  await fetch(`${MOCK}/control?stripe=ok&ghl=ok&ghl_ms=0`);
   await q(`delete from public.payments where invoice_id in (select id from public.invoices where customer_id = any($1)) or job_id in (select id from public.jobs where customer_id = any($1))`, [made.customers]);
   await q(`delete from public.payments where job_id is null and invoice_id is null and method = 'card_online'`);
   await q(`delete from public.invoices where customer_id = any($1)`, [made.customers]);
@@ -331,6 +331,81 @@ test('totals of the texts: a discount line is taken off ({total} of the booking 
   }
 });
 
+test('argent-app-05: the customer’s estimate counts each line as the database does (1,333 h stays 1,333 h; an option at 0 costs nothing)', async () => {
+  const items = [{ description: 'Main-d’œuvre 1 h 20', qty: 1.333, unit_cents: 9000, taxable: true }, { description: 'Option', qty: 0, unit_cents: 5000, taxable: true },
+    { description: 'Pièce', qty: 1.15, unit_cents: 1999, taxable: true }, { description: 'Sans quantité', unit_cents: 1000, taxable: true }];
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lang) values ($1, 'Estimé', 'Exact', '514 555-0133', 'fr')`, [cust]);
+  const quote = (await q(`insert into public.quotes (customer_id, items) values ($1, $2::jsonb) returning id`, [cust, JSON.stringify(items)]))[0].id;
+  const token = (randomUUID() + randomUUID()).replace(/-/g, '').slice(0, 40);
+  await q(`insert into public.public_links (token_hash, quote_id, expires_at) values ($1, $2, now() + interval '30 days')`, [sha(token), quote]);
+  try {
+    const v = await fn('client', { action: 'view', token });
+    assert.equal(v.kind, 'quote', JSON.stringify(v));
+    // what the database's own rule (invoice_totals) gives for the same lines
+    const [want] = await q(`select sum(round(coalesce((l->>'qty')::numeric, 1) * (l->>'unit_cents')::numeric))::int s from jsonb_array_elements($1::jsonb) l`, [JSON.stringify(items)]);
+    assert.equal(want.s, 11997 + 0 + 2299 + 1000);
+    assert.deepEqual([v.totals.subtotal, v.totals.tps, v.totals.tvq, v.totals.total], [want.s, Math.round(want.s * 0.05), Math.round(want.s * 0.09975), want.s + Math.round(want.s * 0.05) + Math.round(want.s * 0.09975)]);
+    assert.deepEqual(v.items.map((i) => i.qty), [1.333, 0, 1.15, 1], 'the lines shown are the lines counted');
+  } finally {
+    await q(`delete from public.public_links where quote_id = $1`, [quote]);
+    await q(`delete from public.quotes where id = $1`, [quote]);
+  }
+});
+
+test('edge-functions-18 / -30: each line of the booking text is worth what the invoice will say (one rule), and a customer with no first name is greeted « Bonjour, »', async () => {
+  const [{ booking: tpl }] = await q(`select messages->'fr'->'booking' booking from public.settings where id = 1`);
+  await q(`update public.settings set messages = jsonb_set(messages, '{fr,booking}', '"Bonjour {prenom}, voici :\\n{services}\\nTotal : {soustotal} {lien}"') where id = 1`);
+  try {
+    // half a « rabais » of -19,99 $: -9,995 $, which the database rounds away from zero (-10,00 $)
+    const { job, cust } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 10000 }, { description: 'Rabais', unit_cents: -1999, qty: 0.5, kind: 'discount' }] });
+    await q(`update public.customers set first_name = null, company = 'Transport Lavoie' where id = $1`, [cust]);
+    const n = await fn('notify', { kind: 'booking', job_id: job, base: BASE }, ownerJwt);
+    assert.equal(n.ok, true, JSON.stringify(n));
+    assert.match(n.message, /^Bonjour, voici :\n/, JSON.stringify(n.message));
+    const [{ c }] = await q(`select round(0.5 * -1999)::int c`);
+    assert.equal(c, -1000);
+    assert.ok(n.message.includes(`0,5 × Rabais\u00a0: -10,00 $`), JSON.stringify(n.message));
+    assert.match(n.message, /Total : 90,00\s\$ \+ tx/, 'the total of the lines as written');
+  } finally {
+    await q(`update public.settings set messages = jsonb_set(messages, '{fr,booking}', $1::jsonb) where id = 1`, [JSON.stringify(tpl)]);
+  }
+});
+
+test('edge-functions-05: extra work accepted on the customer’s page goes on the invoice being made: the amount due and « Payer » include it', async () => {
+  const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 10000 }] });
+  await q(`update public.jobs set status = 'on_site' where id = $1`, [job]);
+  await rpc('invoice_for_job', { p_op: randomUUID(), p_job: job, p_refresh: true }, ownerJwt);   // the mechanic is there: the draft
+  const extra = (await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed') returning id`, [job]))[0].id;
+  const t = await linkFor(job);
+  const v = await fn('client', { action: 'view', token: t });
+  assert.deepEqual([v.bill?.total_cents, v.pay.amount_cents], [11498, 11498], JSON.stringify(v.bill));
+  const a = await fn('client', { action: 'answer', token: t, item_id: extra, accept: true, confirm: true, shown_cents: 12000 });
+  assert.equal(a.ok, true, JSON.stringify(a));
+  assert.deepEqual([a.bill.total_cents, a.pay.amount_cents], [25295, 25295], 'the accepted work is billed: ' + JSON.stringify(a.bill));
+  assert.ok(a.bill.lines.some((l) => l.item_id === extra), 'its line is on the invoice being made');
+  const p = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.equal((await stripeSession(sessionOf(p.url))).amount_total, 25295, 'the card page asks for it too');
+});
+
+test('edge-functions-06: texting a finished invoice never changes its totals, even after the tax rates changed in Réglages', async () => {
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  const inv = await issue(job);
+  const before = (await q(`select subtotal_cents, tps_cents, tvq_cents, total_cents from public.invoices where id = $1`, [inv]))[0];
+  const [{ taxes }] = await q(`select taxes from public.settings where id = 1`);
+  await q(`update public.settings set taxes = coalesce(taxes, '{}'::jsonb) || '{"tps": 0.06}'::jsonb where id = 1`);
+  try {
+    const r = await fn('notify', { kind: 'invoice', job_id: job, base: BASE }, ownerJwt);
+    assert.equal(r.status, 'sent', JSON.stringify(r));
+    const after = (await q(`select subtotal_cents, tps_cents, tvq_cents, total_cents, sent_at from public.invoices where id = $1`, [inv]))[0];
+    assert.ok(after.sent_at, 'sent_at written');
+    delete after.sent_at;
+    assert.deepEqual(after, before, 'the totals as issued');
+  } finally {
+    await q(`update public.settings set taxes = $1::jsonb where id = 1`, [taxes === null ? null : JSON.stringify(taxes)]);
+  }
+});
+
 /* ---------- the texts (notify) ---------- */
 
 test('the same text sent twice with the same op (the answer was lost, the person taps again, or two taps at once): texted once, the same answer', async () => {
@@ -361,6 +436,32 @@ test('a treasurer (the invoices, not the agenda) texts an invoice; still no othe
   assert.equal(r.status, 'sent', JSON.stringify(r));
   assert.match(r.message, /voici votre facture F-\d+ de Mécanique Mobile H\.I\.S \(172,46\s\$\)/);
   assert.equal((await fn('notify', { kind: 'booking', job_id: job, base: BASE }, jwt)).code, 'not_found');
+});
+
+test('securite-01: « Factures » alone never texts the invoice of a job one cannot see (a mechanic of another truck), and « arrived » needs the job, as before', async () => {
+  const account = async (roles, name) => {
+    const email = `${name}-${randomUUID().slice(0, 6)}@test.local`;
+    const id = await adminUser(email, 'garage-2026');
+    await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, $2, $2, $3, $4)`, [id, name, roles, email]);
+    return (await signIn(email, 'garage-2026')).access_token;
+  };
+  const mech = await account('{mechanic}', 'Saleh'), tres = await account('{treasurer}', 'Ibra');
+  // the job is on a truck Saleh does not drive; he has « Factures » (a mechanic's default) and sees every invoice
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  await issue(job);   // finished, the mechanic still on site
+  await clearLog();
+  for (const kind of ['invoice', 'payment_reminder', 'arrived']) {
+    const r = await fn('notify', { kind, job_id: job, base: BASE }, mech);
+    assert.deepEqual([r.ok, r.code], [false, 'not_found'], `${kind}: ${JSON.stringify(r)}`);
+    assert.equal(r.link, undefined, 'no customer link handed out');
+  }
+  // the treasurer keeps the books: the invoice and its reminder, never « your mechanic is here »
+  const a = await fn('notify', { kind: 'arrived', job_id: job, base: BASE, resend: true }, tres);
+  assert.deepEqual([a.ok, a.code], [false, 'not_found'], JSON.stringify(a));
+  assert.equal((await fn('notify', { kind: 'payment_reminder', job_id: job, base: BASE }, tres)).status, 'sent');
+  const sms = (await mockLog()).filter((m) => m.svc === 'ghl' && m.path === '/conversations/messages');
+  assert.equal(sms.length, 1, 'only the treasurer’s reminder was texted: ' + JSON.stringify(sms.map((m) => m.body?.message)));
+  assert.equal((await q(`select count(*)::int n from public.public_links where job_id = $1`, [job]))[0].n, 1, 'one link made: the reminder’s');
 });
 
 test('the payment reminder says the Montréal day of the invoice (finished at 19 h 30, not the next day)', async () => {
@@ -413,21 +514,43 @@ test('extra work can no longer be accepted on the page once the appointment is c
 test('back from Stripe: « check » says what became of the card page (paid even when Stripe’s notice never came; unknown when Stripe is down)', async () => {
   const { job } = await newJob();
   const t = await linkFor(job);
-  assert.equal((await fn('client', { action: 'check', token: t })).session, 'none');
+  const c0 = await fn('client', { action: 'check', token: t });
+  assert.deepEqual([c0.session, c0.checked], ['none', null], 'R10: the page reads « checked »');
   const p = await fn('client', { action: 'pay', token: t, base: BASE });
-  assert.equal((await fn('client', { action: 'check', token: t })).session, 'open');
+  const c1 = await fn('client', { action: 'check', token: t });
+  assert.deepEqual([c1.session, c1.checked], ['open', 'open']);
   // Stripe not answering: the page still opens, « unknown »
   await fetch(`${MOCK}/control?stripe=all`);
   let d;
   try { d = await fn('client', { action: 'check', token: t }); } finally { await fetch(`${MOCK}/control?stripe=ok`); }
   assert.deepEqual([d.status, d.ok, d.session], [200, true, 'unknown'], JSON.stringify(d));
+  assert.equal('checked' in d, false, 'unknown: the page is not told anything it would believe');
   // paid, but Stripe's notice is late: the page itself records it, once
   assert.equal((await mockGet(`/pay/${sessionOf(p.url)}?quiet=1`)).hook, null);
   const c = await fn('client', { action: 'check', token: t });
-  assert.deepEqual([c.ok, c.session, c.pay.available], [true, 'paid', false], JSON.stringify(c));
+  assert.deepEqual([c.ok, c.session, c.checked, c.pay.available], [true, 'paid', 'paid', false], JSON.stringify(c));
   assert.equal((await q(`select count(*)::int n from public.payments where stripe_session = $1`, [sessionOf(p.url)]))[0].n, 1);
   assert.equal((await fn('client', { action: 'check', token: t })).session, 'none', 'the paid page is forgotten by the link');
   assert.equal((await q(`select count(*)::int n from public.payments where stripe_session = $1`, [sessionOf(p.url)]))[0].n, 1, 'still once');
+});
+
+test('R12: the card page speaks the language the customer’s page is shown in (« lang »); yesterday’s page (no lang): the file’s language', async () => {
+  const sessions = async () => (await mockLog()).filter((x) => x.svc === 'stripe' && x.method === 'POST' && x.path === '/v1/checkout/sessions');
+  const { job } = await newJob();                     // a French-speaking customer
+  const t = await linkFor(job);
+  await clearLog();
+  const p = await fn('client', { action: 'pay', token: t, base: BASE, lang: 'en' });
+  assert.ok(p.url, JSON.stringify(p));
+  let [made] = await sessions();
+  assert.equal(made.form.locale, 'en');
+  assert.match(made.form['line_items[0][price_data][product_data][name]'], /^Appointment of /);
+  assert.ok(made.form.success_url.endsWith('&l=en&retour=paye') && made.form.cancel_url.endsWith('&l=en'), JSON.stringify(made.form));
+  const { job: job2 } = await newJob();
+  const t2 = await linkFor(job2);
+  await clearLog();
+  assert.ok((await fn('client', { action: 'pay', token: t2, base: BASE })).url);
+  [made] = await sessions();
+  assert.deepEqual([made.form.locale, /^Rendez-vous du /.test(made.form['line_items[0][price_data][product_data][name]']), made.form.cancel_url.includes('&l=en')], ['fr-CA', true, false]);
 });
 
 /* ---------- review round 1 ---------- */
@@ -435,7 +558,7 @@ test('back from Stripe: « check » says what became of the card page (paid even
 /** the operation id the functions give a Stripe object (_shared/payments.ts stripeOp) */
 const stripeOp = (what) => { const h = sha(`stripe:${what}`); return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${'89ab'[parseInt(h[16], 16) % 4]}${h.slice(17, 20)}-${h.slice(20, 32)}`; };
 /** the card pages of a job the fake Stripe holds open */
-const openPages = async (job) => ((await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { headers: { authorization: 'Bearer sk_test_abcdefghijklmnop' } })).json()).data || []).filter((s) => s.metadata?.job_id === job && s.status === 'open');
+const openPages = async (job) => ((await (await fetch(`${MOCK}/stripe/v1/checkout/sessions?limit=100`, { headers: { authorization: 'Bearer sk_test_abcdefghijklmnop' } })).json()).data || []).filter((s) => s.metadata?.job_id === job && s.status === 'open');
 /** a card page made straight at Stripe for a job that does not exist (nothing in the books can hold it) */
 async function ghostPage(cents = 4599) {
   const body = new URLSearchParams({ mode: 'payment', 'line_items[0][price_data][unit_amount]': String(cents), 'metadata[job_id]': randomUUID(), success_url: 'x', cancel_url: 'x' });
@@ -558,6 +681,32 @@ test('parked-note-unchecked, with Part 27: the database keeps the payment and it
   assert.equal((await notesOf('payment_parked', s.id)).length, 0, 'never also kept aside by the function (it would be entered by hand: counted twice)');
 });
 
+test('never() = refusalOf: a bare « raise exception » of the database (P0001 without a hint) is a hiccup, not a refusal: 5xx, nothing kept aside, the next notice puts the money in the books', async () => {
+  const { job } = await newJob({ items: [{ description: 'Batterie', unit_cents: 18000 }] });
+  const t = await linkFor(job);
+  const p = await fn('client', { action: 'pay', token: t, base: BASE });
+  const sid = sessionOf(p.url);
+  const id = sid.replace(/'/g, "''");
+  // a server bug (or a passing state) of the books: an exception with no code of ours
+  await q(`create or replace function public.t_bare_raise() returns trigger language plpgsql as $f$ begin
+    if new.stripe_session = '${id}' then raise exception 'état imprévu'; end if; return new; end $f$`);
+  await q(`create trigger t_bare_raise before insert on public.payments for each row execute function public.t_bare_raise()`);
+  let first;
+  await clearLog();
+  try { first = await mockGet(`/pay/${sid}`); } finally {
+    await q(`drop trigger if exists t_bare_raise on public.payments`);
+    await q(`drop function if exists public.t_bare_raise()`);
+  }
+  assert.equal(first.hook, 500, 'Stripe must try again: ' + JSON.stringify(first));
+  const ev = (await mockLog()).filter((x) => x.svc === 'stripe-webhook').map((h) => h.event);
+  assert.equal((await q(`select count(*)::int n from public.stripe_events where id = any($1)`, [ev]))[0].n, 0, 'not marked handled');
+  assert.equal((await notesOf('payment_parked', sid)).length, 0, 'never kept aside for good');
+  // Stripe's next notice (the bug fixed): in the books, once
+  assert.equal((await mockGet(`/pay/${sid}?twice=1`)).hook, 200);
+  assert.deepEqual((await inBooks(sid)).map((x) => [x.amount_cents, x.job_id]), [[(await stripeSession(sid)).amount_total, job]]);
+  assert.equal((await stripeSession(sid)).amount_total, 20696);
+});
+
 test('refund-of-unrecorded-payment: a refund whose payment notice never came records the payment first, then the refund', async () => {
   const { job } = await newJob({ items: [{ description: 'Alternateur', unit_cents: 20000 }] });
   const t = await linkFor(job);
@@ -644,4 +793,310 @@ test('notify-op-parallel: two sends with the same op at once: both get the first
   assert.deepEqual([x.status, y.status], ['sent', 'sent'], JSON.stringify([x, y]));
   assert.equal(y.link, x.link);
   assert.equal(y.message, x.message);
+});
+
+/* ---------- round 2: the fake services (tests/stack/mocks.mjs) and GoHighLevel's time ---------- */
+
+test('R205: the fake Stripe lists card pages a page at a time, newest first, like Stripe (limit, starting_after, has_more, created)', async () => {
+  // an account of its own: nothing another test left behind is in its lists
+  const sk = { authorization: `Bearer sk_test_liste${randomUUID().replace(/-/g, '')}`, 'content-type': 'application/x-www-form-urlencoded' };
+  const make = async (cents) => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: sk,
+    body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': String(cents), 'metadata[job_id]': randomUUID() }) })).json()).id;
+  const a = await make(1000), b = await make(2000), c = await make(3000);
+  assert.equal((await (await fetch(`${MOCK}/age/${a}?hours=1`)).json()).ok, true);   // a is an hour old
+  const list = async (qs) => (await fetch(`${MOCK}/stripe/v1/checkout/sessions?${qs}`, { headers: sk })).json();
+  const p1 = await list('limit=2');
+  assert.deepEqual([p1.data.map((x) => x.id), p1.has_more], [[c, b], true], 'newest first, two of them, more to come');
+  assert.ok(p1.data.every((x) => Number.isInteger(x.created)), 'created in seconds');
+  const p2 = await list(`limit=2&starting_after=${p1.data[1].id}`);
+  assert.deepEqual([p2.data.map((x) => x.id), p2.has_more], [[a], false]);
+  const since = Math.floor(Date.now() / 1000) - 600;
+  const recent = await list(`limit=100&created%5Bgte%5D=${since}`);
+  assert.deepEqual([recent.data.map((x) => x.id).sort(), recent.has_more], [[b, c].sort(), false], 'created[gte] leaves out the hour-old page');
+  assert.equal((await list('')).data.length, 3, 'ten at most when no limit is said');
+  assert.equal((await fetch(`${MOCK}/stripe/v1/checkout/sessions?limit=101`, { headers: sk })).status, 400, 'over 100: refused, like Stripe');
+});
+
+test('R206: the fake Stripe can refuse the key (401): the customer is told to pay on site; a GitHub ticket can carry the repository’s numbers', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  await fetch(`${MOCK}/control?stripe=refuse`);
+  let r, raw;
+  try {
+    raw = await fetch(`${MOCK}/stripe/v1/checkout/sessions/cs_test_x`, { headers: { authorization: 'Bearer sk_test_abcdefghijklmnop' } });
+    r = await fn('client', { action: 'pay', token: t, base: BASE });
+  } finally { await fetch(`${MOCK}/control?stripe=ok`); }
+  assert.equal(raw.status, 401);
+  assert.match((await raw.json()).error.message, /Invalid API Key provided/);
+  assert.deepEqual([r.status, r.ok, r.code], [502, false, 'pay_unavailable'], JSON.stringify(r));
+  const claims = async (o) => JSON.parse(Buffer.from((await (await fetch(`${MOCK}/github/token?${new URLSearchParams(o)}`)).json()).value.split('.')[1], 'base64url'));
+  const withIds = await claims({ repository: 'hostnextline/garage2.0-sauvegardes', repository_id: '123456', repository_owner_id: '7890' });
+  assert.deepEqual([withIds.repository_id, withIds.repository_owner_id], ['123456', '7890']);
+  const without = await claims({ repository: 'hostnextline/garage2.0-sauvegardes' });
+  assert.deepEqual(['repository_id' in without, 'repository_owner_id' in without], [false, false], 'as before when not given');
+});
+
+test('R208 (fn-paiement-r2-1): a slow GoHighLevel (9 s a call): « notify » waits for the text it started: « sent » at about 18 s, before the app gives up at 40 s; the text call is never cut', async () => {
+  // (round 2 asserted « error / failed » here: the text call cut at 17 s although GoHighLevel had received it; real
+  // GoHighLevel still sends a text it received, so the team read « not sent », sent it again, and the customer got two)
+  const { job } = await newJob();
+  await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed')`, [job]);
+  await clearLog();
+  await fetch(`${MOCK}/control?ghl_ms=9000`);
+  const t0 = Date.now();
+  let r;
+  try { r = await fn('notify', { kind: 'extras', job_id: job, base: BASE }, ownerJwt); } finally { await fetch(`${MOCK}/control?ghl_ms=0`); }
+  const took = Date.now() - t0;
+  assert.ok(took < 35000, `answered in ${took} ms (the app waits 40 s for notify)`);
+  assert.deepEqual([r.ok, r.status], [true, 'sent'], JSON.stringify(r));
+  assert.equal((await q(`select status from public.messages where job_id = $1 and kind = 'extras'`, [job]))[0]?.status, 'sent', 'the team sees « sent »');
+  const ghl = (await mockLog()).filter((m) => m.svc === 'ghl' && m.path === '/conversations/messages');
+  assert.deepEqual(ghl.map((m) => m.aborted === true), [false], 'the text went once, its call never cut: ' + JSON.stringify(ghl));
+});
+
+test('R208 (fn-paiement-r2-1): a conversation text (the app gives up at 20 s) with a slow GoHighLevel: the text call is never started late: « error », nothing sent, answered in time', async () => {
+  const { cust } = await newJob();
+  await clearLog();
+  await fetch(`${MOCK}/control?ghl_ms=9000`);
+  const t0 = Date.now();
+  let r;
+  try { r = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour, on arrive vers 14 h.' }, ownerJwt); }
+  finally { await fetch(`${MOCK}/control?ghl_ms=0`); }
+  const took = Date.now() - t0;
+  assert.ok(took < 18000, `answered in ${took} ms (the app waits 20 s for a conversation)`);
+  assert.deepEqual([r.ok, r.status], [false, 'error'], JSON.stringify(r));
+  assert.match(r.error, /pas parti/, 'the team is told the text did not go: ' + r.error);
+  // what reached GoHighLevel (logged when it arrives): the contact, never the text
+  const arrived = (await mockLog()).filter((m) => m.svc === 'ghl-arrived').map((m) => m.path);
+  assert.deepEqual(arrived, ['/contacts/upsert'], 'the text call never started: ' + JSON.stringify(arrived));
+  assert.equal((await q(`select status from public.messages where customer_id = $1 and kind = 'chat'`, [cust]))[0]?.status, 'failed', '« not sent », and it is true');
+  // GoHighLevel back to its speed: the same text goes
+  const ok = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour, on arrive vers 14 h.' }, ownerJwt);
+  assert.equal(ok.status, 'sent', JSON.stringify(ok));
+});
+
+test('fn-paiement-r2-3: the settings of the texts cannot be read at « Je pars » (the trip already written): 200 with sms « error », the trip kept, noted « failed »; the conversation answers « error » too, never a 500', async () => {
+  const { job, cust } = await newJob({ status: 'en_route' });
+  await clearLog();
+  await q(`revoke select on public.secrets from service_role`);
+  let r, sent, read;
+  try {
+    r = await fn('enroute', { action: 'start', job_id: job, base: BASE }, ownerJwt);
+    sent = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour, on arrive.' }, ownerJwt);
+    read = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
+  } finally { await q(`grant select on public.secrets to service_role`); }
+  assert.deepEqual([r.status, r.ok, r.sms], [200, true, 'error'], JSON.stringify(r).slice(0, 300));
+  assert.match(r.error, /réglages des textos/, 'said in words: ' + r.error);
+  assert.ok(r.link, 'the customer’s map link is given back (to send by hand)');
+  const trips = await q(`select sms_status from public.trips where job_id = $1 and status = 'active'`, [job]);
+  assert.deepEqual(trips.map((t) => t.sms_status), ['error'], 'the trip started is kept');
+  assert.equal((await q(`select status from public.messages where job_id = $1 and kind = 'en_route'`, [job]))[0]?.status, 'failed', 'noted « not sent », never « off »');
+  // (the answer's own « status » is the send's: a 500 would say 500 here)
+  assert.deepEqual([sent.status, sent.ok, sent.code], ['error', false, undefined], JSON.stringify(sent));
+  assert.match(sent.error, /réglages des textos/);
+  assert.equal((await q(`select status from public.messages where customer_id = $1 and kind = 'chat'`, [cust]))[0]?.status, 'failed');
+  assert.deepEqual([read.status, read.ok, read.code], ['error', true, undefined], 'the conversation says it could not be read: ' + JSON.stringify(read));
+  assert.equal((await mockLog()).filter((m) => m.svc === 'ghl').length, 0, 'nothing reached GoHighLevel');
+});
+
+test('compat: on a database where the new migrations are not applied yet (no op_begin), the customer still gets a card page', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  await q(`alter function public.op_begin(uuid, text) rename to op_begin_pas_encore`);
+  let p;
+  try { p = await fn('client', { action: 'pay', token: t, base: BASE }); }
+  finally { await q(`alter function public.op_begin_pas_encore(uuid, text) rename to op_begin`); }
+  assert.ok(p.ok && p.url, JSON.stringify(p));
+  assert.equal((await openPages(job)).length, 1);
+  assert.equal((await fn('client', { action: 'pay', token: t, base: BASE })).url, p.url, 'the same page again once op_begin is back');
+});
+
+test('x-errors-19 (secrets): the database not answering is never « card payment not offered »: 500 with a reference, and it works again after', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  await q(`revoke select on public.secrets from service_role`);
+  let v, p;
+  try {
+    v = await fn('client', { action: 'view', token: t });
+    p = await fn('client', { action: 'pay', token: t, base: BASE });
+  } finally { await q(`grant select on public.secrets to service_role`); }
+  assert.deepEqual([v.status, v.code], [500, 'server'], 'not a page without « Payer »: ' + JSON.stringify(v).slice(0, 200));
+  assert.deepEqual([p.status, p.code], [500, 'server'], 'not « no_stripe »: ' + JSON.stringify(p));
+  const again = await fn('client', { action: 'view', token: t });
+  assert.equal(again.pay.available, true, JSON.stringify(again.pay));
+});
+
+test('x-errors-19 (answer, sign): a read that fails is never « this proposal no longer exists » or « signed as Client », and an electronic signature never goes without its proof', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  const extra = (await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed') returning id`, [job]))[0].id;
+  await q(`revoke select on public.job_items from service_role`);
+  let r;
+  try { r = await fn('client', { action: 'answer', token: t, item_id: extra, accept: true, confirm: true }); }
+  finally { await q(`grant select on public.job_items to service_role`); }
+  assert.deepEqual([r.status, r.code], [500, 'server'], 'not « gone »: ' + JSON.stringify(r));
+  assert.equal((await q(`select status from public.job_items where id = $1`, [extra]))[0].status, 'proposed');
+  assert.equal((await fn('client', { action: 'answer', token: t, item_id: 'pas-un-id', accept: true, confirm: true })).code, 'gone', 'a wrong id is still « gone »');
+  // the proof of the signature cannot be written: nothing is signed
+  await q(`revoke insert on public.activity from service_role`);
+  let s;
+  try { s = await fn('client', { action: 'sign', token: t, click: true, confirm: true }); }
+  finally { await q(`grant insert on public.activity to service_role`); }
+  assert.deepEqual([s.status, s.code], [500, 'server'], JSON.stringify(s));
+  assert.deepEqual(Object.values((await q(`select estimate_signed_at, waiver_signed_at from public.jobs where id = $1`, [job]))[0]), [null, null], 'not signed without its proof');
+  const ok = await fn('client', { action: 'sign', token: t, click: true, confirm: true });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.estimate.signer, 'Luc Gagnon', 'signed in the name on the file');
+  assert.equal((await q(`select count(*)::int n from public.activity where entity_id = $1 and action = 'signed_online'`, [job]))[0].n, 1);
+});
+
+test('x-errors-19 (notify): « the mechanic is here » never texts an amount due that forgot a payment because a read failed', async () => {
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  await q(`update public.jobs set status = 'on_site' where id = $1`, [job]);
+  await q(`insert into public.payments (job_id, amount_cents, method) values ($1, 5000, 'cash')`, [job]);   // paid ahead
+  // a garage whose text says what is left to pay
+  const [{ arrived: tpl }] = await q(`select messages->'fr'->'arrived' arrived from public.settings where id = 1`);
+  await q(`update public.settings set messages = jsonb_set(messages, '{fr,arrived}', '"Reste à payer : {montant} {lien}"') where id = 1`);
+  try {
+    await clearLog();
+    await q(`revoke select on public.payments from service_role`);
+    let r;
+    try { r = await fn('notify', { kind: 'arrived', job_id: job, base: BASE }, ownerJwt); }
+    finally { await q(`grant select on public.payments to service_role`); }
+    assert.deepEqual([r.status, r.code], [500, 'server'], JSON.stringify(r));
+    assert.equal((await mockLog()).filter((m) => m.svc === 'ghl' && m.path === '/conversations/messages').length, 0, 'nothing texted');
+    const ok = await fn('notify', { kind: 'arrived', job_id: job, base: BASE }, ownerJwt);
+    assert.equal(ok.status, 'sent', JSON.stringify(ok));
+    assert.match(ok.message, /^Reste à payer : 122,46\s\$/, 'what is left to pay (172,46 $ − 50,00 $): ' + ok.message);
+  } finally {
+    await q(`update public.settings set messages = jsonb_set(messages, '{fr,arrived}', $1::jsonb) where id = 1`, [JSON.stringify(tpl)]);
+  }
+});
+
+test('argent-serveur-02: the amount changes and changes back within ten minutes: « Payer » opens a page that can still be paid (Stripe gives back its first answer for the same key)', async () => {
+  const payable = async (url) => (await stripeSession(sessionOf(url))).status === 'open';
+  // the same words: Stripe gives back the answer it saved (« open » then), the page has been closed since
+  const { job, items } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8000 }] });
+  const t = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  const extra = (await q(`insert into public.job_items (job_id, description, unit_cents, sort) values ($1, 'Balais', 2500, 4) returning id`, [job]))[0].id;
+  const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p2.url !== p1.url && !(await payable(p1.url)), 'the first page is closed');
+  await q(`update public.job_items set deleted_at = now() where id = $1`, [extra]);   // « no blades »: the first amount again
+  const p3 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p3.ok && p3.url, JSON.stringify(p3));
+  assert.ok(await payable(p3.url), 'a page that can be paid: ' + JSON.stringify(await stripeSession(sessionOf(p3.url))));
+  assert.equal((await fetch(p3.url + '?quiet=1')).status, 200, 'the customer can pay it');
+  // other words since (the mechanic is there now: « Travaux du … »): Stripe refuses the same key, a new page is made
+  const b = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8100 }] });
+  const tb = await linkFor(b.job);
+  await fn('client', { action: 'pay', token: tb, base: BASE });
+  const xb = (await q(`insert into public.job_items (job_id, description, unit_cents, sort) values ($1, 'Balais', 2500, 4) returning id`, [b.job]))[0].id;
+  await fn('client', { action: 'pay', token: tb, base: BASE });
+  await q(`update public.job_items set deleted_at = now() where id = $1`, [xb]);
+  await q(`update public.jobs set status = 'on_site' where id = $1`, [b.job]);
+  const r = await fn('client', { action: 'pay', token: tb, base: BASE });
+  assert.ok(r.ok && r.url, 'not « pay_unavailable »: ' + JSON.stringify(r));
+  assert.ok(await payable(r.url));
+  void items;
+});
+
+test('argent-serveur-03: a job « Payé par le Coffre » while the mechanic is still there: no « Payer » by card on the customer’s page', async () => {
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  await q(`update public.jobs set status = 'on_site' where id = $1`, [job]);
+  const t = await linkFor(job);
+  assert.equal((await fn('client', { action: 'view', token: t })).pay.available, true, 'before the Coffre: payable');
+  await rpc('coffre_add', { p_op: randomUUID(), p_jobs: [job], p_amount: 0, p_note: 'Le frère du patron' }, ownerJwt);
+  const [{ coffre_id: box }] = await q(`select coffre_id from public.jobs where id = $1`, [job]);
+  try {
+    assert.ok(box, 'in the Coffre');
+    const v = await fn('client', { action: 'view', token: t });
+    assert.equal(v.pay.available, false, JSON.stringify(v.pay));
+    const p = await fn('client', { action: 'pay', token: t, base: BASE });
+    assert.deepEqual([p.ok, p.code], [false, 'nothing'], JSON.stringify(p));
+    assert.equal((await openPages(job)).length, 0, 'no card page made');
+  } finally {
+    await q(`update public.jobs set coffre_id = null where id = $1`, [job]);
+    await q(`delete from public.coffre where id = $1`, [box]);
+  }
+});
+
+/** the card pages asked from Stripe (POST /checkout/sessions) since the log was cleared */
+const pagesAsked = async () => (await mockLog()).filter((m) => m.svc === 'stripe' && m.method === 'POST' && m.path === '/v1/checkout/sessions').length;
+
+test('argent-serveur-02, the other side (fn-paiement-r2-2): a page paid by a slow means (complete, not paid yet): « Payer » on the same link makes no page and says so (409 pay_processing); the page no longer offers « Payer »', async () => {
+  // (round 2 asserted the same url back here: real Stripe gives NO url for a page that is not open, so the tap did
+  // nothing on live; and once the 10-minute slice turned, the same link made a second page to pay)
+  const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8200 }] });
+  const t = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.equal((await mockGet(`/complete/${sessionOf(p1.url)}`)).ok, true);
+  await clearLog();
+  const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.deepEqual([p2.status, p2.ok, p2.code], [409, false, 'pay_processing'], JSON.stringify(p2));
+  assert.match(p2.error, /en traitement/, 'said in words: ' + p2.error);
+  // the same link in the other language: a key Stripe never saw (as when the slice turns): no page either
+  const p3 = await fn('client', { action: 'pay', token: t, base: BASE, lang: 'en' });
+  assert.equal(p3.code, 'pay_processing', JSON.stringify(p3));
+  assert.equal(await pagesAsked(), 0, 'no card page asked from Stripe, whatever the key');
+  assert.equal((await openPages(job)).length, 0, 'no page to pay');
+  const v = await fn('client', { action: 'view', token: t });
+  assert.deepEqual([v.pay.available, v.pay.processing, v.pay.pending], [false, true, true], JSON.stringify(v.pay));
+});
+
+test('fn-paiement-r2-2: a slow payment on one text, « Payer » on another text of the same job: no second page (the customer cannot pay twice)', async () => {
+  const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8300 }] });
+  const t1 = await linkFor(job), t2 = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t1, base: BASE });
+  assert.ok(p1.url, JSON.stringify(p1));
+  assert.equal((await mockGet(`/complete/${sessionOf(p1.url)}`)).ok, true);
+  await clearLog();
+  const p2 = await fn('client', { action: 'pay', token: t2, base: BASE });
+  assert.deepEqual([p2.status, p2.code], [409, 'pay_processing'], JSON.stringify(p2));
+  assert.equal(await pagesAsked(), 0, 'no card page asked from Stripe');
+  assert.equal((await openPages(job)).length, 0, 'nothing else to pay');
+  // the other text's page knows it too (« Payer » is no longer offered there)
+  const v2 = await fn('client', { action: 'view', token: t2 });
+  assert.deepEqual([v2.pay.available, v2.pay.processing], [false, true], JSON.stringify(v2.pay));
+  // a page left open on a third text before this rule (made by yesterday's server): closed at Stripe, never a second way to pay
+  const t3 = await linkFor(job);
+  const old = await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: { authorization: 'Bearer sk_test_abcdefghijklmnop', 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': '9543', 'metadata[job_id]': job, expires_at: String(Math.floor(Date.now() / 1000) + 3600) }) })).json();
+  await q(`update public.public_links set last_session = $1, last_session_url = $2, last_session_amount = 9543, last_session_expires = now() + interval '1 hour' where token_hash = $3`, [old.id, old.url, sha(t3)]);
+  const p3 = await fn('client', { action: 'pay', token: t3, base: BASE });
+  assert.equal(p3.code, 'pay_processing', JSON.stringify(p3));
+  assert.equal((await stripeSession(old.id)).status, 'expired', 'the old open page is closed');
+  assert.equal((await openPages(job)).length, 0);
+});
+
+test('fn-paiement-r2-2: the slow payment fails (the bank refuses the debit): the customer can pay by card again', async () => {
+  const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8400 }] });
+  const t = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.equal((await mockGet(`/complete/${sessionOf(p1.url)}`)).ok, true);
+  assert.equal((await fn('client', { action: 'pay', token: t, base: BASE })).code, 'pay_processing');
+  assert.equal((await mockGet(`/debit-failed/${sessionOf(p1.url)}`)).ok, true);
+  // back on the page: « check » asks Stripe, the page that failed is forgotten, « Payer » is offered again
+  const ck = await fn('client', { action: 'check', token: t });
+  assert.deepEqual([ck.pay.available, ck.pay.processing], [true, false], JSON.stringify(ck.pay));
+  const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p2.ok && p2.url && p2.url !== p1.url, JSON.stringify(p2));
+  assert.equal((await stripeSession(sessionOf(p2.url))).status, 'open');
+});
+
+test('fn-paiement-r2-2: the fake Stripe, like Stripe: a page that is not open has no url (complete, expired, paid)', async () => {
+  const sk = { authorization: `Bearer sk_test_url${randomUUID().replace(/-/g, '')}`, 'content-type': 'application/x-www-form-urlencoded' };
+  const make = async () => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: sk,
+    body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': '1000', 'metadata[job_id]': randomUUID() }) })).json());
+  const read = async (id) => (await fetch(`${MOCK}/stripe/v1/checkout/sessions/${id}`, { headers: sk })).json();
+  const a = await make(), b = await make(), c = await make();
+  assert.ok(a.url && b.url && c.url, 'open: an url');
+  await mockGet(`/complete/${a.id}`);
+  await fetch(`${MOCK}/stripe/v1/checkout/sessions/${b.id}/expire`, { method: 'POST', headers: sk });
+  await fetch(`${MOCK}/pay/${c.id}?quiet=1`);
+  assert.deepEqual([(await read(a.id)).url, (await read(b.id)).url, (await read(c.id)).url], [null, null, null]);
+  const pi = async (s) => (await (await fetch(`${MOCK}/stripe/v1/payment_intents/${s.payment_intent}`, { headers: sk })).json()).status;
+  assert.deepEqual([await pi(a), await pi(b), await pi(c)], ['processing', 'canceled', 'succeeded'], 'the payment behind each page');
+  await mockGet(`/debit-failed/${a.id}`);
+  assert.equal(await pi(a), 'requires_payment_method', 'a debit refused by the bank');
 });

@@ -19,6 +19,8 @@ const LINK_DAYS = 90;
 const bare = (x: unknown) => String(x || '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MONEY_KINDS = ['invoice', 'payment_reminder', 'arrived'];
+/** the texts of a FINISHED invoice: the only ones someone who keeps the books may send for a job they cannot see */
+const BILL_KINDS = ['invoice', 'payment_reminder'];
 /** the total of lines, the same way everywhere (a discount counts negative): _shared/money.ts */
 const taxed = (lines: Record<string, any>[], s: Record<string, any>): number => sumLines(lines, s).total;
 export async function makeLink(jobId: string | null, quoteId: string | null, by: string | null, base: string, lang: string) {
@@ -30,7 +32,11 @@ export async function makeLink(jobId: string | null, quoteId: string | null, by:
   return clientLink(base, token, lang);
 }
 
+/** the app waits 40 s for this function (callFn): the text must be answered before, counted from the request's arrival */
+const ANSWER_MS = 35000;
+
 export const handler = serve(async (req) => {
+  const until = Date.now() + ANSWER_MS;
   const b = await body(req);
   const kind = String(b.kind || '');
   if (!KINDS.includes(kind)) fail('kind', 'Type de texto inconnu.');
@@ -41,9 +47,12 @@ export const handler = serve(async (req) => {
   const { data: seen, error } = await c.db.from('jobs').select('*').eq('id', String(b.job_id || '')).maybeSingle();
   if (error) throw error;
   let job = seen as Record<string, any> | null;
-  if (!job && MONEY_KINDS.includes(kind)) {
-    // someone who sees the invoices without the agenda (a treasurer): the invoice of the job is theirs to send when
-    // the database's own rule shows it to them
+  const r = c.access.rights;
+  if (!job && BILL_KINDS.includes(kind) && (c.access.owner || r.treasury || r.edit_invoices)) {
+    // someone who keeps the books without the agenda (a treasurer, the office's « edit invoices »): the finished invoice
+    // of the job is theirs to send when the database's own rule shows it to them. Never with « Factures » alone (a
+    // mechanic of another truck sees every invoice), never « arrived » (« your mechanic is here »): as before, the job
+    // must be theirs to see
     const { data: inv, error: e0 } = await c.db.from('invoices').select('id').eq('job_id', String(b.job_id)).is('deleted_at', null).limit(1);
     if (e0) throw e0;
     if (inv?.length) job = (await db.from('jobs').select('*').eq('id', String(b.job_id)).is('deleted_at', null).maybeSingle()).data as Record<string, any> | null;
@@ -51,7 +60,6 @@ export const handler = serve(async (req) => {
   if (!job) fail('not_found', 'Cette job n’existe plus (ou tu n’y as pas accès).');
   const j = job as Record<string, any>;
   const mine = c.access.trucks.includes(j.truck_id) || j.created_by === c.id;
-  const r = c.access.rights;
   if (['booking', 'moved', 'extras', 'reminder', 'window'].includes(kind) && !(r.book || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas texter ce client.', 403);
   if (MONEY_KINDS.includes(kind) && !(r.edit_invoices || r.invoices || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas envoyer cette facture.', 403);
 
@@ -75,7 +83,8 @@ export const handler = serve(async (req) => {
   if (kind === 'arrived') {
     if (j.status !== 'on_site') fail('not_on_site', 'Le mécano n’est pas encore arrivé chez ce client.');
     if (!b.resend) {
-      const { count } = await db.from('messages').select('id', { count: 'exact', head: true }).eq('job_id', j.id).eq('kind', 'arrived').eq('status', 'sent');
+      const { count, error: ea } = await db.from('messages').select('id', { count: 'exact', head: true }).eq('job_id', j.id).eq('kind', 'arrived').eq('status', 'sent');
+      if (ea) throw ea;
       if (count) return json({ ok: true, status: 'already' });
     }
   }
@@ -104,10 +113,13 @@ export const handler = serve(async (req) => {
     // the invoice being made from the work (an invoice already being edited is kept as it is)
     const { error: e1 } = await c.db.rpc('invoice_for_job', { p_op: crypto.randomUUID(), p_job: j.id, p_refresh: false });
     if (e1) throw e1;
-    const { data: inv } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    // a read that fails is a server problem: never « the invoice is empty », never an amount due that forgets a payment
+    const { data: inv, error: ev } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    if (ev) throw ev;
     const v = inv as Record<string, any> | null;
     if (!v || !v.total_cents) fail('nothing', 'La facture est vide : ajoute le travail d’abord.');
-    const { data: pays } = await db.from('payments').select('amount_cents, invoice_id').eq('job_id', j.id).is('deleted_at', null);
+    const { data: pays, error: ep } = await db.from('payments').select('amount_cents, invoice_id').eq('job_id', j.id).is('deleted_at', null);
+    if (ep) throw ep;
     const paid = v!.status === 'draft' ? ((pays || []) as Record<string, any>[]).filter((p) => !p.invoice_id).reduce((t, p) => t + p.amount_cents, 0) : v!.paid_cents;
     vars.total = money(v!.total_cents, lang);
     vars.montant = money(Math.max(0, v!.total_cents - paid), lang);
@@ -120,7 +132,8 @@ export const handler = serve(async (req) => {
     vars.vehicule = veh ? [veh.year, veh.make, veh.model].filter(Boolean).join(' ') : (lang === 'en' ? 'vehicle' : 'véhicule');
   }
   if (kind === 'invoice' || kind === 'payment_reminder') {
-    const { data: inv } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    const { data: inv, error: ev } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    if (ev) throw ev;
     const v = inv as Record<string, any> | null;
     if (!v || v.status === 'draft') fail('invoice_first', 'Termine la facture avant de l’envoyer.');
     const prefix = s.billing?.invoice_prefix ?? 'F-', pad = Number(s.billing?.pad ?? 4);
@@ -132,7 +145,8 @@ export const handler = serve(async (req) => {
   }
   if (kind === 'window' && !b.resend) {
     // the same window is told once (asked twice, or the evening's lock run again); another window is a new text
-    const { data: prev } = await db.from('messages').select('body').eq('job_id', j.id).eq('kind', 'window').eq('status', 'sent').order('created_at', { ascending: false }).limit(1);
+    const { data: prev, error: ew } = await db.from('messages').select('body').eq('job_id', j.id).eq('kind', 'window').eq('status', 'sent').order('created_at', { ascending: false }).limit(1);
+    if (ew) throw ew;
     if (prev?.length && bare((prev[0] as Record<string, any>).body) === bare(fill(when.tpl, { ...vars, lien: '' }))) return json({ ok: true, status: 'already' });
   }
   // the same send again (same `op`): the first one's answer, nothing texted twice
@@ -166,7 +180,7 @@ export const handler = serve(async (req) => {
     const message = fill(when.tpl, vars);
 
     const quiet = cu.sms_ok === false || s.messages?.on?.[kind] === false;
-    const res = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message);
+    const res = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message, undefined, { until });
     await db.from('messages').insert({ job_id: j.id, customer_id: cu.id || null, staff_id: c.id, kind, channel: 'sms', to_addr: cu.phone || null, body: message,
       status: res.status === 'sent' ? 'sent' : res.status === 'error' ? 'failed' : 'skipped', provider_ref: (res as { id?: string }).id || null, error: (res as { error?: string }).error || res.status, created_by: c.id });
     if (res.status === 'sent' && (kind === 'booking' || kind === 'moved')) {

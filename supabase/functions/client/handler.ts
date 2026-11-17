@@ -2,7 +2,8 @@
 //   view    the appointment, the estimate (to sign), the extra work to answer, the invoice (being made, or finished)
 //   sign    the customer signs the estimate with the finger (with the authorization of work: nothing to sign at the door)
 //   answer  accept or decline an extra work (asked to confirm on the page first)
-//   pay     opens Stripe's card page for what is due: ONE open page per job, whatever the text the customer came from
+//   pay     opens Stripe's card page for what is due: ONE open page per job, whatever the text the customer came from;
+//           none at all while a payment by a slow means (a bank debit) is on its way: 409 { code: 'pay_processing' }
 //   check   back from Stripe: asks Stripe whether it is paid
 // « sign » and « answer » take the amount the page displayed (`shown_cents`, optional: the total for sign, the line's
 // amount for answer): when it is no longer the amount, nothing is written and the answer is HTTP 409
@@ -50,7 +51,8 @@ async function view(l: Row) {
     if (!q) fail('gone', 'Cet estimé n’existe plus.', 404);
     const items = ((q as Row).items || []) as Row[];
     return { ok: true, kind: 'quote', garage, lang: (q as Row).lang || 'fr', number: (q as Row).number, vehicle: (q as Row).vehicle_text || null,
-      items: items.map((i) => ({ description: i.description, qty: Number(i.qty || 1), unit_cents: Number(i.unit_cents || 0) })),
+      // the quantity as written (an option at 0 stays 0; nothing written = 1): the lines add up to the total shown
+      items: items.map((i) => ({ description: i.description, qty: i.qty === null || i.qty === undefined || i.qty === '' ? 1 : Number(i.qty), unit_cents: Number(i.unit_cents || 0) })),
       totals: taxesOf(s, items), valid_until: (q as Row).valid_until || null };
   }
   const { data: job, error: ej } = await db.from('jobs').select('*').eq('id', l.job_id).maybeSingle();
@@ -63,11 +65,13 @@ async function view(l: Row) {
     db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle(),
     db.from('payments').select('amount_cents, method, paid_at, invoice_id').eq('job_id', j.id).is('deleted_at', null),
     j.vehicle_id ? db.from('vehicles').select('year, make, model').eq('id', j.vehicle_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').is('deleted_at', null).limit(1).maybeSingle()
+    db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').is('deleted_at', null).limit(1).maybeSingle(),
+    // a card page of the job paid by a slow means, still on its way (cardPages keeps it without an address)
+    db.from('public_links').select('id').eq('job_id', j.id).not('last_session', 'is', null).is('last_session_url', null).limit(1)
   ]);
   // a read that failed would show a wrong page (no lines, nothing paid, nothing to pay): a server problem instead
   for (const r of reads) if (r.error) throw r.error;
-  const [{ data: cust }, { data: items }, { data: inv }, { data: pays }, { data: veh }, { data: trip }] = reads;
+  const [{ data: cust }, { data: items }, { data: inv }, { data: pays }, { data: veh }, { data: trip }, { data: slowPages }] = reads;
   const its = (items || []) as Row[];
   // a block job: its block's hours; a 'day' job (« Plages d’arrivée »): the window promised, or « flexible » (no hours yet)
   const win = jobWindow(j as never);
@@ -88,6 +92,11 @@ async function view(l: Row) {
   const conditions = String(s.waiver?.[lang] || s.waiver?.fr || '').replaceAll('{garage}', garage.name);
   const prefix = s.billing?.invoice_prefix ?? 'F-', pad = Number(s.billing?.pad ?? 4);
   await db.from('public_links').update({ views: (l.views || 0) + 1, last_seen_at: new Date().toISOString() }).eq('id', l.id);
+  // a job « Payé par le Coffre » (the garage's own people) is never paid by card
+  const payable = stripeOn && balance >= 50 && !j.coffre_id && (issued ? !['cancelled', 'no_show'].includes(j.status) : open);
+  // a payment by a slow means on its way: no « Payer » meanwhile (it would be a second payment); `pending` makes the page
+  // ask « check » on each visit, which forgets the page if the bank refused the debit (then « Payer » comes back)
+  const processing = payable && ((slowPages || []) as Row[]).length > 0;
   return {
     ok: true, kind: 'job', garage, lang: (cust as Row | null)?.lang || 'fr',
     customer: { first: first((cust as Row | null)?.first_name) },
@@ -106,8 +115,8 @@ async function view(l: Row) {
     invoice: issued ? { number: `${prefix}${String(v!.number).padStart(pad, '0')}`, issued_at: v!.issued_at, due_on: v!.due_on, status: v!.status,
       lines: v!.lines, subtotal_cents: v!.subtotal_cents, tps_cents: v!.tps_cents, tvq_cents: v!.tvq_cents, total_cents: v!.total_cents, paid_cents: v!.paid_cents,
       notes: v!.notes } : null,
-    pay: { available: stripeOn && balance >= 50 && (issued ? !['cancelled', 'no_show'].includes(j.status) : open),
-      amount_cents: balance, kind: issued ? 'invoice' : 'prepay', pending: !!l.last_session && !!l.last_session_expires && Date.parse(l.last_session_expires) > Date.now() }
+    pay: { available: payable && !processing, amount_cents: balance, kind: issued ? 'invoice' : 'prepay',
+      pending: processing || (!!l.last_session && !!l.last_session_expires && Date.parse(l.last_session_expires) > Date.now()), processing }
   };
 }
 
@@ -126,14 +135,31 @@ async function remember(linkId: string, sess: Row, amount: number, expires: stri
 }
 /** when a card page stops being payable (Stripe's own clock, else what the link kept) */
 const pageEnd = (x: Page): number => (Number(x.sess.expires_at) > 0 ? Number(x.sess.expires_at) * 1000 : Date.parse(x.link.last_session_expires || '') || 0);
+/** a card page completed by a slow means of payment (a bank debit): true when that payment failed (the bank refused it:
+    Stripe puts its payment back to « requires_payment_method »), so the page is over. Stripe not able to say = still on
+    its way (never a second page while the first payment may still pass). */
+async function slowFailed(key: string, sess: Row): Promise<boolean> {
+  const pi = typeof sess.payment_intent === 'string' ? sess.payment_intent : String(sess.payment_intent?.id || '');
+  if (!pi) return false;
+  try {
+    const it = await stripeCall(key, 'GET', `/payment_intents/${encodeURIComponent(pi)}`);
+    return it?.status === 'requires_payment_method' || it?.status === 'canceled';
+  } catch (e) {
+    console.error('client pay: the payment of a slow page could not be read', String((e as Error)?.message || e).slice(0, 200));
+    return false;
+  }
+}
 /** Every card page the job's links remember, as Stripe sees it NOW (each text has its own link, so a job can hold
     several). A paid one is recorded (once, even if Stripe's notice never came) and forgotten; a closed one is forgotten;
+    one paid by a slow means and still on its way is kept by its link without an address (Stripe gives none: the page
+    reads it as « on its way ») and counted in `processing`; one whose slow payment failed is forgotten;
     the open ones are returned. `states`: what each page was. Stripe not answering is thrown. */
-async function cardPages(key: string, jobId: string): Promise<{ open: Page[]; paid: number; states: Map<string, PageState> }> {
-  const { data, error } = await adminDb().from('public_links').select('id, last_session, last_session_amount, last_session_expires').eq('job_id', jobId).not('last_session', 'is', null);
+async function cardPages(key: string, jobId: string): Promise<{ open: Page[]; paid: number; processing: number; states: Map<string, PageState> }> {
+  const db = adminDb();
+  const { data, error } = await db.from('public_links').select('id, last_session, last_session_url, last_session_amount, last_session_expires').eq('job_id', jobId).not('last_session', 'is', null);
   if (error) throw error;
-  const open: Page[] = [], states = new Map<string, PageState>(), read = new Map<string, Row | null>();
-  let paid = 0;
+  const open: Page[] = [], states = new Map<string, PageState>(), read = new Map<string, Row | null>(), over = new Map<string, boolean>();
+  let paid = 0, processing = 0;
   for (const link of (data || []) as Row[]) {
     const id = String(link.last_session);
     if (!read.has(id)) {
@@ -149,13 +175,21 @@ async function cardPages(key: string, jobId: string): Promise<{ open: Page[]; pa
       states.set(id, 'open');
       open.push({ link, sess });
     } else if (sess?.status === 'complete') {
-      states.set(id, 'processing');          // a slow means of payment: Stripe's notice will say when it is paid
+      // a slow means of payment: Stripe's notice will say when it is paid (or the bank refuses it: the page is over)
+      if (!over.has(id)) over.set(id, await slowFailed(key, sess));
+      if (over.get(id)) { states.set(id, 'expired'); await forget(link.id, id); continue; }
+      states.set(id, 'processing');
+      processing++;
+      if (link.last_session_url) {
+        const { error: em } = await db.from('public_links').update({ last_session_url: null }).eq('id', link.id).eq('last_session', id);
+        if (em) console.error('client pay: slow page not marked', String(em.message).slice(0, 200));
+      }
     } else {
       states.set(id, 'expired');
       await forget(link.id, id);
     }
   }
-  return { open, paid, states };
+  return { open, paid, processing, states };
 }
 /** closes a card page at Stripe so it can no longer be paid; true when it was paid at that very moment (then it is
     recorded). A page that can be neither closed nor read is thrown: no second page while the first may still take money. */
@@ -176,11 +210,16 @@ async function closePage(key: string, x: Page): Promise<boolean> {
    page is remembered (or on failure); the others wait for that page. A claim left by a function that died is old after
    CLAIM_STALE_MS and taken over. */
 const CLAIM_STALE_MS = 20000;
+/** the database does not have op_begin yet (the new migrations not applied at the moment the functions are deployed):
+    no claim, the page is made as yesterday (one page per link, Stripe's key merges the double taps of a link) */
+const NO_CLAIM = 'none';
+const noFunction = (e: { code?: string } | null) => e?.code === 'PGRST202' || e?.code === '42883';
 async function claimPage(jobId: string): Promise<string | null> {
   const db = adminDb();
   const op = await stripeOp(`pay-claim:${jobId}`);
   for (let i = 0; i < 2; i++) {
     const { data, error } = await db.rpc('op_begin', { p_op: op, p_name: 'client_pay' });
+    if (error && noFunction(error)) { console.error('client pay: op_begin missing, no claim'); return NO_CLAIM; }
     if (error) throw error;
     if (data === null) return op;                                  // claimed: this request makes the page
     // somebody holds it: taken over only when it is old (its maker died before freeing it)
@@ -192,7 +231,7 @@ async function claimPage(jobId: string): Promise<string | null> {
   return null;
 }
 async function freeClaim(op: string | null) {
-  if (!op) return;
+  if (!op || op === NO_CLAIM) return;
   const { error } = await adminDb().from('op_log').delete().eq('op', op).is('result', null);
   if (error) console.error('client pay: claim not freed', String(error.message).slice(0, 200));   // old after CLAIM_STALE_MS anyway
 }
@@ -217,6 +256,7 @@ async function pageOfOther(key: string, jobId: string, good: (x: Page) => boolea
   return null;
 }
 const PAY_DOWN = 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez le garage.';
+const PROCESSING = 'Un paiement pour ce dossier est déjà en traitement (un débit bancaire prend quelques jours). Il s’affichera ici dès que la banque l’aura confirmé. Pour toute question, appelez le garage.';
 /** Stripe refusing or not answering is said in words the customer can act on (never « the server had a problem ») */
 function stripeDown(e: unknown): never {
   if (e instanceof StripeError || (e instanceof Fail && e.code === 'timeout')) {
@@ -233,7 +273,8 @@ async function pay(l: Row, b: Row): Promise<Response> {
   const key = await secret('stripe_key');
   if (!key) fail('no_stripe', 'Le paiement par carte n’est pas offert pour l’instant. Payez sur place ou appelez le garage.');
   let v = await view(l) as Row;
-  if (v.kind !== 'job' || !v.pay.available) fail('nothing', v.pay?.amount_cents ? 'Le paiement par carte n’est pas offert pour ce dossier.' : 'Rien à payer : merci !');
+  // (a payment on its way is asked to Stripe again below: the bank may have refused it since)
+  if (v.kind !== 'job' || (!v.pay.available && !v.pay.processing)) fail('nothing', v.pay?.amount_cents ? 'Le paiement par carte n’est pas offert pour ce dossier.' : 'Rien à payer : merci !');
   const db = adminDb();
   const waitUntil = Date.now() + 7000;          // the longest a request waits for another one's page
   let claim: string | null = null;
@@ -242,9 +283,15 @@ async function pay(l: Row, b: Row): Promise<Response> {
     for (let round = 0; ; round++) {
       // a page already paid (Stripe's notice late or lost) is counted first: what is due is what is left after it
       const pages = await cardPages(key, l.job_id);
+      if (pages.processing) {
+        // a payment by a slow means is on its way: no page at all, and a page still open (an older text's) is closed:
+        // never a second way to pay meanwhile
+        for (const x of pages.open) await closePage(key, x);
+        fail('pay_processing', PROCESSING, 409);
+      }
       if (pages.paid || round) {
         v = await view(l) as Row;
-        if (!v.pay.available) return json({ ok: true, paid: true });
+        if (!v.pay.available && !v.pay.processing) return json({ ok: true, paid: true });
       }
       amount = v.pay.amount_cents as number;
       const { data: inv, error } = await db.from('invoices').select('id').eq('job_id', l.job_id).neq('status', 'void').neq('status', 'draft').is('deleted_at', null).maybeSingle();
@@ -273,7 +320,8 @@ async function pay(l: Row, b: Row): Promise<Response> {
       // the other one's page never came (it failed, or it is for another amount): never a second page without the claim
       if (Date.now() >= waitUntil - 400 || round >= 6) fail('pay_unavailable', PAY_DOWN, 502);
     }
-    const lang = v.lang === 'en' ? 'en' : 'fr';
+    // the language the page is shown in (the customer may have switched it); yesterday's page does not say: the file's
+    const lang = b.lang === 'en' || b.lang === 'fr' ? b.lang : v.lang === 'en' ? 'en' : 'fr';
     const base = baseOf(b.base);
     const back = `${base}client.html#t=${String(b.token)}${lang === 'en' ? '&l=en' : ''}`;
     const label = v.invoice ? (lang === 'en' ? `Invoice ${v.invoice.number}` : `Facture ${v.invoice.number}`)
@@ -292,15 +340,34 @@ async function pay(l: Row, b: Row): Promise<Response> {
       ['payment_intent_data[metadata][job_id]', l.job_id], ['payment_intent_data[description]', `${label} — ${v.garage.name}`]
     ], idem);
     let expires = (slice + 1) * SLICE_S + 3600;
-    let sess = await make(expires, `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}`);
+    // (the language is in the key: the same link asking in the other language is another request, never a refusal)
+    const idem = `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}${lang === 'en' ? '-en' : ''}`;
+    // Stripe answers a key it already saw with the answer it gave THEN (a page « open » at the time), or refuses it when
+    // the words changed since (the appointment is now under way: another label): the page is asked as it is NOW
+    let sess: Row | null = null;
+    try { sess = await make(expires, idem); }
+    catch (e) { if (!(e instanceof StripeError && e.kind === 'idempotency_error')) throw e; }
+    if (sess?.id) {
+      try { sess = { ...sess, ...(await stripeCall(key, 'GET', sessPath(String(sess.id)))) }; }
+      catch { /* Stripe's answer to the making is kept */ }
+    }
+    // that same request was answered earlier by a page since completed by a slow means still on its way: it is the job's
+    // page (kept without an address: Stripe gives none) and nothing else is made
+    if (sess?.status === 'complete' && sess?.payment_status !== 'paid' && !(await slowFailed(key, sess))) {
+      await remember(l.id, { ...sess, url: null }, amount, new Date((Number(sess.expires_at) > 0 ? Number(sess.expires_at) : expires) * 1000).toISOString());
+      fail('pay_processing', PROCESSING, 409);
+    }
     if (sess?.status !== 'open') {
       // that same request was answered earlier in the slice by a page since closed (or paid): a new page, its own key
       if (sess?.payment_status === 'paid') await applyCheckout(sess);
       expires = Math.floor(Date.now() / 1000) + 3600;
-      sess = await make(expires, `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}-${crypto.randomUUID().slice(0, 8)}`);
+      sess = await make(expires, `${idem}-${crypto.randomUUID().slice(0, 8)}`);
     }
-    await remember(l.id, sess, amount, new Date((Number(sess.expires_at) > 0 ? Number(sess.expires_at) : expires) * 1000).toISOString());
-    return json({ ok: true, url: sess.url });
+    const made = sess as Row;
+    // never « here is your page » without an address to open
+    if (!made?.url) { console.error('client pay: Stripe gave a page without an address', String(made?.status)); fail('pay_unavailable', PAY_DOWN, 502); }
+    await remember(l.id, made, amount, new Date((Number(made.expires_at) > 0 ? Number(made.expires_at) : expires) * 1000).toISOString());
+    return json({ ok: true, url: made.url });
   } catch (e) { stripeDown(e); }
   finally { await freeClaim(claim).catch(() => undefined); }
 }
@@ -315,16 +382,21 @@ async function answer(req: Request): Promise<Response> {
   if (action === 'answer') {
     if (!l.job_id) fail('bad_link', 'Rien à répondre ici.');
     if (b.confirm !== true) fail('confirm', 'Confirmez votre réponse.');
-    const { data: it } = await db.from('job_items').select('*').eq('id', String(b.item_id || '')).eq('job_id', l.job_id).is('deleted_at', null).maybeSingle();
+    // a read that fails is a server problem, never « this proposal no longer exists » nor « this appointment is over »
+    const itemId = String(b.item_id || '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) fail('gone', 'Cette proposition n’existe plus.', 404);
+    const { data: it, error: ei } = await db.from('job_items').select('*').eq('id', itemId).eq('job_id', l.job_id).is('deleted_at', null).maybeSingle();
+    if (ei) throw ei;
     const i = it as Row | null;
     if (!i) fail('gone', 'Cette proposition n’existe plus.', 404);
     if (i.status === 'proposed') {
       // extra work is answered while the appointment is coming or under way and its invoice not finished: afterwards
       // an « accepted » would never be done nor billed
-      const [{ data: jb }, { data: inv }] = await Promise.all([
+      const [{ data: jb, error: e1 }, { data: inv, error: e2 }] = await Promise.all([
         db.from('jobs').select('status, deleted_at').eq('id', l.job_id).maybeSingle(),
         db.from('invoices').select('id').eq('job_id', l.job_id).in('status', ['issued', 'paid']).is('deleted_at', null).limit(1)
       ]);
+      if (e1 || e2) throw e1 || e2;
       const j = jb as Row | null;
       if (!j || j.deleted_at || !['booked', 'en_route', 'on_site'].includes(j.status) || inv?.length) {
         fail('closed', 'Ce rendez-vous est terminé : cette proposition ne peut plus être acceptée ici. Appelez le garage.', 409);
@@ -340,7 +412,8 @@ async function answer(req: Request): Promise<Response> {
       if (ew) throw ew;
       if (!done?.length) {
         if (shown !== null) {
-          const { data: again } = await db.from('job_items').select('qty, unit_cents, kind, status').eq('id', i.id).maybeSingle();
+          const { data: again, error: e3 } = await db.from('job_items').select('qty, unit_cents, kind, status').eq('id', i.id).maybeSingle();
+          if (e3) throw e3;
           if ((again as Row | null)?.status === 'proposed') moved(lineCents(again as Row));
         }
         return json(await view(l));
@@ -364,7 +437,9 @@ async function answer(req: Request): Promise<Response> {
     const s = await settings();
     // one tap (« J’accepte et je signe »): an electronic signature in the name on the customer's file; or the name typed
     // and a signature drawn with the finger (the older page)
-    const { data: jc } = await db.from('jobs').select('waiver_signed_at, customer:customer_id(first_name, last_name, company)').eq('id', l.job_id).single();
+    // the name on the file signs: a read that fails never signs « Client » instead of the customer's name
+    const { data: jc, error: ejc } = await db.from('jobs').select('waiver_signed_at, customer:customer_id(first_name, last_name, company)').eq('id', l.job_id).single();
+    if (ejc) throw ejc;
     const cuj = ((jc as Row | null)?.customer || {}) as Row;
     const onFile = [cuj.first_name, cuj.last_name].filter(Boolean).join(' ').trim() || String(cuj.company || '').trim();
     const click = b.click === true;
@@ -388,11 +463,13 @@ async function answer(req: Request): Promise<Response> {
     if (!(jc as Row | null)?.waiver_signed_at) Object.assign(patch, { waiver_signed_at: now, waiver_signer: signer, waiver_version: String(s.waiver?.version || '1'), waiver_attachment: attId, waiver_via: 'online' });
     // the proof of an electronic signature: when, which link, from which device (the address is kept as a fingerprint
     // only, made with a secret of the server), the amount seen and the lines it was for
+    // (the proof is written first: never an electronic signature without its proof)
     if (click) {
-      await db.from('activity').insert({ entity: 'job', entity_id: l.job_id, action: 'signed_online', data: {
+      const { error: ep } = await db.from('activity').insert({ entity: 'job', entity_id: l.job_id, action: 'signed_online', data: {
         signer, at: now, version: String(s.waiver?.version || '1'), cents: v.expected.total, shown_cents: shown, link: l.id,
         lines: ((v.items || []) as Row[]).map((i) => ({ id: i.id, description: i.description, qty: i.qty, unit_cents: i.unit_cents })),
         device: (req.headers.get('user-agent') || '').slice(0, 160), ip: await visitorMark(req, 'sig') } });
+      if (ep) throw ep;
     }
     const { error: e2 } = await db.from('jobs').update(patch).eq('id', l.job_id);
     if (e2) throw e2;
@@ -419,7 +496,10 @@ async function answer(req: Request): Promise<Response> {
         session = 'unknown';
       }
     }
-    return json({ ...(await view(l)), session });
+    // `checked`: the same, in the words the page reads (paid / open / expired; null = no page or still on its way;
+    // absent = Stripe did not answer)
+    const checked = session === 'paid' || session === 'open' || session === 'expired' ? session : session === 'unknown' ? undefined : null;
+    return json({ ...(await view(l)), session, checked });
   }
   fail('action', 'Action inconnue.');
 }
