@@ -381,11 +381,60 @@ test('restore: a file of the backup that the script does not know is an error, a
 test('restore: the tables of the reconciliation and of the backup log are in the list (after the tables they tell about)', async () => {
   const dos = join(dir, 'ops', 'donnees');
   mkdirSync(dos, { recursive: true });
-  for (const t of ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'customers']) writeFileSync(join(dos, `${t}.json`), JSON.stringify([{ id: randomUUID() }]));
+  for (const t of ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline', 'customers']) writeFileSync(join(dos, `${t}.json`), JSON.stringify([{ id: randomUUID() }]));
   const r = await lancer('restaurer.mjs', [dos]);
   assert.equal(r.code, 0, r.err);
   const ordre = [...r.out.matchAll(/pg_temp\.remettre\('(\w+)'/g)].map((m) => m[1]);
-  assert.deepEqual(ordre, ['customers', 'ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings']);
+  assert.deepEqual(ordre, ['customers', 'ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline']);
+});
+
+test('restore: every table the « backup » function hands out is one the restore knows (R07: ops_recon_baseline stopped a full restore)', () => {
+  const fn = readFileSync(join(ROOT, 'supabase/functions/backup/handler.ts'), 'utf8');
+  const liste = fn.match(/export const TABLES = \[([\s\S]*?)\] as const/);
+  assert.ok(liste, 'TABLES is found in backup/handler.ts');
+  const tables = [...liste[1].replace(/\/\/.*$/gm, '').matchAll(/'(\w+)'/g)].map((m) => m[1]);
+  assert.ok(tables.includes('ops_recon_baseline') && tables.length > 30);
+  const ordre = readFileSync(join(OPS, 'restaurer.mjs'), 'utf8').match(/const ORDRE = \[([\s\S]*?)\];/)[1];
+  const connues = [...ordre.matchAll(/'(\w+)'/g)].map((m) => m[1]);
+  assert.deepEqual(tables.filter((t) => !connues.includes(t)), [], 'a table of the backup missing from ORDRE stops every full restore');
+  assert.deepEqual(connues, tables, 'the same tables, in the same order (a table after the ones it points to)');
+});
+
+test('restore --remplacer of the settings: the night\'s values come back, but the public booking page stays open or closed as it is now (R111)', async () => {
+  const avant = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+  try {
+    // that night: booking open, another home; today: the owner closed the booking page
+    const nuit = { ...avant, booking: { ...(avant.booking || {}), home: { label: 'Centrale (sauvegarde)' }, web: { ...((avant.booking || {}).web || {}), on: true } } };
+    await q(`update public.settings set booking = jsonb_set(booking, '{web}', coalesce(booking->'web', '{}'::jsonb) || '{"on": false}') where id = 1`);
+    const dos = dossier('web-on', { settings: [nuit] });
+    const r = await restaurer(dos, ['--tables', 'settings', '--remplacer']);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.sql, '', 'the SQL ran: ' + r.sql);
+    const b = (await q(`select booking from public.settings where id = 1`))[0].booking;
+    assert.equal(b.home.label, 'Centrale (sauvegarde)', 'the night\'s settings are back');
+    assert.equal(b.web.on, false, 'the booking page stays closed: only the owner opens it (web_switch)');
+    // and the other way: open today, closed that night
+    await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
+    const r2 = await restaurer(dossier('web-on-2', { settings: [{ ...nuit, booking: { ...nuit.booking, web: { ...nuit.booking.web, on: false } } }] }), ['--tables', 'settings', '--remplacer']);
+    assert.equal(r2.sql, '', 'the SQL ran: ' + r2.sql);
+    assert.equal((await q(`select booking->'web'->'on' v from public.settings where id = 1`))[0].v, true);
+  } finally {
+    await q(`update public.settings s set booking = ($1::jsonb)->'booking' where id = 1`, [avant]);
+  }
+});
+
+test('restore: an SVG picture of an old backup (the server refuses them now) is left in the backup, said, and does not stop the restore', async () => {
+  const ok = randomUUID(), svg = randomUUID();
+  photos.push(ok, svg);
+  const dos = dossier('svg', { attachments: [
+    { id: ok, kind: 'receipt', mime: 'image/png', data: Buffer.from('un reçu').toString('base64'), bytes: 7 },
+    { id: svg, kind: 'receipt', mime: 'image/svg+xml', data: Buffer.from('<svg/>').toString('base64'), bytes: 6 }] });
+  const r = await restaurer(dos, ['--tables', 'attachments']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.sql, '', 'the SQL ran: ' + r.sql);
+  assert.match(r.err, new RegExp(`1 photo SVG ne revient pas .*${svg}`));
+  assert.equal((await q(`select count(*)::int n from public.attachments where id = $1`, [ok]))[0].n, 1, 'the other picture is back');
+  assert.equal((await q(`select count(*)::int n from public.attachments where id = $1`, [svg]))[0].n, 0);
 });
 
 test('restore with --remplacer: a row that an old backup holds twice does not break the restore, and what was made after the backup stays', async () => {
@@ -613,4 +662,68 @@ test('the schema of the night: when the server tells its last migration, the cop
   assert.equal(sql.code, 0, sql.err);
   assert.match(sql.out, /-- Schéma de la base le soir de la sauvegarde : "20261116000050"/);
   await s.fermer();
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The lost project, rehearsed: a NEW database made from the migrations, a whole night restored into it (rapprochement-03)
+// ---------------------------------------------------------------------------------------------------------------
+test('a lost project: a whole night restored with --neuve into a NEW database made from the migrations gives back every table, the garage\'s settings and numbers, and the reconciliation reads the same books', async () => {
+  const nom = `ops_repetition_${process.pid}_${Date.now()}`;
+  const P = (args, input) => execFileSync('psql', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-d', nom, ...args],
+    { encoding: 'utf8', input, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'], maxBuffer: 1 << 28 });
+  const avant = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+  const neuf = new pg.Pool({ host: '127.0.0.1', port: 54332, user: 'postgres', database: nom, max: 1 });
+  const nq = async (sql, p = []) => (await neuf.query(sql, p)).rows;
+  await q(`create database ${nom}`);
+  try {
+    // the garage's own settings (what a new project's migrations do not have), and a customer of its own
+    await q(`update public.settings set company = company || '{"name": "Mécanique Mobile (répétition)"}',
+                     billing = billing || '{"invoice_prefix": "HIS-"}',
+                     booking = jsonb_set(booking || '{"home": {"label": "Centrale (sauvegarde)"}}', '{web}', coalesce(booking->'web', '{}'::jsonb) || '{"on": false}') where id = 1`);
+    clients.push((await q(`insert into public.customers (first_name, phone, notes) values ('Répétition', '4385550299', 'perte du projet') returning id`))[0].id);
+    // the night, made by the nightly script against this copy's « backup » function
+    const dos = join(dir, 'repetition', 'donnees');
+    const r = await lancer('sauvegarde.mjs', [dos], VRAI);
+    assert.equal(r.code, 0, r.out + r.err);
+    const resume = lire(dos, '_resume.json');
+    assert.ok('ops_recon_baseline' in resume.tables, 'the backup holds the reconciliation\'s starting point');
+    const ici = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+
+    // a new project: what Supabase has (roles, the auth schema), then every migration, in order
+    P(['-f', join(ROOT, 'tests/stack/base.sql')]);
+    P(['-c', `alter database ${nom} set search_path to "$user", public, extensions`]);
+    P(['-c', 'drop schema auth cascade']);
+    P([], execFileSync('pg_dump', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-s', '-n', 'auth', 'postgres'], { encoding: 'utf8', maxBuffer: 1 << 28 }));
+    for (const f of readdirSync(join(ROOT, 'supabase/migrations')).filter((x) => x.endsWith('.sql')).sort()) P(['-f', join(ROOT, 'supabase/migrations', f)]);
+    // restaurer-comptes.mjs, played here: the team's accounts with the same ids (the real script talks to the project's Auth)
+    for (const s of lire(dos, 'staff.json')) await nq(`insert into auth.users (id, email, aud, role) values ($1, $2, 'authenticated', 'authenticated') on conflict do nothing`, [s.id, s.email || null]);
+
+    const ecrit = async (args) => { const x = await lancer('restaurer.mjs', [dos, ...args]); assert.equal(x.code, 0, x.err); const f = join(dir, `rep-${randomUUID()}.sql`); writeFileSync(f, x.out); return f; };
+    // the default mode in a new project would keep the migrations' settings: it stops, says --neuve, and changes nothing
+    const defaut = await ecrit([]);
+    assert.throws(() => P(['-f', defaut]), (e) => /c'est un projet neuf\. Refais le fichier avec --neuve/.test(String(e.stderr)));
+    assert.equal((await nq(`select count(*)::int n from public.customers`))[0].n, 0, 'nothing was written');
+    // --neuve: everything
+    const tout = await ecrit(['--neuve']);
+    P(['-f', tout]);
+    for (const [t, n] of Object.entries(resume.tables)) assert.equal((await nq(`select count(*)::int n from public.${t}`))[0].n, n, `${t}: every row of the night`);
+    const la = (await nq(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+    assert.deepEqual(la, ici, 'the garage\'s settings, as they were (company, invoice prefix, booking, web.on, rights…)');
+    assert.equal(la.booking.web.on, false, 'online booking stays closed as the owner left it (the migration opens it)');
+    assert.deepEqual(await nq(`select name, next_value from public.counters order by name`), await q(`select name, next_value from public.counters order by name`), 'the invoice counter');
+    const maxJob = (await nq(`select coalesce(max(number), 0)::bigint m from public.jobs`))[0].m;
+    assert.ok(Number((await nq(`select last_value from public.job_number_seq`))[0].last_value) >= Number(maxJob), 'the next job takes a new number');
+    // the reconciliation reads the same books in both (same differences, same day's sheet), and none of its checks breaks
+    const recon = async (f) => { const v = (await f(`select public.recon_collect(public.local_today() - 1) v`))[0].v; return { f: v.findings.map((x) => [x.c, x.s, x.t, x.e, x.k].join('|')).sort(), sheet: v.sheet }; };
+    const [a, b] = [await recon(q), await recon(nq)];
+    assert.deepEqual(b.f.filter((x) => /\.error\|/.test(x)), [], 'no check of the reconciliation breaks on the restored base');
+    assert.deepEqual(b.f, a.f, 'the same differences');
+    assert.deepEqual(b.sheet, a.sheet, 'the same sheet of the day');
+    // a second --neuve on a base that is no longer new: refused, nothing changed
+    assert.throws(() => P(['-f', tout]), (e) => /cette base n'est pas neuve/.test(String(e.stderr)));
+  } finally {
+    await neuf.end();
+    await q(`drop database if exists ${nom} with (force)`);
+    await q(`update public.settings s set company = ($1::jsonb)->'company', billing = ($1::jsonb)->'billing', booking = ($1::jsonb)->'booking' where id = 1`, [avant]);
+  }
 });
