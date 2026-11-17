@@ -18,7 +18,7 @@ function keepTogether(text: string, value: string): ComponentChildren {
   return <>{a}<span style={{ whiteSpace: 'nowrap' }}>{value}</span>{b}</>;
 }
 
-export function InvoicePanel(p: { v: JobView; l: CLang; justPaid: boolean; payFailed: string; pendingNote: boolean; onPay: () => Promise<void> }) {
+export function InvoicePanel(p: { v: JobView; l: CLang; justPaid: boolean; payFailed: string; pendingNote: boolean; /** a bank debit on its way: no « Payer » */ processing?: boolean; onPay: () => Promise<void> }) {
   const { v, l } = p;
   const inv = v.invoice!;
   const paid = invoicePaid(inv);
@@ -60,10 +60,13 @@ export function InvoicePanel(p: { v: JobView; l: CLang; justPaid: boolean; payFa
       {footer && <p class="cl-notes cl-muted">{footer}</p>}
       {paid ? (
         <div class="cl-pay"><Note kind="ok">{ct(l, 'invoice.paidThanks')}</Note></div>
-      ) : v.pay.available ? (
+      ) : v.pay.available && !p.processing ? (
         <PayBox v={v} l={l} failed={p.payFailed} pendingNote={p.pendingNote} onPay={p.onPay} />
       ) : (
-        <div class="cl-pay cl-noprint"><CallUs garage={g} l={l} primary={false} /></div>
+        <div class="cl-pay cl-noprint">
+          {p.processing && <Note data-testid="client-pay-processing">{ct(l, 'pay.processing')}</Note>}
+          <CallUs garage={g} l={l} primary={false} />
+        </div>
       )}
       <div class="cl-tools cl-noprint">
         <Button icon={<Printer />} onClick={() => window.print()} data-testid="client-print">{ct(l, 'invoice.print')}</Button>

@@ -80,6 +80,14 @@ export function cardPaid(v: JobView): boolean {
   return v.session === 'paid' || v.checked === 'paid';
 }
 
+/** a payment by a slow means (a bank debit) is on its way: the file says so, or « Payer » was refused for that reason on
+    this page (409 « pay_processing »; `refusedAt` = the money the file had received then), until money comes in. Meanwhile
+    « Payer » is not offered and the page says why. */
+export function slowPayOnItsWay(v: JobView, refusedAt: number | null): boolean {
+  if (v.pay.processing) return true;
+  return refusedAt != null && v.pay.amount_cents > 0 && moneyIn(v) <= refusedAt;
+}
+
 export type PayCheck = 'idle' | 'checking' | 'paid' | 'late';
 /** after a card payment (back from Stripe): paid when nothing is left to pay, or when money came in since this tab left
     for Stripe (`receivedBefore`: a balance may remain when the total rose meanwhile, or the payment was a part);

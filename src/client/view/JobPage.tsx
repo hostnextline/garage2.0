@@ -22,7 +22,7 @@ export function JobPage(p: { v: JobView; l: CLang; token: string; a: Appointment
   const inv = v.invoice;
   const first = v.customer?.first;
   const onSite = isOnSiteBill(v);
-  const work = <WorkPanel v={v} l={l} payFailed={a.payFailed} pendingNote={a.pendingNote} onPay={p.onPay} onSign={a.sign} />;
+  const work = <WorkPanel v={v} l={l} payFailed={a.payFailed} pendingNote={a.pendingNote} processing={a.payProcessing} onPay={p.onPay} onSign={a.sign} />;
   return (
     <>
       <section class="cl-hero">
@@ -40,7 +40,7 @@ export function JobPage(p: { v: JobView; l: CLang; token: string; a: Appointment
         </Note>
       )}
       {(extrasToAnswer(v).length > 0 || a.reply) && <ExtrasPanel v={v} l={l} reply={a.reply} onAnswer={a.answer} />}
-      {inv && <InvoicePanel v={v} l={l} justPaid={a.justPaid} payFailed={a.payFailed} pendingNote={a.pendingNote} onPay={p.onPay} />}
+      {inv && <InvoicePanel v={v} l={l} justPaid={a.justPaid} payFailed={a.payFailed} pendingNote={a.pendingNote} processing={a.payProcessing} onPay={p.onPay} />}
       {/* the mechanic is there: the invoice to pay comes first */}
       {onSite && work}
       <AppointmentPanel v={v} l={l} printable={!inv} token={p.token} />

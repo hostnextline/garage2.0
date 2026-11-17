@@ -241,6 +241,88 @@ describe('the server says no in words the customer can act on (R11)', () => {
   });
 });
 
+describe('a payment by a slow means already on its way (409 « pay_processing »)', () => {
+  const invoice = (paid: number, total = 18394) => ({ number: 'F-0001', issued_at: null, due_on: null, status: paid >= total ? 'paid' : 'issued', lines: [], subtotal_cents: 15998, tps_cents: 800, tvq_cents: 1596, total_cents: total, paid_cents: paid, notes: null });
+  const FR = 'Un paiement pour ce dossier est déjà en traitement (un débit bancaire prend quelques jours). Il s’affichera ici dès que la banque l’aura confirmé. Pour toute question, appelez-nous.';
+  const EN = 'A payment for this file is already being processed (a bank debit takes a few days). It will show here as soon as the bank confirms it. If you have a question, call us.';
+  const processing = (o: Partial<JobView['pay']> = {}) => ({ available: false, amount_cents: 18394, kind: 'invoice' as const, pending: true, processing: true, ...o });
+  it('« Payer » refused: the customer reads the sentence, not « la page n’a pas pu s’ouvrir », and « Payer » is gone', async () => {
+    let current = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => {
+      if (a === 'pay') { current = job({ invoice: invoice(0), pay: processing() }, { status: 'done' }); throw new ClientError('pay_processing', 'Un paiement pour ce dossier est déjà en traitement.'); }
+      return current;
+    };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);           // the file is read again
+    expect(sp(q('client-pay-processing')[0].textContent)).toBe(FR);
+    expect(q('client-pay-button')).toHaveLength(0);
+    expect(q('client-call')).toHaveLength(1);
+    expect(sp(box.textContent)).not.toContain('n’a pas pu s’ouvrir');
+    expect(sp(box.textContent)).not.toContain('Un problème est survenu');
+  });
+  it('the file read again still offers « Payer » (or cannot be read): « Payer » is not offered again on this page', async () => {
+    const v = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('pay_processing', 'x'); return v; };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay-processing')[0].textContent)).toBe(FR);
+    expect(q('client-pay-button')).toHaveLength(0);
+    expect(calls.filter((c) => c.action === 'pay')).toHaveLength(1);
+  });
+  it('… in English on an English page', async () => {
+    let current = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => {
+      if (a === 'pay') { current = job({ invoice: invoice(0), pay: processing() }, { status: 'done' }); throw new ClientError('pay_processing', 'x'); }
+      return current;
+    };
+    await open({ lang: 'en' });
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay-processing')[0].textContent)).toBe(EN);
+    expect(q('client-pay-button')).toHaveLength(0);
+  });
+  it('on site, « Payer maintenant » refused the same way: the sentence, no button, no « Vous pouvez payer pendant les travaux »', async () => {
+    const bill = { lines: [{ description: 'Huile', qty: 1, unit_cents: 15998 }], subtotal_cents: 15998, tps_cents: 800, tvq_cents: 1596, total_cents: 18394 };
+    const v = job({ bill, pay: { available: true, amount_cents: 18394, kind: 'prepay', pending: false } }, { status: 'on_site' });
+    server = (a) => { if (a === 'pay') throw new ClientError('pay_processing', 'x'); return v; };
+    await open();
+    expect(sp(q('client-bill-lead')[0].textContent)).toContain('Vous pouvez payer');
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay-processing')[0].textContent)).toBe(FR);
+    expect(q('client-pay-button')).toHaveLength(0);
+    expect(sp(q('client-bill-lead')[0].textContent)).not.toContain('Vous pouvez payer');
+  });
+  it('the page opened while the debit is on its way (« processing » in the file): the sentence where « Payer » was', async () => {
+    server = () => job({ invoice: invoice(0), pay: processing() }, { status: 'done' });
+    await open();
+    expect(sp(q('client-pay-processing')[0].textContent)).toBe(FR);
+    expect(q('client-pay-button')).toHaveLength(0);
+    expect(q('client-call')).toHaveLength(1);
+  });
+  it('the bank confirmed meanwhile (the money is in): the sentence goes', async () => {
+    let current = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('pay_processing', 'x'); return current; };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(q('client-pay-processing')).toHaveLength(1);
+    current = job({ invoice: invoice(18394), pay: { available: false, amount_cents: 0, kind: 'invoice', pending: false, processing: false } }, { status: 'done' });
+    const later = Date.now() + 60000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });   // back on the tab: read again
+      await wait(); await wait();
+      expect(q('client-stamp')).toHaveLength(1);
+      expect(q('client-pay-processing')).toHaveLength(0);
+    } finally { vi.restoreAllMocks(); }
+  });
+  it('an old server (no « processing » in the file, never « pay_processing »): the page is as before', async () => {
+    server = () => job({ invoice: invoice(0), pay: { available: false, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    await open();
+    expect(q('client-pay-processing')).toHaveLength(0);
+    expect(q('client-call')).toHaveLength(1);
+  });
+});
+
 describe('the customer’s side when the file moved under the open page (terrain)', () => {
   const invoice = (paid: number, total = 18394) => ({ number: 'F-0001', issued_at: null, due_on: null, status: paid >= total ? 'paid' : 'issued', lines: [], subtotal_cents: 15998, tps_cents: 800, tvq_cents: 1596, total_cents: total, paid_cents: paid, notes: null });
   it('the office cancelled the appointment meanwhile: « J’accepte et je signe » brings the file as it is (annulé), nothing more to sign', async () => {

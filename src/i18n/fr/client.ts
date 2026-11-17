@@ -143,7 +143,8 @@ export const client = {
     late: 'Le paiement n’apparaît pas encore. S’il a été accepté, il s’affichera ici dans quelques minutes.',
     checkAgain: 'Vérifier encore',
     fail: 'La page de paiement n’a pas pu s’ouvrir. Réessayez dans un instant ou appelez-nous.',
-    down: 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez-nous.'
+    down: 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez-nous.',
+    processing: 'Un paiement pour ce dossier est déjà en traitement (un débit bancaire prend quelques jours). Il s’affichera ici dès que la banque l’aura confirmé. Pour toute question, appelez-nous.'
   },
 
   quote: {
