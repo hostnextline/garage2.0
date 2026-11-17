@@ -46,7 +46,7 @@ export function useWeekNeeds(from: Day): WeekNeeds {
         from: start, to: addDays(from, 6), jobs: allJobs.value, itemsOf: (id) => items.get(id) || [],
         service: (id) => service(id), partsOf: (id) => parts.get(id) || [], vehicle: (id) => vehicle(id),
         spec: (k) => (k ? specs.get(k) : undefined),
-        // the sheet the car's file and the job card show (R166): its own, else the one confirmed for a car alike
+        // the sheet the car's file shows (sheetOf, R166): its own, else the one confirmed for a car alike
         sheet: (v) => (v.spec_key && specs.get(v.spec_key)) || sheetOf(v)?.spec,
         refRows: engineRef.value.rows, inventory: inventoryList.value
       }),

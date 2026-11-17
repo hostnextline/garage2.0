@@ -54,7 +54,7 @@ describe('useWeekNeeds', () => {
     await act(() => replaceLocal('job_items', [{ id: 'l', job_id: 'j', service_id: 's-oil', item_id: null, kind: 'service', qty: 1, status: 'planned', sort: 0 }]));
     expect(seen!.lines.find((l) => l.kind === 'oil')).toMatchObject({ ref: '0W-20', qty: 4.2 });
   });
-  it('a car not linked to a sheet uses the sheet confirmed for another car alike, as its file and the job card do (R166)', async () => {
+  it('a car not linked to a sheet uses the sheet confirmed for another car alike, as its file does (sheetOf, R166)', async () => {
     const from = addDays(weekStart(today()), 7);
     const car = { id: 'v', year: 2019, make: 'Honda', model: 'Civic', engine: '2.0L', spec_key: null };
     replaceLocal('services', [{ id: 's-oil', name_fr: 'Changement d’huile', name_en: null, includes: [], needs: null }]);
