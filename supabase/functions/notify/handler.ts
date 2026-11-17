@@ -32,7 +32,11 @@ export async function makeLink(jobId: string | null, quoteId: string | null, by:
   return clientLink(base, token, lang);
 }
 
+/** the app waits 40 s for this function (callFn): the text must be answered before, counted from the request's arrival */
+const ANSWER_MS = 35000;
+
 export const handler = serve(async (req) => {
+  const until = Date.now() + ANSWER_MS;
   const b = await body(req);
   const kind = String(b.kind || '');
   if (!KINDS.includes(kind)) fail('kind', 'Type de texto inconnu.');
@@ -176,7 +180,7 @@ export const handler = serve(async (req) => {
     const message = fill(when.tpl, vars);
 
     const quiet = cu.sms_ok === false || s.messages?.on?.[kind] === false;
-    const res = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message);
+    const res = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message, undefined, { until });
     await db.from('messages').insert({ job_id: j.id, customer_id: cu.id || null, staff_id: c.id, kind, channel: 'sms', to_addr: cu.phone || null, body: message,
       status: res.status === 'sent' ? 'sent' : res.status === 'error' ? 'failed' : 'skipped', provider_ref: (res as { id?: string }).id || null, error: (res as { error?: string }).error || res.status, created_by: c.id });
     if (res.status === 'sent' && (kind === 'booking' || kind === 'moved')) {

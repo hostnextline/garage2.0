@@ -1,7 +1,13 @@
 // Texts and emails to customers and team members, through the garage's GoHighLevel account.
-// Time: one send (or one read of a conversation) is several calls to GoHighLevel; all of them together get at most
-// BUDGET_MS, each one at most CALL_MS, and a call past its time is really stopped (never a text that leaves after the
-// person was told « not sent »). The app gives up on a text after 20 s: the answer always comes before.
+// Time: one send (or one read of a conversation) is several calls to GoHighLevel, all inside the time its caller has
+// (`until`, a moment in ms; BUDGET_MS from the start when the caller does not say: the app gives up on a conversation
+// after 20 s; « notify », that the app waits 40 s for, gives 35 s).
+//   - a call that reads, or files the contact, is stopped for real (the connection closed) past CALL_MS or past the time
+//     left: nothing reaches the customer through it;
+//   - the text itself (the message call) starts only while SEND_MS are still left, and once started it is NEVER cut:
+//     GoHighLevel sends a text it received whatever happens to the connection, so cutting it would only make the team
+//     read « not sent » for a text that went (sent again: the customer gets two). Its answer is awaited until `until`;
+//     one that has not come by then is said in words (« peut-être parti »).
 import { env, Fail } from './http.ts';
 import { secret } from './db.ts';
 import { filesOf } from './files.ts';
@@ -16,29 +22,39 @@ export function e164(phone?: string | null): string | null {
   if (d.length === 11 && d.startsWith('1')) d = d.slice(1);
   return d.length === 10 ? `+1${d}` : null;
 }
-const CALL_MS = 15000, BUDGET_MS = 17000;
-/** the end of the time given to one send or one read (Date.now() + BUDGET_MS) */
-const budget = () => Date.now() + BUDGET_MS;
-/** one request to GoHighLevel, stopped for real (the connection closed) past its own time or the send's budget */
-async function request(path: string, init: RequestInit, until: number): Promise<{ status: number; ok: boolean; text: string }> {
-  const ms = Math.min(CALL_MS, until - Date.now());
-  if (ms < 250) throw new Fail('timeout', 'Le service de textos ne répond pas.', 504);
-  const stop = new AbortController();
-  const t = setTimeout(() => stop.abort(), ms);
-  try {
-    const r = await fetch(`${base()}${path}`, { ...init, signal: stop.signal });
-    return { status: r.status, ok: r.ok, text: await r.text() };
-  } catch (e) {
-    if (stop.signal.aborted) throw new Fail('timeout', 'Le service de textos ne répond pas.', 504);
-    throw e;
-  } finally { clearTimeout(t); }
+/** CALL_MS: the most one read / contact call gets; SEND_MS: the time that must be left to start a text; BUDGET_MS: a send
+    or a read whose caller gives no time */
+const CALL_MS = 15000, SEND_MS = 10000, BUDGET_MS = 17000;
+/** what the caller may say: `until`, the moment its answer must be ready by (Date.now() + BUDGET_MS when not said) */
+export interface SendTime { until?: number }
+const endOf = (t?: SendTime) => (t && Number.isFinite(t.until) ? Math.min(Number(t.until), Date.now() + 60000) : Date.now() + BUDGET_MS);
+const SLOW = 'Le service de textos ne répond pas.';
+const NOT_SENT = 'Le service de textos ne répond pas : le texto n’est pas parti. Réessayez dans un instant.';
+const MAYBE = 'Le service de textos n’a pas répondu à temps : le texto est peut-être parti. Regardez la conversation avant de le renvoyer.';
+/** one request to GoHighLevel. A read or a contact (`keep` false): stopped for real (the connection closed) past CALL_MS or
+    `until`. A text (`keep` true): never stopped once started; past `until` its answer is no longer awaited (no_answer). */
+async function request(path: string, init: RequestInit, until: number, keep = false): Promise<{ status: number; ok: boolean; text: string }> {
+  const left = until - Date.now();
+  const ms = keep ? left : Math.min(CALL_MS, left);
+  if (ms < 250) throw new Fail('timeout', SLOW, 504);
+  const stop = keep ? null : new AbortController();
+  const go = fetch(`${base()}${path}`, stop ? { ...init, signal: stop.signal } : init)
+    .then(async (r) => ({ status: r.status, ok: r.ok, text: await r.text() }));
+  let t: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, no) => {
+    t = setTimeout(() => { stop?.abort(); no(keep ? new Fail('no_answer', MAYBE, 504) : new Fail('timeout', SLOW, 504)); }, ms);
+  });
+  // (race listens to both: a text whose answer comes after `until` ends by itself, its rejection is never unhandled)
+  try { return await Promise.race([go, late]); }
+  catch (e) { if (stop?.signal.aborted) throw new Fail('timeout', SLOW, 504); throw e; }
+  finally { clearTimeout(t); }
 }
-async function call(path: string, version: string, token: string, payload: unknown, until = budget()) {
+async function call(path: string, version: string, token: string, payload: unknown, until: number, keep = false) {
   const r = await request(path, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, Version: version, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(payload)
-  }, until);
+  }, until, keep);
   const text = r.text;
   let data: any = null; try { data = JSON.parse(text); } catch { /* not json */ }
   if (!r.ok) throw new Error(`GoHighLevel ${r.status}: ${(data && (data.message || data.error)) || text.slice(0, 160)}`);
@@ -48,7 +64,8 @@ export async function ghlReady(): Promise<{ token: string; location: string } | 
   const token = await secret('ghl_token'), location = await secret('ghl_location');
   return token && location ? { token, location } : null;
 }
-async function contactId(cfg: { token: string; location: string }, p: Person, tag: string, until = budget()): Promise<string> {
+const failed = (e: unknown, words?: string) => ({ status: 'error' as const, error: (words || String((e as Error)?.message || e)).slice(0, 300) });
+async function contactId(cfg: { token: string; location: string }, p: Person, tag: string, until: number): Promise<string> {
   const up = await call('/contacts/upsert', '2021-07-28', cfg.token, {
     locationId: cfg.location, firstName: p.first || undefined, lastName: p.last || undefined,
     phone: e164(p.phone) || undefined, email: p.email || undefined, tags: [tag], source: 'Mécanique Mobile H.I.S'
@@ -59,38 +76,43 @@ async function contactId(cfg: { token: string; location: string }, p: Person, ta
 }
 /** the customer's file in GoHighLevel: made when the number is new there, else completed (the name on a number it already
     had); nothing is sent to the customer */
-export async function syncContact(p: Person, tag = 'garage-mobile'): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; id?: string; error?: string }> {
+export async function syncContact(p: Person, tag = 'garage-mobile', time?: SendTime): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; id?: string; error?: string }> {
+  const until = endOf(time);
   const cfg = await ghlReady();
   if (!cfg) return { status: 'off' };
   if (!e164(p.phone)) return { status: 'no_phone' };
-  try { return { status: 'ok', id: await contactId(cfg, p, tag) }; }
-  catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }
+  try { return { status: 'ok', id: await contactId(cfg, p, tag, until) }; }
+  catch (e) { return failed(e); }
 }
-export async function sendSms(p: Person, message: string, tag = 'garage-mobile'): Promise<{ status: SendStatus; id?: string; error?: string }> {
+/** one text or email: the contact first (it leaves the text its SEND_MS), then the message, started only with SEND_MS left
+    and never cut once started */
+async function deliver(cfg: { token: string; location: string }, p: Person, tag: string, payload: Record<string, unknown>, until: number): Promise<{ status: SendStatus; id?: string; error?: string }> {
+  let cid: string;
+  try { cid = await contactId(cfg, p, tag, until - SEND_MS); }
+  catch (e) { return failed(e, e instanceof Fail && e.code === 'timeout' ? NOT_SENT : undefined); }
+  if (until - Date.now() < SEND_MS) return failed(null, NOT_SENT);
+  const sent = await call('/conversations/messages', '2021-04-15', cfg.token, { ...payload, contactId: cid }, until, true);
+  return { status: 'sent', id: sent?.messageId || sent?.id };
+}
+export async function sendSms(p: Person, message: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string }> {
+  const until = endOf(time);
   const cfg = await ghlReady();
   if (!cfg) return { status: 'off' };
   if (!e164(p.phone)) return { status: 'no_phone' };
-  try {
-    const until = budget();
-    const cid = await contactId(cfg, p, tag, until);
-    const sent = await call('/conversations/messages', '2021-04-15', cfg.token, { type: 'SMS', contactId: cid, message }, until);
-    return { status: 'sent', id: sent?.messageId || sent?.id };
-  } catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }
+  try { return await deliver(cfg, p, tag, { type: 'SMS', message }, until); }
+  catch (e) { return failed(e); }
 }
-export async function sendEmail(p: Person, subject: string, html: string, text: string, tag = 'garage-mobile'): Promise<{ status: SendStatus; id?: string; error?: string }> {
+export async function sendEmail(p: Person, subject: string, html: string, text: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string }> {
+  const until = endOf(time);
   const cfg = await ghlReady();
   if (!cfg) return { status: 'off' };
   if (!p.email) return { status: 'no_email' };
-  try {
-    const until = budget();
-    const cid = await contactId(cfg, p, tag, until);
-    const sent = await call('/conversations/messages', '2021-04-15', cfg.token, { type: 'Email', contactId: cid, subject, html, message: text }, until);
-    return { status: 'sent', id: sent?.messageId || sent?.id };
-  } catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }
+  try { return await deliver(cfg, p, tag, { type: 'Email', subject, html, message: text }, until); }
+  catch (e) { return failed(e); }
 }
 
 /* ---------- reading a customer's conversation (the texts both ways) ---------- */
-async function get(path: string, version: string, token: string, until = budget()) {
+async function get(path: string, version: string, token: string, until: number) {
   const r = await request(path, { headers: { Authorization: `Bearer ${token}`, Version: version, Accept: 'application/json' } }, until);
   const text = r.text;
   let data: any = null; try { data = JSON.parse(text); } catch { /* not json */ }
@@ -100,13 +122,13 @@ async function get(path: string, version: string, token: string, until = budget(
 }
 export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out'; body: string; kind: string; status: string | null; files: string[] }
 /** the last messages with this person (oldest first): none when GoHighLevel does not know the number yet */
-export async function readConversation(p: Person, limit = 60): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }> {
+export async function readConversation(p: Person, limit = 60, time?: SendTime): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }> {
+  const until = endOf(time);
   const cfg = await ghlReady();
   if (!cfg) return { status: 'off' };
   const phone = e164(p.phone);
   if (!phone) return { status: 'no_phone' };
   try {
-    const until = budget();
     const q = new URLSearchParams({ locationId: cfg.location, number: phone });
     const found = await get(`/contacts/search/duplicate?${q}`, '2021-07-28', cfg.token, until);
     const cid = found?.contact?.id;
@@ -123,5 +145,5 @@ export async function readConversation(p: Person, limit = 60): Promise<{ status:
       .filter((x) => x.body.trim() || x.files.length)
       .sort((a, b) => String(a.at).localeCompare(String(b.at)));
     return { status: 'ok', messages };
-  } catch (e) { return { status: 'error', error: String((e as Error).message || e).slice(0, 300) }; }
+  } catch (e) { return failed(e); }
 }

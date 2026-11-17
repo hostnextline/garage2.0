@@ -836,25 +836,43 @@ test('R206: the fake Stripe can refuse the key (401): the customer is told to pa
   assert.deepEqual(['repository_id' in without, 'repository_owner_id' in without], [false, false], 'as before when not given');
 });
 
-test('R208: a slow GoHighLevel: the send stops within its budget (the app is answered before it gives up at 20 s) and the call given up is really stopped', async () => {
+test('R208 (fn-paiement-r2-1): a slow GoHighLevel (9 s a call): « notify » waits for the text it started: « sent » at about 18 s, before the app gives up at 40 s; the text call is never cut', async () => {
+  // (round 2 asserted « error / failed » here: the text call cut at 17 s although GoHighLevel had received it; real
+  // GoHighLevel still sends a text it received, so the team read « not sent », sent it again, and the customer got two)
   const { job } = await newJob();
   await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed')`, [job]);
   await clearLog();
-  // each of the two calls of one text takes 9 s: 18 s in all, each under the old 15 s limit (the text « went » after the
-  // app had given up, and the person sent it again)
   await fetch(`${MOCK}/control?ghl_ms=9000`);
   const t0 = Date.now();
   let r;
   try { r = await fn('notify', { kind: 'extras', job_id: job, base: BASE }, ownerJwt); } finally { await fetch(`${MOCK}/control?ghl_ms=0`); }
   const took = Date.now() - t0;
-  assert.ok(took < 18500, `answered in ${took} ms`);
-  assert.deepEqual([r.ok, r.status], [false, 'error'], JSON.stringify(r));
-  assert.equal((await q(`select status from public.messages where job_id = $1 and kind = 'extras'`, [job]))[0]?.status, 'failed', 'the team sees « not sent »');
-  // the mock answers the stopped call 9 s after it started (at about 18 s): wait for it
-  await new Promise((res) => setTimeout(res, Math.max(0, t0 + 18500 - Date.now())));
+  assert.ok(took < 35000, `answered in ${took} ms (the app waits 40 s for notify)`);
+  assert.deepEqual([r.ok, r.status], [true, 'sent'], JSON.stringify(r));
+  assert.equal((await q(`select status from public.messages where job_id = $1 and kind = 'extras'`, [job]))[0]?.status, 'sent', 'the team sees « sent »');
   const ghl = (await mockLog()).filter((m) => m.svc === 'ghl' && m.path === '/conversations/messages');
-  assert.deepEqual(ghl.map((m) => m.aborted === true), [true], 'the text call was stopped, never sent behind the answer: ' + JSON.stringify(ghl));
-  assert.equal((await fn('notify', { kind: 'extras', job_id: job, base: BASE }, ownerJwt)).status, 'sent', 'GoHighLevel back: the text goes');
+  assert.deepEqual(ghl.map((m) => m.aborted === true), [false], 'the text went once, its call never cut: ' + JSON.stringify(ghl));
+});
+
+test('R208 (fn-paiement-r2-1): a conversation text (the app gives up at 20 s) with a slow GoHighLevel: the text call is never started late: « error », nothing sent, answered in time', async () => {
+  const { cust } = await newJob();
+  await clearLog();
+  await fetch(`${MOCK}/control?ghl_ms=9000`);
+  const t0 = Date.now();
+  let r;
+  try { r = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour, on arrive vers 14 h.' }, ownerJwt); }
+  finally { await fetch(`${MOCK}/control?ghl_ms=0`); }
+  const took = Date.now() - t0;
+  assert.ok(took < 18000, `answered in ${took} ms (the app waits 20 s for a conversation)`);
+  assert.deepEqual([r.ok, r.status], [false, 'error'], JSON.stringify(r));
+  assert.match(r.error, /pas parti/, 'the team is told the text did not go: ' + r.error);
+  // what reached GoHighLevel (logged when it arrives): the contact, never the text
+  const arrived = (await mockLog()).filter((m) => m.svc === 'ghl-arrived').map((m) => m.path);
+  assert.deepEqual(arrived, ['/contacts/upsert'], 'the text call never started: ' + JSON.stringify(arrived));
+  assert.equal((await q(`select status from public.messages where customer_id = $1 and kind = 'chat'`, [cust]))[0]?.status, 'failed', '« not sent », and it is true');
+  // GoHighLevel back to its speed: the same text goes
+  const ok = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour, on arrive vers 14 h.' }, ownerJwt);
+  assert.equal(ok.status, 'sent', JSON.stringify(ok));
 });
 
 test('compat: on a database where the new migrations are not applied yet (no op_begin), the customer still gets a card page', async () => {

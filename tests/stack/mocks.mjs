@@ -4,7 +4,7 @@
 // GET /control?stripe=refunds makes Stripe's list of refunds answer 500, ?stripe=all every Stripe call; ?stripe=refuse makes
 // Stripe refuse the key (401, as for a key revoked or mistyped); ?stripe=ok puts it back.
 // GET /control?ghl_ms=N makes every GoHighLevel call answer after N ms (0: at once); a call the function gave up on (it closed
-// the connection) is logged with `aborted: true` and does nothing.
+// the connection) is logged with `aborted: true` and does nothing; meanwhile each call is logged `ghl-arrived` when it comes.
 // Stripe, as the real one behaves: a card page (Checkout session) is open, complete or expired (POST …/expire), and an
 // expired one cannot be paid; the same Idempotency-Key gives back the answer saved the first time (the page as it was
 // then), and with other parameters is refused (400 idempotency_error);
@@ -99,7 +99,9 @@ http.createServer(async (req, res) => {
   if (p.startsWith('/ghl/')) {
     const body = raw ? JSON.parse(raw) : {};
     if (state.ghlMs && p !== '/ghl/_reply') {
-      // a slow GoHighLevel: the answer comes after ghl_ms; a call given up meanwhile (connection closed) does nothing
+      // a slow GoHighLevel: the answer comes after ghl_ms; a call given up meanwhile (connection closed) does nothing.
+      // What arrived is logged at once (`ghl-arrived`): a test sees which calls were started, even before they end
+      log.push({ svc: 'ghl-arrived', path: p.slice(4) });
       let gone = false;
       res.on('close', () => { if (!res.writableEnded) gone = true; });
       await new Promise((r) => setTimeout(r, state.ghlMs));
