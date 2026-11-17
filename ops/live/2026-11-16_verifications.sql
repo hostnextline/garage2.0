@@ -1,7 +1,7 @@
 -- Before the cutover of 2026-11-16 (« Refonte »): READ-ONLY questions to live (Supabase project garage2), asked with
 -- the owner's go, BEFORE anything is applied. NOT a migration: nothing here writes, creates or changes anything.
 -- Each answer is one row. Run them one at a time (SQL editor, or the Claude Code MCP `supabase-garage` execute_sql),
--- and keep every answer in ops/live/ (live.before.*.json) — they are the « before » of the runbook (ops/live/CUTOVER.md).
+-- and keep every answer in ops/live/ (live.avant.json) — they are the « before » of the runbook (ops/live/CUTOVER.md).
 --
 -- Q1 to Q7 answer the unknowns of the rebuild plan (scan/design/risk-first.md, section 0); two of them cannot be
 -- answered by SQL and are said so (Q5, Q6). Q8 is the restore's question. F is the schema fingerprint: the SAME query
@@ -38,7 +38,8 @@ select json_build_object(
 
 -- Q5. The commit each of the 11 Edge Functions really runs: NOT answerable by SQL. Read-only listing of the functions
 --     (version, updated_at, entrypoint) with the owner's go; the commit is in the entrypoint's raw GitHub address.
---     Keep it as ops/live/deployed.before.json (the way back of the functions).
+--     Keep it as ops/live/deployed.avant.json (the way back of the functions). After the cutover each function answers
+--     GET …/functions/v1/<name>?version with { ok: true, commit } (CUTOVER.md 3.3).
 -- Q6. Vercel: are preview deployments of another branch reachable without a Vercel login: NOT answerable by SQL
 --     (Vercel dashboard → Settings → Deployment Protection).
 
@@ -67,6 +68,20 @@ select json_build_object(
   'digest', to_regprocedure('extensions.digest(bytea, text)') is not null,
   'extensions', (select json_agg(json_build_object('name', extname, 'version', extversion, 'schema', extnamespace::regnamespace::text) order by extname) from pg_extension)
 ) as q8_restore_and_tools;
+
+-- Q9. Before the « Refonte » migrations: what they meet. Pictures in SVG (refonte_acces refuses new ones; a restore leaves
+--     the old ones in the backup), the NAMES of the rows of « secrets » (never a value: is a Stripe webhook there, is the
+--     backup repository pinned), the people of the team with no e-mail (their account could not be made again after the
+--     loss of the project), and the starting numbers of the runbook's control (CUTOVER.md 2c).
+select json_build_object(
+  'svg_pictures', (select count(*) from public.attachments where mime = 'image/svg+xml'),
+  'secret_names', (select json_agg(key order by key) from public.secrets),
+  'staff_without_email', (select count(*) from public.staff where deleted_at is null and coalesce(email, '') = ''),
+  'control', json_build_object('customers', (select count(*) from public.customers), 'jobs', (select count(*) from public.jobs),
+    'invoices', (select count(*) from public.invoices), 'payments', (select count(*) from public.payments),
+    'payments_cents', (select coalesce(sum(amount_cents), 0) from public.payments where deleted_at is null),
+    'next_job_number', (select last_value from public.job_number_seq))
+) as q9_before_refonte;
 
 -- F. THE SCHEMA FINGERPRINT — one SELECT, one JSON. Every function of public (md5 of pg_get_functiondef, its grants,
 --    security definer, settings), every table with its columns, row level security and grants, the constraints,
