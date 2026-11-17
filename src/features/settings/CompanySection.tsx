@@ -3,9 +3,9 @@ import { useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { EMAIL_RE } from '../../lib/text';
 import { settings } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { saveSection } from './save';
 import { Panel, Field, Input, PhoneInput, attempt, toast } from '../../ui';
-import { useSectionDraft, SaveBar, Section } from './SectionFrame';
+import { useSectionDraft, useSectionAnchor, SaveBar, Section } from './SectionFrame';
 import { cleanText } from './draft';
 
 const FIELDS = ['name', 'legal_name', 'phone', 'email', 'website', 'address', 'tps_no', 'tvq_no', 'neq'] as const;
@@ -32,12 +32,13 @@ export function CompanySection() {
     // only the fields changed here: one changed meanwhile on another device keeps its new value
     const next: Record<string, unknown> = { ...(settings.value.company || {}) };
     for (const k of Object.keys(changes) as (keyof Company)[]) next[k] = cleanText(d[k]);
-    if (await attempt(() => saveSettings('company', next), { ok: t('settings.saved') })) reset();
+    if (await attempt(() => saveSection('company', next), { ok: t('settings.saved') })) reset();
   };
 
+  const anchor = useSectionAnchor();
   return (
     <Section testid="settings-company" bar={<SaveBar dirty={dirty} onSave={save} onReset={() => { reset(); setErr({}); }} />}>
-      <Panel title={t('settings.company.garage')}>
+      <Panel title={t('settings.company.garage')} data-tour={anchor}>
         <div class="grid-2">
           <Field label={t('settings.company.name')} help={t('settings.company.nameHelp')} error={err.name}>
             <Input value={d.name} onValue={field('name')} autoComplete="organization" invalid={!!err.name} data-testid="company-name" />

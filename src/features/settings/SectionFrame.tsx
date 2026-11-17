@@ -1,7 +1,7 @@
 /* What every settings section shares: its draft (kept while the app is open, so leaving a section does not lose what
    was typed), the « changements non enregistrés » bar with one Save, and the frame of the section. */
-import type { ComponentChildren } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { createContext, type ComponentChildren } from 'preact';
+import { useContext, useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { t } from '../../lib/i18n';
 import { tableSignal } from '../../data/store';
@@ -54,14 +54,21 @@ export function useSectionDraft<T extends object>(section: string, saved: T) {
   return { draft, set, dirty, changes, reset };
 }
 
+/** on a phone (no menu drawn beside the section), the guide's anchor of the section opened, for « Montre-moi » (R150).
+    The section puts it on its FIRST block only (the lead line or the first panel): small and at the top, so the guide
+    neither scrolls the first fields off the screen nor lights the whole screen (settings-team-r2-3). */
+export const SectionAnchor = createContext<string | undefined>(undefined);
+export const useSectionAnchor = () => useContext(SectionAnchor);
+
 /** the settings row has reached this device: until then a section shows a placeholder, never the built-in defaults
     (one keystroke on a form drawn from them used to write them over the garage's settings: settings-team-03). A short
     line says it is coming: a device that starts offline and never got the row is not left with a bare skeleton. */
 export const settingsHere = () => tableSignal('settings').value.has('1');
 export function SectionWait(p: { testid?: string }) {
+  const anchor = useSectionAnchor();
   return (
     <div class="settings-section stack-lg" data-testid={p.testid} aria-busy="true">
-      <Panel><Skeleton h={18} lines={4} /></Panel>
+      <Panel data-tour={anchor}><Skeleton h={18} lines={4} /></Panel>
       <p class="small muted" style={{ margin: 0 }} aria-live="polite" data-testid="settings-wait">{t('common.loading')}</p>
     </div>
   );

@@ -21,6 +21,8 @@ import { access } from '../../data/auth';
 import { wide } from '../../platform/media';
 import { lang } from '../../lib/i18n';
 import type { Access } from '../../data/types';
+import { net } from '../../data/sync';
+import { toasts } from '../../ui/toast';
 
 const owner = { id: 'u1', full_name: 'Test', short_name: 'Test', email: null, phone: null, roles: ['owner'], owner: true, lang: 'fr', prefs: {}, color: null,
   rights: { settings: true }, trucks: [], card_online: false, texts_online: false } as unknown as Access;
@@ -33,7 +35,7 @@ const show = async (el: preact.JSX.Element) => { await act(async () => { render(
 const type = async (el: HTMLInputElement | HTMLTextAreaElement, v: string) => { await act(async () => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }); await wait(); };
 const screen = (section?: string) => <SettingsScreen params={section ? { section } : {}} query={new URLSearchParams()} />;
 
-beforeEach(() => { lang.value = 'fr'; calls.length = 0; drafts.value = {}; access.value = owner; wide.value = true; seed(); });
+beforeEach(() => { net.value = { ...net.value, online: true }; toasts.value = []; lang.value = 'fr'; calls.length = 0; drafts.value = {}; access.value = owner; wide.value = true; seed(); });
 
 describe('Réglages: what is typed stays as typed (settings-team-st-1)', () => {
   it('a space typed after the saved name stays in the box, and the next letter follows it', async () => {
@@ -96,5 +98,65 @@ describe('Réglages: no form before the settings row (settings-team-03, st-6)', 
     await wait();
     expect(q('settings-wait')).toBeNull();
     expect((q('company-name') as HTMLInputElement).value).toBe('Garage');
+  });
+});
+
+describe('Réglages: the guide’s anchor (R150)', () => {
+  it('on a phone, a section page carries its data-tour (the menu rows are not drawn); on a computer only the menu row does', async () => {
+    wide.value = false;
+    await show(screen('company'));
+    expect(box.querySelector('[data-testid="settings-nav"]')).toBeNull();
+    const a = box.querySelectorAll('[data-tour="settings-company"]');
+    expect(a.length).toBe(1);
+    // the anchor is the section's first panel (« Le garage », with Nom), small and at the top: not the whole section,
+    // taller than a phone's screen, which the guide scrolled to its middle (settings-team-r2-3)
+    const section = q('settings-company')!;
+    expect(a[0]).toBe(section.firstElementChild);
+    expect(a[0].classList.contains('panel')).toBe(true);
+    expect(a[0].contains(q('company-name'))).toBe(true);
+    expect(a[0].contains(section)).toBe(false);
+    await show(screen());
+    expect(box.querySelectorAll('[data-tour="settings-company"]').length).toBe(1);
+    expect(box.querySelector('[data-tour="settings-company"]')?.getAttribute('data-testid')).toBe('settings-nav-company');
+    wide.value = true;
+    await show(screen('company'));
+    const b = box.querySelectorAll('[data-tour="settings-company"]');
+    expect(b.length).toBe(1);
+    expect(b[0].getAttribute('data-testid')).toBe('settings-nav-company');
+  });
+  it('on a phone, every section of the guide puts its anchor on its first block only (settings-team-r2-3)', async () => {
+    wide.value = false;
+    for (const [key, tour] of [['services', 'settings-services'], ['texts', 'settings-texts'], ['look', 'settings-look']] as const) {
+      await show(screen(key));
+      const a = box.querySelectorAll(`[data-tour="${tour}"]`);
+      expect(a.length).toBe(1);
+      expect(a[0]).toBe(q(`settings-${key}`)!.firstElementChild);
+    }
+    // the settings row not here yet: the placeholder's panel holds it meanwhile
+    replaceLocal('settings', []);
+    await show(screen('company'));
+    const w = box.querySelectorAll('[data-tour="settings-company"]');
+    expect(w.length).toBe(1);
+    expect(w[0]).toBe(q('settings-company')!.firstElementChild);
+    // a section without a guide's anchor carries none
+    seed();
+    await show(screen('billing'));
+    expect(box.querySelectorAll('[data-tour]').length).toBe(0);
+  });
+});
+
+describe('Réglages: a save without signal says it waits on the phone (settings-team-11)', () => {
+  it('online: « Réglages enregistrés »; offline: « Gardé sur le téléphone… », the change is written (kept) all the same', async () => {
+    await show(<CompanySection />);
+    await type(q('company-name') as HTMLInputElement, 'Garage Un');
+    await act(async () => { (q('settings-save') as HTMLElement).click(); });
+    await wait();
+    expect(String(toasts.value[toasts.value.length - 1]?.text)).toContain('enregistr');
+    net.value = { ...net.value, online: false };
+    await type(q('company-name') as HTMLInputElement, 'Garage Deux');
+    await act(async () => { (q('settings-save') as HTMLElement).click(); });
+    await wait();
+    expect(String(toasts.value[toasts.value.length - 1]?.text)).toContain('Gardé sur le téléphone');
+    expect(calls.map((c) => (c.args[1] as { name: string }).name)).toEqual(['Garage Un', 'Garage Deux']);
   });
 });

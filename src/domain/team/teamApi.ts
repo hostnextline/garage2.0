@@ -8,6 +8,9 @@ import { applyServerRules } from './rights';
 export interface Invitation {
   id: string; email: string; full_name: string; roles: Role[]; kind: 'invite' | 'reset'; truck_id: string | null;
   expires_at: string; used_at: string | null; created_at: string;
+  /** given by a newer `team list` (R179): the short name and the language the invitation was made with; an older one
+      answers neither */
+  short_name?: string | null; lang?: string | null; phone?: string | null;
 }
 export interface TeamList { invitations: Invitation[]; sign_ins: Record<string, { last_sign_in_at: string | null }> }
 export type SendHow = 'email' | 'sms' | 'none';

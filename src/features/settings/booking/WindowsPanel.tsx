@@ -1,25 +1,38 @@
 /* « Plages d'arrivée »: the owner's switch (behind a question), and once on: the minutes before / after the estimated
    arrival with a live example, the hours of the day (instead of the blocks), « Fixer les plages de demain » with the
-   customers who could not be texted their window. */
+   customers who could not be texted their window. After the switch, what the server says to do by hand (R87): the
+   customers told a window that is no longer inside their block (call / text), and the days left as they were; kept
+   for the visit until « Fermer », so leaving Réglages does not lose whom to call (settings-team-r2-4). */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, MessageSquare } from 'lucide-preact';
+import { signal } from '@preact/signals';
+import { CalendarCheck, MessageSquare, Phone } from 'lucide-preact';
 import { t, lang } from '../../../lib/i18n';
 import { addDays, clock, today, nowMinute } from '../../../lib/dates';
 import { settings, windowsOn, jobsOn, job as jobOf, customer, customerName } from '../../../data/select';
 import { windowsSwitch, lockWindows, notify } from '../../../data/api';
 import { pull } from '../../../data/sync';
-import { isOwner, hasRole } from '../../../data/auth';
+import { access, isOwner, hasRole } from '../../../data/auth';
 import { Panel, Field, Button, Banner, Switch, Seg, ask, attempt, toast } from '../../../ui';
 import { smsHref } from '../../../shared/invoices/share';
+import { e164 } from '../../../lib/text';
 import { NumInput, TimeInput } from '../fields';
 import { spanOf, withDaySpan, exampleWindow, winRound } from './windows';
 import { flexibleWithWindow, tellOutcome, windowOver, type TellAnswer, type Untold } from './windowTexts';
+import { backOutcome, blockNow, toldWindow, toCallText, keptWords, type BackOutcome } from './backToBlocks';
 import type { PartProps } from './BookingSection';
+
+/** what the last switch said to do by hand, for the visit only (no storage key: a reload forgets it), per person (another
+    account signed in on this device never sees it): Réservations opened again shows it again (settings-team-r2-4) */
+export const lastBack = signal<{ who: string; out: BackOutcome } | null>(null);
 
 export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
   const winOn = windowsOn.value;
   const [busy, setBusy] = useState(false);
   const [untold, setUntold] = useState<Untold[]>([]);
+  const who = access.value?.id || '';
+  const last = lastBack.value;
+  const back = last && last.who === who ? last.out : null;
+  const setBack = (out: BackOutcome | null) => { lastBack.value = out && (out.toCall.length || out.kept.length) ? { who, out } : null; };
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
   const mayLock = isOwner() || hasRole('office');
@@ -33,10 +46,16 @@ export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
       ok: t(on ? 'settings.booking.win.askOnOk' : 'settings.booking.win.askOffOk') });
     if (!yes) return;
     setBusy(true);
+    setBack(null);
     try {
       let n = 0;
-      const ok = await attempt(async () => { n = (await windowsSwitch(on))?.converted ?? 0; });
+      let answer: unknown = null;
+      const ok = await attempt(async () => { answer = await windowsSwitch(on); n = (answer as { converted?: number } | null)?.converted ?? 0; });
       if (!ok) return;
+      // a newer server lists whom to call (back to the blocks only) and the days it left as they were; an older one neither
+      // kept even when the owner has left Réglages meanwhile: it shows when Réservations opens again
+      const out = backOutcome(answer);
+      setBack(on ? { toCall: [], kept: out.kept } : out);
       // the server changed the setting and the coming appointments: bring both now (realtime brings them too, later)
       await Promise.all([pull('settings'), pull('jobs')]).catch(() => undefined);
       toast(t(on ? 'settings.booking.win.onDone' : 'settings.booking.win.offDone', { n }), { kind: 'ok' });
@@ -84,6 +103,8 @@ export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
         <p class="muted" style={{ margin: 0 }}>{t('settings.booking.win.lead')}</p>
         <Switch checked={winOn} disabled={!isOwner() || busy} onChange={(v) => void turn(v)} label={t('settings.booking.win.switch')}
           hint={t(!isOwner() ? 'settings.booking.win.ownerOnly' : winOn ? 'settings.booking.win.onHint' : 'settings.booking.win.offHint')} data-testid="windows-switch" />
+        {back && back.toCall.length > 0 && <ToCallList list={back.toCall} onClose={() => setBack({ ...back, toCall: [] })} />}
+        {back && back.kept.length > 0 && <KeptList list={back.kept} onClose={() => setBack({ ...back, kept: [] })} />}
         {winOn && (
           <>
             <div class="settings-grid-3">
@@ -143,6 +164,50 @@ function UntoldList(p: { list: Untold[] }) {
             </li>
           );
         })}
+      </ul>
+    </Banner>
+  );
+}
+
+/** after « Revenir aux blocs »: the customers told a window that is not inside their block now, to call or text by hand */
+function ToCallList(p: { list: BackOutcome['toCall']; onClose: () => void }) {
+  const l = lang.value;
+  return (
+    <Banner kind="warn" title={t('settings.booking.win.backTitle', { n: p.list.length })} data-testid="windows-back"
+      action={<Button size="sm" variant="ghost" onClick={p.onClose} data-testid="windows-back-close">{t('common.close')}</Button>}>
+      <ul style={{ margin: '6px 0 0', padding: 0, listStyle: 'none' }}>
+        {p.list.map((c) => {
+          const j = jobOf(c.job_id);
+          const who = customer(c.customer_id ?? j?.customer_id);
+          const name = customerName(who) || `#${j?.number ?? ''}`;
+          const tel = who?.phone ? e164(who.phone) || who.phone : '';
+          const told = toldWindow(c, l);
+          return (
+            <li key={c.job_id} class="row-wrap" data-testid="windows-back-row">
+              <span class="grow"><b>{name}</b><br />
+                <span class="small muted">{told && <>{t('settings.booking.win.backTold', { told })} · </>}{t('settings.booking.win.backNow', { when: blockNow(c.day, c.block, l) })}</span></span>
+              {tel
+                ? <>
+                    <Button size="sm" icon={<Phone size={16} />} href={`tel:${tel}`}>{t('common.call')}</Button>
+                    <Button size="sm" icon={<MessageSquare size={16} />} href={smsHref(who?.phone, toCallText(c, who?.first_name ?? null, who?.lang === 'en' ? 'en' : 'fr'))}>{t('settings.booking.win.untoldText')}</Button>
+                  </>
+                : <span class="small muted">{t('settings.booking.win.untoldNoPhone')}</span>}
+            </li>
+          );
+        })}
+      </ul>
+    </Banner>
+  );
+}
+
+/** the days and blocks the server did not plan again (an appointment would have gone to « À placer ») */
+function KeptList(p: { list: BackOutcome['kept']; onClose: () => void }) {
+  const l = lang.value;
+  return (
+    <Banner kind="warn" title={t('settings.booking.win.keptTitle', { n: p.list.length })} data-testid="windows-kept"
+      action={<Button size="sm" variant="ghost" onClick={p.onClose} data-testid="windows-kept-close">{t('common.close')}</Button>}>
+      <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+        {p.list.map((k) => <li key={`${k.day}-${k.block}`}>{keptWords(k, l)}</li>)}
       </ul>
     </Banner>
   );

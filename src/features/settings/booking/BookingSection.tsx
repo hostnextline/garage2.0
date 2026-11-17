@@ -5,7 +5,7 @@
 import { useState } from 'preact/hooks';
 import { t } from '../../../lib/i18n';
 import { settings, windowsOn } from '../../../data/select';
-import { saveSettings } from '../../../data/api';
+import { saveSection } from '../save';
 import { flush, pull } from '../../../data/sync';
 import { attempt, toast } from '../../../ui';
 import { useSectionDraft, SaveBar, Section } from '../SectionFrame';
@@ -44,7 +44,7 @@ export function BookingSection() {
     if (blocks || Object.keys(errors).length) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
     const moved = d.place.lat !== saved.place.lat || d.place.lng !== saved.place.lng;
     const b = settings.value.booking;
-    const ok = await attempt(() => saveSettings('booking', { ...b, ...patchOf(changes, b, winOn) }),
+    const ok = await attempt(() => saveSection('booking', { ...b, ...patchOf(changes, b, winOn) }),
       { ok: replan ? t(moved ? 'settings.booking.startMoved' : 'settings.booking.replanned') : t('settings.saved') });
     if (!ok) return;
     reset();

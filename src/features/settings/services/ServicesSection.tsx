@@ -7,6 +7,7 @@ import { matches } from '../../../lib/text';
 import { servicesList, serviceName } from '../../../data/select';
 import type { Service } from '../../../data/types';
 import { Panel, Rows, RowItem, Pill, Money, Button, SearchInput, Empty } from '../../../ui';
+import { useSectionAnchor } from '../SectionFrame';
 import { ServiceSheet } from './ServiceSheet';
 import { promoEnded } from './serviceModel';
 
@@ -15,9 +16,10 @@ export function ServicesSection() {
   const [open, setOpen] = useState<string | null>(null);   // a service id, or 'new'
   const all = servicesList.value;
   const list = all.filter((s) => matches(q, s.name_fr, s.name_en, s.category));
+  const anchor = useSectionAnchor();
   return (
     <div class="settings-section stack-lg" data-testid="settings-services">
-      <Panel flush title={t('settings.services.list')} help={t('settings.services.listHelp')}
+      <Panel flush title={t('settings.services.list')} help={t('settings.services.listHelp')} data-tour={anchor}
         action={<Button variant="primary" size="sm" icon={<Plus size={18} />} onClick={() => setOpen('new')} data-testid="service-add">{t('settings.services.add')}</Button>}>
         {all.length > 8 && <div class="settings-search"><SearchInput value={q} onValue={setQ} placeholder={t('settings.services.search')} /></div>}
         {!all.length
