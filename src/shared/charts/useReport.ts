@@ -5,9 +5,17 @@
    computer left on « Chiffres du garage » all day). The numbers already shown stay while it reloads (no blank frame),
    and an answer that arrives after a newer request (another month chosen meanwhile) is ignored. */
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { effect } from '@preact/signals';
 import { errorMessage } from '../../lib/errors';
 import { net, isNetworkError } from '../../data/sync';
-import { readReport, writeReport } from './reportCache';
+import { authState } from '../../data/auth';
+import { clearReports, readReport, writeReport } from './reportCache';
+
+/* The garage's numbers kept on this device leave it as soon as nobody is signed in on it (« Me déconnecter », a
+   session lost): on a shared phone the next person never finds the last one's revenue and taxes in its storage.
+   Covers the sign-outs that follow a report seen since the app was opened; the sign-out flow itself may call
+   clearReports() too (R104), twice is harmless. */
+effect(() => { if (authState.value === 'signed_out') clearReports(); });
 
 export interface ReportState<T> { data: T | null; loading: boolean; error: string | null; offline: boolean; at: string | null; fromCache: boolean }
 /** numbers older than this are loaded again when the screen is looked at */

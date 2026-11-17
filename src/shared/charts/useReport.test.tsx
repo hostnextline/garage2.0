@@ -4,7 +4,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { useReport, STALE_MS, type ReportState } from './useReport';
-import { clearReports, writeReport } from './reportCache';
+import { clearReports, readReport, writeReport } from './reportCache';
+import { authState } from '../../data/auth';
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -22,6 +23,18 @@ beforeEach(() => { clearReports(); localStorage.clear(); frames.length = 0; });
 afterEach(() => { act(() => render(null, box)); vi.useRealTimers(); });
 
 describe('a server report', () => {
+  it('the numbers kept on the device leave it at sign-out (treasury-coffre-29, x-money-29)', () => {
+    const before = authState.value;
+    authState.value = 'ready';
+    writeReport('his.report.u.dashboard.2026-10', { at: new Date().toISOString(), data: 10 });
+    writeReport('his.report.u.treasury.2026-10', { at: new Date().toISOString(), data: 3 });
+    localStorage.setItem('his.other', 'kept');
+    authState.value = 'signed_out';
+    expect(Object.keys(localStorage).filter((k) => k.startsWith('his.report.'))).toEqual([]);
+    expect(readReport('his.report.u.dashboard.2026-10')).toBeNull();
+    expect(localStorage.getItem('his.other')).toBe('kept');
+    authState.value = before;
+  });
   it('the answer of a month left before it arrived never shows on the new month', async () => {
     vi.useFakeTimers();
     await draw('his.report.u.dashboard.2026-10', later(10, 500));
