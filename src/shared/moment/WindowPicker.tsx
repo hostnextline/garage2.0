@@ -206,12 +206,14 @@ export function WindowPicker(p: BlockPickerProps) {
     const c = m != null ? unitChoice(d, m) : null;
     const name = longDay(d, l);
     const title = `${cap(name)}${m != null ? `, ${clock(m, l)}` : ''}`;
+    hov.off();
     openMenu(e, momentActions(open && c ? () => pick(c) : null,
       () => { if (hasPos && c) setPreview({ choice: open ? c : null, ask: askOf(c, t('booking.win.grid.around', { time: clock(m!, l) })) }); else setDayMap(d); }), title);
   };
   const menuProps = (c: BlockChoice) => {
     const actions = () => momentActions(() => pick(c), hasPos ? () => see(c) : null);
-    return { onContextMenu: (e: MouseEvent) => openMenu(e, actions(), choiceWords(c, l)), ...pressProps((x, y) => { openMenuAt(x, y, actions(), choiceWords(c, l)); }) };
+    // the small map of the moment closes as the menu opens (booking-b-31: it could stay over the menu)
+    return { onContextMenu: (e: MouseEvent) => { hov.off(); openMenu(e, actions(), choiceWords(c, l)); }, ...pressProps((x, y) => { hov.off(); openMenuAt(x, y, actions(), choiceWords(c, l)); }) };
   };
 
   /* which stop of its route the appointment would be at each of the best moments (the phone's copy of the day) */
