@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createReceiptQueue, receiptImage, readAttachment, openableUrl, tryTimeout, SEND_MAX_MS, type QueueDeps, type WaitingPhoto, type ReceiptPhoto } from './receipts';
+import { createReceiptQueue, receiptImage, readAttachment, openableUrl, tryTimeout, uploadPhoto, SEND_MAX_MS, type QueueDeps, type WaitingPhoto, type ReceiptPhoto } from './receipts';
+import { classify } from '../../lib/errors';
 import { sb } from '../../data/auth';
 
 const photo = (id: string): ReceiptPhoto => ({ id, dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(4000), w: 10, h: 10 });
@@ -219,5 +220,59 @@ describe('showing a receipt (x-security-01, bug 13)', () => {
       expect(openableUrl('data:text/html;base64,PHNjcmlwdD4=')).toBeNull();
       expect(made.length).toBe(1);
     } finally { URL.createObjectURL = orig; }
+  });
+});
+
+describe('receipt photos: the real server’s answers (recorded on the local test stack by receipts.server-check.mjs)', () => {
+  /** what supabase-js gave on the real stack, for the insert of receipts.ts */
+  const REAL = {
+    landed: { error: null, status: 201 },
+    again: { error: { code: '23505', details: null, hint: null, message: 'duplicate key value violates unique constraint "attachments_pkey"' }, status: 409 },
+    noRight: { error: { code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "attachments"' }, status: 403 },
+    cutOff: { error: { code: '', details: '', hint: '', message: 'AbortError: This operation was aborted' }, status: 0 },
+    noSignal: { error: { code: '', details: '', hint: '', message: 'TypeError: fetch failed' }, status: 0 },
+    safari: { error: { code: '', details: '', hint: '', message: 'TypeError: Load failed' }, status: 0 },
+    down: { error: { code: '', details: null, hint: null, message: '<html>502 Bad Gateway</html>' }, status: 502 }
+  };
+  const answer = (r: { error: unknown; status: number }) => {
+    const insert = vi.fn(() => ({ abortSignal: vi.fn(async () => ({ ...r, error: r.error ? { ...(r.error as object) } : null })) }));
+    return vi.spyOn(sb, 'from').mockReturnValue({ insert } as unknown as ReturnType<typeof sb.from>);
+  };
+  afterEach(() => { vi.restoreAllMocks(); });
+  const kindOf = async (r: { error: unknown; status: number }) => {
+    answer(r);
+    try { await uploadPhoto(photo('p1'), new AbortController().signal); return 'sent'; } catch (e) { return classify(e).kind; }
+  };
+  it('landed, and the same photo again (its first answer lost) are both « sent »: stored once', async () => {
+    expect(await kindOf(REAL.landed)).toBe('sent');
+    expect(await kindOf(REAL.again)).toBe('sent');
+  });
+  it('cut off, no signal (Chrome, Safari) and a server that is down are « try later »: the photo waits on the phone', async () => {
+    expect(await kindOf(REAL.cutOff)).toBe('network');
+    expect(await kindOf(REAL.noSignal)).toBe('network');
+    expect(await kindOf(REAL.safari)).toBe('network');
+    expect(await kindOf(REAL.down)).toBe('network');
+  });
+  it('someone without « Trésorerie »: a refusal (the photo is kept, marked, the person is told)', async () => {
+    expect(await kindOf(REAL.noRight)).toBe('refusal');
+  });
+  it('photographed with no signal, the real « fetch failed » answer: the expense goes, the photo is kept and lands later', async () => {
+    vi.useFakeTimers();
+    try {
+      let r: { error: unknown; status: number } = REAL.noSignal;
+      const insert = vi.fn(() => ({ abortSignal: vi.fn(async () => ({ ...r, error: r.error ? { ...(r.error as object) } : null })) }));
+      vi.spyOn(sb, 'from').mockReturnValue({ insert } as unknown as ReturnType<typeof sb.from>);
+      const kept = new Map<string, WaitingPhoto>();
+      const links: [string, string][] = [];
+      const q = createReceiptQueue({ upload: uploadPhoto, link: (e, id) => links.push([e, id]), refused: () => { throw new Error('not a refusal'); },
+        keep: { put: async (p) => { kept.set(p.id, p); }, remove: async (id) => { kept.delete(id); }, all: async () => [...kept.values()] }, uid: () => 'u1' });
+      expect(await q.send(photo('p1'), 'e1')).toEqual({ id: 'p1', queued: true });
+      expect(kept.get('p1')?.failed).toBeFalsy();
+      // the signal comes back; the first try had in fact landed and its answer was lost: « already there » = sent
+      r = REAL.again;
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(links).toEqual([['e1', 'p1']]);
+      expect(kept.size).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
 });

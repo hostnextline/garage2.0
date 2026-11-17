@@ -183,15 +183,18 @@ export function createReceiptQueue(deps: QueueDeps) {
 
 /* ---------- the real queue of the app ---------- */
 
-/** the photo goes straight to the server with its own id (« already there » is a success) */
-async function uploadPhoto(p: ReceiptPhoto, signal: AbortSignal): Promise<void> {
+/** the photo goes straight to the server with its own id (« already there » is a success). Tried on the local test
+    stack (receipts.server-check.mjs): landed = 201; the same photo again = 409 / 23505; no « Trésorerie » = 403 / 42501;
+    cut off = status 0 « AbortError »; no signal = status 0 « TypeError: fetch failed ». The answer's status goes with
+    the error, so a server that is down (502, 503 with no database code) is « try later », not a refusal. */
+export async function uploadPhoto(p: ReceiptPhoto, signal: AbortSignal): Promise<void> {
   if (preview.value) throw new Refused('preview', t('errors.preview'));
   const data = p.dataUrl.split(',')[1] || '';
-  const { error } = await sb.from('attachments')
+  const { error, status } = await sb.from('attachments')
     .insert({ id: p.id, kind: 'receipt', mime: 'image/jpeg', data, bytes: Math.round(data.length * 0.75), width: p.w, height: p.h })
     .abortSignal(signal);
   // 23505: an earlier try of this same photo landed and its answer was lost
-  if (error && error.code !== '23505') throw error;
+  if (error && error.code !== '23505') throw Object.assign(error, { status });
 }
 
 /* the photos waiting live in Cache Storage (not in the phone's database, whose format is fixed): one entry per photo,
