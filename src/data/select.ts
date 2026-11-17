@@ -6,7 +6,7 @@ import { computed, effect, type ReadonlySignal } from '@preact/signals';
 import { tableSignal, getRow, rowsOf, type Row } from './store';
 import type { TableName } from './schema';
 import type { Settings, Staff, Truck, TruckWeek, TruckDay, Customer, Vehicle, Job, JobItem, Invoice, Payment, Service, InventoryItem, Quote, Shift, Position, Trip, EngineSpec, CustomerNote, Expense, Message, ServicePart, InventoryMove } from './types';
-import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today, dayOf, minuteOf } from '../lib/dates';
+import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today, dayOf, minuteOf, daysBetween } from '../lib/dates';
 import { totals, type Line } from '../lib/money';
 import { fullName, firstName } from '../lib/text';
 import { setDayMode } from '../lib/errors';
@@ -120,15 +120,18 @@ export function weekOf(truckId: string): Record<number, Range[]> {
   return out;
 }
 export interface TruckBlock { truck: Truck; cap: number; used: number; left: number; jobs: Job[] }
-/** the minutes a job still takes out of its truck's hours (the planner's count, and the agenda's `usedBy`: R216). `now`:
-    the garage's minute today (null: another day, every job counts whole). On site: what is left of its work, from its
-    arrival (an arrival of another day counts from midnight). On the way: the drive left, then the work. Done: nothing. */
+/** the minutes a job still takes out of its truck's hours (the planner's count, R216; the one home of this rule: the
+    agenda, « Changer de camion » and the pickers all read it through blockLoad). `now`: the garage's minute today
+    (null: another day, every job counts whole). On site: its work less the minutes since its arrival, as the server's
+    planner counts it (an arrival of another day lies whole days before today's midnight). On the way: the drive left,
+    then the work. Done: nothing. */
 export function jobTimeLeft(j: Pick<Job, 'status' | 'duration_min' | 'travel_min' | 'eta_min' | 'arrived_at'>, now: number | null, unknownMin: number, todayDay: Day = today()): number {
   if (j.status === 'done') return 0;
   if (now != null && j.status === 'on_site') {
     const at = j.arrived_at ? new Date(j.arrived_at) : null;
-    const arrived = at && dayOf(at) === todayDay ? minuteOf(at) : at && !Number.isNaN(at.getTime()) ? 0 : now;
-    return Math.max(0, arrived + j.duration_min - now);
+    // the arrival as a minute of today's garage clock (yesterday 23:30 = −30); no arrival known: it counts whole
+    const arrived = at ? minuteOf(at) + 1440 * daysBetween(todayDay, dayOf(at)) : NaN;
+    return Math.max(0, (Number.isFinite(arrived) ? arrived : now) + j.duration_min - now);
   }
   if (now != null && j.status === 'en_route') return (j.eta_min != null ? Math.max(0, j.eta_min - now) : j.travel_min ?? unknownMin) + j.duration_min;
   return j.duration_min + (j.travel_min ?? unknownMin);

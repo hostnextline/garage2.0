@@ -43,9 +43,23 @@ describe('blockLoad counts a job under way by the time it still needs (R216)', (
     replaceLocal('jobs', [job({ id: 'e', day: '2026-11-17', status: 'booked', duration_min: 120, travel_min: null })]);
     expect(blockLoad('2026-11-17', 'am').trucks[0].used).toBe(120 + 20);
   });
-  it('an arrival of another day counts from midnight (never more than the work itself)', () => {
-    expect(jobTimeLeft({ status: 'on_site', duration_min: 120, travel_min: null, eta_min: null, arrived_at: new Date('2026-11-15T17:00:00-05:00').toISOString() }, 9 * 60, 20, DAY)).toBe(0);
-    expect(jobTimeLeft({ status: 'on_site', duration_min: 120, travel_min: null, eta_min: null, arrived_at: null }, 9 * 60, 20, DAY)).toBe(120);
+  it('an arrival of another day counts the minutes since it, as the server\'s planner (app-data-r2-3)', () => {
+    const onSite = (min: number, iso: string | null) => ({ status: 'on_site' as const, duration_min: min, travel_min: null, eta_min: null, arrived_at: iso });
+    expect(jobTimeLeft(onSite(120, new Date('2026-11-15T17:00:00-05:00').toISOString()), 9 * 60, 20, DAY)).toBe(0);
+    expect(jobTimeLeft(onSite(120, null), 9 * 60, 20, DAY)).toBe(120);
+    // yesterday 23:30, 120 minutes of work, 00:30: one hour done, one left (from midnight said 90)
+    expect(jobTimeLeft(onSite(120, new Date('2026-11-15T23:30:00-05:00').toISOString()), 30, 20, DAY)).toBe(60);
+    // a job over two days: 30 h of work since yesterday 10:00, at 10:00 today: 6 h left (from midnight said 20 h)
+    expect(jobTimeLeft(onSite(1800, new Date('2026-11-15T10:00:00-05:00').toISOString()), 600, 20, DAY)).toBe(360);
+    // a date that cannot be read counts whole, never NaN
+    expect(jobTimeLeft(onSite(90, 'pas une date'), 600, 20, DAY)).toBe(90);
+  });
+  it('a job of today on site since yesterday 15:00 takes nothing more out of the truck at 10:00 (the server\'s answer)', () => {
+    vi.setSystemTime(at('10:00'));
+    replaceLocal('jobs', [job({ id: 'y', status: 'on_site', duration_min: 120, arrived_at: new Date('2026-11-15T15:00:00-05:00').toISOString() })]);
+    const t1 = blockLoad(DAY, 'am').trucks[0];
+    expect(t1.used).toBe(0);
+    expect(t1.left).toBe(t1.cap);
   });
 });
 
