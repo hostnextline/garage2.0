@@ -297,25 +297,24 @@ step('« Déplacer »: Carla to another window the same day, then to another day
     assert.deepEqual(screen.map(clock), (await serverWindows(who.nadia.jwt, C.Carla, day, 45, J.carla)).map(clock), `${day}: the windows offered to move her are the server’s`);
     const ws = choose(screen);
     await pickWindow(page, day, ws, 'grid');
+    // the « moved » text leaves by itself once the sheet is closed: its answer says it went
+    const told = page.waitForResponse((r) => /\/functions\/v1\/notify/.test(r.url()) && /"moved"/.test(r.request().postData() || ''), { timeout: 20000 });
     await page.getByTestId('move-ok').click();
     await sheet.waitFor({ state: 'detached', timeout: 20000 });
+    assert.equal((await (await told).json()).status, 'sent');
     return ws;
   };
   // the same day, another window
   const ws1 = await move(D[2], (s) => s.find((w) => w !== before.win_start && w >= 780) ?? s.find((w) => w !== before.win_start));
   let j = await until(() => jobOf(J.carla), (v) => v.win_start === ws1, 15000);
   assert.deepEqual([j.day, j.win_start, j.win_end], [D[2], ws1, ws1 + 240]);
-  let sms = await until2(moved, (l) => l.length >= 1, 20000);
-  await until2(moved, (l) => l.length > 1, 3000);
-  sms = await moved();
+  let sms = await moved();
   assert.equal(sms.length, 1, 'told once');
   assert.ok(sms[0].includes(between(ws1, ws1 + 240)), `the new window in words: ${sms[0]}`);
   // another day
   const ws2 = await move(D[3], (s) => s[0]);
   j = await until(() => jobOf(J.carla), (v) => v.day === D[3], 15000);
   assert.deepEqual([j.day, j.block, j.win_start, j.win_end], [D[3], 'day', ws2, ws2 + 240]);
-  sms = await until2(moved, (l) => l.length >= 2, 20000);
-  await until2(moved, (l) => l.length > 2, 3000);
   sms = await moved();
   assert.equal(sms.length, 2, 'told once more, not twice');
   assert.ok(sms[1].includes(longDay(D[3])) && sms[1].includes(between(ws2, ws2 + 240)), `the new day and window: ${sms[1]}`);
@@ -382,13 +381,17 @@ step('Saleh’s day by windows: start, « Je pars », « Je suis arrivé », sig
   await page.getByTestId('shift-end').waitFor();
   await page.getByTestId('today-next').locator(`a[href="#/job/${first}"]`).first().click();
   await page.getByTestId('job-screen').waitFor();
+  const firstName = first === J.amira ? 'Amira' : 'Bruno';
+  // « Je pars »: the customer gets the live map link (GoHighLevel); « Je suis arrivé »: the invoice
   await page.getByTestId('step-leave').click();
-  await until(() => jobOf(first).status, (v) => v === 'en_route', 15000);
-  await page.getByTestId('text-outcome').waitFor({ timeout: 8000 }).catch(() => undefined);
+  assert.equal(await until(() => jobOf(first).status, (v) => v === 'en_route', 15000), 'en_route');
+  const way = await until2(() => textsTo(firstName, /est en route/), (l) => l.length >= 1, 20000);
+  assert.equal(way.length, 1, `« en route » texted once: ${way.join(' | ')}`);
   await dismissSheets(page);
   await page.getByTestId('step-arrive').click();
-  await until(() => jobOf(first).status, (v) => v === 'on_site', 15000);
-  await page.getByTestId('text-outcome').waitFor({ timeout: 8000 }).catch(() => undefined);
+  assert.equal(await until(() => jobOf(first).status, (v) => v === 'on_site', 15000), 'on_site');
+  const here = await until2(() => textsTo(firstName, /est arrivé/), (l) => l.length >= 1, 20000);
+  assert.match(here[0] || '', /Votre facture : [\d ,]+\s?\$ taxes incluses/, `the invoice at the door: ${here[0]}`);
   await dismissSheets(page);
   await x.openVin(page);
   await page.getByTestId('vin-input').fill('2HGFC2F59KH512399');
@@ -409,9 +412,11 @@ step('Saleh’s day by windows: start, « Je pars », « Je suis arrivé », sig
   await page.getByTestId('pay-change').waitFor();
   await page.getByTestId('pay-confirm').click();
   await page.getByTestId('step-finish').click({ timeout: 15000 });
-  // « Pièces utilisées » when the work takes parts (none here); then the job is done
-  if (await page.getByTestId('parts-sheet').waitFor({ timeout: 4000 }).then(() => true, () => false)) await page.getByTestId('parts-confirm').click();
-  await until(() => jobOf(first).status, (v) => v === 'done', 20000);
+  // « Pièces utilisées » when the work takes parts (none here: the job goes straight to done)
+  const parts = page.getByTestId('parts-sheet');
+  const fin = await until2(async () => ((await parts.isVisible()) ? 'parts' : jobOf(first).status === 'done' ? 'done' : ''), (v) => !!v, 20000);
+  if (fin === 'parts') await page.getByTestId('parts-confirm').click();
+  assert.equal(await until(() => jobOf(first).status, (v) => v === 'done', 20000), 'done');
   const inv = h.sql(`select status || '|' || total_cents || '|' || paid_cents from public.invoices where job_id = '${first}' and status <> 'void'`).split('|');
   assert.equal(inv[0], 'paid');
   assert.equal(inv[1], inv[2], 'paid in full, not a cent more');
@@ -440,8 +445,9 @@ step('no signal: the office books a window offline (phone); when the signal is b
   // the signal drops just before « Réserver »
   await ctx.setOffline(true);
   await page.getByTestId('book-confirm').click();
+  // « Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient … »
+  await page.getByTestId('toast-info').filter({ hasText: /gardée sur le téléphone/ }).waitFor({ timeout: 15000 });
   await page.getByTestId('sync-chip').waitFor();
-  await page.waitForTimeout(2000);
   const count = () => Number(h.sql(`select count(*) from public.jobs where customer_id = '${C.Eric.id}' and deleted_at is null`));
   assert.equal(count(), 0, 'nothing reached the server while offline');
   await ctx.setOffline(false);
@@ -464,7 +470,7 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   await pickWindow(p1.page, D[5], ws, 'list');
   await p1.ctx.setOffline(true);
   await p1.page.getByTestId('book-confirm').click();
-  await p1.page.getByTestId('sync-chip').waitFor();
+  await p1.page.getByTestId('toast-info').filter({ hasText: /gardée sur le téléphone/ }).waitFor({ timeout: 15000 });
   // another phone of the office, with signal, books Farah in that same window
   const p2 = await openW({ kind: 'desktop' });
   await h.signIn(p2.page, who.mira.email, PW);
