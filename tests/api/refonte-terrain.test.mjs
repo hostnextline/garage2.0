@@ -484,6 +484,52 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
   }
 });
 
+test('a backup that stops is said by EVERY reconciliation (the schedule’s, « Vérifier maintenant »), not only by the backup job that failed; never-set-up databases say nothing', async (t) => {
+  const real = (await q(`select to_regprocedure('public.recon_run(date,text)') is not null as there`))[0].there;
+  if (!real) { t.skip('the reconciliation’s SQL is not in this database'); return; }
+  const since = (await q(`select now() t`))[0].t;
+  const open = async () => (await q(`select check_id, severity, entity_id, message_fr, state from public.ops_recon_findings where check_id like 'backup%' and state <> 'closed'`));
+  try {
+    await q(`delete from public.ops_backup_runs`); await q(`delete from public.secrets where key like 'backup_repo:%'`);
+    await q(`delete from public.ops_recon_findings where check_id like 'backup%'`);
+    // no backup set up at all (no « done », no repository pin): the database's runs say nothing about it
+    await q(`select public.recon_run(public.local_today() - 1, 'cron')`);
+    assert.deepEqual(await open(), []);
+    // the job said « done » 30 hours ago, then nothing (a night that failed before its end): the schedule's run alone says it
+    const [b] = await q(`insert into public.ops_backup_runs (tables, rows, ok, at) values (40, 900, true, now() - interval '30 hours') returning id`);
+    await q(`insert into public.ops_backup_runs (tables, rows, ok, at) values (40, 0, false, now() - interval '2 hours')`);
+    const r = (await q(`select public.recon_run(public.local_today() - 1, 'cron') r`))[0].r;
+    assert.equal(r.status, 'bad', JSON.stringify(r));
+    let f = await open();
+    assert.deepEqual(f.map((x) => [x.check_id, x.severity, x.entity_id, x.state]), [['backup_late', 'bad', b.id, 'open']]);
+    assert.match(f[0].message_fr, /30 heures/);
+    // « Vérifier maintenant » (the owner's button: yesterday and today) keeps it open, one row
+    await q(`delete from public.rate_limits where key = 'recon_now'`);
+    await rpc('recon_now', {}, ownerJwt);
+    f = await open();
+    assert.equal(f.length, 1, JSON.stringify(f));
+    // the function (the nightly job) says the same finding: still one row
+    assert.equal((await oidc('recon', { action: 'run' }, await ticket())).bad, true);
+    assert.equal((await open()).length, 1);
+    // the pin of the first ticket alone (no « done » ever): « never said done »
+    await q(`delete from public.ops_backup_runs`);
+    await q(`insert into public.secrets (key, value) values ('backup_repo:hostnextline/garage2.0-sauvegardes', '1:2') on conflict (key) do nothing`);
+    await q(`select public.recon_run(public.local_today(), 'cron')`);
+    assert.ok((await open()).some((x) => x.check_id === 'backup_late' && x.entity_id === null && /jamais dit « terminé »/.test(x.message_fr)));
+    // a good night again: nothing new is added
+    await q(`insert into public.ops_backup_runs (tables, rows, ok) values (40, 900, true)`);
+    await new Promise((ok) => setTimeout(ok, 1100));
+    await q(`select public.recon_run(public.local_today(), 'cron')`);
+    assert.equal((await q(`select count(*)::int n from public.ops_recon_findings where check_id = 'backup_late' and updated_at > now() - interval '1 second'`))[0].n, 0, 'a fresh backup adds nothing');
+  } finally {
+    await q(`delete from public.ops_backup_runs`); await q(`delete from public.secrets where key like 'backup_repo:%'`);
+    await q(`delete from public.rate_limits where key in ('recon_now', 'recon:run')`);
+    await q(`delete from public.ops_recon_findings where created_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_runs where started_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_baseline where set_at >= $1`, [since]);
+  }
+});
+
 /* ---------- « Je pars »: whose trip, two at once, the way back sent twice ---------- */
 async function enrouteSetup(driverId) {
   const dow = (await q(`select extract(dow from public.local_today())::int d`))[0].d;

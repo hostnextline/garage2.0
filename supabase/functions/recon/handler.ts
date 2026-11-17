@@ -4,6 +4,8 @@
 //   - every card payment Stripe took in the last 72 hours is in « payments », for the same amount (skipped, and said
 //     so, while Stripe is not connected);
 //   - the last good backup is younger than 26 hours (« ops_backup_runs », written by the backup job's { action: 'done' }).
+//     Every run of the database checks it too (trigger on ops_recon_runs, 20261116000500), with the same key and words:
+//     the schedule and « Vérifier maintenant » see a backup that stopped, and the two never make two rows.
 //
 //   { action: 'run', day? }            the nightly backup job (GitHub ticket in « x-github-oidc », as for « backup »), or
 //                                      from the app: the owner or a person with the « Trésorerie » right.
