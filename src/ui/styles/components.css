@@ -11,7 +11,8 @@
   -webkit-tap-highlight-color: transparent; user-select: none; white-space: nowrap;
 }
 .btn:active { transform: translateY(1px) scale(0.99); }
-.btn[disabled], .btn[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; transform: none; }
+/* a pause of the tap guard (data-tap-wait: after an action, a question just shown, an armed confirm) changes nothing on screen */
+.btn[disabled], .btn[aria-disabled='true']:not([data-tap-wait]) { opacity: 0.5; cursor: not-allowed; transform: none; }
 .btn svg { width: 18px; height: 18px; flex: none; }
 .btn-primary { --b-bg: var(--accent); --b-ink: var(--on-accent); --b-edge: transparent; box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 6px 16px -8px var(--accent); }
 .btn-secondary { --b-bg: var(--glass-strong); --b-edge: var(--line); }
