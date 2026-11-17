@@ -1277,6 +1277,34 @@ test('plages-01: window mode, a vehicle closed for the rest of today (Horaires, 
   }
 }));
 
+test('plages-02: back to the blocks, a flexible appointment is to call (told « la veille »), every one to call is to confirm again; back to the windows it is flexible again', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h, 4, 3);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const c1 = await h.customer('Jean', ...near), c2 = await h.customer('Paul', ...near2), c3 = await h.customer('Luc', ...laval);
+  await windowsOn(h, owner);
+  const f = await book(h, { customer_id: c1, day, block: 'day', duration_min: 60, win_flex: true });
+  const w = await book(h, { customer_id: c2, day, block: 'day', duration_min: 60, win_start: 600 });       // 10 h – 14 h
+  const a = await book(h, { customer_id: c3, day, block: 'day', duration_min: 60, win_start: 480 });       // 8 h – 12 h = the morning
+  assert.deepEqual([(await row(h, f.job_id)).win_flex, (await row(h, f.job_id)).win_start], [true, null], 'flexible, its window not fixed yet');
+  await server(h, owner, `update public.jobs set confirm_sent_at = now() where id = any($1::uuid[])`, [[f.job_id, w.job_id, a.job_id]]);
+  const off = await h.rpc('windows_switch', { p_op: uuid(), p_on: false });
+  const calls = Object.fromEntries(off.to_call.map((x) => [x.job_id, x.reason]));
+  assert.equal(calls[f.job_id], 'flexible', 'the flexible customer is to call (it was left out)');
+  assert.equal(calls[a.job_id], undefined, 'a window that is its block’s hours: nothing to tell');
+  const jf = await row(h, f.job_id);
+  assert.ok(['am', 'pm', 'eve'].includes(jf.block));
+  assert.equal(jf.confirm_sent_at, null, 'to confirm again: « Aujourd’hui » lists it');
+  for (const id of Object.keys(calls)) assert.equal((await row(h, id)).confirm_sent_at, null, 'every one to call is to confirm again');
+  assert.ok((await row(h, a.job_id)).confirm_sent_at, 'the others keep their confirmation');
+  const on = await h.rpc('windows_switch', { p_op: uuid(), p_on: true });
+  assert.equal(on.ok, true);
+  const jf2 = await row(h, f.job_id);
+  assert.deepEqual([jf2.block, jf2.win_start, jf2.win_end, jf2.win_flex], ['day', null, null, true], 'flexible again (it got the block’s 4 hours, never told)');
+  assert.deepEqual([(await row(h, a.job_id)).win_start, (await row(h, a.job_id)).win_flex], [480, false], 'the others as before');
+}));
+
 /** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
  *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
 async function liveRef(h, list) {

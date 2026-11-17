@@ -1107,7 +1107,11 @@ end $function$;
 --     window's start; the window the customer was told stays on the job when it is not the block's own hours (the app
 --     shows a block job by its block: nothing changes on the screens), so the way back to the windows gives it again;
 --   * the answer lists whom to call (`to_call`: the window told is not inside the block, also in activity
---     « window_to_block ») and the days left as they were (`kept`); `converted` counts the appointments still to come.
+--     « window_to_block ») and the days left as they were (`kept`); `converted` counts the appointments still to come;
+--   * round 2 (plages-02): a « flexible » appointment (told « la veille ») or one with no window yet is to call too
+--     (`reason` 'flexible' / 'no_window'; the others 'window'), every one to call is to confirm again
+--     (confirm_sent_at cleared: Aujourd'hui lists it), and the way back to the windows makes a flexible one flexible
+--     again when it is still in the block the switch gave it (it got the block's 4 hours that nobody told).
 CREATE OR REPLACE FUNCTION public.windows_switch(p_op uuid, p_on boolean)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1118,6 +1122,9 @@ declare v_done jsonb; v_today date := public.local_today(); n int := 0; d date; 
   v_chain text := coalesce(current_setting('garage.chain', true), '');
   -- Part 26: whom to call (the window told is not inside the block they go back to), the days left as they were
   v_call jsonb := '[]'::jsonb; v_kept jsonb := '[]'::jsonb;
+  -- round 2 (plages-02): the appointments without a window (flexible, or none yet) on the way to the blocks, and the
+  -- flexible ones on the way back
+  v_nowin uuid[]; v_flex uuid[]; v_back uuid[];
 begin
   v_done := public.op_begin(p_op, 'windows_switch');
   if v_done is not null then return v_done; end if;
@@ -1130,14 +1137,24 @@ begin
   perform set_config('garage.rpc', 'on', true);
   if p_on then
     select count(*) into n from public.jobs j where j.day >= v_today and j.block <> 'day' and j.deleted_at is null and j.status = 'booked';
+    -- flexible before the switch back to the blocks, and still in the block it gave them: flexible again (round 2)
+    select coalesce(array_agg(j.id), '{}') into v_back from public.jobs j
+    where j.day >= v_today and j.block <> 'day' and j.deleted_at is null and j.status = 'booked' and j.win_start is null
+      and coalesce((select a.data->>'reason' = 'flexible' and a.data->>'day' = j.day::text and a.data->>'block' = j.block
+                    from public.activity a where a.entity = 'job' and a.entity_id = j.id and a.action = 'window_to_block'
+                    order by a.at desc limit 1), false);
     -- a window still kept on the job (what the customer was told before a switch back to the blocks) is its window again
     update public.jobs j set block = 'day',
       win_start = case when j.win_start is not null and j.win_end is not null and j.win_start < x.end_min and j.win_end > x.start_min then j.win_start else x.start_min end,
       win_end = case when j.win_start is not null and j.win_end is not null and j.win_start < x.end_min and j.win_end > x.start_min then j.win_end else x.end_min end,
       win_flex = false
       from public.blocks_set() x where x.key = j.block and j.day >= v_today and j.block <> 'day';
+    update public.jobs j set win_start = null, win_end = null, win_flex = true where j.id = any(v_back);
   else
     select count(*) into n from public.jobs j where j.day >= v_today and j.block = 'day' and j.deleted_at is null and j.status = 'booked';
+    -- no window told yet (flexible: « la veille »; or none at all): they get a block without a word (round 2)
+    select coalesce(array_agg(j.id), '{}'), coalesce(array_agg(j.id) filter (where j.win_flex), '{}') into v_nowin, v_flex from public.jobs j
+    where j.day >= v_today and j.block = 'day' and j.deleted_at is null and j.status = 'booked' and j.win_start is null;
     update public.jobs j set
       block = coalesce(
         -- a window that is a block's very hours (a job that came from a block) goes back to that very block; else the block
@@ -1154,12 +1171,18 @@ begin
     -- gives it again); the ones whose window is not inside their block are to be called
     perform set_config('garage.rpc', 'on', true);
     select coalesce(jsonb_agg(jsonb_build_object('job_id', j.id, 'day', j.day, 'block', j.block, 'win_start', j.win_start, 'win_end', j.win_end,
-             'customer_id', j.customer_id, 'truck_id', j.truck_id) order by j.day, j.win_start, j.id), '[]'::jsonb) into v_call
+             'customer_id', j.customer_id, 'truck_id', j.truck_id, 'reason', 'window') order by j.day, j.win_start, j.id), '[]'::jsonb) into v_call
     from public.jobs j join public.blocks_set() x on x.key = j.block
     where j.day >= v_today and j.deleted_at is null and j.status = 'booked' and j.win_start is not null and j.win_end is not null
       and (j.win_start < x.start_min or j.win_end > x.end_min);
+    v_call := v_call || (select coalesce(jsonb_agg(jsonb_build_object('job_id', j.id, 'day', j.day, 'block', j.block, 'win_start', null, 'win_end', null,
+             'customer_id', j.customer_id, 'truck_id', j.truck_id, 'reason', case when j.id = any(v_flex) then 'flexible' else 'no_window' end)
+             order by j.day, j.id), '[]'::jsonb) from public.jobs j where j.id = any(v_nowin));
     insert into public.activity (actor, entity, entity_id, action, data)
     select auth.uid(), 'job', (c->>'job_id')::uuid, 'window_to_block', c - 'job_id' from jsonb_array_elements(v_call) c;
+    -- whom to call is to confirm again (« Aujourd'hui » lists the appointments not confirmed)
+    update public.jobs j set confirm_sent_at = null
+    where j.id in (select (c->>'job_id')::uuid from jsonb_array_elements(v_call) c) and j.confirm_sent_at is not null;
     update public.jobs j set win_start = null, win_end = null
       from public.blocks_set() x where x.key = j.block and j.day >= v_today and j.win_start is not null
         and (j.status <> 'booked' or (j.win_start = x.start_min and j.win_end = x.end_min));
