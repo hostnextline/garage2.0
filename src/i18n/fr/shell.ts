@@ -56,6 +56,7 @@ export const shell = {
     signIn: 'Me reconnecter'
   },
   storageLost: 'Ce téléphone ne peut pas garder tes changements : reste en ligne',
+  notUpToDate: 'Pas encore à jour : certaines listes n’ont pas pu être lues.',
   stuck: { one: 'Un changement attend que le serveur réponde. Il est gardé et repart tout seul.', other: '{n} changements attendent que le serveur réponde. Ils sont gardés et repartent tout seuls.' },
   crash: {
     title: 'Quelque chose n’a pas marché',

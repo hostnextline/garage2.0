@@ -56,6 +56,7 @@ export const shell: typeof fr = {
     signIn: 'Sign in again'
   },
   storageLost: 'This phone cannot keep your changes: stay online',
+  notUpToDate: 'Not up to date yet: some lists could not be read.',
   stuck: { one: 'A change is waiting for the server to answer. It is kept and will go out by itself.', other: '{n} changes are waiting for the server to answer. They are kept and will go out by themselves.' },
   crash: {
     title: 'Something went wrong',
