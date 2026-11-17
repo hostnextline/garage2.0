@@ -12,6 +12,8 @@
 --                         a phone number corrected closes the customer's links texted to the old one (open jobs, open
 --                         estimates), clears what was signed online on a booked appointment (signed again at the
 --                         door) and lets the booking text go again
+--     invoices            a draft is no longer deleted, moved to another appointment or dated by a direct write
+--                         (only « Annuler la facture » / the server's operations)
 --     attachments         written once (a signature could be replaced after the fact); no SVG (a picture that runs code)
 --     push_subs           a device's alert address follows the person who asks last (a second owner got a raw error)
 --     settings.booking    web.on (the public booking page) changes only through web_switch: a settings save from a
@@ -19,6 +21,8 @@
 --  2. Rights
 --     job_visible, truck_hours_editable   a blocked person whose session is still alive no longer reads or changes the
 --                         truck he drove
+--     block_rows          an answer (booking, move, order of the stops…) carries only the jobs the person may see, and
+--                         the ones the operation just took off a truck the person sees (with their new truck)
 --     right_of, right_flag   a value that is not yes / no in the rights never stops the person's app
 --     member_update       keeps only known rights with yes / no; an empty or unknown list of roles is refused in words;
 --                         runs exactly once (op_begin)
@@ -33,7 +37,8 @@
 --     report_position     the position no longer keeps a job that is finished
 --     housekeeping        also empties what was promised to be short-lived (calls 1 day, texts 7 days, brakes 2 days,
 --                         robot notes 90 days, alert addresses of people who are no longer owners) and the automatic
---                         change log after 24 months — never a named proof (signature online, price changed…)
+--                         change log after 7 years, except the money's (invoices, payments, expenses: kept) — never
+--                         a named proof (signature online, price changed…)
 --  4. « Réserver en ligne » (still switched OFF on live)
 --     web_book            the same customer = the same phone AND the same first or last name; an existing file is never
 --                         written (no e-mail, no car); what the visitor typed is kept on the job (jobs.web_contact and
@@ -48,21 +53,45 @@
 --
 -- New refusal codes: customer_busy, customer_owes (deleting a customer), bad_role (member_update).
 -- New column: jobs.web_contact (part of jobs: the nightly backup holds it with the table). No new table.
--- New functions: web_switch (owner, from the app), fold_name, right_flag, and the trigger functions
--- customers_delete_guard, customers_phone_links, push_subs_takeover, settings_web_guard (closed to the app).
+-- New functions: web_switch (owner, from the app), service_part_set (« Réglages » or « Inventaire », from the app),
+-- fold_name, right_flag, and the trigger functions customers_delete_guard, customers_phone_links, push_subs_takeover,
+-- settings_web_guard (closed to the app).
 
 -- =====================================================================================================================
 -- 1. DIRECT WRITES
 -- =====================================================================================================================
 
+-- ---------- the four rules this file changes with ALTER POLICY are the ones it expects (srv-acces-r2-2) ----------
+-- ALTER POLICY keeps the rule's command and its kind (permissive): on a base where one of them was renamed, removed or
+-- made again by hand (x-security-20: live has hand-patched objects) the migration would stop on a raw error, or the
+-- new condition would land on another command. Checked first, read only: anything else stops the whole file here
+-- (one transaction: nothing applied) with the name of the rule and what was found.
+do $policies$
+declare r record; v_cmd "char"; v_perm boolean;
+begin
+  for r in select * from (values ('trucks', 'trucks_write', 'a'::"char", 'INSERT'), ('trucks', 'trucks_update', 'w'::"char", 'UPDATE'),
+                                 ('customers', 'customers_read', 'r'::"char", 'SELECT'), ('attachments', 'attachments_upd', 'w'::"char", 'UPDATE')) v(tbl, pol, cmd, cmd_name)
+  loop
+    select p.polcmd, p.polpermissive into v_cmd, v_perm from pg_policy p
+     where p.polrelid = format('public.%I', r.tbl)::regclass and p.polname = r.pol;
+    if not found then
+      raise exception 'La règle « % » de la table public.% n’existe pas sur cette base (renommée ou enlevée à la main ?) : rien n’est appliqué. Remets-la comme dans 20261104000200_access.sql, puis relance la migration.', r.pol, r.tbl;
+    end if;
+    if v_cmd <> r.cmd or not v_perm then
+      raise exception 'La règle « % » de la table public.% n’est pas celle attendue : % % au lieu de % permissive. Rien n’est appliqué : vérifie pg_policies, puis relance la migration.',
+        r.pol, r.tbl, case v_cmd when 'r' then 'SELECT' when 'a' then 'INSERT' when 'w' then 'UPDATE' when 'd' then 'DELETE' else 'ALL' end,
+        case when v_perm then 'permissive' else 'restrictive' end, r.cmd_name;
+    end if;
+  end loop;
+end $policies$;
+
 -- ---------- trucks: the owner or « Réglages », as the app shows « Les camions » (x-security-02, x-rights-10) ----------
 -- Hours and starts are not touched: truck_week / truck_days keep truck_hours_editable, the start goes through
--- set_truck_start.
-drop policy if exists trucks_write on public.trucks;
-drop policy if exists trucks_update on public.trucks;
-create policy trucks_write on public.trucks for insert to authenticated
+-- set_truck_start. (No DROP anywhere in this file, the owner's rule for live (mise-a-niveau-05): an existing rule is
+-- changed with ALTER POLICY, a trigger is made with CREATE OR REPLACE TRIGGER, a check is added only when missing.)
+alter policy trucks_write on public.trucks to authenticated
   with check (public.is_owner() or public.can('settings'));
-create policy trucks_update on public.trucks for update to authenticated
+alter policy trucks_update on public.trucks to authenticated
   using (public.is_owner() or public.can('settings')) with check (public.is_owner() or public.can('settings'));
 
 -- ---------- jobs: the length goes through set_job_duration, a job ends by job_step (x-security-09, audit A2) ----------
@@ -72,8 +101,7 @@ revoke update (duration_min, deleted_at) on public.jobs from authenticated;
 -- A person who creates a customer gets the row back (insert … returning): the read rule is then checked on the NEW row,
 -- before it is in the table, so the look-up inside customer_visible found nothing and only « Clients » passed
 -- (sql-foundation-04). The row's own author is now read from the row itself; nothing else changes.
-drop policy if exists customers_read on public.customers;
-create policy customers_read on public.customers for select to authenticated
+alter policy customers_read on public.customers to authenticated
   using (public.customer_visible(id) or (created_by = auth.uid() and public.is_staff()));
 
 -- Deleting a file: never while the customer has a coming appointment or a finished invoice not paid, whatever the
@@ -98,20 +126,98 @@ begin
 end $$;
 revoke all on function public.customers_delete_guard() from public, anon, authenticated;
 grant execute on function public.customers_delete_guard() to service_role;
-drop trigger if exists customers_delete_guard on public.customers;
-create trigger customers_delete_guard before update of deleted_at on public.customers
+create or replace trigger customers_delete_guard before update of deleted_at on public.customers
   for each row execute function public.customers_delete_guard();
+
+-- ---------- invoices: a draft leaves through « Annuler la facture », never by a direct write (R40) ----------
+-- (sql-money-06, invoices-quotes-04) A person could soft-delete a draft that never had a number, move it to another
+-- appointment or give it an « issued » date straight through the API: no screen does that (a draft goes with
+-- invoice_void, follows its appointment with job_customer, gets its date from invoice_finish, all on the server). The
+-- numbered ones were already held for everybody by invoices_number_keep (« numbered », 20261116000100_refonte_argent):
+-- that refusal stays theirs. The rest of the function is the running text of 20261104000200_access.sql.
+create or replace function public.invoices_guard() returns trigger language plpgsql set search_path = public as $$
+begin
+  if not public.by_person() then return new; end if;
+  if old.status <> 'draft' then
+    raise exception 'Cette facture est terminée : elle ne se modifie plus. Annule-la pour en faire une nouvelle.' using errcode = '42501';
+  end if;
+  if new.number is distinct from old.number or new.status <> 'draft' or new.paid_cents is distinct from old.paid_cents then
+    raise exception 'Le numéro, le statut et les paiements passent par le serveur.' using errcode = '42501';
+  end if;
+  if new.job_id is distinct from old.job_id or new.issued_at is distinct from old.issued_at
+     or (new.deleted_at is distinct from old.deleted_at and new.number is null) then
+    perform public.fail('not_allowed', 'Pour enlever un brouillon de facture, utilise « Annuler la facture ». Son rendez-vous et sa date ne se changent pas à la main.');
+  end if;
+  return new;
+end $$;
 
 -- ---------- attachments: written once, and never a picture that can run code ----------
 -- The app only ever inserts and reads them. A signature (or a receipt) could be replaced, or moved to another job,
 -- by its author afterwards (sql-foundation-08); an SVG receipt opened by the owner ran its script in the owner's
 -- session (x-security-01, the server's half: the app writes png / jpeg / webp / pdf only).
 revoke update on public.attachments from authenticated;
-drop policy if exists attachments_upd on public.attachments;
-create policy attachments_upd on public.attachments for update to authenticated
+alter policy attachments_upd on public.attachments to authenticated
   using (public.is_owner()) with check (public.is_owner());
-alter table public.attachments drop constraint if exists attachments_no_svg;
-alter table public.attachments add constraint attachments_no_svg check (mime <> 'image/svg+xml') not valid;
+do $svg$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.attachments'::regclass and conname = 'attachments_no_svg') then
+    alter table public.attachments add constraint attachments_no_svg check (mime <> 'image/svg+xml') not valid;
+  end if;
+end $svg$;
+
+-- ---------- service_parts: the part a service uses, set through one operation (R173, settings-team-07) ----------
+-- The panel « Pièces » of a service writes the rows itself. A part taken off a service is kept as deleted (so the
+-- other phones learn it) and a deleted row never comes back to a phone, so the panel could only put back, in the same
+-- visit, a link it had taken off itself. service_part_set(op, service, item, qty) sets THE link of that service and
+-- that item whatever the phone holds: a quantity puts it (back) with that quantity, null takes it off. The same rights
+-- as the table (« Réglages » or « Inventaire »), exactly once; the answer carries the row (its deleted_at when taken off).
+-- New: nothing calls it yet (settings-team's PartsPanel will); the table's own rules are unchanged.
+create or replace function public.service_part_set(p_op uuid, p_service uuid, p_item uuid, p_qty numeric) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_done jsonb; v_row public.service_parts; v_qty numeric := round(p_qty, 2);
+begin
+  v_done := public.op_begin(p_op, 'service_part_set');
+  if v_done is not null then return v_done; end if;
+  if not (public.can('settings') or public.can('inventory')) then
+    perform public.fail('not_allowed', 'Il faut le droit « Réglages » ou « Inventaire » pour changer les pièces d’un service.');
+  end if;
+  if not exists (select 1 from public.services where id = p_service and deleted_at is null)
+     or not exists (select 1 from public.inventory_items where id = p_item and deleted_at is null) then
+    perform public.fail('not_found', 'Ce service ou cet article n’existe plus.');
+  end if;
+  -- the words of bad_qty elsewhere (inventory_buy, the Coffre); a second sentence for the upper limit (srv-acces-r2-3;
+  -- the panel's stepper stops at 999, so only a call by hand meets it)
+  if v_qty is not null and v_qty <= 0 then
+    perform public.fail('bad_qty', 'Écris une quantité plus grande que zéro.');
+  end if;
+  if v_qty > 9999 then
+    perform public.fail('bad_qty', 'Écris une quantité de 9999 ou moins.');
+  end if;
+  -- one change at a time for a service and an item (two phones at the same instant: the second sees the first's)
+  perform pg_advisory_xact_lock(hashtext('service_part:' || p_service::text || ':' || p_item::text));
+  select * into v_row from public.service_parts where service_id = p_service and item_id = p_item and deleted_at is null;
+  if found then
+    if v_qty is null then
+      update public.service_parts set deleted_at = now() where id = v_row.id returning * into v_row;
+    else
+      update public.service_parts set qty = v_qty where id = v_row.id returning * into v_row;
+    end if;
+  elsif v_qty is not null then
+    -- the one taken off before comes back (one row per service and item), else a new one
+    update public.service_parts set deleted_at = null, qty = v_qty
+     where id = (select sp.id from public.service_parts sp where sp.service_id = p_service and sp.item_id = p_item
+                 order by sp.deleted_at desc, sp.updated_at desc limit 1)
+    returning * into v_row;
+    if not found then
+      insert into public.service_parts (service_id, item_id, qty, created_by) values (p_service, p_item, v_qty, auth.uid())
+      returning * into v_row;
+    end if;
+  end if;
+  return public.op_save(p_op, 'service_part_set', jsonb_build_object('ok', true, 'removed', v_qty is null,
+    'rows', jsonb_build_object('service_parts', case when v_row.id is null then '[]'::jsonb else jsonb_build_array(to_jsonb(v_row)) end)));
+end $$;
+revoke all on function public.service_part_set(uuid, uuid, uuid, numeric) from public, anon, authenticated;
+grant execute on function public.service_part_set(uuid, uuid, uuid, numeric) to authenticated, service_role;
 
 -- ---------- push_subs: the alert address of a device follows the person who asks last (sql-misc-02) ----------
 -- The address is unique for the whole table and a person only sees their own rows: a second owner on the same device
@@ -127,8 +233,7 @@ begin
 end $$;
 revoke all on function public.push_subs_takeover() from public, anon, authenticated;
 grant execute on function public.push_subs_takeover() to service_role;
-drop trigger if exists push_subs_takeover on public.push_subs;
-create trigger push_subs_takeover before insert on public.push_subs
+create or replace trigger push_subs_takeover before insert on public.push_subs
   for each row execute function public.push_subs_takeover();
 
 -- ---------- customers: a phone number corrected closes the links texted to the old one (x-security-03) ----------
@@ -176,8 +281,7 @@ begin
 end $$;
 revoke all on function public.customers_phone_links() from public, anon, authenticated;
 grant execute on function public.customers_phone_links() to service_role;
-drop trigger if exists customers_phone_links on public.customers;
-create trigger customers_phone_links after update of phone on public.customers
+create or replace trigger customers_phone_links after update of phone on public.customers
   for each row execute function public.customers_phone_links();
 
 -- ---------- settings.booking.web.on: the public booking page opens and closes through web_switch only (sql-misc-04) ----------
@@ -188,8 +292,14 @@ create trigger customers_phone_links after update of phone on public.customers
 -- the SQL console, and the restore script ops/sauvegardes/restaurer.mjs run with psql, which leaves an existing settings
 -- row alone unless asked to replace it: --remplacer then writes the backup's web.on too — said in the report).
 -- Only web.on is kept, not the whole of « web »: the panel « Réservation en ligne » still saves its other numbers.
+-- booking.shared_routes (« Routes partagées ») is stored as a yes / no whatever writes it: my_truck_ids reads it with a
+-- plain cast, so a value that is not one (« oui », a number) stopped every mechanic's row rules (x-security-30, R110;
+-- the read side is srv-planif's my_truck_ids). The app writes true / false: nothing changes for it.
 create or replace function public.settings_web_guard() returns trigger language plpgsql set search_path = public as $$
 begin
+  if new.booking ? 'shared_routes' and jsonb_typeof(new.booking->'shared_routes') <> 'boolean' then
+    new.booking := jsonb_set(new.booking, '{shared_routes}', to_jsonb(coalesce(public.right_flag(new.booking->'shared_routes'), false)));
+  end if;
   if coalesce(current_setting('garage.web', true), '') <> 'on' and (public.by_person() or current_user = 'service_role')
      and (new.booking->'web'->'on') is distinct from (old.booking->'web'->'on') then
     new.booking := case
@@ -203,8 +313,7 @@ begin
 end $$;
 revoke all on function public.settings_web_guard() from public, anon, authenticated;
 grant execute on function public.settings_web_guard() to service_role;
-drop trigger if exists settings_web_guard on public.settings;
-create trigger settings_web_guard before update on public.settings
+create or replace trigger settings_web_guard before update on public.settings
   for each row execute function public.settings_web_guard();
 
 -- web_switch(op, on): owner only. Answers the settings row, like set_role_rights.
@@ -245,19 +354,46 @@ language sql stable security definer set search_path = public as $$
   select public.is_owner() or public.can('hours') or (p_truck = any(public.my_truck_ids()) and public.is_staff())
 $$;
 
+-- ---------- block_rows: the jobs of a block an answer carries, only the ones the person may see (R93, x-rights-05) ----------
+-- book_job, move_job, set_stop_order, set_job_duration, lock_windows… answer rows.jobs = block_rows(day, block): a
+-- mechanic who booked or moved one appointment received every job of that block of every truck (in window mode the
+-- block is the whole day: customers, addresses, notes), beyond what the row rule of jobs (jobs_read = job_visible)
+-- shows him and what a pull would ever bring. Now the same rule; the server itself (no person: a trigger, the server
+-- key) still gets every row. Same arguments, same answer shape.
+-- (srv-acces-r2-1) A job this very operation took OFF a truck the person sees also comes back, with its new truck: a
+-- mechanic with « Réserver » but not « Agenda » who sends the office's job of his truck to truck B (« Changer de camion »),
+-- or whose booking makes the planner put another job of his truck on truck B. He read that row just before; without it
+-- his phone (yesterday's app syncs by cursor only, and a row he no longer sees never comes again) kept the job on his
+-- « Ma journée » and « Je pars » was refused. « Just before » = the truck of the job's first change of truck in this
+-- transaction, by this person, read from the change log (log_activity: { truck_id: [before, after] }, written at the
+-- transaction's now()). Nothing else of truck B comes with it.
+create or replace function public.block_rows(p_day date, p_block text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(to_jsonb(j)), '[]'::jsonb) from public.jobs j
+   where j.day = p_day and j.block = p_block and j.deleted_at is null
+     and case when auth.uid() is null then true
+              when public.job_visible(j.truck_id, j.created_by) then true
+              else exists (select 1 from (select a.data->'truck_id'->>0 as was from public.activity a
+                                           where a.entity = 'jobs' and a.entity_id = j.id and a.at = now() and a.actor = auth.uid()
+                                             and a.data ? 'truck_id'
+                                           order by a.id limit 1) f
+                           where f.was is not null and public.job_visible(f.was::uuid, j.created_by)) end
+$$;
+
 -- ---------- yes / no read from the rights, never an error (x-security-30, sql-foundation-30) ----------
 -- A value that is not a yes / no in staff.rights or settings.role_rights made the cast fail inside every row rule of
 -- that person: their whole app stopped until someone fixed the row by hand.
 create or replace function public.right_flag(p jsonb) returns boolean language sql immutable as $$
   select case jsonb_typeof(p)
     when 'boolean' then p = 'true'::jsonb
-    when 'string' then case when lower(p #>> '{}') in ('true', 't', 'yes', 'y', 'on', '1') then true
-                            when lower(p #>> '{}') in ('false', 'f', 'no', 'n', 'off', '0') then false end
+    when 'string' then case when lower(p #>> '{}') in ('true', 't', 'yes', 'y', 'on', '1', 'oui') then true
+                            when lower(p #>> '{}') in ('false', 'f', 'no', 'n', 'off', '0', 'non') then false end
     when 'number' then case when p = '1'::jsonb then true when p = '0'::jsonb then false end
   end
 $$;
+-- a pure reader of yes / no, called as the person by settings_web_guard (a settings save)
 revoke all on function public.right_flag(jsonb) from public, anon, authenticated;
-grant execute on function public.right_flag(jsonb) to service_role;
+grant execute on function public.right_flag(jsonb) to authenticated, service_role;
 
 create or replace function public.right_of(p_staff public.staff, p_right text) returns boolean
 language plpgsql stable security definer set search_path = public as $$
@@ -297,9 +433,13 @@ begin
 end $$;
 
 -- ---------- member_update: exactly once; only known roles and yes / no rights are kept ----------
+-- (R174, settings-team-26) Taking the « Mécano » role away left the person the driver of their truck: the truck kept
+-- following them (my_truck_ids, the map, « Ma journée » of nobody). The truck is now free in the same change; the
+-- answer carries it. Only a role taken away frees it: an owner who drives without the mechanic role keeps his truck
+-- when anything else of his file changes, and « Bloquer » still keeps the truck (unblocking gives everything back).
 create or replace function public.member_update(p_op uuid, p_staff uuid, p_patch jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_done jsonb; s public.staff; v_roles text[]; v_active boolean; v_rights jsonb;
+declare v_done jsonb; s public.staff; v_roles text[]; v_active boolean; v_rights jsonb; v_freed jsonb;
 begin
   v_done := public.op_begin(p_op, 'member_update');
   if v_done is not null then return v_done; end if;
@@ -334,10 +474,16 @@ begin
     rights = v_rights,
     active = v_active
   where id = s.id;
+  -- no longer a mechanic: the truck he drove is free (R174)
+  if 'mechanic' = any(s.roles) and not ('mechanic' = any(v_roles)) then
+    with freed as (update public.trucks t set driver_id = null where t.driver_id = s.id returning t.*)
+    select jsonb_agg(to_jsonb(freed)) into v_freed from freed;
+  end if;
   -- a blocked person can no longer sign in; their day is closed
   update auth.users set banned_until = case when v_active then null else 'infinity'::timestamptz end where id = s.id;
   if not v_active then perform public.close_day(s.id); end if;
-  return public.op_save(p_op, 'member_update', jsonb_build_object('ok', true, 'rows', jsonb_build_object('staff', (select jsonb_agg(to_jsonb(x)) from public.staff x where x.id = s.id))));
+  return public.op_save(p_op, 'member_update', jsonb_build_object('ok', true, 'rows', jsonb_build_object('staff', (select jsonb_agg(to_jsonb(x)) from public.staff x where x.id = s.id))
+    || case when v_freed is not null then jsonb_build_object('trucks', v_freed) else '{}'::jsonb end));
 end $$;
 
 -- ---------- remove_member: always one owner left; the person's unused links are cancelled ----------
@@ -414,10 +560,12 @@ $$;
 -- ---------- housekeeping: what was promised to be short-lived really goes (sql-misc-11, audit A4) ----------
 -- Calls and texts were only emptied when the NEXT call or text arrived; the brakes' counters by a 1 % chance; the
 -- alert addresses only when the push service said « gone ». The history (activity): only the automatic change log
--- (insert / update / delete, written by log_activity) goes after 24 months. A named line is a proof and stays for
--- ever: signed_online (the customer's electronic signature), price_changed, customer_changed, invoice_reopened,
--- window_fixed, web_booked, windows_switch and any name added later. The robot notes of the public page (web_robot,
--- one per request, no limit) go after 90 days.
+-- (insert / update / delete, written by log_activity) goes, after 7 years (Revenu Québec asks the books be kept 6
+-- years after the year they concern), and never the one of the money: who changed or removed an invoice, a payment
+-- or an expense stays for ever (securite-02: 24 months erased that before the six years). A named line is a proof and
+-- stays for ever: signed_online (the customer's electronic signature), price_changed, customer_changed,
+-- invoice_reopened, window_fixed, web_booked, windows_switch and any name added later. The robot notes of the public
+-- page (web_robot, one per request, no limit) go after 90 days.
 create or replace function public.housekeeping() returns void
 language plpgsql security definer set search_path = public as $$
 declare r record;
@@ -434,7 +582,8 @@ begin
   delete from public.push_subs p
    where not exists (select 1 from public.staff s where s.id = p.staff_id and s.active and s.deleted_at is null and 'owner' = any(s.roles));
   delete from public.activity where at < now() - interval '90 days' and action = 'web_robot';
-  delete from public.activity where at < now() - interval '24 months' and action in ('insert', 'update', 'delete');
+  delete from public.activity where at < now() - interval '7 years' and action in ('insert', 'update', 'delete')
+     and entity not in ('invoices', 'payments', 'expenses');
 end $$;
 
 -- ---------- shift_start (sql-foundation-29) ----------
@@ -763,20 +912,21 @@ declare
     'web_duration','web_in_area','web_on','web_services','web_suggest','web_windows','win_for','win_len','win_lock_due','windows_on',
     'windows_switch','words_need_machine',
     'customers_delete_guard','push_subs_takeover','settings_web_guard','web_switch','right_flag','fold_name',
-    'customers_phone_links'];
-  -- the signed-in app: its operations and reads…
+    'customers_phone_links','service_part_set'];
+  -- the signed-in app: its operations and reads… (day_path, a team member's positions of a day, is no longer open:
+  -- neither today's app nor yesterday's, nor a server function, ever called it — x-rights-33)
   v_app text[] := array[
-    'access_of','apply_hours','blocks_overview','book_job','coffre_add','coffre_remove','coffre_report','dashboard','day_path',
+    'access_of','apply_hours','blocks_overview','book_job','coffre_add','coffre_remove','coffre_report','dashboard',
     'extra_answer','inventory_buy','inventory_delete','invoice_finish','invoice_for_job','invoice_reopen','invoice_void',
     'job_customer','job_item_price','job_step','lock_windows','member_update','move_job','my_access','payment_add','payment_remove',
     'public_track','report_position','rights_table','set_job_duration','set_role_rights','set_stop_order','set_truck_start',
     'shift_end','shift_start','suggest_blocks','suggest_windows','team_map','treasury_report','update_me','vin_history','walk_in',
-    'web_switch','windows_switch',
+    'web_switch','windows_switch','service_part_set',
     -- … and what the row rules, the guards and the functions that run as the person call
     'all_rights','block_pos','blocks','bset','by_person','can','coffre_may_add','customer_visible','fail','has_role','home_point',
     'invoice_editable','invoice_visible','is_field','is_owner','is_staff','items_need_machine','job_actor','job_id_visible',
     'job_items_editable','job_visible','km_between','local_now','local_today','me','my_truck_ids','now_min','payment_visible',
-    'ranges_first','ranges_from','ranges_norm','ranges_overlap','right_default','right_of','right_rule','sees_calls',
+    'ranges_first','ranges_from','ranges_norm','ranges_overlap','right_default','right_flag','right_of','right_rule','sees_calls',
     'truck_hours_editable','truck_ranges','words_need_machine'];
   -- re-made and opened to the app by an earlier migration of tonight (its own check inside): left as that migration set it
   --   lock_windows_due   20261116000200_refonte_planification (srv-planif): the app locks the due windows itself where
