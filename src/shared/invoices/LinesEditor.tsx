@@ -17,13 +17,14 @@ import { newLine, type EditLine } from '../../domain/money/editLines';
 export const percentWords = () => (['fr', 'en'] as Lang[]).map((l) => tl(l, 'invoices.lines.discountPct'));
 const CHIPS = [5, 10, 15, 20];
 
-/** a quantity: « 1 », « 1,5 » (hours of labour) */
+/** a quantity: « 1 », « 1,5 » (hours of labour). Two decimals, as a job's line keeps them (job_items.qty numeric(10,2)):
+    an estimate booked, or an invoice line, never changes amount on the way (« 1,125 » h was 1,13 h once booked). */
 function QtyInput(p: { value: number; onValue: (v: number) => void; label: string; id?: string }) {
   const fmt = (v: number) => (uiLang.value === 'en' ? String(v) : String(v).replace('.', ','));
   const [text, setText] = useState(fmt(p.value));
   const [focused, setFocused] = useState(false);
   useEffect(() => { if (!focused) setText(fmt(p.value)); }, [p.value, focused]);
-  const parse = (s: string) => { const n = Number(s.replace(',', '.').trim()); return s.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.round(n * 1000) / 1000 : null; };
+  const parse = (s: string) => { const n = Number(s.replace(',', '.').trim()); return s.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null; };
   return (
     <input class="input inv-qty num" inputMode="decimal" id={p.id} aria-label={p.label} value={text} aria-invalid={parse(text) == null || undefined}
       onFocus={(e) => { setFocused(true); (e.currentTarget as HTMLInputElement).select(); }}

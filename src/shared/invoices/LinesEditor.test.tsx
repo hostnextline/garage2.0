@@ -28,3 +28,17 @@ describe('a price typed in the lines editor (R126)', () => {
     expect(onLines).toHaveBeenLastCalledWith([expect.objectContaining({ unit_cents: 0 })]);
   });
 });
+
+describe('a quantity typed in the lines editor (scan x-money-28, invoices-quotes-27)', () => {
+  it('two decimals, as a job line keeps them: an estimate booked keeps its amount', () => {
+    lang.value = 'fr';
+    const onLines = vi.fn();
+    const lines = [{ _k: 'l1', description: 'Main-d’œuvre', qty: 1, unit_cents: 11500, taxable: true, kind: 'labour' }] as unknown as EditLine[];
+    act(() => render(<LinesEditor lines={lines} onLines={onLines} docLang="fr" />, box));
+    const qty = box.querySelector('.inv-qty') as HTMLInputElement;
+    type(qty, '1,125');
+    expect(onLines).toHaveBeenLastCalledWith([expect.objectContaining({ qty: 1.13 })]);
+    type(qty, '1,5');
+    expect(onLines).toHaveBeenLastCalledWith([expect.objectContaining({ qty: 1.5 })]);
+  });
+});
