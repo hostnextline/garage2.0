@@ -53,38 +53,25 @@ export default function TrackMap(p: { view: TrackView; l: CLang; padBottom?: num
     return () => { alive = false; live.current?.map.remove(); live.current = null; };
   }, []);
 
-  // draw what the last answer says; follow the truck unless the customer moved the map
+  // draw what the last answer says; follow the truck unless the customer moved the map. A Leaflet error here hides the
+  // map only: the card (time of arrival, call button) stays, the Guard around the page never sees it (client-r2-1)
   useEffect(() => {
     const st = live.current;
-    if (!st || !ready) return;
-    const { L, map } = st;
-    const v = p.view;
-    const route: [number, number][] = v.route.length >= 2 ? v.route : v.pos && v.dest ? [[v.pos.lat, v.pos.lng], [v.dest.lat, v.dest.lng]] : [];
-    const dashed = v.route.length < 2;
-    if (route.length >= 2) {
-      if (!st.casing) st.casing = L.polyline(route, { className: 'cl-route-casing', weight: 8, opacity: 1, interactive: false }).addTo(map);
-      else st.casing.setLatLngs(route);
-      if (!st.line) st.line = L.polyline(route, { className: 'cl-route', weight: 5, opacity: 0.95, interactive: false, dashArray: dashed ? '2 10' : undefined }).addTo(map);
-      else { st.line.setLatLngs(route); st.line.setStyle({ dashArray: dashed ? '2 10' : '' }); }
+    if (!st || !ready || failed) return;
+    try { draw(st, p.view, p.l, !touchedRef.current, p.padBottom || 48); } catch (e) {
+      console.error('track map:', e);
+      setFailed(true);
     }
-    if (v.dest) {
-      const at: [number, number] = [v.dest.lat, v.dest.lng];
-      if (!st.home) st.home = L.marker(at, { icon: L.divIcon({ className: 'cl-pin', html: '<span class="cl-home"></span>', iconSize: [22, 22], iconAnchor: [11, 11] }), title: ct(p.l, 'track.home'), alt: ct(p.l, 'track.home'), keyboard: false, zIndexOffset: 100 }).addTo(map);
-      else st.home.setLatLng(at);
-    }
-    if (v.pos) {
-      const at: [number, number] = [v.pos.lat, v.pos.lng];
-      if (!st.dot) st.dot = L.marker(at, { icon: L.divIcon({ className: 'cl-pin', html: `<span class="cl-dot">${VAN}</span>`, iconSize: [36, 36], iconAnchor: [18, 18] }), title: ct(p.l, 'track.truck'), alt: ct(p.l, 'track.truck'), keyboard: false, zIndexOffset: 200 }).addTo(map);
-      else st.dot.setLatLng(at);
-    } else if (st.dot) { st.dot.remove(); st.dot = null; }
-    if (!touchedRef.current) fit(st, v, !st.fitted, p.padBottom || 48);
   }, [ready, p.view.pos?.lat, p.view.pos?.lng, p.view.dest?.lat, p.view.dest?.lng, p.view.route.length, p.l]);
 
   const recenter = () => {
     const st = live.current;
     if (!st) return;
     setTouched(false);
-    fit(st, p.view, true, p.padBottom || 48);
+    try { fit(st, p.view, true, p.padBottom || 48); } catch (e) {
+      console.error('track map:', e);
+      setFailed(true);
+    }
   };
 
   if (failed) return null;
@@ -98,6 +85,30 @@ export default function TrackMap(p: { view: TrackView; l: CLang; padBottom?: num
       )}
     </div>
   );
+}
+
+/** the route, the house and the truck of the last answer; then the view (follow: the customer has not moved the map) */
+function draw(st: Live, v: TrackView, l: CLang, follow: boolean, padBottom: number) {
+  const { L, map } = st;
+  const route: [number, number][] = v.route.length >= 2 ? v.route : v.pos && v.dest ? [[v.pos.lat, v.pos.lng], [v.dest.lat, v.dest.lng]] : [];
+  const dashed = v.route.length < 2;
+  if (route.length >= 2) {
+    if (!st.casing) st.casing = L.polyline(route, { className: 'cl-route-casing', weight: 8, opacity: 1, interactive: false }).addTo(map);
+    else st.casing.setLatLngs(route);
+    if (!st.line) st.line = L.polyline(route, { className: 'cl-route', weight: 5, opacity: 0.95, interactive: false, dashArray: dashed ? '2 10' : undefined }).addTo(map);
+    else { st.line.setLatLngs(route); st.line.setStyle({ dashArray: dashed ? '2 10' : '' }); }
+  }
+  if (v.dest) {
+    const at: [number, number] = [v.dest.lat, v.dest.lng];
+    if (!st.home) st.home = L.marker(at, { icon: L.divIcon({ className: 'cl-pin', html: '<span class="cl-home"></span>', iconSize: [22, 22], iconAnchor: [11, 11] }), title: ct(l, 'track.home'), alt: ct(l, 'track.home'), keyboard: false, zIndexOffset: 100 }).addTo(map);
+    else st.home.setLatLng(at);
+  }
+  if (v.pos) {
+    const at: [number, number] = [v.pos.lat, v.pos.lng];
+    if (!st.dot) st.dot = L.marker(at, { icon: L.divIcon({ className: 'cl-pin', html: `<span class="cl-dot">${VAN}</span>`, iconSize: [36, 36], iconAnchor: [18, 18] }), title: ct(l, 'track.truck'), alt: ct(l, 'track.truck'), keyboard: false, zIndexOffset: 200 }).addTo(map);
+    else st.dot.setLatLng(at);
+  } else if (st.dot) { st.dot.remove(); st.dot = null; }
+  if (follow) fit(st, v, !st.fitted, padBottom);
 }
 
 /** the first time: the whole route; then what is left between the truck and the house */
