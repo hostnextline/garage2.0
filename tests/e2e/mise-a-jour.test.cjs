@@ -310,6 +310,11 @@ step('the update: the next morning the phones open the same address, now the reb
   assert.doesNotMatch(os.text, /refus/i, 'nothing refused');
   await o2.page.goto(h.APP + `#/customer/${julie}`);
   await o2.page.getByTestId('notes-list').getByText(NOTE).waitFor({ timeout: 10000 });
+  // Marc's cash taken yesterday is counted as waiting: the rebuilt app does not offer to take it a second time
+  await o2.page.goto(h.APP + `#/job/${y.jobP}`);
+  await o2.page.getByTestId('pay-waiting').waitFor({ timeout: 15000 });
+  assert.equal(await o2.page.getByTestId('invoice-pay').count(), 0, 'no « Encaisser » for a payment already taken');
+  await h.shot(o2.page, 'maj-3-office-new-app-offline');
   noErrors(o2.page);
 });
 
@@ -462,8 +467,9 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   const o = await phoneNew(who.nadia.email);
   // Saleh has Lina's appointment open
   await s.page.goto(h.APP + `#/job/${X}`);
-  await s.page.getByTestId('job-moment').waitFor({ timeout: 15000 });
-  const before = await s.page.getByTestId('job-moment').innerText();
+  await s.page.getByTestId('job-moment').getByText(/Today|Aujourd/).first().waitFor({ timeout: 15000 });
+  // the day of the move, as the job screen writes it (« Saturday, November 21 » / « Samedi 21 novembre »)
+  const dayNum = String(Number(target.slice(8)));
   // the office moves it to another day (same truck)
   await o.page.goto(h.APP + `#/job/${X}`);
   await o.page.getByTestId('job-move').click({ timeout: 15000 });
@@ -485,7 +491,7 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   assert.equal(await until(() => h.sql(`select status from public.invoices where job_id = '${Y}' and status <> 'void'`), (v) => v === 'paid', 15000), 'paid');
   // Saleh's screen follows, without a reload (no realtime on the test server: the app asks every 45 s)
   const t0 = Date.now();
-  await s.page.waitForFunction((b) => document.querySelector('[data-testid="job-moment"]')?.innerText !== b, before, { timeout: 70000 });
+  await s.page.waitForFunction((n) => { const x = document.querySelector('[data-testid="job-moment"]')?.innerText || ''; return !/Today|Aujourd/.test(x) && new RegExp(`\\b${n}\\b`).test(x); }, dayNum, { timeout: 70000 });
   console.log(`# Saleh’s screen followed the move after ${Math.round((Date.now() - t0) / 1000)} s`);
   await h.shot(s.page, 'maj-5-moved');
   await s.page.goto(h.APP + `#/job/${Y}`);
@@ -505,11 +511,11 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   assert.equal(steps.filter((e) => e.status === 200).length, 1, 'the server took one');
   // the one that came second is told in words, on its screen
   const told = await until2(async () => {
-    for (const p of [s.page, o.page]) { const t = await p.getByTestId('toast-bad').allInnerTexts(); if (t.length) return t.join(' | '); }
+    for (const [who_, p] of [['Saleh', s.page], ['the office', o.page]]) { const t = await p.getByTestId('toast-bad').allInnerTexts(); if (t.length) return `${who_}: ${t.join(' | ')}`; }
     return '';
   }, (v) => !!v, 10000);
   console.log(`# the second phone read: ${told}`);
-  assert.match(told, /déjà partie|plus possible/i, 'the second phone says why, in words');
+  assert.match(told, /déjà partie|plus possible|no longer possible|already/i, 'the second phone says why, in words');
   for (const p of [s.page, o.page]) await p.getByTestId('step-arrive').waitFor({ timeout: 15000 });
   assert.equal(Number(h.sql(`select count(*) from public.trips where job_id = '${Z}'`)) <= 1, true, 'one trip at most');
   await h.shot(o.page, 'maj-5-second');
