@@ -12,7 +12,7 @@ import { money } from '../lib/money';
 import type { Customer, CustomerNote, Vehicle, EngineSpec, Job, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Invoice, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
 import type { BlockKey, Range } from '../lib/dates';
 import { appBase } from '../lib/config';
-import { Refused, fromSource } from '../lib/errors';
+import { Refused, fromSource, classify } from '../lib/errors';
 export { Refused, errorMessage } from '../lib/errors';
 
 function guard() { if (preview.value) throw new Refused('preview', t('errors.preview')); }
@@ -56,11 +56,13 @@ export async function bookJob(job: BookInput, items: ItemInput[]) {
   const id = job.id || uuid();
   return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: t('log.booking') }).then((r) => ({ ...r, id }));
 }
-export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null) {
+/** `opts.queue: false`: a move that must happen now or not at all (never kept on the phone for later: R188) */
+export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null, opts: { queue?: false } = {}) {
   guard();
+  const o = { label: t('log.move'), ...(opts.queue === false ? { queue: false } : {}) };
   // « Plages d'arrivée »: the new window (or flexible) goes with the move; the old call stays as it was for the blocks
-  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, { label: t('log.move') });
-  return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, { label: t('log.move') });
+  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, o);
+  return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, o);
 }
 export async function setJobDuration(jobId: string, minutes: number) {
   guard();
@@ -246,14 +248,21 @@ export async function updateMe(patch: { phone?: string; lang?: string; prefs?: R
 
 /* ---------- treasury and inventory ---------- */
 export async function saveExpense(e: Partial<Expense>): Promise<string> { guard(); return upsert('expenses', e, { category: 'Autre', subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0 }, t('log.expense')); }
-export async function saveReceipt(dataUrl: string, w: number, h: number): Promise<string> {
+/** a receipt picture, sent straight away (receipts are not kept on every phone). `opts.id`: the id the screen keeps for
+    this picture, so sending it again (a lost answer) is harmless: « already there » is a success; `opts.signal` stops it
+    (R116) */
+export async function saveReceipt(dataUrl: string, w: number, h: number, opts: { id?: string; signal?: AbortSignal } = {}): Promise<string> {
   guard();
   const [head, data] = dataUrl.split(',');
   const mime = /image\/(png|jpeg|webp)|application\/pdf/.exec(head)?.[0] || 'image/jpeg';
-  const id = uuid();
-  // receipts are sent straight away (they are not kept on every phone); a picture gets the time it needs, then stops
+  const id = opts.id || uuid();
+  // a picture gets the time it needs, then stops
   const ms = Math.min(120000, REQUEST_MS + Math.floor(data.length / 20000) * 1000);
-  await ask((s) => sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h }).abortSignal(s), ms);
+  try {
+    await ask((s) => sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h }).abortSignal(s), ms, opts.signal);
+  } catch (e) {
+    if (!(opts.id && classify(e).sub === 'duplicate')) throw e;
+  }
   return id;
 }
 /** the plain pictures a kept attachment may be shown as (an SVG can carry a script: never trusted, x-security-01) */
@@ -291,13 +300,15 @@ export async function deleteInventoryItem(id: string) {
 }
 /** stock bought: the quantity comes in and the money leaves the Trésorerie (an expense) or the Coffre, in one step */
 export type PaidFrom = 'treasury' | 'coffre' | 'none';
-export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null) {
+/** `op`: one id per submission of the form (a repeat after a reload is done once by the server: R212) */
+export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null, op?: string) {
   guard();
-  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note }, { label: t('log.inventory') });
+  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note, ...(op ? { p_op: op } : {}) }, { label: t('log.inventory') });
 }
-export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null) {
+/** `id`: the move's own id, given by the form (the same move sent twice is one row: R212) */
+export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null, id?: string) {
   guard();
-  return (await insertRow('inventory_moves', { id: uuid(), item_id: itemId, delta, reason, note, created_at: now() })).id;
+  return (await insertRow('inventory_moves', { id: id || uuid(), item_id: itemId, delta, reason, note, created_at: now() })).id;
 }
 
 /* ---------- the day ---------- */

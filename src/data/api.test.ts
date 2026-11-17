@@ -4,7 +4,7 @@ import { FakeServer, clientFor } from './testkit';
 import { startSync, stopSync, net, flush, syncOptions, outbox, resetScreen } from './sync';
 import { setNet } from './net';
 import { getRow, rowsOf } from './store';
-import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute, decodeVin } from './api';
+import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute, decodeVin, moveJob, buyStock, moveStock } from './api';
 import { itemsOf } from './select';
 import { refusalText } from '../app/netView';
 import { money } from '../lib/money';
@@ -222,5 +222,39 @@ describe('a server function\'s refusal says which function gave it (R144)', () =
       resetScreen();
       expect(errorMessage({ code: 'P0001', hint: 'block_closed', message: 'Ce bloc est fermé.' })).toBe(t('errors.block_closed'));
     } finally { lang.value = was; }
+  });
+});
+
+describe('ids and options other packages asked for (R188, R212)', () => {
+  it('moveJob with queue: false says at once that it could not be done, instead of « kept »', async () => {
+    srv.rpc('move_job', () => ({ ok: true, changed: true }));
+    await start();
+    srv.offline = true;
+    setNet({ online: false });
+    await expect(moveJob('j1', '2026-11-17', 'am', null, null, { queue: false })).rejects.toMatchObject({ kind: 'network' });
+    expect(net.value.pending).toBe(0);
+    // without the option: kept on the phone, as before
+    expect((await moveJob('j1', '2026-11-17', 'am')).queued).toBe(true);
+    expect(net.value.pending).toBe(1);
+  });
+  it('buyStock sends the form\'s op; the same purchase sent twice is done once', async () => {
+    const ops: string[] = [];
+    const done = new Set<string>();
+    srv.rpc('inventory_buy', (a) => { ops.push(String(a.p_op)); if (done.has(String(a.p_op))) return { ok: true, op_done: true }; done.add(String(a.p_op)); return { ok: true }; });
+    await start();
+    await buyStock('it1', 2, 2000, 'treasury', null, null, 'op-form-1');
+    await buyStock('it1', 2, 2000, 'treasury', null, null, 'op-form-1');
+    expect(ops).toEqual(['op-form-1', 'op-form-1']);
+    expect(done.size).toBe(1);
+    // without one, each call has its own
+    await buyStock('it1', 1, 1000, 'none', null, null);
+    expect(ops[2]).not.toBe('op-form-1');
+  });
+  it('moveStock keeps the id it is given: the same move sent twice is one row', async () => {
+    await start();
+    expect(await moveStock('it1', 3, 'restock', null, 'mv-form-1')).toBe('mv-form-1');
+    await moveStock('it1', 3, 'restock', null, 'mv-form-1');
+    await until(() => net.value.pending === 0);
+    expect(srv.table('inventory_moves').filter((r) => r.id === 'mv-form-1').length).toBe(1);
   });
 });

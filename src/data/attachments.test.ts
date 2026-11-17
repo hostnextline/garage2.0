@@ -42,3 +42,22 @@ describe('loadAttachment (R106, x-security-01)', () => {
     // supabase-js tries a failed read again by itself for a few seconds before it answers (as before)
   }, 60000);
 });
+
+describe('saveReceipt with the id the screen keeps (R116)', () => {
+  it('sent again after a lost answer: « already there » is a success, one row', async () => {
+    const m = await api();
+    srv.loseNext((c) => c.method === 'POST' && c.table === 'attachments');
+    await expect(m.saveReceipt('data:image/jpeg;base64,/9j/4AAQ', 10, 20, { id: 'rc1' })).rejects.toMatchObject({ kind: 'network' });
+    expect(await m.saveReceipt('data:image/jpeg;base64,/9j/4AAQ', 10, 20, { id: 'rc1' })).toBe('rc1');
+    expect(srv.table('attachments').filter((r) => r.id === 'rc1').length).toBe(1);
+  });
+  it('the screen can stop it', async () => {
+    const m = await api();
+    srv.hold();
+    const ctl = new AbortController();
+    const p = m.saveReceipt('data:image/jpeg;base64,/9j/4AAQ', 10, 20, { id: 'rc2', signal: ctl.signal });
+    ctl.abort();
+    srv.release();
+    await expect(p).rejects.toMatchObject({ kind: 'network' });
+  });
+});
