@@ -191,6 +191,7 @@ export const invoices: typeof fr = {
     paidAhead: 'The customer already paid {amount}. Left to pay: {left}.',
     paidAheadAll: 'The customer already paid everything ({amount}). Finish the invoice: it will be marked PAID.',
     paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice: give it back once the invoice is finished.',
+    paidAheadBelow: 'The customer already paid {amount}, {over} more than this total. A changed invoice is not finished below what was paid: put back the work taken off, or talk to the office.',
     finished: 'Invoice {n} finished',
     addedWork: 'Added to the invoice: {what}',
     missing: {
@@ -209,7 +210,8 @@ export const invoices: typeof fr = {
     problem: {
       empty: 'Add at least one line before finishing the invoice.',
       no_description: 'A line has no description: write what was done.',
-      negative: 'The total is negative: check the discount.'
+      negative: 'The total is negative: check the discount.',
+      below_paid: 'The customer already paid {amount}: the total cannot be lower.'
     }
   },
 

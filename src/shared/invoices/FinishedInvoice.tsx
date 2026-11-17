@@ -87,6 +87,8 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
             {!finishing && <ReopenButton inv={inv} job={job} block />}
           </div>
         )}
+        {/* paid, the job still coming or under way: work added after the customer paid can be billed (R42) */}
+        {paid && !finishing && <ReopenButton inv={inv} job={job} block />}
         {!finishing && (
           <div class="inv-actions">
             <Button icon={<Send />} onClick={send} data-testid="invoice-send">{paid ? t('invoices.panel.sendReceipt') : t('invoices.panel.send')}</Button>

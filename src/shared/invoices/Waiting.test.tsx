@@ -105,6 +105,23 @@ describe('« Terminer la facture » waiting for the network', () => {
   });
 });
 
+describe('« Modifier la facture » on a paid invoice (R42)', () => {
+  it('not while its « Terminer la facture » waits: shown paid (paid ahead), but the server still has a draft', async () => {
+    replaceLocal('invoices', [inv({ status: 'draft', number: null, subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0, issued_at: null })]);
+    replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: '2026-11-17T15:00:00Z', created_at: '2026-11-17T15:00:00Z', deleted_at: null } as never]);
+    outbox.list = [rpc('invoice_finish', { p_invoice: 'f-1', p_op: 'y' })];
+    act(() => render(<InvoicePanel jobId="j-1" />, box));
+    await wait();
+    expect(q('invoice-panel')?.classList.contains('is-paid')).toBe(true);
+    expect(q('invoice-reopen')).toBeNull();
+    // finished by the server: paid, the job under way, « Modifier la facture » is offered
+    outbox.list = [];
+    replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 11498 })]);
+    await wait();
+    expect(q('invoice-reopen')).not.toBeNull();
+  });
+});
+
 describe('« Rembourser » (review inv-r4)', () => {
   it('a refund waiting beside a payment waiting: the sheet says the refund waits, it is not cancelled out (never offered twice)', async () => {
     replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 22996 })]);

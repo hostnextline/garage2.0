@@ -15,6 +15,12 @@ type LineRef = { item_id?: string | null };
 export function isBillable(i: Pick<WorkItem, 'status' | 'deleted_at'>): boolean { return !i.deleted_at && BILLABLE.includes(i.status); }
 /** a job coming or under way: its work and its invoice may still change (« Modifier la facture » too) */
 export function jobOpen(status: string | null | undefined): boolean { return status === 'booked' || status === 'en_route' || status === 'on_site'; }
+/** a draft that holds a number (« Modifier la facture ») is never finished below what the customer already paid (the
+    server refuses `below_paid`): what is paid over the total, 0 when it may be finished. A new draft may (the money
+    over is then « Trop-perçu », given back by the office). */
+export function belowPaid(number: number | null | undefined, paid: number, total: number): number {
+  return number != null && paid > total ? paid - total : 0;
+}
 
 /** the job's billable work that is not on the invoice */
 export function workMissing<I extends WorkItem>(lines: LineRef[] | null | undefined, items: I[]): I[] {

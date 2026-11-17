@@ -121,7 +121,7 @@ function DocScreen(p: { view: InvoiceView }) {
                   {t('invoices.panel.pay', { amount: money(view.due, l) })}
                 </Button>
                 : view.waitingIn > 0 && <PayWaitingBanner cents={view.waitingIn} />)}
-              {inv.status === 'issued' && !finishing && <ReopenButton inv={inv} job={j} block variant="ghost" />}
+              {(inv.status === 'issued' || inv.status === 'paid') && !finishing && <ReopenButton inv={inv} job={j} block variant="ghost" />}
               {inv.status !== 'void' && inv.job_id && !finishing && (
                 <div class="inv-actions">
                   <Button icon={<Send />} onClick={() => send('invoice')} data-tour="invoice-send" data-testid="invoice-send">

@@ -34,6 +34,19 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; });
 
+describe('« Modifier la facture » on the invoice screen (R42)', () => {
+  it('a paid invoice of a job under way can be changed; once the job is done, no more', async () => {
+    replaceLocal('jobs', [job()]);
+    replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 11498 })]);
+    replaceLocal('payments', [pay('p-1', 11498)]);
+    await draw();
+    expect(q('invoice-reopen')).not.toBeNull();
+    act(() => replaceLocal('jobs', [job({ status: 'done' })]));
+    await wait();
+    expect(q('invoice-reopen')).toBeNull();
+  });
+});
+
 describe('« Trop-perçu » on the invoice screen (review argent-app-02)', () => {
   it('the mechanic of the job is told to tell the office: no « Inscrire le remboursement » (the server would refuse it)', async () => {
     access.value = mechanic;

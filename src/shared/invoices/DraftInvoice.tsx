@@ -13,7 +13,7 @@ import { money } from '../../lib/money';
 import { Panel, Button, Banner, Totals, InvoicePill, Switch, Field, Textarea, askText, run, attempt, toast } from '../../ui';
 import { jobRights } from '../../domain/jobs/rights';
 import { linesTotals, draftProblems, cleanLine } from '../../domain/money/invoice';
-import { workMissing, workToAdd, lineOfWork, settleLines, draftPatch, isBillable, jobOpen, type WorkItem } from '../../domain/money/draft';
+import { workMissing, workToAdd, lineOfWork, settleLines, draftPatch, isBillable, jobOpen, belowPaid, type WorkItem } from '../../domain/money/draft';
 import { withKeys, keepKeys, type EditLine } from '../../domain/money/editLines';
 import { waitingEntries, rowWaiting } from '../../domain/money/waiting';
 import { aheadOf } from '../../domain/money/view';
@@ -66,12 +66,18 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
   const addNewWork = () => d.update((cur) => ({ ...cur, lines: [...cur.lines, ...keyed(workToAdd(cur.lines, items, inv.created_at))] }));
   // paid by the customer (online, from the text) while the work goes on: it counts on the invoice once it is finished
   const ahead = aheadOf(job?.id);
+  // « Modifier la facture » then a lower total: the server never finishes it below what was paid (below_paid)
+  const below = belowPaid(inv.number, ahead, tt.total);
 
   const doFinish = async () => {
     setAsking([]);
     const now = d.peek();
-    const problem = draftProblems(now.lines, linesTotals(now.lines, rates, now.taxesOn).total).problem;
+    const total = linesTotals(now.lines, rates, now.taxesOn).total;
+    const problem = draftProblems(now.lines, total).problem;
     if (problem) { setShowErrors(true); toast(t(`invoices.draft.problem.${problem}`), { kind: 'bad' }); return; }
+    // refused here, not by the server later (offline: a « Terminer » refused hours after, the invoice left a draft)
+    const paidNow = aheadOf(job?.id);
+    if (belowPaid(inv.number, paidNow, total) > 0) { toast(t('invoices.draft.problem.below_paid', { amount: money(paidNow, lang.value) }), { kind: 'bad' }); return; }
     await d.flush();
     const r = await run(() => finishInvoice(inv.id));
     if (r && !r.queued) {
@@ -144,8 +150,10 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
           <Totals subtotal={tt.subtotal} tps={tt.tps} tvq={tt.tvq} total={tt.total} taxesOn={rates.enabled !== false && v.taxesOn} />
         </div>
         {ahead > 0 && (
-          <Banner kind="ok" data-testid="draft-paid-ahead">
-            {ahead > tt.total
+          <Banner kind={below > 0 ? 'warn' : 'ok'} data-testid="draft-paid-ahead">
+            {below > 0
+              ? t('invoices.draft.paidAheadBelow', { amount: money(ahead, l), over: money(below, l) })
+              : ahead > tt.total
               ? t('invoices.draft.paidAheadOver', { amount: money(ahead, l), over: money(ahead - tt.total, l) })
               : t(ahead >= tt.total ? 'invoices.draft.paidAheadAll' : 'invoices.draft.paidAhead', { amount: money(ahead, l), left: money(Math.max(0, tt.total - ahead), l) })}
           </Banner>

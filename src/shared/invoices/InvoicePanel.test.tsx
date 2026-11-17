@@ -84,6 +84,26 @@ describe('a draft invoice', () => {
     // the save went first (the finish is queued behind it)
     expect(api.saveInvoiceDraft.mock.invocationCallOrder[0]).toBeLessThan(api.finishInvoice.mock.invocationCallOrder[0]);
   });
+  it('a reopened draft whose total went below what the customer paid: said, and « Terminer » is refused on the phone (the server refuses below_paid)', async () => {
+    // paid 114,98 $ before « Modifier la facture » (the payment waits on the job); a line of 50 $ now: 57,49 $
+    seed(draft({ number: 51, lines: [{ description: 'Travail a', qty: 1, unit_cents: 5000, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'] }),
+      [item('a', { unit_cents: 5000 })]);
+    replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: made, created_at: made, deleted_at: null } as never]);
+    await draw();
+    expect(q('draft-paid-ahead')?.textContent).toMatch(/114,98.*57,49.*ne se termine pas plus bas/s);
+    await act(async () => { q('invoice-finish')!.click(); });
+    await wait();
+    expect(api.finishInvoice).not.toHaveBeenCalled();
+    // a new draft (no number yet) may be finished below what was paid ahead: the rest is « Trop-perçu »
+    act(() => render(null, box));
+    seed(draft({ lines: [{ description: 'Travail a', qty: 1, unit_cents: 5000, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'] }), [item('a', { unit_cents: 5000 })]);
+    replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: made, created_at: made, deleted_at: null } as never]);
+    await draw();
+    expect(q('draft-paid-ahead')?.textContent).toContain('à lui remettre une fois la facture terminée');
+    await act(async () => { q('invoice-finish')!.click(); });
+    await wait();
+    expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+  });
   it('a draft that holds a number (« Modifier la facture ») cannot be deleted; a new draft can', async () => {
     seed(draft({ number: 43 }), [item('a')]);
     await draw();
@@ -132,6 +152,23 @@ describe('a finished invoice', () => {
     await draw();
     expect(q('invoice-over')?.textContent).toContain('inscris-la ici');
     expect(q('invoice-refund')).not.toBeNull();
+  });
+  it('paid, the job still under way: « Modifier la facture » (work added after the customer paid can be billed) (R42)', async () => {
+    seed(issued({ status: 'paid', paid_cents: 11498 }), [item('a')]);
+    await draw();
+    expect(q('invoice-reopen')).not.toBeNull();
+    // the job is done: the invoice no longer changes
+    act(() => render(null, box));
+    seed(issued({ status: 'paid', paid_cents: 11498 }), [item('a')]);
+    replaceLocal('jobs', [{ ...job, status: 'done' } as Job]);
+    await draw();
+    expect(q('invoice-reopen')).toBeNull();
+    // a mechanic of another truck neither (invoice_editable)
+    act(() => render(null, box));
+    access.value = { ...access.value!, roles: ['mechanic'], owner: false, trucks: ['t-9'] };
+    seed(issued({ status: 'paid', paid_cents: 11498 }), [item('a')]);
+    await draw();
+    expect(q('invoice-reopen')).toBeNull();
   });
   it('« Encaisser » the balance', async () => {
     seed(issued(), [item('a')]);
