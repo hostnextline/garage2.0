@@ -108,6 +108,7 @@ export const client = {
     thanks: 'Merci\u00a0! Votre réponse est envoyée à votre mécano.',
     alreadyAccepted: 'Une réponse avait déjà été donnée pour ce travail\u00a0: il est accepté.',
     alreadyDeclined: 'Une réponse avait déjà été donnée pour ce travail\u00a0: il est refusé.',
+    closed: 'Ce rendez-vous est terminé\u00a0: cette proposition ne peut plus être acceptée ici. Appelez-nous.',
     changedNow: 'Le prix de ce travail a changé\u00a0: il est maintenant de {price}. Vérifiez-le, puis répondez de nouveau.',
     newTotal: 'Nouveau total prévu\u00a0: {total}, taxes incluses.',
     declinedTitle: 'Travaux refusés',
@@ -141,7 +142,8 @@ export const client = {
     done: 'Merci\u00a0! Votre paiement est reçu.',
     late: 'Le paiement n’apparaît pas encore. S’il a été accepté, il s’affichera ici dans quelques minutes.',
     checkAgain: 'Vérifier encore',
-    fail: 'La page de paiement n’a pas pu s’ouvrir. Réessayez dans un instant ou appelez-nous.'
+    fail: 'La page de paiement n’a pas pu s’ouvrir. Réessayez dans un instant ou appelez-nous.',
+    down: 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez-nous.'
   },
 
   quote: {

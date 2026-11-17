@@ -14,6 +14,7 @@ import { TrackPage } from './track/TrackPage';
 import { BookPage } from './book/BookPage';
 import { ErrorState, Header, Footer } from './ui';
 import { followScheme } from './scheme';
+import { Guard } from './guard';
 
 
 function App() {
@@ -51,6 +52,6 @@ async function boot() {
     const m = await import('./demo');
     m.installClientDemo();
   }
-  render(<App />, document.getElementById('client')!);
+  render(<Guard><App /></Guard>, document.getElementById('client')!);
 }
 void boot();

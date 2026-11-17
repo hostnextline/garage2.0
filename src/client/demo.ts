@@ -151,12 +151,16 @@ function clientAnswer(b: Record<string, unknown>): Answer {
     return { status: 200, body: { ok: true, url: `${location.pathname}?demo&stripe=${Date.now()}#t=${token}${j.lang === 'en' ? '&l=en' : ''}&retour=paye` } };
   }
   if (action === 'check') {
+    // « session »: what became of the card page, as the real « client » function answers (R10)
+    let session: 'none' | 'open' | 'paid' = 'none';
     if (j.paying) {
       j.checks = (j.checks || 0) + 1;
+      session = 'open';
       // the bank answers at the second check (the page shows « Paiement en vérification… » meanwhile)
-      if (j.checks >= 2) { const v = jobView(j); if (j.invoiced) j.paid = -1; else j.prepaid += v.pay.amount_cents; j.paying = false; j.pending = false; }
+      if (j.checks >= 2) { const v = jobView(j); if (j.invoiced) j.paid = -1; else j.prepaid += v.pay.amount_cents; j.paying = false; j.pending = false; session = 'paid'; }
       save();
     }
+    return { status: 200, body: { ...jobView(j), session } };
   }
   return { status: 200, body: jobView(j) };
 }

@@ -27,8 +27,9 @@ export function ExtrasPanel(p: { v: JobView; l: CLang; reply: Reply; onAnswer: A
           </Note>
         )}
         {reply?.kind === 'already' && (
-          <Note kind="info" data-testid="client-thanks">{ct(l, reply.status === 'approved' ? 'extras.alreadyAccepted' : 'extras.alreadyDeclined')}</Note>
+          <Note kind="info" data-testid="client-already">{ct(l, reply.status === 'approved' ? 'extras.alreadyAccepted' : 'extras.alreadyDeclined')}</Note>
         )}
+        {reply?.kind === 'closed' && <Note kind="warn" data-testid="client-extras-closed">{ct(l, 'extras.closed')}</Note>}
         {proposed.map((x) => <ExtraCard key={x.id} x={x} l={l} taxed={taxed} onAnswer={p.onAnswer} />)}
       </div>
     </section>
@@ -46,6 +47,8 @@ function ExtraCard(p: { x: ExtraV; l: CLang; taxed: boolean; onAnswer: Answer })
     setSaid(null);
     const r = await p.onAnswer(x, step === 'accept');
     if (r.ok) return;
+    // the visit is over: the panel says it once, above (the card goes away with the file read again)
+    if (r.code === 'closed') { setStep('idle'); return; }
     if (r.code === 'amount_changed') {
       // back to the choice, with the new price said: the customer decides again on what he sees
       setStep('idle');

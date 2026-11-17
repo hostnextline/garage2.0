@@ -2,7 +2,7 @@
 import { phoneDigits } from '../../lib/text';
 import { totals } from '../../lib/money';
 import { ct, type CLang } from '../i18n';
-import { slotText } from '../format';
+import { montrealToday, slotText } from '../format';
 import type { Suggestion } from '../../shared/places/photon';
 import { wantedOf, sameStreet, sameTown, streetWords } from '../../shared/places/locate';
 
@@ -56,9 +56,9 @@ export function contactErrors(c: Contact): ContactErrors {
   if (!c.model.trim()) e.model = 'errModel';
   return e;
 }
-/** the years offered: next year down to 1980 */
+/** the years offered: next year (on Montréal's calendar) down to 1980 */
 export function years(now: Date = new Date()): number[] {
-  const y = now.getFullYear() + 1;
+  const y = Number(montrealToday(now).slice(0, 4)) + 1;
   return Array.from({ length: y - 1980 + 1 }, (_, i) => y - i);
 }
 

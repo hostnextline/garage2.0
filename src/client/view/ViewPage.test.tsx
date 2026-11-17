@@ -93,7 +93,8 @@ describe('answering extra work for the price shown (client-page-01, 26)', () => 
     await open();
     await click(q('client-extra-decline')[0]);
     await click(q('client-extra-confirm')[0]);
-    expect(sp(q('client-thanks')[0].textContent)).toContain('il est accepté');
+    expect(sp(q('client-already')[0].textContent)).toContain('il est accepté');
+    expect(q('client-thanks')).toHaveLength(0);
     expect(sp(box.textContent)).not.toContain('Votre réponse est envoyée');
   });
   it('a proposal left unanswered is not offered on a finished, paid job (client-page-05)', async () => {
@@ -154,10 +155,15 @@ describe('payment (client-page-06, 07, 31, 23)', () => {
     rememberPaying(TOKEN, 0);
     // 229,94 $ paid ahead came in; an extra accepted meanwhile leaves 80,49 $
     server = () => job({ prepaid_cents: 22994, expected: { subtotal: 27000, tps: 1350, tvq: 2693, total: 31043 }, pay: { available: true, amount_cents: 8049, kind: 'prepay', pending: true } }, { status: 'on_site' });
-    await open({ retour: 'paye' });
-    expect(q('client-paid-note')).toHaveLength(1);
-    expect(q('client-checking')).toHaveLength(0);
-    expect(calls.filter((c) => c.action === 'check')).toHaveLength(1);
+    const reads = vi.spyOn(Storage.prototype, 'getItem');
+    try {
+      await open({ retour: 'paye' });
+      expect(q('client-paid-note')).toHaveLength(1);
+      expect(q('client-checking')).toHaveLength(0);
+      expect(calls.filter((c) => c.action === 'check')).toHaveLength(1);
+      // the note of the way to Stripe is read once, not at every render (client-r5)
+      expect(reads.mock.calls.filter(([k]) => k === 'his.client.paying')).toHaveLength(1);
+    } finally { reads.mockRestore(); }
   });
   it('back from Stripe, the « Paiement en vérification… » note shows from the first moment (not grey boxes alone)', async () => {
     server = () => new Promise(() => undefined);                                  // the first check is slow
@@ -165,11 +171,102 @@ describe('payment (client-page-06, 07, 31, 23)', () => {
     await wait();
     expect(q('client-checking')).toHaveLength(1);
   });
+  it('a card page already open that Stripe holds as paid (« session »: paid, R10): « reçu », even before the money shows', async () => {
+    const before = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: true } }, { status: 'done' });
+    server = (a) => (a === 'check' ? { ...before, session: 'paid' } : before);
+    await open();
+    expect(calls.map((c) => c.action)).toEqual(['view', 'check']);
+    expect(q('client-paid-note')).toHaveLength(1);
+  });
+  it('back from Stripe, the tab’s note lost (Stripe opened in another tab): « session »: paid says « reçu » at the first check (R10)', async () => {
+    server = () => ({ ...job({ prepaid_cents: 22994, expected: { subtotal: 27000, tps: 1350, tvq: 2693, total: 31043 }, pay: { available: true, amount_cents: 8049, kind: 'prepay', pending: false } }, { status: 'on_site' }), session: 'paid' });
+    await open({ retour: 'paye' });
+    expect(q('client-paid-note')).toHaveLength(1);
+    expect(q('client-checking')).toHaveLength(0);
+    expect(calls.filter((c) => c.action === 'check')).toHaveLength(1);
+  });
+  it('back from Stripe, Stripe not answering (« session »: unknown): the page keeps checking, never « reçu » on its own', async () => {
+    server = () => ({ ...job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: true } }, { status: 'done' }), session: 'unknown' });
+    await open({ retour: 'paye' });
+    expect(q('client-checking')).toHaveLength(1);
+    expect(q('client-paid-note')).toHaveLength(0);
+  });
   it('the card page opens in the page’s language', async () => {
     server = (a) => (a === 'pay' ? { ok: true } : job({ lang: 'fr', invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' }));
     await open({ lang: 'en' });
     await click(q('client-pay-button')[0]);
     expect(calls.find((c) => c.action === 'pay')!.body).toMatchObject({ lang: 'en' });
+  });
+});
+
+describe('the server says no in words the customer can act on (R11)', () => {
+  const extra = { id: 'x1', description: 'Étriers', qty: 1, unit_cents: 8000, total_cents: 8000, status: 'proposed', note: null, answered_via: null };
+  const invoice = (paid: number, total = 18394) => ({ number: 'F-0001', issued_at: null, due_on: null, status: paid >= total ? 'paid' : 'issued', lines: [], subtotal_cents: 15998, tps_cents: 800, tvq_cents: 1596, total_cents: total, paid_cents: paid, notes: null });
+  it('Stripe not answering (« pay_unavailable »): « payez sur place ou appelez-nous », not « la page n’a pas pu s’ouvrir »', async () => {
+    const v = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('pay_unavailable', 'Le paiement par carte ne répond pas.', null); return v; };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay')[0].textContent)).toContain('Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez-nous.');
+    expect(sp(q('client-pay')[0].textContent)).not.toContain('n’a pas pu s’ouvrir');
+  });
+  it('… and in English on an English page', async () => {
+    const v = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('pay_unavailable', 'x', null); return v; };
+    await open({ lang: 'en' });
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay')[0].textContent)).toContain('Card payment is not answering right now. Try again in a moment, pay on site or call us.');
+  });
+  it('another failure keeps the old words', async () => {
+    const v = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('server', 'x', null); return v; };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay')[0].textContent)).toContain('La page de paiement n’a pas pu s’ouvrir.');
+  });
+  it('the visit was closed meanwhile (« closed »): the page says so and shows the file as it is now', async () => {
+    let current = job({ extras: [extra] }, { status: 'on_site' });
+    server = (a) => {
+      if (a === 'answer') { current = job({ extras: [extra] }, { status: 'done' }); throw new ClientError('closed', 'Ce rendez-vous est terminé.', null); }
+      return current;
+    };
+    await open();
+    await click(q('client-extra-accept')[0]);
+    await click(q('client-extra-confirm')[0]);
+    expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);
+    expect(sp(q('client-extras-closed')[0].textContent)).toBe('Ce rendez-vous est terminé : cette proposition ne peut plus être acceptée ici. Appelez-nous.');
+    expect(q('client-extra-accept')).toHaveLength(0);
+    expect(sp(box.textContent)).not.toContain('Votre réponse n’a pas été envoyée');
+    expect(q('client-thanks')).toHaveLength(0);
+  });
+});
+
+describe('the customer’s side when the file moved under the open page (terrain)', () => {
+  const invoice = (paid: number, total = 18394) => ({ number: 'F-0001', issued_at: null, due_on: null, status: paid >= total ? 'paid' : 'issued', lines: [], subtotal_cents: 15998, tps_cents: 800, tvq_cents: 1596, total_cents: total, paid_cents: paid, notes: null });
+  it('the office cancelled the appointment meanwhile: « J’accepte et je signe » brings the file as it is (annulé), nothing more to sign', async () => {
+    let current = job();
+    server = (a) => {
+      if (a === 'sign') { current = job({ estimate: { signed_at: null, signer: null, cents: null, changed: false, can_sign: false } }, { status: 'cancelled' }); throw new ClientError('signed', 'Il n’y a plus rien à signer ici.'); }
+      return current;
+    };
+    await open();
+    await click(q('client-sign-click')[0]);
+    expect(sp(q('client-status')[0].textContent)).toBe('Rendez-vous annulé');
+    expect(q('client-sign-click')).toHaveLength(0);
+    expect(q('client-signed')).toHaveLength(0);
+  });
+  it('the invoice was paid meanwhile (another phone, the mechanic’s terminal): « Payer » reads the file again and shows it paid, no card page', async () => {
+    let current = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => {
+      if (a === 'pay') { current = job({ invoice: invoice(18394), pay: { available: false, amount_cents: 0, kind: 'invoice', pending: false } }, { status: 'done' }); throw new ClientError('nothing', 'Rien à payer : merci !'); }
+      return current;
+    };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);
+    expect(q('client-stamp')).toHaveLength(1);
+    expect(q('client-pay-button')).toHaveLength(0);
+    expect(sp(box.textContent)).not.toContain('n’a pas pu s’ouvrir');
   });
 });
 
@@ -193,11 +290,51 @@ describe('the invoice being made (client-page-10, 30)', () => {
 
 describe('a link the server refuses (x-deadcode-25)', () => {
   it('is no longer offered from the tracking page', async () => {
-    localStorage.setItem('his.client.t', JSON.stringify({ token: TOKEN, at: Date.now(), day: '2026-11-20' }));
+    localStorage.setItem('his.client.t', JSON.stringify({ token: TOKEN, at: Date.now(), day: '2099-11-20' }));
     server = () => { throw new ClientError('expired', 'Ce lien a expiré.'); };
     await open();
     expect(q('client-error-expired')).toHaveLength(1);
     expect(localStorage.getItem('his.client.t')).toBeNull();
+  });
+});
+
+describe('the appointment kept on this phone is one still open (client-r2-2)', () => {
+  // the office cancels tomorrow's appointment A and books B next week (a new job, a new link)
+  const A = 'tok-appointment-A-cancelled-01', B = 'tok-appointment-B-next-week-01';
+  const pages: Record<string, JobView> = {
+    [A]: job({}, { day: '2099-01-10', status: 'cancelled' }),
+    [B]: job({}, { day: '2099-01-17', status: 'booked' })
+  };
+  async function openToken(token: string) {
+    server = () => pages[token];
+    await act(async () => { render(null, box); });   // a new visit of the page, as when a link is opened
+    await act(async () => { render(<ViewPage key={token} token={token} linkLang={null} retour={null} onLang={() => undefined} />, box); });
+    await wait(); await wait();
+  }
+  const kept = () => (JSON.parse(localStorage.getItem('his.client.t') || 'null') as { token?: string } | null)?.token ?? null;
+  it('a cancelled A opened first does not keep B, the next appointment, off the phone', async () => {
+    await openToken(A);
+    expect(kept()).toBeNull();
+    await openToken(B);
+    expect(kept()).toBe(B);
+  });
+  it('A kept while it was booked, then opened cancelled: A leaves the phone, so B is kept', async () => {
+    localStorage.setItem('his.client.t', JSON.stringify({ token: A, at: Date.now(), day: '2099-01-10' }));
+    await openToken(A);
+    expect(kept()).toBeNull();
+    await openToken(B);
+    expect(kept()).toBe(B);
+  });
+  it('a no show is not kept either; a booked, en route or on site appointment is', async () => {
+    pages[A] = job({}, { day: '2099-01-10', status: 'no_show' });
+    await openToken(A);
+    expect(kept()).toBeNull();
+    for (const status of ['booked', 'en_route', 'on_site'] as const) {
+      localStorage.clear();
+      pages[A] = job({}, { day: '2099-01-10', status });
+      await openToken(A);
+      expect(kept(), status).toBe(A);
+    }
   });
 });
 
@@ -224,27 +361,49 @@ describe('coming back to the tab (client-page-16)', () => {
   });
   it('an answer that arrives after a newer one is dropped', async () => {
     let release: (v: JobView) => void = () => undefined;
-    let n = 0;
+    let views = 0;
     server = (a) => {
-      n += 1;
-      if (a === 'sign') return new Promise<JobView>((r) => { release = r; });   // slow: answers last
-      return n === 1 ? job() : signed(job());
+      if (a === 'sign') return signed(job());
+      views += 1;
+      if (views === 2) return new Promise<JobView>((r) => { release = r; });   // the refresh: slow, answers last
+      return job();
     };
     await open();
-    // the tap starts (the slow sign), then the page is read again and shows the signed estimate
-    void act(async () => { q('client-sign-click')[0].click(); });
-    await wait();
     const later = Date.now() + 60000;
     vi.spyOn(Date, 'now').mockImplementation(() => later);
     try {
+      // back on the tab: the file is read again (slow), and meanwhile the customer signs
       await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
-      await wait(); await wait();
+      await wait();
+      await click(q('client-sign-click')[0]);
       expect(q('client-signed')).toHaveLength(1);
-      // the old answer of the sign (the unsigned estimate) arrives now: it must not bring the button back
+      // the old read (the unsigned estimate) arrives now: it must not bring the button back
       await act(async () => { release(job()); });
       await wait(); await wait();
       expect(q('client-signed')).toHaveLength(1);
       expect(q('client-sign-click')).toHaveLength(0);
+    } finally { vi.restoreAllMocks(); }
+  });
+  it('a signature on its way: coming back to the tab reads nothing until it has landed (client-r2)', async () => {
+    let release: (v: JobView) => void = () => undefined;
+    server = (a) => (a === 'sign' ? new Promise<JobView>((r) => { release = r; }) : job());
+    await open();
+    void act(async () => { q('client-sign-click')[0].click(); });
+    await wait();
+    let later = Date.now() + 60000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+      await wait(); await wait();
+      expect(calls.filter((c) => c.action === 'view')).toHaveLength(1);        // no read raced the signature
+      await act(async () => { release(signed(job())); });
+      await wait(); await wait();
+      expect(q('client-signed')).toHaveLength(1);
+      // landed: the next return to the tab, a while later, reads the file again
+      later += 60000;
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+      await wait(); await wait();
+      expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);
     } finally { vi.restoreAllMocks(); }
   });
 });

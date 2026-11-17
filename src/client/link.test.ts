@@ -29,6 +29,30 @@ describe('« Voir mon rendez-vous » on the tracking page (client-page-11)', () 
     forgetAppointment('APPT-today-token');
     expect(appointmentOfTrip('TRIP-token', NOW)).toBeNull();
   });
+  it('opening last month’s invoice again keeps today’s appointment (client-r6), and the old link is not kept (client-page-29)', () => {
+    rememberAppointment('APPT-today-token', TODAY, NOW - 3600000);
+    rememberAppointment('APPT-old-token', '2026-10-20', NOW);
+    expect(appointmentOfTrip('TRIP-token', NOW)).toBe('APPT-today-token');
+    localStorage.clear();
+    rememberAppointment('APPT-old-token', '2026-10-20', NOW);
+    expect(localStorage.getItem('his.client.t')).toBeNull();
+  });
+  it('of two appointments to come, the nearer one is kept; the same link always refreshes its entry', () => {
+    rememberAppointment('APPT-today-token', TODAY, NOW - 3600000);
+    rememberAppointment('APPT-next-week', '2026-11-24', NOW);
+    expect(appointmentOfTrip('TRIP-token', NOW)).toBe('APPT-today-token');
+    rememberAppointment('APPT-today-token', TODAY, NOW);
+    expect(JSON.parse(localStorage.getItem('his.client.t')!)).toMatchObject({ token: 'APPT-today-token', at: NOW });
+    // the next day, today's appointment is past: the next one takes its place
+    const tomorrow = NOW + 86400000;
+    rememberAppointment('APPT-next-week', '2026-11-24', tomorrow);
+    expect(JSON.parse(localStorage.getItem('his.client.t')!)).toMatchObject({ token: 'APPT-next-week' });
+  });
+  it('an entry whose day is past leaves the phone the next time it is read', () => {
+    localStorage.setItem('his.client.t', JSON.stringify({ token: 'APPT-token', at: NOW - 3 * 86400000, day: '2026-11-14' }));
+    expect(appointmentOfTrip('APPT-token', NOW)).toBeNull();
+    expect(localStorage.getItem('his.client.t')).toBeNull();
+  });
   it('keeps the same storage key the old page read', () => {
     rememberAppointment('APPT-today-token', TODAY, NOW);
     expect(JSON.parse(localStorage.getItem('his.client.t')!)).toMatchObject({ token: 'APPT-today-token', at: NOW });

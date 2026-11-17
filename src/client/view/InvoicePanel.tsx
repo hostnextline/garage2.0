@@ -18,7 +18,7 @@ function keepTogether(text: string, value: string): ComponentChildren {
   return <>{a}<span style={{ whiteSpace: 'nowrap' }}>{value}</span>{b}</>;
 }
 
-export function InvoicePanel(p: { v: JobView; l: CLang; justPaid: boolean; payFailed: boolean; pendingNote: boolean; onPay: () => Promise<void> }) {
+export function InvoicePanel(p: { v: JobView; l: CLang; justPaid: boolean; payFailed: string; pendingNote: boolean; onPay: () => Promise<void> }) {
   const { v, l } = p;
   const inv = v.invoice!;
   const paid = invoicePaid(inv);

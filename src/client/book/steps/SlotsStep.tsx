@@ -29,12 +29,15 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
   const [err, setErr] = useState<string | null>(null);
   const [flex, setFlex] = useState(p.value?.flex === true);
   const [open, setOpen] = useState<string | null>(null);
+  // « Voir d’autres dates » found nothing in the weeks it looked at (and the horizon is still ahead): said, so the tap is
+  // not met with silence (client-r7)
+  const [nothingNew, setNothingNew] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
   /** asks the moments from `f` (null: from today), skipping later fortnights with nothing free */
   const ask = async (f: string | null) => {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setNothingNew(false);
     const today = montrealToday();
     let at = f;
     for (let skipped = 0; ; skipped++) {
@@ -53,6 +56,7 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
       if (page.again) { at = page.next; continue; }
       setSlots((cur) => (f && cur ? mergeSlots(cur, got) : got));
       setFrom(page.next);
+      setNothingNew(!!f && got.length === 0 && !page.end);
       if (page.end) setEnd(true);
       setBusy(false);
       return;
@@ -144,6 +148,7 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
           {failed}
           {end && slots.length > 0 && <Note kind="info">{ct(l, 'book.slots.noneMore')}</Note>}
           {(end || (slots.length === 0 && !busy)) && <CallUs garage={p.garage} l={l} primary={false} />}
+          {nothingNew && slots.length > 0 && <Note kind="info" data-testid="book-none-new">{ct(l, 'book.slots.none')}</Note>}
           {!end && from && <Button block busy={busy} onClick={() => ask(from)} data-testid="book-more">{ct(l, 'book.slots.more')}</Button>}
         </>
       )}

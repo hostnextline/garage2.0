@@ -3,7 +3,7 @@
    Also remembers, on this phone only, the last appointment link opened (with its day), so the tracking page of that
    same day can point back to it, and the garage's name and phone, so an error page can still say whom to call. */
 import { isLang, type CLang } from './i18n';
-import { localDayOf } from './format';
+import { localDayOf, montrealToday } from './format';
 
 export interface Link { kind: 't' | 'suivi' | 'reserver' | null; token: string; l: CLang | null; retour: string | null }
 
@@ -35,15 +35,28 @@ const KEEP_MS = 45 * 24 * 3600 * 1000;
 const TOKEN = /^[A-Za-z0-9_-]{4,120}$/;
 interface Remembered { token: string; at: number; day: string | null }
 
-/** `day`: the appointment's day ('YYYY-MM-DD'), which ties the link to the trips of that day */
+/** `day`: the appointment's day ('YYYY-MM-DD'), which ties the link to the trips of that day.
+    Only an appointment still to come is worth keeping (a trip is always on its appointment's day): last month's invoice
+    opened again neither replaces today's appointment (client-r6) nor stays on the phone (client-page-29); of two
+    appointments to come, the nearer one is kept. */
 export function rememberAppointment(token: string, day: string | null, now: number = Date.now()) {
+  const today = montrealToday(new Date(now));
+  if (day != null && day < today) return;
+  const old = recalled(now);
+  if (old && old.token !== token && old.day != null && old.day >= today && (day == null || day > old.day)) return;
   try { localStorage.setItem(APPOINTMENT, JSON.stringify({ token, at: now, day })); } catch { /* private mode: nothing kept */ }
 }
 function recalled(now: number): Remembered | null {
   try {
     const v = JSON.parse(localStorage.getItem(APPOINTMENT) || 'null') as Partial<Remembered> | null;
-    if (!v?.token || !v.at || now - v.at > KEEP_MS || !TOKEN.test(v.token)) return null;
-    return { token: v.token, at: v.at, day: typeof v.day === 'string' ? v.day : null };
+    if (!v) return null;
+    const day = typeof v.day === 'string' ? v.day : null;
+    // past its day (or its 45 days), the link is of no use here any more: it leaves the phone
+    if (!v.token || !v.at || now - v.at > KEEP_MS || !TOKEN.test(v.token) || (day != null && day < montrealToday(new Date(now)))) {
+      localStorage.removeItem(APPOINTMENT);
+      return null;
+    }
+    return { token: v.token, at: v.at, day };
   } catch { return null; }
 }
 /** the link the server refused (revoked, expired, deleted file) is not offered again from the tracking page */

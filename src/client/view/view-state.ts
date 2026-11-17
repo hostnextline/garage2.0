@@ -75,12 +75,17 @@ export function extraStatus(v: JobView, id: string): string | null {
   return (v.extras || []).find((x) => x.id === id)?.status ?? null;
 }
 
+/** the « check » answer says Stripe holds the card page as paid (« session », or « checked » under its first name) */
+export function cardPaid(v: JobView): boolean {
+  return v.session === 'paid' || v.checked === 'paid';
+}
+
 export type PayCheck = 'idle' | 'checking' | 'paid' | 'late';
 /** after a card payment (back from Stripe): paid when nothing is left to pay, or when money came in since this tab left
     for Stripe (`receivedBefore`: a balance may remain when the total rose meanwhile, or the payment was a part);
     else keep checking a few times */
 export function afterCheck(v: JobView, tries: number, maxTries: number, receivedBefore: number | null = null): PayCheck {
-  if (v.checked === 'paid') return 'paid';
+  if (cardPaid(v)) return 'paid';
   if (nothingLeft(v) || (v.pay.amount_cents <= 0 && (v.prepaid_cents > 0 || !!v.invoice))) return 'paid';
   if (receivedBefore != null && moneyIn(v) > receivedBefore) return 'paid';
   return tries >= maxTries ? 'late' : 'checking';
@@ -90,5 +95,6 @@ export function afterCheck(v: JobView, tries: number, maxTries: number, received
 export function refusalKey(action: 'sign' | 'answer', code: string): string {
   if (code === 'amount_changed') return action === 'sign' ? 'sign.changedNow' : 'extras.changedNow';
   if (action === 'sign' && code === 'signed') return 'sign.already';
+  if (action === 'answer' && code === 'closed') return 'extras.closed';
   return action === 'sign' ? 'sign.fail' : 'errors.answer';
 }
