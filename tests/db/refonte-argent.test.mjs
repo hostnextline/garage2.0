@@ -397,6 +397,42 @@ test('a card refund reaches the books where its payment is and the invoice follo
   assert.deepEqual(Object.values(await h.one(`select status, paid_cents from public.invoices where id = $1`, [f2.inv])), ['issued', 0]);
 }));
 
+test('a refund that failed, taken back (« #echec »), goes where its refund is: the money of one card payment is never split (integration, x-branches-02)', () => tx(async (h) => {
+  const g = await garage(h);
+  const refund = (inv, cents, session, job) => h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: cents, p_method: 'card_online',
+    p_reference: session.split('#')[1], p_job: job, p_session: session });
+  // 1. the usual case: the payment on its finished invoice; the refund, then its failure, on that invoice; the invoice follows
+  const j1 = await siteJob(h, g);
+  const f1 = await finished(h, g, j1);
+  await h.as(null);
+  await card(h, f1.inv, f1.total, 'cs_E1', j1);
+  await refund(f1.inv, -3000, 'cs_E1#re_e1', j1);
+  assert.equal((await inv1(h, f1.inv)).status, 'issued');
+  await h.as(null);
+  await refund(f1.inv, 3000, 'cs_E1#re_e1#echec', j1);
+  assert.deepEqual(Object.values(await h.one(`select status, paid_cents from public.invoices where id = $1`, [f1.inv])), ['paid', f1.total], 'paid again');
+  // 2. a payment left waiting on the job while the job has a finished invoice (an older version did that; the nightly
+  // reconciliation lists it, M4.waiting): its refund waits with it, and so does the failure of that refund — before,
+  // the failure went on the invoice, which had never received that money
+  const j2 = await siteJob(h, g);
+  const f2 = await finished(h, g, j2);
+  await h.c.query(`select set_config('garage.rpc', 'on', true)`);
+  await h.c.query(`insert into public.payments (invoice_id, job_id, amount_cents, method, reference, stripe_session) values (null, $1, 5000, 'card_online', 'pi_w', 'cs_W')`, [j2]);
+  await h.c.query(`select set_config('garage.rpc', '', true)`);
+  await h.as(null);
+  await refund(null, -2000, 'cs_W#re_w', j2);
+  await h.as(null);
+  await refund(null, 2000, 'cs_W#re_w#echec', j2);
+  await asDb(h);
+  const rows = (await h.c.query(`select stripe_session, invoice_id, job_id, amount_cents from public.payments where stripe_session like 'cs_W%' order by created_at, stripe_session`)).rows;
+  assert.deepEqual(rows.map((r) => [r.stripe_session, r.invoice_id, r.job_id]), [['cs_W', null, j2], ['cs_W#re_w', null, j2], ['cs_W#re_w#echec', null, j2]], 'the three stay together, on the job');
+  assert.deepEqual(Object.values(await h.one(`select status, paid_cents from public.invoices where id = $1`, [f2.inv])), ['issued', 0], 'the invoice never got that money');
+  // 3. a failure whose refund is not in the books (written by hand, or lost): it goes where the payment is
+  await h.as(null);
+  await refund(f1.inv, 1000, 'cs_E1#re_lost#echec', j1);
+  assert.equal(await h.val(`select invoice_id from public.payments where stripe_session = 'cs_E1#re_lost#echec'`), f1.inv);
+}));
+
 test('paid ahead more than the final invoice: finished « payée » and the excess said; given back, the books balance (sql-money-05, x-branches-01)', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);

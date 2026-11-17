@@ -15,6 +15,7 @@
 --                           never more than what was paid (« refund_too_much »).
 --                         · a card refund (the server, a negative « card_online », session « <checkout>#<refund> ») goes
 --                           where the original payment is; the invoice follows (no longer fully paid = « issued » again).
+--                           A refund that failed, taken back (« …#echec », positive), goes where that refund is.
 --                         · locks the job, then the invoice: a card payment that lands while the invoice is being finished
 --                           no longer stays beside it.
 --   payment_remove        same lock order; a payment whose refund is noted is not removed alone (« refund_first »).
@@ -280,6 +281,7 @@ end $$;
                                is not where it was meant to go.
      card_online, amount < 0   a card refund. session = « <checkout session>#<refund id> »: it goes where the payment of
                                that checkout session is (its invoice, or waiting on the job); the invoice follows.
+     card_online, « …#echec »  a refund that failed, taken back (the opposite amount): it goes where that refund is.
      the same session again    nothing is written twice: { ok, already: true }. */
 create or replace function public.payment_add(p_op uuid, p_invoice uuid, p_amount_cents integer, p_method text, p_reference text default null, p_job uuid default null, p_session text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -315,10 +317,18 @@ begin
       return public.op_save(p_op, 'payment_add', jsonb_build_object('ok', true, 'already', true,
         'rows', public.job_payload(coalesce(dup.job_id, (select v.job_id from public.invoices v where v.id = dup.invoice_id)))));
     end if;
-    -- a card refund goes where the payment it gives back is
-    if v_card and p_amount_cents < 0 and position('#' in v_session) > 1 then
-      select * into orig from public.payments where stripe_session = split_part(v_session, '#', 1);
-      if found then
+    -- one rule for the money that belongs to a card payment: a card refund (« <checkout>#<refund> », negative) and a
+    -- refund that failed, taken back (« <checkout>#<refund>#echec », positive) go where that money is NOW — the refund
+    -- it takes back, else the payment of that checkout — never by their own way (before: a failed refund of a payment
+    -- waiting on the job went on the job's finished invoice while its refund stayed on the job)
+    if v_card and position('#' in v_session) > 1 and (p_amount_cents < 0 or v_session like '%#echec') then
+      if p_amount_cents > 0 then
+        select * into orig from public.payments where stripe_session = left(v_session, length(v_session) - length('#echec'));
+      end if;
+      if orig.id is null then
+        select * into orig from public.payments where stripe_session = split_part(v_session, '#', 1);
+      end if;
+      if orig.id is not null then
         v_inv := orig.invoice_id; v_stay := true;
         v_pjob := coalesce(orig.job_id, (select v.job_id from public.invoices v where v.id = orig.invoice_id));
       end if;
