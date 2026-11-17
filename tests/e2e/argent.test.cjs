@@ -587,7 +587,7 @@ step('Les livres de la journée: Trésorerie for today — revenue, money in by 
   const lines = await t.page.getByTestId('treasury-report').locator('.tre-lines > div').evaluateAll((els) => els.map((d) => [d.querySelector('dt').textContent.replace(/\s+/g, ' ').trim(), d.querySelector('dd').textContent.trim()]));
   assert.deepEqual(lines[0], [`Revenus ${nInv} factures`, await money(revenue)], 'the revenue of the day (before taxes)');
   assert.deepEqual(lines[1], [`Dépenses ${nExp} ${nExp > 1 ? 'dépenses' : 'dépense'}`, `−${await money(spent)}`], 'the expenses of the day (before taxes)');
-  assert.equal((await t.page.getByTestId('treasury-profit').innerText()).replace(/\s+/g, ' '), (await money(revenue - spent)).replace(/\s+/g, ' '));
+  assert.equal((await t.page.getByTestId('treasury-profit').innerText()).replace(/\s+/g, ''), (await money(revenue - spent)).replace(/\s+/g, ''), 'the profit of the day');
   // money in by method (the refund counts against the card)
   const byMethod = h.sql(`select coalesce(string_agg(method || ':' || s, ',' order by method), '') from (select method, sum(amount_cents) s from public.payments
     where deleted_at is null and (paid_at at time zone 'America/Toronto')::date = public.local_today() group by method) x`).split(',').filter(Boolean).map((x) => x.split(':'));

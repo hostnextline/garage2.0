@@ -39,8 +39,12 @@ const run = (name, fn) => async () => {
     let i = 0;
     for (const p of pages) {
       const tag = `fail-${name.slice(0, 20).replace(/\W+/g, '-')}-${i++}`;
-      try { await h.shot(p, tag); } catch { /* closed */ }
-      try { writeFileSync(path.join(h.OUT, tag + '.txt'), (p.netlog || []).join('\n')); } catch { /* ignore */ }
+      let why = '';
+      try { await h.shot(p, tag); } catch (err) { why = `no picture: ${String(err?.message || err).split('\n')[0]}`; }
+      // (this file's own addition) where the page was, and what it said, above what it asked the server
+      let said = '';
+      try { said = (await p.locator('body').innerText({ timeout: 3000 })).replace(/\s+/g, ' ').slice(0, 1500); } catch { /* closed */ }
+      try { writeFileSync(path.join(h.OUT, tag + '.txt'), [`url: ${p.url()}`, why, `text: ${said}`, '', ...(p.netlog || [])].join('\n')); } catch { /* ignore */ }
     }
     // (this file's own addition) the pages of a failed step are closed: the next step's pictures show only its own pages
     for (const p of [...pages]) { try { await p.context().close(); } catch { /* closed */ } }
