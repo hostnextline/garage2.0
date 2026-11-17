@@ -64,6 +64,8 @@ before(async () => {
   customer('Ines', 'Moreau', '514 555-0248', 45.5120, -73.6700);
   customer('Gilles', 'Martin', '514 555-0249', 45.5060, -73.6450);
   customer('Hugo', 'Côté', '514 555-0250', 45.5160, -73.6480);
+  customer('Jade', 'Pelletier', '514 555-0251', 45.5110, -73.6350);
+  customer('Karl', 'Dubois', '514 555-0252', 45.5140, -73.6520);
   // Julie booked last week, by blocks: Thursday-like afternoon (12 h – 16 h) four days from now
   who.nadia.jwt = await jwtOf(who.nadia.email);
   const b = await rpcAs(who.nadia.jwt, 'book_job', { p_op: randomUUID(), p_job: { customer_id: C.Julie.id, day: D[4], block: 'pm', duration_min: 45 },
@@ -490,6 +492,50 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   await p1.page.getByTestId('sync-chip').click();
   await p1.page.getByTestId('sync-sheet').getByRole('button', { name: 'Retirer' }).first().click();
   await p1.page.getByTestId('failed-banner').waitFor({ state: 'detached', timeout: 15000 });
+  noErrors(p1.page);
+  await p1.ctx.close();
+});
+
+step('the window chosen is taken by another phone while the office is still on the call: the screen says it is no longer possible, nothing is booked twice', async () => {
+  // tomorrow (Dina's day): Jade and Karl have long work (4 h 15), the two never arrive in the same 4-hour window
+  const day = D[1];
+  const p1 = await openW({ kind: 'phone' });
+  await h.signIn(p1.page, who.nadia.email, PW);
+  await bookStart(p1.page, 'Jade', LONG);
+  await listAnswered(p1.page, day);
+  const ws = offeredStarts(await offeredTimes(p1.page, day, 'list'))[0];
+  await pickWindow(p1.page, day, ws, 'list');
+  assert.equal(await p1.page.getByTestId('win-gone').count(), 0);
+  // Mira books Karl in that window from the computer
+  const p2 = await openW({ kind: 'desktop' });
+  await h.signIn(p2.page, who.mira.email, PW);
+  await bookStart(p2.page, 'Karl', LONG);
+  await gridAnswered(p2.page, day);
+  await pickWindow(p2.page, day, ws, 'grid');
+  await p2.page.getByTestId('book-confirm').click();
+  await p2.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  J.karl = h.sql(`select id from public.jobs where customer_id = '${C.Karl.id}' and status = 'booked'`);
+  assert.equal(jobOf(J.karl).win_start, ws);
+  await p2.ctx.close();
+  // Nadia's phone hears of it (the signal blinks: the phone asks for the day's appointments again, then for its windows)
+  await p1.ctx.setOffline(true);
+  await p1.ctx.setOffline(false);
+  const gone = p1.page.getByTestId('win-gone');
+  await gone.waitFor({ timeout: 30000 });
+  assert.match(await gone.innerText(), /plus possible/i, 'said in words');
+  assert.ok(await p1.page.getByTestId('book-confirm').isDisabled() || !(await p1.page.getByTestId('pick-says').count()), 'the window is no longer chosen');
+  const now = offeredStarts(await offeredTimes(p1.page, day, 'list'));
+  assert.ok(!now.includes(ws), `${clock(ws)} is no longer offered: ${now.map(clock).join(', ')}`);
+  assert.deepEqual(now.map(clock), (await serverWindows(who.nadia.jwt, C.Jade, day, 255)).map(clock), 'the phone offers the server’s windows');
+  // nothing lost: Jade and her work are still on the screen; another window, and she is booked once
+  await p1.page.getByTestId('customer-picked').waitFor();
+  await pickWindow(p1.page, day, now[0], 'list');
+  await p1.page.getByTestId('book-confirm').click();
+  await p1.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  assert.equal(Number(h.sql(`select count(*) from public.jobs where customer_id = '${C.Jade.id}' and deleted_at is null`)), 1, 'booked once');
+  J.jade = h.sql(`select id from public.jobs where customer_id = '${C.Jade.id}'`);
+  assert.equal(jobOf(J.jade).win_start, now[0]);
+  assert.equal(jobOf(J.karl).win_start, ws, 'Karl keeps his window');
   noErrors(p1.page);
   await p1.ctx.close();
 });
