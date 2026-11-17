@@ -71,12 +71,13 @@ after(async () => {
 // The pictures: one file each (x-branches-06: one attachments.json holding every picture stops the backup at 100 MB)
 // ---------------------------------------------------------------------------------------------------------------
 test('pictures: each one is a file of its own, attachments.json keeps the rows without them, and the restore gives back the same picture', async () => {
-  // 25 pictures (two pages of 20 for the server of today), one of each kind, and one whose text is not plain base64
+  // 25 pictures (two pages of 20 for the server of today), one of each kind the server takes (no SVG since
+  // refonte_acces: attachments_no_svg), and one whose text is not plain base64
   const data = (i) => Buffer.from(`photo ${i} `.repeat(40 + i)).toString('base64');
-  const mimes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'application/pdf'];
+  const mimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
   for (let i = 0; i < 25; i++) {
     const d = i === 7 ? 'ceci n’est pas du base64 !' : data(i);
-    photos.push((await q(`insert into public.attachments (kind, mime, data, bytes) values ('receipt', $1, $2, $3) returning id`, [mimes[i % 5], d, Math.round(d.length * 0.75)]))[0].id);
+    photos.push((await q(`insert into public.attachments (kind, mime, data, bytes) values ('receipt', $1, $2, $3) returning id`, [mimes[i % mimes.length], d, Math.round(d.length * 0.75)]))[0].id);
   }
   const avant = await q(`select id, mime, data, updated_at from public.attachments where id = any($1)`, [photos]);
   const dos = join(dir, 'nuit', 'donnees');
@@ -322,8 +323,10 @@ test('the end of the night against the functions of this copy: « done » and th
                           from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and c.relname like 'ops\\_%'`)).filter((x) => x.k);
   const avant = {};
   for (const { t, k } of ops) avant[t] = (await q(`select to_jsonb(x) ->> $1 as k from public.${t} x`, [k])).map((x) => x.k);
-  const dos = join(dir, 'nuit', 'donnees');   // the copy of the first test
-  assert.ok(existsSync(join(dos, '_resume.json')), 'the first test made a copy');
+  // a copy of its own (never the one another test left): step 1 of the night against this copy's « backup » function
+  const dos = join(dir, 'nuit-vraie', 'donnees');
+  const copie = await lancer('sauvegarde.mjs', [dos], VRAI);
+  assert.equal(copie.code, 0, copie.out + copie.err);
   const r = await lancer('sauvegarde.mjs', ['--fin', dos], { ...VRAI, COMMIT });
   try {
     assert.ok(/Sauvegarde notée au garage/.test(r.out) || /ne connaît pas encore « backup done »/.test(r.out), 'the « backup » function of this copy took « done » { tables, rows, commit } or does not know it: ' + r.out + r.err);
