@@ -324,16 +324,21 @@ async function answer(req: Request): Promise<Response> {
   if (action === 'answer') {
     if (!l.job_id) fail('bad_link', 'Rien à répondre ici.');
     if (b.confirm !== true) fail('confirm', 'Confirmez votre réponse.');
-    const { data: it } = await db.from('job_items').select('*').eq('id', String(b.item_id || '')).eq('job_id', l.job_id).is('deleted_at', null).maybeSingle();
+    // a read that fails is a server problem, never « this proposal no longer exists » nor « this appointment is over »
+    const itemId = String(b.item_id || '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) fail('gone', 'Cette proposition n’existe plus.', 404);
+    const { data: it, error: ei } = await db.from('job_items').select('*').eq('id', itemId).eq('job_id', l.job_id).is('deleted_at', null).maybeSingle();
+    if (ei) throw ei;
     const i = it as Row | null;
     if (!i) fail('gone', 'Cette proposition n’existe plus.', 404);
     if (i.status === 'proposed') {
       // extra work is answered while the appointment is coming or under way and its invoice not finished: afterwards
       // an « accepted » would never be done nor billed
-      const [{ data: jb }, { data: inv }] = await Promise.all([
+      const [{ data: jb, error: e1 }, { data: inv, error: e2 }] = await Promise.all([
         db.from('jobs').select('status, deleted_at').eq('id', l.job_id).maybeSingle(),
         db.from('invoices').select('id').eq('job_id', l.job_id).in('status', ['issued', 'paid']).is('deleted_at', null).limit(1)
       ]);
+      if (e1 || e2) throw e1 || e2;
       const j = jb as Row | null;
       if (!j || j.deleted_at || !['booked', 'en_route', 'on_site'].includes(j.status) || inv?.length) {
         fail('closed', 'Ce rendez-vous est terminé : cette proposition ne peut plus être acceptée ici. Appelez le garage.', 409);
@@ -349,7 +354,8 @@ async function answer(req: Request): Promise<Response> {
       if (ew) throw ew;
       if (!done?.length) {
         if (shown !== null) {
-          const { data: again } = await db.from('job_items').select('qty, unit_cents, kind, status').eq('id', i.id).maybeSingle();
+          const { data: again, error: e3 } = await db.from('job_items').select('qty, unit_cents, kind, status').eq('id', i.id).maybeSingle();
+          if (e3) throw e3;
           if ((again as Row | null)?.status === 'proposed') moved(lineCents(again as Row));
         }
         return json(await view(l));
@@ -373,7 +379,9 @@ async function answer(req: Request): Promise<Response> {
     const s = await settings();
     // one tap (« J’accepte et je signe »): an electronic signature in the name on the customer's file; or the name typed
     // and a signature drawn with the finger (the older page)
-    const { data: jc } = await db.from('jobs').select('waiver_signed_at, customer:customer_id(first_name, last_name, company)').eq('id', l.job_id).single();
+    // the name on the file signs: a read that fails never signs « Client » instead of the customer's name
+    const { data: jc, error: ejc } = await db.from('jobs').select('waiver_signed_at, customer:customer_id(first_name, last_name, company)').eq('id', l.job_id).single();
+    if (ejc) throw ejc;
     const cuj = ((jc as Row | null)?.customer || {}) as Row;
     const onFile = [cuj.first_name, cuj.last_name].filter(Boolean).join(' ').trim() || String(cuj.company || '').trim();
     const click = b.click === true;
@@ -397,11 +405,13 @@ async function answer(req: Request): Promise<Response> {
     if (!(jc as Row | null)?.waiver_signed_at) Object.assign(patch, { waiver_signed_at: now, waiver_signer: signer, waiver_version: String(s.waiver?.version || '1'), waiver_attachment: attId, waiver_via: 'online' });
     // the proof of an electronic signature: when, which link, from which device (the address is kept as a fingerprint
     // only, made with a secret of the server), the amount seen and the lines it was for
+    // (the proof is written first: never an electronic signature without its proof)
     if (click) {
-      await db.from('activity').insert({ entity: 'job', entity_id: l.job_id, action: 'signed_online', data: {
+      const { error: ep } = await db.from('activity').insert({ entity: 'job', entity_id: l.job_id, action: 'signed_online', data: {
         signer, at: now, version: String(s.waiver?.version || '1'), cents: v.expected.total, shown_cents: shown, link: l.id,
         lines: ((v.items || []) as Row[]).map((i) => ({ id: i.id, description: i.description, qty: i.qty, unit_cents: i.unit_cents })),
         device: (req.headers.get('user-agent') || '').slice(0, 160), ip: await visitorMark(req, 'sig') } });
+      if (ep) throw ep;
     }
     const { error: e2 } = await db.from('jobs').update(patch).eq('id', l.job_id);
     if (e2) throw e2;

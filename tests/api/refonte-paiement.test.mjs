@@ -883,3 +883,50 @@ test('x-errors-19 (secrets): the database not answering is never « card payment
   const again = await fn('client', { action: 'view', token: t });
   assert.equal(again.pay.available, true, JSON.stringify(again.pay));
 });
+
+test('x-errors-19 (answer, sign): a read that fails is never « this proposal no longer exists » or « signed as Client », and an electronic signature never goes without its proof', async () => {
+  const { job } = await newJob();
+  const t = await linkFor(job);
+  const extra = (await q(`insert into public.job_items (job_id, description, unit_cents, status) values ($1, 'Plaquettes', 12000, 'proposed') returning id`, [job]))[0].id;
+  await q(`revoke select on public.job_items from service_role`);
+  let r;
+  try { r = await fn('client', { action: 'answer', token: t, item_id: extra, accept: true, confirm: true }); }
+  finally { await q(`grant select on public.job_items to service_role`); }
+  assert.deepEqual([r.status, r.code], [500, 'server'], 'not « gone »: ' + JSON.stringify(r));
+  assert.equal((await q(`select status from public.job_items where id = $1`, [extra]))[0].status, 'proposed');
+  assert.equal((await fn('client', { action: 'answer', token: t, item_id: 'pas-un-id', accept: true, confirm: true })).code, 'gone', 'a wrong id is still « gone »');
+  // the proof of the signature cannot be written: nothing is signed
+  await q(`revoke insert on public.activity from service_role`);
+  let s;
+  try { s = await fn('client', { action: 'sign', token: t, click: true, confirm: true }); }
+  finally { await q(`grant insert on public.activity to service_role`); }
+  assert.deepEqual([s.status, s.code], [500, 'server'], JSON.stringify(s));
+  assert.deepEqual(Object.values((await q(`select estimate_signed_at, waiver_signed_at from public.jobs where id = $1`, [job]))[0]), [null, null], 'not signed without its proof');
+  const ok = await fn('client', { action: 'sign', token: t, click: true, confirm: true });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.estimate.signer, 'Luc Gagnon', 'signed in the name on the file');
+  assert.equal((await q(`select count(*)::int n from public.activity where entity_id = $1 and action = 'signed_online'`, [job]))[0].n, 1);
+});
+
+test('x-errors-19 (notify): « the mechanic is here » never texts an amount due that forgot a payment because a read failed', async () => {
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  await q(`update public.jobs set status = 'on_site' where id = $1`, [job]);
+  await q(`insert into public.payments (job_id, amount_cents, method) values ($1, 5000, 'cash')`, [job]);   // paid ahead
+  // a garage whose text says what is left to pay
+  const [{ arrived: tpl }] = await q(`select messages->'fr'->'arrived' arrived from public.settings where id = 1`);
+  await q(`update public.settings set messages = jsonb_set(messages, '{fr,arrived}', '"Reste à payer : {montant} {lien}"') where id = 1`);
+  try {
+    await clearLog();
+    await q(`revoke select on public.payments from service_role`);
+    let r;
+    try { r = await fn('notify', { kind: 'arrived', job_id: job, base: BASE }, ownerJwt); }
+    finally { await q(`grant select on public.payments to service_role`); }
+    assert.deepEqual([r.status, r.code], [500, 'server'], JSON.stringify(r));
+    assert.equal((await mockLog()).filter((m) => m.svc === 'ghl' && m.path === '/conversations/messages').length, 0, 'nothing texted');
+    const ok = await fn('notify', { kind: 'arrived', job_id: job, base: BASE }, ownerJwt);
+    assert.equal(ok.status, 'sent', JSON.stringify(ok));
+    assert.match(ok.message, /^Reste à payer : 122,46\s\$/, 'what is left to pay (172,46 $ − 50,00 $): ' + ok.message);
+  } finally {
+    await q(`update public.settings set messages = jsonb_set(messages, '{fr,arrived}', $1::jsonb) where id = 1`, [JSON.stringify(tpl)]);
+  }
+});

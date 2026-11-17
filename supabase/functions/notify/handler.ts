@@ -79,7 +79,8 @@ export const handler = serve(async (req) => {
   if (kind === 'arrived') {
     if (j.status !== 'on_site') fail('not_on_site', 'Le mécano n’est pas encore arrivé chez ce client.');
     if (!b.resend) {
-      const { count } = await db.from('messages').select('id', { count: 'exact', head: true }).eq('job_id', j.id).eq('kind', 'arrived').eq('status', 'sent');
+      const { count, error: ea } = await db.from('messages').select('id', { count: 'exact', head: true }).eq('job_id', j.id).eq('kind', 'arrived').eq('status', 'sent');
+      if (ea) throw ea;
       if (count) return json({ ok: true, status: 'already' });
     }
   }
@@ -108,10 +109,13 @@ export const handler = serve(async (req) => {
     // the invoice being made from the work (an invoice already being edited is kept as it is)
     const { error: e1 } = await c.db.rpc('invoice_for_job', { p_op: crypto.randomUUID(), p_job: j.id, p_refresh: false });
     if (e1) throw e1;
-    const { data: inv } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    // a read that fails is a server problem: never « the invoice is empty », never an amount due that forgets a payment
+    const { data: inv, error: ev } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    if (ev) throw ev;
     const v = inv as Record<string, any> | null;
     if (!v || !v.total_cents) fail('nothing', 'La facture est vide : ajoute le travail d’abord.');
-    const { data: pays } = await db.from('payments').select('amount_cents, invoice_id').eq('job_id', j.id).is('deleted_at', null);
+    const { data: pays, error: ep } = await db.from('payments').select('amount_cents, invoice_id').eq('job_id', j.id).is('deleted_at', null);
+    if (ep) throw ep;
     const paid = v!.status === 'draft' ? ((pays || []) as Record<string, any>[]).filter((p) => !p.invoice_id).reduce((t, p) => t + p.amount_cents, 0) : v!.paid_cents;
     vars.total = money(v!.total_cents, lang);
     vars.montant = money(Math.max(0, v!.total_cents - paid), lang);
@@ -124,7 +128,8 @@ export const handler = serve(async (req) => {
     vars.vehicule = veh ? [veh.year, veh.make, veh.model].filter(Boolean).join(' ') : (lang === 'en' ? 'vehicle' : 'véhicule');
   }
   if (kind === 'invoice' || kind === 'payment_reminder') {
-    const { data: inv } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    const { data: inv, error: ev } = await db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle();
+    if (ev) throw ev;
     const v = inv as Record<string, any> | null;
     if (!v || v.status === 'draft') fail('invoice_first', 'Termine la facture avant de l’envoyer.');
     const prefix = s.billing?.invoice_prefix ?? 'F-', pad = Number(s.billing?.pad ?? 4);
@@ -136,7 +141,8 @@ export const handler = serve(async (req) => {
   }
   if (kind === 'window' && !b.resend) {
     // the same window is told once (asked twice, or the evening's lock run again); another window is a new text
-    const { data: prev } = await db.from('messages').select('body').eq('job_id', j.id).eq('kind', 'window').eq('status', 'sent').order('created_at', { ascending: false }).limit(1);
+    const { data: prev, error: ew } = await db.from('messages').select('body').eq('job_id', j.id).eq('kind', 'window').eq('status', 'sent').order('created_at', { ascending: false }).limit(1);
+    if (ew) throw ew;
     if (prev?.length && bare((prev[0] as Record<string, any>).body) === bare(fill(when.tpl, { ...vars, lien: '' }))) return json({ ok: true, status: 'already' });
   }
   // the same send again (same `op`): the first one's answer, nothing texted twice
