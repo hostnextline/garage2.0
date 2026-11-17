@@ -1,6 +1,7 @@
 /* The car chooser: the customer's only car is chosen by itself, once, where the screen holds a draft; never where
    autoPick={false} (a job writes on pick, customers-b-21); a car of ANOTHER customer left in the value (the customer
-   was changed) is not this customer's car: it does not stop the only car from being chosen. */
+   was changed) is not this customer's car: it does not stop the only car from being chosen. A value that is no saved car
+   (the caller's car of « Appel entrant », which holds the work typed) is kept: places-vehicles-r2-1. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -9,7 +10,8 @@ import type { Vehicle } from '../../data/types';
 const CARS = vi.hoisted(() => [] as Vehicle[]);
 vi.mock('../../data/select', async (orig) => ({
   ...(await orig<typeof import('../../data/select')>()),
-  vehiclesOf: (id: string) => CARS.filter((v) => v.customer_id === id)
+  vehiclesOf: (id: string) => CARS.filter((v) => v.customer_id === id),
+  vehicle: (id: string | null | undefined) => CARS.find((v) => v.id === id)
 }));
 
 import { lang } from '../../lib/i18n';
@@ -41,5 +43,9 @@ describe('« Véhicule »: the only car', () => {
   it('a car of another customer left in the value does not count: this customer\'s car is chosen (customers-b-21)', async () => {
     await draw('c2', 'v1');
     expect(picked).toEqual(['v2']);
+  });
+  it('a car not saved yet in the value (the caller\'s car, holding the work typed) is kept (places-vehicles-r2-1)', async () => {
+    await draw('c2', 'call-car-1');
+    expect(picked).toEqual([]);
   });
 });
