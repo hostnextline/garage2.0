@@ -1,12 +1,12 @@
 /* What the steps send, and what they do when the server says no or the signal is weak. The server, the toasts, the
    position and the questions are pretended. */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const api = vi.hoisted(() => ({
   jobStep: vi.fn(), shiftStart: vi.fn(() => Promise.resolve()), invoiceForJob: vi.fn(() => Promise.resolve({ queued: false })),
   enroute: vi.fn(), notify: vi.fn(), errorMessage: (e: unknown) => String((e as { message?: string })?.message || e)
 }));
-const sync = vi.hoisted(() => ({ refetch: vi.fn(() => Promise.resolve()), pull: vi.fn(() => Promise.resolve()), isNetworkError: () => false }));
+const sync = vi.hoisted(() => ({ refetch: vi.fn(() => Promise.resolve()), pull: vi.fn(() => Promise.resolve()), isNetworkError: (e: unknown) => (e as Error | null)?.message === 'Failed to fetch' }));
 const ui = vi.hoisted(() => ({ toast: vi.fn(), ask: vi.fn(() => Promise.resolve(true)), askText: vi.fn(() => Promise.resolve('Interac ce soir')), run: async (fn: () => unknown) => { try { return await fn(); } catch { return undefined; } }, whenHistorySettled: (fn: () => void) => fn() }));
 const where = vi.hoisted(() => ({ quickPosition: vi.fn(() => Promise.resolve({ lat: 45.5, lng: -73.6 })) }));
 const parts = vi.hoisted(() => ({ confirmParts: vi.fn() }));
@@ -212,5 +212,91 @@ describe('one operation id per text and per « Je pars vers la Centrale », kept
     expect(ops[0]).toMatch(/^[0-9a-f-]{36}$/);
     expect(ops[1]).toBe(ops[0]);
     expect(ops[2]).not.toBe(ops[0]);
+  });
+});
+
+describe('a kept id is the same send only while it tells the same thing, and only for its retry (jobs-r2-1)', () => {
+  const opOf = (call: unknown[]) => (call[2] as { op?: string }).op;
+  const lost = () => new Error('Failed to fetch');
+  afterEach(() => { vi.useRealTimers(); });
+  it('the answer of « moved » lost, then the job moved to another day: a new id (Thursday is texted, not Tuesday’s answer)', async () => {
+    access.value = mechanic;
+    api.notify.mockRejectedValueOnce(lost());
+    await sendText('moved', JOB({ id: 'm1', status: 'booked', day: '2026-11-17' }));
+    await sendText('moved', JOB({ id: 'm1', status: 'booked', day: '2026-11-19' }));
+    const [tue, thu] = api.notify.mock.calls.map(opOf);
+    expect(thu).not.toBe(tue);
+  });
+  it('« Déplacer » passes the job as its sheet showed it: what is texted is read from the job as it is now', async () => {
+    access.value = mechanic;
+    // moved Monday → Tuesday: the row says Tuesday, the sheet's job still Monday; the answer is lost
+    upsertLocal('jobs', [JOB({ id: 'm2', status: 'booked', day: '2026-11-17' })]);
+    api.notify.mockRejectedValueOnce(lost());
+    await sendText('moved', JOB({ id: 'm2', status: 'booked', day: '2026-11-16' }));
+    // then Tuesday → Thursday: the sheet showed Tuesday, the row says Thursday
+    upsertLocal('jobs', [JOB({ id: 'm2', status: 'booked', day: '2026-11-19' })]);
+    await sendText('moved', JOB({ id: 'm2', status: 'booked', day: '2026-11-17' }));
+    const [tue, thu] = api.notify.mock.calls.map(opOf);
+    expect(thu).not.toBe(tue);
+  });
+  it('the same text tried again after a lost answer keeps its id (one text, R27); « extras » with other work proposed is a new one', async () => {
+    access.value = mechanic;
+    upsertLocal('job_items', [{ id: 'x1', job_id: 'm3', qty: 1, unit_cents: 4500, status: 'proposed', sort: 1, description: 'Essuie-glaces', kind: 'service', taxable: true }]);
+    api.notify.mockRejectedValueOnce(lost()).mockRejectedValueOnce(lost());
+    await sendText('extras', JOB({ id: 'm3' }));
+    await sendText('extras', JOB({ id: 'm3' }));
+    upsertLocal('job_items', [{ id: 'x2', job_id: 'm3', qty: 1, unit_cents: 12000, status: 'proposed', sort: 2, description: 'Freins', kind: 'service', taxable: true }]);
+    await sendText('extras', JOB({ id: 'm3' }));
+    const [a, b, c] = api.notify.mock.calls.map(opOf);
+    expect(b).toBe(a);
+    expect(c).not.toBe(a);
+  });
+  it('« Renvoyer » whose answer was lost: tried again within minutes, the same id; an hour later, a new send', async () => {
+    access.value = mechanic;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-16T15:00:00Z'));
+    api.notify.mockRejectedValueOnce(lost()).mockRejectedValueOnce(lost());
+    await sendText('booking', JOB({ id: 'm4', status: 'booked' }), { resend: true });
+    vi.setSystemTime(new Date('2026-11-16T15:02:00Z'));
+    await sendText('booking', JOB({ id: 'm4', status: 'booked' }), { resend: true });
+    vi.setSystemTime(new Date('2026-11-16T16:05:00Z'));
+    await sendText('booking', JOB({ id: 'm4', status: 'booked' }), { resend: true });
+    const [a, b, c] = api.notify.mock.calls.map(opOf);
+    expect(b).toBe(a);
+    expect(c).not.toBe(a);
+  });
+  it('« Je pars vers la Centrale » after a lost answer: the next day is a new trip, not yesterday’s « already »', async () => {
+    access.value = mechanic;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-16T21:00:00Z'));   // 16 h in Montréal
+    api.enroute.mockRejectedValueOnce(lost()).mockRejectedValueOnce(lost());
+    await doReturn();
+    vi.setSystemTime(new Date('2026-11-16T21:02:00Z'));
+    await doReturn();                                       // the retry of the lost answer: the same id
+    vi.setSystemTime(new Date('2026-11-17T21:00:00Z'));   // the next day
+    await doReturn();
+    const [a, b, c] = api.enroute.mock.calls.map(opOf);
+    expect(b).toBe(a);
+    expect(c).not.toBe(a);
+  });
+  it('the day is Montréal’s: a lost answer at 23 h 58, tried again at 0 h 01, is the next day’s way back', async () => {
+    access.value = mechanic;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-17T04:58:00Z'));   // 23 h 58 in Montréal (UTC-5)
+    api.enroute.mockRejectedValueOnce(lost());
+    await doReturn();
+    vi.setSystemTime(new Date('2026-11-17T05:01:00Z'));   // 0 h 01
+    await doReturn();
+    const [a, b] = api.enroute.mock.calls.map(opOf);
+    expect(b).not.toBe(a);
+  });
+  it('« Je suis arrivé » at the start ends the kept way back: the next « Je pars vers la Centrale » is a new trip', async () => {
+    access.value = mechanic;
+    api.enroute.mockRejectedValueOnce(lost());
+    await doReturn();
+    await doReturnEnd();
+    await doReturn();
+    const ops = api.enroute.mock.calls.filter((c) => c[0] === 'return').map(opOf);
+    expect(ops[1]).not.toBe(ops[0]);
   });
 });

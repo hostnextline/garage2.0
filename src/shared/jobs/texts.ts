@@ -6,12 +6,12 @@ import { signal } from '@preact/signals';
 import type { Job } from '../../data/types';
 import { enroute, notify, errorMessage } from '../../data/api';
 import { pull, refetch, isNetworkError, uuid } from '../../data/sync';
-import { jobTotals, settings, customer as customerRow } from '../../data/select';
+import { jobTotals, settings, customer as customerRow, itemsOf, job as jobRow } from '../../data/select';
 import { toast, whenHistorySettled } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
-import { arrivalTextWanted } from '../../domain/jobs/texts';
-import { intents, keepOp } from '../../domain/jobs/intents';
+import { arrivalTextWanted, textSays } from '../../domain/jobs/texts';
+import { intents, keepOp, KEEP_OP_MS } from '../../domain/jobs/intents';
 import { jobFirstName, clockOf } from './select';
 import { rememberLink } from './links';
 
@@ -29,12 +29,16 @@ function textResult(r: TextOutcome, name: string, okText?: string) {
   else outcome.value = r;
 }
 
-/** one id per text asked, kept until the server answered it: tapped again after a lost answer, the customer gets one text */
-const textSends = intents(uuid);
+/** one id per text asked, kept until the server answered it: tapped again after a lost answer, the customer gets one text.
+    The same text only: what it tells is part of the ask (moved to Tuesday, the answer lost, then to Thursday: Thursday is
+    texted), and a kept id waits a few minutes for its retry (« Renvoyer » an hour later sends again) (jobs-r2-1) */
+const textSends = intents(uuid, { maxAge: KEEP_OP_MS });
 /** a text to the customer through the server (confirmation, moved, the mechanic arrived with the invoice, extra work to approve) */
 export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived', j: Job, opts: { resend?: boolean; okText?: string } = {}): Promise<boolean> {
   const key = `${kind}|${j.id}|${opts.resend ? 'again' : ''}`;
-  const op = textSends.op(key);
+  // the job as the server will text it: « Déplacer » passes the job as its sheet showed it, before the move
+  const now = jobRow(j.id) ?? j;
+  const op = textSends.op(key, textSays(kind, now, { items: itemsOf(j.id), total: jobTotals(j.id).total }));
   try {
     const r = await notify(kind, j.id, { ...opts, op });
     textSends.done(key, op);

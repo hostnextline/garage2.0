@@ -1,6 +1,18 @@
 /* When a text to the customer is due, and what the job sheet says about texts that did not go. Pure (tested in
    texts.test.ts). */
-import type { JobStatus, Message } from '../../data/types';
+import type { Job, JobItem, JobStatus, Message } from '../../data/types';
+
+/** what a text to the customer tells them, as far as the phone knows (jobs-r2-1): the day, the block and the arrival
+    window, with the estimate's total, for the confirmation and « moved »; the work proposed for « extras »; the amount for
+    « arrived ». A send kept for its retry after a lost answer is the same send only while this stays the same: moved to
+    Tuesday then to Thursday, the customer is told Thursday, not given Tuesday's answer again. */
+export function textSays(kind: string, j: Pick<Job, 'day' | 'block'> & { win_start?: number | null; win_end?: number | null; win_flex?: boolean | null },
+  o: { items: Pick<JobItem, 'id' | 'status' | 'qty' | 'unit_cents'>[]; total: number }): string {
+  if (kind === 'booking' || kind === 'moved') return [j.day, j.block, j.win_start ?? '', j.win_end ?? '', j.win_flex ? 'flex' : '', o.total].join('|');
+  if (kind === 'extras') return o.items.filter((i) => i.status === 'proposed').map((i) => `${i.id}:${i.qty}:${i.unit_cents}`).sort().join(',');
+  if (kind === 'arrived') return String(o.total);
+  return '';
+}
 
 /** the invoice texted when the mechanic arrives: the switch is on, the customer takes texts, not the Coffre (no invoice),
     and some priced work (the server refuses an empty invoice, « La facture est vide », after making an empty draft) */
