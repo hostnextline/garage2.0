@@ -215,6 +215,15 @@ describe('oilRows', () => {
     const old = oilRows(input({ jobs: [job('j0', 'v1', '2026-05-01'), ...jobs], items, vehicles: [car('v1', 'c1', { oil_followup: { at: '2026-11-01T15:00:00.000Z', stop: true } })] }));
     expect(old[0]).toMatchObject({ state: 'call', mark: null });
   });
+  it('R169: the day of a call is Montréal’s, whatever the phone’s zone', () => {
+    // noted at 20:30 in Montréal the evening BEFORE the visit (01:30 the next day in UTC, 10:30 in Tokyo): an old call
+    const rows = oilRows(input({ jobs: [job('j1', 'v1', '2026-12-02')], items: [item('j1', 's-oil')], vehicles: [car('v1', 'c1', { oil_followup: { at: '2026-12-02T01:30:00.000Z', stop: true } })] }));
+    expect(rows[0]).toMatchObject({ mark: null });
+    expect(rows[0].state).not.toBe('stopped');
+    // noted at 21:30 in Montréal the day of the visit (the next day in UTC): it counts
+    const same = oilRows(input({ jobs: [job('j1', 'v1', '2026-12-01')], items: [item('j1', 's-oil')], vehicles: [car('v1', 'c1', { oil_followup: { at: '2026-12-02T02:30:00.000Z', stop: true } })] }));
+    expect(same[0].state).toBe('stopped');
+  });
   it('« do not call any more » keeps the car apart', () => {
     const rows = oilRows(input({ jobs: [job('j1', 'v1', '2026-12-01')], items: [item('j1', 's-oil')], vehicles: [car('v1', 'c1', { oil_followup: { at: '2027-06-10T15:00:00.000Z', stop: true } })] }));
     expect(rows[0].state).toBe('stopped');
