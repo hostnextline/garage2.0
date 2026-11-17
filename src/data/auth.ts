@@ -259,7 +259,8 @@ export async function signIn(email: string, password: string): Promise<string | 
   if (error) {
     if (/invalid login|invalid credentials/i.test(error.message)) return 'auth.wrong';
     if (/banned|disabled/i.test(error.message)) return 'auth.blocked';
-    if (isNetworkError(error)) return 'common.networkError';
+    // too many tries (429) and the server unwell (5xx) are not « no signal » (i18n-06): the words that say so
+    if (isNetworkError(error)) { const c = classify(error); return c.sub === 'busy' ? 'errors.busy' : c.sub === 'server' ? 'errors.server' : 'common.networkError'; }
     return error.message;
   }
   try { localStorage.setItem('his.email', email.trim()); } catch { /* the e-mail is typed again next time */ }

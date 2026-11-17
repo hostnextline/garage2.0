@@ -182,6 +182,21 @@ describe('the session ends while the device copy is still opening (auth-fastpath
   });
 });
 
+describe('what the sign-in screen says when the server says no (i18n-06)', () => {
+  it('too many tries, the server unwell, no signal: three different sentences, never Supabase\'s English', async () => {
+    const m = await fresh();
+    const answer = (error: unknown) => { (m.client.sb.auth as unknown as { signInWithPassword: unknown }).signInWithPassword = async () => ({ data: { session: null, user: null }, error }); };
+    answer(Object.assign(new Error('Request rate limit reached'), { status: 429, code: 'over_request_rate_limit' }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('errors.busy');
+    answer(Object.assign(new Error('Internal Server Error'), { status: 503 }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('errors.server');
+    answer(Object.assign(new TypeError('Failed to fetch'), { status: 0 }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('common.networkError');
+    answer(Object.assign(new Error('Invalid login credentials'), { status: 400, code: 'invalid_credentials' }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('auth.wrong');
+  });
+});
+
 describe('back from Google (core-data-17)', () => {
   it('the session events are heard and the session is known', async () => {
     const uid = nextUid();
