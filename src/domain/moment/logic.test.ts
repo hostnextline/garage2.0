@@ -64,6 +64,11 @@ describe('lines', () => {
     expect(d[0]).toMatchObject({ kind: 'service', service_id: 's-f', duration_min: 90, unit_cents: 34999 });
     expect(d[1]).toMatchObject({ kind: 'part', qty: 2 });
   });
+  it('an estimate line with a quantity of 0 (or none) is booked once, never at 0 (R47, invoices-quotes-27)', () => {
+    const d = draftsFromQuote({ items: [{ description: 'Freins', qty: 0, unit_cents: 34999, taxable: true }, { description: 'Huile', qty: null as never, unit_cents: 8999, taxable: true }] });
+    expect(d.map((x) => x.qty)).toEqual([1, 1]);
+    expect(toItemInputs(d).map((x) => x.qty)).toEqual([1, 1]);
+  });
   it('reads the block from the address', () => {
     expect(parseChoice('2026-11-05', 'eve')).toEqual({ day: '2026-11-05', block: 'eve' });
     expect(parseChoice('2026-02-30', 'am')).toBe(null);
