@@ -123,7 +123,7 @@ export const agenda: typeof fr = {
     ok: 'Move',
     done: 'Job moved',
     unchanged: 'Nothing to change: the appointment is already there.',
-    textLater: 'The text to the customer goes once the move is sent.',
+    textLater: 'The text to the customer goes once the move is sent, if the app stays open.',
     started: 'This block has already started: pick a block to come.',
     closed: 'This block is closed: no truck works.',
     notBooked: 'Only a booked job that has not left yet can be moved.',
