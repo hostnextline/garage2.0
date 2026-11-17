@@ -1,10 +1,17 @@
 // Restaurer une sauvegarde : écrit un fichier SQL à faire tourner sur la base du garage (psql, ou l'éditeur SQL
 // de Supabase). Le README dit exactement ce que chaque façon fait et ne fait pas.
 //   node restaurer.mjs [dossier] [--tables customers,vehicles] [--ids <id>,<id>] [--remplacer | --retablir] > restauration.sql
+//   node restaurer.mjs [dossier] --neuve > restauration.sql        (toute la sauvegarde dans un projet NEUF)
 // Par défaut, seules les lignes qui manquent dans la base reviennent (rien de plus récent n'est écrasé, rien n'est effacé),
 //   sans déclencher les automatismes (heures, réorganisation, inventaire).
 // --remplacer : les lignes de la sauvegarde remplacent aussi celles qui existent (même clé). Rien n'est jamais effacé : ce
-//   qui a été créé après la sauvegarde reste.
+//   qui a été créé après la sauvegarde reste. La réservation en ligne reste ouverte ou fermée comme elle l'est dans la base
+//   (settings.booking.web.on : seul le propriétaire l'ouvre ou la ferme, dans l'app).
+// --neuve : toute la sauvegarde dans un projet NEUF (après la perte du projet : migrations, restaurer-comptes.mjs, puis
+//   ceci). Comme --remplacer, mais les réglages faits par les migrations (settings, counters) prennent TOUS les valeurs
+//   de la sauvegarde, la réservation en ligne comprise. Refusé (rien n'est changé) quand la base contient déjà des
+//   personnes, des clients, des rendez-vous, des factures ou des paiements. Sans --neuve, une restauration des réglages
+//   dans une base vide s'arrête en le disant (elle garderait sinon les réglages neufs des migrations, pas ceux du garage).
 // --retablir : défait l'« Effacer » de l'app (deleted_at remis à vide) sur les lignes qui étaient là le soir de la
 //   sauvegarde, automatismes ALLUMÉS (updated_at neuf : les téléphones les revoient). Aucune autre valeur n'est écrite.
 // --ids : seulement ces lignes-là (avec --tables) ; un id qui n'est dans aucun des fichiers nommés est une erreur.
@@ -17,13 +24,14 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const USAGE = 'node restaurer.mjs [dossier] [--tables customers,vehicles] [--ids <id>,<id>] [--remplacer | --retablir] > restauration.sql';
-let DOSSIER = 'donnees', seulement = null, remplacer = false, retablir = false, ids = null;
+const USAGE = 'node restaurer.mjs [dossier] [--tables customers,vehicles] [--ids <id>,<id>] [--remplacer | --retablir | --neuve] > restauration.sql';
+let DOSSIER = 'donnees', seulement = null, remplacer = false, retablir = false, neuve = false, ids = null;
 const liste = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
   if (a === '--remplacer') remplacer = true;
   else if (a === '--retablir') retablir = true;
+  else if (a === '--neuve') neuve = true;
   else if (a === '--tables') seulement = liste(process.argv[++i]);
   else if (a === '--ids') ids = liste(process.argv[++i]);
   else if (a.startsWith('--')) arreter(`Option inconnue : ${a}\n  ${USAGE}`);
@@ -35,7 +43,7 @@ const ORDRE = ['settings', 'counters', 'staff', 'trucks', 'truck_week', 'truck_d
   'customers', 'customer_notes', 'vehicles', 'quotes', 'jobs', 'job_items', 'invoices', 'payments', 'expenses', 'inventory_moves',
   'shifts', 'trips', 'messages', 'public_links', 'invitations', 'activity', 'attachments',
   'coffre', 'positions', 'position_log', 'op_log', 'stripe_events', 'hermes_questions',
-  'ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings'];
+  'ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'];
 const PAQUET = 500;
 const dollar = (s) => { let tag = 'r'; while (s.includes(`$${tag}$`)) tag += 'x'; return `$${tag}$${s}$${tag}$`; };
 /** the file of a picture, by its kind (the names sauvegarde.mjs writes) */
@@ -57,6 +65,7 @@ const ecrire = async (s) => { if (!process.stdout.write(s + '\n')) await new Pro
 
 // ---- what is in the folder, checked BEFORE a line of SQL is written
 if (remplacer && retablir) arreter('--remplacer et --retablir ne vont pas ensemble : choisis l\'un ou l\'autre (le README dit ce que fait chacun).');
+if (neuve && (remplacer || retablir || seulement || ids)) arreter('--neuve remet TOUTE la sauvegarde dans un projet neuf : il ne va ni avec --remplacer, ni avec --retablir, ni avec --tables ou --ids.');
 if (ids && !seulement) arreter('--ids demande --tables : nomme la ou les tables de ces lignes (--tables customers --ids <id>).');
 if (ids && !ids.length) arreter('--ids demande au moins un id (--ids <id>,<id>).');
 if (!existsSync(DOSSIER)) arreter(`le dossier ${DOSSIER} n'existe pas.`);
@@ -92,6 +101,15 @@ for (const t of tables) {
   if (resume && resume.tables && t in resume.tables && rows.length !== resume.tables[t]) arreter(`${t}.json a ${rows.length} lignes, _resume.json en annonce ${resume.tables[t]} : la sauvegarde n'est pas entière.`);
   lignesDe[t] = ids ? rows.filter((r) => r && ids.includes(String(r.id))) : rows;
   for (const r of lignesDe[t]) trouves.add(String(r.id));
+}
+// a picture in SVG: the server refuses them since the migration refonte_acces (attachments_no_svg: an SVG can run a
+// script in the owner's session). One left in an old backup would stop the whole restore: it stays in the backup, said here.
+if (lignesDe.attachments) {
+  const svg = lignesDe.attachments.filter((r) => r && r.mime === 'image/svg+xml');
+  if (svg.length) {
+    process.stderr.write(`À savoir : ${svg.length} photo${svg.length > 1 ? 's' : ''} SVG ne ${svg.length > 1 ? 'reviennent' : 'revient'} pas (le serveur refuse ce format) : ${svg.map((r) => r.id).join(', ')}. ${svg.length > 1 ? 'Elles restent' : 'Elle reste'} dans la sauvegarde (photos/<id>.svg).\n`);
+    lignesDe.attachments = lignesDe.attachments.filter((r) => !(r && r.mime === 'image/svg+xml'));
+  }
 }
 if (ids) {
   const absents = ids.filter((x) => !trouves.has(x));
@@ -130,8 +148,22 @@ if (retablir) {
   process.exit(0);
 }
 
-await ecrire(`-- ${remplacer ? 'AVEC --remplacer : les lignes de la sauvegarde remplacent celles de la base qui ont la même clé ; rien n’est effacé.' : 'Seules les lignes qui manquent reviennent ; rien n’est écrasé, rien n’est effacé.'}`);
+await ecrire(`-- ${neuve ? 'AVEC --neuve : toute la sauvegarde dans un projet neuf ; les réglages faits par les migrations prennent ceux de la sauvegarde.' : remplacer ? 'AVEC --remplacer : les lignes de la sauvegarde remplacent celles de la base qui ont la même clé ; rien n’est effacé. La réservation en ligne reste comme elle est dans la base.' : 'Seules les lignes qui manquent reviennent ; rien n’est écrasé, rien n’est effacé.'}`);
 await ecrire('begin;');
+// which database this is, checked before anything is written. A NEW project holds only what the migrations made (the
+// settings row, the invoice counter): no person, no customer, no job, no invoice, no payment.
+const VIDE = "not exists (select 1 from public.staff) and not exists (select 1 from public.customers) and not exists (select 1 from public.jobs) and not exists (select 1 from public.invoices) and not exists (select 1 from public.payments)";
+if (neuve) {
+  await ecrire(`do $g$ begin if not (${VIDE}) then raise exception 'restauration --neuve : cette base n''est pas neuve (elle a déjà des personnes, des clients, des rendez-vous, des factures ou des paiements) : rien n''a été changé. Sur la base du garage, restaurer sans --neuve (le README dit quelle façon prendre).'; end if; end $g$;`);
+} else if (!remplacer && tables.includes('settings') && !ids) {
+  // the default mode never writes over a row: in a new project the migrations' settings would stay (the company, the tax
+  // numbers on the invoices, the rights, the booking settings), with only a NOTICE. Stopped, in words.
+  await ecrire(`do $g$ begin if ${VIDE} then raise exception 'restauration : cette base est vide (aucune personne, aucun client, aucun rendez-vous) : c''est un projet neuf. Refais le fichier avec --neuve (node restaurer.mjs donnees --neuve), sinon les réglages du garage ne reviendraient pas : rien n''a été changé.'; end if; end $g$;`);
+}
+// --remplacer: the public booking page stays open or closed as the owner left it in the app (web_switch alone changes it):
+// what the database holds now is kept aside, then put back over the night's settings
+const garderWeb = remplacer && tables.includes('settings');
+if (garderWeb) await ecrire(`create temp table restaurer_web on commit drop as select id, coalesce(booking->'web' ? 'on', false) as avait, booking->'web'->'on' as valeur from public.settings;`);
 await ecrire("set local session_replication_role = replica;  -- sans les automatismes : les données reviennent telles quelles");
 // the key of each table is read from the database itself (its primary key): no second list to keep in step.
 // The columns written are those of the BACKUP that the table still has: a column added after that night is not named,
@@ -178,8 +210,18 @@ for (const t of tables) {
   const photos = t === 'attachments';   // a picture is heavy: one statement each
   for (let i = 0; i < rows.length; i += photos ? 1 : PAQUET) {
     const lot = photos ? [avecPhoto(rows[i])] : rows.slice(i, i + PAQUET);
-    await ecrire(`select '${t}' as table_, pg_temp.remettre('${t}', ${dollar(JSON.stringify(lot))}::jsonb, ${remplacer}) as lignes;`);
+    await ecrire(`select '${t}' as table_, pg_temp.remettre('${t}', ${dollar(JSON.stringify(lot))}::jsonb, ${remplacer || neuve}) as lignes;`);
   }
+}
+if (garderWeb) {
+  await ecrire(`update public.settings s set booking = case when w.avait
+      then jsonb_set(coalesce(s.booking, '{}'::jsonb), '{web}', (case when jsonb_typeof(s.booking->'web') = 'object' then s.booking->'web' else '{}'::jsonb end) || jsonb_build_object('on', w.valeur))
+      else coalesce(s.booking, '{}'::jsonb) #- '{web,on}' end
+    from restaurer_web w where w.id = s.id and (s.booking->'web'->'on') is distinct from w.valeur;  -- la réservation en ligne reste comme elle était`);
+}
+if (neuve) {
+  // the accounts come first (restaurer-comptes.mjs): a person whose account is missing cannot sign in — said, not stopped
+  await ecrire(`do $c$ declare n int; begin select count(*) into n from public.staff s where s.deleted_at is null and not exists (select 1 from auth.users u where u.id = s.id); if n > 0 then raise warning 'restauration --neuve : % personne(s) de l''équipe sans compte de connexion : lancer restaurer-comptes.mjs (README).', n; end if; end $c$;`);
 }
 // a few rows asked by their id (--ids): their updated_at is made new, so every phone pulls them again (a phone keeps a
 // row only when the server's copy is newer than its own). Not for a whole table: until the app pulls by (updated_at, id),

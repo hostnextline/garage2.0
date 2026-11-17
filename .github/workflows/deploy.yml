@@ -1,10 +1,23 @@
 # Publie l'app à chaque changement de la branche main : sur Vercel (branche « vercel », voir ops/vercel) et sur
 # l'ancienne adresse https://hostnextline.github.io/garage2.0/ (branche gh-pages, GitHub Pages).
 # Les types (tsc) et les tests passent d'abord : si l'un des deux échoue, rien n'est publié et l'app en ligne reste la même.
+# Un changement qui ne touche QUE des fichiers hors de l'app (notes, tests du serveur, migrations, fonctions, scripts de
+# sauvegarde, procédures) ne publie rien : sinon chaque téléphone verrait une « nouvelle version » identique. Les
+# fonctions et les migrations se publient à part (ops/live/CUTOVER.md). « Run workflow » publie quand même, à la main.
+# Les tests de l'app qui lisent supabase/ roulent quand même pour un tel changement : tests-main.yml (ne publie rien).
 name: Publier l'app
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'tests/**'
+      - 'supabase/**'
+      - 'ops/live/**'
+      - 'ops/sauvegardes/**'
+      - 'ops/tests/**'
+      - 'CLAUDE.md'
+      - 'README.md'
   workflow_dispatch: {}
 permissions:
   contents: write
@@ -29,6 +42,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Tests
         run: npm test
+        env:
+          TZ: America/Toronto   # the garage's clock (Montréal), like the phones and the end-to-end test (R01)
       - name: Construire
         # the version file says when this version was made, what changes, and since when an important version exists
         # (a commit with « [important] » in its message): the phones with an older version then get a notification
@@ -40,6 +55,9 @@ jobs:
           npm run build
         env:
           VITE_APP_VERSION: ${{ github.sha }}
+          # a version made before this date must update before anything else (only after a harmful build): the
+          # repository variable APP_MIN_BUILT_AT (Settings → Secrets and variables → Actions → Variables), empty = none
+          APP_MIN_BUILT_AT: ${{ vars.APP_MIN_BUILT_AT }}
       - name: Publier sur Vercel (branche vercel)
         # the same built app in public/, with the Vercel settings next to it; Vercel publishes each new push
         run: |

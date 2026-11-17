@@ -25,12 +25,19 @@ jobs:
       - run: npm ci
       - name: Types et tests de l'app
         run: npx tsc --noEmit && npm test
+        env:
+          TZ: America/Toronto   # the garage's clock, as in « Publier l'app » (R01)
       - name: Postgres 16 de la machine
         run: |
           ls -d /usr/lib/postgresql/*/bin
           sudo systemctl stop postgresql || true
       - name: La copie locale du serveur
         run: bash tests/stack/install.sh && bash tests/stack/start.sh
+      - name: Les types des fonctions du serveur
+        # Deno runs a function without checking its types, and the app's tsc leaves supabase/ out (infra-15)
+        run: tests/stack/node_modules/.bin/deno check --quiet supabase/functions/*/index.ts
+        env:
+          DENO_NO_UPDATE_CHECK: '1'
       - name: Base de données et fonctions
         # ops/tests: the backup and restore scripts (ops/sauvegardes) and the files of ops, the workflows and tests/stack/mac
         run: node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs ops/tests/*.test.mjs

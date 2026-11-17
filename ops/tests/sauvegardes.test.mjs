@@ -52,6 +52,7 @@ async function faux(jouer) {
     });
   });
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+  srv.unref();   // a test that fails before « fermer » never keeps the whole run waiting
   const base = `http://127.0.0.1:${srv.address().port}`;
   return { vus, env: { FONCTION: `${base}/backup`, CLE: 'cle-test', TICKET_URL: `${base}/ticket?x=1` }, fermer: () => new Promise((ok) => srv.close(ok)) };
 }
@@ -71,12 +72,13 @@ after(async () => {
 // The pictures: one file each (x-branches-06: one attachments.json holding every picture stops the backup at 100 MB)
 // ---------------------------------------------------------------------------------------------------------------
 test('pictures: each one is a file of its own, attachments.json keeps the rows without them, and the restore gives back the same picture', async () => {
-  // 25 pictures (two pages of 20 for the server of today), one of each kind, and one whose text is not plain base64
+  // 25 pictures (two pages of 20 for the server of today), one of each kind the server takes (no SVG since
+  // refonte_acces: attachments_no_svg), and one whose text is not plain base64
   const data = (i) => Buffer.from(`photo ${i} `.repeat(40 + i)).toString('base64');
-  const mimes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'application/pdf'];
+  const mimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
   for (let i = 0; i < 25; i++) {
     const d = i === 7 ? 'ceci n’est pas du base64 !' : data(i);
-    photos.push((await q(`insert into public.attachments (kind, mime, data, bytes) values ('receipt', $1, $2, $3) returning id`, [mimes[i % 5], d, Math.round(d.length * 0.75)]))[0].id);
+    photos.push((await q(`insert into public.attachments (kind, mime, data, bytes) values ('receipt', $1, $2, $3) returning id`, [mimes[i % mimes.length], d, Math.round(d.length * 0.75)]))[0].id);
   }
   const avant = await q(`select id, mime, data, updated_at from public.attachments where id = any($1)`, [photos]);
   const dos = join(dir, 'nuit', 'donnees');
@@ -277,6 +279,59 @@ test('the end of the night on a server that does not know « done » nor « reco
   const r2 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('fin-avant-2')], { ...s2.env, COMMIT });
   assert.equal(r2.code, 0, r2.out + r2.err);
   await s2.fermer();
+  // the functions published BEFORE their migration (cutover, between the two steps): both answer 503 « not_ready »
+  const s3 = await faux((quoi) => [503, { ok: false, code: 'not_ready', error: quoi === 'backup' ? 'La table des sauvegardes n’existe pas encore sur cette base.' : 'Le rapprochement n’est pas encore installé sur cette base.' }]);
+  const r3 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('fin-avant-3')], { ...s3.env, COMMIT });
+  assert.equal(r3.code, 0, 'not_ready is « not yet », never a red night: ' + r3.out + r3.err);
+  assert.match(r3.out, /ATTENTION : Le serveur ne connaît pas encore « backup done »/);
+  assert.match(r3.out, /ATTENTION : Le serveur ne connaît pas encore le rapprochement/);
+  assert.equal(s3.vus.length, 2, 'not tried again');
+  await s3.fermer();
+});
+
+test('a night that fails is told to the garage (backup done, ok: false, the tables read whole so far) and stays red', async () => {
+  // jobs is read whole, then customers comes short: the copy is not whole
+  const s = await faux((quoi, b) => {
+    if (b.action === 'tables') return [200, { ok: true, at: 'x', tables: [{ name: 'jobs', count: 2 }, { name: 'customers', count: 3 }] }];
+    if (b.action === 'rows' && b.table === 'jobs') return [200, { ok: true, rows: [{ id: 'j1' }, { id: 'j2' }], next: null }];
+    if (b.action === 'rows') return [200, { ok: true, rows: [{ id: '1' }], next: null }];
+    if (b.action === 'done') return [200, { ok: true, id: 'run-1' }];
+    return [400, { ok: false, code: 'action', error: 'Action inconnue.' }];
+  });
+  const r = await lancer('sauvegarde.mjs', [join(dir, 'ratee', 'donnees')], s.env);
+  assert.equal(r.code, 1, 'red');
+  assert.match(r.err, /customers : 1 lignes reçues, 3 attendues/);
+  assert.deepEqual(s.vus.filter((v) => v.body.action === 'done').map((v) => v.body), [{ action: 'done', ok: false, tables: { jobs: 2 }, rows: 2, commit: null }]);
+  assert.match(r.out, /Nuit ratée notée au garage \(1 tables lues, 2 lignes\)/);
+  await s.fermer();
+  // a server that does not know « done », or does not answer: still red, said, nothing else
+  const s2 = await faux((quoi, b) => (b.action === 'tables' ? [500, { ok: false, code: 'server', error: 'panne' }] : [400, { ok: false, code: 'action', error: 'Action inconnue.' }]));
+  const r2 = await lancer('sauvegarde.mjs', [join(dir, 'ratee-2', 'donnees')], s2.env);
+  assert.equal(r2.code, 1);
+  assert.match(r2.out, /la nuit ratée n’est pas notée au garage/);
+  await s2.fermer();
+  // the push refused (the copy was whole): --echec tells the night's tables, and does not turn anything green or red
+  const s3 = await faux(() => [200, { ok: true, id: 'run-2' }]);
+  const r3 = await lancer('sauvegarde.mjs', ['--echec', nuitFaite('push-refuse')], s3.env);
+  assert.equal(r3.code, 0, r3.out + r3.err);
+  assert.deepEqual(s3.vus.map((v) => v.body), [{ action: 'done', ok: false, tables: { customers: 120, jobs: 45, invoices: 30 }, rows: 195, commit: null }]);
+  await s3.fermer();
+});
+
+test('a failed night against the functions of this copy: « done » with ok: false is accepted (one row, ok false) or not known yet', async () => {
+  const avant = (await q(`select to_regclass('public.ops_backup_runs') is not null as la`))[0].la ? (await q(`select id from public.ops_backup_runs`)).map((x) => x.id) : null;
+  const r = await lancer('sauvegarde.mjs', ['--echec', nuitFaite('echec-vrai')], VRAI);
+  try {
+    assert.equal(r.code, 0, r.out + r.err);
+    if (avant == null) assert.match(r.out, /pas notée au garage/);
+    else {
+      assert.match(r.out, /Nuit ratée notée au garage \(3 tables lues, 195 lignes\)/);
+      const neuves = await q(`select ok, tables, rows from public.ops_backup_runs where not (id = any($1))`, [avant]);
+      assert.deepEqual(neuves.map((x) => [x.ok, x.tables, Number(x.rows)]), [[false, 3, 195]]);
+    }
+  } finally {
+    if (avant != null) await q(`delete from public.ops_backup_runs where not (id = any($1))`, [avant]);
+  }
 });
 
 test('the end of the night: a reconciliation that says « bad » ends RED (GitHub e-mails the owner), after « done » was said', async () => {
@@ -322,8 +377,10 @@ test('the end of the night against the functions of this copy: « done » and th
                           from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and c.relname like 'ops\\_%'`)).filter((x) => x.k);
   const avant = {};
   for (const { t, k } of ops) avant[t] = (await q(`select to_jsonb(x) ->> $1 as k from public.${t} x`, [k])).map((x) => x.k);
-  const dos = join(dir, 'nuit', 'donnees');   // the copy of the first test
-  assert.ok(existsSync(join(dos, '_resume.json')), 'the first test made a copy');
+  // a copy of its own (never the one another test left): step 1 of the night against this copy's « backup » function
+  const dos = join(dir, 'nuit-vraie', 'donnees');
+  const copie = await lancer('sauvegarde.mjs', [dos], VRAI);
+  assert.equal(copie.code, 0, copie.out + copie.err);
   const r = await lancer('sauvegarde.mjs', ['--fin', dos], { ...VRAI, COMMIT });
   try {
     assert.ok(/Sauvegarde notée au garage/.test(r.out) || /ne connaît pas encore « backup done »/.test(r.out), 'the « backup » function of this copy took « done » { tables, rows, commit } or does not know it: ' + r.out + r.err);
@@ -378,11 +435,60 @@ test('restore: a file of the backup that the script does not know is an error, a
 test('restore: the tables of the reconciliation and of the backup log are in the list (after the tables they tell about)', async () => {
   const dos = join(dir, 'ops', 'donnees');
   mkdirSync(dos, { recursive: true });
-  for (const t of ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'customers']) writeFileSync(join(dos, `${t}.json`), JSON.stringify([{ id: randomUUID() }]));
+  for (const t of ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline', 'customers']) writeFileSync(join(dos, `${t}.json`), JSON.stringify([{ id: randomUUID() }]));
   const r = await lancer('restaurer.mjs', [dos]);
   assert.equal(r.code, 0, r.err);
   const ordre = [...r.out.matchAll(/pg_temp\.remettre\('(\w+)'/g)].map((m) => m[1]);
-  assert.deepEqual(ordre, ['customers', 'ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings']);
+  assert.deepEqual(ordre, ['customers', 'ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline']);
+});
+
+test('restore: every table the « backup » function hands out is one the restore knows (R07: ops_recon_baseline stopped a full restore)', () => {
+  const fn = readFileSync(join(ROOT, 'supabase/functions/backup/handler.ts'), 'utf8');
+  const liste = fn.match(/export const TABLES = \[([\s\S]*?)\] as const/);
+  assert.ok(liste, 'TABLES is found in backup/handler.ts');
+  const tables = [...liste[1].replace(/\/\/.*$/gm, '').matchAll(/'(\w+)'/g)].map((m) => m[1]);
+  assert.ok(tables.includes('ops_recon_baseline') && tables.length > 30);
+  const ordre = readFileSync(join(OPS, 'restaurer.mjs'), 'utf8').match(/const ORDRE = \[([\s\S]*?)\];/)[1];
+  const connues = [...ordre.matchAll(/'(\w+)'/g)].map((m) => m[1]);
+  assert.deepEqual(tables.filter((t) => !connues.includes(t)), [], 'a table of the backup missing from ORDRE stops every full restore');
+  assert.deepEqual(connues, tables, 'the same tables, in the same order (a table after the ones it points to)');
+});
+
+test('restore --remplacer of the settings: the night\'s values come back, but the public booking page stays open or closed as it is now (R111)', async () => {
+  const avant = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+  try {
+    // that night: booking open, another home; today: the owner closed the booking page
+    const nuit = { ...avant, booking: { ...(avant.booking || {}), home: { label: 'Centrale (sauvegarde)' }, web: { ...((avant.booking || {}).web || {}), on: true } } };
+    await q(`update public.settings set booking = jsonb_set(booking, '{web}', coalesce(booking->'web', '{}'::jsonb) || '{"on": false}') where id = 1`);
+    const dos = dossier('web-on', { settings: [nuit] });
+    const r = await restaurer(dos, ['--tables', 'settings', '--remplacer']);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.sql, '', 'the SQL ran: ' + r.sql);
+    const b = (await q(`select booking from public.settings where id = 1`))[0].booking;
+    assert.equal(b.home.label, 'Centrale (sauvegarde)', 'the night\'s settings are back');
+    assert.equal(b.web.on, false, 'the booking page stays closed: only the owner opens it (web_switch)');
+    // and the other way: open today, closed that night
+    await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
+    const r2 = await restaurer(dossier('web-on-2', { settings: [{ ...nuit, booking: { ...nuit.booking, web: { ...nuit.booking.web, on: false } } }] }), ['--tables', 'settings', '--remplacer']);
+    assert.equal(r2.sql, '', 'the SQL ran: ' + r2.sql);
+    assert.equal((await q(`select booking->'web'->'on' v from public.settings where id = 1`))[0].v, true);
+  } finally {
+    await q(`update public.settings s set booking = ($1::jsonb)->'booking' where id = 1`, [avant]);
+  }
+});
+
+test('restore: an SVG picture of an old backup (the server refuses them now) is left in the backup, said, and does not stop the restore', async () => {
+  const ok = randomUUID(), svg = randomUUID();
+  photos.push(ok, svg);
+  const dos = dossier('svg', { attachments: [
+    { id: ok, kind: 'receipt', mime: 'image/png', data: Buffer.from('un reçu').toString('base64'), bytes: 7 },
+    { id: svg, kind: 'receipt', mime: 'image/svg+xml', data: Buffer.from('<svg/>').toString('base64'), bytes: 6 }] });
+  const r = await restaurer(dos, ['--tables', 'attachments']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.sql, '', 'the SQL ran: ' + r.sql);
+  assert.match(r.err, new RegExp(`1 photo SVG ne revient pas .*${svg}`));
+  assert.equal((await q(`select count(*)::int n from public.attachments where id = $1`, [ok]))[0].n, 1, 'the other picture is back');
+  assert.equal((await q(`select count(*)::int n from public.attachments where id = $1`, [svg]))[0].n, 0);
 });
 
 test('restore with --remplacer: a row that an old backup holds twice does not break the restore, and what was made after the backup stays', async () => {
@@ -610,4 +716,132 @@ test('the schema of the night: when the server tells its last migration, the cop
   assert.equal(sql.code, 0, sql.err);
   assert.match(sql.out, /-- Schéma de la base le soir de la sauvegarde : "20261116000050"/);
   await s.fermer();
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The lost project, rehearsed: a NEW database made from the migrations, a whole night restored into it (rapprochement-03)
+// ---------------------------------------------------------------------------------------------------------------
+test('a lost project: a whole night restored with --neuve into a NEW database made from the migrations gives back every table, the garage\'s settings and numbers, and the reconciliation reads the same books', async () => {
+  const nom = `ops_repetition_${process.pid}_${Date.now()}`;
+  const P = (args, input) => execFileSync('psql', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-d', nom, ...args],
+    { encoding: 'utf8', input, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'], maxBuffer: 1 << 28 });
+  const avant = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+  const neuf = new pg.Pool({ host: '127.0.0.1', port: 54332, user: 'postgres', database: nom, max: 1 });
+  neuf.on('error', () => {});   // its idle connection is cut when the database is dropped at the end
+  const nq = async (sql, p = []) => (await neuf.query(sql, p)).rows;
+  await q(`create database ${nom}`);
+  try {
+    // the garage's own settings (what a new project's migrations do not have), and a customer of its own
+    await q(`update public.settings set company = company || '{"name": "Mécanique Mobile (répétition)"}',
+                     billing = billing || '{"invoice_prefix": "HIS-"}',
+                     booking = jsonb_set(booking || '{"home": {"label": "Centrale (sauvegarde)"}}', '{web}', coalesce(booking->'web', '{}'::jsonb) || '{"on": false}') where id = 1`);
+    clients.push((await q(`insert into public.customers (first_name, phone, notes) values ('Répétition', '4385550299', 'perte du projet') returning id`))[0].id);
+    // the night, made by the nightly script against this copy's « backup » function
+    const dos = join(dir, 'repetition', 'donnees');
+    const r = await lancer('sauvegarde.mjs', [dos], VRAI);
+    assert.equal(r.code, 0, r.out + r.err);
+    const resume = lire(dos, '_resume.json');
+    assert.ok('ops_recon_baseline' in resume.tables, 'the backup holds the reconciliation\'s starting point');
+    const ici = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+
+    // a new project: what Supabase has (roles, the auth schema), then every migration, in order
+    P(['-f', join(ROOT, 'tests/stack/base.sql')]);
+    P(['-c', `alter database ${nom} set search_path to "$user", public, extensions`]);
+    P(['-c', 'drop schema auth cascade']);
+    P([], execFileSync('pg_dump', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-s', '-n', 'auth', 'postgres'], { encoding: 'utf8', maxBuffer: 1 << 28 }));
+    for (const f of readdirSync(join(ROOT, 'supabase/migrations')).filter((x) => x.endsWith('.sql')).sort()) P(['-f', join(ROOT, 'supabase/migrations', f)]);
+    // restaurer-comptes.mjs, played here: the team's accounts with the same ids (the real script talks to the project's Auth)
+    for (const s of lire(dos, 'staff.json')) await nq(`insert into auth.users (id, email, aud, role) values ($1, $2, 'authenticated', 'authenticated') on conflict do nothing`, [s.id, s.email || null]);
+
+    const ecrit = async (args) => { const x = await lancer('restaurer.mjs', [dos, ...args]); assert.equal(x.code, 0, x.err); const f = join(dir, `rep-${randomUUID()}.sql`); writeFileSync(f, x.out); return f; };
+    // the default mode in a new project would keep the migrations' settings: it stops, says --neuve, and changes nothing
+    const defaut = await ecrit([]);
+    assert.throws(() => P(['-f', defaut]), (e) => /c'est un projet neuf\. Refais le fichier avec --neuve/.test(String(e.stderr)));
+    assert.equal((await nq(`select count(*)::int n from public.customers`))[0].n, 0, 'nothing was written');
+    // --neuve: everything
+    const tout = await ecrit(['--neuve']);
+    P(['-f', tout]);
+    for (const [t, n] of Object.entries(resume.tables)) {
+      const ici = (await nq(`select count(*)::int n from public.${t}`))[0].n;
+      if (t !== 'activity') { assert.equal(ici, n, `${t}: every row of the night, nothing else`); continue; }
+      // the migrations of a new project write a few lines of their own in the history (settings changed): they stay
+      // beside the night's, and every line of the night is there
+      const ids = lire(dos, 'activity.json').map((r) => String(r.id));
+      assert.equal((await nq(`select count(*)::int n from public.activity where id::text = any($1)`, [ids]))[0].n, n, 'activity: every line of the night');
+      assert.ok(ici >= n);
+    }
+    const la = (await nq(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
+    assert.deepEqual(la, ici, 'the garage\'s settings, as they were (company, invoice prefix, booking, web.on, rights…)');
+    assert.equal(la.booking.web.on, false, 'online booking stays closed as the owner left it (the migration opens it)');
+    assert.deepEqual(await nq(`select name, next_value from public.counters order by name`), await q(`select name, next_value from public.counters order by name`), 'the invoice counter');
+    const maxJob = (await nq(`select coalesce(max(number), 0)::bigint m from public.jobs`))[0].m;
+    assert.ok(Number((await nq(`select last_value from public.job_number_seq`))[0].last_value) >= Number(maxJob), 'the next job takes a new number');
+    // the reconciliation reads the same books in both (same differences, same day's sheet), and none of its checks breaks
+    const recon = async (f) => { const v = (await f(`select public.recon_collect(public.local_today() - 1) v`))[0].v; return { f: v.findings.map((x) => [x.c, x.s, x.t, x.e, x.k].join('|')).sort(), sheet: v.sheet }; };
+    const [a, b] = [await recon(q), await recon(nq)];
+    assert.deepEqual(b.f.filter((x) => /\.error\|/.test(x)), [], 'no check of the reconciliation breaks on the restored base');
+    assert.deepEqual(b.f, a.f, 'the same differences');
+    assert.deepEqual(b.sheet, a.sheet, 'the same sheet of the day');
+    // a second --neuve on a base that is no longer new: refused, nothing changed
+    assert.throws(() => P(['-f', tout]), (e) => /cette base n'est pas neuve/.test(String(e.stderr)));
+  } finally {
+    await neuf.end();
+    await q(`drop database if exists ${nom} with (force)`);
+    await q(`update public.settings s set company = ($1::jsonb)->'company', billing = ($1::jsonb)->'billing', booking = ($1::jsonb)->'booking' where id = 1`, [avant]);
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The way back of the database (CUTOVER.md section 7), rehearsed: a base at AVANT, the six migrations, then the
+// runbook's own lines (the functions of before, the triggers) — the functions and the triggers that fire are AVANT's
+// (mise-a-niveau-01, compat-01: the triggers made by the migrations kept refusing what yesterday's app does)
+// ---------------------------------------------------------------------------------------------------------------
+test('the way back: after the six migrations, fonctions_avant.sql and the « Déclencheurs » block of CUTOVER.md give back the functions and the triggers of before', async () => {
+  const nom = `ops_retour_${process.pid}_${Date.now()}`;
+  const P = (args, input) => execFileSync('psql', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-d', nom, ...args],
+    { encoding: 'utf8', input, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'], maxBuffer: 1 << 28 });
+  const rb = readFileSync(join(ROOT, 'ops/live/CUTOVER.md'), 'utf8');
+  const requete = rb.match(/\*\*Le texte de toutes les fonctions SQL\*\*[\s\S]*?```sql\n([\s\S]*?)```/);
+  const bloc = rb.match(/\*\*Déclencheurs\*\*[\s\S]*?```sql\n([\s\S]*?)```/);
+  assert.ok(requete && bloc, 'CUTOVER.md holds the query of fonctions_avant.sql and the « Déclencheurs » block');
+  const migrations = readdirSync(join(ROOT, 'supabase/migrations')).filter((x) => x.endsWith('.sql')).sort();
+  const neuves = migrations.filter((f) => f >= '20261116');
+  assert.ok(neuves.length >= 6);
+  const nb = new pg.Pool({ host: '127.0.0.1', port: 54332, user: 'postgres', database: nom, max: 1 });
+  nb.on('error', () => {});
+  const nq = async (sql) => (await nb.query(sql)).rows;
+  const etat = async () => ({
+    fonctions: Object.fromEntries((await nq(`select p.oid::regprocedure::text f, md5(pg_get_functiondef(p.oid)) m from pg_proc p
+       where p.pronamespace = 'public'::regnamespace and p.prokind in ('f', 'p')
+         and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')`)).map((x) => [x.f, x.m])),
+    declencheurs: (await nq(`select pg_get_triggerdef(t.oid) d from pg_trigger t join pg_class c on c.oid = t.tgrelid
+       where c.relnamespace = 'public'::regnamespace and not t.tgisinternal and t.tgenabled <> 'D' order by 1`)).map((x) => x.d)
+  });
+  await q(`create database ${nom}`);
+  try {
+    P(['-f', join(ROOT, 'tests/stack/base.sql')]);
+    P(['-c', `alter database ${nom} set search_path to "$user", public, extensions`]);
+    P(['-c', 'drop schema auth cascade']);
+    P([], execFileSync('pg_dump', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-s', '-n', 'auth', 'postgres'], { encoding: 'utf8', maxBuffer: 1 << 28 }));
+    // AVANT: every migration before the six (none of them ever changes once applied on live)
+    for (const f of migrations.filter((x) => x < '20261116')) P(['-f', join(ROOT, 'supabase/migrations', f)]);
+    const avant = await etat();
+    const fonctionsAvant = (await nq(requete[1]))[0].string_agg;
+    assert.ok(fonctionsAvant.length > 10000, 'ops/live/rollback/fonctions_avant.sql, as section 1.3 makes it');
+    // the cutover
+    for (const f of neuves) P(['-f', join(ROOT, 'supabase/migrations', f)]);
+    const apres = await etat();
+    assert.notDeepEqual(apres.declencheurs, avant.declencheurs, 'the migrations do change the triggers');
+    // the way back: the functions of before, then the block (its last line comes from F of before: CREATE OR REPLACE)
+    P([], fonctionsAvant);
+    const suivre = avant.declencheurs.find((d) => / job_items_invoice_follow /.test(d));
+    assert.ok(suivre, 'job_items_invoice_follow existed before');
+    P([], bloc[1] + '\n' + suivre.replace(/^CREATE TRIGGER/, 'CREATE OR REPLACE TRIGGER') + ';\n');
+    const retour = await etat();
+    for (const [f, m] of Object.entries(avant.fonctions)) assert.equal(retour.fonctions[f], m, `${f}: its text of before`);
+    assert.deepEqual(retour.declencheurs, avant.declencheurs, 'the triggers that fire are those of before, no more, no less');
+  } finally {
+    await nb.end();
+    await q(`drop database if exists ${nom} with (force)`);
+  }
 });

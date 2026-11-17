@@ -1,7 +1,7 @@
 -- Before the cutover of 2026-11-16 (« Refonte »): READ-ONLY questions to live (Supabase project garage2), asked with
 -- the owner's go, BEFORE anything is applied. NOT a migration: nothing here writes, creates or changes anything.
 -- Each answer is one row. Run them one at a time (SQL editor, or the Claude Code MCP `supabase-garage` execute_sql),
--- and keep every answer in ops/live/ (live.before.*.json) — they are the « before » of the runbook (ops/live/CUTOVER.md).
+-- and keep every answer in ops/live/ (live.avant.json) — they are the « before » of the runbook (ops/live/CUTOVER.md).
 --
 -- Q1 to Q7 answer the unknowns of the rebuild plan (scan/design/risk-first.md, section 0); two of them cannot be
 -- answered by SQL and are said so (Q5, Q6). Q8 is the restore's question. F is the schema fingerprint: the SAME query
@@ -38,7 +38,8 @@ select json_build_object(
 
 -- Q5. The commit each of the 11 Edge Functions really runs: NOT answerable by SQL. Read-only listing of the functions
 --     (version, updated_at, entrypoint) with the owner's go; the commit is in the entrypoint's raw GitHub address.
---     Keep it as ops/live/deployed.before.json (the way back of the functions).
+--     Keep it as ops/live/deployed.avant.json (the way back of the functions). After the cutover each function answers
+--     GET …/functions/v1/<name>?version with { ok: true, commit } (CUTOVER.md 3.3).
 -- Q6. Vercel: are preview deployments of another branch reachable without a Vercel login: NOT answerable by SQL
 --     (Vercel dashboard → Settings → Deployment Protection).
 
@@ -67,6 +68,42 @@ select json_build_object(
   'digest', to_regprocedure('extensions.digest(bytea, text)') is not null,
   'extensions', (select json_agg(json_build_object('name', extname, 'version', extversion, 'schema', extnamespace::regnamespace::text) order by extname) from pg_extension)
 ) as q8_restore_and_tools;
+
+-- Q9. Before the « Refonte » migrations: what they meet. Pictures in SVG (refonte_acces refuses new ones; a restore leaves
+--     the old ones in the backup), the NAMES of the rows of « secrets » (never a value: is a Stripe webhook there, is the
+--     backup repository pinned), the people of the team with no e-mail (their account could not be made again after the
+--     loss of the project), and the starting numbers of the runbook's control (CUTOVER.md 2c).
+select json_build_object(
+  'svg_pictures', (select count(*) from public.attachments where mime = 'image/svg+xml'),
+  'secret_names', (select json_agg(key order by key) from public.secrets),
+  'staff_without_email', (select count(*) from public.staff where deleted_at is null and coalesce(email, '') = ''),
+  'control', json_build_object('customers', (select count(*) from public.customers), 'jobs', (select count(*) from public.jobs),
+    'invoices', (select count(*) from public.invoices), 'payments', (select count(*) from public.payments),
+    'payments_cents', (select coalesce(sum(amount_cents), 0) from public.payments where deleted_at is null),
+    'next_job_number', (select last_value from public.job_number_seq))
+) as q9_before_refonte;
+
+-- Q10. What F does not see (mise-a-niveau-04): who OWNS each function (on live « postgres » is not a superuser: a function
+--      owned by another role keeps working only through its own grants), who runs each pg_cron job, the column-level
+--      rights (the migrations revoke and grant per column on jobs), and the body alone (md5 of prosrc, which does not
+--      depend on the Postgres version) of the three functions F may show different. The same query on the local base at
+--      AVANT: the owners must be the same role on each side (else stop), the prosrc md5 of the three must be equal.
+--      Like F, the functions of an extension installed in public are left out (they are not ours, and the local base
+--      has none there: counting them would be a false stop).
+select json_build_object(
+  'function_owners', (select json_object_agg(o, n) from (select p.proowner::regrole::text o, count(*) n from pg_proc p
+                        where p.pronamespace = 'public'::regnamespace
+                          and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+                        group by 1) x),
+  'cron_jobs', case when to_regclass('cron.job') is null then null else (xpath('/row/j/text()',
+                 query_to_xml('select json_agg(json_build_object(''jobname'', jobname, ''username'', username) order by jobname) as j from cron.job', false, true, '')))[1]::text::json end,
+  'column_rights', (select json_agg(json_build_object('table', c.relname, 'column', a.attname, 'acl', a.attacl::text) order by c.relname, a.attname)
+                      from pg_attribute a join pg_class c on c.oid = a.attrelid
+                     where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and a.attacl is not null and not a.attisdropped),
+  'three_bodies', (select json_object_agg(p.oid::regprocedure::text, json_build_object('prosrc_md5', md5(p.prosrc), 'secdef', p.prosecdef,
+                      'config', p.proconfig, 'owner', p.proowner::regrole::text))
+                     from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('job_step', 'walk_in', 'coffre_add'))
+) as q10_owners_and_column_rights;
 
 -- F. THE SCHEMA FINGERPRINT — one SELECT, one JSON. Every function of public (md5 of pg_get_functiondef, its grants,
 --    security definer, settings), every table with its columns, row level security and grants, the constraints,
