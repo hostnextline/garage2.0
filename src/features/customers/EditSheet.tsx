@@ -1,6 +1,8 @@
 /* « Modifier » a customer's file: the same fields as the new customer page; only the fields that changed are sent (two
    people may change the same file at the same time); leaving a changed sheet asks first. A new address is also offered
-   to the coming appointments still at the old one (followAddress.ts). « Supprimer ce client »: DeleteZone.tsx. */
+   to the coming appointments still at the old one (followAddress.ts). While « Enregistrer » runs (a new address waits a
+   moment for its position, R163) the sheet cannot be left: « Quitter ? » never opens over a save that goes through.
+   « Supprimer ce client »: DeleteZone.tsx. */
 import { useMemo } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { allJobs } from '../../data/select';
@@ -10,6 +12,7 @@ import { Button, Sheet, Banner, ask, attempt, toast, whenHistorySettled } from '
 import { CustomerFields } from '../../shared/customers/CustomerFields';
 import { changed, customerPatch, draftOf, movesAddress } from '../../shared/customers/draft';
 import { useCustomerDraft } from '../../shared/customers/useCustomerDraft';
+import { positioned } from '../../shared/customers/create';
 import { currentDay } from '../../domain/oil/clock';
 import { DeleteZone } from './DeleteZone';
 import { addressPatch, jobsAtOldAddress } from './followAddress';
@@ -20,18 +23,22 @@ export function EditSheet(p: { c: Customer; onClose: () => void; onLeaving: (on:
   const diff = changed(before, customerPatch(f.draft));
   const dirty = Object.keys(diff).length > 0;
   const close = async () => {
+    if (f.isSaving()) return;
     if (dirty && !(await ask({ title: t('customers.file.leave.title'), text: t('customers.file.leave.text'), ok: t('customers.file.leave.ok'), danger: true }))) return;
     whenHistorySettled(p.onClose);
   };
   // the appointments to offer the new address to, read before the file changes
-  const follow = () => movesAddress(diff) && 'address' in diff ? jobsAtOldAddress(allJobs.value, p.c.id, { address: before.address ?? null }, currentDay.value) : [];
+  const follow = (d: typeof diff) => movesAddress(d) && 'address' in d ? jobsAtOldAddress(allJobs.value, p.c.id, { address: before.address ?? null }, currentDay.value) : [];
   const save = () => f.once(async () => {
     if (!f.ready()) return;
     if (!dirty) { p.onClose(); return; }
-    const jobs = follow();
-    if (!(await attempt(() => saveCustomer({ id: p.c.id, ...diff }), { ok: t('customers.file.saved') }))) return;
+    // a new address saved right after typing: its position first (R163), else the file and its appointments lose it
+    const draft = movesAddress(diff) ? await positioned(f.draft) : f.draft;
+    const sent = draft === f.draft ? diff : changed(before, customerPatch(draft));
+    const jobs = follow(sent);
+    if (!(await attempt(() => saveCustomer({ id: p.c.id, ...sent }), { ok: t('customers.file.saved') }))) return;
     if (jobs.length && await ask({ title: t('customers.follow.title'), text: t('customers.follow.text', { n: jobs.length }), ok: t('customers.follow.ok'), cancel: t('customers.follow.no') })) {
-      const place = addressPatch(customerPatch(f.draft));
+      const place = addressPatch(customerPatch(draft));
       let moved = 0;
       for (const j of jobs) if (await attempt(() => updateJob(j.id, place))) moved++;
       if (moved) toast(t('customers.follow.done', { n: moved }), { kind: 'ok' });
@@ -39,10 +46,10 @@ export function EditSheet(p: { c: Customer; onClose: () => void; onLeaving: (on:
     p.onClose();
   });
   return (
-    <Sheet open onClose={() => void close()} title={t('customers.file.editTitle')} data-testid="customer-edit-sheet"
+    <Sheet open onClose={() => void close()} dismissable={!f.saving} title={t('customers.file.editTitle')} data-testid="customer-edit-sheet"
       footer={<>
-        <Button onClick={() => { void close(); }}>{t('common.cancel')}</Button>
-        <Button variant="primary" onClick={save} data-testid="customer-save">{t('common.save')}</Button>
+        <Button onClick={() => { void close(); }} disabled={f.saving}>{t('common.cancel')}</Button>
+        <Button variant="primary" onClick={save} busy={f.saving} data-testid="customer-save">{t('common.save')}</Button>
       </>}>
       <div class="stack-lg">
         {f.bad && <Banner kind="bad">{t('customers.form.fix')}</Banner>}

@@ -5,7 +5,7 @@
    the car (`vehicles.oil_followup`, followup.ts): call back on a day, or stop calling for this car; a newer visit makes it
    old. A visit a person said had no oil change never counts as one.
    Pure: no screen, no server (tested in due.test.ts). The words are read in words.ts. */
-import { addDays, addMonths, daysBetween, type BlockKey, type Day } from '../../lib/dates';
+import { addDays, addMonths, dayOf, daysBetween, type BlockKey, type Day } from '../../lib/dates';
 import type { Customer, InventoryItem, InventoryMove, Job, JobItem, Service, Vehicle } from '../../data/types';
 import { litresPerUnit } from '../stock/needs';
 import { COUNTED, isOilItem, isOilStock, oilOnlyAdded } from './words';
@@ -59,11 +59,12 @@ export interface OilInput {
   oilJobs?: Set<string>;
 }
 
+/** the garage's (Montréal) day of an instant, whatever the phone's zone (R169) */
 function localDay(iso: string | null | undefined): Day | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return dayOf(d) || null;
 }
 
 /** when a car is due: 6 months after a visit with an oil change, 3 months after a visit without */
