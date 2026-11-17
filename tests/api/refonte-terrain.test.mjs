@@ -297,6 +297,37 @@ test('the backup reads a table page after page by the last row seen: a row delet
   assert.ok(pics.rows.length <= 25);
 });
 
+test('the backup asks the pictures apart: « light » rows without the picture (every other column), then each picture once by its id', async () => {
+  const good = await ticket();
+  const pic = Buffer.from('reçu '.repeat(50)).toString('base64');
+  const ids = (await q(`insert into public.attachments (kind, mime, data, bytes, width, height) select 'receipt', 'image/jpeg', $1, 250, 10 + g, 20 from generate_series(1, 3) g returning id`, [pic])).map((r) => r.id);
+  try {
+    const seen = [];
+    let after = null;
+    for (let i = 0; i < 100; i++) {
+      const r = await oidc('backup', { action: 'rows', table: 'attachments', light: true, limit: 2, ...(after ? { after } : {}) }, good);
+      assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+      assert.equal(r.light, true, 'this server sends the rows light');
+      assert.ok(r.rows.every((x) => !('data' in x)), 'never a picture in a light row');
+      seen.push(...r.rows);
+      if (!r.last) break;
+      after = r.last;
+    }
+    const mine = seen.filter((x) => ids.includes(x.id));
+    assert.equal(mine.length, 3);
+    assert.deepEqual(Object.keys(mine[0]).sort(), ['bytes', 'created_at', 'created_by', 'deleted_at', 'height', 'id', 'job_id', 'kind', 'mime', 'updated_at', 'width'], 'every column but the picture');
+    const one = await oidc('backup', { action: 'picture', id: ids[1] }, good);
+    assert.deepEqual([one.ok, one.id, one.data], [true, ids[1], pic]);
+    assert.equal((await oidc('backup', { action: 'picture', id: randomUUID() }, good)).code, 'not_found');
+    assert.equal((await oidc('backup', { action: 'picture', id: ids[0] })).status, 401, 'only with the GitHub ticket');
+    // the rows with their pictures, as before, when « light » is not asked
+    const full = await oidc('backup', { action: 'rows', table: 'attachments' }, good);
+    assert.ok(full.rows.filter((x) => ids.includes(x.id)).every((x) => x.data === pic));
+  } finally {
+    await q(`delete from public.attachments where id = any($1)`, [ids]);
+  }
+});
+
 test('the backup knows who has an account (id and e-mail, never a password): what a restore into a new project needs', async () => {
   assert.equal((await oidc('backup', { action: 'accounts' })).status, 401);
   const a = await oidc('backup', { action: 'accounts' }, await ticket());

@@ -82,3 +82,19 @@ begin
       for each row execute function public.ops_recon_runs_backup_age();
   end if;
 end $$;
+
+-- ───────────────────────────── the pictures, apart from their rows ─────────────────────────────
+-- A receipt or a signature is kept as text in its row (up to 4 MB). The nightly backup asks the rows « light » (every
+-- column but the picture, whatever columns the table gets later) and then each picture it does not hold yet, one by one
+-- (backup { action: 'picture', id }): no answer of the function ever carries a page of whole pictures.
+create or replace function public.backup_attachments_light(p_after uuid default null, p_from int default 0, p_limit int default 1000)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(x.r order by x.id), '[]'::jsonb)
+  from (select a.id, to_jsonb(a) - 'data' as r from public.attachments a
+        where p_after is null or a.id > p_after
+        order by a.id
+        offset case when p_after is null then greatest(coalesce(p_from, 0), 0) else 0 end
+        limit least(greatest(coalesce(p_limit, 1000), 1), 1000)) x
+$$;
+revoke all on function public.backup_attachments_light(uuid, int, int) from public, anon, authenticated;
+grant execute on function public.backup_attachments_light(uuid, int, int) to service_role;
