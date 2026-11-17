@@ -1,6 +1,6 @@
 /* « Plages d'arrivée »: the picker as drawn when the garage books by windows — the time calendar on a computer (a grid
    of 15-minute units) and on a phone (a list of arrival times). The server's answers are pretended. */
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { useState } from 'preact/hooks';
@@ -19,6 +19,12 @@ import { lang } from '../../lib/i18n';
 import { BlockPicker, type BlockChoice } from './BlockPicker';
 import { forgetWindows } from './useDayWindows';
 
+// R81: the calendar is the garage's (Montréal) clock, frozen at a Wednesday noon (17 h UTC = 12 h EST): a run that
+// crosses midnight, or a machine on another zone, sees the same « today » and « tomorrow » as the pickers. Only Date
+// is pretended, the timers stay real (the waits for the server's pretended answers)
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-11-18T17:00:00Z'));
+afterAll(() => { vi.useRealTimers(); });
 const tomorrow = addDays(today(), 1);
 const later = addDays(today(), 3);
 const box = document.createElement('div');
@@ -58,6 +64,14 @@ beforeEach(() => {
   ]);
 });
 afterEach(() => { act(() => render(null, box)); clearAll(); document.querySelectorAll('.bp-hover-map').forEach((x) => x.remove()); });
+
+describe('the clock of these tests', () => {
+  it('is frozen on the garage’s Wednesday noon, whatever the hour and the zone of the run (R81)', () => {
+    expect(today()).toBe('2026-11-18');
+    expect(tomorrow).toBe('2026-11-19');
+    expect(Date.now()).toBe(Date.parse('2026-11-18T17:00:00Z'));
+  });
+});
 
 describe('the picker with « Plages d’arrivée »: the best moments', () => {
   it('offers days with their best window, in words, never a block', async () => {

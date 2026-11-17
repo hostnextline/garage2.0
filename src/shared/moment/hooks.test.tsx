@@ -135,7 +135,9 @@ describe('the clock', () => {
   it('draws again at each new minute, so midnight and the hours passing are seen', async () => {
     vi.useFakeTimers();
     try {
-      vi.setSystemTime(new Date(2026, 10, 20, 23, 59, 30));
+      // 23 h 59 30 s in Montréal (EST, UTC−5), whatever the zone of the machine running the tests: the code reads the
+      // garage's clock (lib/dates), so the instant must be given in UTC, never with the machine's local Date fields
+      vi.setSystemTime(new Date('2026-11-21T04:59:30Z'));
       let at = '';
       function Clock() { const c = useClock(); at = `${c.today} ${c.now}`; return null; }
       act(() => render(<Clock />, box));

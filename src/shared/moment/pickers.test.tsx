@@ -1,6 +1,6 @@
 /* The bugs of the moment pickers found by the scan of 2026-11-15, each drawn with the real pickers and a pretended
    server (each test fails with the pickers of before). */
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { useState } from 'preact/hooks';
@@ -22,6 +22,12 @@ import type { FarInfo } from '../../domain/moment/logic';
 import { BlockPicker, type BlockChoice } from './BlockPicker';
 import { forgetWindows } from './useDayWindows';
 
+// R81: the calendar is the garage's (Montréal) clock, frozen at a Wednesday noon (17 h UTC = 12 h EST): a run that
+// crosses midnight, or a machine on another zone, sees the same « today » and « tomorrow » as the pickers. Only Date
+// is pretended, the timers stay real (the waits for the server's pretended answers)
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-11-18T17:00:00Z'));
+afterAll(() => { vi.useRealTimers(); });
 const tomorrow = addDays(today(), 1);
 const later = addDays(today(), 3);
 const box = document.createElement('div');
