@@ -81,6 +81,8 @@ export const shell: typeof fr = {
   preview: { banner: 'You are viewing the app as {name}. Nothing can be changed.', stop: 'Back to me' },
   queued: 'Kept on the phone: it goes out as soon as the signal is back.',
   loadFail: 'This page won’t open. The app may have been updated.',
+  loadOffline: 'No signal: this page will open when the signal is back.',
+  loadBack: 'The signal is back: tap « Try again » to open this page.',
   reload: 'Reload',
   notFound: 'This page doesn’t exist.',
   noRight: 'You don’t have access to this part of the app.',

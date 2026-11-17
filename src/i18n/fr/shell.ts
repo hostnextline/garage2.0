@@ -81,6 +81,9 @@ export const shell = {
   preview: { banner: 'Tu vois l’app comme {name}. Rien ne peut être changé.', stop: 'Revenir à moi' },
   queued: 'Gardé sur le téléphone : ça part dès que le réseau revient.',
   loadFail: 'Cette page ne s’ouvre pas. L’app a peut-être été mise à jour.',
+  // a page whose code is not on the phone yet, asked with no signal
+  loadOffline: 'Pas de réseau : cette page s’ouvrira quand le signal reviendra.',
+  loadBack: 'Le signal est revenu : touche « Réessayer » pour ouvrir cette page.',
   reload: 'Recharger',
   notFound: 'Cette page n’existe pas.',
   noRight: 'Tu n’as pas accès à cette partie de l’app.',
