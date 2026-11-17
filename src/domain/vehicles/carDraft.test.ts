@@ -50,6 +50,11 @@ describe('another model chosen drops the first engine (customers-b-13)', () => {
   it('the same car (another year, or the engine step skipped): the engine stays', () => {
     expect(withChoice(withEngine, { year: '2020', make: 'Honda', model: 'Civic' }).extra).toEqual(withEngine.extra);
   });
+  it('the same car written another way (« HONDA CIVIC » read from the VIN) keeps its engine (pv-3)', () => {
+    const fromVin: AddDraft = { ...withEngine, make: 'HONDA', model: 'CIVIC' };
+    expect(withChoice(fromVin, { year: '2020', make: 'Honda', model: 'Civic' }).extra).toEqual(withEngine.extra);
+    expect(withChoice(fromVin, { year: '2020', make: 'Honda', model: 'Accord' }).extra).toEqual({});
+  });
 });
 
 describe('the VIN box', () => {

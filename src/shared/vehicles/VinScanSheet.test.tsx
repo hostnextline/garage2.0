@@ -5,16 +5,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 
-const scan = vi.hoisted(() => ({ result: null as null | (() => Promise<unknown>), cancel: vi.fn() }));
+const scan = vi.hoisted(() => ({ result: null as null | (() => Promise<unknown>), cancel: vi.fn(), camera: false }));
 vi.mock('./vinScan', async (orig) => ({
   ...(await orig<typeof import('./vinScan')>()),
-  hasCamera: () => false,
+  hasCamera: () => scan.camera,
   readVinPhoto: () => ({ result: scan.result!(), cancel: scan.cancel })
 }));
 
 import { lang } from '../../lib/i18n';
 import { ReaderUnavailable } from './vinScan';
 import { VinScanSheet } from './VinScanSheet';
+import { useVinCamera } from './useVinCamera';
+import { useRef } from 'preact/hooks';
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -28,8 +30,15 @@ const photo = async () => {
 };
 
 let given: string[] = [];
-beforeEach(() => { lang.value = 'fr'; given = []; scan.cancel.mockReset(); });
-afterEach(() => { act(() => render(null, box)); });
+beforeEach(() => { lang.value = 'fr'; given = []; scan.cancel.mockReset(); scan.camera = false; });
+afterEach(() => { act(() => render(null, box)); vi.unstubAllGlobals(); });
+/** the phone's camera: `getUserMedia` as given */
+const phoneCamera = (getUserMedia: () => Promise<unknown>) => {
+  const ask = vi.fn(getUserMedia);
+  vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { mediaDevices: { getUserMedia: ask } }));
+  scan.camera = true;
+  return ask;
+};
 const draw = () => act(() => render(<VinScanSheet onClose={() => undefined} onVin={(v) => given.push(v)} />, box));
 
 describe('« Scanner le NIV »', () => {
@@ -72,5 +81,34 @@ describe('« Scanner le NIV »', () => {
     expect(q('vin-photo-reading')).not.toBeNull();
     await act(() => render(null, box));
     expect(scan.cancel).toHaveBeenCalled();
+  });
+  it('the camera refused: a photo that gave nothing does not ask for the camera again (pv-4)', async () => {
+    const ask = phoneCamera(async () => { throw Object.assign(new Error('no'), { name: 'NotAllowedError' }); });
+    scan.result = async () => null;
+    await draw();
+    await wait();
+    expect(document.body.textContent).toContain('L’app n’a pas accès à la caméra');
+    expect(ask).toHaveBeenCalledTimes(1);
+    await photo();
+    expect(q('vin-photo-none')).not.toBeNull();
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain('L’app n’a pas accès à la caméra');
+  });
+});
+
+describe('the live camera', () => {
+  it('a stream that comes when its picture is gone ends on « La caméra ne s’ouvre pas », not a spinner for ever (pv-5)', async () => {
+    const stopped = vi.fn();
+    phoneCamera(async () => ({ getTracks: () => [{ stop: stopped }], getVideoTracks: () => [] }));
+    let state = '';
+    function NoPicture() {
+      const video = useRef<HTMLVideoElement>(null);
+      state = useVinCamera(video, () => undefined).state;
+      return null;
+    }
+    await act(() => render(<NoPicture />, box));
+    await wait();
+    expect(state).toBe('error');
+    expect(stopped).toHaveBeenCalled();
   });
 });
