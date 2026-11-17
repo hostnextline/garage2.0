@@ -131,7 +131,9 @@ begin
     insert into public.invoices (job_id, customer_id, status, lines, lang, created_by)
     values (j.id, j.customer_id, 'draft', public.job_lines(j.id), coalesce(v_lang, 'fr'), auth.uid());
   elsif inv.status = 'draft' and p_refresh then
-    update public.invoices set lines = public.job_lines(j.id), customer_id = j.customer_id where id = inv.id;
+    -- (a draft speaks the language of the job's customer, as when it was made: « Changer de client » or the customer's
+    -- language changed on the file since; before, it kept the language of the customer it was first made for)
+    update public.invoices set lines = public.job_lines(j.id), customer_id = j.customer_id, lang = coalesce(v_lang, lang) where id = inv.id;
   end if;
   return public.op_save(p_op, 'invoice_for_job', jsonb_build_object('ok', true, 'rows', public.job_payload(j.id)));
 end $$;

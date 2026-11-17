@@ -561,6 +561,26 @@ test('work that becomes billable goes on the draft by itself; finishing the invo
   assert.deepEqual(f.unbilled.map((x) => [x.id, x.description]), [[brakes, 'Plaquettes avant']]);
 }));
 
+test('« Refaire depuis le travail » on a draft: it speaks the language of the job’s customer now (invoices-quotes-26)', () => tx(async (h) => {
+  const g = await garage(h);
+  const j = await siteJob(h, g);
+  await h.as(g.owner);
+  const d = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j, p_refresh: true })).rows.invoices[0];
+  assert.equal(d.lang, 'fr');
+  // the customer's language is changed on the file (or « Changer de client » put an English-speaking one on the job)
+  await asDb(h);
+  await h.c.query(`update public.customers set lang = 'en' where id = $1`, [g.customer]);
+  await h.as(g.owner);
+  await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j, p_refresh: true });
+  assert.equal(await h.val(`select lang from public.invoices where id = $1`, [d.id]), 'en');
+  // « Faire la facture » that finds the draft already there (no refresh) changes nothing
+  await asDb(h);
+  await h.c.query(`update public.customers set lang = 'fr' where id = $1`, [g.customer]);
+  await h.as(g.owner);
+  await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j, p_refresh: false });
+  assert.equal(await h.val(`select lang from public.invoices where id = $1`, [d.id]), 'en');
+}));
+
 test('an invoice that has a number is never deleted: cancelled, its number stays in the books; what was paid waits for the next one (sql-money-06, invoices-quotes-04)', () => tx(async (h) => {
   const g = await garage(h);
   // « Modifier la facture », then « Supprimer le brouillon »
