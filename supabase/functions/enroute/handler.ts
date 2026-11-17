@@ -1,9 +1,12 @@
 // « Je pars »: the job goes en route (through the same rules as the app), a tracking link is made, the route and the
 // arrival time are worked out, and the customer gets a text to follow the truck. Also: refresh (new route) and end.
 //   { action: 'start' | 'refresh', job_id, pos?, notify?, resend?, base, driver_id? }
-//     The trip belongs to the person who LEAVES: the caller when he is a mechanic or has started his day (shared routes,
-//     the owner doing a job with another's vehicle), else the truck's named driver (the office pressing for him), else the
-//     caller. « driver_id » names him explicitly (himself, or anyone for the owner and the office). His name is in the text
+//     The trip belongs to the person who LEAVES: the caller when he has started his day (his phone shares where he is:
+//     shared routes, the owner doing a job with another's vehicle), else the truck's named driver (the office, or an owner
+//     who is also a mechanic, pressing for him: as on live), else the caller. Having the mechanic role is not enough: the
+//     app sends its position and starts the day only for the truck's driver, so a mechanic with no day started and no
+//     position would give the customer a text with no arrival time and a map with no truck. « driver_id » names him
+//     explicitly (himself — the app under shared routes —, or anyone for the owner and the office). His name is in the text
 //     and on the customer's map, his phone's position is the one followed, and the arrival time is worked out from where HE
 //     is: the phone's « pos » only when he is the caller, else his last position (under 15 minutes).
 //   { action: 'end', job_id }  { action: 'return', pos?, notify?, base, op? }  { action: 'return_end' }
@@ -137,7 +140,6 @@ async function whoLeaves(c: Caller, db: ReturnType<typeof adminDb>, j: Record<st
     }
     return want;
   }
-  if ((c.access.roles || []).includes('mechanic')) return c.id;
   const { data: shift, error: es } = await db.from('shifts').select('id').eq('staff_id', c.id).is('ended_at', null).is('deleted_at', null).limit(1);
   if (es) throw es;
   if (((shift || []) as unknown[]).length) return c.id;

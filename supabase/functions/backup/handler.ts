@@ -3,7 +3,11 @@
 // the audience and the repository (_shared/github.ts), then hands out the data table by table, page by page (no
 // 1000-row ceiling). The keys of the outside services (table « secrets ») are never part of a backup.
 //   { action: 'tables' }                       → { at, tables: [{ name, count }] }
-//   { action: 'rows', table, from }            → { rows, next }
+//   { action: 'rows', table, from | after }    → { rows, next, last }: « after » = the « last » of the page before (pages that
+//       never shift while the garage works during the night); « from » (an offset) still works as before. An « after » that
+//       is not a key of that table is refused: { code: 'after' }, 400.
+//       attachments with { light: true }: the rows without their picture (up to 1000 a page)
+//   { action: 'picture', id }                  → { id, data }: one picture (the job asks only those it does not hold yet)
 //   { action: 'accounts' }                     → { accounts: [{ id, email, created_at, banned_until }] }: who has an account (the
 //       sign-in side lives outside the tables: a restore into a NEW project makes each account again with the SAME id, then a
 //       new-password link for each person). Never a password, never its fingerprint.
@@ -36,7 +40,10 @@ export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incom
 // migration is applied), the backup goes on without them instead of failing every night
 const LATER: readonly string[] = ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'];
 const KEY: Record<string, string> = { counters: 'name', op_log: 'op' };
-const PAGE: Record<string, number> = { attachments: 100 };
+// the pictures (receipts, signatures) are kept as text in their rows: a few per page, so one answer stays well under the
+// function's memory however big the pictures are (the job follows « next » / « last », the page size is its own business)
+const PAGE: Record<string, number> = { attachments: 25 };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const missing = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|could not find the table/i.test(String(e.message || '')));
 
 /** a whole number from the job (never a fraction, a negative or a text) */
@@ -86,12 +93,46 @@ export const handler = serve(async (req) => {
   if (action === 'rows') {
     const t = String(b.table || '');
     if (!(TABLES as readonly string[]).includes(t)) fail('table', 'Table inconnue.');
-    const limit = Math.min(Number(b.limit) || PAGE[t] || 1000, PAGE[t] || 1000);
     const from = Math.max(0, Number(b.from) || 0);
-    const { data, error } = await db.from(t).select('*').order(KEY[t] || 'id', { ascending: true }).range(from, from + limit - 1);
+    const key = KEY[t] || 'id';
+    // « after » (the key of the last row of the page before, given back as « last »): the next page starts after that row,
+    // so a row added or deleted during the night never shifts the pages (by « from », one row would be skipped or doubled)
+    // A page that is not a key of that table (not a text, too long, or not of the key's type: a picture's id is a uuid) is
+    // refused with its code: never a server error, never the whole pictures in place of the light rows.
+    const given = typeof b.after === 'number' && Number.isSafeInteger(b.after) ? String(b.after) : b.after;
+    if (given != null && given !== '' && (typeof given !== 'string' || given.length > 200)) fail('after', 'Page inconnue.');
+    const after = typeof given === 'string' && given.length > 0 ? given : null;
+    if (t === 'attachments' && after != null && !UUID.test(after)) fail('after', 'Page inconnue.');
+    if (t === 'attachments' && b.light === true) {
+      // the rows without their picture (each picture is asked apart: { action: 'picture', id })
+      const limit = Math.min(Math.max(1, Number(b.limit) || 1000), 1000);
+      const { data, error } = await db.rpc('backup_attachments_light', { p_after: after, p_from: from, p_limit: limit });
+      if (!error) {
+        const rows = (Array.isArray(data) ? data : []) as Record<string, unknown>[];
+        const full = rows.length === limit;
+        return json({ ok: true, table: t, from, light: true, rows, next: full ? from + limit : null, last: full ? String(rows[rows.length - 1].id) : null });
+      }
+      // a database without it yet (20261116000500 not applied): the rows with their pictures, as before
+      if (!(error.code === 'PGRST202' || error.code === '42883')) throw error;
+    }
+    const limit = Math.min(Number(b.limit) || PAGE[t] || 1000, PAGE[t] || 1000);
+    let q = db.from(t).select('*').order(key, { ascending: true });
+    q = after != null ? q.gt(key, after).limit(limit) : q.range(from, from + limit - 1);
+    const { data, error } = await q;
+    // the database could not read « after » as that table's key (a uuid, a number…): the job's page is wrong, not the server
+    if (error && after != null && (error.code === '22P02' || error.code === '22003')) fail('after', 'Page inconnue.');
     if (error) throw error;
-    const rows = data || [];
-    return json({ ok: true, table: t, from, rows, next: rows.length === limit ? from + limit : null });
+    const rows = (data || []) as Record<string, unknown>[];
+    const full = rows.length === limit;
+    return json({ ok: true, table: t, from, rows, next: full ? from + limit : null, last: full ? String(rows[rows.length - 1][key]) : null });
+  }
+  if (action === 'picture') {
+    const id = String(b.id || '');
+    if (!UUID.test(id)) fail('not_found', 'Cette image n’existe plus.', 404);
+    const { data, error } = await db.from('attachments').select('id, data').eq('id', id).maybeSingle();
+    if (error) throw error;
+    if (!data) fail('not_found', 'Cette image n’existe plus.', 404);
+    return json({ ok: true, id, data: (data as { data: string }).data });
   }
   if (action === 'accounts') {
     const accounts: { id: string; email: string | null; created_at: string | null; banned_until: string | null }[] = [];

@@ -133,6 +133,25 @@ test('« Appel entrant » while the app is closed: a call is also sent as a noti
   }
 });
 
+test('a device’s push address is whatever its browser gave: the server posts only to https (here, to its own machine), never to a plain http address elsewhere', async () => {
+  try {
+    const a = await fn('ring', { action: 'link' }, ownerJwt);
+    const key = new URL(a.url).searchParams.get('k');
+    await q(`update public.staff set prefs = prefs || '{"calls": true}' where id = $1`, [owner]);
+    await device(owner, 'bon-appareil');
+    // the same fake service reached by another name, over plain http: it must never be posted to
+    await q(`insert into public.push_subs (staff_id, endpoint, p256dh, auth) select staff_id, $1, p256dh, auth from public.push_subs where endpoint like '%/bon-appareil'`, [`http://localhost:8021/push/pas-https`]);
+    await clearLog();
+    assert.equal((await ring(key, { full_name: 'Paul Roy', phone: '+14385560199' })).ok, true);
+    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'push').map((x) => x.path), ['/bon-appareil']);
+  } finally {
+    await q(`update public.staff set prefs = prefs - 'calls' where id = $1`, [owner]);
+    await q(`delete from public.push_subs`); await q(`delete from public.incoming_calls`);
+    await q(`delete from public.secrets where key like 'vapid%' or key = 'call_hook'`);
+    await q(`delete from public.rate_limits where key like 'ring%'`);
+  }
+});
+
 test('GoHighLevel delivers the same call or text twice: noted once, announced once; two different texts or pictures stay two', async () => {
   try {
     const a = await fn('ring', { action: 'link' }, ownerJwt);
@@ -266,6 +285,83 @@ test('the tables of the daily reconciliation are in the night’s backup once th
   }
   if (!there.length) t.diagnostic('the reconciliation’s tables are not in this database yet: the backup skips them (they are in its list)');
   else for (const name of there) assert.equal((await oidc('backup', { action: 'rows', table: name, from: 0 }, await ticket())).ok, true, name);
+});
+
+test('the backup reads a table page after page by the last row seen: a row deleted (or added) during the night never makes it skip or double another', async () => {
+  const good = await ticket();
+  const ids = (await q(`insert into public.customers (first_name, phone) select 'Page ' || g, '438 556-02' || lpad(g::text, 2, '0') from generate_series(1, 7) g returning id`)).map((r) => r.id);
+  made.customers.push(...ids);
+  const seen = [];
+  let after = null, gone = null;
+  for (let i = 0; i < 1000; i++) {
+    const r = await oidc('backup', { action: 'rows', table: 'customers', limit: 3, ...(after ? { after } : {}) }, good);
+    assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+    seen.push(...r.rows.map((x) => x.id));
+    if (i === 0) {
+      // the garage works during the night: one of the rows already written is deleted for good
+      gone = r.rows[0].id;
+      await q(`delete from public.customers where id = $1`, [gone]);
+      if (!ids.includes(gone)) ids.push(gone);
+    }
+    if (!r.last) { assert.equal(r.next, null); break; }
+    assert.equal(r.last, r.rows[r.rows.length - 1].id, 'last = the key of the last row of the page');
+    after = r.last;
+  }
+  assert.equal(new Set(seen).size, seen.length, 'no row twice');
+  const all = (await q(`select id from public.customers`)).map((x) => x.id);
+  assert.deepEqual(all.filter((id) => !seen.includes(id)), [], 'no row skipped');
+  // the pictures come a few at a time
+  const pics = await oidc('backup', { action: 'rows', table: 'attachments', limit: 500 }, good);
+  assert.equal(pics.ok, true);
+  assert.ok(pics.rows.length <= 25);
+});
+
+test('the backup refuses a page « after » that is not a key of the table (code « after », 400): never a server error, never the whole pictures in place of the light rows', async () => {
+  const good = await ticket();
+  for (const [table, extra] of [['jobs', {}], ['op_log', {}], ['activity', {}], ['attachments', {}], ['attachments', { light: true }]]) {
+    const r = await oidc('backup', { action: 'rows', table, after: 'x', ...extra }, good);
+    assert.deepEqual([r.status, r.ok, r.code], [400, false, 'after'], `${table} ${JSON.stringify(extra)}: ${JSON.stringify(r).slice(0, 300)}`);
+    assert.equal(typeof r.error, 'string');
+    assert.ok(!('rows' in r), 'no rows (and no picture) with a refusal');
+  }
+  assert.equal((await oidc('backup', { action: 'rows', table: 'jobs', after: { id: 1 } }, good)).code, 'after', 'not a text');
+  assert.equal((await oidc('backup', { action: 'rows', table: 'jobs', after: 'a'.repeat(201) }, good)).code, 'after', 'too long');
+  // a key of the table's own type still pages: a number for the history (activity), a text for the counters, a uuid
+  for (const [table, after] of [['activity', '0'], ['activity', 0], ['counters', ' '], ['jobs', '00000000-0000-0000-0000-000000000000']]) {
+    const r = await oidc('backup', { action: 'rows', table, after, limit: 2 }, good);
+    assert.equal(r.ok, true, `${table} after ${JSON.stringify(after)}: ${JSON.stringify(r).slice(0, 300)}`);
+  }
+});
+
+test('the backup asks the pictures apart: « light » rows without the picture (every other column), then each picture once by its id', async () => {
+  const good = await ticket();
+  const pic = Buffer.from('reçu '.repeat(50)).toString('base64');
+  const ids = (await q(`insert into public.attachments (kind, mime, data, bytes, width, height) select 'receipt', 'image/jpeg', $1, 250, 10 + g, 20 from generate_series(1, 3) g returning id`, [pic])).map((r) => r.id);
+  try {
+    const seen = [];
+    let after = null;
+    for (let i = 0; i < 100; i++) {
+      const r = await oidc('backup', { action: 'rows', table: 'attachments', light: true, limit: 2, ...(after ? { after } : {}) }, good);
+      assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+      assert.equal(r.light, true, 'this server sends the rows light');
+      assert.ok(r.rows.every((x) => !('data' in x)), 'never a picture in a light row');
+      seen.push(...r.rows);
+      if (!r.last) break;
+      after = r.last;
+    }
+    const mine = seen.filter((x) => ids.includes(x.id));
+    assert.equal(mine.length, 3);
+    assert.deepEqual(Object.keys(mine[0]).sort(), ['bytes', 'created_at', 'created_by', 'deleted_at', 'height', 'id', 'job_id', 'kind', 'mime', 'updated_at', 'width'], 'every column but the picture');
+    const one = await oidc('backup', { action: 'picture', id: ids[1] }, good);
+    assert.deepEqual([one.ok, one.id, one.data], [true, ids[1], pic]);
+    assert.equal((await oidc('backup', { action: 'picture', id: randomUUID() }, good)).code, 'not_found');
+    assert.equal((await oidc('backup', { action: 'picture', id: ids[0] })).status, 401, 'only with the GitHub ticket');
+    // the rows with their pictures, as before, when « light » is not asked
+    const full = await oidc('backup', { action: 'rows', table: 'attachments' }, good);
+    assert.ok(full.rows.filter((x) => ids.includes(x.id)).every((x) => x.data === pic));
+  } finally {
+    await q(`delete from public.attachments where id = any($1)`, [ids]);
+  }
 });
 
 test('the backup knows who has an account (id and e-mail, never a password): what a restore into a new project needs', async () => {
@@ -468,6 +564,36 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
       await q(`update public.payments set amount_cents = 5000 where stripe_session = $1`, [paidWrong]);
       const r5 = await fn('recon', { action: 'run' }, ownerJwt);
       assert.deepEqual([r5.outside.stripe.status, r5.outside.stripe.missing, r5.outside.stripe.wrong, r5.added.length], ['ok', 0, 0, 0], JSON.stringify(r5));
+      // money given back from Stripe's own screens whose notice never reached the books (here: no webhook secret, the notice
+      // is refused): the invoice would stay « payée » and the day's money too high — said, with the amount
+      await q(`delete from public.rate_limits where key = 'recon:run'`);
+      const back = await (await fetch(`${MOCK}/refund/${paidRight}?amount=1000`)).json();
+      assert.ok(back.refund, JSON.stringify(back));
+      const r6 = await fn('recon', { action: 'run' }, ownerJwt);
+      assert.deepEqual([r6.outside.stripe.refunds_missing, r6.bad], [1, true], JSON.stringify(r6.outside.stripe));
+      assert.deepEqual(r6.added.map((a) => [a.check, a.severity, a.entity_table, a.entity_id]), [['stripe_refund_not_recorded', 'bad', 'jobs', job]]);
+      assert.match(r6.added[0].message_fr, /10,00 \$/);
+      const seenR = (await fn('recon', { action: 'last' }, tres.jwt)).summary;
+      assert.ok((seenR.findings || []).some((x) => x.check_id === 'stripe_refund_not_recorded'), 'money: the Trésorerie sees it');
+      // written in the books (as the stripe function writes it): nothing more to say
+      await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, -1000, 'card_online', $2, $3)`, [job, `${paidRight}#${back.refund}`, back.refund]);
+      const r7 = await fn('recon', { action: 'run' }, ownerJwt);
+      assert.deepEqual([r7.outside.stripe.refunds, r7.outside.stripe.refunds_missing, r7.added.length], [1, 0, 0], JSON.stringify(r7));
+      // Stripe says later the refund failed: the books still count it as given back until its « #echec » row is there
+      await fetch(`${MOCK}/refund-update/${back.refund}?status=failed`);
+      const r8 = await fn('recon', { action: 'run' }, ownerJwt);
+      assert.deepEqual(r8.added.map((a) => [a.check, a.severity]), [['stripe_refund_not_recorded', 'bad']], JSON.stringify(r8.added));
+      assert.match(r8.added[0].message_fr, /n’a finalement pas passé/);
+      await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, 1000, 'card_online', $2, $3)`, [job, `${paidRight}#${back.refund}#echec`, back.refund]);
+      assert.equal((await fn('recon', { action: 'run' }, ownerJwt)).added.length, 0);
+      // Stripe does not give its refunds: said as a check that could not be made (warn), never a crash, never « bad » by itself
+      await fetch(`${MOCK}/control?stripe=refunds`);
+      try {
+        const r9 = await fn('recon', { action: 'run' }, ownerJwt);
+        assert.equal(r9.ok, true, JSON.stringify(r9));
+        assert.deepEqual([r9.outside.stripe.status, r9.outside.stripe.refunds_status, r9.added.map((a) => [a.check, a.severity])], ['ok', 'error', [['stripe_unreachable', 'warn']]]);
+        assert.match(r9.added[0].message_fr, /remboursements/);
+      } finally { await fetch(`${MOCK}/control?stripe=ok`); }
       await q(`delete from public.payments where job_id = $1`, [job]);
     }
   } finally {
@@ -481,6 +607,141 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
       await q(`delete from public.ops_recon_runs where started_at >= $1`, [since]);
       await q(`delete from public.ops_recon_baseline where set_at >= $1`, [since]);
     }
+  }
+});
+
+test('a backup that stops is said by EVERY reconciliation (the schedule’s, « Vérifier maintenant »), not only by the backup job that failed; never-set-up databases say nothing', async (t) => {
+  const real = (await q(`select to_regprocedure('public.recon_run(date,text)') is not null as there`))[0].there;
+  if (!real) { t.skip('the reconciliation’s SQL is not in this database'); return; }
+  const since = (await q(`select now() t`))[0].t;
+  const open = async () => (await q(`select check_id, severity, entity_id, message_fr, state from public.ops_recon_findings where check_id like 'backup%' and state <> 'closed'`));
+  try {
+    await q(`delete from public.ops_backup_runs`); await q(`delete from public.secrets where key like 'backup_repo:%'`);
+    await q(`delete from public.ops_recon_findings where check_id like 'backup%'`);
+    // no backup set up at all (no « done », no repository pin): the database's runs say nothing about it
+    await q(`select public.recon_run(public.local_today() - 1, 'cron')`);
+    assert.deepEqual(await open(), []);
+    // the job said « done » 30 hours ago, then nothing (a night that failed before its end): the schedule's run alone says it
+    const [b] = await q(`insert into public.ops_backup_runs (tables, rows, ok, at) values (40, 900, true, now() - interval '30 hours') returning id`);
+    await q(`insert into public.ops_backup_runs (tables, rows, ok, at) values (40, 0, false, now() - interval '2 hours')`);
+    const r = (await q(`select public.recon_run(public.local_today() - 1, 'cron') r`))[0].r;
+    assert.equal(r.status, 'bad', JSON.stringify(r));
+    let f = await open();
+    assert.deepEqual(f.map((x) => [x.check_id, x.severity, x.entity_id, x.state]), [['backup_late', 'bad', b.id, 'open']]);
+    assert.match(f[0].message_fr, /30 heures/);
+    // « Vérifier maintenant » (the owner's button: yesterday and today) keeps it open, one row
+    await q(`delete from public.rate_limits where key = 'recon_now'`);
+    await rpc('recon_now', {}, ownerJwt);
+    f = await open();
+    assert.equal(f.length, 1, JSON.stringify(f));
+    // the function (the nightly job) says the same finding: still one row
+    assert.equal((await oidc('recon', { action: 'run' }, await ticket())).bad, true);
+    assert.equal((await open()).length, 1);
+    // the pin of the first ticket alone (no « done » ever): « never said done »
+    await q(`delete from public.ops_backup_runs`);
+    await q(`insert into public.secrets (key, value) values ('backup_repo:hostnextline/garage2.0-sauvegardes', '1:2') on conflict (key) do nothing`);
+    await q(`select public.recon_run(public.local_today(), 'cron')`);
+    assert.ok((await open()).some((x) => x.check_id === 'backup_late' && x.entity_id === null && /jamais dit « terminé »/.test(x.message_fr)));
+    // a good night again: nothing new is added, and the warning closes at this very run (not two days later: the nightly
+    // job would end red, and GitHub mail « run failed », after a backup that worked)
+    await q(`insert into public.ops_backup_runs (tables, rows, ok) values (40, 900, true)`);
+    await q(`select public.recon_run(public.local_today(), 'cron')`);
+    assert.deepEqual(await open(), [], 'a fresh backup closes the backup’s warning at once');
+    assert.ok((await q(`select state, closed_at from public.ops_recon_findings where check_id = 'backup_late'`)).every((x) => x.state === 'closed' && x.closed_at), 'closed, with its time');
+    // late again, a warning that was « vu » (acked) by the owner: closed too once the backup works
+    await q(`update public.ops_backup_runs set at = now() - interval '28 hours'`);
+    await q(`select public.recon_run(public.local_today(), 'cron')`);
+    const [again] = await open();
+    assert.equal(again?.check_id, 'backup_late', 'late again: open again');
+    await q(`update public.ops_recon_findings set state = 'acked' where check_id = 'backup_late' and state = 'open'`);
+    await q(`insert into public.ops_backup_runs (tables, rows, ok) values (40, 900, true)`);
+    await q(`delete from public.secrets where key like 'backup_repo:%'`);   // the made-up pin above is not this ticket's repository
+    const night = await oidc('recon', { action: 'run' }, await ticket());
+    assert.equal(night.ok, true, JSON.stringify(night).slice(0, 300));
+    assert.ok(!night.findings.some((f) => /^backup/.test(f.check)), 'the nightly job’s run after a good backup lists no backup warning: ' + JSON.stringify(night.findings));
+    assert.deepEqual(await open(), []);
+  } finally {
+    await q(`delete from public.ops_backup_runs`); await q(`delete from public.secrets where key like 'backup_repo:%'`);
+    await q(`delete from public.rate_limits where key in ('recon_now', 'recon:run')`);
+    await q(`delete from public.ops_recon_findings where created_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_runs where started_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_baseline where set_at >= $1`, [since]);
+  }
+});
+
+test('the reconciliation finds each Stripe refund under the page the server writes it (applyRefunds’ own rule): a payment with no Stripe page in the books is « <payment>#<refund> », and Stripe is not asked', async () => {
+  const { refundPage } = await import('../../supabase/functions/recon/pages.ts');
+  const job = randomUUID(), inv = randomUUID();
+  let asked = 0;
+  const stripe = (s) => async () => { asked++; return s; };
+  const page = (cs, md) => ({ id: cs, payment_status: 'paid', metadata: md });
+  // in the books without its Stripe page (an older row): written by applyRefunds as « pi_x#re_… », Stripe never asked
+  assert.deepEqual(await refundPage('pi_old', async () => ({ stripe_session: null, job_id: job, invoice_id: null }), undefined, stripe(page('cs_old', { job_id: job }))),
+    { page: 'pi_old', job, invoice: null, from: 'books' });
+  assert.equal(asked, 0, 'the books have the payment: Stripe is not asked');
+  // in the books with its page: that page, even when Stripe would name another one
+  assert.deepEqual(await refundPage('pi_a', async () => ({ stripe_session: 'cs_a', job_id: null, invoice_id: inv }), page('cs_other', { job_id: job }), stripe(null)),
+    { page: 'cs_a', job: null, invoice: inv, from: 'books' });
+  // not in the books (its payment kept aside, or its notice lost): the page of the app, seen in the list or asked from Stripe
+  assert.deepEqual(await refundPage('pi_b', async () => null, page('cs_b', { job_id: job }), stripe(null)), { page: 'cs_b', job, invoice: null, from: 'stripe' });
+  assert.equal(asked, 0);
+  assert.deepEqual(await refundPage('pi_c', async () => null, undefined, stripe(page('cs_c', { invoice_id: inv }))), { page: 'cs_c', job: null, invoice: inv, from: 'stripe' });
+  assert.equal(asked, 1);
+  // not the app's: no page of ours, a page not paid, no payment id
+  assert.equal(await refundPage('pi_d', async () => null, undefined, stripe(page('cs_d', {}))), null);
+  assert.equal(await refundPage('pi_e', async () => null, undefined, stripe({ id: 'cs_e', payment_status: 'unpaid', metadata: { job_id: job } })), null);
+  assert.equal(await refundPage('', async () => ({ stripe_session: 'cs_f', job_id: job }), undefined, stripe(null)), null);
+});
+
+test('a Stripe refund kept aside for the office (activity « payment_parked »), or written under the payment id: never a « stripe_refund_not_recorded » red line (M6.parked already says that money)', async (t) => {
+  const real = (await q(`select to_regprocedure('public.recon_run(date,text)') is not null as there`))[0].there;
+  if (!real) { t.skip('the reconciliation’s SQL is not in this database'); return; }
+  const since = (await q(`select now() t`))[0].t;
+  const stripeKey = `sk_test_aside${randomUUID().replace(/-/g, '')}`;
+  const sk = { authorization: `Bearer ${stripeKey}`, 'content-type': 'application/x-www-form-urlencoded' };
+  const cust = randomUUID(); made.customers.push(cust);
+  const job = randomUUID();
+  try {
+    await q(`delete from public.secrets where key like 'stripe%'`);
+    await q(`insert into public.secrets (key, value) values ('stripe_key', $1)`, [stripeKey]);
+    await q(`delete from public.ops_backup_runs`); await q(`delete from public.secrets where key like 'backup_repo:%'`);
+    await q(`insert into public.customers (id, first_name, phone) values ($1, 'Rembourse', '438 556-0191')`, [cust]);
+    await q(`insert into public.jobs (id, customer_id, day, block, status, duration_min) values ($1, $2, public.local_today(), 'am', 'booked', 60)`, [job, cust]);
+    const open = async (cents) => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: sk,
+      body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': String(cents), 'metadata[job_id]': job }) })).json()).id;
+    // A: in the books, its refund refused for good and kept aside (record() → park: « <page>#<refund> »)
+    // B: the payment itself kept aside, and its refund beside it (applyRefunds: « <cs>#<refund> »)
+    // C: in the books under no Stripe page (an older row): its refund is written « <payment id>#<refund> »
+    // D: in the books, its refund lost: the one red line
+    const [A, B, C, D] = [await open(6000), await open(7000), await open(8000), await open(9000)];
+    for (const id of [A, B, C, D]) await fetch(`${MOCK}/pay/${id}`);
+    await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, 6000, 'card_online', $2, $3), ($1, 8000, 'card_online', null, $4), ($1, 9000, 'card_online', $5, $6)`,
+      [job, A, `pi_${A}`, `pi_${C}`, D, `pi_${D}`]);
+    const re = {};
+    for (const [id, cents] of [[A, 1500], [B, 2000], [C, 2500], [D, 3500]]) re[id] = (await (await fetch(`${MOCK}/refund/${id}?amount=${cents}`)).json()).refund;
+    assert.ok(Object.values(re).every(Boolean), JSON.stringify(re));
+    await q(`insert into public.activity (entity, entity_id, action, data) values
+      ('job', $1, 'payment_parked', jsonb_build_object('kind', 'refund', 'session', $2::text, 'amount_cents', -1500, 'reason', 'refused')),
+      ('job', $1, 'payment_parked', jsonb_build_object('kind', 'payment', 'session', $3::text, 'amount_cents', 7000, 'reason', 'refused')),
+      ('job', $1, 'payment_parked', jsonb_build_object('kind', 'refund', 'session', $4::text, 'amount_cents', -2000, 'reason', 'paiement pas inscrit'))`,
+      [job, `${A}#${re[A]}`, B, `${B}#${re[B]}`]);
+    await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, -2500, 'card_online', $2, $3)`, [job, `pi_${C}#${re[C]}`, re[C]]);
+    await q(`delete from public.rate_limits where key = 'recon:run'`);
+    const r = await fn('recon', { action: 'run' }, ownerJwt);
+    assert.equal(r.ok, true, JSON.stringify(r).slice(0, 400));
+    const refunds = r.added.filter((a) => a.check === 'stripe_refund_not_recorded');
+    assert.deepEqual(refunds.map((a) => a.message_fr.match(/[\d,]+ \$/)[0]), ['35,00 $'], 'only the refund really missing (D): ' + JSON.stringify(r.added.map((a) => [a.check, a.message_fr])));
+    assert.deepEqual([r.outside.stripe.refunds_missing, r.outside.stripe.refunds_aside], [1, 2], JSON.stringify(r.outside.stripe));
+    const red = await q(`select data->>'session' s from public.ops_recon_findings where check_id = 'stripe_refund_not_recorded' and state = 'open' and entity_id = $1`, [job]);
+    assert.deepEqual(red.map((x) => x.s), [D]);
+  } finally {
+    await q(`delete from public.payments where job_id = $1`, [job]);
+    await q(`delete from public.activity where entity_id = $1 and action = 'payment_parked'`, [job]);
+    await q(`delete from public.secrets where key like 'stripe%'`);
+    await q(`delete from public.rate_limits where key = 'recon:run'`);
+    await q(`delete from public.ops_recon_findings where created_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_runs where started_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_baseline where set_at >= $1`, [since]);
   }
 });
 
@@ -537,6 +798,43 @@ test('« Je pars »: the trip, the name in the text and the map are those of the
   assert.equal(named.ok, true, JSON.stringify(named));
   assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [job3]))[0].staff_id, adam.id);
   assert.equal((await fn('enroute', { action: 'start', job_id: job3, base: BASE, driver_id: randomUUID() }, ownerJwt)).code, 'not_found');
+});
+
+test('« Je pars » pressed by someone whose day is not started (an owner who is also a mechanic at the office, a mechanic under shared routes): the truck’s driver leaves, as on live — never a trip with no position', async () => {
+  const boss = await member('Hassan Patron', '{owner,mechanic}');
+  const ali = await member('Ali Partagé', '{mechanic}');
+  const saleh = await member('Saleh Chauffeur', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(saleh.id);
+  await q(`insert into public.positions (id, lat, lng, at) values ($1, 45.52, -73.60, now()) on conflict (id) do update set lat = 45.52, lng = -73.60, at = now(), deleted_at = null`, [saleh.id]);
+  const was = (await q(`select booking from public.settings where id = 1`))[0].booking;
+  try {
+    // the owner (also a mechanic) presses for Saleh's job from the office: Saleh leaves, from where Saleh is
+    const j1 = await enrouteJob(cust, truck, boss.id);
+    await clearLog();
+    const r1 = await fn('enroute', { action: 'start', job_id: j1, base: BASE, pos: { lat: 45.40, lng: -73.90 } }, boss.jwt);
+    assert.equal(r1.ok, true, JSON.stringify(r1));
+    assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [j1]))[0].staff_id, saleh.id);
+    assert.match(r1.message, /Saleh/); assert.doesNotMatch(r1.message, /Hassan/);
+    assert.ok(r1.eta_at, 'the text has its arrival time');
+    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'osrm').map((x) => x.pts[0]), [[-73.60, 45.52]], 'the route starts where Saleh is');
+    assert.equal((await q(`select count(*)::int n from public.positions where id = $1`, [boss.id]))[0].n, 0, 'the office is not on the map');
+    // shared routes on: Ali (no day started: today's app sends no position for him) presses on Saleh's truck: the truck's
+    // driver, as on live — not Ali with no position (no arrival time, a map with no truck)
+    await q(`update public.settings set booking = booking || '{"shared_routes": true}'::jsonb where id = 1`);
+    const j2 = await enrouteJob(cust, truck, ali.id);
+    const r2 = await fn('enroute', { action: 'start', job_id: j2, base: BASE }, ali.jwt);
+    assert.equal(r2.ok, true, JSON.stringify(r2));
+    assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [j2]))[0].staff_id, saleh.id);
+    assert.ok(r2.eta_at);
+    // the app that knows Ali drives says so (driver_id = himself) with his position: Ali's trip, from Ali's phone
+    const j3 = await enrouteJob(cust, truck, ali.id);
+    const r3 = await fn('enroute', { action: 'start', job_id: j3, base: BASE, driver_id: ali.id, pos: { lat: 45.50, lng: -73.66 } }, ali.jwt);
+    assert.equal(r3.ok, true, JSON.stringify(r3));
+    assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [j3]))[0].staff_id, ali.id);
+    assert.match(r3.message, /Ali/);
+  } finally {
+    await q(`update public.settings set booking = $1 where id = 1`, [was]);
+  }
 });
 
 test('« Je pars » pressed on two phones at the same instant: one trip, one text, both answers ok (no « server problem »)', async () => {
@@ -736,6 +1034,40 @@ test('what the owner types in Équipe and Branchements: rights only as on / off,
   assert.equal((await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678' }, ownerJwt)).ok, true);
   assert.equal((await q(`select count(*)::int n from public.secrets where key like 'ghl%'`))[0].n, 2);
   await q(`delete from public.secrets where key like 'ghl%'`);
+});
+
+test('Équipe, the invitations waiting: each says its language and its short name (the screen shows them as they were typed)', async () => {
+  const email = `lea-${randomUUID().slice(0, 6)}@test.local`;
+  const inv = await fn('team', { action: 'invite', email, full_name: 'Léa Tremblay', short_name: 'Léa', roles: ['office'], lang: 'en', send: 'none', base: BASE }, ownerJwt);
+  assert.equal(inv.ok, true, JSON.stringify(inv));
+  const list = await fn('team', { action: 'list' }, ownerJwt);
+  const mine = list.invitations.find((x) => x.email === email);
+  assert.deepEqual([mine?.lang, mine?.short_name, mine?.full_name], ['en', 'Léa', 'Léa Tremblay'], JSON.stringify(mine));
+  assert.ok(!('token_hash' in mine), 'never the link’s fingerprint');
+});
+
+test('Branchements, the Stripe key: the endpoint made for the garage also hears the refunds made in Stripe (charge.refunded, charge.refund.updated) in the version the server reads; webhook made, secrets written, old one deleted', async () => {
+  await q(`delete from public.secrets where key like 'stripe%'`);
+  await q(`insert into public.secrets (key, value) values ('stripe_test_ok', 'on'), ('stripe_key', 'sk_test_ancienne0123456789'), ('stripe_webhook_id', 'we_ancien'), ('stripe_webhook_secret', 'whsec_ancien')`);
+  await clearLog();
+  const r = await fn('team', { action: 'secrets-set', stripe_key: 'sk_test_nouvelle0123456789' }, ownerJwt);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const calls = (await mockLog()).filter((x) => x.svc === 'stripe' && x.path.startsWith('/v1/webhook_endpoints'));
+  const made = calls.find((x) => x.method === 'POST');
+  assert.ok(made, 'the endpoint is made');
+  const events = Object.entries(made.form).filter(([k]) => k.startsWith('enabled_events[')).map(([, v]) => v).sort();
+  assert.deepEqual(events, ['charge.refund.updated', 'charge.refunded', 'checkout.session.async_payment_succeeded', 'checkout.session.completed']);
+  assert.equal(made.form.api_version, '2024-06-20', 'the notices come in the version the stripe function reads');
+  assert.match(made.form.url, /\/functions\/v1\/stripe$/);
+  // the new secrets are written, then the old endpoint (with the old key) is removed
+  const s = Object.fromEntries((await q(`select key, value from public.secrets where key like 'stripe%'`)).map((x) => [x.key, x.value]));
+  assert.equal(s.stripe_key, 'sk_test_nouvelle0123456789');
+  assert.match(s.stripe_webhook_id, /^we_\d+$/);
+  assert.match(s.stripe_webhook_secret, /^whsec_test_\d+$/);
+  const del = calls.findIndex((x) => x.method === 'DELETE' && x.path === '/v1/webhook_endpoints/we_ancien');
+  assert.ok(del > calls.indexOf(made), 'the old endpoint is removed after the new one is made');
+  assert.equal(JSON.stringify(r).includes('whsec'), false, 'the secret never comes back in the answer');
+  await q(`delete from public.secrets where key like 'stripe%'`);
 });
 
 /* ---------- Hermes' pairing ---------- */

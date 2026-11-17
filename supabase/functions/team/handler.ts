@@ -8,7 +8,7 @@ import { adminDb, caller, secret, setSecrets, settings, type Caller } from '../_
 import { newToken, sha256hex } from '../_shared/tokens.ts';
 import { baseOf, inviteLink } from '../_shared/links.ts';
 import { sendEmail, sendSms, e164 } from '../_shared/ghl.ts';
-import { stripeCall } from '../_shared/stripe.ts';
+import { stripeCall, webhookEntries } from '../_shared/stripe.ts';
 import { first } from '../_shared/texts.ts';
 
 const ROLES = ['owner', 'office', 'mechanic', 'treasurer'];
@@ -192,7 +192,7 @@ export const handler = serve(async (req) => {
   owner(c);
   switch (action) {
     case 'list': {
-      const { data } = await db.from('invitations').select('id, email, full_name, roles, kind, truck_id, expires_at, used_at, created_at').is('used_at', null).order('created_at', { ascending: false }).limit(50);
+      const { data } = await db.from('invitations').select('id, email, full_name, short_name, lang, roles, kind, truck_id, expires_at, used_at, created_at').is('used_at', null).order('created_at', { ascending: false }).limit(50);
       const { data: users } = await db.auth.admin.listUsers({ page: 1, perPage: 200 });
       const seen = Object.fromEntries((users?.users || []).map((u) => [u.id, { last_sign_in_at: u.last_sign_in_at, banned: !!(u as { banned_until?: string }).banned_until }]));
       return json({ ok: true, invitations: data || [], sign_ins: seen });
@@ -274,15 +274,12 @@ export const handler = serve(async (req) => {
           if (/_test_/.test(k) && (await secret('stripe_test_ok')) !== 'on') {
             fail('stripe_key', 'Clé de test refusée : l’app n’a qu’une seule base de données, un paiement test marquerait une vraie facture payée. Mets la clé « sk_live_ ».');
           }
-          // the notice "payment done" comes to the garage's own function, signed with a secret only Stripe and the garage know
+          // the notices « payment done » and « money given back » come to the garage's own function, signed with a secret only Stripe and the garage know
           let hook: { id?: string; secret?: string };
           try {
-            hook = await stripeCall(k, 'POST', '/webhook_endpoints', [
-              ['url', `${env('SUPABASE_URL')}/functions/v1/stripe`],
-              ['enabled_events[0]', 'checkout.session.completed'],
-              ['enabled_events[1]', 'checkout.session.async_payment_succeeded'],
-              ['description', 'Mécanique Mobile H.I.S (app V2)']
-            ]);
+            // the notices the « stripe » function reads (a card page paid, money given back from Stripe's screens), in the
+            // version it reads them in: one list for both (_shared/stripe.ts)
+            hook = await stripeCall(k, 'POST', '/webhook_endpoints', webhookEntries(`${env('SUPABASE_URL')}/functions/v1/stripe`));
           } catch (e) {
             // a mistyped, revoked or restricted key: say so (trying again would never help); a Stripe that does not answer: say that
             const m = String((e as Error)?.message || e);
