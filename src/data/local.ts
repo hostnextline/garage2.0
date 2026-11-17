@@ -156,7 +156,8 @@ export function openLocal(uid: string): LocalDb {
       void _drop;
       return (await db.add('outbox', rest)) as number;
     }),
-    mutateEntry: <T,>(seq: number, fn: (cur: OutboxEntry | undefined) => EntryChange<T>) => use(async (db) => {
+    // an entry without its key is a bug of the caller: refused at once, the connection is not dropped for it (hors-ligne-01)
+    mutateEntry: <T,>(seq: number, fn: (cur: OutboxEntry | undefined) => EntryChange<T>) => typeof seq !== 'number' ? Promise.reject(new TypeError('outbox entry without its key')) : use(async (db) => {
       const tx = db.transaction('outbox', 'readwrite');
       let out: EntryChange<T>;
       let added: number | undefined;
