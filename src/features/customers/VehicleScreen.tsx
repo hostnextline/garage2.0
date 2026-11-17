@@ -6,7 +6,7 @@ import { useRef, useState } from 'preact/hooks';
 import { Pencil, ScanLine, Car, UserRound } from 'lucide-preact';
 import { isField } from '../../domain/rights';
 import { navigate, type ScreenProps } from '../../platform/router';
-import { t, lang } from '../../lib/i18n';
+import { t, tMaybe, lang } from '../../lib/i18n';
 import { vinCheck } from '../../lib/text';
 import { vehicle, customer, customerName, allJobs } from '../../data/select';
 import { saveVehicle } from '../../data/api';
@@ -27,11 +27,10 @@ import { VehicleEditSheet } from './VehicleEditSheet';
 import { specLinkPatch, vinFill } from './vehicleDraft';
 import '../../shared/places/customers.css';
 
-const word = (group: 'fuel' | 'drive', v: string | null | undefined) => {
+/** the words of a fuel or a drive code, the code itself when the dictionaries have none (R170: tMaybe, not t(k) === k) */
+export const word = (group: 'fuel' | 'drive', v: string | null | undefined) => {
   if (!v) return null;
-  const k = `vehicles.${group}.${v}`;
-  const s = t(k);
-  return s === k ? v : s;
+  return tMaybe(`vehicles.${group}.${v}`) ?? v;
 };
 
 export default function VehicleScreen({ params }: ScreenProps) {
