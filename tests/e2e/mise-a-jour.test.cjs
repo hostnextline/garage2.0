@@ -1,0 +1,342 @@
+// The update on a real phone: yesterday's app (the LIVE one, commit acf46c3) with its data and its waiting changes, then the
+// rebuilt app on the same phone; the way back (a rollback); and two phones at once on the rebuilt app.
+// Both apps are built for the local copy of the server and served one after the other at the SAME address, to browsers that
+// keep their profile on disk (IndexedDB « his-garage-<uid> », localStorage, the installed service worker): mise-a-jour.helpers.cjs.
+// The database is saved before and put back exactly as it was after.
+//   bash <lane>/e2e-file.sh tests/e2e/mise-a-jour.test.cjs ["part of a step's name"]
+const { before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const h = require('./harness.cjs');
+const m = require('./mise-a-jour.helpers.cjs');
+const { step, until, until2, dismissSheets, noErrors, draw, blockNow, openVin, jwtOf, rpcAs } = m;
+
+const PW = 'Garage-e2e-2026';
+const who = {};
+let originalCounts;
+const T = { complet: '7c1a0000-0000-4000-8000-000000000001', voiture: '7c1a0000-0000-4000-8000-000000000002' };
+const SVC_OIL = '5e7a0000-0000-4000-8000-000000000001';
+const VIN = '2HGFC2F59KH512345';
+const KM = '87654';
+const NOTE = 'Rappeler en mars pour les pneus d’été (e2e mise à jour)';
+let julie, karim, marc;
+/** what yesterday's phones did, for the next steps */
+const y = { jobA: null, jobP: null, dueP: 0, mech: { entries: [] }, office: { entries: [] } };
+
+/** a coming day when Camion Complet works the afternoon (as app.test.cjs): the owner books there, then the job is brought to today */
+async function bookToday(jwt, customer, label, truck = T.complet) {
+  const days = h.sql(`select string_agg(d::date::text, ',' order by d) from generate_series(public.local_today() + 1, public.local_today() + 14, interval '1 day') d
+    where exists (select 1 from public.truck_week w where w.truck_id = '${T.complet}' and w.dow = extract(dow from d) and jsonb_array_length(w.ranges) > 0)`).split(',');
+  for (const d of days) {
+    try {
+      const b = await rpcAs(jwt, 'book_job', { p_op: require('node:crypto').randomUUID(), p_job: { customer_id: customer, day: d, block: 'pm', truck_id: truck, duration_min: 60 },
+        p_items: [{ description: label, unit_cents: 9999, duration_min: 60 }] });
+      h.sql(`update public.jobs set day = public.local_today(), block = '${blockNow()}', truck_id = '${truck}' where id = '${b.job_id}'`);
+      return b.job_id;
+    } catch (e) { if (!/block_closed|block_full|needs_truck/.test(String(e?.message || e))) throw e; }
+  }
+  throw new Error('no afternoon of Camion Complet in the next two weeks');
+}
+
+before(async () => {
+  originalCounts = h.rowCounts();
+  h.saveDb();
+  h.seed();
+  const n = Date.now().toString(36);
+  who.owner = { email: `hassan-maj-${n}@test.local`, id: await h.makePerson({ email: `hassan-maj-${n}@test.local`, password: PW, name: 'Hassan Jeha', short: 'Hassan', roles: ['owner'] }) };
+  who.saleh = { email: `saleh-maj-${n}@test.local`, id: await h.makePerson({ email: `saleh-maj-${n}@test.local`, password: PW, name: 'Saleh Ismail', short: 'Saleh', roles: ['mechanic'], truck: 'Camion Complet' }) };
+  who.nadia = { email: `nadia-maj-${n}@test.local`, id: await h.makePerson({ email: `nadia-maj-${n}@test.local`, password: PW, name: 'Nadia Bureau', short: 'Nadia', roles: ['office'] }) };
+  julie = h.sql(`insert into public.customers (first_name, last_name, phone, address, postal_code, lat, lng, lang, sms_ok)
+    values ('Julie', 'Tremblay', '514 555-0141', '1250 rue Graham, Mont-Royal, QC', 'H3P 2C9', 45.5205, -73.6489, 'fr', true) returning id`);
+  karim = h.sql(`insert into public.customers (first_name, last_name, phone, address, postal_code, lat, lng, lang, sms_ok)
+    values ('Karim', 'Haddad', '514 555-0199', '1000 rue Sherbrooke O, Montréal, QC', 'H3A 3G4', 45.5048, -73.5772, 'fr', true) returning id`);
+  marc = h.sql(`insert into public.customers (first_name, last_name, phone, address, postal_code, lat, lng, lang, sms_ok)
+    values ('Marc', 'Gagnon', '514 555-0177', '4500 rue Saint-Denis, Montréal, QC', 'H2J 2L3', 45.5262, -73.5850, 'fr', true) returning id`);
+  // Marc's appointment of this morning: done, « payer plus tard » (he comes to pay at the office): made by the owner
+  const jwt = await jwtOf(who.owner.email, PW);
+  y.jobP = await bookToday(jwt, marc, 'Vidange e2e Marc');
+  for (const a of ['leave', 'arrive']) await rpcAs(jwt, 'job_step', { p_op: require('node:crypto').randomUUID(), p_job: y.jobP, p_action: a, p_data: {} });
+  await rpcAs(jwt, 'job_step', { p_op: require('node:crypto').randomUUID(), p_job: y.jobP, p_action: 'waiver', p_data: { signer: 'Marc Gagnon', version: 'e2e' } });
+  const inv = await rpcAs(jwt, 'invoice_for_job', { p_op: require('node:crypto').randomUUID(), p_job: y.jobP, p_refresh: true });
+  await rpcAs(jwt, 'invoice_finish', { p_op: require('node:crypto').randomUUID(), p_invoice: inv.rows.invoices[0].id });
+  await rpcAs(jwt, 'job_step', { p_op: require('node:crypto').randomUUID(), p_job: y.jobP, p_action: 'finish', p_data: { pay_later: true, reason: 'passe payer au bureau' } });
+  y.dueP = Number(h.sql(`select total_cents - paid_cents from public.invoices where job_id = '${y.jobP}' and status = 'issued'`));
+  assert.ok(y.dueP > 0, 'Marc owes his invoice');
+  // the two apps, built for this server (through the signal switch), and the web server at the app's address
+  m.buildNew();
+  const old = m.buildOld();
+  console.log(`# old app ${old.head.slice(0, 7)} ${old.cached ? '(build kept from an earlier run)' : 'built'}: ${m.mainScript(m.DIST_OLD)}; new app: ${m.mainScript(m.DIST_NEW)}`);
+  await m.signal.start();
+  await m.site.start();
+  m.site.serve(m.DIST_OLD);
+});
+after(async () => {
+  await m.closePhones();
+  await h.closeAll();
+  await m.site.stop();
+  await m.signal.stop();
+  h.restoreDb();
+  const now = h.rowCounts();
+  const diff = Object.keys(originalCounts).filter((k) => originalCounts[k] !== now[k]);
+  assert.deepEqual(diff, [], 'the database is back exactly as it was');
+});
+
+/** signed in on a phone that keeps its profile; the app's service worker installed and in control (as on a phone used yesterday) */
+async function signInPhone(p, email) {
+  await h.signIn(p.page, email, PW);
+  await p.page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.ready.then(() => true), null, { timeout: 20000 });
+  await p.page.reload();
+  await p.page.getByTestId('app').waitFor({ timeout: 15000 });
+  await p.page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
+}
+const T0 = Date.now();
+const show = (label, x) => console.log(`# ${Math.round((Date.now() - T0) / 1000)}s ${label}: ${typeof x === 'string' ? x : JSON.stringify(x, null, 1)}`);
+
+step('yesterday’s app: the office books Julie, Saleh starts his day and leaves for her; he picks English, dark and his own photo', async () => {
+  // the office (a phone)
+  const o = await m.phone('bureau', { fresh: true });
+  await signInPhone(o, who.nadia.email);
+  assert.equal(await m.whichApp(o.page), 'old', 'yesterday’s app');
+  show('office signed in', '');
+  await o.page.goto(h.APP + '#/book');
+  await o.page.getByTestId('book-screen').waitFor();
+  await o.page.getByTestId('customer-search').fill('Julie');
+  await o.page.getByTestId('customer-option').first().click();
+  await o.page.getByTestId('customer-picked').waitFor();
+  await o.page.getByTestId(`svc-${SVC_OIL}`).click();
+  await o.page.getByTestId('bp-sugg').first().click();
+  await o.page.getByTestId('book-confirm').click();
+  await o.page.getByTestId('job-screen').waitFor({ timeout: 15000 });
+  y.jobA = h.sql(`select id from public.jobs where customer_id = '${julie}' and deleted_at is null`);
+  assert.ok(y.jobA, 'Julie is booked');
+  await dismissSheets(o.page);
+  // her appointment is today, in the block that is on now, on Saleh's truck
+  h.sql(`update public.jobs set day = public.local_today(), block = '${blockNow()}', truck_id = '${T.complet}' where id = '${y.jobA}'`);
+  show('office booked', '');
+  noErrors(o.page);
+  await m.putAway(o);
+
+  // Saleh (his phone)
+  const p = await m.phone('mecano', { fresh: true });
+  await signInPhone(p, who.saleh.email);
+  const { page } = p;
+  await page.getByTestId('today-screen').waitFor();
+  show('mechanic signed in', '');
+  await page.getByTestId('shift-start').click();
+  await page.getByTestId('shift-end').waitFor();
+  await page.goto(h.APP + '#/agenda');
+  await page.getByTestId('agenda-screen').waitFor();
+  await page.getByText('Julie').first().waitFor({ timeout: 15000 });
+  await page.goto(h.APP + `#/job/${y.jobA}`);
+  await page.getByTestId('job-screen').waitFor();
+  await page.getByTestId('step-leave').click();
+  await page.getByTestId('text-outcome').waitFor({ timeout: 15000 }).catch(() => undefined);
+  await dismissSheets(page);
+  await page.getByTestId('step-arrive').waitFor({ timeout: 15000 });
+  assert.equal(await until(() => h.sql(`select status from public.jobs where id = '${y.jobA}'`), (v) => v === 'en_route', 15000), 'en_route');
+  show('mechanic left', '');
+  // English, dark, his own photo behind the glass
+  await page.goto(h.APP + '#/account');
+  await page.getByTestId('account-follow').getByRole('button', { name: /mien|own/i }).click().catch(async () => { await page.getByTestId('account-follow').locator('button').nth(1).click(); });
+  await page.getByTestId('theme-his-dark').click();
+  await page.waitForFunction(() => document.documentElement.dataset.mode === 'dark');
+  await page.getByTestId('account-lang').locator('button', { hasText: 'English' }).click();
+  await page.getByText('Today').first().waitFor({ timeout: 5000 });
+  const b64 = await page.evaluate(() => {
+    const c = document.createElement('canvas'); c.width = 1200; c.height = 900; const x = c.getContext('2d');
+    x.fillStyle = '#1d3b2a'; x.fillRect(0, 0, 1200, 900); x.fillStyle = '#e8d9b0'; x.fillRect(200, 300, 500, 300);
+    return c.toDataURL('image/jpeg', 0.9).split(',')[1];
+  });
+  const photo = path.join(h.OUT, 'maj-photo.jpg');
+  fs.writeFileSync(photo, Buffer.from(b64, 'base64'));
+  await page.getByTestId('account-backdrop').waitFor();
+  await page.getByTestId('backdrop-file').setInputFiles(photo);
+  await page.waitForFunction(() => document.documentElement.dataset.photo === 'mine', null, { timeout: 15000 });
+  assert.equal(await until(() => h.sql(`select lang || '|' || coalesce(prefs->'look'->>'mode', '') from public.staff where id = '${who.saleh.id}'`), (v) => v === 'en|dark', 15000), 'en|dark');
+  await h.shot(page, 'maj-1-old-app');
+  noErrors(page);
+  await m.putAway(p);
+});
+
+step('yesterday’s app with no signal: Saleh arrives, types the VIN and the km, Julie signs; the office books Karim, takes Marc’s cash, writes a note; everything waits on the phones', async () => {
+  const p = await m.phone('mecano');
+  const { page } = p;
+  await page.goto(h.APP + `#/job/${y.jobA}`);
+  await page.getByTestId('job-screen').waitFor({ timeout: 15000 });
+  await p.ctx.setOffline(true);
+  await page.getByTestId('step-arrive').click();
+  await dismissSheets(page).catch(() => undefined);
+  await openVin(page);
+  await h.shot(page, 'maj-2-car-check');
+  await page.getByTestId('vin-input').fill(VIN);
+  await page.getByTestId('car-check-km').fill(KM);
+  await page.getByTestId('car-check-save').click();
+  await page.getByTestId('car-check').waitFor({ state: 'detached', timeout: 10000 });
+  await page.getByTestId('step-waiver').click({ timeout: 15000 });
+  await page.getByTestId('waiver-sheet').waitFor();
+  await draw(page, 'waiver-pad');
+  await page.getByTestId('waiver-save').click();
+  await page.getByTestId('waiver-sheet').waitFor({ state: 'detached', timeout: 15000 });
+  await h.shot(page, 'maj-2-mechanic-offline');
+  const dev = await m.readDevice(page, who.saleh.id);
+  show('mechanic outbox', dev.outbox.map((e) => ({ seq: e.seq, kind: e.kind, table: e.table, rpc: e.rpc, op: e.op, label: e.label, tries: e.tries, state: e.state, keys: Object.keys(e) })));
+  show('mechanic meta', dev.meta);
+  y.mech.entries = dev.outbox;
+  show('mechanic sync sheet', await m.syncSheet(page));
+  assert.equal(h.sql(`select status from public.jobs where id = '${y.jobA}'`), 'en_route', 'nothing reached the server');
+  noErrors(page);
+  await m.putAway(p);
+
+  const o = await m.phone('bureau');
+  const op = o.page;
+  await op.goto(h.APP + '#/book');
+  await op.getByTestId('book-screen').waitFor({ timeout: 15000 });
+  await op.getByTestId('customer-search').fill('Karim');
+  await op.getByTestId('customer-option').first().click();
+  await op.getByTestId(`svc-${SVC_OIL}`).click();
+  await o.ctx.setOffline(true);
+  await op.locator('[data-testid^="bp-cell-"]:not([disabled]):not([aria-disabled="true"])').first().click();
+  await op.getByTestId('book-confirm').click();
+  await op.getByTestId('sync-chip').waitFor({ timeout: 15000 });
+  await dismissSheets(op);
+  await op.goto(h.APP + `#/job/${y.jobP}`);
+  await op.getByTestId('job-screen').waitFor({ timeout: 15000 });
+  await op.getByTestId('invoice-pay').click({ timeout: 15000 });
+  await op.getByTestId('pay-sheet').waitFor();
+  await op.getByTestId('pay-cash').click();
+  await op.getByTestId('pay-confirm').click();
+  await op.getByTestId('pay-sheet').waitFor({ state: 'detached', timeout: 15000 });
+  await op.goto(h.APP + `#/customer/${julie}`);
+  await op.getByTestId('notes-panel').waitFor({ timeout: 15000 });
+  await op.getByTestId('note-body').fill(NOTE);
+  await op.getByTestId('note-add').click();
+  await op.getByTestId('notes-list').getByText(NOTE).waitFor({ timeout: 10000 });
+  await h.shot(op, 'maj-2-office-offline');
+  const od = await m.readDevice(op, who.nadia.id);
+  show('office outbox', od.outbox.map((e) => ({ seq: e.seq, kind: e.kind, table: e.table, rpc: e.rpc, op: e.op, label: e.label, tries: e.tries, state: e.state })));
+  y.office.entries = od.outbox;
+  show('office sync sheet', await m.syncSheet(op));
+  assert.equal(Number(h.sql(`select count(*) from public.jobs where customer_id = '${karim}'`)), 0, 'nothing reached the server');
+  noErrors(op);
+  await m.putAway(o);
+});
+
+step('the update: the same phones open the same address, now the rebuilt app; still no signal, nothing is lost', async () => {
+  m.site.serve(m.DIST_NEW);
+  m.signal.set(false);
+  // the morning after, still no signal: the phone opens the app
+  const p = await m.phone('mecano', { offline: true });
+  const { page } = p;
+  await page.goto(h.APP);
+  await page.getByTestId('app').waitFor({ timeout: 20000 });
+  show('offline after the deploy, the phone runs', await m.whichApp(page));
+  show('chip', await page.getByTestId('sync-chip').innerText().catch(() => 'none'));
+  await h.shot(page, 'maj-3-offline-old');
+  // a weak signal: the app's files come, the server does not answer
+  await p.ctx.setOffline(false);
+  await page.reload();
+  await page.getByTestId('app').waitFor({ timeout: 20000 });
+  show('after reload with files', await m.whichApp(page));
+  const sw = await page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return { active: r?.active?.scriptURL, waiting: !!r?.waiting, installing: !!r?.installing }; });
+  show('sw', sw);
+  await page.waitForTimeout(5000);
+  show('toasts', await page.locator('.toast, [role=status]').allInnerTexts().catch(() => []));
+  await h.shot(page, 'maj-3-update-offered');
+  show('site asked', m.site.asked.slice(-30).map((a) => `${a.root}:${a.path}`).join(' '));
+});
+
+/* ---------- two phones at once on the rebuilt app ---------- */
+/** a coming day when only Camion Complet works (the planner cannot put the appointment on the other vehicle) */
+function dayOnlyComplet() {
+  return h.sql(`select d::date::text from generate_series(public.local_today() + 1, public.local_today() + 13, interval '1 day') d
+    where exists (select 1 from public.truck_week w where w.truck_id = '${T.complet}' and w.dow = extract(dow from d) and w.deleted_at is null and jsonb_array_length(w.ranges) > 0)
+      and not exists (select 1 from public.truck_week w where w.truck_id = '${T.voiture}' and w.dow = extract(dow from d) and w.deleted_at is null and jsonb_array_length(w.ranges) > 0)
+      and not exists (select 1 from public.truck_days t where t.day = d::date and t.deleted_at is null)
+    order by d limit 1`);
+}
+async function phoneNew(email, kind = 'phone') {
+  const { ctx, page } = await h.open({ kind });
+  m.watch(page);
+  await h.signIn(page, email, PW);
+  assert.equal(await m.whichApp(page), 'new', 'the rebuilt app');
+  return { ctx, page };
+}
+
+step('two phones at once on the rebuilt app: the office moves an appointment Saleh has open, his screen follows; the office takes a payment, his phone shows it; both press « Je pars » on the same job: once, and the second is told why', async () => {
+  m.site.serve(m.DIST_NEW);
+  m.signal.set(true);
+  const jwt = await jwtOf(who.owner.email, PW);
+  const rid = () => require('node:crypto').randomUUID();
+  // Julie's appointment of the morning (steps before) waits for her payment at the office: it does not hold the truck
+  h.sql(`update public.jobs set pay_later = true where customer_id = '${julie}' and status = 'on_site'`);
+  const lina = h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('Lina', 'Roy', '514 555-0123', '200 rue Jean-Talon E, Montréal, QC', 45.5340, -73.6140, 'fr') returning id`);
+  const omar = h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('Omar', 'Diallo', '514 555-0124', '6000 boul. Saint-Laurent, Montréal, QC', 45.5280, -73.6010, 'fr') returning id`);
+  const zoe = h.sql(`insert into public.customers (first_name, last_name, phone, address, lat, lng, lang) values ('Zoé', 'Lapointe', '514 555-0125', '300 rue Beaubien E, Montréal, QC', 45.5330, -73.6050, 'fr') returning id`);
+  const X = await bookToday(jwt, lina, 'Freins e2e Lina');
+  const Y = await bookToday(jwt, omar, 'Vidange e2e Omar');
+  const Z = await bookToday(jwt, zoe, 'Pneus e2e Zoé');
+  for (const a of ['leave', 'arrive']) await rpcAs(jwt, 'job_step', { p_op: rid(), p_job: Y, p_action: a, p_data: {} });
+  await rpcAs(jwt, 'job_step', { p_op: rid(), p_job: Y, p_action: 'waiver', p_data: { signer: 'Omar Diallo', version: 'e2e' } });
+  const inv = await rpcAs(jwt, 'invoice_for_job', { p_op: rid(), p_job: Y, p_refresh: true });
+  await rpcAs(jwt, 'invoice_finish', { p_op: rid(), p_invoice: inv.rows.invoices[0].id });
+  const target = dayOnlyComplet();
+  assert.ok(target, 'a coming day when only Camion Complet works');
+
+  const s = await phoneNew(who.saleh.email);
+  const o = await phoneNew(who.nadia.email);
+  // Saleh has Lina's appointment open
+  await s.page.goto(h.APP + `#/job/${X}`);
+  await s.page.getByTestId('job-moment').waitFor({ timeout: 15000 });
+  const before = await s.page.getByTestId('job-moment').innerText();
+  // the office moves it to another day (same truck)
+  await o.page.goto(h.APP + `#/job/${X}`);
+  await o.page.getByTestId('job-move').click({ timeout: 15000 });
+  await o.page.getByTestId('move-sheet').waitFor();
+  const cell = o.page.getByTestId(`bp-cell-${target}-pm`);
+  for (let i = 0; i < 3 && !(await cell.isVisible()); i++) await o.page.getByTestId('bp-later').click();
+  await cell.click();
+  await o.page.getByTestId('move-ok').click();
+  // « Beaucoup de route ce jour-là »: the office books it anyway
+  await o.page.getByTestId('move-sheet').waitFor({ state: 'detached', timeout: 15000 }).catch(async () => { await o.page.locator('[role=dialog] button.btn-primary, [role=dialog] [data-testid$="-ok"]').last().click(); });
+  assert.equal(await until(() => h.sql(`select day::text || '|' || block from public.jobs where id = '${X}'`), (v) => v === `${target}|pm`, 15000), `${target}|pm`, 'moved on the server');
+  // and the office takes Omar's cash at the counter
+  await o.page.goto(h.APP + `#/job/${Y}`);
+  await o.page.getByTestId('invoice-pay').click({ timeout: 15000 });
+  await o.page.getByTestId('pay-sheet').waitFor();
+  await o.page.getByTestId('pay-cash').click();
+  await o.page.getByTestId('pay-confirm').click();
+  assert.equal(await until(() => h.sql(`select status from public.invoices where job_id = '${Y}' and status <> 'void'`), (v) => v === 'paid', 15000), 'paid');
+  // Saleh's screen follows, without a reload (no realtime on the test server: the app asks every 45 s)
+  const t0 = Date.now();
+  await s.page.waitForFunction((b) => document.querySelector('[data-testid="job-moment"]')?.innerText !== b, before, { timeout: 70000 });
+  console.log(`# Saleh’s screen followed the move after ${Math.round((Date.now() - t0) / 1000)} s`);
+  await h.shot(s.page, 'maj-5-moved');
+  await s.page.goto(h.APP + `#/job/${Y}`);
+  await s.page.getByTestId('stamp-paid').waitFor({ timeout: 15000 });
+
+  // both press « Je pars » on Zoé's appointment at the same moment
+  await s.page.goto(h.APP + `#/job/${Z}`);
+  await o.page.goto(h.APP + `#/job/${Z}`);
+  await s.page.getByTestId('step-leave').waitFor({ timeout: 15000 });
+  await o.page.getByTestId('step-leave').waitFor({ timeout: 15000 });
+  const mark = m.signal.log.length;
+  await Promise.all([s.page.getByTestId('step-leave').click(), o.page.getByTestId('step-leave').click()]);
+  assert.equal(await until(() => h.sql(`select status from public.jobs where id = '${Z}'`), (v) => v === 'en_route', 15000), 'en_route');
+  const steps = m.signal.since(mark).filter((e) => e.rpc === 'job_step' && e.args?.p_job === Z);
+  console.log(`# « Je pars » sent: ${steps.map((e) => e.status).join(', ')}`);
+  assert.equal(steps.length, 2, 'both phones sent their « Je pars »');
+  assert.equal(steps.filter((e) => e.status === 200).length, 1, 'the server took one');
+  // the one that came second is told in words, on its screen
+  const told = await until2(async () => {
+    for (const p of [s.page, o.page]) { const t = await p.getByTestId('toast-bad').allInnerTexts(); if (t.length) return t.join(' | '); }
+    return '';
+  }, (v) => !!v, 10000);
+  console.log(`# the second phone read: ${told}`);
+  assert.match(told, /déjà partie|plus possible/i, 'the second phone says why, in words');
+  for (const p of [s.page, o.page]) await p.getByTestId('step-arrive').waitFor({ timeout: 15000 });
+  assert.equal(Number(h.sql(`select count(*) from public.trips where job_id = '${Z}'`)) <= 1, true, 'one trip at most');
+  await h.shot(o.page, 'maj-5-second');
+  noErrors(s.page); noErrors(o.page);
+  await s.ctx.close(); await o.ctx.close();
+});
