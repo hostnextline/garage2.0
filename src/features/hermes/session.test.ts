@@ -2,7 +2,7 @@
    send / stop defects (comms-guide-17). */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { access } from '../../data/auth';
-import { t } from '../../lib/i18n';
+import { t, setLang } from '../../lib/i18n';
 import type { Access } from '../../data/types';
 import { hermesOpen } from '../../services/bubbles';
 import { chat, draft, hermesBusy, offNote, askHermes, stopHermes, restartHermes, sessionId, type Ask } from './session';
@@ -17,7 +17,7 @@ function waiting() {
   return { ask, bodies, answer: (text: string) => done({ ok: true, text }) };
 }
 
-beforeEach(() => { access.value = person('owner-1'); restartHermes(); draft.value = ''; });
+beforeEach(() => { setLang('fr'); access.value = person('owner-1'); restartHermes(); draft.value = ''; });
 
 describe('Hermes: the conversation belongs to the person signed in', () => {
   it('sign-out and another person signing in: nothing of the owner is left, the panel is closed, a new session', async () => {
@@ -75,6 +75,23 @@ describe('Hermes: sending and stopping', () => {
     expect(r).toEqual({ kind: 'failed', message: 'Trop de questions' });
     expect(chat.value).toEqual([]);
     expect(draft.value).toBe('Quoi faire ?');
+  });
+  it('in English, a refusal of the server says its code in English, not the server’s French sentence (R145)', async () => {
+    setLang('en');
+    try {
+      const r = await askHermes('What to bring?', ctx, async () => ({ ok: false, code: 'hermes_down', error: 'Hermes ne répond pas. Réessaie dans un instant.' }));
+      expect(r).toEqual({ kind: 'failed', message: t('errors.hermes_down') });
+      expect(r.kind === 'failed' && r.message).toMatch(/isn’t answering/);
+      await askHermes('Hello', ctx, async () => ({ ok: false, code: 'hermes_off', error: 'Hermes n’est pas encore branché sur le serveur.' }));
+      expect(offNote.value).toBe(t('errors.hermes_off'));
+      // no code: the server's words as they are (nothing better to say), or « server error » without words
+      expect(await askHermes('Hi', ctx, async () => ({ ok: false, error: 'Something odd' }))).toEqual({ kind: 'failed', message: 'Something odd' });
+      expect(await askHermes('Hi', ctx, async () => ({ ok: false }))).toEqual({ kind: 'failed', message: t('errors.server') });
+    } finally { setLang('fr'); }
+  });
+  it('in French, the server’s own sentence stays (R145 changes nothing for the team)', async () => {
+    const r = await askHermes('Quoi apporter ?', ctx, async () => ({ ok: false, code: 'hermes_down', error: 'Hermes ne répond pas. Réessaie dans un instant.' }));
+    expect(r).toEqual({ kind: 'failed', message: 'Hermes ne répond pas. Réessaie dans un instant.' });
   });
   it('no signal: the network words, not « erreur du serveur »', async () => {
     const r = await askHermes('Quoi faire ?', ctx, async () => { throw new TypeError('Failed to fetch'); });

@@ -17,7 +17,7 @@ export type LogPage = { ok: true; questions: Question[] } | { ok: false; error: 
 export async function readLog(who: string, before?: string): Promise<LogPage> {
   try {
     const r = await callFn<{ questions?: Question[] }>('hermes', { action: 'log', ...(who ? { staff_id: who } : {}), ...(before ? { before } : {}) }, 20000);
-    return r.ok ? { ok: true, questions: r.questions || [] } : { ok: false, error: r.error || t('errors.server') };
+    return r.ok ? { ok: true, questions: r.questions || [] } : { ok: false, error: r.code ? errorMessage({ code: r.code, error: r.error }) : r.error || t('errors.server') };
   } catch (e) {
     return { ok: false, error: errorMessage(e) };
   }
