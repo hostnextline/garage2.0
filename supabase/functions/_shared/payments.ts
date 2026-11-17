@@ -23,6 +23,7 @@ import { adminDb } from './db.ts';
 import { sha256hex } from './tokens.ts';
 import { stripeCall } from './stripe.ts';
 import { money } from './texts.ts';
+import { refusalOf } from './http.ts';
 
 type Row = Record<string, any>;
 export type Applied = 'applied' | 'already' | 'ignored' | 'parked';
@@ -36,11 +37,13 @@ export async function stripeOp(what: string): Promise<string> {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${'89ab'[parseInt(h[16], 16) % 4]}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 const already = (e: Row) => e?.code === '23505' || /duplicate|unique/i.test(String(e?.message || ''));
-/** why the database will never take it: the code of its refusal (public.fail), or a row that cannot exist (wrong data,
-    a broken link between rows); null = a hiccup, worth trying again */
+/** why the database will never take it: the code of its refusal (public.fail: P0001 with its code in the hint, the same
+    rule as serve()'s refusalOf), or a row that cannot exist (wrong data, a broken link between rows); null = a hiccup,
+    worth trying again. A bare « raise exception » (P0001 without a hint) is NOT a refusal of ours: a server bug or a
+    passing state, never a reason to keep money aside for good (kept aside is final) */
 function never(e: Row): string | null {
   const code = String(e?.code || '');
-  if (code === 'P0001') return String(e?.hint || 'refused');
+  if (code === 'P0001') return refusalOf(e);
   return /^(22|23)/.test(code) ? code : null;
 }
 

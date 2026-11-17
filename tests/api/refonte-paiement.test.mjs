@@ -606,6 +606,32 @@ test('parked-note-unchecked, with Part 27: the database keeps the payment and it
   assert.equal((await notesOf('payment_parked', s.id)).length, 0, 'never also kept aside by the function (it would be entered by hand: counted twice)');
 });
 
+test('never() = refusalOf: a bare « raise exception » of the database (P0001 without a hint) is a hiccup, not a refusal: 5xx, nothing kept aside, the next notice puts the money in the books', async () => {
+  const { job } = await newJob({ items: [{ description: 'Batterie', unit_cents: 18000 }] });
+  const t = await linkFor(job);
+  const p = await fn('client', { action: 'pay', token: t, base: BASE });
+  const sid = sessionOf(p.url);
+  const id = sid.replace(/'/g, "''");
+  // a server bug (or a passing state) of the books: an exception with no code of ours
+  await q(`create or replace function public.t_bare_raise() returns trigger language plpgsql as $f$ begin
+    if new.stripe_session = '${id}' then raise exception 'état imprévu'; end if; return new; end $f$`);
+  await q(`create trigger t_bare_raise before insert on public.payments for each row execute function public.t_bare_raise()`);
+  let first;
+  await clearLog();
+  try { first = await mockGet(`/pay/${sid}`); } finally {
+    await q(`drop trigger if exists t_bare_raise on public.payments`);
+    await q(`drop function if exists public.t_bare_raise()`);
+  }
+  assert.equal(first.hook, 500, 'Stripe must try again: ' + JSON.stringify(first));
+  const ev = (await mockLog()).filter((x) => x.svc === 'stripe-webhook').map((h) => h.event);
+  assert.equal((await q(`select count(*)::int n from public.stripe_events where id = any($1)`, [ev]))[0].n, 0, 'not marked handled');
+  assert.equal((await notesOf('payment_parked', sid)).length, 0, 'never kept aside for good');
+  // Stripe's next notice (the bug fixed): in the books, once
+  assert.equal((await mockGet(`/pay/${sid}?twice=1`)).hook, 200);
+  assert.deepEqual((await inBooks(sid)).map((x) => [x.amount_cents, x.job_id]), [[(await stripeSession(sid)).amount_total, job]]);
+  assert.equal((await stripeSession(sid)).amount_total, 20696);
+});
+
 test('refund-of-unrecorded-payment: a refund whose payment notice never came records the payment first, then the refund', async () => {
   const { job } = await newJob({ items: [{ description: 'Alternateur', unit_cents: 20000 }] });
   const t = await linkFor(job);
