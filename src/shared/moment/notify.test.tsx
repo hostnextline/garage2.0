@@ -8,7 +8,7 @@ vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>
 
 import { upsertLocal, clearAll } from '../../data/store';
 import { lang } from '../../lib/i18n';
-import { notifyCustomer, wantsText } from './notify';
+import { notifyCustomer, wantsText, NOTIFY_RETRY_MS } from './notify';
 
 beforeEach(() => {
   lang.value = 'fr';
@@ -52,5 +52,46 @@ describe('a text after a booking or a move', () => {
     api.notify.mockRejectedValue(new Error('boom'));
     await notifyCustomer('moved', 'J1');
     expect(ui.toast.mock.calls.at(-1)).toEqual(['Le texto n’est pas parti. boom', { kind: 'bad' }]);
+  });
+});
+
+describe('one send = one id (R27): a lost answer never texts the customer twice', () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  afterEach(() => { vi.useRealTimers(); });
+  it('each send carries its own id; two sends, two ids', async () => {
+    api.notify.mockResolvedValue({ ok: true, status: 'sent' });
+    await notifyCustomer('booking', 'J1');
+    await notifyCustomer('moved', 'J1');
+    expect(api.notify).toHaveBeenCalledTimes(2);
+    const [a, b] = api.notify.mock.calls.map((c) => (c[2] as { op: string }).op);
+    expect(a).toMatch(UUID);
+    expect(b).toMatch(UUID);
+    expect(a).not.toBe(b);
+    expect(api.notify.mock.calls[0].slice(0, 2)).toEqual(['booking', 'J1']);
+  });
+  it('the answer lost on a weak signal: asked once more with the SAME id, and the server’s answer is said', async () => {
+    vi.useFakeTimers();
+    api.notify.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({ ok: true, status: 'sent' });
+    const done = notifyCustomer('booking', 'J1');
+    await vi.advanceTimersByTimeAsync(NOTIFY_RETRY_MS);
+    await done;
+    expect(api.notify).toHaveBeenCalledTimes(2);
+    expect(api.notify.mock.calls[1][2]).toEqual(api.notify.mock.calls[0][2]);
+    expect(ui.toast.mock.calls).toEqual([['Texto de confirmation envoyé', { kind: 'ok' }]]);
+  });
+  it('asked again only once; a refusal or an answer of the server is never asked again', async () => {
+    vi.useFakeTimers();
+    api.notify.mockRejectedValue(Object.assign(new Error('timeout'), { code: 'timeout' }));
+    const done = notifyCustomer('booking', 'J1');
+    await vi.advanceTimersByTimeAsync(NOTIFY_RETRY_MS);
+    await done;
+    expect(api.notify).toHaveBeenCalledTimes(2);
+    expect(ui.toast.mock.calls.at(-1)?.[1]).toEqual({ kind: 'bad' });
+    api.notify.mockReset().mockRejectedValue(new Error('boom'));
+    await notifyCustomer('booking', 'J1');
+    expect(api.notify).toHaveBeenCalledTimes(1);
+    api.notify.mockReset().mockResolvedValue({ ok: false, status: 'error', error: 'x' });
+    await notifyCustomer('booking', 'J1');
+    expect(api.notify).toHaveBeenCalledTimes(1);
   });
 });

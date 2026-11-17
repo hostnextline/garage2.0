@@ -5,6 +5,8 @@ import { render } from 'preact';
 import { signal } from '@preact/signals';
 import { MessageSquare, Copy, Share2 } from 'lucide-preact';
 import { notify, errorMessage } from '../../data/api';
+import { uuid } from '../../data/sync';
+import { isNetworkError } from '../../lib/errors';
 import { job as jobRow, customer as customerRow, settings } from '../../data/select';
 import { choiceWords } from '../../domain/moment/choice';
 import { t } from '../../lib/i18n';
@@ -41,12 +43,26 @@ function windowSaid(j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_end' | 'wi
   return choiceWords({ day: j.day, block: 'day', win_start: j.win_start ?? null, win_end: j.win_end ?? null, win_flex: !!j.win_flex && j.win_start == null });
 }
 
+/** the wait before the one new try of a send whose answer never came (a weak signal) */
+export const NOTIFY_RETRY_MS = 2000;
+/** the send, with its own id (`op`, R27): when the answer is lost on the way (no network, a timeout), it is asked once more
+    with the SAME id, so the server answers what the first one did (« sent ») instead of texting the customer twice; a
+    refusal or any answer of the server is never asked again */
+async function sendOnce(kind: NotifyKind, jobId: string) {
+  const op = uuid();
+  try { return await notify(kind, jobId, { op }); } catch (e) {
+    if (!isNetworkError(e)) throw e;
+    await new Promise((r) => setTimeout(r, NOTIFY_RETRY_MS));
+    return await notify(kind, jobId, { op });
+  }
+}
+
 /** sends the customer's text and says what happened (never throws) */
 export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { customerId?: string | null; when?: string | null } = {}): Promise<void> {
   const c = customerRow(opts.customerId ?? jobRow(jobId)?.customer_id);
   const name = c ? (c.first_name || c.company || c.last_name || '') : '';
   try {
-    const r = await notify(kind, jobId);
+    const r = await sendOnce(kind, jobId);
     const status = String(r?.status || (r?.ok === false ? 'error' : ''));
     // the window as the server has it now (the job's row), else the one just chosen on the screen
     const open = () => openMessage({ name, phone: r?.phone ?? c?.phone ?? null, message: r?.message || '', link: r?.link || null, when: windowSaid(jobRow(jobId)) ?? opts.when ?? null });
