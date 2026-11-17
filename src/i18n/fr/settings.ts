@@ -236,7 +236,15 @@ export const settings = {
       lockedNone: 'Aucun rendez-vous flexible à fixer pour demain.',
       untoldTitle: { one: '{n} client n’a pas reçu sa plage : dis-la-lui toi-même.', other: '{n} clients n’ont pas reçu leur plage : dis-la-leur toi-même.' },
       untoldText: 'Texter',
-      untoldNoPhone: 'Pas de numéro'
+      untoldNoPhone: 'Pas de numéro',
+      backTitle: { one: '{n} client a reçu une plage qui n’est plus dans son bloc : appelle-le ou texte-lui.', other: '{n} clients ont reçu une plage qui n’est plus dans leur bloc : appelle-les ou texte-leur.' },
+      backWhen: '{day} {block} ({hours})',
+      backTold: 'Plage dite : {told}',
+      backNow: 'Maintenant : {when}',
+      backSms: 'Bonjour{name}, petit changement pour votre rendez-vous : le mécanicien arrivera {when} au lieu de {told}. Merci !',
+      backSmsNoWin: 'Bonjour{name}, petit changement pour votre rendez-vous : le mécanicien arrivera {when}. Merci !',
+      keptTitle: { one: '{n} moment n’a pas été replanifié, sinon un rendez-vous serait tombé dans « À placer » : vérifie-le dans l’agenda.', other: '{n} moments n’ont pas été replanifiés, sinon un rendez-vous serait tombé dans « À placer » : vérifie-les dans l’agenda.' },
+      keptRow: '{day} {block}'
     }
   },
   texts: {

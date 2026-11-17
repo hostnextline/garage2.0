@@ -236,7 +236,15 @@ export const settings: typeof fr = {
       lockedNone: 'No flexible appointment to fix for tomorrow.',
       untoldTitle: { one: '{n} customer did not get their window: tell them yourself.', other: '{n} customers did not get their window: tell them yourself.' },
       untoldText: 'Text',
-      untoldNoPhone: 'No number'
+      untoldNoPhone: 'No number',
+      backTitle: { one: '{n} customer was told a window that is no longer inside their block: call or text them.', other: '{n} customers were told a window that is no longer inside their block: call or text them.' },
+      backWhen: '{day}, {block} ({hours})',
+      backTold: 'Window told: {told}',
+      backNow: 'Now: {when}',
+      backSms: 'Hello{name}, a small change for your appointment: the mechanic will arrive {when} instead of {told}. Thank you!',
+      backSmsNoWin: 'Hello{name}, a small change for your appointment: the mechanic will arrive {when}. Thank you!',
+      keptTitle: { one: '{n} moment was not planned again, or an appointment would have fallen into “To place”: check it in the schedule.', other: '{n} moments were not planned again, or an appointment would have fallen into “To place”: check them in the schedule.' },
+      keptRow: '{day}, {block}'
     }
   },
   texts: {
