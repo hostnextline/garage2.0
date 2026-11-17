@@ -6,7 +6,7 @@ import { cad } from '../format';
 import { ct, type CLang } from '../i18n';
 import { Note } from '../ui';
 
-export function PayBox(p: { v: JobView; l: CLang; now?: boolean; failed: boolean; pendingNote: boolean; onPay: () => Promise<void> }) {
+export function PayBox(p: { v: JobView; l: CLang; now?: boolean; /** the words when the card page did not open ('' = it did not fail) */ failed: string; pendingNote: boolean; onPay: () => Promise<void> }) {
   const { v, l } = p;
   return (
     <div class="cl-pay cl-noprint" data-testid="client-pay">
@@ -15,7 +15,7 @@ export function PayBox(p: { v: JobView; l: CLang; now?: boolean; failed: boolean
         {ct(l, p.now ? 'pay.now' : 'pay.button', { amount: cad(v.pay.amount_cents, l) })}
       </Button>
       <p class="cl-pay-note"><Lock aria-hidden="true" />{ct(l, 'pay.secure')}</p>
-      {p.failed && <Note kind="bad">{ct(l, 'pay.fail')}</Note>}
+      {p.failed && <Note kind="bad">{ct(l, p.failed)}</Note>}
     </div>
   );
 }

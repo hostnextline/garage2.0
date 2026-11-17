@@ -82,7 +82,7 @@ async function post(url: string, body: unknown): Promise<{ status: number; data:
 }
 
 const KNOWN = new Set(['bad_link', 'expired', 'gone', 'network', 'confirm', 'nothing', 'no_stripe', 'action', 'timeout', 'signed', 'signer', 'signature',
-  'amount_changed']);
+  'amount_changed', 'closed', 'pay_unavailable']);
 /** the « client » server function: view | sign | answer | pay | check.
     sign and answer carry `shown_cents` (the amount the page showed): the server answers 409 « amount_changed » with
     `current_cents` when the amount moved meanwhile, and writes nothing */

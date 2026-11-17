@@ -11,7 +11,7 @@ import { PayBox } from './PayBox';
 import type { ActResult, Drawn } from './useAppointment';
 import { chargesTaxes, isOnSiteBill, sections, workLines } from './view-state';
 
-export function WorkPanel(p: { v: JobView; l: CLang; payFailed: boolean; pendingNote: boolean; onPay: () => Promise<void>; onSign: (d: Drawn | null) => Promise<ActResult> }) {
+export function WorkPanel(p: { v: JobView; l: CLang; payFailed: string; pendingNote: boolean; onPay: () => Promise<void>; onSign: (d: Drawn | null) => Promise<ActResult> }) {
   const { v, l } = p;
   const declined = sections(v).declined;
   const taxed = chargesTaxes(v);

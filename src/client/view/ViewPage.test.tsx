@@ -93,7 +93,8 @@ describe('answering extra work for the price shown (client-page-01, 26)', () => 
     await open();
     await click(q('client-extra-decline')[0]);
     await click(q('client-extra-confirm')[0]);
-    expect(sp(q('client-thanks')[0].textContent)).toContain('il est accepté');
+    expect(sp(q('client-already')[0].textContent)).toContain('il est accepté');
+    expect(q('client-thanks')).toHaveLength(0);
     expect(sp(box.textContent)).not.toContain('Votre réponse est envoyée');
   });
   it('a proposal left unanswered is not offered on a finished, paid job (client-page-05)', async () => {
@@ -190,6 +191,48 @@ describe('payment (client-page-06, 07, 31, 23)', () => {
     await open({ lang: 'en' });
     await click(q('client-pay-button')[0]);
     expect(calls.find((c) => c.action === 'pay')!.body).toMatchObject({ lang: 'en' });
+  });
+});
+
+describe('the server says no in words the customer can act on (R11)', () => {
+  const extra = { id: 'x1', description: 'Étriers', qty: 1, unit_cents: 8000, total_cents: 8000, status: 'proposed', note: null, answered_via: null };
+  const invoice = (paid: number, total = 18394) => ({ number: 'F-0001', issued_at: null, due_on: null, status: paid >= total ? 'paid' : 'issued', lines: [], subtotal_cents: 15998, tps_cents: 800, tvq_cents: 1596, total_cents: total, paid_cents: paid, notes: null });
+  it('Stripe not answering (« pay_unavailable »): « payez sur place ou appelez-nous », not « la page n’a pas pu s’ouvrir »', async () => {
+    const v = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('pay_unavailable', 'Le paiement par carte ne répond pas.', null); return v; };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay')[0].textContent)).toContain('Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez-nous.');
+    expect(sp(q('client-pay')[0].textContent)).not.toContain('n’a pas pu s’ouvrir');
+  });
+  it('… and in English on an English page', async () => {
+    const v = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('pay_unavailable', 'x', null); return v; };
+    await open({ lang: 'en' });
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay')[0].textContent)).toContain('Card payment is not answering right now. Try again in a moment, pay on site or call us.');
+  });
+  it('another failure keeps the old words', async () => {
+    const v = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => { if (a === 'pay') throw new ClientError('server', 'x', null); return v; };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(sp(q('client-pay')[0].textContent)).toContain('La page de paiement n’a pas pu s’ouvrir.');
+  });
+  it('the visit was closed meanwhile (« closed »): the page says so and shows the file as it is now', async () => {
+    let current = job({ extras: [extra] }, { status: 'on_site' });
+    server = (a) => {
+      if (a === 'answer') { current = job({ extras: [extra] }, { status: 'done' }); throw new ClientError('closed', 'Ce rendez-vous est terminé.', null); }
+      return current;
+    };
+    await open();
+    await click(q('client-extra-accept')[0]);
+    await click(q('client-extra-confirm')[0]);
+    expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);
+    expect(sp(q('client-extras-closed')[0].textContent)).toBe('Ce rendez-vous est terminé : cette proposition ne peut plus être acceptée ici. Appelez-nous.');
+    expect(q('client-extra-accept')).toHaveLength(0);
+    expect(sp(box.textContent)).not.toContain('Votre réponse n’a pas été envoyée');
+    expect(q('client-thanks')).toHaveLength(0);
   });
 });
 

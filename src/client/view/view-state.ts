@@ -95,5 +95,6 @@ export function afterCheck(v: JobView, tries: number, maxTries: number, received
 export function refusalKey(action: 'sign' | 'answer', code: string): string {
   if (code === 'amount_changed') return action === 'sign' ? 'sign.changedNow' : 'extras.changedNow';
   if (action === 'sign' && code === 'signed') return 'sign.already';
+  if (action === 'answer' && code === 'closed') return 'extras.closed';
   return action === 'sign' ? 'sign.fail' : 'errors.answer';
 }

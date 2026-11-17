@@ -11,7 +11,7 @@ import { afterCheck, cardPaid, estimateSigned, extraStatus, moneyIn, refusalKey,
 
 export type Phase = { k: 'loading' } | { k: 'error'; code: string; garage: Garage | null } | { k: 'ready'; v: View };
 /** what the extra work panel says after an answer: thanks, or the answer another phone gave first */
-export type Reply = null | { kind: 'thanks' } | { kind: 'already'; status: string };
+export type Reply = null | { kind: 'thanks' } | { kind: 'already'; status: string } | { kind: 'closed' };
 /** what a signature or an answer came to: done, or the words to show (with the new amount when it moved) */
 export type ActResult = { ok: true } | { ok: false; code: string; key: string; cents: number | null };
 export interface Drawn { signer: string; strokes: Stroke[] }
@@ -28,7 +28,8 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
   const [check, setCheck] = useState<PayCheck>(retour === 'paye' ? 'checking' : 'idle');
   const [justPaid, setJustPaid] = useState(false);
   const [reply, setReply] = useState<Reply>(null);
-  const [payFailed, setPayFailed] = useState(false);
+  // the words when the card page did not open ('' = it did not fail): Stripe not answering (« pay_unavailable ») has its own
+  const [payFailed, setPayFailed] = useState<'' | 'pay.fail' | 'pay.down'>('');
   const [pendingChecked, setPendingChecked] = useState(false);
   const alive = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,6 +129,8 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
       now before asking again */
   const refused = async (action: 'sign' | 'answer', e: ClientError): Promise<ActResult> => {
     if (e.code === 'amount_changed' || e.code === 'signed') await load();
+    // the visit was closed meanwhile: the proposal can no longer be answered here; the page shows the file as it is now
+    if (action === 'answer' && e.code === 'closed') { setReply({ kind: 'closed' }); await load(); }
     return { ok: false, code: e.code, key: refusalKey(action, e.code), cents: e.currentCents };
   };
 
@@ -169,7 +172,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
 
   /** Stripe's card page, in the page's language */
   const pay = async (l: CLang) => {
-    setPayFailed(false);
+    setPayFailed('');
     const v = latest.current;
     const r = await attemptCall(() => callClient<{ ok: true; url?: string; paid?: boolean }>('pay', token, { lang: l }));
     if (!alive.current) return;
@@ -184,7 +187,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
       return;
     }
     if (r.error.code === 'nothing') { await load(); return; }
-    setPayFailed(true);
+    setPayFailed(r.error.code === 'pay_unavailable' ? 'pay.down' : 'pay.fail');
   };
 
   const retry = () => { setPhase({ k: 'loading' }); void load(); };

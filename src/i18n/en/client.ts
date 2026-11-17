@@ -106,6 +106,7 @@ export const client: typeof fr = {
     thanks: 'Thank you! Your answer was sent to your mechanic.',
     alreadyAccepted: 'This work had already been answered: it is accepted.',
     alreadyDeclined: 'This work had already been answered: it is declined.',
+    closed: 'This appointment is over: this proposal can no longer be accepted here. Call us.',
     changedNow: 'The price of this work changed: it is now {price}. Check it, then answer again.',
     newTotal: 'New expected total: {total}, taxes included.',
     declinedTitle: 'Declined work',
@@ -139,7 +140,8 @@ export const client: typeof fr = {
     done: 'Thank you! Your payment was received.',
     late: 'The payment does not show yet. If it was accepted, it will show here within a few minutes.',
     checkAgain: 'Check again',
-    fail: 'The payment page could not open. Try again in a moment or call us.'
+    fail: 'The payment page could not open. Try again in a moment or call us.',
+    down: 'Card payment is not answering right now. Try again in a moment, pay on site or call us.'
   },
 
   quote: {
