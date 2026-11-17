@@ -253,6 +253,20 @@ describe('the small map of a moment closes when its menu opens (booking-b-31)', 
       expect(q('test-hover-map')).toBeNull();
     } finally { back(); }
   });
+  // the right-click on a day of the windows calendar opens its own menu (dayMenu): the small map closes there too
+  it('with « Plages d’arrivée »: a day of the calendar', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      await act(async () => { q('win-sugg-0')!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+      await wait(450);
+      expect(q('test-hover-map')).toBeTruthy();
+      await act(async () => { q(`pick-day-${tomorrow}`)!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+      expect(seen.menus).toHaveLength(1);
+      expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
+  });
   it('blocks: a moment offered', async () => {
     windowsOn(false);
     api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }]);
