@@ -642,11 +642,24 @@ test('a backup that stops is said by EVERY reconciliation (the schedule’s, « 
     await q(`insert into public.secrets (key, value) values ('backup_repo:hostnextline/garage2.0-sauvegardes', '1:2') on conflict (key) do nothing`);
     await q(`select public.recon_run(public.local_today(), 'cron')`);
     assert.ok((await open()).some((x) => x.check_id === 'backup_late' && x.entity_id === null && /jamais dit « terminé »/.test(x.message_fr)));
-    // a good night again: nothing new is added
+    // a good night again: nothing new is added, and the warning closes at this very run (not two days later: the nightly
+    // job would end red, and GitHub mail « run failed », after a backup that worked)
     await q(`insert into public.ops_backup_runs (tables, rows, ok) values (40, 900, true)`);
-    await new Promise((ok) => setTimeout(ok, 1100));
     await q(`select public.recon_run(public.local_today(), 'cron')`);
-    assert.equal((await q(`select count(*)::int n from public.ops_recon_findings where check_id = 'backup_late' and updated_at > now() - interval '1 second'`))[0].n, 0, 'a fresh backup adds nothing');
+    assert.deepEqual(await open(), [], 'a fresh backup closes the backup’s warning at once');
+    assert.ok((await q(`select state, closed_at from public.ops_recon_findings where check_id = 'backup_late'`)).every((x) => x.state === 'closed' && x.closed_at), 'closed, with its time');
+    // late again, a warning that was « vu » (acked) by the owner: closed too once the backup works
+    await q(`update public.ops_backup_runs set at = now() - interval '28 hours'`);
+    await q(`select public.recon_run(public.local_today(), 'cron')`);
+    const [again] = await open();
+    assert.equal(again?.check_id, 'backup_late', 'late again: open again');
+    await q(`update public.ops_recon_findings set state = 'acked' where check_id = 'backup_late' and state = 'open'`);
+    await q(`insert into public.ops_backup_runs (tables, rows, ok) values (40, 900, true)`);
+    await q(`delete from public.secrets where key like 'backup_repo:%'`);   // the made-up pin above is not this ticket's repository
+    const night = await oidc('recon', { action: 'run' }, await ticket());
+    assert.equal(night.ok, true, JSON.stringify(night).slice(0, 300));
+    assert.ok(!night.findings.some((f) => /^backup/.test(f.check)), 'the nightly job’s run after a good backup lists no backup warning: ' + JSON.stringify(night.findings));
+    assert.deepEqual(await open(), []);
   } finally {
     await q(`delete from public.ops_backup_runs`); await q(`delete from public.secrets where key like 'backup_repo:%'`);
     await q(`delete from public.rate_limits where key in ('recon_now', 'recon:run')`);

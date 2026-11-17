@@ -29,7 +29,8 @@ grant all on public.ops_backup_runs to service_role;
 -- schedule (pg_cron) and of « Vérifier maintenant » (recon_now) closed the warning a day later. Now every run of the
 -- reconciliation (recon_run, whoever starts it) adds the same finding as the function: « backup_late » (bad, the owner's
 -- only), with the same key and the same words, so the two never make two rows. It is a check made outside the books
--- (recon_add: it closes a day after it was last added, like the function's).
+-- (recon_add), closed by the first run that finds a good backup younger than 26 hours again (or, by recon_run's own
+-- rule, a day after it was last added).
 -- Armed once the backup job has reached the server (a « done » row, or the repository pin written by its first ticket):
 -- a database with no backup set up yet (a test copy) says nothing; the function still says « never ».
 create or replace function public.recon_backup_age(p_run uuid) returns void
@@ -48,7 +49,12 @@ begin
     return;
   end if;
   v_hours := round(extract(epoch from now() - v_last.at) / 360) / 10;
-  if v_hours > 26 then
+  if v_hours <= 26 then
+    -- the backup works again: its warning closes at this run (a check made outside closes only a day after it was last
+    -- added, so one missed night stayed red for two more days, and the nightly job ended red after a backup that worked)
+    update public.ops_recon_findings set state = 'closed', closed_at = now(), updated_at = now()
+     where check_id in ('backup_late', 'backup_unknown') and state <> 'closed';
+  else
     perform public.recon_add(p_run, 'backup_late', 'bad', 'ops_backup_runs', v_last.id,
       format('La dernière sauvegarde réussie date de %s heures : elle devrait avoir moins de 26 heures.', floor(v_hours)),
       format('The last successful backup is %s hours old: it should be less than 26 hours old.', floor(v_hours)),
