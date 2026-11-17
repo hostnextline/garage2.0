@@ -30,7 +30,7 @@ function textResult(r: TextOutcome, name: string, okText?: string) {
 }
 
 /** one id per text asked, kept until the server answered it: tapped again after a lost answer, the customer gets one text */
-export const textSends = intents(uuid);
+const textSends = intents(uuid);
 /** a text to the customer through the server (confirmation, moved, the mechanic arrived with the invoice, extra work to approve) */
 export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived', j: Job, opts: { resend?: boolean; okText?: string } = {}): Promise<boolean> {
   const key = `${kind}|${j.id}|${opts.resend ? 'again' : ''}`;
