@@ -45,9 +45,11 @@ describe('Réserver en ligne: the form', () => {
     expect(contactErrors({ ...ok, email: 'sophie@exemple.ca' })).toEqual({});
   });
   it('years: next year down to 1980', () => {
-    const y = years(new Date('2026-11-07T12:00:00'));
+    const y = years(new Date('2026-11-07T17:00:00Z'));
     expect(y[0]).toBe(2027);
     expect(y[y.length - 1]).toBe(1980);
+    // New Year's Eve, 22 h in Montréal: Tokyo and UTC are already in 2027, the garage is not (R169)
+    expect(years(new Date('2027-01-01T03:00:00Z'))[0]).toBe(2027);
   });
   it('every word of the form exists in French and English', () => {
     for (const k of ['errFirst', 'errPhone', 'errEmail', 'errMake', 'errModel']) {
