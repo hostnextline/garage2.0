@@ -7,7 +7,6 @@ import * as dayWords from './dayWords';
 import * as days from './days';
 import * as grid from './grid';
 import * as logic from './logic';
-import * as outbox from './outbox';
 import * as units from './units';
 import * as words from './words';
 import type { BlockChoice, BlockPickerProps, VehicleKind } from './choice';
@@ -24,7 +23,6 @@ const VALUES: [string, Record<string, unknown>, string[]][] = [
   ['days', days, ['dayChips', 'dayCounts', 'defaultBlock', 'overviewPins']],
   ['grid', grid, ['UNIT', 'MIN_UNITS', 'dropWindowStart', 'jobBox', 'jobMinute', 'minuteAt', 'openingUnit', 'overlapColumns', 'unitCount', 'unitIndex', 'unitMinute', 'unitMinutes', 'unitsAt', 'workedUnits']],
   ['logic', logic, ['betterMoments', 'betterText', 'cellState', 'choiceWindow', 'draftOfService', 'farInfo', 'farLimits', 'farQuestion', 'isFar', 'itemsDuration', 'momentsByKey', 'moveWindow', 'offered', 'roadWords', 'sameMoment', 'suggWindow', 'workMinutes']],
-  ['outbox', outbox, ['forgetRefusal', 'noLongWaitOffline']],
   ['units', units, ['byHour', 'cacheKey', 'lastPage', 'moveFocus', 'pageDays', 'pageOf', 'possibleUnits', 'rowsByStart', 'unitOfWindow', 'unitStates']],
   ['words', words, ['blockPhrase', 'blockPhraseLower', 'blockPhraseWithHours', 'dayMonth', 'freeWords', 'rangesWords', 'relativeDay', 'spanEnds', 'weekdaysWords', 'windowPhrase', 'windowWords', 'listWords', 'shortDuration']]
 ];
