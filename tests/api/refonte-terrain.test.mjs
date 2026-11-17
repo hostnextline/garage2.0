@@ -133,6 +133,25 @@ test('« Appel entrant » while the app is closed: a call is also sent as a noti
   }
 });
 
+test('a device’s push address is whatever its browser gave: the server posts only to https (here, to its own machine), never to a plain http address elsewhere', async () => {
+  try {
+    const a = await fn('ring', { action: 'link' }, ownerJwt);
+    const key = new URL(a.url).searchParams.get('k');
+    await q(`update public.staff set prefs = prefs || '{"calls": true}' where id = $1`, [owner]);
+    await device(owner, 'bon-appareil');
+    // the same fake service reached by another name, over plain http: it must never be posted to
+    await q(`insert into public.push_subs (staff_id, endpoint, p256dh, auth) select staff_id, $1, p256dh, auth from public.push_subs where endpoint like '%/bon-appareil'`, [`http://localhost:8021/push/pas-https`]);
+    await clearLog();
+    assert.equal((await ring(key, { full_name: 'Paul Roy', phone: '+14385560199' })).ok, true);
+    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'push').map((x) => x.path), ['/bon-appareil']);
+  } finally {
+    await q(`update public.staff set prefs = prefs - 'calls' where id = $1`, [owner]);
+    await q(`delete from public.push_subs`); await q(`delete from public.incoming_calls`);
+    await q(`delete from public.secrets where key like 'vapid%' or key = 'call_hook'`);
+    await q(`delete from public.rate_limits where key like 'ring%'`);
+  }
+});
+
 test('GoHighLevel delivers the same call or text twice: noted once, announced once; two different texts or pictures stay two', async () => {
   try {
     const a = await fn('ring', { action: 'link' }, ownerJwt);
