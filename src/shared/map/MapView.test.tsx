@@ -7,6 +7,7 @@ import { act } from 'preact/test-utils';
 const log: string[] = [];
 let mapsAlive = 0;
 let removeThrows = false;
+const tiles: Record<string, unknown>[] = [];
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 vi.mock('leaflet', () => {
   const chain = <T extends object>(o: T) => Object.assign(o, { addTo() { return o; } });
@@ -24,7 +25,7 @@ vi.mock('leaflet', () => {
       };
     },
     control: { attribution: () => chain({}), zoom: () => chain({ remove() { /* */ } }) },
-    tileLayer: () => chain({}),
+    tileLayer: (url: string, o: Record<string, unknown>) => { tiles.push({ url, ...o }); return chain({}); },
     layerGroup: () => chain({ clearLayers() { log.push('clear'); } }),
     divIcon: (o: { html: string }) => o,
     latLngBounds: (p: unknown) => p,
@@ -95,6 +96,15 @@ describe('MapView', () => {
     await act(async () => { render(<MapView markers={stops()} lines={lines(true)} />, box); });
     expect(log.filter((x) => x === 'line')).toHaveLength(2);   // only the first line is made again
     expect(log.filter((x) => x.startsWith('front:'))).toEqual(['front:casing:', 'front:stroke:#D3000E']);
+    await act(async () => { render(null, box); });
+  });
+  it('the streets are asked with CORS, so the « tuiles » cache can keep them for a map seen without signal (R127)', async () => {
+    tiles.length = 0;
+    await act(async () => { render(<MapView markers={stops()} />, box); });
+    await settle();
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0].url).toMatch(/tile\.openstreetmap\.org/);
+    expect(tiles[0].crossOrigin).toBe('anonymous');
     await act(async () => { render(null, box); });
   });
   it('Leaflet throws while the map is removed: the screen still goes (mh-7)', async () => {

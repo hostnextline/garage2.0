@@ -83,7 +83,9 @@ export function MapView(p: MapViewProps) {
         touchZoom: true, doubleClickZoom: true, boxZoom: false, keyboard: true, zoomSnap: 0.5, minZoom: 3, maxZoom: 19
       });
       L.control.attribution({ prefix: false, position: 'bottomright' }).addTo(map);
-      L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION, subdomains: 'abc' }).addTo(map);
+      // asked with CORS (the tile servers answer « * »): a real answer the « tuiles » cache keeps, so a map already seen
+      // still shows its streets without signal (an opaque answer is never stored, R127)
+      L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION, subdomains: 'abc', crossOrigin: 'anonymous' }).addTo(map);
       map.setView(MONTREAL, 11);
       map.on('click', () => latest.current.onBackgroundClick?.());
       const layer = L.layerGroup().addTo(map);
