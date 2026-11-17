@@ -39,6 +39,26 @@ describe('« Pas encore à jour »', () => {
     await wait(NOT_UP_TO_DATE_MS + 10);
     expect(banner()).toBeNull();
   });
+  it('session lost: only « Reconnecte-toi » (one cause, one banner: « Réessayer » could not read the lists)', async () => {
+    await act(() => { render(<ShellBanners />, root); });
+    await act(() => { net.value = { ...START, ready: true, firstPull: 'failed', session: 'lost' }; });
+    await wait(NOT_UP_TO_DATE_MS + 10);
+    expect(root.querySelector('[data-testid="session-banner"]')).not.toBeNull();
+    expect(banner()).toBeNull();
+    // signed in again but some lists still unread: said again only once it lasts
+    await act(() => { net.value = { ...START, ready: true, firstPull: 'failed', session: 'ok' }; });
+    expect(root.querySelector('[data-testid="session-banner"]')).toBeNull();
+    expect(banner()).toBeNull();
+    await wait(NOT_UP_TO_DATE_MS + 10);
+    expect(banner()).not.toBeNull();
+  });
+  it('a session being renewed (« expired », no banner of its own): the lists unread are still said', async () => {
+    await act(() => { render(<ShellBanners />, root); });
+    await act(() => { net.value = { ...START, ready: true, firstPull: 'failed', session: 'expired' }; });
+    await wait(NOT_UP_TO_DATE_MS + 10);
+    expect(root.querySelector('[data-testid="session-banner"]')).toBeNull();
+    expect(banner()).not.toBeNull();
+  });
   it('offline: nothing (the chip says « Hors ligne »)', async () => {
     browserOnline.value = false;
     await act(() => { render(<ShellBanners />, root); });

@@ -2,7 +2,7 @@
    button): the old address, « Voir l'app comme… », a lost session, a phone that cannot keep changes, an important
    update waiting, a new version installed by another tab, changes stuck at the head of the queue, lists the first
    download could not read (R136: shown only once it lasts, never while the phone says it is offline: the chip says
-   « Hors ligne » then), the changes the server refused. */
+   « Hors ligne » then, nor while the session is lost: its banner says the one cause), the changes the server refused. */
 import { Eye, LogIn, ArrowUpCircle, RefreshCw } from 'lucide-preact';
 import { t } from '../lib/i18n';
 import { navigate } from '../platform/router';
@@ -22,8 +22,11 @@ export const NOT_UP_TO_DATE_MS = 4000;
 export function ShellBanners() {
   const v = netView();
   const failed = net.value.failed;
-  // a pull that fails for a moment (the signal coming back) is not said: only one that lasts
-  const notUpToDate = useSettled(v.notUpToDate && v.online, NOT_UP_TO_DATE_MS);
+  // a pull that fails for a moment (the signal coming back) is not said: only one that lasts. Nor while the session is
+  // lost: every list fails for that one cause, which its own banner says with the way out (« Se reconnecter »), and
+  // « Réessayer » could not read them before (app-shell-r2-3)
+  const unread = v.notUpToDate && v.online && !v.sessionLost;
+  const notUpToDate = useSettled(unread, NOT_UP_TO_DATE_MS);
   return (
     <div class="shell-banners">
       <MovedBanner />
@@ -49,7 +52,7 @@ export function ShellBanners() {
           {v.stuckLabel && <span class="small">{v.stuckLabel}</span>}
         </Banner>
       )}
-      {notUpToDate && v.notUpToDate && v.online && (
+      {notUpToDate && unread && (
         <Banner kind="warn" title={t('shell.notUpToDate')}
           action={<Button size="sm" icon={<RefreshCw size={16} />} onClick={() => pullAll()}>{t('common.retry')}</Button>} data-testid="pull-banner" />
       )}
