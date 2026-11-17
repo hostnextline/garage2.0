@@ -1,15 +1,18 @@
 /* « Changer de camion »: the same day and block (or arrival window), another truck (booked by mistake on the wrong one).
-   No text to the customer: the day and the hours do not change. */
+   No text to the customer: the day and the hours do not change (unless the server says they did: `tell`, R84). */
 import { useState } from 'preact/hooks';
 import { Truck } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { Sheet, Button, Rows, RowItem, Pill, toast } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { duration } from '../../lib/dates';
-import { truckLabel, truckColor, blockLoad } from '../../data/select';
+import { truckLabel, truckColor, blockLoad, settings, job as jobRow } from '../../data/select';
 import { moveJob, errorMessage } from '../../data/api';
 import { freeWords } from '../../domain/moment/words';
+import { moveTextGoes } from '../../domain/jobs/move';
 import { dayInSentence, momentWord, wt } from '../../shared/jobs/select';
+import { sendText } from '../../shared/jobs/texts';
+import { afterSheet } from './scroll';
 
 export function TruckSheet(p: { job: Job; open: boolean; onClose: () => void }) {
   if (!p.open) return null;
@@ -34,6 +37,9 @@ function TruckOpen(p: { job: Job; onClose: () => void }) {
       else if (d?.unchanged) toast(t('jobs.truck.same'));
       else toast(truckId ? t('jobs.truck.done', { truck: truckLabel(truckId) }) : t('jobs.truck.doneAuto'), { kind: 'ok' });
       p.onClose();
+      // the day and the hours stay: no text. Only when the server says what the customer was told changed anyway (a job
+      // of the other mode converted, its window cut again: `tell`) does the « moved » text go, as from « Déplacer » (R84)
+      if (moveTextGoes(r, j, jobRow(j.id), !!settings.value.messages?.on?.moved)) afterSheet(() => { void sendText('moved', j); });
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
     } finally { setBusy(null); }

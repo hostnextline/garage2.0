@@ -7,7 +7,11 @@ import { act } from 'preact/test-utils';
 const sync = vi.hoisted(() => ({ answer: null as null | (() => void), refetch: vi.fn() }));
 vi.mock('../../data/sync', async (orig) => ({ ...(await orig<typeof import('../../data/sync')>()), refetch: sync.refetch }));
 vi.mock('../../services/position', () => ({ startPositionSharing: () => undefined, quickPosition: () => Promise.resolve(undefined) }));
-const api = vi.hoisted(() => ({ removeItem: vi.fn(() => Promise.resolve()), updateItem: vi.fn(() => Promise.resolve()), moveJob: vi.fn(() => Promise.resolve({ queued: false, data: { changed: true } })) }));
+const api = vi.hoisted(() => ({
+  removeItem: vi.fn(() => Promise.resolve()), updateItem: vi.fn(() => Promise.resolve()),
+  moveJob: vi.fn((..._a: unknown[]) => Promise.resolve({ queued: false, data: { changed: true } as Record<string, unknown> })),
+  notify: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 'sent', link: null, message: null, phone: null, error: null }))
+}));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), ...api }));
 // the pad as a button that « signs » (the canvas has no drawing in jsdom)
 vi.mock('../../shared/sign/SignaturePad', () => ({
@@ -88,6 +92,25 @@ describe('« Changer de camion » keeps what the customer was told (x-dualmode-2
     await act(async () => { q('truck-auto')!.click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(api.moveJob).toHaveBeenCalledTimes(1);
     expect(api.moveJob.mock.calls[0]).toEqual(['j1', '2026-11-20', 'day', null]);
+  });
+  it('the customer is texted only when the server says what they were told changed (R84)', async () => {
+    upsertLocal('settings', [{ id: '1', messages: { on: { moved: true }, fr: {}, en: {} } } as never]);
+    const job = { id: 'j1', status: 'booked', day: '2026-11-20', block: 'pm', truck_id: 't1', truck_pinned: true, duration_min: 60 } as unknown as Job;
+    // (the text waits for the closed sheet's step back in the history: up to 700 ms when the browser never answers it)
+    const pick = async () => {
+      await act(() => render(<TruckSheet job={job} open onClose={() => undefined} />, box));
+      await act(async () => { q('truck-auto')!.click(); await new Promise((r) => setTimeout(r, 900)); });
+      await act(() => render(null, box));
+    };
+    // another truck, the same moment: tell false → no text
+    api.moveJob.mockImplementationOnce(() => Promise.resolve({ queued: false, data: { ok: true, changed: false, tell: false, truck_changed: true } }));
+    await pick();
+    expect(api.notify).not.toHaveBeenCalled();
+    // the server cut a new window (a job of the other mode): tell true → the « moved » text goes
+    api.moveJob.mockImplementationOnce(() => Promise.resolve({ queued: false, data: { ok: true, changed: false, tell: true, window_changed: true } }));
+    await pick();
+    expect(api.notify).toHaveBeenCalledTimes(1);
+    expect(api.notify.mock.calls[0]).toEqual(['moved', 'j1', {}]);
   });
 });
 

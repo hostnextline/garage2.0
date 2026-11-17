@@ -4,11 +4,12 @@ import { useState } from 'preact/hooks';
 import type { Job } from '../../data/types';
 import { Sheet, Button, toast, ask } from '../../ui';
 import { t, lang } from '../../lib/i18n';
-import { settings, windowsOn } from '../../data/select';
+import { settings, windowsOn, job as jobRow } from '../../data/select';
 import { moveJob, errorMessage } from '../../data/api';
 import { BlockPicker, type BlockChoice, type FarInfo } from '../../shared/moment/BlockPicker';
 import { windowWords } from '../../domain/moment/words';
 import { sameMoment, moveWindow, choiceWindow, farQuestion } from '../../domain/moment/logic';
+import { moveTextGoes } from '../../domain/jobs/move';
 import { jobCustomer, dayInSentence, wt } from '../../shared/jobs/select';
 import { sendText } from '../../shared/jobs/texts';
 import { afterSheet } from './scroll';
@@ -45,7 +46,9 @@ function MoveOpen(p: { job: Job; onClose: () => void }) {
       else if (d?.unchanged) toast(t('jobs.moment.same'));
       else toast(t('jobs.moment.moved', { when: movedWhen(choice) }), { kind: 'ok' });
       p.onClose();
-      if (!r.queued && !d?.unchanged && textOn) afterSheet(() => { void sendText('moved', j); });
+      // the text only when what the customer was told changed (the server's `tell`): a truck changed at the same moment,
+      // or the same window, says nothing new to them (R84)
+      if (moveTextGoes(r, j, jobRow(j.id), textOn)) afterSheet(() => { void sendText('moved', j); });
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
     }
