@@ -75,6 +75,16 @@ test('every money operation claims its op before any work (op_begin), and saves 
     assert.match(body, new RegExp(`\\nbegin\\s+v_done := public\\.op_begin\\(p_op, '${name}'\\);\\s+if v_done is not null then return v_done; end if;`), `${name}: op_begin is its first statement`);
     assert.doesNotMatch(body, /op_done\(/, `${name}: no more op_done`);
     assert.match(body, new RegExp(`public\\.op_save\\(p_op, '${name}'`), `${name}: its answer is saved`);
+    // after the claim, every way out saves its answer or raises (a refusal returned as plain jsonb would make the
+    // retry answer « ok »): each « return » is the claim's stored answer or op_save UNDER ITS OWN NAME (an answer saved
+    // under another name is never found by the retry, which does the work again), and no handler swallows a refusal
+    const way = new RegExp(`\\breturn (v_done;|public\\.op_save\\(p_op, '${name}')`);
+    assert.doesNotMatch(`  return public.op_save(p_op, '${name}_x', jsonb_build_object('ok', true));`, way, `${name}: another op's name is caught`);
+    assert.doesNotMatch(`  return public.op_save(p_op, 'other', jsonb_build_object('ok', true));`, way, `${name}: another op's name is caught`);
+    for (const line of body.split('\n').map((l) => l.replace(/--.*$/, ''))) {
+      if (/\breturn\b/.test(line)) assert.match(line, way, `${name}: ${line.trim()}`);
+    }
+    assert.doesNotMatch(body, /\bexception\s+when\b/i, `${name}: no handler that could swallow a refusal`);
   }
   // the new building blocks are the server's own
   const g = await garage(h);
@@ -195,6 +205,27 @@ test('two connections: the same stock purchase arriving twice at the same instan
   assert.equal(Number(await s.val(`select qty from public.inventory_items where id = $1`, [item])), 2, 'two filters, not four');
   assert.equal(await s.val(`select count(*)::int from public.inventory_moves where item_id = $1`, [item]), 1, 'one move');
   assert.equal(await s.val(`select count(*)::int from public.expenses where created_by = $1`, [owner]), 1, 'one expense');
+}));
+
+test('two connections: two people record the whole balance at the same instant (two op ids): one payment, the other is told nothing is left (x-money-01, invoices-quotes-01, argent-04)', () => shared(async (s) => {
+  const owner = await s.person('Hassan Conc', ['owner']);
+  const office = await s.person('Bureau Conc', ['owner']);
+  const { id: job, inv } = await s.job('on_site', 'issued');
+  const total = await s.val(`select total_cents from public.invoices where id = $1`, [inv]);
+  // the mechanic's waiting « Encaisser » and the office's, each with its own op id, reach the server together
+  const sql = `select public.payment_add(p_op => $1, p_invoice => $2, p_amount_cents => $3, p_method => 'cash', p_job => $4) as r`;
+  const k1 = await s.open(owner), k2 = await s.open(office);
+  const pid2 = await s.pid(k2);
+  await k1.query(sql, [randomUUID(), inv, total, job]);
+  const p2 = k2.query(sql, [randomUUID(), inv, total, job]);
+  assert.equal(await within(p2, 400), 'waiting', 'the second one waits for the first');
+  assert.equal(await s.waits(pid2), 'Lock', 'on the job, locked first by every money operation');
+  await k1.query('commit');
+  const e = await p2.then(() => null, (x) => x);
+  await k2.query('rollback');
+  assert.equal(e?.hint, 'too_much', 'the second one sees the first payment');
+  assert.equal(await s.val(`select count(*)::int from public.payments where invoice_id = $1 and deleted_at is null`, [inv]), 1, 'one payment');
+  assert.deepEqual(Object.values((await s.c.query(`select status, paid_cents from public.invoices where id = $1`, [inv])).rows[0]), ['paid', total]);
 }));
 
 test('two connections: a card payment ahead that lands while the invoice is being finished goes on it (sql-money-17)', () => shared(async (s) => {
@@ -397,6 +428,42 @@ test('a card refund reaches the books where its payment is and the invoice follo
   assert.deepEqual(Object.values(await h.one(`select status, paid_cents from public.invoices where id = $1`, [f2.inv])), ['issued', 0]);
 }));
 
+test('a refund that failed, taken back (« #echec »), goes where its refund is: the money of one card payment is never split (integration, x-branches-02)', () => tx(async (h) => {
+  const g = await garage(h);
+  const refund = (inv, cents, session, job) => h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: cents, p_method: 'card_online',
+    p_reference: session.split('#')[1], p_job: job, p_session: session });
+  // 1. the usual case: the payment on its finished invoice; the refund, then its failure, on that invoice; the invoice follows
+  const j1 = await siteJob(h, g);
+  const f1 = await finished(h, g, j1);
+  await h.as(null);
+  await card(h, f1.inv, f1.total, 'cs_E1', j1);
+  await refund(f1.inv, -3000, 'cs_E1#re_e1', j1);
+  assert.equal((await inv1(h, f1.inv)).status, 'issued');
+  await h.as(null);
+  await refund(f1.inv, 3000, 'cs_E1#re_e1#echec', j1);
+  assert.deepEqual(Object.values(await h.one(`select status, paid_cents from public.invoices where id = $1`, [f1.inv])), ['paid', f1.total], 'paid again');
+  // 2. a payment left waiting on the job while the job has a finished invoice (an older version did that; the nightly
+  // reconciliation lists it, M4.waiting): its refund waits with it, and so does the failure of that refund — before,
+  // the failure went on the invoice, which had never received that money
+  const j2 = await siteJob(h, g);
+  const f2 = await finished(h, g, j2);
+  await h.c.query(`select set_config('garage.rpc', 'on', true)`);
+  await h.c.query(`insert into public.payments (invoice_id, job_id, amount_cents, method, reference, stripe_session) values (null, $1, 5000, 'card_online', 'pi_w', 'cs_W')`, [j2]);
+  await h.c.query(`select set_config('garage.rpc', '', true)`);
+  await h.as(null);
+  await refund(null, -2000, 'cs_W#re_w', j2);
+  await h.as(null);
+  await refund(null, 2000, 'cs_W#re_w#echec', j2);
+  await asDb(h);
+  const rows = (await h.c.query(`select stripe_session, invoice_id, job_id, amount_cents from public.payments where stripe_session like 'cs_W%' order by created_at, stripe_session`)).rows;
+  assert.deepEqual(rows.map((r) => [r.stripe_session, r.invoice_id, r.job_id]), [['cs_W', null, j2], ['cs_W#re_w', null, j2], ['cs_W#re_w#echec', null, j2]], 'the three stay together, on the job');
+  assert.deepEqual(Object.values(await h.one(`select status, paid_cents from public.invoices where id = $1`, [f2.inv])), ['issued', 0], 'the invoice never got that money');
+  // 3. a failure whose refund is not in the books (written by hand, or lost): it goes where the payment is
+  await h.as(null);
+  await refund(f1.inv, 1000, 'cs_E1#re_lost#echec', j1);
+  assert.equal(await h.val(`select invoice_id from public.payments where stripe_session = 'cs_E1#re_lost#echec'`), f1.inv);
+}));
+
 test('paid ahead more than the final invoice: finished « payée » and the excess said; given back, the books balance (sql-money-05, x-branches-01)', () => tx(async (h) => {
   const g = await garage(h);
   const jobId = await jobOnSite(h, g);
@@ -444,9 +511,13 @@ test('work added or accepted after the invoice is finished is billed: the job do
   // « Modifier la facture » on the PAID invoice (the appointment is still open): what was paid waits on the job
   const r = await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv });
   assert.deepEqual([r.ok, Number(r.number)], [true, n]);
+  assert.deepEqual(r.added.map((x) => x.description).sort(), ['Essuie-glaces', 'Plaquettes avant'], 'the answer says what came on the draft');
   assert.equal((await inv1(h, inv)).status, 'draft');
+  // the work the finished invoice missed is on the draft already (argent-01): no tap on « Ajouter à la facture » needed
+  const onDraft = (await h.val(`select lines from public.invoices where id = $1`, [inv])).map((x) => x.description);
+  assert.equal(onDraft[0], 'Vidange d’huile + changement de filtre', 'the lines already billed stay first, as they were');
+  assert.deepEqual(onDraft.slice(1).sort(), ['Essuie-glaces', 'Plaquettes avant']);
   await h.as(g.mech);
-  await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true });
   const again = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
   assert.deepEqual([Number(again.number), again.again, again.unbilled], [n, true, []]);
   const v = await inv1(h, inv);
@@ -492,6 +563,26 @@ test('work that becomes billable goes on the draft by itself; finishing the invo
   assert.deepEqual(await lines(), ['Vidange d’huile + changement de filtre', 'Essuie-glaces']);
   const f = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
   assert.deepEqual(f.unbilled.map((x) => [x.id, x.description]), [[brakes, 'Plaquettes avant']]);
+}));
+
+test('« Refaire depuis le travail » on a draft: it speaks the language of the job’s customer now (invoices-quotes-26)', () => tx(async (h) => {
+  const g = await garage(h);
+  const j = await siteJob(h, g);
+  await h.as(g.owner);
+  const d = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j, p_refresh: true })).rows.invoices[0];
+  assert.equal(d.lang, 'fr');
+  // the customer's language is changed on the file (or « Changer de client » put an English-speaking one on the job)
+  await asDb(h);
+  await h.c.query(`update public.customers set lang = 'en' where id = $1`, [g.customer]);
+  await h.as(g.owner);
+  await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j, p_refresh: true });
+  assert.equal(await h.val(`select lang from public.invoices where id = $1`, [d.id]), 'en');
+  // « Faire la facture » that finds the draft already there (no refresh) changes nothing
+  await asDb(h);
+  await h.c.query(`update public.customers set lang = 'fr' where id = $1`, [g.customer]);
+  await h.as(g.owner);
+  await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j, p_refresh: false });
+  assert.equal(await h.val(`select lang from public.invoices where id = $1`, [d.id]), 'en');
 }));
 
 test('an invoice that has a number is never deleted: cancelled, its number stays in the books; what was paid waits for the next one (sql-money-06, invoices-quotes-04)', () => tx(async (h) => {
@@ -578,6 +669,9 @@ test('« Changer le prix » on a line priced below zero keeps it below zero (x-m
   await h.rpc('job_item_price', { p_op: uuid(), p_item: rebate, p_unit_cents: 1500 });
   await asDb(h);
   assert.equal(await h.val(`select unit_cents from public.job_items where id = $1`, [rebate]), -1500);
+  // the history says the price as it is kept, with its sign (argent-02)
+  const seen = await h.one(`select data from public.activity where action = 'price_changed' and data->>'item' = $1`, [rebate]);
+  assert.deepEqual([seen.data.from, seen.data.to], [-2000, -1500]);
 }));
 
 /* ───────────────────────── the Coffre and the stock ───────────────────────── */

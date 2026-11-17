@@ -15,6 +15,7 @@
 --                           never more than what was paid (« refund_too_much »).
 --                         · a card refund (the server, a negative « card_online », session « <checkout>#<refund> ») goes
 --                           where the original payment is; the invoice follows (no longer fully paid = « issued » again).
+--                           A refund that failed, taken back (« …#echec », positive), goes where that refund is.
 --                         · locks the job, then the invoice: a card payment that lands while the invoice is being finished
 --                           no longer stays beside it.
 --   payment_remove        same lock order; a payment whose refund is noted is not removed alone (« refund_first »).
@@ -23,7 +24,8 @@
 --                         its first date; the number never falls behind the highest one; the answer lists the work of the
 --                         job that is not on the invoice (« unbilled »).
 --   invoice_reopen        a PAID invoice of an appointment still open opens again too (its payments wait on the job):
---                         the only way to bill work added after the customer paid.
+--                         the only way to bill work added after the customer paid. The work the finished invoice missed
+--                         (« unbilled ») comes on the draft at once.
 --   invoice_void          a draft that has a number (« Modifier la facture ») is cancelled, never deleted: its number stays
 --                         in the books; payments and their refunds that add up to zero no longer block; the customer's
 --                         open card page is forgotten.
@@ -129,7 +131,9 @@ begin
     insert into public.invoices (job_id, customer_id, status, lines, lang, created_by)
     values (j.id, j.customer_id, 'draft', public.job_lines(j.id), coalesce(v_lang, 'fr'), auth.uid());
   elsif inv.status = 'draft' and p_refresh then
-    update public.invoices set lines = public.job_lines(j.id), customer_id = j.customer_id where id = inv.id;
+    -- (a draft speaks the language of the job's customer, as when it was made: « Changer de client » or the customer's
+    -- language changed on the file since; before, it kept the language of the customer it was first made for)
+    update public.invoices set lines = public.job_lines(j.id), customer_id = j.customer_id, lang = coalesce(v_lang, lang) where id = inv.id;
   end if;
   return public.op_save(p_op, 'invoice_for_job', jsonb_build_object('ok', true, 'rows', public.job_payload(j.id)));
 end $$;
@@ -194,7 +198,7 @@ end $$;
 
 create or replace function public.invoice_reopen(p_op uuid, p_invoice uuid) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_done jsonb; inv public.invoices; j public.jobs; v_pays int;
+declare v_done jsonb; inv public.invoices; j public.jobs; v_pays int; v_add jsonb;
 begin
   v_done := public.op_begin(p_op, 'invoice_reopen');
   if v_done is not null then return v_done; end if;
@@ -216,17 +220,24 @@ begin
     perform public.fail('closed', 'La job est terminée : la facture ne se modifie plus. Annule-la pour en faire une nouvelle.');
   end if;
   perform set_config('garage.rpc', 'on', true);
+  -- the job's work that the finished invoice missed (why « Terminer la job » said « unbilled »), read while it is still
+  -- finished: it comes on the draft now, so finishing the invoice again bills it (before: only a tap on the phone's
+  -- « Ajouter à la facture » did, and « Terminer la facture » went through without it, back to « unbilled »)
+  v_add := public.job_unbilled(j.id);
   -- what the customer paid waits on the job and comes back on the invoice when it is finished again
   update public.payments set invoice_id = null where invoice_id = inv.id and deleted_at is null;
   get diagnostics v_pays = row_count;
   -- the card page opened for the old amount is not reused: the next « Payer » makes one with the new amount
   update public.public_links set last_session = null, last_session_url = null, last_session_amount = null, last_session_expires = null
   where job_id = j.id and last_session is not null;
-  update public.invoices set status = 'draft', paid_cents = 0 where id = inv.id;
+  update public.invoices set status = 'draft', paid_cents = 0,
+    lines = lines || coalesce((select jsonb_agg(x.l order by x.n) from jsonb_array_elements(public.job_lines(j.id)) with ordinality x(l, n)
+      where x.l->>'item_id' in (select a->>'id' from jsonb_array_elements(v_add) a)), '[]'::jsonb)
+  where id = inv.id;
   insert into public.activity (actor, entity, entity_id, action, data)
   values (auth.uid(), 'job', j.id, 'invoice_reopened', jsonb_build_object('invoice', inv.id, 'number', inv.number,
-    'total', inv.total_cents, 'paid', inv.paid_cents, 'payments', v_pays, 'was', inv.status));
-  return public.op_save(p_op, 'invoice_reopen', jsonb_build_object('ok', true, 'number', inv.number, 'rows', public.job_payload(j.id)));
+    'total', inv.total_cents, 'paid', inv.paid_cents, 'payments', v_pays, 'was', inv.status, 'added', jsonb_array_length(v_add)));
+  return public.op_save(p_op, 'invoice_reopen', jsonb_build_object('ok', true, 'number', inv.number, 'added', v_add, 'rows', public.job_payload(j.id)));
 end $$;
 
 create or replace function public.invoice_void(p_op uuid, p_invoice uuid, p_reason text) returns jsonb
@@ -280,6 +291,7 @@ end $$;
                                is not where it was meant to go.
      card_online, amount < 0   a card refund. session = « <checkout session>#<refund id> »: it goes where the payment of
                                that checkout session is (its invoice, or waiting on the job); the invoice follows.
+     card_online, « …#echec »  a refund that failed, taken back (the opposite amount): it goes where that refund is.
      the same session again    nothing is written twice: { ok, already: true }. */
 create or replace function public.payment_add(p_op uuid, p_invoice uuid, p_amount_cents integer, p_method text, p_reference text default null, p_job uuid default null, p_session text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -315,10 +327,18 @@ begin
       return public.op_save(p_op, 'payment_add', jsonb_build_object('ok', true, 'already', true,
         'rows', public.job_payload(coalesce(dup.job_id, (select v.job_id from public.invoices v where v.id = dup.invoice_id)))));
     end if;
-    -- a card refund goes where the payment it gives back is
-    if v_card and p_amount_cents < 0 and position('#' in v_session) > 1 then
-      select * into orig from public.payments where stripe_session = split_part(v_session, '#', 1);
-      if found then
+    -- one rule for the money that belongs to a card payment: a card refund (« <checkout>#<refund> », negative) and a
+    -- refund that failed, taken back (« <checkout>#<refund>#echec », positive) go where that money is NOW — the refund
+    -- it takes back, else the payment of that checkout — never by their own way (before: a failed refund of a payment
+    -- waiting on the job went on the job's finished invoice while its refund stayed on the job)
+    if v_card and position('#' in v_session) > 1 and (p_amount_cents < 0 or v_session like '%#echec') then
+      if p_amount_cents > 0 then
+        select * into orig from public.payments where stripe_session = left(v_session, length(v_session) - length('#echec'));
+      end if;
+      if orig.id is null then
+        select * into orig from public.payments where stripe_session = split_part(v_session, '#', 1);
+      end if;
+      if orig.id is not null then
         v_inv := orig.invoice_id; v_stay := true;
         v_pjob := coalesce(orig.job_id, (select v.job_id from public.invoices v where v.id = orig.invoice_id));
       end if;
@@ -549,7 +569,7 @@ create trigger jobs_unbilled_guard before update of status on public.jobs for ea
 
 create or replace function public.job_item_price(p_op uuid, p_item uuid, p_unit_cents integer) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_done jsonb; i record; j record; v_old int;
+declare v_done jsonb; i record; j record; v_old int; v_new int;
 begin
   v_done := public.op_begin(p_op, 'job_item_price');
   if v_done is not null then return v_done; end if;
@@ -566,10 +586,13 @@ begin
   v_old := i.unit_cents;
   perform set_config('garage.rpc', 'on', true);
   -- a discount keeps its sign; the price written is what one unit costs. A line priced below zero (a rebate kept as a
-  -- service in the price list) keeps its sign too: the app shows and sends its amount without the sign (Part 27)
-  update public.job_items set unit_cents = case when kind = 'discount' or unit_cents < 0 then -abs(p_unit_cents) else p_unit_cents end where id = i.id;
+  -- service in the price list) keeps its sign too: the app shows and sends its amount without the sign (Part 27).
+  -- (so such a line never becomes a charge by « Changer le prix »: one typed below zero by mistake is removed and added again)
+  v_new := case when i.kind = 'discount' or i.unit_cents < 0 then -abs(p_unit_cents) else p_unit_cents end;
+  update public.job_items set unit_cents = v_new where id = i.id;
+  -- the history says the price as it is kept (before: the amount typed, without its sign)
   insert into public.activity (actor, entity, entity_id, action, data)
-  values (auth.uid(), 'job', j.id, 'price_changed', jsonb_build_object('item', i.id, 'description', i.description, 'from', v_old, 'to', p_unit_cents));
+  values (auth.uid(), 'job', j.id, 'price_changed', jsonb_build_object('item', i.id, 'description', i.description, 'from', v_old, 'to', v_new));
   return public.op_save(p_op, 'job_item_price', jsonb_build_object('ok', true, 'rows', jsonb_build_object(
     'job_items', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.job_items x where x.id = i.id),
     'invoices', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.invoices x where x.job_id = j.id))));
