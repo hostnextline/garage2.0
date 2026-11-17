@@ -363,6 +363,32 @@ test('a treasurer (the invoices, not the agenda) texts an invoice; still no othe
   assert.equal((await fn('notify', { kind: 'booking', job_id: job, base: BASE }, jwt)).code, 'not_found');
 });
 
+test('securite-01: « Factures » alone never texts the invoice of a job one cannot see (a mechanic of another truck), and « arrived » needs the job, as before', async () => {
+  const account = async (roles, name) => {
+    const email = `${name}-${randomUUID().slice(0, 6)}@test.local`;
+    const id = await adminUser(email, 'garage-2026');
+    await q(`insert into public.staff (id, full_name, short_name, roles, email) values ($1, $2, $2, $3, $4)`, [id, name, roles, email]);
+    return (await signIn(email, 'garage-2026')).access_token;
+  };
+  const mech = await account('{mechanic}', 'Saleh'), tres = await account('{treasurer}', 'Ibra');
+  // the job is on a truck Saleh does not drive; he has « Factures » (a mechanic's default) and sees every invoice
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  await issue(job);   // finished, the mechanic still on site
+  await clearLog();
+  for (const kind of ['invoice', 'payment_reminder', 'arrived']) {
+    const r = await fn('notify', { kind, job_id: job, base: BASE }, mech);
+    assert.deepEqual([r.ok, r.code], [false, 'not_found'], `${kind}: ${JSON.stringify(r)}`);
+    assert.equal(r.link, undefined, 'no customer link handed out');
+  }
+  // the treasurer keeps the books: the invoice and its reminder, never « your mechanic is here »
+  const a = await fn('notify', { kind: 'arrived', job_id: job, base: BASE, resend: true }, tres);
+  assert.deepEqual([a.ok, a.code], [false, 'not_found'], JSON.stringify(a));
+  assert.equal((await fn('notify', { kind: 'payment_reminder', job_id: job, base: BASE }, tres)).status, 'sent');
+  const sms = (await mockLog()).filter((m) => m.svc === 'ghl' && m.path === '/conversations/messages');
+  assert.equal(sms.length, 1, 'only the treasurer’s reminder was texted: ' + JSON.stringify(sms.map((m) => m.body?.message)));
+  assert.equal((await q(`select count(*)::int n from public.public_links where job_id = $1`, [job]))[0].n, 1, 'one link made: the reminder’s');
+});
+
 test('the payment reminder says the Montréal day of the invoice (finished at 19 h 30, not the next day)', async () => {
   const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
   const inv = await issue(job);

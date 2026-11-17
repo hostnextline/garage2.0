@@ -19,6 +19,8 @@ const LINK_DAYS = 90;
 const bare = (x: unknown) => String(x || '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MONEY_KINDS = ['invoice', 'payment_reminder', 'arrived'];
+/** the texts of a FINISHED invoice: the only ones someone who keeps the books may send for a job they cannot see */
+const BILL_KINDS = ['invoice', 'payment_reminder'];
 /** the total of lines, the same way everywhere (a discount counts negative): _shared/money.ts */
 const taxed = (lines: Record<string, any>[], s: Record<string, any>): number => sumLines(lines, s).total;
 export async function makeLink(jobId: string | null, quoteId: string | null, by: string | null, base: string, lang: string) {
@@ -41,9 +43,12 @@ export const handler = serve(async (req) => {
   const { data: seen, error } = await c.db.from('jobs').select('*').eq('id', String(b.job_id || '')).maybeSingle();
   if (error) throw error;
   let job = seen as Record<string, any> | null;
-  if (!job && MONEY_KINDS.includes(kind)) {
-    // someone who sees the invoices without the agenda (a treasurer): the invoice of the job is theirs to send when
-    // the database's own rule shows it to them
+  const r = c.access.rights;
+  if (!job && BILL_KINDS.includes(kind) && (c.access.owner || r.treasury || r.edit_invoices)) {
+    // someone who keeps the books without the agenda (a treasurer, the office's « edit invoices »): the finished invoice
+    // of the job is theirs to send when the database's own rule shows it to them. Never with « Factures » alone (a
+    // mechanic of another truck sees every invoice), never « arrived » (« your mechanic is here »): as before, the job
+    // must be theirs to see
     const { data: inv, error: e0 } = await c.db.from('invoices').select('id').eq('job_id', String(b.job_id)).is('deleted_at', null).limit(1);
     if (e0) throw e0;
     if (inv?.length) job = (await db.from('jobs').select('*').eq('id', String(b.job_id)).is('deleted_at', null).maybeSingle()).data as Record<string, any> | null;
@@ -51,7 +56,6 @@ export const handler = serve(async (req) => {
   if (!job) fail('not_found', 'Cette job n’existe plus (ou tu n’y as pas accès).');
   const j = job as Record<string, any>;
   const mine = c.access.trucks.includes(j.truck_id) || j.created_by === c.id;
-  const r = c.access.rights;
   if (['booking', 'moved', 'extras', 'reminder', 'window'].includes(kind) && !(r.book || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas texter ce client.', 403);
   if (MONEY_KINDS.includes(kind) && !(r.edit_invoices || r.invoices || mine || c.access.owner)) fail('not_allowed', 'Tu ne peux pas envoyer cette facture.', 403);
 
