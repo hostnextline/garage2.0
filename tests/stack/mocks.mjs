@@ -18,6 +18,10 @@
 //                                                     quiet: Stripe's notice never comes)
 //   GET /age/<session>?hours=N                       the page was made N hours ago (its `created`)
 //   GET /complete/<session>                          paid with a slow means (a bank debit): complete, not paid yet
+//   GET /debit-failed/<session>                      that slow payment failed (the bank refused the debit): the page stays
+//                                                    complete and unpaid, its payment goes back to requires_payment_method
+// A page that is not open has no `url` (null), like Stripe's. GET /v1/payment_intents/<id> gives the payment behind a page
+// (its `status`: requires_payment_method while open, processing for a slow means on its way, succeeded, canceled).
 //   GET /refund/<session>[?amount=][&status=pending][&twice=1]   the garage gives money back from Stripe's own screens
 //   GET /refund-update/<refund>?status=succeeded|failed          Stripe says what became of a refund
 import http from 'node:http';
@@ -180,11 +184,19 @@ http.createServer(async (req, res) => {
       const s = mine(state.sessions.get(x[1]));
       if (!s) return send(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } });
       if (s.status !== 'open') return send(res, 400, { error: { type: 'invalid_request_error', message: 'Only Checkout Sessions with a status in ["open"] can be expired.' } });
-      s.status = 'expired';
+      s.status = 'expired'; s.url = null;
       return send(res, 200, s);
     }
     const m = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)$/.exec(p);
     if (m && req.method === 'GET') { const s = mine(state.sessions.get(m[1])); return s ? send(res, 200, s) : send(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } }); }
+    // the payment behind a card page of the account
+    const pim = /^\/stripe\/v1\/payment_intents\/([\w-]+)$/.exec(p);
+    if (pim && req.method === 'GET') {
+      const s = [...state.sessions.values()].find((x) => mine(x) && x.payment_intent === pim[1]);
+      if (!s) return send(res, 404, { error: { type: 'invalid_request_error', message: `No such payment_intent: '${pim[1]}'` } });
+      const status = s.payment_status === 'paid' ? 'succeeded' : s.status === 'open' ? 'requires_payment_method' : s.status === 'expired' ? 'canceled' : (s.pi_status || 'processing');
+      return send(res, 200, { id: s.payment_intent, object: 'payment_intent', amount: s.amount_total, currency: 'cad', status });
+    }
     // the refunds of a payment (newest first, like Stripe)
     if (p === '/stripe/v1/refunds' && req.method === 'GET') {
       const pi = u.searchParams.get('payment_intent');
@@ -198,7 +210,7 @@ http.createServer(async (req, res) => {
     const s = state.sessions.get(id);
     if (!s) return send(res, 404, { error: 'no session' });
     if (s.status === 'expired') return send(res, 410, { error: 'expired' });      // a closed page cannot be paid any more
-    s.status = 'complete'; s.payment_status = 'paid';
+    s.status = 'complete'; s.payment_status = 'paid'; s.url = null;
     if (u.searchParams.get('quiet')) return send(res, 200, { ok: true, hook: null });   // the notice is late or lost
     const h = await stripeHook(s);
     if (u.searchParams.get('twice')) await stripeHook(s);                                         // a second notice about the same page
@@ -209,7 +221,14 @@ http.createServer(async (req, res) => {
   if (p.startsWith('/complete/')) {
     const s = state.sessions.get(p.split('/').pop());
     if (!s || s.status !== 'open') return send(res, 404, { error: 'not open' });
-    s.status = 'complete'; s.payment_status = 'unpaid';
+    s.status = 'complete'; s.payment_status = 'unpaid'; s.url = null;
+    return send(res, 200, { ok: true });
+  }
+  // that slow payment failed: the page stays complete and unpaid (as at Stripe), its payment can no longer pass
+  if (p.startsWith('/debit-failed/')) {
+    const s = state.sessions.get(p.split('/').pop());
+    if (!s || s.status !== 'complete' || s.payment_status === 'paid') return send(res, 404, { error: 'not on its way' });
+    Object.defineProperty(s, 'pi_status', { value: 'requires_payment_method', enumerable: false, writable: true, configurable: true });
     return send(res, 200, { ok: true });
   }
   // a card page made N hours ago (GET /age/<session>?hours=N): the tests' way to have pages older than a check's window

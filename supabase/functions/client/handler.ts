@@ -2,7 +2,8 @@
 //   view    the appointment, the estimate (to sign), the extra work to answer, the invoice (being made, or finished)
 //   sign    the customer signs the estimate with the finger (with the authorization of work: nothing to sign at the door)
 //   answer  accept or decline an extra work (asked to confirm on the page first)
-//   pay     opens Stripe's card page for what is due: ONE open page per job, whatever the text the customer came from
+//   pay     opens Stripe's card page for what is due: ONE open page per job, whatever the text the customer came from;
+//           none at all while a payment by a slow means (a bank debit) is on its way: 409 { code: 'pay_processing' }
 //   check   back from Stripe: asks Stripe whether it is paid
 // « sign » and « answer » take the amount the page displayed (`shown_cents`, optional: the total for sign, the line's
 // amount for answer): when it is no longer the amount, nothing is written and the answer is HTTP 409
@@ -64,11 +65,13 @@ async function view(l: Row) {
     db.from('invoices').select('*').eq('job_id', j.id).neq('status', 'void').is('deleted_at', null).maybeSingle(),
     db.from('payments').select('amount_cents, method, paid_at, invoice_id').eq('job_id', j.id).is('deleted_at', null),
     j.vehicle_id ? db.from('vehicles').select('year, make, model').eq('id', j.vehicle_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').is('deleted_at', null).limit(1).maybeSingle()
+    db.from('trips').select('status').eq('job_id', j.id).eq('status', 'active').is('deleted_at', null).limit(1).maybeSingle(),
+    // a card page of the job paid by a slow means, still on its way (cardPages keeps it without an address)
+    db.from('public_links').select('id').eq('job_id', j.id).not('last_session', 'is', null).is('last_session_url', null).limit(1)
   ]);
   // a read that failed would show a wrong page (no lines, nothing paid, nothing to pay): a server problem instead
   for (const r of reads) if (r.error) throw r.error;
-  const [{ data: cust }, { data: items }, { data: inv }, { data: pays }, { data: veh }, { data: trip }] = reads;
+  const [{ data: cust }, { data: items }, { data: inv }, { data: pays }, { data: veh }, { data: trip }, { data: slowPages }] = reads;
   const its = (items || []) as Row[];
   // a block job: its block's hours; a 'day' job (« Plages d’arrivée »): the window promised, or « flexible » (no hours yet)
   const win = jobWindow(j as never);
@@ -89,6 +92,11 @@ async function view(l: Row) {
   const conditions = String(s.waiver?.[lang] || s.waiver?.fr || '').replaceAll('{garage}', garage.name);
   const prefix = s.billing?.invoice_prefix ?? 'F-', pad = Number(s.billing?.pad ?? 4);
   await db.from('public_links').update({ views: (l.views || 0) + 1, last_seen_at: new Date().toISOString() }).eq('id', l.id);
+  // a job « Payé par le Coffre » (the garage's own people) is never paid by card
+  const payable = stripeOn && balance >= 50 && !j.coffre_id && (issued ? !['cancelled', 'no_show'].includes(j.status) : open);
+  // a payment by a slow means on its way: no « Payer » meanwhile (it would be a second payment); `pending` makes the page
+  // ask « check » on each visit, which forgets the page if the bank refused the debit (then « Payer » comes back)
+  const processing = payable && ((slowPages || []) as Row[]).length > 0;
   return {
     ok: true, kind: 'job', garage, lang: (cust as Row | null)?.lang || 'fr',
     customer: { first: first((cust as Row | null)?.first_name) },
@@ -107,9 +115,8 @@ async function view(l: Row) {
     invoice: issued ? { number: `${prefix}${String(v!.number).padStart(pad, '0')}`, issued_at: v!.issued_at, due_on: v!.due_on, status: v!.status,
       lines: v!.lines, subtotal_cents: v!.subtotal_cents, tps_cents: v!.tps_cents, tvq_cents: v!.tvq_cents, total_cents: v!.total_cents, paid_cents: v!.paid_cents,
       notes: v!.notes } : null,
-    // a job « Payé par le Coffre » (the garage's own people) is never paid by card
-    pay: { available: stripeOn && balance >= 50 && !j.coffre_id && (issued ? !['cancelled', 'no_show'].includes(j.status) : open),
-      amount_cents: balance, kind: issued ? 'invoice' : 'prepay', pending: !!l.last_session && !!l.last_session_expires && Date.parse(l.last_session_expires) > Date.now() }
+    pay: { available: payable && !processing, amount_cents: balance, kind: issued ? 'invoice' : 'prepay',
+      pending: processing || (!!l.last_session && !!l.last_session_expires && Date.parse(l.last_session_expires) > Date.now()), processing }
   };
 }
 
@@ -128,14 +135,31 @@ async function remember(linkId: string, sess: Row, amount: number, expires: stri
 }
 /** when a card page stops being payable (Stripe's own clock, else what the link kept) */
 const pageEnd = (x: Page): number => (Number(x.sess.expires_at) > 0 ? Number(x.sess.expires_at) * 1000 : Date.parse(x.link.last_session_expires || '') || 0);
+/** a card page completed by a slow means of payment (a bank debit): true when that payment failed (the bank refused it:
+    Stripe puts its payment back to « requires_payment_method »), so the page is over. Stripe not able to say = still on
+    its way (never a second page while the first payment may still pass). */
+async function slowFailed(key: string, sess: Row): Promise<boolean> {
+  const pi = typeof sess.payment_intent === 'string' ? sess.payment_intent : String(sess.payment_intent?.id || '');
+  if (!pi) return false;
+  try {
+    const it = await stripeCall(key, 'GET', `/payment_intents/${encodeURIComponent(pi)}`);
+    return it?.status === 'requires_payment_method' || it?.status === 'canceled';
+  } catch (e) {
+    console.error('client pay: the payment of a slow page could not be read', String((e as Error)?.message || e).slice(0, 200));
+    return false;
+  }
+}
 /** Every card page the job's links remember, as Stripe sees it NOW (each text has its own link, so a job can hold
     several). A paid one is recorded (once, even if Stripe's notice never came) and forgotten; a closed one is forgotten;
+    one paid by a slow means and still on its way is kept by its link without an address (Stripe gives none: the page
+    reads it as « on its way ») and counted in `processing`; one whose slow payment failed is forgotten;
     the open ones are returned. `states`: what each page was. Stripe not answering is thrown. */
-async function cardPages(key: string, jobId: string): Promise<{ open: Page[]; paid: number; states: Map<string, PageState> }> {
-  const { data, error } = await adminDb().from('public_links').select('id, last_session, last_session_amount, last_session_expires').eq('job_id', jobId).not('last_session', 'is', null);
+async function cardPages(key: string, jobId: string): Promise<{ open: Page[]; paid: number; processing: number; states: Map<string, PageState> }> {
+  const db = adminDb();
+  const { data, error } = await db.from('public_links').select('id, last_session, last_session_url, last_session_amount, last_session_expires').eq('job_id', jobId).not('last_session', 'is', null);
   if (error) throw error;
-  const open: Page[] = [], states = new Map<string, PageState>(), read = new Map<string, Row | null>();
-  let paid = 0;
+  const open: Page[] = [], states = new Map<string, PageState>(), read = new Map<string, Row | null>(), over = new Map<string, boolean>();
+  let paid = 0, processing = 0;
   for (const link of (data || []) as Row[]) {
     const id = String(link.last_session);
     if (!read.has(id)) {
@@ -151,13 +175,21 @@ async function cardPages(key: string, jobId: string): Promise<{ open: Page[]; pa
       states.set(id, 'open');
       open.push({ link, sess });
     } else if (sess?.status === 'complete') {
-      states.set(id, 'processing');          // a slow means of payment: Stripe's notice will say when it is paid
+      // a slow means of payment: Stripe's notice will say when it is paid (or the bank refuses it: the page is over)
+      if (!over.has(id)) over.set(id, await slowFailed(key, sess));
+      if (over.get(id)) { states.set(id, 'expired'); await forget(link.id, id); continue; }
+      states.set(id, 'processing');
+      processing++;
+      if (link.last_session_url) {
+        const { error: em } = await db.from('public_links').update({ last_session_url: null }).eq('id', link.id).eq('last_session', id);
+        if (em) console.error('client pay: slow page not marked', String(em.message).slice(0, 200));
+      }
     } else {
       states.set(id, 'expired');
       await forget(link.id, id);
     }
   }
-  return { open, paid, states };
+  return { open, paid, processing, states };
 }
 /** closes a card page at Stripe so it can no longer be paid; true when it was paid at that very moment (then it is
     recorded). A page that can be neither closed nor read is thrown: no second page while the first may still take money. */
@@ -224,6 +256,7 @@ async function pageOfOther(key: string, jobId: string, good: (x: Page) => boolea
   return null;
 }
 const PAY_DOWN = 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez le garage.';
+const PROCESSING = 'Un paiement pour ce dossier est déjà en traitement (un débit bancaire prend quelques jours). Il s’affichera ici dès que la banque l’aura confirmé. Pour toute question, appelez le garage.';
 /** Stripe refusing or not answering is said in words the customer can act on (never « the server had a problem ») */
 function stripeDown(e: unknown): never {
   if (e instanceof StripeError || (e instanceof Fail && e.code === 'timeout')) {
@@ -240,7 +273,8 @@ async function pay(l: Row, b: Row): Promise<Response> {
   const key = await secret('stripe_key');
   if (!key) fail('no_stripe', 'Le paiement par carte n’est pas offert pour l’instant. Payez sur place ou appelez le garage.');
   let v = await view(l) as Row;
-  if (v.kind !== 'job' || !v.pay.available) fail('nothing', v.pay?.amount_cents ? 'Le paiement par carte n’est pas offert pour ce dossier.' : 'Rien à payer : merci !');
+  // (a payment on its way is asked to Stripe again below: the bank may have refused it since)
+  if (v.kind !== 'job' || (!v.pay.available && !v.pay.processing)) fail('nothing', v.pay?.amount_cents ? 'Le paiement par carte n’est pas offert pour ce dossier.' : 'Rien à payer : merci !');
   const db = adminDb();
   const waitUntil = Date.now() + 7000;          // the longest a request waits for another one's page
   let claim: string | null = null;
@@ -249,9 +283,15 @@ async function pay(l: Row, b: Row): Promise<Response> {
     for (let round = 0; ; round++) {
       // a page already paid (Stripe's notice late or lost) is counted first: what is due is what is left after it
       const pages = await cardPages(key, l.job_id);
+      if (pages.processing) {
+        // a payment by a slow means is on its way: no page at all, and a page still open (an older text's) is closed:
+        // never a second way to pay meanwhile
+        for (const x of pages.open) await closePage(key, x);
+        fail('pay_processing', PROCESSING, 409);
+      }
       if (pages.paid || round) {
         v = await view(l) as Row;
-        if (!v.pay.available) return json({ ok: true, paid: true });
+        if (!v.pay.available && !v.pay.processing) return json({ ok: true, paid: true });
       }
       amount = v.pay.amount_cents as number;
       const { data: inv, error } = await db.from('invoices').select('id').eq('job_id', l.job_id).neq('status', 'void').neq('status', 'draft').is('deleted_at', null).maybeSingle();
@@ -311,16 +351,21 @@ async function pay(l: Row, b: Row): Promise<Response> {
       try { sess = { ...sess, ...(await stripeCall(key, 'GET', sessPath(String(sess.id)))) }; }
       catch { /* Stripe's answer to the making is kept */ }
     }
-    // a page completed but not paid yet (a slow means of payment on its way) stays the one page, as before: never a
-    // second page to pay while the first payment may still pass
-    const processing = sess?.status === 'complete' && sess?.payment_status !== 'paid';
-    if (sess?.status !== 'open' && !processing) {
+    // that same request was answered earlier by a page since completed by a slow means still on its way: it is the job's
+    // page (kept without an address: Stripe gives none) and nothing else is made
+    if (sess?.status === 'complete' && sess?.payment_status !== 'paid' && !(await slowFailed(key, sess))) {
+      await remember(l.id, { ...sess, url: null }, amount, new Date((Number(sess.expires_at) > 0 ? Number(sess.expires_at) : expires) * 1000).toISOString());
+      fail('pay_processing', PROCESSING, 409);
+    }
+    if (sess?.status !== 'open') {
       // that same request was answered earlier in the slice by a page since closed (or paid): a new page, its own key
       if (sess?.payment_status === 'paid') await applyCheckout(sess);
       expires = Math.floor(Date.now() / 1000) + 3600;
       sess = await make(expires, `${idem}-${crypto.randomUUID().slice(0, 8)}`);
     }
     const made = sess as Row;
+    // never « here is your page » without an address to open
+    if (!made?.url) { console.error('client pay: Stripe gave a page without an address', String(made?.status)); fail('pay_unavailable', PAY_DOWN, 502); }
     await remember(l.id, made, amount, new Date((Number(made.expires_at) > 0 ? Number(made.expires_at) : expires) * 1000).toISOString());
     return json({ ok: true, url: made.url });
   } catch (e) { stripeDown(e); }

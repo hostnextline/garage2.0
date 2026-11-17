@@ -1021,12 +1021,82 @@ test('argent-serveur-03: a job « Payé par le Coffre » while the mechanic is s
   }
 });
 
-test('argent-serveur-02, the other side: a page paid by a slow means (complete, not paid yet) stays the one page: never a second page to pay meanwhile', async () => {
+/** the card pages asked from Stripe (POST /checkout/sessions) since the log was cleared */
+const pagesAsked = async () => (await mockLog()).filter((m) => m.svc === 'stripe' && m.method === 'POST' && m.path === '/v1/checkout/sessions').length;
+
+test('argent-serveur-02, the other side (fn-paiement-r2-2): a page paid by a slow means (complete, not paid yet): « Payer » on the same link makes no page and says so (409 pay_processing); the page no longer offers « Payer »', async () => {
+  // (round 2 asserted the same url back here: real Stripe gives NO url for a page that is not open, so the tap did
+  // nothing on live; and once the 10-minute slice turned, the same link made a second page to pay)
   const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8200 }] });
   const t = await linkFor(job);
   const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
   assert.equal((await mockGet(`/complete/${sessionOf(p1.url)}`)).ok, true);
+  await clearLog();
   const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
-  assert.equal(p2.url, p1.url, JSON.stringify(p2));
-  assert.equal((await openPages(job)).length, 0, 'no other page to pay');
+  assert.deepEqual([p2.status, p2.ok, p2.code], [409, false, 'pay_processing'], JSON.stringify(p2));
+  assert.match(p2.error, /en traitement/, 'said in words: ' + p2.error);
+  // the same link in the other language: a key Stripe never saw (as when the slice turns): no page either
+  const p3 = await fn('client', { action: 'pay', token: t, base: BASE, lang: 'en' });
+  assert.equal(p3.code, 'pay_processing', JSON.stringify(p3));
+  assert.equal(await pagesAsked(), 0, 'no card page asked from Stripe, whatever the key');
+  assert.equal((await openPages(job)).length, 0, 'no page to pay');
+  const v = await fn('client', { action: 'view', token: t });
+  assert.deepEqual([v.pay.available, v.pay.processing, v.pay.pending], [false, true, true], JSON.stringify(v.pay));
+});
+
+test('fn-paiement-r2-2: a slow payment on one text, « Payer » on another text of the same job: no second page (the customer cannot pay twice)', async () => {
+  const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8300 }] });
+  const t1 = await linkFor(job), t2 = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t1, base: BASE });
+  assert.ok(p1.url, JSON.stringify(p1));
+  assert.equal((await mockGet(`/complete/${sessionOf(p1.url)}`)).ok, true);
+  await clearLog();
+  const p2 = await fn('client', { action: 'pay', token: t2, base: BASE });
+  assert.deepEqual([p2.status, p2.code], [409, 'pay_processing'], JSON.stringify(p2));
+  assert.equal(await pagesAsked(), 0, 'no card page asked from Stripe');
+  assert.equal((await openPages(job)).length, 0, 'nothing else to pay');
+  // the other text's page knows it too (« Payer » is no longer offered there)
+  const v2 = await fn('client', { action: 'view', token: t2 });
+  assert.deepEqual([v2.pay.available, v2.pay.processing], [false, true], JSON.stringify(v2.pay));
+  // a page left open on a third text before this rule (made by yesterday's server): closed at Stripe, never a second way to pay
+  const t3 = await linkFor(job);
+  const old = await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: { authorization: 'Bearer sk_test_abcdefghijklmnop', 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': '9543', 'metadata[job_id]': job, expires_at: String(Math.floor(Date.now() / 1000) + 3600) }) })).json();
+  await q(`update public.public_links set last_session = $1, last_session_url = $2, last_session_amount = 9543, last_session_expires = now() + interval '1 hour' where token_hash = $3`, [old.id, old.url, sha(t3)]);
+  const p3 = await fn('client', { action: 'pay', token: t3, base: BASE });
+  assert.equal(p3.code, 'pay_processing', JSON.stringify(p3));
+  assert.equal((await stripeSession(old.id)).status, 'expired', 'the old open page is closed');
+  assert.equal((await openPages(job)).length, 0);
+});
+
+test('fn-paiement-r2-2: the slow payment fails (the bank refuses the debit): the customer can pay by card again', async () => {
+  const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8400 }] });
+  const t = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.equal((await mockGet(`/complete/${sessionOf(p1.url)}`)).ok, true);
+  assert.equal((await fn('client', { action: 'pay', token: t, base: BASE })).code, 'pay_processing');
+  assert.equal((await mockGet(`/debit-failed/${sessionOf(p1.url)}`)).ok, true);
+  // back on the page: « check » asks Stripe, the page that failed is forgotten, « Payer » is offered again
+  const ck = await fn('client', { action: 'check', token: t });
+  assert.deepEqual([ck.pay.available, ck.pay.processing], [true, false], JSON.stringify(ck.pay));
+  const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p2.ok && p2.url && p2.url !== p1.url, JSON.stringify(p2));
+  assert.equal((await stripeSession(sessionOf(p2.url))).status, 'open');
+});
+
+test('fn-paiement-r2-2: the fake Stripe, like Stripe: a page that is not open has no url (complete, expired, paid)', async () => {
+  const sk = { authorization: `Bearer sk_test_url${randomUUID().replace(/-/g, '')}`, 'content-type': 'application/x-www-form-urlencoded' };
+  const make = async () => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: sk,
+    body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': '1000', 'metadata[job_id]': randomUUID() }) })).json());
+  const read = async (id) => (await fetch(`${MOCK}/stripe/v1/checkout/sessions/${id}`, { headers: sk })).json();
+  const a = await make(), b = await make(), c = await make();
+  assert.ok(a.url && b.url && c.url, 'open: an url');
+  await mockGet(`/complete/${a.id}`);
+  await fetch(`${MOCK}/stripe/v1/checkout/sessions/${b.id}/expire`, { method: 'POST', headers: sk });
+  await fetch(`${MOCK}/pay/${c.id}?quiet=1`);
+  assert.deepEqual([(await read(a.id)).url, (await read(b.id)).url, (await read(c.id)).url], [null, null, null]);
+  const pi = async (s) => (await (await fetch(`${MOCK}/stripe/v1/payment_intents/${s.payment_intent}`, { headers: sk })).json()).status;
+  assert.deepEqual([await pi(a), await pi(b), await pi(c)], ['processing', 'canceled', 'succeeded'], 'the payment behind each page');
+  await mockGet(`/debit-failed/${a.id}`);
+  assert.equal(await pi(a), 'requires_payment_method', 'a debit refused by the bank');
 });
