@@ -256,11 +256,15 @@ export async function saveReceipt(dataUrl: string, w: number, h: number): Promis
   await ask((s) => sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h }).abortSignal(s), ms);
   return id;
 }
+/** the plain pictures a kept attachment may be shown as (an SVG can carry a script: never trusted, x-security-01) */
+const SAFE_PICTURE = /^image\/(jpeg|png|webp|gif)$/;
+/** a picture kept on the server (a signature), as a data URL. null when there is none, or when what is stored is not a
+    plain picture; a read that fails throws (no signal or the server unwell is not « no signature »: R106) */
 export async function loadAttachment(id: string): Promise<string | null> {
-  try {
-    const data = await ask<{ mime: string; data: string } | null>((s) => sb.from('attachments').select('mime, data').eq('id', id).abortSignal(s).maybeSingle(), 30000);
-    return data ? `data:${data.mime};base64,${data.data}` : null;
-  } catch { return null; }
+  const data = await ask<{ mime: string; data: string } | null>((s) => sb.from('attachments').select('mime, data').eq('id', id).abortSignal(s).maybeSingle(), 30000);
+  if (!data || typeof data.data !== 'string') return null;
+  const mime = String(data.mime || '').trim().toLowerCase();
+  return SAFE_PICTURE.test(mime) ? `data:${mime};base64,${data.data}` : null;
 }
 export async function saveInventoryItem(i: Partial<InventoryItem>): Promise<string> {
   guard();
