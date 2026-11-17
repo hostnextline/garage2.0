@@ -93,6 +93,16 @@ describe('Hermes: sending and stopping', () => {
     const r = await askHermes('Quoi apporter ?', ctx, async () => ({ ok: false, code: 'hermes_down', error: 'Hermes ne répond pas. Réessaie dans un instant.' }));
     expect(r).toEqual({ kind: 'failed', message: 'Hermes ne répond pas. Réessaie dans un instant.' });
   });
+  it('an answer that is not JSON (a gateway 502: code « server », words « HTTP 502 »): « the server is not answering » in words, never « HTTP 502 », in both languages', async () => {
+    const gateway: Ask = async () => ({ ok: false, code: 'server', error: 'HTTP 502' });
+    expect(await askHermes('Quoi faire ?', ctx, gateway)).toEqual({ kind: 'failed', message: t('errors.server') });
+    expect(t('errors.server')).toBe('Le serveur ne répond pas comme prévu. Réessaie dans un moment.');
+    setLang('en');
+    try {
+      expect(await askHermes('What now?', ctx, gateway)).toEqual({ kind: 'failed', message: t('errors.server') });
+      expect(t('errors.server')).not.toMatch(/HTTP/);
+    } finally { setLang('fr'); }
+  });
   it('no signal: the network words, not « erreur du serveur »', async () => {
     const r = await askHermes('Quoi faire ?', ctx, async () => { throw new TypeError('Failed to fetch'); });
     expect(r.kind).toBe('failed');
