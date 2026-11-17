@@ -58,6 +58,19 @@ export function dayOf(d: Date): Day { return garageParts(d)?.day ?? ''; }
 export function minuteOf(d: Date): Minute { return garageParts(d)?.minute ?? NaN; }
 export function today(now: Date = new Date()): Day { return dayOf(now); }
 export function nowMinute(now: Date = new Date()): Minute { return minuteOf(now); }
+/** the instant when Montréal's clock shows `minute` (may hold seconds: 23 h 59 min 30 s = 1439.5) of `day`: the inverse of
+    dayOf / minuteOf, whatever the phone's zone (a test's « now », a time typed for a day). The night the clock goes back,
+    1 h 30 is the first one (EDT); the night it jumps, a time that does not exist (2 h 30) is the time after the jump (3 h 30).
+    An invalid day gives an invalid Date. */
+export function instantOf(day: Day, minute: number): Date {
+  if (!isValidDay(day) || !Number.isFinite(minute)) return new Date(NaN);
+  const [y, m, d] = day.split('-').map(Number);
+  const wall = Date.UTC(y, m - 1, d) + Math.round(minute * 60000); // the wall clock written as if it were UTC
+  const first = wall - offsetAt(wall);
+  const second = wall - offsetAt(first);
+  // `second` shows the wall clock asked, except in the hour that does not exist; there `first` lands just after the jump
+  return new Date(second + offsetAt(second) === wall ? second : first);
+}
 
 /* ---------- day strings: calendar maths ---------- */
 
