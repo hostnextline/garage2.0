@@ -5,7 +5,7 @@
    its file will get), or NO_CAR (nothing chosen yet). Each entry has its own job id, made once: a car booked by a first
    tap leaves the plan for good, and a second tap after a refusal sends the other cars with their own ids, never an id
    already used (`exists`). */
-import type { ItemDraft, FarInfo } from '../../domain/moment/logic';
+import type { ItemDraft, FarInfo, FarSeen } from '../../domain/moment/logic';
 import type { BlockChoice, VehicleKind } from '../../domain/moment/choice';
 import type { PlaceValue } from '../../shared/places/AddressField';
 import type { AddDraft, AddMode } from '../../shared/vehicles/VehicleBits';
@@ -45,6 +45,8 @@ export interface Draft {
   reload: number;
   blockError: string | null;
   far: FarInfo | null;
+  /** the picker scored the moment chosen (far or not), and when (m2): « Réserver » need not ask the server again */
+  farSeen: FarSeen | null;
   truckId: string | null;
   kind: VehicleKind;
   /** the appointments this form booked (or kept on the phone to send), for the cars that left it. An estimate goes
@@ -80,7 +82,7 @@ export type Action =
   | { t: 'clearChoice' }
   | { t: 'mode'; bar: BlockChoice | null; windows: boolean }
   | { t: 'kind'; kind: VehicleKind }
-  | { t: 'far'; far: FarInfo | null }
+  | { t: 'far'; far: FarInfo | null; seen?: FarSeen | null }
   | { t: 'truck'; id: string | null }
   | { t: 'card'; on: boolean }
   | { t: 'refused'; banner: string | null; windowGone?: boolean; again?: boolean }
@@ -90,7 +92,7 @@ export function initialDraft(o: { customerId: string | null; car: string; place:
   return {
     customerId: o.customerId, car: o.car, work: {}, caller: o.caller, callCars: o.callCar ? [o.callCar] : [], searchKnown: false, tried: false,
     place: o.place, placeOwner: o.customerId, placeFrom: o.customerId ? 'file' : 'none', notes: '', card: null,
-    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, truckId: null, kind: null, bookedIds: [], madeId: null
+    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, farSeen: null, truckId: null, kind: null, bookedIds: [], madeId: null
   };
 }
 
@@ -223,7 +225,11 @@ export function reduce(d: Draft, a: Action): Draft {
       return stale ? { ...d, choice: null } : d;
     }
     case 'kind': return { ...d, kind: a.kind, choice: null };
-    case 'far': return d.far === a.far ? d : { ...d, far: a.far };
+    case 'far': {
+      const seen = a.seen ?? null;
+      const same = d.farSeen === seen || (!!d.farSeen && !!seen && d.farSeen.day === seen.day && d.farSeen.block === seen.block && d.farSeen.at === seen.at);
+      return d.far === a.far && same ? d : { ...d, far: a.far, farSeen: seen };
+    }
     case 'truck': return { ...d, truckId: a.id };
     case 'card': return { ...d, card: a.on };
     // the moment was refused: the picker asks again (R79: every code of BLOCK_REFUSALS, so « Meilleur choix » never

@@ -195,6 +195,13 @@ describe('the moment', () => {
     // a reason without a new question (an old caller): the picker is left alone
     expect(run(fresh(), { t: 'choice', choice: block }, { t: 'refused', banner: 'x' })).toMatchObject({ choice: block, blockError: 'x', reload: 0 });
   });
+  it('the picker’s score of the moment chosen is kept, and forgotten when it says nothing (m2)', () => {
+    const seen = { day: '2026-11-18', block: 'am' as const, at: 5 };
+    const d = run(fresh(), { t: 'far', far: null, seen });
+    expect(d.farSeen).toEqual(seen);
+    expect(run(d, { t: 'far', far: null, seen: { ...seen } })).toBe(d);
+    expect(run(d, { t: 'far', far: null }).farSeen).toBeNull();
+  });
   it('a copy’s window is a default: a moment already picked stays', () => {
     expect(run(fresh(), { t: 'presetChoice', choice: win }).choice).toEqual(win);
     expect(run(fresh(), { t: 'choice', choice: block }, { t: 'presetChoice', choice: win }).choice).toEqual(block);

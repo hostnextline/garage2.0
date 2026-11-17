@@ -179,6 +179,9 @@ export interface Moment {
 export interface FarLimits { hop: number; day: number }
 /** the moment chosen is far: which one, why, and the warning in plain words */
 export interface FarInfo { day: string; block: BlockKey; kind: 'hop' | 'day'; text: string }
+/** the moment chosen has a score in the picker's answer to the question of now, far or not, and when that answer
+    landed (ms). A picker that does not say it leaves the screen to ask the server again before booking (m2) */
+export interface FarSeen { day: string; block: BlockKey; at: number }
 
 export const isFar = (m: Pick<Moment, 'far'> | null | undefined): boolean => m?.far === 'hop' || m?.far === 'day';
 /** the two limits of the settings (a settings row saved before them has none: 35 and 105 min) */

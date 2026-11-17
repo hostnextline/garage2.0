@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { farOfAnswer, inTime } from './far';
+import { farOfAnswer, inTime, seenFine, SEEN_FRESH_MS } from './far';
 import { farQuestion } from '../../domain/moment/logic';
 import { readAddress, barChoice, openDayOf, backOf, callerOf } from './address';
 
@@ -63,5 +63,24 @@ describe('the address bar', () => {
     expect(backOf(q('walkin=1'), null)).toBe('/');
     expect(backOf(q('call=1'), null)).toBe('/call');
     expect(backOf(q(''), null)).toBe('/agenda');
+  });
+});
+
+describe('the picker scored the moment chosen: no second question to the server (m2)', () => {
+  const c = { day: '2026-12-08', block: 'am' as const };
+  const now = 1_800_000_000_000;
+  const seen = { day: '2026-12-08', block: 'am' as const, at: now - 10_000 };
+  it('the same moment, not far, a recent answer: believed', () => {
+    expect(seenFine(seen, null, c, now)).toBe(true);
+  });
+  it('a picker that says nothing, another moment, a far one, an old answer: the server is asked', () => {
+    expect(seenFine(null, null, c, now)).toBe(false);
+    expect(seenFine(undefined, null, c, now)).toBe(false);
+    expect(seenFine(seen, null, { ...c, block: 'pm' }, now)).toBe(false);
+    expect(seenFine(seen, null, { ...c, day: '2026-12-09' }, now)).toBe(false);
+    expect(seenFine(seen, { day: c.day, block: 'am', kind: 'day', text: 'x' }, c, now)).toBe(false);
+    expect(seenFine({ ...seen, at: now - SEEN_FRESH_MS - 1 }, null, c, now)).toBe(false);
+    // a clock that went back: not believed
+    expect(seenFine({ ...seen, at: now + 5_000 }, null, c, now)).toBe(false);
   });
 });

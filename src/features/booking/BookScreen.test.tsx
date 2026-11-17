@@ -23,7 +23,13 @@ vi.mock('../../platform/router', async (orig) => ({ ...(await orig<typeof import
 vi.mock('../../shared/moment/notify', () => texts);
 vi.mock('../../shared/jobs/CarFirst', () => ({ OilHint: () => null }));
 vi.mock('../../shared/moment/BlockPicker', () => ({
-  BlockPicker: (p: BlockPickerProps) => <button type="button" data-testid="stub-pick" data-reload={String(p.reload ?? 0)} onClick={() => p.onPick({ day: DAY, block: 'am' })}>{p.value ? `${p.value.day} ${p.value.block}` : 'none'}</button>
+  BlockPicker: (p: BlockPickerProps) => (
+    <>
+      <button type="button" data-testid="stub-pick" data-reload={String(p.reload ?? 0)} onClick={() => p.onPick({ day: DAY, block: 'am' })}>{p.value ? `${p.value.day} ${p.value.block}` : 'none'}</button>
+      {/* a picker that says it scored the moment chosen (far or not) and when its answer landed (m2) */}
+      <button type="button" data-testid="stub-seen" onClick={() => p.onFar?.(null, { day: DAY, block: 'am', at: Date.now() })}>seen</button>
+    </>
+  )
 }));
 vi.mock('../../shared/moment/ServicePicker', () => ({
   ServicePicker: (p: ServicePickerProps) => (
@@ -165,6 +171,16 @@ describe('the booking screen', () => {
     expect(api.suggestBlocks).toHaveBeenCalledWith(45.5, -73.6, 45, DAY, 1, null, false, null);
     expect(ui.ask.mock.calls[0][0].title).toBe('Beaucoup de route ce jour-là');
     expect(api.bookJob).not.toHaveBeenCalled();
+  });
+
+  it('the calendar scored the moment chosen a moment ago, not far: « Réserver » does not ask the server again (m2)', async () => {
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('stub-seen'));
+    await click(q('book-confirm'));
+    expect(api.suggestBlocks).not.toHaveBeenCalled();
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
   });
 
   it('what is typed while « Réserver » waits for the garde-route answer is what gets booked', async () => {

@@ -20,7 +20,7 @@ import type { PlaceValue } from '../../shared/places/place';
 import type { Customer } from '../../data/types';
 import { sendVisit } from './send';
 import { outcome } from './outcome';
-import { farOfAnswer, inTime } from './far';
+import { farOfAnswer, inTime, seenFine } from './far';
 import { calmScroll } from './motion';
 import type { Booking } from './useBooking';
 
@@ -55,7 +55,8 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     if (farOk.current === key) return true;
     let q = farQuestion(b.d.far, c, 'book');
     const { lat, lng } = place;
-    if (!q && net.value.online && lat != null && lng != null) {
+    // the picker scored this very moment a moment ago, not far: nothing more to ask (m2)
+    if (!q && !seenFine(b.d.farSeen, b.d.far, c, Date.now()) && net.value.online && lat != null && lng != null) {
       const rows = await inTime<Suggestion[]>(suggestBlocks(lat, lng, b.allMinutes, c.day, 1, null, b.need, b.need ? null : b.d.kind), FAR_WAIT_MS, []);
       q = farQuestion(farOfAnswer(rows, c, b.effTruck, farLimits(settings.value.booking), b.l), c, 'book');
     }

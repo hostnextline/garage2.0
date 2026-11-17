@@ -22,7 +22,7 @@ export const MomentPanel = memo(function MomentPanel(p: MomentPanelProps) {
         <BlockPicker lat={p.lat} lng={p.lng} address={p.address} duration={p.duration} truckId={p.truckId} value={p.value}
           need={p.need} kind={p.kind} onKind={(kind) => act({ t: 'kind', kind })}
           onPick={(choice) => act({ t: 'choice', choice })} onClear={() => act({ t: 'clearChoice' })} openDay={p.openDay} reload={p.reload}
-          onFar={(far) => act({ t: 'far', far })} />
+          onFar={(far, seen) => act({ t: 'far', far, seen })} />
       </Panel>
     </div>
   );
