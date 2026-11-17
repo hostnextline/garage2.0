@@ -16,6 +16,8 @@ import './customers.css';
 
 export { EMPTY_PLACE, placeFields, type PlaceValue } from './place';
 export { searchPlaces } from './places';
+/** the position of a typed address at the moment it is saved (R163, R164): `place = await withPosition(place)` */
+export { withPosition } from './withPosition';
 
 export interface AddressFieldProps {
   value: PlaceValue; onValue: (v: PlaceValue) => void; label?: string; autoFocus?: boolean;

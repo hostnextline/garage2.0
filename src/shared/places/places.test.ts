@@ -4,6 +4,7 @@ import { searchPlaces, forgetPlaces } from './places';
 import { withPosition } from './withPosition';
 import { locate } from './locate';
 import { EMPTY_PLACE } from './place';
+import * as field from './AddressField';
 
 const KHALIL_160 = {
   geometry: { coordinates: [-73.66748, 45.52789] },
@@ -79,5 +80,12 @@ describe('the position found while « Créer » is tapped is not lost', () => {
     const fetch = slowPhoton(0);
     expect(await withPosition({ ...EMPTY_PLACE, address: '160 khalil gibran' })).toMatchObject({ lat: 45.52789 });
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('withPosition, as the saves ask for it (R163, R164)', () => {
+  it('is exported with that name, beside placeFields, from the address field too', () => {
+    expect(field.withPosition).toBe(withPosition);
+    expect(typeof field.placeFields).toBe('function');
   });
 });
