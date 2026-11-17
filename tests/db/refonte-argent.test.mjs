@@ -75,6 +75,12 @@ test('every money operation claims its op before any work (op_begin), and saves 
     assert.match(body, new RegExp(`\\nbegin\\s+v_done := public\\.op_begin\\(p_op, '${name}'\\);\\s+if v_done is not null then return v_done; end if;`), `${name}: op_begin is its first statement`);
     assert.doesNotMatch(body, /op_done\(/, `${name}: no more op_done`);
     assert.match(body, new RegExp(`public\\.op_save\\(p_op, '${name}'`), `${name}: its answer is saved`);
+    // after the claim, every way out saves its answer or raises (a refusal returned as plain jsonb would make the
+    // retry answer « ok »): each « return » is the claim's stored answer or op_save, and no handler swallows a refusal
+    for (const line of body.split('\n').map((l) => l.replace(/--.*$/, ''))) {
+      if (/\breturn\b/.test(line)) assert.match(line, /\breturn (v_done;|public\.op_save\(p_op, '[a-z_]+')/, `${name}: ${line.trim()}`);
+    }
+    assert.doesNotMatch(body, /\bexception\s+when\b/i, `${name}: no handler that could swallow a refusal`);
   }
   // the new building blocks are the server's own
   const g = await garage(h);
@@ -195,6 +201,27 @@ test('two connections: the same stock purchase arriving twice at the same instan
   assert.equal(Number(await s.val(`select qty from public.inventory_items where id = $1`, [item])), 2, 'two filters, not four');
   assert.equal(await s.val(`select count(*)::int from public.inventory_moves where item_id = $1`, [item]), 1, 'one move');
   assert.equal(await s.val(`select count(*)::int from public.expenses where created_by = $1`, [owner]), 1, 'one expense');
+}));
+
+test('two connections: two people record the whole balance at the same instant (two op ids): one payment, the other is told nothing is left (x-money-01, invoices-quotes-01, argent-04)', () => shared(async (s) => {
+  const owner = await s.person('Hassan Conc', ['owner']);
+  const office = await s.person('Bureau Conc', ['owner']);
+  const { id: job, inv } = await s.job('on_site', 'issued');
+  const total = await s.val(`select total_cents from public.invoices where id = $1`, [inv]);
+  // the mechanic's waiting « Encaisser » and the office's, each with its own op id, reach the server together
+  const sql = `select public.payment_add(p_op => $1, p_invoice => $2, p_amount_cents => $3, p_method => 'cash', p_job => $4) as r`;
+  const k1 = await s.open(owner), k2 = await s.open(office);
+  const pid2 = await s.pid(k2);
+  await k1.query(sql, [randomUUID(), inv, total, job]);
+  const p2 = k2.query(sql, [randomUUID(), inv, total, job]);
+  assert.equal(await within(p2, 400), 'waiting', 'the second one waits for the first');
+  assert.equal(await s.waits(pid2), 'Lock', 'on the job, locked first by every money operation');
+  await k1.query('commit');
+  const e = await p2.then(() => null, (x) => x);
+  await k2.query('rollback');
+  assert.equal(e?.hint, 'too_much', 'the second one sees the first payment');
+  assert.equal(await s.val(`select count(*)::int from public.payments where invoice_id = $1 and deleted_at is null`, [inv]), 1, 'one payment');
+  assert.deepEqual(Object.values((await s.c.query(`select status, paid_cents from public.invoices where id = $1`, [inv])).rows[0]), ['paid', total]);
 }));
 
 test('two connections: a card payment ahead that lands while the invoice is being finished goes on it (sql-money-17)', () => shared(async (s) => {
@@ -480,9 +507,13 @@ test('work added or accepted after the invoice is finished is billed: the job do
   // « Modifier la facture » on the PAID invoice (the appointment is still open): what was paid waits on the job
   const r = await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv });
   assert.deepEqual([r.ok, Number(r.number)], [true, n]);
+  assert.deepEqual(r.added.map((x) => x.description).sort(), ['Essuie-glaces', 'Plaquettes avant'], 'the answer says what came on the draft');
   assert.equal((await inv1(h, inv)).status, 'draft');
+  // the work the finished invoice missed is on the draft already (argent-01): no tap on « Ajouter à la facture » needed
+  const onDraft = (await h.val(`select lines from public.invoices where id = $1`, [inv])).map((x) => x.description);
+  assert.equal(onDraft[0], 'Vidange d’huile + changement de filtre', 'the lines already billed stay first, as they were');
+  assert.deepEqual(onDraft.slice(1).sort(), ['Essuie-glaces', 'Plaquettes avant']);
   await h.as(g.mech);
-  await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true });
   const again = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
   assert.deepEqual([Number(again.number), again.again, again.unbilled], [n, true, []]);
   const v = await inv1(h, inv);
@@ -614,6 +645,9 @@ test('« Changer le prix » on a line priced below zero keeps it below zero (x-m
   await h.rpc('job_item_price', { p_op: uuid(), p_item: rebate, p_unit_cents: 1500 });
   await asDb(h);
   assert.equal(await h.val(`select unit_cents from public.job_items where id = $1`, [rebate]), -1500);
+  // the history says the price as it is kept, with its sign (argent-02)
+  const seen = await h.one(`select data from public.activity where action = 'price_changed' and data->>'item' = $1`, [rebate]);
+  assert.deepEqual([seen.data.from, seen.data.to], [-2000, -1500]);
 }));
 
 /* ───────────────────────── the Coffre and the stock ───────────────────────── */
