@@ -54,8 +54,8 @@ export async function askHermes(text: string, context: () => string, ask: Ask = 
       return { kind: 'answer', text: r.text };
     }
     giveBack(q);
-    if (r.code === 'hermes_off') { offNote.value = r.error || null; return { kind: 'failed', message: null }; }
-    return { kind: 'failed', message: r.error || t('errors.server') };
+    if (r.code === 'hermes_off') { offNote.value = r.error ? said(r) : null; return { kind: 'failed', message: null }; }
+    return { kind: 'failed', message: said(r) };
   } catch (e) {
     if (pending !== mine) return { kind: 'dropped' };
     giveBack(q);
@@ -63,6 +63,10 @@ export async function askHermes(text: string, context: () => string, ask: Ask = 
   } finally {
     if (pending === mine) { pending = null; hermesBusy.value = false; }
   }
+}
+/** a refusal of the server in the person's language: its code says it in English, its own sentence in French (R145) */
+function said(r: { code?: string; error?: string }): string {
+  return r.code ? errorMessage({ code: r.code, error: r.error }) : r.error || t('errors.server');
 }
 /** the question that got no answer leaves the conversation and goes back in the box (unless something new is written) */
 function giveBack(q: string) {

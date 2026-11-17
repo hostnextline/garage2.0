@@ -15,7 +15,7 @@ import { IconButton, toast } from '../../ui';
 import { callLink } from '../../services/bubbles';
 import { lines, type Chat, type IncomingText } from '../../shared/customers/texts';
 import { Attachments } from '../../shared/customers/Attachments';
-import { draftOf, setDraft } from './store';
+import { draftOf, setDraft, opOf } from './store';
 import { isPretend, refreshEvery } from './bubbles';
 
 type State = 'ok' | 'off' | 'no_phone' | 'error';
@@ -69,8 +69,12 @@ export function ChatWindow(p: { chat: Chat; texts: IncomingText[]; who: string |
     if (!m || busy) return;
     setBusy(true);
     try {
-      const r = p.customerId ? await sendChat(p.customerId, m) : await sendChatPhone(phone, m);
+      // the same words tapped again (the answer never came back) carry the same number: the server sends them once (R28)
+      const op = opOf(phone, m);
+      const r = p.customerId ? await sendChat(p.customerId, m, op) : await sendChatPhone(phone, m, op);
       if (r.status === 'sent') { write(''); activity.current = Date.now(); await load(); }
+      // the first tap is still going out: the words stay, a tap later says whether it went
+      else if (r.status === 'pending') toast(t('conversation.status.pending'), { kind: 'info' });
       else toast(r.error && r.code ? r.error : t(`conversation.status.${r.status === 'off' || r.status === 'no_phone' ? r.status : 'error'}`), { kind: 'bad' });
     } catch (e) { toast(errorMessage(e), { kind: 'bad' }); } finally { setBusy(false); }
   };

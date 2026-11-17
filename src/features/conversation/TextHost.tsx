@@ -4,23 +4,36 @@
    puts it away until that number writes again. On a computer a new text opens the small window; on a phone it arrives
    as a round head with a few words (never over the work in hand). When more conversations wait than fit, the last head
    is « +N » and opens the next one. Loading: useIncomingTexts.ts; state on the device: store.ts; rules: bubbles.ts. */
+import { useEffect, useRef } from 'preact/hooks';
 import { MessageCircle } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { formatPhone } from '../../lib/text';
 import { customersList, customerName } from '../../data/select';
+import { access } from '../../data/auth';
 import { Avatar } from '../../ui';
 import { phoneOwners } from '../../shared/customers/dupes';
-import { hermesOpen, setHermesOpen, textsOn } from '../../services/bubbles';
+import { hermesOpen, setHermesOpen, textsOn, callsOn, checkTexts } from '../../services/bubbles';
 import { openChat, minimiseChat, closeChat, unread, textsOf, phoneId, type Chat } from '../../shared/customers/texts';
 import { ChatWindow } from './ChatWindow';
 import { useIncomingTexts } from './useIncomingTexts';
 import { chats, setChats } from './store';
-import { bubblePlan } from './bubbles';
+import { bubblePlan, openAsked } from './bubbles';
+import { repairPushOnce } from './pushRepair';
+import { openFromAlert } from './fromAlert';
 import '../../shared/customers/conversation.css';
 
 export function TextHost() {
   const on = textsOn();
   const texts = useIncomingTexts(on);
+  const who = access.value?.id || null;
+  // the alert while the app is closed (texts and calls use the same device address): the server gets a working address of
+  // this device back if it lost it (comms-guide-08)
+  const calls = callsOn();
+  useEffect(() => { if ((on || calls) && who) void repairPushOnce(who); }, [on, calls, who]);
+  // a tap on a text's alert while the app is open: that number's conversation opens, a bubble made for it when the text
+  // came in while the app was hidden, and the texts are read at once to fill it (comms-guide-14)
+  const seen = useRef(texts); seen.current = texts;
+  useEffect(() => (on ? openFromAlert((phone) => { setHermesOpen(false); setChats(openAsked(chats.value, phone, seen.current)); checkTexts(); }) : undefined), [on]);
   if (!on) return null;
 
   const known = (c: Chat) => phoneOwners(c.phone, customersList.value)[0] || null;

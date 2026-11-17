@@ -10,6 +10,7 @@ import { signal, effect, untracked } from '@preact/signals';
 import { access } from '../../data/auth';
 import { pushOff } from '../../services/push';
 import { attempt } from '../../ui';
+import { uuid } from '../../data/sender';
 import { FRESH_MS, phoneId, type Chat } from '../../shared/customers/texts';
 
 const LS_CHATS = 'his-text-chats', LS_SINCE = 'his-text-since';
@@ -44,7 +45,23 @@ export function since(now = Date.now()): string {
 /* ---------- the answers being written ---------- */
 const drafts = new Map<string, string>();
 export function draftOf(phone: string): string { return drafts.get(phoneId(phone)) || ''; }
-export function setDraft(phone: string, text: string) { if (text) drafts.set(phoneId(phone), text); else drafts.delete(phoneId(phone)); }
+export function setDraft(phone: string, text: string) {
+  const k = phoneId(phone);
+  if (text) drafts.set(k, text); else drafts.delete(k);
+  // an answer changed (or sent, or emptied) is another text: its operation number goes (R28)
+  if (ops.get(k)?.text !== text) ops.delete(k);
+}
+/* one operation number per answer typed (R28): the same while the words stay the same, so a « Envoyer » tapped again
+   after an answer that never came back (no signal, a timeout) is the same text for the server, which sends it once */
+const ops = new Map<string, { text: string; op: string }>();
+export function opOf(phone: string, text: string, make: () => string = uuid): string {
+  const k = phoneId(phone);
+  const had = ops.get(k);
+  if (had && had.text === text) return had.op;
+  const op = make();
+  ops.set(k, { text, op });
+  return op;
+}
 
 /* ---------- the person signed in ---------- */
 let owner: string | null = null;
@@ -52,7 +69,7 @@ export function claimTexts(id: string | null, alertOff: () => Promise<void> = pu
   if (id === owner) return;
   const left = owner;
   owner = id;
-  drafts.clear();
+  drafts.clear(); ops.clear();
   // only an account that was signed in can have switched the alert on in this browser
   if (left) void attempt(alertOff, { quiet: true });
 }

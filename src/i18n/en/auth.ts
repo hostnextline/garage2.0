@@ -13,6 +13,8 @@ export const auth: typeof fr = {
   or: 'or',
   wrong: 'Wrong email or password.',
   blocked: 'This account is blocked. Talk to the owner.',
+  tooMany: 'Too many tries. Wait a few minutes, then try again.',
+  notConfirmed: 'This account is not activated yet: open the invitation link you got by e-mail.',
   missing: 'Write your email and password.',
   forgot: 'Forgot password',
   forgotTitle: 'New password',
@@ -44,6 +46,6 @@ export const auth: typeof fr = {
   alreadyIn: 'You are already signed in as {email}. Sign out to activate this invitation.',
   signOutFirst: 'Sign out',
   signOut: 'Sign out',
-  signOutPending: { one: 'One change is not sent yet. If you sign out, it will be lost. Wait for signal, or tap again to sign out anyway.', other: '{n} changes are not sent yet. If you sign out, they will be lost. Wait for signal, or tap again to sign out anyway.' },
+  signOutPending: { one: 'One change is not sent yet. If you sign out, it stays on this phone and leaves the next time you sign in here. Wait for signal, or tap again to sign out anyway.', other: '{n} changes are not sent yet. If you sign out, they stay on this phone and leave the next time you sign in here. Wait for signal, or tap again to sign out anyway.' },
   signOutAnyway: 'Sign out anyway'
 };

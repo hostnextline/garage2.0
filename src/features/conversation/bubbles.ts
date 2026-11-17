@@ -1,6 +1,6 @@
 /* « Texto entrant »: what the host draws from the bubbles' state (the state machine itself is shared/customers/texts.ts),
    and how often it asks the server. Pure: tested in bubbles.test.ts. */
-import { heads, unread, textsOf, phoneId, type Chat, type IncomingText } from '../../shared/customers/texts';
+import { heads, unread, textsOf, phoneId, openChat, type Chat, type IncomingText } from '../../shared/customers/texts';
 
 export const MAX_HEADS = 4;
 /** a text this young with words not read yet shows as a « peek » (name + two lines) */
@@ -34,6 +34,18 @@ export function bubblePlan(chats: Chat[], texts: IncomingText[], hermesOpen: boo
     if (last && unread(c, texts) > 0 && now - Date.parse(last.at) < PEEK_MS) { peek = { chat: c, text: last }; break; }
   }
   return { win, round, more, peek };
+}
+
+/** a tap on a text's alert (comms-guide-14): that number's window opens, even when it has no bubble yet (the usual case
+    on a phone: the text came in while the app was hidden, and nothing is read while it is hidden), as a new bubble,
+    read up to now; the texts read next fill it (nextChats keeps an open bubble open) */
+export function openAsked(chats: Chat[], phone: string, texts: IncomingText[], now = Date.now()): Chat[] {
+  const k = phoneId(phone);
+  if (!k) return chats;
+  if (chats.some((c) => phoneId(c.phone) === k)) return openChat(chats, phone, texts);
+  const last = textsOf(texts, phone).pop();
+  const others = chats.map((c) => (c.state === 'open' ? { ...c, state: 'min' as const } : c));
+  return [...others, { phone: last?.phone || phone, name: last?.name ?? null, state: 'open', seenAt: last?.at || new Date(now).toISOString() }];
 }
 
 /* ---------- asking the server ---------- */

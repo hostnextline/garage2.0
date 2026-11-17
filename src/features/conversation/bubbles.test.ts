@@ -1,7 +1,7 @@
 /* « Texto entrant »: what the host draws, how often it asks (comms-guide-06, comms-guide-15, comms-guide-28). */
 import { describe, it, expect } from 'vitest';
 import type { Chat, IncomingText } from '../../shared/customers/texts';
-import { bubblePlan, isPretend, askEvery, sameTexts, refreshEvery, MAX_HEADS, PEEK_MS, ASK_MS, ASK_LIVE_MS, REFRESH_MS, REFRESH_QUIET_MS } from './bubbles';
+import { bubblePlan, isPretend, openAsked, askEvery, sameTexts, refreshEvery, MAX_HEADS, PEEK_MS, ASK_MS, ASK_LIVE_MS, REFRESH_MS, REFRESH_QUIET_MS } from './bubbles';
 
 const now = Date.parse('2026-11-17T15:30:00Z');
 const at = (min: number) => new Date(now - min * 60000).toISOString();
@@ -57,5 +57,31 @@ describe('asking the server', () => {
   it('an open window asks GoHighLevel every 20 s while the conversation moves, every minute once quiet', () => {
     expect(refreshEvery(now - 30000, now)).toBe(REFRESH_MS);
     expect(refreshEvery(now - 5 * 60000, now)).toBe(REFRESH_QUIET_MS);
+  });
+});
+
+describe('a tap on a text alert (comms-guide-14)', () => {
+  const NOW = Date.parse('2026-11-16T15:00:00Z');
+  const txt = (phone: string, at: string, name: string | null = null): IncomingText => ({ id: phone + at, phone, name, body: 'Allo', at });
+  it('no bubble for that number yet: a new open one, read up to the text, the open window becomes a head', () => {
+    const before: Chat[] = [{ phone: '+15145550188', name: null, state: 'open', seenAt: '2026-11-16T10:00:00Z' }];
+    const after = openAsked(before, '15145550177', [txt('+15145550177', '2026-11-16T14:59:00Z', 'Lara')], NOW);
+    expect(after).toEqual([
+      { phone: '+15145550188', name: null, state: 'min', seenAt: '2026-11-16T10:00:00Z' },
+      { phone: '+15145550177', name: 'Lara', state: 'open', seenAt: '2026-11-16T14:59:00Z' }
+    ]);
+  });
+  it('the texts not read yet (the app was hidden): opened all the same, read up to now', () => {
+    expect(openAsked([], '+15145550177', [], NOW)).toEqual([{ phone: '+15145550177', name: null, state: 'open', seenAt: new Date(NOW).toISOString() }]);
+  });
+  it('a bubble already there, whatever the way the number is written: that one opens, no second bubble', () => {
+    const before: Chat[] = [{ phone: '+1 514 555-0177', name: 'Lara', state: 'closed', seenAt: '2026-11-16T10:00:00Z' }];
+    const after = openAsked(before, '5145550177', [], NOW);
+    expect(after).toHaveLength(1);
+    expect(after[0].state).toBe('open');
+  });
+  it('no number: nothing changes', () => {
+    const before: Chat[] = [];
+    expect(openAsked(before, '', [], NOW)).toBe(before);
   });
 });
