@@ -96,19 +96,28 @@ describe('« Je pars »', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: { lat: 45.5, lng: -73.6 }, notify: true, resend: undefined });
   });
-  it('« Routes partagées »: another mechanic (or an owner who is also a mechanic) pressing for a truck someone drives: no position from his phone, no day started for him (jobs-r4)', async () => {
-    // every truck is his (my_truck_ids with shared routes), but Saleh drives t1
+  it('« Routes partagées »: a mechanic leaving with a truck another one drives is the one who leaves, as the server says: his position, his day starts (R30; before: neither)', async () => {
+    // every truck is his (my_truck_ids with shared routes), Saleh is t1's named driver, Amine takes it today
     access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1', 't2'] } as unknown as Access;
     await doLeave(JOB({ status: 'booked' }), { mine: true });
     await new Promise((r) => setTimeout(r, 0));
-    expect(where.quickPosition).not.toHaveBeenCalled();
-    expect(api.shiftStart).not.toHaveBeenCalled();
-    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: undefined, notify: true, resend: undefined });
+    expect(where.quickPosition).toHaveBeenCalledTimes(1);
+    expect(api.shiftStart).toHaveBeenCalledTimes(1);
+    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: { lat: 45.5, lng: -73.6 }, notify: true, resend: undefined });
+  });
+  it('an owner (or the office) who is also a mechanic pressing for a truck another drives, his day not started: maybe from home, no position from his phone, no day started for him (jobs-r4)', async () => {
     access.value = { id: 'owner', roles: ['mechanic'], owner: true, rights: {}, trucks: ['t1'] } as unknown as Access;
     await doLeave(JOB({ status: 'booked' }), { mine: true });
     await new Promise((r) => setTimeout(r, 0));
     expect(where.quickPosition).not.toHaveBeenCalled();
     expect(api.shiftStart).not.toHaveBeenCalled();
+    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: undefined, notify: true, resend: undefined });
+    access.value = { id: 'nadia', roles: ['mechanic'], owner: false, rights: { book: true }, trucks: ['t1'] } as unknown as Access;
+    expect(drives(JOB(), { mine: true })).toBe(false);
+    // his day is started: he is out in a vehicle (the server gives him the trip too)
+    upsertLocal('shifts', [{ id: 's1', staff_id: 'owner', started_at: '2026-11-15T12:00:00Z', ended_at: null }]);
+    access.value = { id: 'owner', roles: ['mechanic'], owner: true, rights: {}, trucks: ['t1'] } as unknown as Access;
+    expect(drives(JOB(), { mine: true })).toBe(true);
   });
   it('a truck with no driver: the mechanic of that truck pressing is the one driving', async () => {
     upsertLocal('trucks', [{ id: 't1', name: 'Camion', driver_id: null, active: true, sort: 0 }]);
