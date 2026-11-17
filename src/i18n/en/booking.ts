@@ -111,7 +111,11 @@ export const booking: typeof fr = {
     title: 'Incoming call',
     known: 'A customer we know',
     open: 'Open',
-    newNamed: 'GoHighLevel says: {name}. Where do we start?'
+    newNamed: 'GoHighLevel says: {name}. Where do we start?',
+    leaveTitle: 'Leave the booking in progress?',
+    leaveText: 'What is typed for this booking will be lost.',
+    leaveOk: 'Open the call',
+    leaveCancel: 'Stay here'
   },
   call: {
     title: 'Incoming call',

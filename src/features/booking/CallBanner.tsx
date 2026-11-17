@@ -11,10 +11,11 @@ import { sb } from '../../data/auth';
 import { customersList, customerName } from '../../data/select';
 import { navigate } from '../../platform/router';
 import { REALTIME } from '../../lib/config';
-import { Button, IconButton } from '../../ui';
+import { Button, IconButton, ask } from '../../ui';
 import { phoneOwners } from '../../shared/customers/dupes';
 import { type IncomingCall, callLink, callsOn, onCheckCalls } from '../../services/bubbles';
 import { CALL_SHOWN_MS, callToShow } from './calls';
+import { bookingTyped } from './screen';
 /* The banner's rules (and the « texto à envoyer » sheet's, shared/moment/notify.tsx, on screens that load no picker)
    are in the shared booking stylesheet, loaded here at the start of the app, as before the rebuild: one sheet, one
    order (a copy of the same rules loaded later would change which rule wins). */
@@ -56,6 +57,12 @@ export function CallHost() {
   const known = phoneOwners(call.phone, customersList.value)[0];
   const who = known ? customerName(known) : call.name;
   const close = () => { closed.current.add(call.id); setTick((x) => x + 1); };
+  // a booking half typed on screen (often the call before this one) is not dropped without a word (x-reactivity-19)
+  const open = async () => {
+    if (bookingTyped.value && !(await ask({ title: t('booking.ring.leaveTitle'), text: t('booking.ring.leaveText'), ok: t('booking.ring.leaveOk'), cancel: t('booking.ring.leaveCancel') }))) return;
+    close();
+    navigate(callLink(call));
+  };
   return (
     <div class="call-banner glass-strong" role="alert" data-testid="call-banner">
       <span class="call-banner-icon" aria-hidden="true"><PhoneCall size={22} /></span>
@@ -64,7 +71,7 @@ export function CallHost() {
         <span data-testid="call-banner-who">{[who, formatPhone(call.phone)].filter(Boolean).join(', ')}</span>
         {known && <span class="small muted">{t('booking.ring.known')}</span>}
       </span>
-      <Button variant="primary" size="sm" onClick={() => { close(); navigate(callLink(call)); }} data-testid="call-banner-open">{t('booking.ring.open')}</Button>
+      <Button variant="primary" size="sm" onClick={open} data-testid="call-banner-open">{t('booking.ring.open')}</Button>
       <IconButton icon={<X />} label={t('common.close')} onClick={close} data-testid="call-banner-close" />
     </div>
   );

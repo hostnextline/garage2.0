@@ -55,6 +55,9 @@ export interface Draft {
   bookedIds: string[];
   /** the new caller's file this form made: « Changer » back to the caller keeps what was said for them */
   madeId: string | null;
+  /** the person typed or chose something here (rows arriving, the address bar, the calendar's own news do not count):
+      leaving would lose it (x-reactivity-19: the incoming-call banner asks first) */
+  typed: boolean;
 }
 
 export type Action =
@@ -92,7 +95,7 @@ export function initialDraft(o: { customerId: string | null; car: string; place:
   return {
     customerId: o.customerId, car: o.car, work: {}, caller: o.caller, callCars: o.callCar ? [o.callCar] : [], searchKnown: false, tried: false,
     place: o.place, placeOwner: o.customerId, placeFrom: o.customerId ? 'file' : 'none', notes: '', card: null,
-    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, farSeen: null, truckId: null, kind: null, bookedIds: [], madeId: null
+    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, farSeen: null, truckId: null, kind: null, bookedIds: [], madeId: null, typed: false
   };
 }
 
@@ -154,7 +157,17 @@ function customerRow(d: Draft, a: Extract<Action, { t: 'customerRow' }>): Draft 
   return next.card == null ? { ...next, card: a.card } : next;
 }
 
+/** what only a person does on the form (never the rows arriving, the address bar, the picker's own news, nor the car
+    chosen by itself for a customer with one car) */
+const BY_PERSON: ReadonlySet<Action['t']> = new Set<Action['t']>(['items', 'dur', 'problem', 'notes', 'pickCustomer', 'place', 'placeFile', 'caller',
+  'searchKnown', 'addCallCar', 'removeCallCar', 'callCar', 'choice', 'kind', 'truck', 'card']);
+
 export function reduce(d: Draft, a: Action): Draft {
+  const next = step(d, a);
+  return next !== d && !next.typed && BY_PERSON.has(a.t) ? { ...next, typed: true } : next;
+}
+
+function step(d: Draft, a: Action): Draft {
   switch (a.t) {
     case 'items': return setWork(d, d.car, { items: a.items }, a.mint);
     case 'dur': return setWork(d, d.car, { dur: a.dur }, a.mint);

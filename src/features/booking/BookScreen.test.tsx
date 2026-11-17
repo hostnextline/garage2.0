@@ -42,6 +42,7 @@ vi.mock('../../shared/moment/ServicePicker', () => ({
 import { upsertLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
 import { setMyRoute } from '../../services/position';
+import { bookingTyped } from './screen';
 import { addDays, today } from '../../lib/dates';
 import { lang } from '../../lib/i18n';
 import BookScreen from './BookScreen';
@@ -128,6 +129,15 @@ describe('the booking screen', () => {
     expect(nav.navigate).not.toHaveBeenCalled();
     expect(q('stub-pick')?.dataset.reload).toBe('1');
     expect(q('stub-pick')?.textContent).toBe(`${DAY} am`);
+  });
+
+  it('the call banner knows when a booking is half typed here, and forgets it with the screen (x-reactivity-19)', async () => {
+    await draw('customer=c-1');
+    expect(bookingTyped.value).toBe(false);
+    await click(q('stub-add'));
+    expect(bookingTyped.value).toBe(true);
+    act(() => render(null, box));
+    expect(bookingTyped.value).toBe(false);
   });
 
   it('two cars kept on the phone: said once, the screen leaves (booking-a-03)', async () => {

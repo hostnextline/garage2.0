@@ -111,7 +111,11 @@ export const booking = {
     title: 'Appel entrant',
     known: 'Un client qu’on connaît',
     open: 'Ouvrir',
-    newNamed: 'GoHighLevel dit : {name}. Par quoi on commence ?'
+    newNamed: 'GoHighLevel dit : {name}. Par quoi on commence ?',
+    leaveTitle: 'Quitter la réservation en cours ?',
+    leaveText: 'Ce qui est écrit pour cette réservation sera perdu.',
+    leaveOk: 'Ouvrir l’appel',
+    leaveCancel: 'Rester ici'
   },
   call: {
     title: 'Appel entrant',

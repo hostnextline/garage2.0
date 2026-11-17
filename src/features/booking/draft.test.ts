@@ -202,6 +202,18 @@ describe('the moment', () => {
     expect(run(d, { t: 'far', far: null, seen: { ...seen } })).toBe(d);
     expect(run(d, { t: 'far', far: null }).farSeen).toBeNull();
   });
+  it('what the person typed is known; what arrives by itself is not (x-reactivity-19)', () => {
+    const d0 = fresh();
+    expect(d0.typed).toBe(false);
+    // the rows, the address bar, the picker's news, the car chosen by itself: nothing to lose
+    const auto = run(d0, { t: 'queryCustomer', id: 'c-1' }, { t: 'customerRow', id: 'c-1', cars: ['v-1'], place: { address: '1 rue A', unit: null, postal_code: null, lat: 1, lng: 2 }, card: false },
+      { t: 'car', key: 'v-1', mint: 'j-1' }, { t: 'presetChoice', choice: block }, { t: 'mode', windows: false, bar: null }, { t: 'far', far: null });
+    expect(auto.typed).toBe(false);
+    for (const a of [{ t: 'items', items: [line('Huile')], mint: 'j' }, { t: 'problem', text: 'bruit', mint: 'j' }, { t: 'notes', text: 'code 12' },
+      { t: 'caller', patch: { first: 'Mario' } }, { t: 'choice', choice: block }, { t: 'card', on: true }] as Action[]) {
+      expect(run(auto, a).typed).toBe(true);
+    }
+  });
   it('a copy’s window is a default: a moment already picked stays', () => {
     expect(run(fresh(), { t: 'presetChoice', choice: win }).choice).toEqual(win);
     expect(run(fresh(), { t: 'choice', choice: block }, { t: 'presetChoice', choice: win }).choice).toEqual(block);

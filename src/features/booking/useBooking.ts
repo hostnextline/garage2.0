@@ -18,6 +18,7 @@ import { reduce, initialDraft, plannedCars, workOf, workCount, NO_CAR, EMPTY_PLA
 import { missing, callerOk, carBad, routeDefault, type CallCarCheck } from './check';
 import { myRoute, refreshMyRoute } from '../../services/position';
 import { carMinutes } from './visit';
+import { bookingTyped } from './screen';
 
 /** the address on the customer's file */
 export function placeOf(id: string | null): PlaceValue {
@@ -50,6 +51,10 @@ export function useBooking(query: URLSearchParams) {
 
   /* ---------- the garage's way of booking can be known a moment after the first drawing (the settings arrive): the
      address is read again then (`&block=day&win=960` read as a block would be refused) ---------- */
+  // what the person typed here is said to the call banner (it asks before replacing the form); gone with the screen
+  useEffect(() => { bookingTyped.value = d.typed; }, [d.typed]);
+  useEffect(() => () => { bookingTyped.value = false; }, []);
+
   const modeRead = useRef(wm);
   useEffect(() => {
     if (modeRead.current === wm) return;
