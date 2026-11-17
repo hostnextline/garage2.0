@@ -58,10 +58,27 @@ function buildOld() {
   fs.writeFileSync(stampFile, stamp);
   return { head, cached: false };
 }
-/** this copy (the rebuilt app), built now: a newer version than yesterday's, marked important */
+/** the files a build is made from: when none changed since the last run, the build is kept (a build takes a minute) */
+function sourceHash(root, parts) {
+  const hash = require('node:crypto').createHash('sha256');
+  const walk = (p) => {
+    const st = fs.statSync(p, { throwIfNoEntry: false });
+    if (!st) return;
+    if (st.isDirectory()) { for (const e of fs.readdirSync(p).sort()) if (e !== 'node_modules' && e !== '__scan__' && e !== '.DS_Store') walk(path.join(p, e)); return; }
+    hash.update(path.relative(root, p)); hash.update(fs.readFileSync(p));
+  };
+  for (const x of parts) walk(path.join(root, x));
+  return hash.digest('hex');
+}
+/** this copy (the rebuilt app): a newer version than yesterday's, marked important (kept when its sources did not change) */
 function buildNew() {
+  const stamp = JSON.stringify({ src: sourceHash(h.ROOT, ['src', 'public', 'index.html', 'client.html', 'vite.config.ts', 'package-lock.json', 'tsconfig.json']), url: SIGNAL, key: h.K.anon });
+  const stampFile = path.join(DIST_NEW, '.maj-stamp');
+  if (fs.existsSync(stampFile) && fs.readFileSync(stampFile, 'utf8') === stamp && fs.existsSync(path.join(DIST_NEW, 'sw.js'))) return { cached: true };
   const now = new Date().toISOString();
   execSync(`npx vite build --outDir ${DIST_NEW} --emptyOutDir`, { cwd: h.ROOT, stdio: 'pipe', env: envFor('e2e-new', now, now) });
+  fs.writeFileSync(stampFile, stamp);
+  return { cached: false };
 }
 /** the main script of a build (its name changes with its content): which app a page runs */
 function mainScript(dir) {
@@ -124,8 +141,8 @@ const signal = {
           if (req.method !== 'OPTIONS' && /\/rest\/v1\/rpc\//.test(u.pathname)) {
             try { const b = JSON.parse(body.toString() || '{}'); entry.rpc = u.pathname.split('/').pop(); entry.op = b.p_op; entry.args = b; } catch { /* not json */ }
           } else if (req.method === 'POST' || req.method === 'PATCH') {
-            try { const b = JSON.parse(body.toString() || '{}'); entry.id = Array.isArray(b) ? b[0]?.id : b.id ?? u.searchParams.get('id'); } catch { /* not json */ }
-            if (!entry.id) entry.id = u.searchParams.get('id');
+            const byQuery = (u.searchParams.get('id') || '').replace(/^eq\./, '');
+            try { const b = JSON.parse(body.toString() || '{}'); entry.id = (Array.isArray(b) ? b[0]?.id : b.id) || byQuery || undefined; } catch { entry.id = byQuery || undefined; }
           }
           this.log.push(entry);
           if (!this.on) { entry.status = 'dropped'; req.socket.destroy(); return; }
@@ -237,10 +254,10 @@ const draw = async (page, testid) => {
   await page.mouse.up();
 };
 const blockNow = () => h.sql(`select case when public.now_min() < 720 then 'am' when public.now_min() < 960 then 'pm' else 'eve' end`);
+/** « Le NIV de l’auto » once on site: the sheet opens by itself after « Je suis arrivé » (a little later without signal); else the red button */
 const openVin = async (page) => {
   const sheet = page.getByTestId('car-check');
-  for (let i = 0; i < 10 && !(await sheet.isVisible()); i++) await page.waitForTimeout(300);
-  if (!(await sheet.isVisible())) await page.getByTestId('step-vin').click({ timeout: 15000 });
+  if (!(await sheet.waitFor({ timeout: 10000 }).then(() => true, () => false))) await page.getByTestId('step-vin').click({ timeout: 15000 });
   await sheet.waitFor({ timeout: 10000 });
 };
 const jwtOf = async (email, pw) => (await (await fetch(`${h.API}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: h.K.anon, 'content-type': 'application/json' }, body: JSON.stringify({ email, password: pw }) })).json()).access_token;
