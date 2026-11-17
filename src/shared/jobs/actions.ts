@@ -8,7 +8,7 @@
 import type { Job, Vehicle } from '../../data/types';
 import { jobStep, shiftStart, invoiceForJob, errorMessage, type StepAction } from '../../data/api';
 import { refetch, pull } from '../../data/sync';
-import { me, preview, hasRole } from '../../data/auth';
+import { me, preview, hasRole, isOwner, can } from '../../data/auth';
 import { openShift, truck, invoiceOf, settings } from '../../data/select';
 import { getRow } from '../../data/store';
 import { route } from '../../platform/router';
@@ -17,7 +17,7 @@ import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
 import type { JobRights } from '../../domain/jobs/rights';
 import { plannedParts, type UsedPart } from '../../domain/jobs/parts';
-import { jobFirstName, keepAhead, wt, invoiceWaiting } from './select';
+import { jobFirstName, keepAhead, wt, invoiceWaiting, invoiceSeen } from './select';
 import { sendText, sendTracking, wantsArrivalText, outcomeClosed } from './texts';
 import { confirmParts } from './PartsSheet';
 import { askCar, saveCar } from './CarCheckSheet';
@@ -46,14 +46,20 @@ async function stepKept(j: Job, action: StepAction, data: Record<string, unknown
 }
 
 /* ---------- Je pars, Je suis arrivé ---------- */
-/** the person pressing drives this job's truck (its phone is where the truck is): the truck's driver, or, on a truck with
-    no driver, a mechanic of that truck. As the server (enroute: the trip is the driver's, else the presser's): with
-    « Routes partagées » every truck is every mechanic's, so being on the truck is not driving it. */
+/** the person pressing is the one who leaves (his phone is where the truck is: its position gives the arrival time, and
+    his day starts). As the server (enroute whoLeaves: the caller when he is a mechanic or his day is started, else the
+    truck's driver): the truck's driver; anyone whose day is started (out in a vehicle); a mechanic of the job's truck
+    (« Routes partagées »: Hassan's mechanics switch vehicles during the day, the one who leaves starts HIS day, R30).
+    Not someone who also runs the office (owner, « Réserver ») pressing, before his day started, for a truck another
+    drives: he may be doing it from home, and his position would give the customer a wrong arrival time. */
 export function drives(j: Job, rights: Pick<JobRights, 'mine'>): boolean {
   const mine = me.value?.id;
   if (!mine || preview.value) return false;
   const driver = truck(j.truck_id)?.driver_id;
-  return driver ? driver === mine : rights.mine && hasRole('mechanic');
+  if (driver === mine) return true;
+  if (openShift(mine)) return true;
+  if (!rights.mine || !hasRole('mechanic')) return false;
+  return !driver || !(isOwner() || can('book'));
 }
 /** « Je pars »: the job goes en route (kept on the phone without signal), the day of the one driving starts beside it if
     needed, then the customer gets the text with the arrival time (from where the driver's phone is) */
@@ -150,7 +156,8 @@ export async function letGo(j: Job, used?: { parts?: UsedPart[] }): Promise<bool
 export async function doFinish(j: Job, rights: Pick<JobRights, 'payLater'>): Promise<boolean> {
   const parts = await partsUsed(j);
   if (!parts) return false;
-  const inv = invoiceOf(j.id);
+  // the invoice as the red button sees it (« Terminer la facture » waiting on this phone counts as finished)
+  const inv = invoiceSeen(j.id);
   const later = j.pay_later && rights.payLater && inv?.status === 'issued' ? { pay_later: true, reason: j.pay_later_reason || '' } : {};
   try {
     const r = await jobStep(j.id, 'finish', { ...later, ...parts });

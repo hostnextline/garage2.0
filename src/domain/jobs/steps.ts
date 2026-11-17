@@ -4,8 +4,8 @@
    booked    → Je pars (not before the day; not while this truck has an unpaid job on site: the server refuses it)
    en_route  → Je suis arrivé
    on_site   → the next missing piece, in order: the car's VIN (scanned, typed, or a car of the customer that has one), the
-               signed authorization, the customer's answer to proposed work, some work to bill, the invoice, work added after
-               the invoice was finished (it must go on it first), the payment, then « Terminer la job »
+               signed authorization, the customer's answer to proposed work, some work to bill, the invoice, work on no line
+               of the finished invoice (it must go on it, or be marked « Pas fait », first), the payment, then « Terminer la job »
    done      → nothing to press (the PAYÉ stamp; what is left to collect)
    cancelled, no_show → closed */
 import type { Job, JobItem, Invoice } from '../../data/types';
@@ -95,8 +95,9 @@ export function nextStep(job: JobLike, items: ItemLike[], invoice: InvoiceLike |
       // the customer answers proposed work first, whatever the invoice: accepted, it is billed; refused, it is not
       const waiting = open.find((i) => i.status === 'proposed');
       if (waiting) return { kind: 'answer', itemId: waiting.id };
-      // work added or accepted once the invoice was finished: it goes on the invoice before the payment and the end,
-      // never « Encaisser » the old amount nor « Terminer » with work nobody pays for
+      // billable work on no line of the finished invoice (added after it, or taken off the draft): it goes on the invoice
+      // (or is marked « Pas fait ») before the payment and the end, never « Encaisser » the old amount nor « Terminer »
+      // with work nobody pays for (the server refuses « Terminé » then: job_unbilled)
       const missing = unbilledWork(open, inv);
       if (missing.length) return { kind: 'unbilled', itemId: missing[0].id, count: missing.length, paid: inv!.status === 'paid' };
       if (paid) return covered ? { kind: 'finish', waiting: true } : { kind: 'finish' };

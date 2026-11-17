@@ -1,7 +1,7 @@
 /* A job's work and its invoice: which invoice counts, which work it bills, what is still missing from it, what a line is
    worth. Pure (tested in billing.test.ts): the red button, the work panel and the line sheet ask the same questions. */
 import type { Invoice, JobItem, JobStatus } from '../../data/types';
-import { lineTotal } from '../../lib/money';
+import { lineCents as invoiceLineCents } from '../money/invoice';
 
 /** the work that goes on the invoice */
 export const BILLABLE = ['planned', 'done', 'approved'];
@@ -33,25 +33,15 @@ export function isBilled(v: InvoiceLike | null | undefined, itemId: string): boo
 export function billable<T extends ItemLike>(items: T[]): T[] {
   return items.filter((i) => !i.deleted_at && BILLABLE.includes(i.status));
 }
-/** a time as a number (null when unknown) */
-const when = (s: string | null | undefined): number | null => { const n = s ? Date.parse(s) : NaN; return Number.isFinite(n) ? n : null; };
-/** this work came on the job, or the customer accepted it, after the invoice was finished (a time not known counts as
-    after: a line just added on this phone, an answer still waiting on it) */
-function cameAfter(i: ItemLike, issuedAt: number | null): boolean {
-  const added = when(i.created_at);
-  if (issuedAt == null || added == null || added > issuedAt) return true;
-  if (i.status !== 'approved') return false;
-  const accepted = when(i.answered_at);
-  return accepted == null || accepted > issuedAt;
-}
-/** work added or accepted after the invoice was finished: it is on no line of it, so nobody would pay for it. Work that
-    was already there when it was finished and is not on it was left off on purpose (a line taken off the draft by the
-    office): it does not stop the payment nor the end of the job. */
+/** the billable work on no line of the FINISHED invoice: nobody would pay for it. The server's own rule (job_unbilled,
+    which refuses « Terminé » while it is not empty), whenever the work came: added or accepted after the invoice was
+    finished, or already there and taken off the draft. Way out: « Modifier la facture » to add it, or mark it « Pas fait ».
+    (An earlier rule let work older than the invoice through: the red button then said « Encaisser » and « Terminer »,
+    and the server refused the end of the job once the customer had paid.) */
 export function unbilledWork<T extends ItemLike>(items: T[], v: InvoiceLike | null | undefined): T[] {
   if (!isFinished(v)) return [];
   const on = itemIdsOn(v!);
-  const issuedAt = when(v!.issued_at);
-  return billable(items).filter((i) => !on.has(i.id) && cameAfter(i, issuedAt));
+  return billable(items).filter((i) => !on.has(i.id));
 }
 /** a draft made before the work changed: a billable line is missing from it, or a line's work is gone */
 export function draftIsStale(v: InvoiceLike | null | undefined, items: ItemLike[]): boolean {
@@ -62,9 +52,11 @@ export function draftIsStale(v: InvoiceLike | null | undefined, items: ItemLike[
   for (const id of on) if (!work.has(id)) return true;
   return false;
 }
-/** what a line is worth before taxes (a discount counts against the total) */
+/** what a line is worth before taxes: the invoice's own rule (domain/money/invoice.ts, the server's invoice_totals), so
+    the job sheet says what the invoice will say. qty × price rounded to the cent; a discount always lowers the total
+    (stored positive or negative); any other line keeps its sign (a service priced −15 $ counts −15 $, R46) */
 export function lineCents(i: Pick<JobItem, 'qty' | 'unit_cents' | 'kind'>): number {
-  return (i.kind === 'discount' ? -1 : 1) * lineTotal({ qty: Number(i.qty), unitCents: Math.abs(i.unit_cents) });
+  return invoiceLineCents(i);
 }
 
 /** the estimate the customer signed online against what the customer owes now. The server keeps as the signed amount the

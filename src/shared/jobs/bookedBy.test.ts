@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { bookedBy } from './bookedBy';
 
-const at = new Date(2026, 10, 9, 14, 32).toISOString(); // 9 Nov., 14 h 32 on the phone's clock
+// 9 Nov., 14 h 32 on the garage's clock (Montréal, UTC−5 in November): the words follow Montréal, whatever the phone's zone
+const at = '2026-11-09T19:32:00Z';
 describe('« Réservé par »', () => {
   it('names the team member and when', () => {
     expect(bookedBy({ source: 'phone', created_by: 'x', created_at: at }, 'Nadia', 'fr')).toMatch(/^Nadia, le 9 nov\.?( 2026)?, 14 h 32$/);

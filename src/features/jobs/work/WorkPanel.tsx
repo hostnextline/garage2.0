@@ -2,7 +2,8 @@
    - A planned line becomes « Fait » with one tap; any line opens a short sheet (fait, pas fait, remettre…).
    - « Modifier le travail »: every line gets « Changer » and « Retirer »; « Ajouter du travail » next to it.
    - « Proposer un travail »: a line written on the spot, then the customer's answer.
-   - Work on no line of the finished invoice (added or accepted after it was finished) is said here, like on the red button. */
+   - Work on no line of the finished invoice (whenever it came: the server refuses « Terminé » for it) is said here, like on
+     the red button. */
 import { useState } from 'preact/hooks';
 import { Check, Plus, PenLine, Hourglass, CircleCheck, Circle, X, Minus, Pencil, Trash2 } from 'lucide-preact';
 import type { Job, JobItem, ItemStatus } from '../../../data/types';
@@ -12,7 +13,7 @@ import { money } from '../../../lib/money';
 import { itemsOf, jobTotals, settings, invoiceOf } from '../../../data/select';
 import { updateItem, removeItem } from '../../../data/api';
 import { upsertLocal } from '../../../data/store';
-import { isBilled, isOpen, lineCents, unbilledWork } from '../../../domain/jobs/billing';
+import { isBilled, isFinished, isOpen, lineCents, unbilledWork } from '../../../domain/jobs/billing';
 import { withAnswer } from '../../../domain/jobs/pending';
 import { mayRemove, removal, mayAnswer } from '../../../domain/jobs/work';
 import type { JobRights } from '../../../domain/jobs/rights';
@@ -50,7 +51,7 @@ export function WorkPanel(p: WorkPanelProps) {
   /* « Modifier le travail »: every line gets its « Retirer » and « Changer » buttons; adding is there too */
   const [editing, setEditing] = useState(false);
   const inv = invoiceOf(j.id);
-  const finished = !!inv && (inv.status === 'issued' || inv.status === 'paid');
+  const finished = isFinished(inv);
   const missing = isOpen(j.status) ? unbilledWork(items.map((i) => withAnswer(i, answers)), inv) : [];
   return (
     <Panel title={t('jobs.work.title')} help={t('jobs.work.help')} data-tour="job-work" class="jobs-work" data-testid="job-work">

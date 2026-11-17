@@ -4,7 +4,7 @@
 import type { Job } from '../../data/types';
 import { blockOfKey } from '../../data/select';
 import { windowWords } from '../moment/words';
-import { today, addDays, longDay, shortDate, clock, clockRange } from '../../lib/dates';
+import { today, addDays, longDay, shortDate, clock, clockRange, minuteOf as garageMinute } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 
 /** « Aujourd’hui », « Demain », « Hier », else « jeudi 6 novembre » */
@@ -91,11 +91,12 @@ export function whenLine(j: Job, l = lang.value): string {
 export function etaWord(min: number | null | undefined, l = lang.value): string {
   return min == null ? '' : t('jobs.eta', { time: clock(min, l) }, l);
 }
-/** minutes after midnight of a timestamp, on this device's clock */
+/** minutes after midnight of a timestamp, on the garage's clock (Montréal, like the server and every other time of the
+    app: a phone set to another zone still says the hour the customer lives) */
 export function minuteOf(iso: string | null | undefined): number | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.getHours() * 60 + d.getMinutes();
+  const m = garageMinute(new Date(iso));
+  return Number.isNaN(m) ? null : m;
 }
 export function clockOf(iso: string | null | undefined, l = lang.value): string {
   const m = minuteOf(iso);

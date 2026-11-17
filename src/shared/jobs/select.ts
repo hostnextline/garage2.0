@@ -2,7 +2,7 @@
    the person on screen, the job that blocks « Je pars », and the few words that name it (who, what).
    The words of when a job is live in domain/jobs/when.ts (re-exported here: other sections import them from this file). */
 import { signal, computed } from '@preact/signals';
-import type { Job, JobItem, Customer, JobStatus } from '../../data/types';
+import type { Job, JobItem, Customer, JobStatus, Invoice } from '../../data/types';
 import { net } from '../../data/sync';
 import { vehicle as vehicleRow, customer, customerName, itemsOf, invoiceOf, jobsOn, truck, staffName, settings } from '../../data/select';
 import { today } from '../../lib/dates';
@@ -11,8 +11,13 @@ import { nextStep, type NextStep } from '../../domain/jobs/steps';
 import { BILLABLE } from '../../domain/jobs/billing';
 import { withSteps, withAnswer, paidWaiting } from '../../domain/jobs/pending';
 import { jobRights } from '../../domain/jobs/rights';
+import { viewOf } from '../../domain/money/view';
+import { waitingEntries, coffreWaiting } from '../../domain/money/waiting';
 import { vinNeeded, vinSkips } from './vinStep';
 import { pendingJobs, paymentBase } from './pending';
+
+/** stands for the Coffre's id while « Payé par le Coffre » waits on this phone (the red button only) */
+const COFFRE_WAITING = 'coffre-waiting';
 
 export {
   dayWord, dayInSentence, shortDayWord, capFirst, isWindowJob, promisedWindow, blockRange, momentWord, momentShort, keepWindow, wt,
@@ -49,30 +54,44 @@ export function itemsSeen(jobId: string): JobItem[] {
   const list = itemsOf(jobId);
   return answers.size ? list.map((i) => withAnswer(i, answers)) : list;
 }
-/** the cents of this job's payments still waiting on this phone (and not on its invoice yet) */
+/** the cents of this job's payments still waiting on this phone (and not on its invoice yet). Counted against the
+    invoice's own row (what it received since each was first seen waiting is theirs): the payment's row and the invoice's
+    reach the phone one after the other, and only the invoice's paid_cents says the payment is on it. */
 function paidWaitingOf(j: Pick<Job, 'id'>): number {
   const inv = invoiceOf(j.id);
   return paidWaiting(pendingJobs(), j.id, inv, inv && ((p) => paymentBase(p, inv)));
 }
 /** « Faire la facture » was asked and waits for signal */
 export function invoiceWaiting(jobId: string): boolean { return pendingJobs().invoicing.has(jobId); }
+/** the job's invoice as this phone sees it, the same as the invoice panel (domain/money/view.ts): « Terminer la facture »
+    waiting for signal shows it finished (issued, or paid by the prepayments), with its lines' totals, so the red button
+    goes on to « Encaisser » behind it instead of asking to finish it again (R48). Its paid_cents is the server's (plus
+    the prepayments a waiting finish takes): the payments waiting are counted apart (paidWaitingOf), never twice. */
+export function invoiceSeen(jobId: string): Invoice | undefined {
+  const raw = invoiceOf(jobId);
+  return raw ? viewOf(raw).inv : raw;
+}
+/** « Payé par le Coffre » for this job waits on this phone: settled, like a job already in the Coffre (R48) */
+function coffreSeen(j: Pick<Job, 'id' | 'coffre_id'>): boolean { return !!j.coffre_id || coffreWaiting(waitingEntries(), j.id); }
 
 /** paid, or a payment waiting on this phone covers it (it reaches the server before anything pressed after it) */
 function settled(o: Job): boolean {
-  const v = invoiceOf(o.id);
+  const v = invoiceSeen(o.id);
   if (v?.status === 'paid') return true;
   return v?.status === 'issued' && v.total_cents - v.paid_cents <= paidWaitingOf(o);
 }
 /** another job of this truck, today, on site and not paid: the server refuses « Je pars » until it is paid */
 export function blockingJob(j: Job): Job | undefined {
   if (!j.truck_id) return undefined;
-  return jobsOn(j.day).map(seen).find((o) => o.id !== j.id && o.truck_id === j.truck_id && o.status === 'on_site' && !o.pay_later && !o.coffre_id && !settled(o));
+  return jobsOn(j.day).map(seen).find((o) => o.id !== j.id && o.truck_id === j.truck_id && o.status === 'on_site' && !o.pay_later && !coffreSeen(o) && !settled(o));
 }
 
 /** the one next step of a job, for the person on screen (with what still waits on this phone) */
 export function stepOf(raw: Job): NextStep {
   const j = seen(raw);
-  return nextStep(j, itemsSeen(j.id), invoiceOf(j.id), jobRights(j), {
+  // a Coffre waiting on this phone settles the job as the Coffre does (only for the step: the row keeps its own id)
+  const asStep = !j.coffre_id && coffreSeen(j) ? { ...j, coffre_id: COFFRE_WAITING } : j;
+  return nextStep(asStep, itemsSeen(j.id), invoiceSeen(j.id), jobRights(j), {
     today: today(),
     blockedBy: j.status === 'booked' ? blockingJob(j)?.id ?? null : null,
     needVin: vinNeeded(j, vehicleRow(j.vehicle_id), vinSkips.value),

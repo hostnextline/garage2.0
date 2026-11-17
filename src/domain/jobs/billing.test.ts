@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { liveInvoice, isFinished, isBilled, billable, unbilledWork, lineCents, estimateChanged, isOpen } from './billing';
 import type { InvoiceLine, ItemStatus } from '../../data/types';
+import { lineCents as invoiceLineCents } from '../money/invoice';
 
 const line = (item_id?: string): InvoiceLine => ({ description: 'x', qty: 1, unit_cents: 1000, taxable: true, item_id });
 const inv = (status: 'draft' | 'issued' | 'paid' | 'void', ids: (string | undefined)[], o: { deleted_at?: string | null; total_cents?: number } = {}) =>
@@ -38,14 +39,17 @@ describe('work missing from a finished invoice', () => {
     expect(unbilledWork(work, inv('paid', ['a', undefined])).map((i) => i.id)).toEqual(['b']);
     expect(unbilledWork(work, inv('issued', ['a', 'b']))).toEqual([]);
   });
-  it('only work added or accepted after the invoice was finished; what was there and left off it is not missing (jobs-r3)', () => {
+  it('the server’s rule (job_unbilled): whenever the work came, left off the finished invoice it is missing (terrain-01, argent-app-01)', () => {
     const finished = { ...inv('issued', ['a']), issued_at: '2026-11-15T15:00:00Z' };
+    // already there when the invoice was finished, taken off the draft: the server refuses « Terminé » for it
     const old = [{ ...item('a', 'done'), created_at: '2026-11-15T09:00:00Z' }, { ...item('b', 'planned'), created_at: '2026-11-15T09:00:00Z' }];
-    expect(unbilledWork(old, finished)).toEqual([]);
+    expect(unbilledWork(old, finished).map((i) => i.id)).toEqual(['b']);
     const late = { ...item('c', 'planned'), created_at: '2026-11-15T15:00:01Z' };
-    expect(unbilledWork([...old, late], finished).map((i) => i.id)).toEqual(['c']);
-    // a line just added on this phone (no time yet) counts as added after
-    expect(unbilledWork([...old, item('d', 'planned')], finished).map((i) => i.id)).toEqual(['d']);
+    expect(unbilledWork([...old, late], finished).map((i) => i.id)).toEqual(['b', 'c']);
+    // a line just added on this phone (no time yet)
+    expect(unbilledWork([...old, item('d', 'planned')], finished).map((i) => i.id)).toEqual(['b', 'd']);
+    // marked « Pas fait »: no longer missing (the way out the server gives)
+    expect(unbilledWork([old[0], { ...old[1], status: 'removed' as const }], finished)).toEqual([]);
   });
   it('nothing is missing from a draft (it follows the work) nor when there is no invoice', () => {
     expect(unbilledWork(work, inv('draft', []))).toEqual([]);
@@ -60,6 +64,14 @@ describe('the amount of a line', () => {
     expect(lineCents({ qty: 1, unit_cents: -500, kind: 'discount' })).toBe(-500);
     expect(lineCents({ qty: 1, unit_cents: 500, kind: 'discount' })).toBe(-500);
     expect(lineCents({ qty: 4.5, unit_cents: 999, kind: 'part' })).toBe(4496);
+  });
+  it('a line that is not a discount keeps its sign, as on the invoice and on the server (R46)', () => {
+    // before: −15 $ on a service counted +15 $ on the job sheet while the invoice said −15 $
+    expect(lineCents({ qty: 1, unit_cents: -1500, kind: 'service' })).toBe(-1500);
+    expect(lineCents({ qty: 2, unit_cents: -500, kind: 'part' })).toBe(-1000);
+    // the invoice's own count of the same line
+    for (const l of [{ qty: 1, unit_cents: -1500, kind: 'service' as const }, { qty: 3, unit_cents: 333, kind: 'discount' as const }, { qty: 1.5, unit_cents: 1001, kind: 'labour' as const }])
+      expect(lineCents(l)).toBe(invoiceLineCents(l));
   });
 });
 

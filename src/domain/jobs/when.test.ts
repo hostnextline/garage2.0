@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import type { Job } from '../../data/types';
-import { blockRange, momentWord, momentShort, promisedWindow, outsideWindow, keepWindow, wt, isWindowJob } from './when';
+import { blockRange, momentWord, momentShort, promisedWindow, outsideWindow, keepWindow, wt, isWindowJob, minuteOf, clockOf } from './when';
+
+describe('the hour of a moment is the garage’s, whatever the phone’s zone (R169)', () => {
+  it('reads Montréal’s clock (winter UTC−5, summer UTC−4, just after midnight)', () => {
+    expect(minuteOf('2026-11-16T19:32:00Z')).toBe(14 * 60 + 32);
+    expect(minuteOf('2026-07-16T18:32:00Z')).toBe(14 * 60 + 32);
+    expect(minuteOf('2026-11-16T05:05:00Z')).toBe(5);
+    expect(clockOf('2026-11-16T19:32:00Z', 'fr')).toBe('14 h 32');
+  });
+  it('nothing or not a date: no hour', () => {
+    expect(minuteOf(null)).toBeNull();
+    expect(minuteOf('')).toBeNull();
+    expect(minuteOf('pas une date')).toBeNull();
+    expect(clockOf(undefined, 'fr')).toBe('');
+  });
+});
 
 const J = (o: Partial<Job>): Job => ({ id: 'j', number: 1, day: '2026-11-17', block: 'pm', status: 'booked', eta_min: null, ...o } as Job);
 const win = J({ block: 'day', win_start: 840, win_end: 1080 });
