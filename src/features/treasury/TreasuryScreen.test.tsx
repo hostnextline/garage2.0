@@ -25,6 +25,15 @@ vi.mock('../../shared/export/download', async (orig) => {
   const real = await orig<typeof import('../../shared/export/download')>();
   return { ...real, saveFile: (data: Uint8Array | string, name: string) => { saved.push({ data: typeof data === 'string' ? data : '', name }); } };
 });
+const work = { signature: 0, period: 0 };
+vi.mock('./select', async (orig) => {
+  const real = await orig<typeof import('./select')>();
+  return {
+    ...real,
+    rowsSignature: (...a: Parameters<typeof real.rowsSignature>) => { work.signature++; return real.rowsSignature(...a); },
+    periodExpenses: (...a: Parameters<typeof real.periodExpenses>) => { work.period++; return real.periodExpenses(...a); }
+  };
+});
 import TreasuryScreen from './TreasuryScreen';
 import { replaceLocal, upsertLocal } from '../../data/store';
 import { access } from '../../data/auth';
@@ -92,6 +101,24 @@ describe('Trésorerie: the report follows the expenses (bug 01)', () => {
     serverRows = [expense('e1', 9000)];
     await show();
     expect(q('export-mismatch').length).toBe(1);
+  });
+});
+
+describe('Trésorerie: a redraw does not redo the period’s work (review fluidite-05)', () => {
+  it('the phone starting and stopping to send redraws the screen, but the rows of the period are not filtered or signed again', async () => {
+    await show();
+    const before = { ...work };
+    expect(before.signature).toBeGreaterThan(0);
+    for (const sending of [true, false, true, false]) {
+      await act(async () => { net.value = { ...net.value, sending }; });
+      await wait();
+    }
+    expect(work).toEqual(before);
+    // a new row of the period does: once
+    await act(async () => { upsertLocal('expenses', [expense('e3', 1000)], { force: true }); });
+    await wait();
+    expect(work.period).toBe(before.period + 1);
+    expect(work.signature).toBe(before.signature + 1);
   });
 });
 
