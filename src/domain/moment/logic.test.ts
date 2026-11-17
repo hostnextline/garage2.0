@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { bookSummary, workMinutes, toItemInputs, draftsFromQuote, draftsFromJob, parseChoice, cellState, clampDuration, draftOfService, refusalCode, carDraftLabel, isFar, farLimits, farText, farInfo, momentsByKey, offered, betterMoments, betterText, farQuestion, roadWords, type LoadLike, type Moment, type ItemDraft } from './logic';
 import { blockPhrase, blockPhraseLower, relativeDay } from './words';
 import { QC_TAXES } from '../../lib/money';
+import { addDays, today } from '../../lib/dates';
 import type { Service } from '../../data/types';
 import { booking as fr } from '../../i18n/fr/booking';
 import { booking as en } from '../../i18n/en/booking';
@@ -62,6 +63,11 @@ describe('lines', () => {
     expect(d).toHaveLength(2);
     expect(d[0]).toMatchObject({ kind: 'service', service_id: 's-f', duration_min: 90, unit_cents: 34999 });
     expect(d[1]).toMatchObject({ kind: 'part', qty: 2 });
+  });
+  it('an estimate line with a quantity of 0 (or none) is booked once, never at 0 (R47, invoices-quotes-27)', () => {
+    const d = draftsFromQuote({ items: [{ description: 'Freins', qty: 0, unit_cents: 34999, taxable: true }, { description: 'Huile', qty: null as never, unit_cents: 8999, taxable: true }] });
+    expect(d.map((x) => x.qty)).toEqual([1, 1]);
+    expect(toItemInputs(d).map((x) => x.qty)).toEqual([1, 1]);
   });
   it('reads the block from the address', () => {
     expect(parseChoice('2026-11-05', 'eve')).toEqual({ day: '2026-11-05', block: 'eve' });
@@ -227,7 +233,8 @@ describe('« Plages d’arrivée »: a day and its 4-hour window', () => {
     expect(refusalCode({ hint: 'window_full', message: 'x' })).toBe('window_full');
   });
   it('the choice in words: never « matin / après-midi / soir / bloc »', () => {
-    const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    // tomorrow on the garage's clock (Montréal), as choiceWords reads it: never the machine's own zone (R02)
+    const tomorrow = addDays(today(), 1);
     expect(choiceWords({ day: tomorrow, block: 'day', win_start: 840, win_end: 1080 }, 'fr')).toBe('Demain, entre 14 h et 18 h');
     expect(choiceWords({ day: tomorrow, block: 'day', win_flex: true }, 'fr')).toBe('Demain, dans la journée (plage confirmée la veille)');
     expect(choiceWords({ day: tomorrow, block: 'day' }, 'fr')).toBe('Demain, plage donnée par l’app');

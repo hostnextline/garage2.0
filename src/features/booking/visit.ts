@@ -5,6 +5,7 @@ import type { BookInput, ItemInput } from '../../data/api';
 import type { Customer } from '../../data/types';
 import type { TaxRates } from '../../lib/money';
 import type { PlannedCar } from './draft';
+import type { PlaceValue } from '../../shared/places/place';
 
 /** what every car's appointment shares: the customer, the place, the notes, the options */
 export type VisitBase = Omit<BookInput, 'id' | 'day' | 'block' | 'vehicle_id' | 'duration_min' | 'problem' | 'win_start' | 'win_flex' | 'force'>;
@@ -31,6 +32,16 @@ export function visitJobs(cars: PlannedCar[], base: VisitBase, o: { choice: Bloc
     } as BookInput;
     return { key: c.key, job, lines: toItemInputs(c.work.items) };
   });
+}
+
+/** the place sent after waiting for its position (R164). A finger tap on « Réserver » is also the tap that leaves the
+    address field, so the position was looked up when the tap came (`found`, for the address as it was then). What is on
+    screen now wins when it has its own position or another address was typed meanwhile; else the same address goes
+    with the position found. */
+export function placeAfterWait(now: PlaceValue, found: PlaceValue): PlaceValue {
+  if (now.lat != null && now.lng != null) return now;
+  if (found.lat == null || found.lng == null || now.address.trim() !== found.address.trim()) return now;
+  return { ...now, lat: found.lat, lng: found.lng, city: now.city || found.city || null };
 }
 
 /** « Réserver quand même »: no window is asked (the server gives it from where the stop ends up) */

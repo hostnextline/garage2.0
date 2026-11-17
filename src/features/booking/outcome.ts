@@ -17,6 +17,9 @@ export interface Outcome {
   /** the red line above the moments; `windowGone`: the window chosen can no longer be kept, the picker asks again */
   banner: string | null;
   windowGone: boolean;
+  /** the moment itself was refused (a code of BLOCK_REFUSALS): the picker asks its suggestions again, so « Meilleur
+      choix » no longer offers the block or the window just refused (R79) */
+  again: boolean;
 }
 type Words = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -31,9 +34,10 @@ export function outcome(results: CarResult[], o: { total: number; walkIn: boolea
   const booked = results.flatMap((r) => (r.status === 'booked' ? [r] : []));
   const queued = results.some((r) => r.status === 'queued');
   const refused = results.find((r): r is Extract<CarResult, { status: 'refused' }> => r.status === 'refused');
-  const out: Outcome = { toasts: [], go: null, texts: booked.map((r) => r.id), done: done.map((r) => r.key), banner: null, windowGone: false };
+  const out: Outcome = { toasts: [], go: null, texts: booked.map((r) => r.id), done: done.map((r) => r.key), banner: null, windowGone: false, again: false };
 
   if (refused) {
+    out.again = BLOCK_REFUSALS.includes(refused.code);
     if (refused.code === 'window_full') {
       const msg = w.t('booking.win.full');
       out.toasts.push({ text: msg, kind: 'bad' });

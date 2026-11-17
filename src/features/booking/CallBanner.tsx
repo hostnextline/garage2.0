@@ -2,19 +2,23 @@
    appels dans mon compte »): a call that comes in on the garage's number shows here, on every screen, with the number
    and the name GoHighLevel knows (or our own customer's). « Ouvrir » opens Appel entrant with the number already typed.
    A banner, never a jump: the screen in use stays. The calls are noted by the server function « ring » in
-   incoming_calls: told at once (realtime), and asked every 10 s while the app is in view. */
+   incoming_calls: told at once (realtime), and asked every 10 s while the app is in view. The calls' `at` is the
+   server's clock: « still fresh » is counted on the server's time as the data layer estimates it, never on a phone
+   or a computer set a few minutes off (x-time-19, booking-a-20). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { PhoneCall, X } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { formatPhone } from '../../lib/text';
 import { sb } from '../../data/auth';
+import { serverNow } from '../../data/clock';
 import { customersList, customerName } from '../../data/select';
 import { navigate } from '../../platform/router';
 import { REALTIME } from '../../lib/config';
-import { Button, IconButton } from '../../ui';
+import { Button, IconButton, ask } from '../../ui';
 import { phoneOwners } from '../../shared/customers/dupes';
 import { type IncomingCall, callLink, callsOn, onCheckCalls } from '../../services/bubbles';
 import { CALL_SHOWN_MS, callToShow } from './calls';
+import { bookingTyped } from './screen';
 /* The banner's rules (and the « texto à envoyer » sheet's, shared/moment/notify.tsx, on screens that load no picker)
    are in the shared booking stylesheet, loaded here at the start of the app, as before the rebuild: one sheet, one
    order (a copy of the same rules loaded later would change which rule wins). */
@@ -35,7 +39,7 @@ export function CallHost() {
     const load = async () => {
       if (document.visibilityState === 'hidden') return;
       const mine = ++asked;
-      const { data } = await sb.from('incoming_calls').select('id, phone, name, at').gte('at', new Date(Date.now() - CALL_SHOWN_MS).toISOString()).order('at', { ascending: false }).limit(3);
+      const { data } = await sb.from('incoming_calls').select('id, phone, name, at').gte('at', new Date(serverNow() - CALL_SHOWN_MS).toISOString()).order('at', { ascending: false }).limit(3);
       if (!alive || mine !== asked) return;
       if (data) setCalls(data as IncomingCall[]);
       // the clock moves even when nothing new came: a call older than 3 minutes leaves
@@ -51,11 +55,17 @@ export function CallHost() {
     const ch = REALTIME ? sb.channel('incoming-calls').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'incoming_calls' }, look).subscribe() : null;
     return () => { alive = false; onCheckCalls(null); clearInterval(timer); document.removeEventListener('visibilitychange', look); if (ch) void sb.removeChannel(ch); };
   }, [on]);
-  const call = on ? callToShow(calls, closed.current, Date.now()) : null;
+  const call = on ? callToShow(calls, closed.current, serverNow()) : null;
   if (!call) return null;
   const known = phoneOwners(call.phone, customersList.value)[0];
   const who = known ? customerName(known) : call.name;
   const close = () => { closed.current.add(call.id); setTick((x) => x + 1); };
+  // a booking half typed on screen (often the call before this one) is not dropped without a word (x-reactivity-19)
+  const open = async () => {
+    if (bookingTyped.value && !(await ask({ title: t('booking.ring.leaveTitle'), text: t('booking.ring.leaveText'), ok: t('booking.ring.leaveOk'), cancel: t('booking.ring.leaveCancel') }))) return;
+    close();
+    navigate(callLink(call));
+  };
   return (
     <div class="call-banner glass-strong" role="alert" data-testid="call-banner">
       <span class="call-banner-icon" aria-hidden="true"><PhoneCall size={22} /></span>
@@ -64,7 +74,7 @@ export function CallHost() {
         <span data-testid="call-banner-who">{[who, formatPhone(call.phone)].filter(Boolean).join(', ')}</span>
         {known && <span class="small muted">{t('booking.ring.known')}</span>}
       </span>
-      <Button variant="primary" size="sm" onClick={() => { close(); navigate(callLink(call)); }} data-testid="call-banner-open">{t('booking.ring.open')}</Button>
+      <Button variant="primary" size="sm" onClick={open} data-testid="call-banner-open">{t('booking.ring.open')}</Button>
       <IconButton icon={<X />} label={t('common.close')} onClick={close} data-testid="call-banner-close" />
     </div>
   );

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { sendVisit, type SendDeps } from './send';
-import { visitJobs, kindFor, forcedJob, callerUpdate, type VisitBase } from './visit';
+import { visitJobs, kindFor, forcedJob, callerUpdate, placeAfterWait, type VisitBase } from './visit';
 import { outcome, withHint } from './outcome';
 import { QC_TAXES } from '../../lib/money';
 import type { BookInput } from '../../data/api';
@@ -65,6 +65,19 @@ describe('the appointments of a visit', () => {
     // the address emptied on screen (« Changer » before the fix kept it): the file keeps its own
     expect(callerUpdate(first, { ...first, phone: '438 555-0199', address: null, unit: null, postal_code: null, lat: null, lng: null, city: null })).toEqual({ phone: '438 555-0199' });
     expect(callerUpdate(first, { ...first, address: '5 rue Autre', lat: 45.6 })).toEqual({ address: '5 rue Autre', lat: 45.6 });
+  });
+  it('the position found at the tap goes with the same address only (R164)', () => {
+    const typed = { address: '99 rue Typed', unit: '3', postal_code: null, lat: null, lng: null, city: null };
+    const found = { ...typed, lat: 45.51, lng: -73.62, city: 'Montréal' };
+    expect(placeAfterWait(typed, found)).toEqual({ ...typed, lat: 45.51, lng: -73.62, city: 'Montréal' });
+    // the field's own answer landed meanwhile: it is the one on screen
+    const own = { ...typed, lat: 45.5, lng: -73.6 };
+    expect(placeAfterWait(own, found)).toBe(own);
+    // another address typed during the wait: never the old one's position
+    const other = { ...typed, address: '5 rue Autre' };
+    expect(placeAfterWait(other, found)).toBe(other);
+    // nothing found: as it is
+    expect(placeAfterWait(typed, typed)).toBe(typed);
   });
 });
 
@@ -138,7 +151,15 @@ describe('what is said after « Réserver »', () => {
     expect(r.banner).toBe('Ce bloc est plein. bt:refusedBlock');
   });
   it('a window that can no longer be kept: the picker asks again', () => {
-    expect(o([{ key: 'v-1', status: 'refused', code: 'window_full', msg: 'x', declined: false }])).toMatchObject({ windowGone: true, banner: 'booking.win.full', go: null });
+    expect(o([{ key: 'v-1', status: 'refused', code: 'window_full', msg: 'x', declined: false }])).toMatchObject({ windowGone: true, banner: 'booking.win.full', go: null, again: true });
+  });
+  it('every refusal of the moment asks the picker again (R79): « Meilleur choix » never offers the block just refused', () => {
+    for (const code of ['block_full', 'block_closed', 'block_started', 'truck_full', 'too_far', 'bad_block']) {
+      expect(o([{ key: 'v-1', status: 'refused', code, msg: 'Non.', declined: false }])).toMatchObject({ again: true, windowGone: false, banner: 'Non. bt:refusedBlock' });
+    }
+    // a refusal that is not about the moment (the customer, the car, the rights…): the moments stay as they are
+    expect(o([{ key: 'v-1', status: 'refused', code: 'not_allowed', msg: 'Non.', declined: false }])).toMatchObject({ again: false, banner: null });
+    expect(o([booked('v-1')]).again).toBe(false);
   });
   it('« Choisir un autre bloc » after « Ce bloc est plein »: no second message, the reason above the moments', () => {
     const r = o([{ key: 'v-1', status: 'refused', code: 'block_full', msg: 'Plein.', declined: true }]);

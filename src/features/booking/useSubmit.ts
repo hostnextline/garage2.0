@@ -14,11 +14,13 @@ import { customerPatch, emptyDraft } from '../../shared/customers/CustomerFields
 import { carIsEmpty, carRow } from '../../shared/vehicles/VehicleBits';
 import { plannedCars } from './draft';
 import { showsFix } from './check';
-import { visitJobs, kindFor, callerUpdate, type VisitBase } from './visit';
+import { visitJobs, kindFor, callerUpdate, placeAfterWait, type VisitBase } from './visit';
+import { withPosition } from '../../shared/places/withPosition';
+import type { PlaceValue } from '../../shared/places/place';
 import type { Customer } from '../../data/types';
 import { sendVisit } from './send';
 import { outcome } from './outcome';
-import { farOfAnswer, inTime } from './far';
+import { farOfAnswer, inTime, seenFine } from './far';
 import { calmScroll } from './motion';
 import type { Booking } from './useBooking';
 
@@ -48,12 +50,15 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
   const made = useRef<{ customer: string; sent: Partial<Customer>; cars: Record<string, string> } | null>(null);
 
   /** true: go on (not far, no answer in time, or the person said so) */
-  const farAsk = async (c: BlockChoice, b: Booking): Promise<boolean> => {
+  const farAsk = async (c: BlockChoice, b: Booking, place: PlaceValue): Promise<boolean> => {
     const key = `${c.day}|${c.block}`;
     if (farOk.current === key) return true;
     let q = farQuestion(b.d.far, c, 'book');
-    const { lat, lng } = b.d.place;
-    if (!q && net.value.online && lat != null && lng != null) {
+    const { lat, lng } = place;
+    // the picker scored this very moment a moment ago, not far, for this same address, work and vehicle: nothing more
+    // to ask (m2; booking-r2-1: an address typed or located since, a service added, another vehicle is asked)
+    const now = { lat, lng, minutes: b.allMinutes, need: b.need, kind: b.d.kind, truck: b.effTruck };
+    if (!q && !seenFine(b.d.farSeen, b.d.far, c, now, Date.now()) && net.value.online && lat != null && lng != null) {
       const rows = await inTime<Suggestion[]>(suggestBlocks(lat, lng, b.allMinutes, c.day, 1, null, b.need, b.need ? null : b.d.kind), FAR_WAIT_MS, []);
       q = farQuestion(farOfAnswer(rows, c, b.effTruck, farLimits(settings.value.booking), b.l), c, 'book');
     }
@@ -63,9 +68,9 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     return yes;
   };
 
-  const makeCaller = (b: Booking) => run(async () => {
+  const makeCaller = (b: Booking, place: PlaceValue) => run(async () => {
     const { first, last, phone } = b.d.caller;
-    const patch = customerPatch(emptyDraft({ first_name: first, last_name: last, phone, place: b.d.place }));
+    const patch = customerPatch(emptyDraft({ first_name: first, last_name: last, phone, place }));
     const m = made.current;
     if (!m) made.current = { customer: await saveCustomer(patch), sent: patch, cars: {} };
     else {
@@ -87,19 +92,23 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
   const go = async () => {
     const tapped = live.current;
     const choice = tapped.a.walkIn ? null : tapped.d.choice;
-    if (choice && !(await farAsk(choice, tapped))) return;
+    // an address typed right before the tap: its position is found now (at most 2.5 s, never without signal), so the
+    // new caller's file and the appointment are not saved without one (R164, customers-a-05)
+    const found = await withPosition(tapped.d.place);
+    if (choice && !(await farAsk(choice, tapped, found))) return;
     // what is on screen now. The moment changed or something was taken off while waiting: nothing is booked, the
     // next tap asks for what is there
     const b = live.current;
     if (b.miss || !sameChoice(b.a.walkIn ? null : b.d.choice, choice)) return;
     const { a, d, l, bt } = b;
+    const place = placeAfterWait(d.place, found);
     let cid = d.customerId;
-    if (!cid) { const m = await makeCaller(b); if (!m) return; cid = m.customer; }
+    if (!cid) { const m = await makeCaller(b, place); if (!m) return; cid = m.customer; }
     const carOf = (k: string) => (k && (vehicleRow(k) || made.current?.cars[k]) ? k : null);
     const cars = plannedCars(d, b.belongs);
     const base: VisitBase = {
       customer_id: cid, truck_id: b.effTruck || null, notes: d.notes.trim() || null,
-      address: d.place.address.trim() || null, unit: d.place.unit?.trim() || null, postal_code: d.place.postal_code || null, lat: d.place.lat, lng: d.place.lng,
+      address: place.address.trim() || null, unit: place.unit?.trim() || null, postal_code: place.postal_code || null, lat: place.lat, lng: place.lng,
       // the estimate goes with the visit's first appointment only: once a car of it is booked, the others go without it
       // (the server refuses an estimate already booked: quote_done)
       card_on_file: !!d.card, quote_id: d.bookedIds.length ? null : b.quote?.id ?? null, source: b.quote ? 'quote' : a.walkIn ? 'walk_in' : 'phone', vehicle_kind: kindFor(b.need, cars.length, d.kind)
@@ -116,7 +125,7 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     for (const x of o.toasts) toast(x.text, { kind: x.kind, ms: x.ms });
     // the screen's state first (what was booked leaves it), then where the eyes go
     if (!o.go && o.done.length) b.act({ t: 'booked', keys: o.done, ids: jobs.filter((j) => o.done.includes(j.key)).map((j) => j.job.id!) });
-    if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone }); calmScroll(at.moment.current); }
+    if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone, again: o.again }); calmScroll(at.moment.current); }
     if (o.go) navigate(o.go, { replace: true });
     // the customer's confirmation, for each appointment the server answered (a window: said above the text to send by hand)
     const sms = choice && choice.block === 'day' ? whenSaid(choice, forced, l) : null;

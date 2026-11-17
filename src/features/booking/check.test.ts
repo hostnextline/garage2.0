@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { missing, showsFix, carBad, callerOk, type CheckInput } from './check';
+import { missing, showsFix, carBad, callerOk, routeDefault, type CheckInput } from './check';
 
 const ok: CheckInput = {
   walkIn: false, quoteDone: false, customerId: 'c-1', newCaller: false, searchKnown: false, callerOk: false, callCars: [], planned: 1,
@@ -50,5 +50,22 @@ describe('a new caller’s fields', () => {
     expect(callerOk({ first: 'Mario', last: '', phone: '438 555-0177' }, digits)).toBe(true);
     expect(callerOk({ first: ' ', last: '', phone: '438 555-0177' }, digits)).toBe(false);
     expect(callerOk({ first: 'Mario', last: '', phone: '438 555' }, digits)).toBe(false);
+  });
+});
+
+describe('a walk-in’s vehicle: « La route que je fais » already chosen (R73)', () => {
+  const both = ['T1', 'T2'];
+  const at = { walkIn: true, needed: true, stored: 'T2', from: both, mine: both };
+  it('Routes partagées, the route chosen on « Ma journée »: that vehicle', () => {
+    expect(routeDefault(at)).toBe('T2');
+  });
+  it('never for an appointment for later, never when the vehicle is obvious, never a vehicle not offered or not mine', () => {
+    expect(routeDefault({ ...at, walkIn: false })).toBeNull();
+    expect(routeDefault({ ...at, needed: false })).toBeNull();
+    expect(routeDefault({ ...at, stored: null })).toBeNull();
+    expect(routeDefault({ ...at, stored: 'T9' })).toBeNull();
+    expect(routeDefault({ ...at, from: ['T1', 'T3'] })).toBeNull();
+    expect(routeDefault({ ...at, mine: ['T2'] })).toBeNull();
+    expect(routeDefault({ ...at, mine: [] })).toBeNull();
   });
 });

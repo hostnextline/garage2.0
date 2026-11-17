@@ -14,13 +14,22 @@ const api = vi.hoisted(() => ({
 const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 const nav = vi.hoisted(() => ({ navigate: vi.fn() }));
 const texts = vi.hoisted(() => ({ notifyCustomer: vi.fn(), wantsText: vi.fn() }));
+// the address lookup at « Réserver » (Photon is never asked from a test): no answer unless a test says one
+const places = vi.hoisted(() => ({ withPosition: vi.fn() }));
+vi.mock('../../shared/places/withPosition', () => places);
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), ...api }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ask: ui.ask, toast: ui.toast }));
 vi.mock('../../platform/router', async (orig) => ({ ...(await orig<typeof import('../../platform/router')>()), navigate: nav.navigate }));
 vi.mock('../../shared/moment/notify', () => texts);
 vi.mock('../../shared/jobs/CarFirst', () => ({ OilHint: () => null }));
 vi.mock('../../shared/moment/BlockPicker', () => ({
-  BlockPicker: (p: BlockPickerProps) => <button type="button" data-testid="stub-pick" onClick={() => p.onPick({ day: DAY, block: 'am' })}>{p.value ? `${p.value.day} ${p.value.block}` : 'none'}</button>
+  BlockPicker: (p: BlockPickerProps) => (
+    <>
+      <button type="button" data-testid="stub-pick" data-reload={String(p.reload ?? 0)} onClick={() => p.onPick({ day: DAY, block: 'am' })}>{p.value ? `${p.value.day} ${p.value.block}` : 'none'}</button>
+      {/* a picker that says it scored the moment chosen (far or not) and when its answer landed (m2) */}
+      <button type="button" data-testid="stub-seen" onClick={() => p.onFar?.(null, { day: DAY, block: 'am', at: Date.now() })}>seen</button>
+    </>
+  )
 }));
 vi.mock('../../shared/moment/ServicePicker', () => ({
   ServicePicker: (p: ServicePickerProps) => (
@@ -32,6 +41,8 @@ vi.mock('../../shared/moment/ServicePicker', () => ({
 
 import { upsertLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
+import { setMyRoute } from '../../services/position';
+import { bookingTyped } from './screen';
 import { addDays, today } from '../../lib/dates';
 import { lang } from '../../lib/i18n';
 import BookScreen from './BookScreen';
@@ -58,7 +69,8 @@ beforeEach(() => {
   upsertLocal('vehicles', [{ id: 'v-1', customer_id: 'c-1', year: 2019, make: 'Honda', model: 'Civic' },
     { id: 'v-2a', customer_id: 'c-2', year: 2016, make: 'Toyota', model: 'Corolla' }, { id: 'v-2b', customer_id: 'c-2', year: 2019, make: 'Toyota', model: 'Sienna' }], { force: true });
   upsertLocal('quotes', [{ id: 'q-1', number: 7, customer_id: 'c-1', vehicle_id: null, items: [{ description: 'Freins', qty: 1, unit_cents: 34999, taxable: true, service_id: null }, { kind: 'discount', description: 'Rabais', qty: 1, unit_cents: -2000, taxable: true, service_id: null }], status: 'accepted', job_id: null }], { force: true });
-  for (const f of [api.bookJob, api.walkIn, api.suggestBlocks, api.saveCustomer, api.saveVehicle, ui.ask, ui.toast, nav.navigate, texts.notifyCustomer, texts.wantsText]) f.mockReset();
+  for (const f of [api.bookJob, api.walkIn, api.suggestBlocks, api.saveCustomer, api.saveVehicle, ui.ask, ui.toast, nav.navigate, texts.notifyCustomer, texts.wantsText, places.withPosition]) f.mockReset();
+  places.withPosition.mockImplementation(async (p: unknown) => p);
   api.bookJob.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id, data: {} }));
   api.suggestBlocks.mockResolvedValue([]);
   texts.wantsText.mockReturnValue(true);
@@ -104,6 +116,30 @@ describe('the booking screen', () => {
     expect(nav.navigate).toHaveBeenCalledWith(`/job/${second.split(':')[1]}`, { replace: true });
   });
 
+  it('a block refused (« Ce bloc est plein »): the picker asks its moments again, the block stays chosen with the reason (R79)', async () => {
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    expect(q('stub-pick')?.dataset.reload).toBe('0');
+    api.bookJob.mockRejectedValueOnce(refusal('block_full'));
+    // « Réserver quand même ? » answered « Choisir un autre bloc »
+    ui.ask.mockResolvedValue(false);
+    await click(q('book-confirm'));
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+    expect(nav.navigate).not.toHaveBeenCalled();
+    expect(q('stub-pick')?.dataset.reload).toBe('1');
+    expect(q('stub-pick')?.textContent).toBe(`${DAY} am`);
+  });
+
+  it('the call banner knows when a booking is half typed here, and forgets it with the screen (x-reactivity-19)', async () => {
+    await draw('customer=c-1');
+    expect(bookingTyped.value).toBe(false);
+    await click(q('stub-add'));
+    expect(bookingTyped.value).toBe(true);
+    act(() => render(null, box));
+    expect(bookingTyped.value).toBe(false);
+  });
+
   it('two cars kept on the phone: said once, the screen leaves (booking-a-03)', async () => {
     await draw('customer=c-2');
     const chips = () => [...box.querySelectorAll('[data-testid="vehicle-chips"] button')] as HTMLElement[];
@@ -145,6 +181,46 @@ describe('the booking screen', () => {
     expect(api.suggestBlocks).toHaveBeenCalledWith(45.5, -73.6, 45, DAY, 1, null, false, null);
     expect(ui.ask.mock.calls[0][0].title).toBe('Beaucoup de route ce jour-là');
     expect(api.bookJob).not.toHaveBeenCalled();
+  });
+
+  it('the calendar scored the moment chosen a moment ago, not far: « Réserver » does not ask the server again (m2)', async () => {
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('stub-seen'));
+    await click(q('book-confirm'));
+    expect(api.suggestBlocks).not.toHaveBeenCalled();
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('the calendar scored the moment for the address on file, another address is typed: « Réserver » asks the server for the new one (booking-r2-1)', async () => {
+    // the new address is located at « Réserver » (R164): the calendar never scored it
+    places.withPosition.mockImplementation(async (p: { address: string }) => (p.address === '9 rue Loin' ? { ...p, lat: 45.7, lng: -73.4 } : p));
+    api.suggestBlocks.mockResolvedValue([{ day: DAY, block: 'am', truck: 'T1', far: 'hop', hop_min: 62, day_min: 150, add_min: 70, stops: 3 }]);
+    ui.ask.mockResolvedValue(false);
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('stub-seen'));
+    const street = box.querySelector('[data-testid="address-input"]') as HTMLInputElement;
+    await act(async () => { street.value = '9 rue Loin'; street.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    // tapped before the calendar's new answer
+    await click(q('book-confirm'));
+    expect(api.suggestBlocks).toHaveBeenCalledWith(45.7, -73.4, 45, DAY, 1, null, false, null);
+    expect(ui.ask.mock.calls[0][0].title).toBe('Beaucoup de route ce jour-là');
+    expect(api.bookJob).not.toHaveBeenCalled();
+  });
+
+  it('the calendar scored the moment for one service, a second one is added: « Réserver » asks the server for the longer visit (booking-r2-1)', async () => {
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('stub-seen'));
+    await click(q('stub-add'));
+    await click(q('book-confirm'));
+    expect(api.suggestBlocks).toHaveBeenCalledWith(45.5, -73.6, 90, DAY, 1, null, false, null);
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
   });
 
   it('what is typed while « Réserver » waits for the garde-route answer is what gets booked', async () => {
@@ -192,6 +268,22 @@ describe('the booking screen', () => {
     // only the number goes to the file: its address is never emptied
     expect(api.saveCustomer.mock.calls[1][0]).toEqual({ id: 'c-new', phone: '438 555-0199' });
     expect(api.bookJob.mock.calls.at(-1)![0]).toMatchObject({ customer_id: 'c-new', address: '99 rue Typed' });
+  });
+
+  it('a new caller’s address typed right before « Réserver »: the file and the appointment go with its position (R164)', async () => {
+    api.saveCustomer.mockImplementation(async (c: Record<string, unknown>) => { upsertLocal('customers', [{ ...c, id: 'c-new' }], { force: true }); return 'c-new'; });
+    // the field's own lookup has not answered yet: the place on screen has no position; the one asked at the tap finds it
+    places.withPosition.mockImplementation(async (p: { address: string }) => (p.address.trim() === '99 rue Typed' ? { ...p, lat: 45.51, lng: -73.62, city: 'Montréal' } : p));
+    await draw('call=1&start=job&phone=438%20555-0100&name=Mario');
+    const street = box.querySelector('[data-testid="call-address"] [data-testid="address-input"]') as HTMLInputElement;
+    await act(async () => { street.value = '99 rue Typed'; street.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(places.withPosition).toHaveBeenCalledWith(expect.objectContaining({ address: '99 rue Typed', lat: null }));
+    expect(api.saveCustomer.mock.calls[0][0]).toMatchObject({ address: '99 rue Typed', lat: 45.51, lng: -73.62, city: 'Montréal' });
+    expect(api.bookJob.mock.calls[0][0]).toMatchObject({ customer_id: 'c-new', address: '99 rue Typed', lat: 45.51, lng: -73.62 });
   });
 
   it('an estimate for two cars, the second refused: the estimate’s own appointment does not stop the retry, which goes without the estimate (booking-a-08)', async () => {
@@ -249,5 +341,28 @@ describe('the booking screen', () => {
     await click(q('book-truck')!.querySelector('button'));
     await click(q('book-confirm'));
     expect(api.walkIn.mock.calls[0][0]).toMatchObject({ truck_id: 'T1', customer_id: 'c-1', vehicle_id: 'v-1' });
+  });
+
+  it('Routes partagées: a mechanic’s walk-in starts on « La route que je fais », and another vehicle can still be chosen (R73)', async () => {
+    access.value = { ...access.value!, owner: true, roles: ['owner', 'mechanic'], trucks: ['T1', 'T2'] };
+    setMyRoute('T2');
+    try {
+      api.walkIn.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id }));
+      await draw('walkin=1&customer=c-1');
+      await click(q('stub-add'));
+      const chips = () => [...q('book-truck')!.querySelectorAll('button')] as HTMLButtonElement[];
+      expect(chips().map((c) => c.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+      expect((q('book-confirm') as HTMLButtonElement).disabled).toBe(false);
+      await click(q('book-confirm'));
+      expect(api.walkIn.mock.calls[0][0]).toMatchObject({ truck_id: 'T2', customer_id: 'c-1' });
+      // the other vehicle chosen by hand wins
+      act(() => render(null, box));
+      api.walkIn.mockClear();
+      await draw('walkin=1&customer=c-1');
+      await click(q('stub-add'));
+      await click(chips()[0]);
+      await click(q('book-confirm'));
+      expect(api.walkIn.mock.calls[0][0]).toMatchObject({ truck_id: 'T1' });
+    } finally { setMyRoute(null); }
   });
 });

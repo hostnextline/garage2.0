@@ -53,7 +53,7 @@ function BookForm({ query }: ScreenProps) {
   const services = <ServicesPanel key="services" work={b.cur} sum={b.sum} lang={cust?.lang === 'en' ? 'en' : 'fr'} ui={l} bt={bt} act={act}
     forCar={b.needNew && d.callCars.length > 1 ? carName(d.car, d.callCars) : null} />;
   const notes = <NotesPanel key="notes" problem={b.cur.problem} notes={d.notes} hasLines={b.cur.items.length > 0} act={act} />;
-  const truck = b.truckNeeded ? <TruckPanel key="truck" ids={b.pickFrom} truckId={d.truckId} act={act} /> : null;
+  const truck = b.truckNeeded ? <TruckPanel key="truck" ids={b.pickFrom} truckId={b.effTruck} act={act} /> : null;
   const options = a.walkIn ? null : <OptionsPanel key="options" pickTruck={b.mayPickTruck} truckId={d.truckId} card={d.card} act={act} />;
   const summary = (withStep: boolean) => <SummaryPanel key="summary" b={b} step={withStep ? step : null} />;
   const inMain = isWide ? null : momentPanel;

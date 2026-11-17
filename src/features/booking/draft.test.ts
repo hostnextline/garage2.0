@@ -189,6 +189,39 @@ describe('the moment', () => {
     const d = run(fresh(), { t: 'choice', choice: win }, { t: 'refused', banner: 'plus possible', windowGone: true });
     expect(d).toMatchObject({ choice: null, blockError: 'plus possible', reload: 1 });
   });
+  it('a block refused (block_full, truck_full…): the choice stays with the reason, the picker asks again (R79)', () => {
+    const d = run(fresh(), { t: 'choice', choice: block }, { t: 'refused', banner: 'Ce bloc est plein.', again: true });
+    expect(d).toMatchObject({ choice: block, blockError: 'Ce bloc est plein.', reload: 1 });
+    // a reason without a new question (an old caller): the picker is left alone
+    expect(run(fresh(), { t: 'choice', choice: block }, { t: 'refused', banner: 'x' })).toMatchObject({ choice: block, blockError: 'x', reload: 0 });
+  });
+  it('the picker’s score of the moment chosen is kept, and forgotten when it says nothing (m2)', () => {
+    const ask = { lat: 45.5, lng: -73.6, minutes: 45, need: false, kind: null, truck: 'T1' };
+    const seen = { day: '2026-11-18', block: 'am' as const, at: 5, ask };
+    const d = run(fresh(), { t: 'far', far: null, seen });
+    expect(d.farSeen).toEqual(seen);
+    expect(run(d, { t: 'far', far: null, seen: { ...seen, ask: { ...ask } } })).toBe(d);
+    expect(run(d, { t: 'far', far: null }).farSeen).toBeNull();
+  });
+  it('the same score said for another address or work is kept with its own question (booking-r2-1)', () => {
+    const ask = { lat: 45.5, lng: -73.6, minutes: 45, need: false, kind: null, truck: 'T1' };
+    const seen = { day: '2026-11-18', block: 'am' as const, at: 5, ask };
+    const d = run(fresh(), { t: 'far', far: null, seen });
+    expect(run(d, { t: 'far', far: null, seen: { ...seen, ask: { ...ask, lat: 45.7 } } }).farSeen?.ask.lat).toBe(45.7);
+    expect(run(d, { t: 'far', far: null, seen: { ...seen, ask: { ...ask, minutes: 90 } } }).farSeen?.ask.minutes).toBe(90);
+  });
+  it('what the person typed is known; what arrives by itself is not (x-reactivity-19)', () => {
+    const d0 = fresh();
+    expect(d0.typed).toBe(false);
+    // the rows, the address bar, the picker's news, the car chosen by itself: nothing to lose
+    const auto = run(d0, { t: 'queryCustomer', id: 'c-1' }, { t: 'customerRow', id: 'c-1', cars: ['v-1'], place: { address: '1 rue A', unit: null, postal_code: null, lat: 1, lng: 2 }, card: false },
+      { t: 'car', key: 'v-1', mint: 'j-1' }, { t: 'presetChoice', choice: block }, { t: 'mode', windows: false, bar: null }, { t: 'far', far: null });
+    expect(auto.typed).toBe(false);
+    for (const a of [{ t: 'items', items: [line('Huile')], mint: 'j' }, { t: 'problem', text: 'bruit', mint: 'j' }, { t: 'notes', text: 'code 12' },
+      { t: 'caller', patch: { first: 'Mario' } }, { t: 'choice', choice: block }, { t: 'card', on: true }] as Action[]) {
+      expect(run(auto, a).typed).toBe(true);
+    }
+  });
   it('a copy’s window is a default: a moment already picked stays', () => {
     expect(run(fresh(), { t: 'presetChoice', choice: win }).choice).toEqual(win);
     expect(run(fresh(), { t: 'choice', choice: block }, { t: 'presetChoice', choice: win }).choice).toEqual(block);

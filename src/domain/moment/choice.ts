@@ -4,7 +4,7 @@ import { today as todayOf, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { blocks, settings } from '../../data/select';
 import { blockPhrase, blockPhraseWithHours, windowPhrase, windowWords } from './words';
-import { choiceWindow, WIN_LEN, type FarInfo } from './logic';
+import { choiceWindow, WIN_LEN, type FarInfo, type FarSeen } from './logic';
 
 export interface BlockChoice {
   day: string; block: BlockKey; truck_id?: string | null;
@@ -34,8 +34,10 @@ export interface BlockPickerProps {
   /** the vehicle asked for, and the switch « Peu importe / Voiture / Camion » (shown when the garage has both) */
   kind?: VehicleKind;
   onKind?: (k: VehicleKind) => void;
-  /** « garde-route » (blocks): the moment chosen puts too much road in the truck's day (the warning in words), or null */
-  onFar?: (far: FarInfo | null) => void;
+  /** « garde-route » (blocks): the moment chosen puts too much road in the truck's day (the warning in words), or null.
+      `seen` (optional, m2): the moment chosen was scored by the answer to the question of now (far or not) and when it
+      landed; absent or null: not scored (the booking screen then asks the server itself before « Réserver ») */
+  onFar?: (far: FarInfo | null, seen?: FarSeen | null) => void;
   /** « Plages d'arrivée »: nothing chosen any more (« Flexible » switched off with no window to go back to) */
   onClear?: () => void;
   /** « Plages d'arrivée »: a day to open at first (the address bar said a day, no window) */

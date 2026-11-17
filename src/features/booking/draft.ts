@@ -7,6 +7,7 @@
    already used (`exists`). */
 import type { ItemDraft, FarInfo } from '../../domain/moment/logic';
 import type { BlockChoice, VehicleKind } from '../../domain/moment/choice';
+import { sameAsk, type SeenFor } from './far';
 import type { PlaceValue } from '../../shared/places/AddressField';
 import type { AddDraft, AddMode } from '../../shared/vehicles/VehicleBits';
 
@@ -45,6 +46,9 @@ export interface Draft {
   reload: number;
   blockError: string | null;
   far: FarInfo | null;
+  /** the picker scored the moment chosen (far or not), when, and for which address, work and vehicle (m2): « Réserver »
+      need not ask the server again while that is still what it would ask (booking-r2-1) */
+  farSeen: SeenFor | null;
   truckId: string | null;
   kind: VehicleKind;
   /** the appointments this form booked (or kept on the phone to send), for the cars that left it. An estimate goes
@@ -53,6 +57,9 @@ export interface Draft {
   bookedIds: string[];
   /** the new caller's file this form made: « Changer » back to the caller keeps what was said for them */
   madeId: string | null;
+  /** the person typed or chose something here (rows arriving, the address bar, the calendar's own news do not count):
+      leaving would lose it (x-reactivity-19: the incoming-call banner asks first) */
+  typed: boolean;
 }
 
 export type Action =
@@ -80,17 +87,17 @@ export type Action =
   | { t: 'clearChoice' }
   | { t: 'mode'; bar: BlockChoice | null; windows: boolean }
   | { t: 'kind'; kind: VehicleKind }
-  | { t: 'far'; far: FarInfo | null }
+  | { t: 'far'; far: FarInfo | null; seen?: SeenFor | null }
   | { t: 'truck'; id: string | null }
   | { t: 'card'; on: boolean }
-  | { t: 'refused'; banner: string | null; windowGone?: boolean }
+  | { t: 'refused'; banner: string | null; windowGone?: boolean; again?: boolean }
   | { t: 'booked'; keys: string[]; ids: string[] };
 
 export function initialDraft(o: { customerId: string | null; car: string; place: PlaceValue; caller: Caller; callCar: CallCar | null; choice: BlockChoice | null }): Draft {
   return {
     customerId: o.customerId, car: o.car, work: {}, caller: o.caller, callCars: o.callCar ? [o.callCar] : [], searchKnown: false, tried: false,
     place: o.place, placeOwner: o.customerId, placeFrom: o.customerId ? 'file' : 'none', notes: '', card: null,
-    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, truckId: null, kind: null, bookedIds: [], madeId: null
+    choice: o.choice, touched: false, reload: 0, blockError: null, far: null, farSeen: null, truckId: null, kind: null, bookedIds: [], madeId: null, typed: false
   };
 }
 
@@ -152,7 +159,17 @@ function customerRow(d: Draft, a: Extract<Action, { t: 'customerRow' }>): Draft 
   return next.card == null ? { ...next, card: a.card } : next;
 }
 
+/** what only a person does on the form (never the rows arriving, the address bar, the picker's own news, nor the car
+    chosen by itself for a customer with one car) */
+const BY_PERSON: ReadonlySet<Action['t']> = new Set<Action['t']>(['items', 'dur', 'problem', 'notes', 'pickCustomer', 'place', 'placeFile', 'caller',
+  'searchKnown', 'addCallCar', 'removeCallCar', 'callCar', 'choice', 'kind', 'truck', 'card']);
+
 export function reduce(d: Draft, a: Action): Draft {
+  const next = step(d, a);
+  return next !== d && !next.typed && BY_PERSON.has(a.t) ? { ...next, typed: true } : next;
+}
+
+function step(d: Draft, a: Action): Draft {
   switch (a.t) {
     case 'items': return setWork(d, d.car, { items: a.items }, a.mint);
     case 'dur': return setWork(d, d.car, { dur: a.dur }, a.mint);
@@ -223,10 +240,19 @@ export function reduce(d: Draft, a: Action): Draft {
       return stale ? { ...d, choice: null } : d;
     }
     case 'kind': return { ...d, kind: a.kind, choice: null };
-    case 'far': return d.far === a.far ? d : { ...d, far: a.far };
+    case 'far': {
+      const seen = a.seen ?? null;
+      const same = d.farSeen === seen || (!!d.farSeen && !!seen && d.farSeen.day === seen.day && d.farSeen.block === seen.block && d.farSeen.at === seen.at && sameAsk(d.farSeen.ask, seen.ask));
+      return d.far === a.far && same ? d : { ...d, far: a.far, farSeen: seen };
+    }
     case 'truck': return { ...d, truckId: a.id };
     case 'card': return { ...d, card: a.on };
-    case 'refused': return a.windowGone ? { ...d, choice: null, blockError: a.banner, reload: d.reload + 1 } : { ...d, blockError: a.banner };
+    // the moment was refused: the picker asks again (R79: every code of BLOCK_REFUSALS, so « Meilleur choix » never
+    // offers the block just refused); a window that can no longer be kept is also taken off
+    case 'refused': {
+      const reload = a.windowGone || a.again ? d.reload + 1 : d.reload;
+      return a.windowGone ? { ...d, choice: null, blockError: a.banner, reload } : { ...d, blockError: a.banner, reload };
+    }
     // what was booked (or kept on the phone to be sent) leaves the screen: the rest can be tried again in another moment
     case 'booked': return { ...d, work: keepOnly(d.work, (k) => !a.keys.includes(k)), bookedIds: [...d.bookedIds, ...a.ids.filter((id) => !d.bookedIds.includes(id))] };
   }
