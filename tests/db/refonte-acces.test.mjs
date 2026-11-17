@@ -317,7 +317,7 @@ test('sql-foundation-26: the position no longer keeps a job that is finished', (
   assert.equal(await h.val(`select job_id from public.positions where id = $1`, [g.mech]), null);
 }));
 
-test('sql-misc-11, audit A4: housekeeping empties what was promised short-lived and the old change log, never a named proof', () => tx(async (h) => {
+test('sql-misc-11, audit A4, securite-02: housekeeping empties what was promised short-lived and the change log after 7 years, never the money’s nor a named proof', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const m = await h.person('Saleh', ['mechanic']);
   await h.as(null);
@@ -330,13 +330,22 @@ test('sql-misc-11, audit A4: housekeeping empties what was promised short-lived 
   await h.q(`insert into public.activity (at, entity, entity_id, action) values
     (${old}, 'job', $1, 'update'), (${old}, 'job', $1, 'insert'), (${old}, 'job', $1, 'signed_online'), (${old}, 'job', $1, 'price_changed'),
     (now() - interval '100 days', 'web', null, 'web_robot'), (now() - interval '23 months', 'job', $1, 'update')`, [e]);
+  // securite-02: the automatic change log older than 7 years goes, except the money's (who changed or removed an
+  // invoice, a payment or an expense is kept for ever); one of 25 months always stays (Revenu Québec: 6 years)
+  const e2 = uuid(), ancient = `now() - interval '8 years'`;
+  await h.q(`insert into public.activity (at, entity, entity_id, action) values
+    (${ancient}, 'jobs', $1, 'update'), (${ancient}, 'customers', $1, 'delete'), (${ancient}, 'payments', $1, 'update'),
+    (${ancient}, 'invoices', $1, 'delete'), (${ancient}, 'expenses', $1, 'insert'), (${old}, 'payments', $1, 'update')`, [e2]);
   await h.q(`select public.housekeeping()`);
   assert.deepEqual((await h.q(`select phone from public.incoming_calls where phone in ('5145550001','5145550002')`)).map((r) => r.phone), ['5145550002']);
   assert.deepEqual((await h.q(`select body from public.incoming_texts where phone in ('5145550001','5145550002')`)).map((r) => r.body), ['neuf']);
   assert.deepEqual((await h.q(`select key from public.rate_limits where key like 'test:%'`)).map((r) => r.key), ['test:new']);
   assert.deepEqual((await h.q(`select endpoint from public.push_subs where endpoint like 'https://p/%'`)).map((r) => r.endpoint), ['https://p/owner']);
   const left = (await h.q(`select action from public.activity where entity_id = $1 order by action, at`, [e])).map((r) => r.action);
-  assert.deepEqual(left, ['price_changed', 'signed_online', 'update'], 'the proofs stay, and the change log of less than 24 months');
+  // round 1 asserted ['price_changed', 'signed_online', 'update'] (the 25-month « update » and « insert » erased): that was the bug
+  assert.deepEqual(left, ['insert', 'price_changed', 'signed_online', 'update', 'update'], 'nothing of less than 7 years goes');
+  const money = (await h.q(`select entity || ':' || action a from public.activity where entity_id = $1 order by 1`, [e2])).map((r) => r.a);
+  assert.deepEqual(money, ['expenses:insert', 'invoices:delete', 'payments:update', 'payments:update'], 'the money’s change log stays; the rest goes after 7 years');
   assert.equal(await h.val(`select count(*)::int from public.activity where action = 'web_robot' and at < now() - interval '90 days'`), 0);
 }));
 

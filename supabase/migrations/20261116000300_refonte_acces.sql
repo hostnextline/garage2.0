@@ -33,7 +33,8 @@
 --     report_position     the position no longer keeps a job that is finished
 --     housekeeping        also empties what was promised to be short-lived (calls 1 day, texts 7 days, brakes 2 days,
 --                         robot notes 90 days, alert addresses of people who are no longer owners) and the automatic
---                         change log after 24 months — never a named proof (signature online, price changed…)
+--                         change log after 7 years, except the money's (invoices, payments, expenses: kept) — never
+--                         a named proof (signature online, price changed…)
 --  4. « Réserver en ligne » (still switched OFF on live)
 --     web_book            the same customer = the same phone AND the same first or last name; an existing file is never
 --                         written (no e-mail, no car); what the visitor typed is kept on the job (jobs.web_contact and
@@ -414,10 +415,12 @@ $$;
 -- ---------- housekeeping: what was promised to be short-lived really goes (sql-misc-11, audit A4) ----------
 -- Calls and texts were only emptied when the NEXT call or text arrived; the brakes' counters by a 1 % chance; the
 -- alert addresses only when the push service said « gone ». The history (activity): only the automatic change log
--- (insert / update / delete, written by log_activity) goes after 24 months. A named line is a proof and stays for
--- ever: signed_online (the customer's electronic signature), price_changed, customer_changed, invoice_reopened,
--- window_fixed, web_booked, windows_switch and any name added later. The robot notes of the public page (web_robot,
--- one per request, no limit) go after 90 days.
+-- (insert / update / delete, written by log_activity) goes, after 7 years (Revenu Québec asks the books be kept 6
+-- years after the year they concern), and never the one of the money: who changed or removed an invoice, a payment
+-- or an expense stays for ever (securite-02: 24 months erased that before the six years). A named line is a proof and
+-- stays for ever: signed_online (the customer's electronic signature), price_changed, customer_changed,
+-- invoice_reopened, window_fixed, web_booked, windows_switch and any name added later. The robot notes of the public
+-- page (web_robot, one per request, no limit) go after 90 days.
 create or replace function public.housekeeping() returns void
 language plpgsql security definer set search_path = public as $$
 declare r record;
@@ -434,7 +437,8 @@ begin
   delete from public.push_subs p
    where not exists (select 1 from public.staff s where s.id = p.staff_id and s.active and s.deleted_at is null and 'owner' = any(s.roles));
   delete from public.activity where at < now() - interval '90 days' and action = 'web_robot';
-  delete from public.activity where at < now() - interval '24 months' and action in ('insert', 'update', 'delete');
+  delete from public.activity where at < now() - interval '7 years' and action in ('insert', 'update', 'delete')
+     and entity not in ('invoices', 'payments', 'expenses');
 end $$;
 
 -- ---------- shift_start (sql-foundation-29) ----------
