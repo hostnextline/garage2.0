@@ -322,7 +322,7 @@ step('Payer plus tard: Luc will pay at the end of the month; Saleh may not let h
   const owing = owingNow();
   assert.ok(owing >= 20696, 'Luc’s invoice is to receive');
   assert.deepEqual((await sheetLines(t.page)).find(([k]) => k === 'Reste à recevoir'), ['Reste à recevoir', (await t.page.evaluate((c) => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(c / 100), owing))]);
-  await h.shot(t.page, 'argent-5-to-receive');
+  await t.page.getByTestId('treasury-recon').scrollIntoViewIfNeeded(); await h.shot(t.page, 'argent-5-to-receive');
   // later: Luc's cheque comes in; the office finds his invoice among those to receive and records it
   await o.page.goto(h.APP + '#/invoices');
   await o.page.getByTestId('owing-total').waitFor({ timeout: 15000 });
@@ -654,7 +654,7 @@ step('Les livres de la journée: Trésorerie for today — revenue, money in by 
   const wanted = [];
   for (const [k, c] of expect) wanted.push([k, await money(c)]);
   assert.deepEqual(shown, wanted, 'the day’s sheet is the sum of the rows');
-  await h.shot(t.page, 'argent-10-balanced');
+  await t.page.getByTestId('treasury-recon').scrollIntoViewIfNeeded(); await h.shot(t.page, 'argent-10-balanced');
 
   // behind the app's back: a cash payment of the day is taken out of the books (its invoice still says paid)
   const victim = h.sql(`select p.id || '|' || p.invoice_id || '|' || p.amount_cents from public.payments p join public.invoices v on v.id = p.invoice_id
@@ -673,7 +673,7 @@ step('Les livres de la journée: Trésorerie for today — revenue, money in by 
     assert.equal(await t.page.getByTestId('recon-ok').count(), 0, 'no « Tout balance » any more');
     const row = () => h.sql(`select state || '|' || coalesce(acked_by::text, '') from public.ops_recon_findings where check_id = 'M2.paid' and entity_id = '${invId}'`);
     assert.equal(row(), 'open|');
-    await h.shot(t.page, 'argent-10-finding');
+    await t.page.getByTestId('treasury-recon').scrollIntoViewIfNeeded(); await h.shot(t.page, 'argent-10-finding');
     // « Vu »
     await finding.getByTestId('recon-ack').click();
     assert.equal(await until(row, (v) => v.startsWith('acked'), 15000), `acked|${who.louis.id}`);
@@ -697,6 +697,8 @@ step.skip('« Vu » keeps the difference in sight: a payment missing from the bo
   const day = today();
   await t.page.goto(h.APP + `#/treasury?p=custom&from=${day}&to=${day}`);
   await t.page.getByTestId('treasury-recon').waitFor({ timeout: 15000 });
+  // the books as they are first (a difference of a step before, seen and repaired since, closes)
+  await checkNow(t.page);
   const victim = h.sql(`select p.id || '|' || p.invoice_id from public.payments p join public.invoices v on v.id = p.invoice_id where p.deleted_at is null and p.method = 'cash' and v.status = 'paid'
     and not exists (select 1 from public.payments o where o.invoice_id = p.invoice_id and o.id <> p.id and o.deleted_at is null) order by p.paid_at limit 1`);
   assert.ok(victim, 'a cash payment alone on its paid invoice');
@@ -708,7 +710,7 @@ step.skip('« Vu » keeps the difference in sight: a payment missing from the bo
     await finding.getByTestId('recon-ack').click({ timeout: 15000 });
     await until(() => h.sql(`select state from public.ops_recon_findings where check_id = 'M2.paid' and entity_id = '${invId}'`), (v) => v === 'acked', 15000);
     await t.page.getByText('Noté comme vu').waitFor({ timeout: 15000 });
-    await h.shot(t.page, 'argent-10b-seen');
+    await t.page.getByTestId('treasury-recon').scrollIntoViewIfNeeded(); await h.shot(t.page, 'argent-10b-seen');
     // the difference seen is still there to read, marked « Vu »; nothing says the books have no difference
     await finding.getByText('Vu', { exact: true }).waitFor({ timeout: 5000 });
     assert.doesNotMatch(await t.page.getByTestId('treasury-recon').innerText(), /Aucune différence/);
@@ -745,7 +747,7 @@ step.skip('« Vérifier maintenant » twice within the minute: the second check 
     const said = await t.page.locator('[data-testid^="toast-"]').last().innerText({ timeout: 30000 });
     await (await reread).finished();
     const found = await t.page.getByTestId('recon-finding').filter({ hasText: /dit payé/ }).waitFor({ timeout: 5000 }).then(() => 1, () => 0);
-    await h.shot(t.page, 'argent-11-braked');
+    await t.page.getByTestId('treasury-recon').scrollIntoViewIfNeeded(); await h.shot(t.page, 'argent-11-braked');
     assert.ok(found > 0 || !/Vérification faite/.test(said), `the second check found nothing and said « ${said} »`);
   } finally {
     h.sql(`update public.payments set deleted_at = null where id = '${victim}'`);
