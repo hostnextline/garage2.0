@@ -52,17 +52,21 @@ export function openBefore<J extends Pick<Job, 'day' | 'status' | 'truck_id' | '
     .sort((a, b) => a.day.localeCompare(b.day) || a.number - b.number);
 }
 
-/** the last time one of the day's stops was finished (a job finished after an arrival means a new way back): the
-    server's finished_at, else, for a « Terminer » still waiting on this phone (the job is shown done, its row has no
-    finished_at yet), the time that step was made. `stepsOf`: the steps of a job waiting on this phone. */
+/** the last time one of the day's stops was finished (a job finished after an arrival means a new way back): for each
+    job shown done, the later of the server's finished_at and the last « Terminer » still waiting on this phone (no
+    finished_at yet; or a job finished again offline after « Défaire », whose row still says the first finish).
+    `stepsOf`: the steps of a job waiting on this phone. */
 export function lastFinished(list: readonly Pick<Job, 'id' | 'status' | 'finished_at'>[], stepsOf: (id: string) => readonly PendingStep[] | undefined): string | null {
   let best: string | null = null;
   let bestMs = -Infinity;
-  for (const j of list) {
-    if (j.status !== 'done') continue;
-    const at = j.finished_at || [...(stepsOf(j.id) || [])].reverse().find((s) => s.action === 'finish')?.at || null;
+  const take = (at: string | null | undefined) => {
     const ms = at ? Date.parse(at) : NaN;
     if (at && Number.isFinite(ms) && ms > bestMs) { best = at; bestMs = ms; }
+  };
+  for (const j of list) {
+    if (j.status !== 'done') continue;
+    take(j.finished_at);
+    take([...(stepsOf(j.id) || [])].reverse().find((s) => s.action === 'finish')?.at);
   }
   return best;
 }

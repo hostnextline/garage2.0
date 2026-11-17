@@ -106,10 +106,19 @@ describe('the last stop finished, for the way back', () => {
     expect(lastFinished([job({ id: 'a', status: 'done', finished_at: '2026-11-15T18:00:00+00:00' }), job({ id: 'b', status: 'done', finished_at: null })], steps))
       .toBe('2026-11-15T22:10:00.000Z');
   });
-  it('the server’s finished_at wins once the row came back, and a waiting step of a job not done counts for nothing', () => {
-    const steps = () => [{ action: 'finish' as const, at: '2026-11-15T23:00:00.000Z' }];
+  it('the server’s finished_at counts once the row came back, and a waiting step of a job not done counts for nothing', () => {
+    const steps = () => [{ action: 'finish' as const, at: '2026-11-15T22:58:00.000Z' }];
     expect(lastFinished([job({ status: 'done', finished_at: '2026-11-15T22:59:00+00:00' })], steps)).toBe('2026-11-15T22:59:00+00:00');
     expect(lastFinished([job({ status: 'on_site', finished_at: null })], steps)).toBeNull();
+  });
+  it('a job finished again offline after « Défaire » counts at its new « Terminer », not at the old finished_at (today-agenda-r2-2)', () => {
+    // the row still says done at 19:00: « Défaire » then « Terminer » wait on the phone, the overlay keeps it done
+    const steps = (id: string) => (id === 'b' ? [{ action: 'back' as const, at: '2026-11-15T22:00:00.000Z' }, { action: 'finish' as const, at: '2026-11-15T22:10:00.000Z' }] : undefined);
+    const list = [job({ id: 'a', status: 'done', finished_at: '2026-11-15T18:00:00Z' }), job({ id: 'b', status: 'done', finished_at: '2026-11-15T19:00:00Z' })];
+    expect(lastFinished(list, steps)).toBe('2026-11-15T22:10:00.000Z');
+    // back home at 20:00: « Je pars » is offered again
+    const back = { id: 'r', staff_id: 'me', kind: 'return', status: 'arrived', ended_at: '2026-11-15T20:00:00Z', expires_at: '2026-11-15T21:00:00Z', deleted_at: null } as unknown as Trip;
+    expect(returnState([back], 'me', '2026-11-15', (iso) => iso.slice(0, 10), lastFinished(list, steps), Date.parse('2026-11-15T22:30:00Z')).kind).toBe('none');
   });
   it('a mechanic back once who finishes another job before it reaches the server is offered « Je pars » again', () => {
     const now = Date.parse('2026-11-15T22:30:00Z');
