@@ -2,7 +2,6 @@
 // to itself (step with its pictures, openW, noErrors, dismissSheets, draw, until, jwtOf, callAs, rpcAs, blockNow): that
 // file is not changed, so they are copied here as they are there. The others are this file's own: a job at the door, the
 // red button and the kit's « confirm » buttons, the fake Stripe of tests/stack/mocks.mjs, the sums of the books.
-const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { writeFileSync } = require('node:fs');
 const path = require('node:path');
@@ -48,9 +47,6 @@ const run = (name, fn) => async () => {
     throw e;
   }
 };
-const step = (name, fn) => test(name, run(name, fn));
-/** a step that asserts the RIGHT behaviour but cannot pass yet: `why` starts with « BUG <id> » or « WAITS <request> » */
-step.skip = (name, why, fn) => test(name, { skip: why }, run(name, fn));
 const openW = async (o) => { const r = await h.open(o); watch(r.page); return r; };
 const noErrors = (page) => assert.deepEqual(page.errors, [], 'no page errors');
 const dismissSheets = async (page) => { for (let i = 0; i < 3; i++) { if (await page.locator('[role=dialog]').count()) await page.keyboard.press('Escape'); await page.waitForTimeout(200); } };
@@ -182,7 +178,7 @@ async function payOnStripe(page, paid) {
 const freeReconBrake = () => h.sql(`delete from public.rate_limits where key = 'recon_now'`);
 
 module.exports = {
-  PW, MOCK, STRIPE_KEY, T, step, openW, noErrors, dismissSheets, draw, until, jwtOf, callAs, rpcAs, blockNow,
+  PW, MOCK, STRIPE_KEY, T, run, openW, noErrors, dismissSheets, draw, until, jwtOf, callAs, rpcAs, blockNow,
   q, int, today, atDoor, invoiceRow, paymentsOf, jobStatus, fr, typed, tapTwice, jobPhone, makeAndFinish, amountField, receivedField,
   mockLog, clearMock, mockGet, stripeSession, payOnStripe, freeReconBrake, randomUUID
 };

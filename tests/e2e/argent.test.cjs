@@ -4,14 +4,19 @@
 // what the screen says AND what the database holds (invoices, payments, activity, the Coffre, expenses, the
 // reconciliation). The file runs by itself on a fresh database; the database is saved before and put back after.
 //   bash <lane>/e2e-file.sh tests/e2e/argent.test.cjs ["part of a step's name"]
-const { before, after } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const h = require('./harness.cjs');
 const {
-  PW, STRIPE_KEY, step, openW, noErrors, dismissSheets, draw, until, jwtOf, callAs, rpcAs,
+  PW, STRIPE_KEY, run, openW, noErrors, dismissSheets, draw, until, jwtOf, callAs, rpcAs,
   int, today, atDoor, invoiceRow, paymentsOf, jobStatus, fr, typed, tapTwice, jobPhone, makeAndFinish, amountField, receivedField,
   mockLog, clearMock, mockGet, payOnStripe, freeReconBrake, randomUUID
 } = require('./argent.helpers.cjs');
+
+// (the steps are made here, not in the helpers' file, so the report names this file)
+const step = (name, fn) => test(name, run(name, fn));
+/** a step that asserts the RIGHT behaviour but cannot pass yet: `why` starts with « BUG <id> » or « WAITS <request> » */
+step.skip = (name, why, fn) => test(name, { skip: why }, run(name, fn));
 
 const who = {};
 let originalCounts;
