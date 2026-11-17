@@ -1166,6 +1166,77 @@ test('sql-planner-1-06: a booking never takes the place of an appointment that a
   assert.deepEqual([(await row(h, a)).truck_id, (await row(h, b)).truck_id], [t1, t1], 'B keeps its truck (it was thrown to « À placer »)');
 }));
 
+test('sql-windows-12 / x-dualmode-24, two connections: a booking sent while the owner switches to the windows waits, then is made in the new mode', async () => {
+  const c = await pool.connect();
+  const opened = [];
+  const start = (await c.query(`select clock_timestamp() as t`)).rows[0].t;
+  const owner = randomUUID(), truck = randomUUID(), cust = randomUUID();
+  const was = (await c.query(`select booking from public.settings where id = 1`)).rows[0].booking;
+  try {
+    await c.query(`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+      values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2, '', now(), now(), now(), '{}', '{}')`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.staff (id, full_name, short_name, roles, rights, email) values ($1, 'Hassan Switch', 'Hassan', '{owner}', '{}', $2)`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.trucks (id, name, active, sort) values ($1, 'Camion Switch', true, 0)`, [truck]);
+    for (let d = 0; d < 7; d++) await c.query(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, $3)`, [truck, d, JSON.stringify(DAY)]);
+    await c.query(`insert into public.customers (id, first_name, last_name, phone, lat, lng, address) values ($1, 'Switch', 'Test', '5145550000', $2, $3, '1 rue Test')`, [cust, ...near]);
+    const day = (await c.query(`select (public.local_today() + 32)::text d`)).rows[0].d;
+    const open = async () => {
+      const k = await pool.connect(); opened.push(k);
+      await k.query('begin');
+      await k.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [JSON.stringify({ sub: owner, role: 'authenticated' }), owner]);
+      await k.query('set local role authenticated');
+      return k;
+    };
+    const k1 = await open(), k2 = await open();
+    assert.equal((await k1.query(`select public.windows_switch($1, true) r`, [randomUUID()])).rows[0].r.ok, true, 'the switch, not yet committed');
+    const id = randomUUID();
+    const p2 = k2.query(`select public.book_job(p_op => $1, p_job => $2::jsonb, p_items => '[]'::jsonb) as r`,
+      [randomUUID(), JSON.stringify({ id, customer_id: cust, day, block: 'pm', duration_min: 60 })]);
+    assert.equal(await within(p2, 400), 'waiting', 'the booking (a block, from a phone still in block mode) waits for the switch');
+    await k1.query('commit');
+    const r2 = (await p2).rows[0].r;
+    await k2.query('commit');
+    assert.equal(r2.ok, true);
+    const j = (await c.query(`select block, win_start, win_end from public.jobs where id = $1`, [id])).rows[0];
+    assert.deepEqual([j.block, j.win_start, j.win_end], ['day', 720, 960], 'made in the new mode: the window of the afternoon (it stayed « pm », never planned again)');
+  } finally {
+    for (const k of opened) { await k.query('rollback').catch(() => {}); k.release(); }
+    await c.query(`select set_config('garage.rpc', 'on', false), set_config('garage.windows', 'on', false)`);
+    await c.query(`update public.settings set booking = $1 where id = 1`, [was]);
+    await c.query(`delete from public.job_items where job_id in (select id from public.jobs where customer_id = $1)`, [cust]);
+    await c.query(`delete from public.jobs where customer_id = $1`, [cust]);
+    await c.query(`delete from public.customers where id = $1`, [cust]);
+    await c.query(`delete from public.truck_week where truck_id = $1`, [truck]);
+    await c.query(`delete from public.trucks where id = $1`, [truck]);
+    await c.query(`delete from public.op_log where at >= $1`, [start]);
+    await c.query(`delete from public.activity where at >= $1`, [start]);
+    await c.query(`delete from public.staff where id = $1`, [owner]);
+    await c.query(`delete from auth.users where id = $1`, [owner]);
+    await c.query(`select set_config('garage.rpc', '', false), set_config('garage.windows', '', false)`);
+    c.release();
+  }
+});
+
+test('sql-windows-25: with the arrival windows, a refusal speaks of the day and the window, not of a « bloc »', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const t1 = await h.truck('Camion', null, { [dow]: [[480, 540]] }), t2 = await h.truck('Voiture', null, { [dow]: DAY });
+  const c = await h.customer('Jean', ...near);
+  await windowsOn(h, owner);
+  await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 1, eta: 490, dur: 50, ws: 480, we: 720 });
+  const e1 = await h.fails(() => book(h, { customer_id: c, day, block: 'day', duration_min: 60, truck_id: t1 }));
+  assert.equal(e1?.hint, 'truck_full');
+  assert.match(e1.message, /ce jour-là/); assert.doesNotMatch(e1.message, /bloc/);
+  const j = await book(h, { customer_id: c, day, block: 'day', duration_min: 30, truck_id: t2 });
+  const e2 = await h.fails(() => h.rpc('move_job', { p_op: uuid(), p_job: j.job_id, p_day: day, p_block: 'day', p_truck: t1, p_win_start: null, p_win_flex: null }));
+  assert.equal(e2?.hint, 'truck_full');
+  assert.match(e2.message, /ce jour-là/);
+  const e3 = await h.fails(() => book(h, { customer_id: c, day: null, block: 'day', duration_min: 30 }));
+  assert.equal(e3?.hint, 'bad_block');
+  assert.doesNotMatch(e3.message, /bloc/);
+}));
+
 /** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
  *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
 async function liveRef(h, list) {
