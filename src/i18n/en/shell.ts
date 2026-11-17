@@ -56,6 +56,7 @@ export const shell: typeof fr = {
     signIn: 'Sign in again'
   },
   storageLost: 'This phone cannot keep your changes: stay online',
+  notUpToDate: 'Not up to date yet: some lists could not be read.',
   stuck: { one: 'A change is waiting for the server to answer. It is kept and will go out by itself.', other: '{n} changes are waiting for the server to answer. They are kept and will go out by themselves.' },
   crash: {
     title: 'Something went wrong',
@@ -81,6 +82,8 @@ export const shell: typeof fr = {
   preview: { banner: 'You are viewing the app as {name}. Nothing can be changed.', stop: 'Back to me' },
   queued: 'Kept on the phone: it goes out as soon as the signal is back.',
   loadFail: 'This page won’t open. The app may have been updated.',
+  loadOffline: 'No signal: this page will open when the signal is back.',
+  loadBack: 'The signal is back: tap « Try again » to open this page.',
   reload: 'Reload',
   notFound: 'This page doesn’t exist.',
   noRight: 'You don’t have access to this part of the app.',

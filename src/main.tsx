@@ -15,11 +15,14 @@ import { App, bootFailed } from './app/App';
 import { runBoot, wantsDemo } from './app/boot';
 import { pickLang, showLang, storedLang } from './app/lang';
 import { preloadRoute } from './app/routes';
+import { preloadHosts } from './app/hosts';
+import { registerSignOutCleanup } from './app/signOutCleanup';
 import { startTheme } from './services/theme';
 import { startPwa } from './shared/app/pwa';
 import { startAuth, finishOAuth, access } from './data/auth';
 
 installGlobalErrorHandlers();
+registerSignOutCleanup();
 startTheme();
 showLang(lang.value);
 // a person's language follows their account once known, unless they chose one on this device
@@ -34,7 +37,8 @@ effect(() => {
 render(<ErrorBoundary name="root"><App /></ErrorBoundary>, document.getElementById('app')!);
 
 // someone signed in on this device before: the first screen's code comes while the session is checked
-try { if (localStorage.getItem('his.lastuid')) preloadRoute(parseHash(location.hash).path); } catch { /* private mode */ }
+// (and the code of what floats over every screen: 🤖 Hermes, the calls, the texts, the Coffre)
+try { if (localStorage.getItem('his.lastuid')) { preloadRoute(parseHash(location.hash).path); preloadHosts(); } } catch { /* private mode */ }
 
 const demo = import.meta.env.DEV && wantsDemo(location.search, location.hash);
 void runBoot({

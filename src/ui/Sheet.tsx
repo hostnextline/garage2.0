@@ -1,7 +1,9 @@
 /* Sheets: a panel that rises from the bottom on the phone and opens as a window on the computer.
    - The phone's back button (Android) closes the sheet instead of leaving the screen: the sheet owns one history step
      (platform/history). A sheet that only its buttons may close (dismissable={false}: a signature in progress) keeps
-     its step when the back button is pressed, and ignores Escape and the dimmed area.
+     its step when the back button is pressed, and ignores Escape and the dimmed area. Any other sheet keeps its step
+     too while its owner decides: one that asks first (« Quitter sans enregistrer ? ») and stays open asks again at the
+     next back (R57); one that closes goes with its step.
    - The dimmed area closes the sheet only when the press AND the release are on it: closing on the press let the click
      of that same tap land on what was under the finger once the sheet was gone (Android).
    - After a sheet closes, an invisible shield takes taps for a moment (the second tap of a double tap).
@@ -54,14 +56,20 @@ function SheetOpen(p: SheetProps) {
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     lockScroll(true);
+    let alive = true;
     const layer = openLayer((why) => {
-      if (why === 'back' && !dismissableRef.current) return false;
-      closeRef.current();
+      if (why === 'navigate') { closeRef.current(); return; }
+      // the phone's back: the sheet keeps its step and its owner is asked to close it, right after (R57). A sheet that
+      // closes goes with its step, as after its ✕; one that stays open (« Quitter sans enregistrer ? » answered « non »,
+      // a signature in progress) still has its step, so the next back asks again instead of leaving the screen
+      if (dismissableRef.current) queueMicrotask(() => { if (alive) closeRef.current(); });
+      return false;
     });
     const leaveEscape = onEscape(() => { if (dismissableRef.current) closeRef.current(); });
     const first = box.current?.querySelector<HTMLElement>('[autofocus], input:not([type=hidden]), select, textarea, button:not(.sheet-x)');
     (first || box.current)?.focus({ preventScroll: true });
     return () => {
+      alive = false;
       leaveEscape();
       lockScroll(false);
       layer.release();

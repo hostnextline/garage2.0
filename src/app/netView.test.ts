@@ -96,3 +96,18 @@ describe('a refused change, in the person’s language', () => {
     expect(refusalText({ label: 'Réservation', error: 'raison' })).toBe('Réservation : raison');
   });
 });
+
+describe('the first download of the session (R136)', () => {
+  it('lists that could not be read say « pas encore à jour »; read, or not yet tried, they say nothing', () => {
+    expect(readNet({ ...START, firstPull: 'failed', ready: true }).notUpToDate).toBe(true);
+    expect(readNet({ ...START, firstPull: 'ok', ready: true }).notUpToDate).toBe(false);
+    expect(readNet({ ...START, firstPull: 'no' }).notUpToDate).toBe(false);
+    // an older data layer without the field: nothing
+    expect(readNet({ online: true, pending: 0 }).notUpToDate).toBe(false);
+  });
+  it('the words, in both languages', () => {
+    expect(t('shell.notUpToDate')).toBe('Pas encore à jour : certaines listes n’ont pas pu être lues.');
+    lang.value = 'en';
+    expect(t('shell.notUpToDate')).toBe('Not up to date yet: some lists could not be read.');
+  });
+});

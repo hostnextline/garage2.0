@@ -16,6 +16,26 @@ describe('MoneyInput', () => {
     expect(readMoney('-5')).toEqual({ cents: 500, valid: true });
     expect(readMoney('-5', true)).toEqual({ cents: -500, valid: true });
   });
+  it('reads the amount in the language on screen (R05): en « 1,000 » is 1 000 $, fr « 59,999 » is refused', () => {
+    lang.value = 'en';
+    expect(readMoney('1,000')).toEqual({ cents: 100000, valid: true });
+    expect(readMoney('1,234.50')).toEqual({ cents: 123450, valid: true });
+    lang.value = 'fr';
+    expect(readMoney('59,999')).toEqual({ cents: null, valid: false });
+    expect(readMoney('1 000,50')).toEqual({ cents: 100050, valid: true });
+    // said explicitly, whatever the screen
+    expect(readMoney('1,000', false, 'en')).toEqual({ cents: 100000, valid: true });
+    expect(readMoney('1,000', false, 'fr')).toEqual({ cents: null, valid: false });
+  });
+  it('an English « 1,000 » typed in the field is reported as 1 000 $ (not red)', async () => {
+    lang.value = 'en';
+    const onCents = vi.fn();
+    await act(() => { render(<MoneyInput cents={null} onCents={onCents} />, root); });
+    const input = root.querySelector('input')!;
+    await act(() => { input.dispatchEvent(new FocusEvent('focus')); input.value = '1,000'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    expect(onCents).toHaveBeenLastCalledWith(100000, { valid: true });
+    expect(input.getAttribute('aria-invalid')).toBeNull();
+  });
   it('leaving the field without changing the amount reports nothing (old logic saved the draft at every visit)', async () => {
     const onCents = vi.fn();
     await act(() => { render(<MoneyInput cents={5999} onCents={onCents} />, root); });

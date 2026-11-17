@@ -65,13 +65,18 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       workbox: {
-        // wasm: the VIN barcode reader of iPhones, ready offline from the first scan (a driveway with no signal)
-        globPatterns: ['**/*.{js,css,html,png,svg,webp,woff2,webmanifest,json,wasm}'],
+        // not the VIN barcode reader of iPhones (zxing, 1.09 MB, a .wasm): as on live, it comes the first time a VIN is
+        // scanned and is kept from then on (runtimeCaching below), so no phone downloads it at each update (fluidite-04)
+        globPatterns: ['**/*.{js,css,html,png,svg,webp,woff2,webmanifest,json}'],
         globIgnores: ['**/client.html', '**/assets/client-*.js', '**/assets/client-*.css', '**/version.json'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/client\.html/],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         cleanupOutdatedCaches: true,
+        /* at its first install the worker takes the page already open: the screens not opened yet come from the phone
+           from then on, even with no signal (live waited for the next start of the app). An update still waits for
+           « Mettre à jour » or a safe moment (registerType prompt: no skipWaiting). */
+        clientsClaim: true,
         /* the alert while the app is closed (« Texto entrant »): public/push-sw.js */
         importScripts: ['push-sw.js'],
         runtimeCaching: [

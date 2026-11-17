@@ -29,6 +29,9 @@ let pendingBack = 0;
 let keepUrl: string | null = null;
 let safety: ReturnType<typeof setTimeout> | null = null;
 const settleQueue: (() => void)[] = [];
+/** layers closed by a button whose step is still in the history, under a layer that was still open (a sheet closed
+    in the same moment as the question above it): their steps go once they are on top, never leaving a dead step */
+const gone = new Set<string>();
 let seq = 0;
 // ids from before a reload must never match: the page's own random tag
 const bootTag = Math.random().toString(36).slice(2, 6);
@@ -47,7 +50,8 @@ function settle() {
   pendingBack = 0;
   keepUrl = null;
   if (safety) { clearTimeout(safety); safety = null; }
-  for (const f of settleQueue.splice(0)) f();
+  // one at a time: what starts a new step back (a sheet released while the step under it was landing) holds the rest
+  while (settleQueue.length && pendingBack === 0) settleQueue.shift()!();
 }
 /** runs fn now, or right after the step back in progress */
 export function whenHistorySettled(fn: () => void) { if (pendingBack > 0) settleQueue.push(fn); else fn(); }
@@ -90,6 +94,15 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/** steps back over the steps of closed layers that are on top of the history entry (several at once) */
+function dropGoneOnTop() {
+  const st = stackOf(history.state);
+  for (const id of gone) if (!st.includes(id)) gone.delete(id);
+  let n = 0;
+  while (n < st.length && gone.has(st[st.length - 1 - n])) { gone.delete(st[st.length - 1 - n]); n++; }
+  stepBack(n, location.href);
+}
+
 export interface LayerHandle { readonly id: string; release(): void }
 /** a sheet opens: its own history step (pushed once any step back in progress is over) */
 export function openLayer(onBack: (why: BackReason) => boolean | void): LayerHandle {
@@ -111,9 +124,12 @@ export function openLayer(onBack: (why: BackReason) => boolean | void): LayerHan
       const i = layers.indexOf(layer);
       if (i >= 0) layers.splice(i, 1);
       count();
-      // closed by a button: remove its step, but only when it is still the top one (else a navigation replaced it)
-      const st = stackOf(history.state);
-      if (layer.pushed && st[st.length - 1] === layer.id) stepBack(1, location.href);
+      // closed by a button: its step goes, once it is on top (else a navigation replaced it, or it waits for the
+      // layer above it). Read once any step back in progress has landed: a sheet closed in the same moment as the
+      // question above it (« Quitter sans enregistrer ? » → « Quitter ») used to leave its own step behind (a dead step)
+      if (!layer.pushed) return;
+      gone.add(layer.id);
+      whenHistorySettled(dropGoneOnTop);
     }
   };
 }
@@ -128,7 +144,11 @@ export function closeLayersForNavigation(): number {
     try { open[i].onBack('navigate'); } catch { /* the navigation goes on */ }
   }
   count();
-  const n = open.filter((l) => l.pushed && ids.includes(l.id)).length;
+  // the steps on top that are ours: the open layers', and those of layers just closed whose step was still there
+  const mine = new Set([...open.filter((l) => l.pushed).map((l) => l.id), ...gone]);
+  gone.clear();
+  let n = 0;
+  while (n < ids.length && mine.has(ids[ids.length - 1 - n])) n++;
   stepBack(n);
   return n;
 }

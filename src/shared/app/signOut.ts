@@ -5,21 +5,19 @@
 import { useState } from 'preact/hooks';
 import { signOut } from '../../data/auth';
 import { pendingCount } from '../../data/sync';
-import { reportError } from '../../platform/report';
 import { pushOff } from '../../services/push';
+import { atMost, forgetAll } from './signOutHooks';
 
-/** waits for `p` at most `ms` (a phone with no signal must still be able to sign out) */
-function atMost(p: Promise<unknown>, ms: number): Promise<void> {
-  return new Promise((res) => {
-    const tm = setTimeout(res, ms);
-    p.then(() => { clearTimeout(tm); res(); }, (e) => { clearTimeout(tm); reportError(e, 'sign-out:push', 'action'); res(); });
-  });
-}
+/* what the phone forgets besides the session (R104): the list lives in signOutHooks.ts (the frame fills it at start
+   without bringing this file into the first download); `onSignOut` stays here too for whoever imports it from here */
+export { onSignOut } from './signOutHooks';
 
-/** signs out now: the push address first (best effort, 4 s at most), then the session */
+/** signs out now: the push address first (best effort, 4 s at most), then the session, then what the phone kept of
+    this person (one flow for « Plus » and « Mon compte ») */
 export async function signOutNow(): Promise<void> {
-  await atMost(pushOff(), 4000);
+  await atMost(pushOff(), 4000, 'sign-out:push');
   await signOut(true);
+  await forgetAll();
 }
 
 /** the button's logic: { warn: changes waiting (0 = none said yet), out: the tap } */

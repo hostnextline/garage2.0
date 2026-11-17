@@ -20,6 +20,7 @@ const box = document.createElement('div');
 document.body.appendChild(box);
 const q = (id: string) => document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
 const wait = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
+const settled = () => act(() => new Promise<void>((r) => whenHistorySettled(() => setTimeout(r, 0))));
 let closed = 0;
 
 beforeEach(async () => {
@@ -27,11 +28,12 @@ beforeEach(async () => {
   replaceLocal('services', [row()] as never);
   replaceLocal('service_parts', []);
   replaceLocal('inventory_items', []);
-  await act(async () => { render(null, box); render(<ServiceSheet id="s1" onClose={() => { closed++; }} />, box); });
-  // the sheet of the test before steps back over its history step; this sheet's own step is pushed once that is over.
-  // A back pressed before it would be taken for that step back (a person cannot press it that fast): wait for it.
-  await act(() => new Promise<void>((r) => whenHistorySettled(() => setTimeout(r, 0))));
+  // the sheet of the test before and its history step go first, then this one opens and its step is in place
+  await act(async () => { render(null, box); });
+  await settled();
+  await act(async () => { render(<ServiceSheet id="s1" onClose={() => { closed++; }} />, box); });
   await wait();
+  await settled();
 });
 
 describe('Réglages → Services: the sheet', () => {

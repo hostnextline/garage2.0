@@ -56,6 +56,7 @@ export const shell = {
     signIn: 'Me reconnecter'
   },
   storageLost: 'Ce téléphone ne peut pas garder tes changements : reste en ligne',
+  notUpToDate: 'Pas encore à jour : certaines listes n’ont pas pu être lues.',
   stuck: { one: 'Un changement attend que le serveur réponde. Il est gardé et repart tout seul.', other: '{n} changements attendent que le serveur réponde. Ils sont gardés et repartent tout seuls.' },
   crash: {
     title: 'Quelque chose n’a pas marché',
@@ -81,6 +82,9 @@ export const shell = {
   preview: { banner: 'Tu vois l’app comme {name}. Rien ne peut être changé.', stop: 'Revenir à moi' },
   queued: 'Gardé sur le téléphone : ça part dès que le réseau revient.',
   loadFail: 'Cette page ne s’ouvre pas. L’app a peut-être été mise à jour.',
+  // a page whose code is not on the phone yet, asked with no signal
+  loadOffline: 'Pas de réseau : cette page s’ouvrira quand le signal reviendra.',
+  loadBack: 'Le signal est revenu : touche « Réessayer » pour ouvrir cette page.',
   reload: 'Recharger',
   notFound: 'Cette page n’existe pas.',
   noRight: 'Tu n’as pas accès à cette partie de l’app.',

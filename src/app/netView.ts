@@ -4,7 +4,8 @@
    The new shape (data/net.ts): session 'ok' | 'expired' | 'lost' — 'expired' is a session being renewed (changes wait,
    nothing is refused), only 'lost' asks for a new sign-in; storage 'ok' | 'memory'; stuck = the change at the head of
    the queue that has not passed for a while ({ label, since, tries, why }) or null; a refused entry keeps the server's
-   code and hint under `err`. */
+   code and hint under `err`; firstPull 'no' | 'ok' | 'failed' says whether the first download of the session read
+   every list. */
 import { t } from '../lib/i18n';
 import { errorMessage } from '../lib/errors';
 
@@ -25,6 +26,9 @@ export interface NetView {
   stuckLabel: string | null;
   /** why it is stuck, when the data layer says it */
   stuckWhy: StuckWhy | null;
+  /** the first download of this session could not read some lists (net.firstPull 'failed'): what is on screen may be
+      old or missing, and an empty list must not look like a real one (R136) */
+  notUpToDate: boolean;
 }
 
 type Loose = Record<string, unknown>;
@@ -54,7 +58,8 @@ export function readNet(n: unknown, browserOnline = true): NetView {
   const storageLost = o.storageBroken === true || storage === 'memory' || storage === 'broken' || storage === 'none';
   const st = readStuck(o.stuck);
   const chip: ChipState = !online ? 'offline' : pending > 0 ? (o.sending ? 'sending' : 'pending') : failed > 0 ? 'failed' : 'synced';
-  return { chip, online, pending, failed, sessionLost, storageLost, stuck: st.n, stuckLabel: st.label, stuckWhy: st.why };
+  const notUpToDate = o.firstPull === 'failed';
+  return { chip, online, pending, failed, sessionLost, storageLost, stuck: st.n, stuckLabel: st.label, stuckWhy: st.why, notUpToDate };
 }
 
 /** a refused change, in the person's language now: the refusal's code when the entry keeps it (under `err` in the data
