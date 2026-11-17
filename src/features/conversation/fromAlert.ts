@@ -1,6 +1,9 @@
 /* A tap on the alert of a text while the app is open (public/push-sw.js posts « his-texto-open » with the number): the
    conversation of that number opens (comms-guide-14). An older worker posts nothing: the app is brought to the front, as
-   before. Returns what stops listening. */
+   before. Returns what stops listening.
+   NOT done: with the app fully closed, the tap opens the app at its start page (the worker has no window to tell), so the
+   conversation does not open by itself; the text shows as its bubble once read. Carrying the number at a cold start needs
+   a way agreed with the lead (a new query parameter is a route change): asked in the round's requests. */
 export type Listen = { addEventListener: (k: 'message', f: (e: MessageEvent) => void) => void; removeEventListener: (k: 'message', f: (e: MessageEvent) => void) => void };
 
 export function phoneOfAlert(data: unknown): string | null {
