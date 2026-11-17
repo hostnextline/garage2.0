@@ -657,6 +657,34 @@ test('mise-a-niveau-05: this migration sends no DROP to live (rules are altered,
   assert.deepEqual(sql.match(/\bdrop\b[^;]*/gi) ?? [], []);
 });
 
+test('srv-acces-r2-2: a rule changed by hand on live (renamed, another command, restrictive) stops the migration with its name, before any ALTER POLICY lands on it', () => tx(async (h) => {
+  // what the file runs for these four rules, in its order: the check (when there is one), then the ALTER POLICY lines
+  const file = readFileSync(new URL('../../supabase/migrations/20261116000300_refonte_acces.sql', import.meta.url), 'utf8');
+  const guard = file.match(/^do \$policies\$[\s\S]*?^end \$policies\$;/m)?.[0] ?? '';
+  const alters = file.match(/^alter policy [\s\S]*?;/gm) ?? [];
+  assert.equal(alters.length, 4);
+  const run = async () => { for (const s of [guard, ...alters].filter(Boolean)) await h.q(s); };
+  const msg = (e) => (e ? e.message : null);
+  await h.as(null);
+  // the base as the frozen migrations left it: passes (and again: the file can be read twice)
+  assert.equal(await h.fails(run), null);
+  assert.equal(await h.fails(run), null);
+  // made again by hand for every command: before, ALTER POLICY gave it the new condition for ALL and nobody saw it
+  await h.q(`drop policy trucks_update on public.trucks`);
+  await h.q(`create policy trucks_update on public.trucks for all to authenticated using (public.is_owner()) with check (public.is_owner())`);
+  assert.match(msg(await h.fails(run)) ?? '', /« trucks_update » de la table public\.trucks n’est pas celle attendue : ALL permissive au lieu de UPDATE/);
+  await h.q(`drop policy trucks_update on public.trucks`);
+  await h.q(`create policy trucks_update on public.trucks for update to authenticated using (public.is_owner() or public.can('hours')) with check (public.is_owner() or public.can('hours'))`);
+  // renamed: before, a raw « policy … does not exist »
+  await h.q(`alter policy customers_read on public.customers rename to clients_lecture`);
+  assert.match(msg(await h.fails(run)) ?? '', /« customers_read » de la table public\.customers n’existe pas sur cette base/);
+  await h.q(`alter policy clients_lecture on public.customers rename to customers_read`);
+  // restrictive: before, accepted as is
+  await h.q(`drop policy attachments_upd on public.attachments`);
+  await h.q(`create policy attachments_upd on public.attachments as restrictive for update to authenticated using (true) with check (true)`);
+  assert.match(msg(await h.fails(run)) ?? '', /« attachments_upd » de la table public\.attachments n’est pas celle attendue : UPDATE restrictive au lieu de UPDATE permissive/);
+}));
+
 // =====================================================================================================================
 // 6. Indexes
 // =====================================================================================================================

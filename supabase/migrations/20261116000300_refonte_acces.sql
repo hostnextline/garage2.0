@@ -61,6 +61,30 @@
 -- 1. DIRECT WRITES
 -- =====================================================================================================================
 
+-- ---------- the four rules this file changes with ALTER POLICY are the ones it expects (srv-acces-r2-2) ----------
+-- ALTER POLICY keeps the rule's command and its kind (permissive): on a base where one of them was renamed, removed or
+-- made again by hand (x-security-20: live has hand-patched objects) the migration would stop on a raw error, or the
+-- new condition would land on another command. Checked first, read only: anything else stops the whole file here
+-- (one transaction: nothing applied) with the name of the rule and what was found.
+do $policies$
+declare r record; v_cmd "char"; v_perm boolean;
+begin
+  for r in select * from (values ('trucks', 'trucks_write', 'a'::"char", 'INSERT'), ('trucks', 'trucks_update', 'w'::"char", 'UPDATE'),
+                                 ('customers', 'customers_read', 'r'::"char", 'SELECT'), ('attachments', 'attachments_upd', 'w'::"char", 'UPDATE')) v(tbl, pol, cmd, cmd_name)
+  loop
+    select p.polcmd, p.polpermissive into v_cmd, v_perm from pg_policy p
+     where p.polrelid = format('public.%I', r.tbl)::regclass and p.polname = r.pol;
+    if not found then
+      raise exception 'La règle « % » de la table public.% n’existe pas sur cette base (renommée ou enlevée à la main ?) : rien n’est appliqué. Remets-la comme dans 20261104000200_access.sql, puis relance la migration.', r.pol, r.tbl;
+    end if;
+    if v_cmd <> r.cmd or not v_perm then
+      raise exception 'La règle « % » de la table public.% n’est pas celle attendue : % % au lieu de % permissive. Rien n’est appliqué : vérifie pg_policies, puis relance la migration.',
+        r.pol, r.tbl, case v_cmd when 'r' then 'SELECT' when 'a' then 'INSERT' when 'w' then 'UPDATE' when 'd' then 'DELETE' else 'ALL' end,
+        case when v_perm then 'permissive' else 'restrictive' end, r.cmd_name;
+    end if;
+  end loop;
+end $policies$;
+
 -- ---------- trucks: the owner or « Réglages », as the app shows « Les camions » (x-security-02, x-rights-10) ----------
 -- Hours and starts are not touched: truck_week / truck_days keep truck_hours_editable, the start goes through
 -- set_truck_start. (No DROP anywhere in this file, the owner's rule for live (mise-a-niveau-05): an existing rule is
