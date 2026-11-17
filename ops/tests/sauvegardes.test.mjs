@@ -52,6 +52,7 @@ async function faux(jouer) {
     });
   });
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+  srv.unref();   // a test that fails before « fermer » never keeps the whole run waiting
   const base = `http://127.0.0.1:${srv.address().port}`;
   return { vus, env: { FONCTION: `${base}/backup`, CLE: 'cle-test', TICKET_URL: `${base}/ticket?x=1` }, fermer: () => new Promise((ok) => srv.close(ok)) };
 }
@@ -726,6 +727,7 @@ test('a lost project: a whole night restored with --neuve into a NEW database ma
     { encoding: 'utf8', input, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'], maxBuffer: 1 << 28 });
   const avant = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
   const neuf = new pg.Pool({ host: '127.0.0.1', port: 54332, user: 'postgres', database: nom, max: 1 });
+  neuf.on('error', () => {});   // its idle connection is cut when the database is dropped at the end
   const nq = async (sql, p = []) => (await neuf.query(sql, p)).rows;
   await q(`create database ${nom}`);
   try {
