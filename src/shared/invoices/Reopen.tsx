@@ -12,9 +12,13 @@ import { jobOpen } from '../../domain/money/draft';
 import { waitingEntries, finishWaiting } from '../../domain/money/waiting';
 import { canEditInvoiceOf } from './select';
 
-/** never while its « Terminer la facture » still waits on this phone: the server still has a draft (and refuses) */
+/** never while its « Terminer la facture » still waits on this phone: the server still has a draft (and refuses).
+    Never on an invoice paid MORE than its total (« Trop-perçu »): reopened, its draft would hold more money than it
+    costs and could not be finished again (invoice_finish refuses below_paid on a numbered draft), so it would stay a
+    draft until the office records the refund or cancels it. The office gives the money back first (review invoices-r2-1). */
 export function mayReopen(inv: Invoice | undefined, job: Job | undefined): boolean {
   return !!inv && (inv.status === 'issued' || inv.status === 'paid') && !!job && jobOpen(job.status) && canEditInvoiceOf(job)
+    && Number(inv.paid_cents || 0) <= Number(inv.total_cents || 0)
     && !finishWaiting(waitingEntries(), inv.id);
 }
 export function ReopenButton(p: { inv: Invoice; job: Job | undefined; block?: boolean; variant?: 'primary' | 'ghost' }) {
