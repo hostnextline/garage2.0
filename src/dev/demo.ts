@@ -3,6 +3,7 @@
    the language is the browser's (Réglages → Langue). The whole data layer runs as usual against the pretend server in
    fake-server.ts (changes made in the demo are lost when the page reloads); the person on screen reads only the rows
    and does only what the database would let them (demo-rules.ts). */
+import { AuthSessionMissingError } from '@supabase/supabase-js';
 import { installFakeServer, db, registerRpc, resetOps } from './fake-server';
 import { loadDemoData, ME } from './demo-data';
 import './demo-rpc';
@@ -50,9 +51,16 @@ export function loadDemo(id: string) {
 
 /* Nothing of the demo leaves for the real server (demo-03): every request to its address is answered in memory, the
    session kept on this browser is not renewed (and not lost) meanwhile, and no live socket opens (the screens that
-   listen for calls and texts ask the pretend tables instead, as they do without realtime). */
+   listen for calls and texts ask the pretend tables instead, as they do without realtime).
+   The person on screen is the demo's, never the session kept on this browser: asking for the session answers « none »
+   at once, without reading or touching his.auth (demo-r2-1). Before, an expired session kept there was renewed against
+   the pretend server, whose « try later » supabase-js asks again for about 25 s: every request of the demo (the
+   database's, « Je pars », texts, Branchements, VIN) waited behind it. Renewing answers « no session », which the
+   engine reads as « wait » and supabase-js does not take as a sign-out. */
 export function sealDemo() {
   try { void sb.auth.stopAutoRefresh(); } catch { /* nothing to stop */ }
+  sb.auth.getSession = async () => ({ data: { session: null }, error: null });
+  sb.auth.refreshSession = async () => ({ data: { user: null, session: null }, error: new AuthSessionMissingError() });
   try { sb.realtime.connect = () => undefined; } catch { /* no realtime client */ }
 }
 

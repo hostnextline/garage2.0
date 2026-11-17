@@ -1,10 +1,11 @@
 /* The pretend server of ?demo (dev only) held to the app and to the database: every operation the app calls exists in
    it, an unknown one is never « ok », a person reads and changes only what the database lets them, nothing goes to the
    live project. */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { RealtimeClient } from '@supabase/supabase-js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { handle, registeredRpcs, registeredFns, rpcOf, registerRpc, find, table } from './fake-server';
+import { handle, registeredRpcs, registeredFns, rpcOf, registerRpc, find, table, installFakeServer } from './fake-server';
 import { loadDemo, accessOf, sealDemo } from './demo';
 import { ME } from './demo-data';
 import { SUPABASE_URL } from '../lib/config';
@@ -203,19 +204,65 @@ describe('the pretend REST: order and offset (demo-22, demo-23)', () => {
 });
 
 describe('demo-03: nothing leaves for the live project', () => {
-  it('the session kept on this browser is not renewed nor thrown away, and no live socket opens', async () => {
+  // what sealDemo changes on the app's one client, put back before each test so each one proves the seal by itself
+  const real = { getSession: sb.auth.getSession, refreshSession: sb.auth.refreshSession, connect: sb.realtime.connect };
+  beforeEach(() => { Object.assign(sb.auth, { getSession: real.getSession, refreshSession: real.refreshSession }); sb.realtime.connect = real.connect; });
+  const late = (ms: number) => new Promise<'late'>((ok) => setTimeout(() => ok('late'), ms));
+
+  it('the pretend server does not renew a session: « try later », so supabase-js would keep it', async () => {
     const r = await handle(url('/auth/v1/token?grant_type=refresh_token'), { method: 'POST', body: '{}' });
-    expect(r.status).toBe(503);   // « try later »: supabase-js keeps the stored session
+    expect(r.status).toBe(503);
+  });
+
+  it('an expired session kept on this browser holds nothing up, is not renewed, and stays kept (demo-r2-1)', async () => {
+    const kept = JSON.stringify({ access_token: 'x.eyJzdWIiOiJ1LXJlYWwifQ.y', refresh_token: 'r-real', token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) - 3600, user: { id: 'u-real' } });
+    localStorage.setItem('his.auth', kept);
+    const before = window.fetch;
+    installFakeServer();
+    const pretend = window.fetch;
+    let token = 0;
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (u.includes('/auth/v1/token')) token++;
+      return pretend(input, init);
+    };
+    try {
+      sealDemo();
+      const t0 = Date.now();
+      const s = await Promise.race([sb.auth.getSession(), late(1000)]);
+      expect(s).not.toBe('late');
+      expect(s !== 'late' && s.data.session).toBeNull();
+      // renewing (the engine after an « expired », a receipt sent again) answers « no session » at once, nothing signs out
+      const rf = await Promise.race([sb.auth.refreshSession(), late(1000)]);
+      expect(rf).not.toBe('late');
+      expect(rf !== 'late' && rf.data.session).toBeNull();
+      expect(rf !== 'late' && rf.error).toBeTruthy();
+      // a request to the database asks the session too (supabase-js): it is not held up either
+      expect(await Promise.race([sb.from('jobs').select('id').then(() => 'done'), late(1000)])).toBe('done');
+      expect(Date.now() - t0).toBeLessThan(1000);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(token).toBe(0);
+      expect(localStorage.getItem('his.auth')).toBe(kept);
+    } finally {
+      window.fetch = before;
+      localStorage.removeItem('his.auth');
+    }
+  });
+
+  it('no live socket opens: a channel subscribed after sealDemo never reaches the real connect (demo-r2-2)', () => {
     sealDemo();
-    const before = (globalThis as { WebSocket?: unknown }).WebSocket;
-    let opened = 0;
-    (globalThis as { WebSocket?: unknown }).WebSocket = class { constructor() { opened++; } };
+    const proto = Object.getPrototypeOf(sb.realtime) as RealtimeClient;
+    const adapter = (sb.realtime as unknown as { socketAdapter: { connect: () => void } }).socketAdapter;
+    const client = vi.spyOn(proto, 'connect').mockImplementation(() => undefined);
+    const socket = vi.spyOn(adapter, 'connect').mockImplementation(() => undefined);
     try {
       sb.channel('demo-test').subscribe();
-      expect(opened).toBe(0);
+      expect(client).not.toHaveBeenCalled();
+      expect(socket).not.toHaveBeenCalled();
       expect(sb.realtime.isConnected()).toBe(false);
     } finally {
-      (globalThis as { WebSocket?: unknown }).WebSocket = before;
+      client.mockRestore();
+      socket.mockRestore();
       void sb.removeAllChannels();
     }
   });
