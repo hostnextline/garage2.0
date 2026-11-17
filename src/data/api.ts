@@ -122,10 +122,13 @@ export async function invoiceForJob(jobId: string, refresh = true) { guard(); re
 export async function saveInvoiceDraft(id: string, patch: { lines?: InvoiceLine[]; taxes_on?: boolean; notes?: string | null }) { guard(); await updateRow('invoices', id, patch); }
 export async function finishInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number; again?: boolean }>('invoice_finish', { p_invoice: id }, { label: t('log.invoiceFinish') }); }
 
-/** the payments of this invoice (or of its job) still waiting on this phone to be sent */
+/** the payments of this invoice still waiting on this phone to be sent: those aimed at it, and those of its job that
+    name no invoice (the server puts them on the job's finished invoice). One aimed at another invoice of the same job
+    goes there whatever happens to this one: it does not hold this one back. */
 function paymentWaitingFor(invoiceId: string): boolean {
   const jobId = getRow<Invoice>('invoices', invoiceId)?.job_id ?? null;
-  return pendingOps((e) => e.kind === 'rpc' && e.rpc === 'payment_add' && !!e.args && (e.args.p_invoice === invoiceId || (!!jobId && e.args.p_job === jobId))).length > 0;
+  return pendingOps((e) => e.kind === 'rpc' && e.rpc === 'payment_add' && !!e.args
+    && (e.args.p_invoice === invoiceId || (e.args.p_invoice == null && !!jobId && e.args.p_job === jobId))).length > 0;
 }
 const PAYMENT_WAITING: Record<string, string> = {
   fr: 'Un paiement de cette facture attend encore d’être envoyé. Attends qu’il parte, puis modifie la facture.',

@@ -187,6 +187,31 @@ describe('a cash payment refused hours later says how much and for whom (argent-
     await reopenInvoice('v1');
     expect(order).toEqual(['payment_add', 'invoice_reopen']);
   });
+  it('a payment waiting for another invoice of the same job does not hold this one back; one for the job with no invoice does', async () => {
+    seed();
+    srv.put('invoices', { id: 'v2', job_id: 'j1', customer_id: 'c1', number: 43, status: 'issued', total_cents: 5000 });
+    const reopened: unknown[] = [];
+    srv.rpc('payment_add', () => ({ ok: true }));
+    srv.rpc('invoice_reopen', (a) => { reopened.push(a.p_invoice); return { ok: true, number: 43 }; });
+    await start();
+    srv.offline = true;
+    setNet({ online: false });
+    expect((await addPayment('v1', 20000, 'cash', null, 'j1')).queued).toBe(true);   // for F-0042, with its job
+    // the signal is back but the payment cannot leave yet (server trouble: it waits its turn)
+    srv.offline = false;
+    srv.failNext((c) => c.table === 'rpc/payment_add', 503, { message: 'Service Unavailable' }, 1000);
+    setNet({ online: true });
+    const r = await reopenInvoice('v2');
+    expect(r.data).toMatchObject({ ok: true });
+    expect(reopened).toEqual(['v2']);
+    expect(outbox.value.filter((e) => e.state === 'pending' && e.rpc === 'payment_add').length).toBe(1);
+    // a payment of the job that names no invoice lands on its finished invoice: that one still waits for it
+    srv.offline = true;
+    setNet({ online: false });
+    expect((await addPayment(null, 1000, 'cash', null, 'j1')).queued).toBe(true);
+    await expect(reopenInvoice('v2')).rejects.toMatchObject({ kind: 'refusal', hint: 'payment_waiting' });
+    expect(reopened).toEqual(['v2']);
+  });
   it('without a waiting payment it goes straight to the server, as before', async () => {
     seed();
     srv.rpc('invoice_reopen', () => ({ ok: true, number: 42 }));
