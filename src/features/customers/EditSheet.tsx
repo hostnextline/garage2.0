@@ -10,6 +10,7 @@ import { Button, Sheet, Banner, ask, attempt, toast, whenHistorySettled } from '
 import { CustomerFields } from '../../shared/customers/CustomerFields';
 import { changed, customerPatch, draftOf, movesAddress } from '../../shared/customers/draft';
 import { useCustomerDraft } from '../../shared/customers/useCustomerDraft';
+import { positioned } from '../../shared/customers/create';
 import { currentDay } from '../../domain/oil/clock';
 import { DeleteZone } from './DeleteZone';
 import { addressPatch, jobsAtOldAddress } from './followAddress';
@@ -24,14 +25,17 @@ export function EditSheet(p: { c: Customer; onClose: () => void; onLeaving: (on:
     whenHistorySettled(p.onClose);
   };
   // the appointments to offer the new address to, read before the file changes
-  const follow = () => movesAddress(diff) && 'address' in diff ? jobsAtOldAddress(allJobs.value, p.c.id, { address: before.address ?? null }, currentDay.value) : [];
+  const follow = (d: typeof diff) => movesAddress(d) && 'address' in d ? jobsAtOldAddress(allJobs.value, p.c.id, { address: before.address ?? null }, currentDay.value) : [];
   const save = () => f.once(async () => {
     if (!f.ready()) return;
     if (!dirty) { p.onClose(); return; }
-    const jobs = follow();
-    if (!(await attempt(() => saveCustomer({ id: p.c.id, ...diff }), { ok: t('customers.file.saved') }))) return;
+    // a new address saved right after typing: its position first (R163), else the file and its appointments lose it
+    const draft = movesAddress(diff) ? await positioned(f.draft) : f.draft;
+    const sent = draft === f.draft ? diff : changed(before, customerPatch(draft));
+    const jobs = follow(sent);
+    if (!(await attempt(() => saveCustomer({ id: p.c.id, ...sent }), { ok: t('customers.file.saved') }))) return;
     if (jobs.length && await ask({ title: t('customers.follow.title'), text: t('customers.follow.text', { n: jobs.length }), ok: t('customers.follow.ok'), cancel: t('customers.follow.no') })) {
-      const place = addressPatch(customerPatch(f.draft));
+      const place = addressPatch(customerPatch(draft));
       let moved = 0;
       for (const j of jobs) if (await attempt(() => updateJob(j.id, place))) moved++;
       if (moved) toast(t('customers.follow.done', { n: moved }), { kind: 'ok' });
