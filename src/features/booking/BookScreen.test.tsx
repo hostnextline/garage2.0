@@ -20,7 +20,7 @@ vi.mock('../../platform/router', async (orig) => ({ ...(await orig<typeof import
 vi.mock('../../shared/moment/notify', () => texts);
 vi.mock('../../shared/jobs/CarFirst', () => ({ OilHint: () => null }));
 vi.mock('../../shared/moment/BlockPicker', () => ({
-  BlockPicker: (p: BlockPickerProps) => <button type="button" data-testid="stub-pick" onClick={() => p.onPick({ day: DAY, block: 'am' })}>{p.value ? `${p.value.day} ${p.value.block}` : 'none'}</button>
+  BlockPicker: (p: BlockPickerProps) => <button type="button" data-testid="stub-pick" data-reload={String(p.reload ?? 0)} onClick={() => p.onPick({ day: DAY, block: 'am' })}>{p.value ? `${p.value.day} ${p.value.block}` : 'none'}</button>
 }));
 vi.mock('../../shared/moment/ServicePicker', () => ({
   ServicePicker: (p: ServicePickerProps) => (
@@ -102,6 +102,21 @@ describe('the booking screen', () => {
     expect(sent()).toEqual([second]);
     // the one appointment left is booked: its job opens
     expect(nav.navigate).toHaveBeenCalledWith(`/job/${second.split(':')[1]}`, { replace: true });
+  });
+
+  it('a block refused (« Ce bloc est plein »): the picker asks its moments again, the block stays chosen with the reason (R79)', async () => {
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    expect(q('stub-pick')?.dataset.reload).toBe('0');
+    api.bookJob.mockRejectedValueOnce(refusal('block_full'));
+    // « Réserver quand même ? » answered « Choisir un autre bloc »
+    ui.ask.mockResolvedValue(false);
+    await click(q('book-confirm'));
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+    expect(nav.navigate).not.toHaveBeenCalled();
+    expect(q('stub-pick')?.dataset.reload).toBe('1');
+    expect(q('stub-pick')?.textContent).toBe(`${DAY} am`);
   });
 
   it('two cars kept on the phone: said once, the screen leaves (booking-a-03)', async () => {

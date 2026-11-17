@@ -83,7 +83,7 @@ export type Action =
   | { t: 'far'; far: FarInfo | null }
   | { t: 'truck'; id: string | null }
   | { t: 'card'; on: boolean }
-  | { t: 'refused'; banner: string | null; windowGone?: boolean }
+  | { t: 'refused'; banner: string | null; windowGone?: boolean; again?: boolean }
   | { t: 'booked'; keys: string[]; ids: string[] };
 
 export function initialDraft(o: { customerId: string | null; car: string; place: PlaceValue; caller: Caller; callCar: CallCar | null; choice: BlockChoice | null }): Draft {
@@ -226,7 +226,12 @@ export function reduce(d: Draft, a: Action): Draft {
     case 'far': return d.far === a.far ? d : { ...d, far: a.far };
     case 'truck': return { ...d, truckId: a.id };
     case 'card': return { ...d, card: a.on };
-    case 'refused': return a.windowGone ? { ...d, choice: null, blockError: a.banner, reload: d.reload + 1 } : { ...d, blockError: a.banner };
+    // the moment was refused: the picker asks again (R79: every code of BLOCK_REFUSALS, so « Meilleur choix » never
+    // offers the block just refused); a window that can no longer be kept is also taken off
+    case 'refused': {
+      const reload = a.windowGone || a.again ? d.reload + 1 : d.reload;
+      return a.windowGone ? { ...d, choice: null, blockError: a.banner, reload } : { ...d, blockError: a.banner, reload };
+    }
     // what was booked (or kept on the phone to be sent) leaves the screen: the rest can be tried again in another moment
     case 'booked': return { ...d, work: keepOnly(d.work, (k) => !a.keys.includes(k)), bookedIds: [...d.bookedIds, ...a.ids.filter((id) => !d.bookedIds.includes(id))] };
   }

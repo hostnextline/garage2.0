@@ -189,6 +189,12 @@ describe('the moment', () => {
     const d = run(fresh(), { t: 'choice', choice: win }, { t: 'refused', banner: 'plus possible', windowGone: true });
     expect(d).toMatchObject({ choice: null, blockError: 'plus possible', reload: 1 });
   });
+  it('a block refused (block_full, truck_full…): the choice stays with the reason, the picker asks again (R79)', () => {
+    const d = run(fresh(), { t: 'choice', choice: block }, { t: 'refused', banner: 'Ce bloc est plein.', again: true });
+    expect(d).toMatchObject({ choice: block, blockError: 'Ce bloc est plein.', reload: 1 });
+    // a reason without a new question (an old caller): the picker is left alone
+    expect(run(fresh(), { t: 'choice', choice: block }, { t: 'refused', banner: 'x' })).toMatchObject({ choice: block, blockError: 'x', reload: 0 });
+  });
   it('a copy’s window is a default: a moment already picked stays', () => {
     expect(run(fresh(), { t: 'presetChoice', choice: win }).choice).toEqual(win);
     expect(run(fresh(), { t: 'choice', choice: block }, { t: 'presetChoice', choice: win }).choice).toEqual(block);

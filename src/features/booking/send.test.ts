@@ -138,7 +138,15 @@ describe('what is said after « Réserver »', () => {
     expect(r.banner).toBe('Ce bloc est plein. bt:refusedBlock');
   });
   it('a window that can no longer be kept: the picker asks again', () => {
-    expect(o([{ key: 'v-1', status: 'refused', code: 'window_full', msg: 'x', declined: false }])).toMatchObject({ windowGone: true, banner: 'booking.win.full', go: null });
+    expect(o([{ key: 'v-1', status: 'refused', code: 'window_full', msg: 'x', declined: false }])).toMatchObject({ windowGone: true, banner: 'booking.win.full', go: null, again: true });
+  });
+  it('every refusal of the moment asks the picker again (R79): « Meilleur choix » never offers the block just refused', () => {
+    for (const code of ['block_full', 'block_closed', 'block_started', 'truck_full', 'too_far', 'bad_block']) {
+      expect(o([{ key: 'v-1', status: 'refused', code, msg: 'Non.', declined: false }])).toMatchObject({ again: true, windowGone: false, banner: 'Non. bt:refusedBlock' });
+    }
+    // a refusal that is not about the moment (the customer, the car, the rights…): the moments stay as they are
+    expect(o([{ key: 'v-1', status: 'refused', code: 'not_allowed', msg: 'Non.', declined: false }])).toMatchObject({ again: false, banner: null });
+    expect(o([booked('v-1')]).again).toBe(false);
   });
   it('« Choisir un autre bloc » after « Ce bloc est plein »: no second message, the reason above the moments', () => {
     const r = o([{ key: 'v-1', status: 'refused', code: 'block_full', msg: 'Plein.', declined: true }]);

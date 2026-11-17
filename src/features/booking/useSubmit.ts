@@ -116,7 +116,7 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     for (const x of o.toasts) toast(x.text, { kind: x.kind, ms: x.ms });
     // the screen's state first (what was booked leaves it), then where the eyes go
     if (!o.go && o.done.length) b.act({ t: 'booked', keys: o.done, ids: jobs.filter((j) => o.done.includes(j.key)).map((j) => j.job.id!) });
-    if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone }); calmScroll(at.moment.current); }
+    if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone, again: o.again }); calmScroll(at.moment.current); }
     if (o.go) navigate(o.go, { replace: true });
     // the customer's confirmation, for each appointment the server answered (a window: said above the text to send by hand)
     const sms = choice && choice.block === 'day' ? whenSaid(choice, forced, l) : null;
