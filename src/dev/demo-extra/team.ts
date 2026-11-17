@@ -8,7 +8,7 @@ import { RIGHTS } from '../../data/types';
 
 type Obj = Record<string, unknown>;
 const DAY = 86400000;
-const st = { ghl: false, ghlEnd: null as string | null, ghlLoc: null as string | null, stripe: false, test: false, stripeEnd: null as string | null, invites: [] as Obj[] };
+const st = { ghl: false, ghlEnd: null as string | null, ghlLoc: null as string | null, stripe: false, stripeEnd: null as string | null, invites: [] as Obj[] };
 const me = () => (globalThis as { __demoUser?: string }).__demoUser || 'u-hassan';
 const fail = (code: string, error: string) => ({ ok: false, code, error });
 const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
@@ -70,7 +70,7 @@ function team(b: Obj): Obj {
       return { ok: true };
     }
     case 'secrets':
-      return { ok: true, ghl: { on: st.ghl, token_end: st.ghlEnd, location: st.ghlLoc }, stripe: { on: st.stripe, test: st.test, end: st.stripeEnd, webhook: st.stripe } };
+      return { ok: true, ghl: { on: st.ghl, token_end: st.ghlEnd, location: st.ghlLoc }, stripe: { on: st.stripe, test: false, end: st.stripeEnd, webhook: st.stripe } };   // a test key is refused below: the demo's key is never one (the answer keeps « test », like live's)
     case 'secrets-set': {
       if ('ghl_token' in b || 'ghl_location' in b) {
         const tk = b.ghl_token == null ? null : String(b.ghl_token).trim(), loc = b.ghl_location == null ? null : String(b.ghl_location).trim();
@@ -85,17 +85,17 @@ function team(b: Obj): Obj {
       }
       if ('stripe_key' in b) {
         const k = b.stripe_key == null ? '' : String(b.stripe_key).trim();
-        if (!k) { st.stripe = false; st.test = false; st.stripeEnd = null; }
+        if (!k) { st.stripe = false; st.stripeEnd = null; }
         else {
           if (!/^(sk|rk)_(live|test)_[A-Za-z0-9]{10,}$/.test(k)) return fail('stripe_key', 'La clé Stripe commence par « sk_live_ », « sk_test_ » ou « rk_ ».');
           // like live (a test copy of the server only, never live): a test key is refused
           if (/_test_/.test(k)) return fail('stripe_key', 'Clé de test refusée : l’app n’a qu’une seule base de données, un paiement test marquerait une vraie facture payée. Mets la clé « sk_live_ ».');
-          st.stripe = true; st.test = /_test_/.test(k); st.stripeEnd = k.slice(-4);
+          st.stripe = true; st.stripeEnd = k.slice(-4);
         }
       }
       // what the app is told (my_access card_online / texts_online) follows the keys typed here (demo-26)
       const g = globalThis as { __demoServices?: { card?: boolean; texts?: boolean } };
-      g.__demoServices = { ...(g.__demoServices || {}), card: st.stripe && !st.test, ...('ghl_token' in b || 'ghl_location' in b ? { texts: st.ghl } : {}) };
+      g.__demoServices = { ...(g.__demoServices || {}), card: st.stripe, ...('ghl_token' in b || 'ghl_location' in b ? { texts: st.ghl } : {}) };
       return { ok: true };
     }
     case 'sms-test':

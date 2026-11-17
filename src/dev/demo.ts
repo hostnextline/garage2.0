@@ -4,12 +4,11 @@
    fake-server.ts (changes made in the demo are lost when the page reloads); the person on screen reads only the rows
    and does only what the database would let them (demo-rules.ts). */
 import { AuthSessionMissingError } from '@supabase/supabase-js';
-import { installFakeServer, db, registerRpc, resetOps } from './fake-server';
+import { installFakeServer, db, registerRpc, resetOps, find } from './fake-server';
 import { loadDemoData, ME } from './demo-data';
 import './demo-rpc';
 import { installWindows } from './demo-windows';
 import { can, isOwner, myTruckIds } from './demo-rules';
-import { find } from './fake-server';
 import { sb, access, authState, session } from '../data/auth';
 import { startSync, syncOptions } from '../data/sync';
 import { RIGHTS, type Access, type Right, type Role } from '../data/types';

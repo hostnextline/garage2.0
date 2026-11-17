@@ -163,6 +163,8 @@ describe('the outside services said to the app follow the demo\'s Branchements (
     expect((fnOf('team')!({ action: 'secrets-set', stripe_key: 'sk_test_abcdefghijklmn' }) as { code?: string }).code).toBe('stripe_key');
     expect(fnOf('team')!({ action: 'secrets-set', stripe_key: 'sk_live_abcdefghijklmn' })).toMatchObject({ ok: true });
     expect(accessOf(ME.owner).card_online).toBe(true);
+    // Branchements is still told « live mode » (the answer keeps its « test » field, never true in the demo)
+    expect(fnOf('team')!({ action: 'secrets' })).toMatchObject({ stripe: { on: true, test: false, end: 'klmn' } });
     (globalThis as { __demoServices?: unknown }).__demoServices = undefined;
   });
 });
