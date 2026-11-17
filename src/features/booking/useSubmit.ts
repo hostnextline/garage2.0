@@ -14,7 +14,9 @@ import { customerPatch, emptyDraft } from '../../shared/customers/CustomerFields
 import { carIsEmpty, carRow } from '../../shared/vehicles/VehicleBits';
 import { plannedCars } from './draft';
 import { showsFix } from './check';
-import { visitJobs, kindFor, callerUpdate, type VisitBase } from './visit';
+import { visitJobs, kindFor, callerUpdate, placeAfterWait, type VisitBase } from './visit';
+import { withPosition } from '../../shared/places/withPosition';
+import type { PlaceValue } from '../../shared/places/place';
 import type { Customer } from '../../data/types';
 import { sendVisit } from './send';
 import { outcome } from './outcome';
@@ -48,11 +50,11 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
   const made = useRef<{ customer: string; sent: Partial<Customer>; cars: Record<string, string> } | null>(null);
 
   /** true: go on (not far, no answer in time, or the person said so) */
-  const farAsk = async (c: BlockChoice, b: Booking): Promise<boolean> => {
+  const farAsk = async (c: BlockChoice, b: Booking, place: PlaceValue): Promise<boolean> => {
     const key = `${c.day}|${c.block}`;
     if (farOk.current === key) return true;
     let q = farQuestion(b.d.far, c, 'book');
-    const { lat, lng } = b.d.place;
+    const { lat, lng } = place;
     if (!q && net.value.online && lat != null && lng != null) {
       const rows = await inTime<Suggestion[]>(suggestBlocks(lat, lng, b.allMinutes, c.day, 1, null, b.need, b.need ? null : b.d.kind), FAR_WAIT_MS, []);
       q = farQuestion(farOfAnswer(rows, c, b.effTruck, farLimits(settings.value.booking), b.l), c, 'book');
@@ -63,9 +65,9 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     return yes;
   };
 
-  const makeCaller = (b: Booking) => run(async () => {
+  const makeCaller = (b: Booking, place: PlaceValue) => run(async () => {
     const { first, last, phone } = b.d.caller;
-    const patch = customerPatch(emptyDraft({ first_name: first, last_name: last, phone, place: b.d.place }));
+    const patch = customerPatch(emptyDraft({ first_name: first, last_name: last, phone, place }));
     const m = made.current;
     if (!m) made.current = { customer: await saveCustomer(patch), sent: patch, cars: {} };
     else {
@@ -87,19 +89,23 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
   const go = async () => {
     const tapped = live.current;
     const choice = tapped.a.walkIn ? null : tapped.d.choice;
-    if (choice && !(await farAsk(choice, tapped))) return;
+    // an address typed right before the tap: its position is found now (at most 2.5 s, never without signal), so the
+    // new caller's file and the appointment are not saved without one (R164, customers-a-05)
+    const found = await withPosition(tapped.d.place);
+    if (choice && !(await farAsk(choice, tapped, found))) return;
     // what is on screen now. The moment changed or something was taken off while waiting: nothing is booked, the
     // next tap asks for what is there
     const b = live.current;
     if (b.miss || !sameChoice(b.a.walkIn ? null : b.d.choice, choice)) return;
     const { a, d, l, bt } = b;
+    const place = placeAfterWait(d.place, found);
     let cid = d.customerId;
-    if (!cid) { const m = await makeCaller(b); if (!m) return; cid = m.customer; }
+    if (!cid) { const m = await makeCaller(b, place); if (!m) return; cid = m.customer; }
     const carOf = (k: string) => (k && (vehicleRow(k) || made.current?.cars[k]) ? k : null);
     const cars = plannedCars(d, b.belongs);
     const base: VisitBase = {
       customer_id: cid, truck_id: b.effTruck || null, notes: d.notes.trim() || null,
-      address: d.place.address.trim() || null, unit: d.place.unit?.trim() || null, postal_code: d.place.postal_code || null, lat: d.place.lat, lng: d.place.lng,
+      address: place.address.trim() || null, unit: place.unit?.trim() || null, postal_code: place.postal_code || null, lat: place.lat, lng: place.lng,
       // the estimate goes with the visit's first appointment only: once a car of it is booked, the others go without it
       // (the server refuses an estimate already booked: quote_done)
       card_on_file: !!d.card, quote_id: d.bookedIds.length ? null : b.quote?.id ?? null, source: b.quote ? 'quote' : a.walkIn ? 'walk_in' : 'phone', vehicle_kind: kindFor(b.need, cars.length, d.kind)

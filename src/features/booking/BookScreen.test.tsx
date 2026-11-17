@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
 const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 const nav = vi.hoisted(() => ({ navigate: vi.fn() }));
 const texts = vi.hoisted(() => ({ notifyCustomer: vi.fn(), wantsText: vi.fn() }));
+// the address lookup at « Réserver » (Photon is never asked from a test): no answer unless a test says one
+const places = vi.hoisted(() => ({ withPosition: vi.fn() }));
+vi.mock('../../shared/places/withPosition', () => places);
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), ...api }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ask: ui.ask, toast: ui.toast }));
 vi.mock('../../platform/router', async (orig) => ({ ...(await orig<typeof import('../../platform/router')>()), navigate: nav.navigate }));
@@ -58,7 +61,8 @@ beforeEach(() => {
   upsertLocal('vehicles', [{ id: 'v-1', customer_id: 'c-1', year: 2019, make: 'Honda', model: 'Civic' },
     { id: 'v-2a', customer_id: 'c-2', year: 2016, make: 'Toyota', model: 'Corolla' }, { id: 'v-2b', customer_id: 'c-2', year: 2019, make: 'Toyota', model: 'Sienna' }], { force: true });
   upsertLocal('quotes', [{ id: 'q-1', number: 7, customer_id: 'c-1', vehicle_id: null, items: [{ description: 'Freins', qty: 1, unit_cents: 34999, taxable: true, service_id: null }, { kind: 'discount', description: 'Rabais', qty: 1, unit_cents: -2000, taxable: true, service_id: null }], status: 'accepted', job_id: null }], { force: true });
-  for (const f of [api.bookJob, api.walkIn, api.suggestBlocks, api.saveCustomer, api.saveVehicle, ui.ask, ui.toast, nav.navigate, texts.notifyCustomer, texts.wantsText]) f.mockReset();
+  for (const f of [api.bookJob, api.walkIn, api.suggestBlocks, api.saveCustomer, api.saveVehicle, ui.ask, ui.toast, nav.navigate, texts.notifyCustomer, texts.wantsText, places.withPosition]) f.mockReset();
+  places.withPosition.mockImplementation(async (p: unknown) => p);
   api.bookJob.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id, data: {} }));
   api.suggestBlocks.mockResolvedValue([]);
   texts.wantsText.mockReturnValue(true);
@@ -207,6 +211,22 @@ describe('the booking screen', () => {
     // only the number goes to the file: its address is never emptied
     expect(api.saveCustomer.mock.calls[1][0]).toEqual({ id: 'c-new', phone: '438 555-0199' });
     expect(api.bookJob.mock.calls.at(-1)![0]).toMatchObject({ customer_id: 'c-new', address: '99 rue Typed' });
+  });
+
+  it('a new caller’s address typed right before « Réserver »: the file and the appointment go with its position (R164)', async () => {
+    api.saveCustomer.mockImplementation(async (c: Record<string, unknown>) => { upsertLocal('customers', [{ ...c, id: 'c-new' }], { force: true }); return 'c-new'; });
+    // the field's own lookup has not answered yet: the place on screen has no position; the one asked at the tap finds it
+    places.withPosition.mockImplementation(async (p: { address: string }) => (p.address.trim() === '99 rue Typed' ? { ...p, lat: 45.51, lng: -73.62, city: 'Montréal' } : p));
+    await draw('call=1&start=job&phone=438%20555-0100&name=Mario');
+    const street = box.querySelector('[data-testid="call-address"] [data-testid="address-input"]') as HTMLInputElement;
+    await act(async () => { street.value = '99 rue Typed'; street.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('book-confirm'));
+    expect(places.withPosition).toHaveBeenCalledWith(expect.objectContaining({ address: '99 rue Typed', lat: null }));
+    expect(api.saveCustomer.mock.calls[0][0]).toMatchObject({ address: '99 rue Typed', lat: 45.51, lng: -73.62, city: 'Montréal' });
+    expect(api.bookJob.mock.calls[0][0]).toMatchObject({ customer_id: 'c-new', address: '99 rue Typed', lat: 45.51, lng: -73.62 });
   });
 
   it('an estimate for two cars, the second refused: the estimate’s own appointment does not stop the retry, which goes without the estimate (booking-a-08)', async () => {
