@@ -179,6 +179,7 @@ describe('Réserver en ligne, when something goes wrong', () => {
     answer = (a) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] } : {};
     await toSlots();
     await click(q('book-slot')[0]);
+    await wait(60);   // the new step's title takes the focus 30 ms after it is drawn: a person taps later than that
     await click(q('book-submit')[0]);
     expect(document.activeElement).toBe(q('book-first')[0]);
     expect(calls.some((c) => c.action === 'book')).toBe(false);

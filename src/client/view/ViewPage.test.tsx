@@ -287,27 +287,49 @@ describe('coming back to the tab (client-page-16)', () => {
   });
   it('an answer that arrives after a newer one is dropped', async () => {
     let release: (v: JobView) => void = () => undefined;
-    let n = 0;
+    let views = 0;
     server = (a) => {
-      n += 1;
-      if (a === 'sign') return new Promise<JobView>((r) => { release = r; });   // slow: answers last
-      return n === 1 ? job() : signed(job());
+      if (a === 'sign') return signed(job());
+      views += 1;
+      if (views === 2) return new Promise<JobView>((r) => { release = r; });   // the refresh: slow, answers last
+      return job();
     };
     await open();
-    // the tap starts (the slow sign), then the page is read again and shows the signed estimate
-    void act(async () => { q('client-sign-click')[0].click(); });
-    await wait();
     const later = Date.now() + 60000;
     vi.spyOn(Date, 'now').mockImplementation(() => later);
     try {
+      // back on the tab: the file is read again (slow), and meanwhile the customer signs
       await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
-      await wait(); await wait();
+      await wait();
+      await click(q('client-sign-click')[0]);
       expect(q('client-signed')).toHaveLength(1);
-      // the old answer of the sign (the unsigned estimate) arrives now: it must not bring the button back
+      // the old read (the unsigned estimate) arrives now: it must not bring the button back
       await act(async () => { release(job()); });
       await wait(); await wait();
       expect(q('client-signed')).toHaveLength(1);
       expect(q('client-sign-click')).toHaveLength(0);
+    } finally { vi.restoreAllMocks(); }
+  });
+  it('a signature on its way: coming back to the tab reads nothing until it has landed (client-r2)', async () => {
+    let release: (v: JobView) => void = () => undefined;
+    server = (a) => (a === 'sign' ? new Promise<JobView>((r) => { release = r; }) : job());
+    await open();
+    void act(async () => { q('client-sign-click')[0].click(); });
+    await wait();
+    let later = Date.now() + 60000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+      await wait(); await wait();
+      expect(calls.filter((c) => c.action === 'view')).toHaveLength(1);        // no read raced the signature
+      await act(async () => { release(signed(job())); });
+      await wait(); await wait();
+      expect(q('client-signed')).toHaveLength(1);
+      // landed: the next return to the tab, a while later, reads the file again
+      later += 60000;
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+      await wait(); await wait();
+      expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);
     } finally { vi.restoreAllMocks(); }
   });
 });

@@ -40,6 +40,13 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
   const latest = useRef<View | null>(null);
   const loadedAt = useRef(0);
   const checking = useRef(false);
+  // a signature or an answer on its way: the refresh on tab return waits (read before the write landed, it would show
+  // the file as it was and drop the write's own answer, which carries a lower number — client-r2)
+  const writing = useRef(0);
+  const whileWriting = async <T,>(f: () => Promise<T>): Promise<T> => {
+    writing.current += 1;
+    try { return await f(); } finally { writing.current -= 1; }
+  };
   // what the file had received before this tab left for Stripe (read once, on the way back)
   const receivedBefore = useRef<number | null>(retour === 'paye' ? recallPaying(token) : null);
 
@@ -111,7 +118,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     if (retour === 'paye') void runCheck();
     else void load().then((nv) => { if (nv?.kind === 'job' && nv.pay.pending) void settlePending(nv); });
     const refresh = () => {
-      if (document.visibilityState !== 'visible' || checking.current || !latest.current) return;
+      if (document.visibilityState !== 'visible' || checking.current || writing.current > 0 || !latest.current) return;
       if (Date.now() - loadedAt.current < STALE_MS) return;
       void load();
     };
@@ -135,7 +142,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
   };
 
   /** the extra work accepted or refused, for the amount the page shows (the server refuses another one) */
-  const answer = async (x: ExtraV, accept: boolean): Promise<ActResult> => {
+  const answer = (x: ExtraV, accept: boolean): Promise<ActResult> => whileWriting(async () => {
     const { n, r } = await ask('answer', { item_id: x.id, accept, confirm: true, shown_cents: lineCents(x) });
     if (!alive.current) return { ok: true };
     if (!r.ok) return refused('answer', r.error);
@@ -145,11 +152,11 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     const wanted = accept ? 'approved' : 'declined';
     setReply(now && now !== 'proposed' && now !== wanted ? { kind: 'already', status: now } : { kind: 'thanks' });
     return { ok: true };
-  };
+  });
 
   /** the estimate signed: one tap (drawn = null, the name on the file) or the name and the finger; always for the total
       the page shows */
-  const sign = async (drawn: Drawn | null): Promise<ActResult> => {
+  const sign = (drawn: Drawn | null): Promise<ActResult> => whileWriting(async () => {
     const v = latest.current;
     let body: Record<string, unknown> = { click: true, confirm: true };
     if (drawn) {
@@ -168,7 +175,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
       if (nv?.kind === 'job' && estimateSigned(nv)) return { ok: true };
     }
     return refused('sign', r.error);
-  };
+  });
 
   /** Stripe's card page, in the page's language */
   const pay = async (l: CLang) => {

@@ -21,7 +21,11 @@ export function EstimateSign(p: { v: JobView; l: CLang; onSign: (d: Drawn | null
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [agree, setAgree] = useState(false);
+  // « J’accepte … {total} » is ticked FOR a total: when the file read again shows another one (the mechanic added work
+  // while the customer was away from the tab), the box is no longer ticked and the page says the total changed
+  const [agreedFor, setAgreedFor] = useState<number | null>(null);
+  const agree = agreedFor != null && agreedFor === v.expected.total;
+  const moved = agreedFor != null && !agree;
   const [said, setSaid] = useState<Said>(null);
   const [busy, setBusy] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -37,7 +41,7 @@ export function EstimateSign(p: { v: JobView; l: CLang; onSign: (d: Drawn | null
       if (r.ok) return true;
       if (r.code === 'amount_changed') {
         // the box ticked said the old total: it must be ticked again for the new one
-        setAgree(false);
+        setAgreedFor(null);
         setSaid({ text: ct(l, r.key, { total: cad(r.cents ?? v.expected.total, l) }), kind: 'warn' });
       } else setSaid(bad(ct(l, r.key)));
       return false;
@@ -58,14 +62,14 @@ export function EstimateSign(p: { v: JobView; l: CLang; onSign: (d: Drawn | null
       <p class="cl-cond">{v.conditions}</p>
     </details>
   );
-  const note = said && <Note kind={said.kind}>{said.text}</Note>;
+  const saidNote = said && <Note kind={said.kind}>{said.text}</Note>;
   if (!open) {
     return (
       <div class="cl-sign cl-noprint" data-testid="client-sign">
         {e.changed && <Note kind="warn">{ct(l, 'sign.changed')}</Note>}
         <p class="cl-sub" style={{ margin: 0 }}>{ct(l, 'sign.oneLead', { garage: garageName(v.garage, l) })}</p>
         {conditions}
-        {note}
+        {saidNote}
         <Button variant="primary" block busy={busy} icon={<PenLine />} onClick={() => send(null)} data-testid="client-sign-click">{ct(l, 'sign.oneButton')}</Button>
         <p class="cl-small cl-muted" style={{ margin: 0 }}>{ct(l, 'sign.oneNote')}{' '}
           <button type="button" class="cl-linkbtn" onClick={() => { setOpen(true); setSaid(null); }} data-testid="client-sign-open">{ct(l, 'sign.drawInstead')}</button>
@@ -91,10 +95,10 @@ export function EstimateSign(p: { v: JobView; l: CLang; onSign: (d: Drawn | null
       </label>
       <SignaturePad strokes={strokes} onStrokes={(x) => { setStrokes(x); setSaid(null); }} label={ct(l, 'sign.padLabel')} hint={ct(l, 'sign.pad')} clearLabel={ct(l, 'sign.clear')} height={190} data-testid="client-sign-pad" />
       <label class="cl-check">
-        <input type="checkbox" checked={agree} onChange={(x) => { setAgree((x.currentTarget as HTMLInputElement).checked); setSaid(null); }} data-testid="client-sign-agree" />
+        <input type="checkbox" checked={agree} onChange={(x) => { setAgreedFor((x.currentTarget as HTMLInputElement).checked ? v.expected.total : null); setSaid(null); }} data-testid="client-sign-agree" />
         <span>{ct(l, 'sign.agree', { total })}</span>
       </label>
-      {note}
+      {saidNote || (moved && <Note kind="warn" data-testid="client-sign-moved">{ct(l, 'sign.changedNow', { total })}</Note>)}
       <div class="cl-choice">
         <Button onClick={() => setOpen(false)} data-testid="client-sign-cancel">{ct(l, 'sign.cancel')}</Button>
         <Button variant="primary" busy={busy} onClick={submit} data-testid="client-sign-submit">{ct(l, 'sign.submit')}</Button>
