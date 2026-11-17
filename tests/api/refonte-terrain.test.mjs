@@ -669,6 +669,82 @@ test('a backup that stops is said by EVERY reconciliation (the schedule’s, « 
   }
 });
 
+test('the reconciliation finds each Stripe refund under the page the server writes it (applyRefunds’ own rule): a payment with no Stripe page in the books is « <payment>#<refund> », and Stripe is not asked', async () => {
+  const { refundPage } = await import('../../supabase/functions/recon/pages.ts');
+  const job = randomUUID(), inv = randomUUID();
+  let asked = 0;
+  const stripe = (s) => async () => { asked++; return s; };
+  const page = (cs, md) => ({ id: cs, payment_status: 'paid', metadata: md });
+  // in the books without its Stripe page (an older row): written by applyRefunds as « pi_x#re_… », Stripe never asked
+  assert.deepEqual(await refundPage('pi_old', async () => ({ stripe_session: null, job_id: job, invoice_id: null }), undefined, stripe(page('cs_old', { job_id: job }))),
+    { page: 'pi_old', job, invoice: null, from: 'books' });
+  assert.equal(asked, 0, 'the books have the payment: Stripe is not asked');
+  // in the books with its page: that page, even when Stripe would name another one
+  assert.deepEqual(await refundPage('pi_a', async () => ({ stripe_session: 'cs_a', job_id: null, invoice_id: inv }), page('cs_other', { job_id: job }), stripe(null)),
+    { page: 'cs_a', job: null, invoice: inv, from: 'books' });
+  // not in the books (its payment kept aside, or its notice lost): the page of the app, seen in the list or asked from Stripe
+  assert.deepEqual(await refundPage('pi_b', async () => null, page('cs_b', { job_id: job }), stripe(null)), { page: 'cs_b', job, invoice: null, from: 'stripe' });
+  assert.equal(asked, 0);
+  assert.deepEqual(await refundPage('pi_c', async () => null, undefined, stripe(page('cs_c', { invoice_id: inv }))), { page: 'cs_c', job: null, invoice: inv, from: 'stripe' });
+  assert.equal(asked, 1);
+  // not the app's: no page of ours, a page not paid, no payment id
+  assert.equal(await refundPage('pi_d', async () => null, undefined, stripe(page('cs_d', {}))), null);
+  assert.equal(await refundPage('pi_e', async () => null, undefined, stripe({ id: 'cs_e', payment_status: 'unpaid', metadata: { job_id: job } })), null);
+  assert.equal(await refundPage('', async () => ({ stripe_session: 'cs_f', job_id: job }), undefined, stripe(null)), null);
+});
+
+test('a Stripe refund kept aside for the office (activity « payment_parked »), or written under the payment id: never a « stripe_refund_not_recorded » red line (M6.parked already says that money)', async (t) => {
+  const real = (await q(`select to_regprocedure('public.recon_run(date,text)') is not null as there`))[0].there;
+  if (!real) { t.skip('the reconciliation’s SQL is not in this database'); return; }
+  const since = (await q(`select now() t`))[0].t;
+  const stripeKey = `sk_test_aside${randomUUID().replace(/-/g, '')}`;
+  const sk = { authorization: `Bearer ${stripeKey}`, 'content-type': 'application/x-www-form-urlencoded' };
+  const cust = randomUUID(); made.customers.push(cust);
+  const job = randomUUID();
+  try {
+    await q(`delete from public.secrets where key like 'stripe%'`);
+    await q(`insert into public.secrets (key, value) values ('stripe_key', $1)`, [stripeKey]);
+    await q(`delete from public.ops_backup_runs`); await q(`delete from public.secrets where key like 'backup_repo:%'`);
+    await q(`insert into public.customers (id, first_name, phone) values ($1, 'Rembourse', '438 556-0191')`, [cust]);
+    await q(`insert into public.jobs (id, customer_id, day, block, status, duration_min) values ($1, $2, public.local_today(), 'am', 'booked', 60)`, [job, cust]);
+    const open = async (cents) => (await (await fetch(`${MOCK}/stripe/v1/checkout/sessions`, { method: 'POST', headers: sk,
+      body: new URLSearchParams({ 'line_items[0][price_data][unit_amount]': String(cents), 'metadata[job_id]': job }) })).json()).id;
+    // A: in the books, its refund refused for good and kept aside (record() → park: « <page>#<refund> »)
+    // B: the payment itself kept aside, and its refund beside it (applyRefunds: « <cs>#<refund> »)
+    // C: in the books under no Stripe page (an older row): its refund is written « <payment id>#<refund> »
+    // D: in the books, its refund lost: the one red line
+    const [A, B, C, D] = [await open(6000), await open(7000), await open(8000), await open(9000)];
+    for (const id of [A, B, C, D]) await fetch(`${MOCK}/pay/${id}`);
+    await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, 6000, 'card_online', $2, $3), ($1, 8000, 'card_online', null, $4), ($1, 9000, 'card_online', $5, $6)`,
+      [job, A, `pi_${A}`, `pi_${C}`, D, `pi_${D}`]);
+    const re = {};
+    for (const [id, cents] of [[A, 1500], [B, 2000], [C, 2500], [D, 3500]]) re[id] = (await (await fetch(`${MOCK}/refund/${id}?amount=${cents}`)).json()).refund;
+    assert.ok(Object.values(re).every(Boolean), JSON.stringify(re));
+    await q(`insert into public.activity (entity, entity_id, action, data) values
+      ('job', $1, 'payment_parked', jsonb_build_object('kind', 'refund', 'session', $2::text, 'amount_cents', -1500, 'reason', 'refused')),
+      ('job', $1, 'payment_parked', jsonb_build_object('kind', 'payment', 'session', $3::text, 'amount_cents', 7000, 'reason', 'refused')),
+      ('job', $1, 'payment_parked', jsonb_build_object('kind', 'refund', 'session', $4::text, 'amount_cents', -2000, 'reason', 'paiement pas inscrit'))`,
+      [job, `${A}#${re[A]}`, B, `${B}#${re[B]}`]);
+    await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, -2500, 'card_online', $2, $3)`, [job, `pi_${C}#${re[C]}`, re[C]]);
+    await q(`delete from public.rate_limits where key = 'recon:run'`);
+    const r = await fn('recon', { action: 'run' }, ownerJwt);
+    assert.equal(r.ok, true, JSON.stringify(r).slice(0, 400));
+    const refunds = r.added.filter((a) => a.check === 'stripe_refund_not_recorded');
+    assert.deepEqual(refunds.map((a) => a.message_fr.match(/[\d,]+ \$/)[0]), ['35,00 $'], 'only the refund really missing (D): ' + JSON.stringify(r.added.map((a) => [a.check, a.message_fr])));
+    assert.deepEqual([r.outside.stripe.refunds_missing, r.outside.stripe.refunds_aside], [1, 2], JSON.stringify(r.outside.stripe));
+    const red = await q(`select data->>'session' s from public.ops_recon_findings where check_id = 'stripe_refund_not_recorded' and state = 'open' and entity_id = $1`, [job]);
+    assert.deepEqual(red.map((x) => x.s), [D]);
+  } finally {
+    await q(`delete from public.payments where job_id = $1`, [job]);
+    await q(`delete from public.activity where entity_id = $1 and action = 'payment_parked'`, [job]);
+    await q(`delete from public.secrets where key like 'stripe%'`);
+    await q(`delete from public.rate_limits where key = 'recon:run'`);
+    await q(`delete from public.ops_recon_findings where created_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_runs where started_at >= $1`, [since]);
+    await q(`delete from public.ops_recon_baseline where set_at >= $1`, [since]);
+  }
+});
+
 /* ---------- « Je pars »: whose trip, two at once, the way back sent twice ---------- */
 async function enrouteSetup(driverId) {
   const dow = (await q(`select extract(dow from public.local_today())::int d`))[0].d;
