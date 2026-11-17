@@ -259,6 +259,8 @@ step('the update: the next morning the phones open the same address, now the reb
   await page.goto(h.APP);
   await page.getByTestId('app').waitFor({ timeout: 20000 });
   assert.equal(await m.whichApp(page), 'old', 'no signal: yesterday’s app, from the phone');
+  const hisKeys = () => page.evaluate(() => Object.keys(localStorage).filter((k) => /^his[.-]/.test(k)).sort());
+  const keptBefore = await hisKeys();
   // the files come: yesterday's app finds the new version when it opens, downloads it and says so
   await p.ctx.setOffline(false);
   await page.reload();
@@ -272,6 +274,10 @@ step('the update: the next morning the phones open the same address, now the reb
   assert.equal(await becomes(page, 'new'), 'new', 'the rebuilt app runs after « Update now »');
   await p.ctx.setOffline(true);
   await sameAsYesterday(page);
+  // what yesterday's app kept in the browser's small storage is all still there (the session, the language, the look, the photo…)
+  const keptAfter = await hisKeys();
+  show('his.* keys before → after', { before: keptBefore, after: keptAfter });
+  assert.deepEqual(keptBefore.filter((k) => !keptAfter.includes(k)), [], 'no key of yesterday’s app lost');
   // his work of yesterday is shown as done on the phone, and listed as waiting
   await page.goto(h.APP + `#/job/${y.jobA}`);
   await page.getByTestId('job-screen').waitFor({ timeout: 15000 });
