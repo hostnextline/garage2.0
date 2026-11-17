@@ -21,8 +21,8 @@ const win = (start: number): Suggestion => ({ day: D, block: 'day', drive_min: 5
 const Q = { lat: 45.5, lng: -73.6, duration: 60, kind: null, need: false, exclude: null };
 
 let seen: DayWins | null = null;
-function Days(p: { bump: number }) {
-  const of = useDayWindows([D], Q, true, p.bump, dayStamp);
+function Days(p: { bump: number; online?: boolean }) {
+  const of = useDayWindows([D], Q, p.online ?? true, p.bump, dayStamp);
   seen = of(D);
   return null;
 }
@@ -78,6 +78,43 @@ describe('the windows of each day shown', () => {
     await wait();
     expect(seen).toMatchObject({ status: 'loading' });
     expect(seen?.rows.map((r) => r.win_start)).toEqual([840]);
+  });
+  // booking-b-17: no test said what the calendar shows without network, when the server fails, or after the answers expire
+  it('offline: said at once and nothing asked; no answer on the way: offline; the server failed: error', async () => {
+    act(() => render(<Days bump={0} online={false} />, box));
+    await wait();
+    expect(seen).toEqual({ status: 'offline', rows: [] });
+    expect(api.suggestWindows).not.toHaveBeenCalled();
+    api.suggestWindows.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    act(() => render(<Days bump={0} />, box));
+    await wait();
+    expect(seen).toEqual({ status: 'offline', rows: [] });
+    api.suggestWindows.mockRejectedValueOnce({ code: 'P0001', message: 'boom' });
+    act(() => render(<Days bump={1} />, box));
+    await wait();
+    expect(seen).toEqual({ status: 'error', rows: [] });
+  });
+  it('an answer is kept 45 s (going back to the day asks nothing), then asked again', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-18T17:00:00Z'));
+      api.suggestWindows.mockResolvedValue([win(540)]);
+      act(() => render(<Days bump={0} />, box));
+      await wait();
+      expect(api.suggestWindows).toHaveBeenCalledTimes(1);
+      act(() => render(null, box));
+      vi.setSystemTime(new Date('2026-11-18T17:00:40Z'));
+      act(() => render(<Days bump={0} />, box));
+      expect(seen?.status).toBe('ok');
+      await wait();
+      expect(api.suggestWindows).toHaveBeenCalledTimes(1);
+      act(() => render(null, box));
+      vi.setSystemTime(new Date('2026-11-18T17:00:46Z'));
+      act(() => render(<Days bump={0} />, box));
+      await wait();
+      expect(api.suggestWindows).toHaveBeenCalledTimes(2);
+      expect(seen).toMatchObject({ status: 'ok' });
+    } finally { vi.useRealTimers(); }
   });
 });
 
@@ -135,7 +172,9 @@ describe('the clock', () => {
   it('draws again at each new minute, so midnight and the hours passing are seen', async () => {
     vi.useFakeTimers();
     try {
-      vi.setSystemTime(new Date(2026, 10, 20, 23, 59, 30));
+      // 23 h 59 30 s in Montréal (EST, UTC−5), whatever the zone of the machine running the tests: the code reads the
+      // garage's clock (lib/dates), so the instant must be given in UTC, never with the machine's local Date fields
+      vi.setSystemTime(new Date('2026-11-21T04:59:30Z'));
       let at = '';
       function Clock() { const c = useClock(); at = `${c.today} ${c.now}`; return null; }
       act(() => render(<Clock />, box));

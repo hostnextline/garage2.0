@@ -71,6 +71,51 @@ describe('a window chosen elsewhere that the server no longer lists', () => {
     expect(windowGone({ ...picked, win_start: 840 }, { status: 'ok' }, [row(840)], null, windowOf)).toBe(false);
     expect(windowGone(null, { status: 'ok' }, [], null, windowOf)).toBe(false);
   });
+  // R64 (x-time-02): « cette plage n'est plus possible » reads the server's rows exactly as the calendar's units do, with
+  // any « avant », rounding and first hour, rows on the rule's grid or not, a vehicle chosen or not: a window the calendar
+  // shows open is never taken back, and a window is taken back only when the server lists none starting there
+  it('never takes back a window the calendar shows open, whatever the settings (R64)', () => {
+    const settings = [
+      { before: 60, after: 180, round: 60, dayStart: 480 },
+      { before: 30, after: 210, round: 60, dayStart: 510 },
+      { before: 45, after: 195, round: 30, dayStart: 480 },
+      { before: 0, after: 240, round: 15, dayStart: 495 }
+    ];
+    for (const s of settings) {
+      const of = (eta: number) => windowFor(eta, { ...s, dayEnd: 1200 });
+      const sp: Range = [s.dayStart, 1200];
+      // rows on the rule's grid (win_for of an arrival), on another grid (a half hour off), one without its window
+      const rows = [row(of(900)[0], 'T1', 900), row(of(600)[0] + 30, 'T1', 640), { ...row(0, 'T2', 1020), win_start: null }];
+      for (const truckId of [null, 'T1']) {
+        const d = windowDay({ day: '2026-11-20', today: '2026-11-16', now: 600, span: sp, len: 240, windowOf: of, wins: { status: 'ok', rows }, truckId,
+          worked: Array(Math.ceil((1200 - s.dayStart) / 15)).fill(true), picked: null, moving: null, jobs: [] });
+        const shown = new Set(d.open.map((m) => of(m)[0]));
+        const starts = new Set([...rows.map((r) => r.win_start ?? of(r.eta!)[0]), ...d.open.map((m) => of(m)[0])]);
+        for (const st of starts) {
+          const gone = windowGone({ day: '2026-11-20', block: 'day', win_start: st, win_end: st + 240 }, { status: 'ok' }, rows, truckId, of);
+          // a window the calendar shows open is never taken back
+          if (shown.has(st)) expect([s, truckId, st, gone]).toEqual([s, truckId, st, false]);
+          // the same rule written again (a check of the rule against itself, for every setting; the answers written out by
+          // hand are in the next test)
+          const listed = ofTruck(rows, truckId).some((r) => (r.win_start ?? of(r.eta!)[0]) === st);
+          expect([s, truckId, st, gone]).toEqual([s, truckId, st, !listed]);
+        }
+      }
+    }
+  });
+  // review moment-pickers-r2-3: the answers written out by hand for « avant » 60, rounding 60, first hour 8 h. The server
+  // lists 14 h (an arrival at 15 h, on the rule's grid), 9 h 30 (a half hour off the grid: arrival 10 h 40) for T1, and
+  // for T2 a row with no window whose arrival at 17 h gives 16 h. Taken back only when no window of this vehicle starts there
+  it('taken back only when the server lists no window starting there for this vehicle (R64, written by hand)', () => {
+    const rows = [row(840, 'T1', 900), row(570, 'T1', 640), { ...row(0, 'T2', 1020), win_start: null }];
+    const starts = [540, 570, 600, 840, 900, 960];
+    const gone = (truckId: string | null) => starts.map((st) => windowGone({ day: '2026-11-20', block: 'day', win_start: st, win_end: st + 240 }, { status: 'ok' }, rows, truckId, windowOf));
+    // any vehicle: 9 h 30, 14 h and 16 h are listed
+    expect(gone(null)).toEqual([true, false, true, false, true, false]);
+    // T1: 16 h is T2's only
+    expect(gone('T1')).toEqual([true, false, true, false, true, true]);
+    expect(gone('T2')).toEqual([true, true, true, true, true, false]);
+  });
 });
 
 const g = (dayStr: string, kind: GridDay['kind'], open: number[] = [], status: GridDay['status'] = kind === 'loading' ? 'loading' : 'ok', stale = false) =>

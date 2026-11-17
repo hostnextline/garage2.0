@@ -106,7 +106,8 @@ export function BlocksPicker(p: BlockPickerProps) {
   const hoverMoment = hov.hover ? moments.get(hov.hover.key) : undefined;
   const menuProps = (day: string, block: BlockKey) => {
     const actions = () => momentActions(() => pick(day, block), hasPos ? () => see(day, block) : null);
-    return { onContextMenu: (e: MouseEvent) => openMenu(e, actions(), phrase(day, block)), ...pressProps((x, y) => { openMenuAt(x, y, actions(), phrase(day, block)); }) };
+    // the small map of the moment closes as the menu opens (booking-b-31: it could stay over the menu)
+    return { onContextMenu: (e: MouseEvent) => { hov.off(); openMenu(e, actions(), phrase(day, block)); }, ...pressProps((x, y) => { hov.off(); openMenuAt(x, y, actions(), phrase(day, block)); }) };
   };
 
   /* which stop of its route the appointment would be at each moment offered (the phone's copy of the day, the same

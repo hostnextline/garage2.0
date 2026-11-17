@@ -1,6 +1,6 @@
 /* The bugs of the moment pickers found by the scan of 2026-11-15, each drawn with the real pickers and a pretended
    server (each test fails with the pickers of before). */
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { useState } from 'preact/hooks';
@@ -11,7 +11,14 @@ const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 const seen = vi.hoisted(() => ({ preview: [] as { onPick?: () => void }[], menus: [] as MenuAction[][] }));
 vi.mock('../../data/api', () => api);
 vi.mock('../../data/auth', () => ({ isOwner: () => false, hasRole: () => false }));
-vi.mock('./RoutePreview', () => ({ RoutePreview: (p: { onPick?: () => void }) => { seen.preview.push(p); return null; }, RouteHover: () => null, MapHover: () => null, floatStyle: () => ({}) }));
+// the small map beside a moment under the mouse leaves a mark (RouteHover in blocks mode, RoutePreview `float` with windows)
+vi.mock('./RoutePreview', async () => {
+  const { h } = await import('preact');
+  return {
+    RoutePreview: (p: { onPick?: () => void; float?: unknown }) => { seen.preview.push(p); return p.float ? h('i', { 'data-testid': 'test-hover-map' }) : null; },
+    RouteHover: () => h('i', { 'data-testid': 'test-hover-map' }), MapHover: () => null, floatStyle: () => ({})
+  };
+});
 vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ask: ui.ask, toast: ui.toast }));
 vi.mock('../../ui/ContextMenu', async (orig) => ({ ...(await orig<typeof import('../../ui/ContextMenu')>()), openMenu: (_e: MouseEvent, a: MenuAction[]) => { seen.menus.push(a); } }));
 
@@ -22,6 +29,12 @@ import type { FarInfo } from '../../domain/moment/logic';
 import { BlockPicker, type BlockChoice } from './BlockPicker';
 import { forgetWindows } from './useDayWindows';
 
+// R81: the calendar is the garage's (Montréal) clock, frozen at a Wednesday noon (17 h UTC = 12 h EST): a run that
+// crosses midnight, or a machine on another zone, sees the same « today » and « tomorrow » as the pickers. Only Date
+// is pretended, the timers stay real (the waits for the server's pretended answers)
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-11-18T17:00:00Z'));
+afterAll(() => { vi.useRealTimers(); });
 const tomorrow = addDays(today(), 1);
 const later = addDays(today(), 3);
 const box = document.createElement('div');
@@ -220,6 +233,55 @@ describe('the time grid on a touch screen (booking-b-09)', () => {
       await act(async () => { unit(900).dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
       expect(q('pick-label')).toBeNull();
     } finally { window.matchMedia = mm; }
+  });
+});
+
+// booking-b-31: the small map of a moment under the mouse (z-index 85) stayed open when the right-click menu (80) opened,
+// and could cover it
+describe('the small map of a moment closes when its menu opens (booking-b-31)', () => {
+  const fine = () => { const mm = window.matchMedia; window.matchMedia = ((query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia; return () => { window.matchMedia = mm; }; };
+  it('with « Plages d’arrivée »: a best moment', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      await act(async () => { q('win-sugg-0')!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+      await wait(450);
+      expect(q('test-hover-map')).toBeTruthy();
+      await act(async () => { q('win-sugg-0')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+      expect(seen.menus).toHaveLength(1);
+      expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
+  });
+  // the right-click on a day of the windows calendar opens its own menu (dayMenu): the small map closes there too
+  it('with « Plages d’arrivée »: a day of the calendar', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      await act(async () => { q('win-sugg-0')!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+      await wait(450);
+      expect(q('test-hover-map')).toBeTruthy();
+      await act(async () => { q(`pick-day-${tomorrow}`)!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+      expect(seen.menus).toHaveLength(1);
+      expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
+  });
+  it('blocks: a moment offered', async () => {
+    windowsOn(false);
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }]);
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const row = all('bp-sugg')[0];
+      await act(async () => { row.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+      await wait(350);
+      expect(q('test-hover-map')).toBeTruthy();
+      await act(async () => { row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+      expect(seen.menus).toHaveLength(1);
+      expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
   });
 });
 

@@ -1,0 +1,4 @@
+/* the « texto à envoyer » sheet (notify.tsx): its own rule, so the sheet keeps its bubble on a screen that loaded no
+   picker (R66). The same rule stays in booking.css, word for word, until the shell stops loading booking.css at start. */
+.sms-bubble { margin: 0; padding: var(--sp-3) var(--sp-4); border-radius: 18px 18px 18px 6px; background: var(--sunken); border: 1px solid var(--line);
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-size: var(--t-md); line-height: var(--lh); }

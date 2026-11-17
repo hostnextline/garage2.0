@@ -5,12 +5,15 @@ import { render } from 'preact';
 import { signal } from '@preact/signals';
 import { MessageSquare, Copy, Share2 } from 'lucide-preact';
 import { notify, errorMessage } from '../../data/api';
+import { uuid } from '../../data/sync';
+import { isNetworkError } from '../../lib/errors';
 import { job as jobRow, customer as customerRow, settings } from '../../data/select';
 import { choiceWords } from '../../domain/moment/choice';
 import { t } from '../../lib/i18n';
 import { e164 } from '../../lib/text';
 import type { Job } from '../../data/types';
 import { Sheet, Button, toast } from '../../ui';
+import './notify.css';
 
 export type NotifyKind = 'booking' | 'moved';
 /** `when`: « Plages d'arrivée »: the window the customer was told (« Demain, entre 14 h et 18 h »), said above the text so
@@ -41,12 +44,34 @@ function windowSaid(j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_end' | 'wi
   return choiceWords({ day: j.day, block: 'day', win_start: j.win_start ?? null, win_end: j.win_end ?? null, win_flex: !!j.win_flex && j.win_start == null });
 }
 
+/** the wait before the one new try of a send whose answer never came (a weak signal) */
+export const NOTIFY_RETRY_MS = 2000;
+/** the wait before asking once more a send the server says is still going on (« busy », after a lost answer) */
+export const NOTIFY_BUSY_MS = 5000;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** the send, with its own id (`op`, R27): when the answer is lost on the way (no network, a timeout), it is asked once more
+    with the SAME id, so the server answers what the first one did (« sent ») instead of texting the customer twice; a
+    refusal or any answer of the server is never asked again. After a timeout the first send may still be running on the
+    server (a slow text provider): the server then answers « busy » (409) without its outcome, and the same id is asked
+    one last time a few seconds later (moment-pickers-r2-1) */
+async function sendOnce(kind: NotifyKind, jobId: string) {
+  const op = uuid();
+  try { return await notify(kind, jobId, { op }); } catch (e) {
+    if (!isNetworkError(e)) throw e;
+    await pause(NOTIFY_RETRY_MS);
+    const r = await notify(kind, jobId, { op });
+    if (r?.code !== 'busy') return r;
+    await pause(NOTIFY_BUSY_MS);
+    return await notify(kind, jobId, { op });
+  }
+}
+
 /** sends the customer's text and says what happened (never throws) */
 export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { customerId?: string | null; when?: string | null } = {}): Promise<void> {
   const c = customerRow(opts.customerId ?? jobRow(jobId)?.customer_id);
   const name = c ? (c.first_name || c.company || c.last_name || '') : '';
   try {
-    const r = await notify(kind, jobId);
+    const r = await sendOnce(kind, jobId);
     const status = String(r?.status || (r?.ok === false ? 'error' : ''));
     // the window as the server has it now (the job's row), else the one just chosen on the screen
     const open = () => openMessage({ name, phone: r?.phone ?? c?.phone ?? null, message: r?.message || '', link: r?.link || null, when: windowSaid(jobRow(jobId)) ?? opts.when ?? null });
@@ -57,7 +82,11 @@ export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { cu
     else if (status === 'quiet') toast(t('booking.momentPickers.smsQuiet'));
     else if ((status === 'off' || status === 'error') && (r?.message || r?.link)) {
       toast(t(status === 'off' ? 'booking.sms.off' : 'booking.sms.error'), { kind: status === 'error' ? 'bad' : 'info', ms: 12000, action: { label: t('booking.sms.show'), run: open } });
-    } else if (r?.ok === false || status === 'error') toast(t('booking.sms.failed', { msg: r?.error || '' }).trim(), { kind: 'bad' });
+    }
+    // the same send still going on on the server: its outcome is not known yet (the customer may have the text), never
+    // « n'est pas parti »; the server's own words, calmly
+    else if (r?.code === 'busy') toast(errorMessage(r));
+    else if (r?.ok === false || status === 'error') toast(t('booking.sms.failed', { msg: r?.error || '' }).trim(), { kind: 'bad' });
   } catch (e) {
     toast(t('booking.sms.failed', { msg: errorMessage(e) }), { kind: 'bad' });
   }
