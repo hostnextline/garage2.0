@@ -255,11 +255,12 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   await h.as(null); await h.c.query('reset role');
   await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 1000, p_method: 'card_online', p_reference: 'pi_1', p_job: null, p_session: 'cs_1' });
   assert.equal(await h.val(`select invoice_id from public.payments where stripe_session = 'cs_1'`), null);
-  // a cash payment on a draft: still « finish it first »
+  // a cash payment on the reopened invoice (sent from a phone's queue): it waits on the job too (Part 27, invoices-quotes-10)
   await h.as(g.mech);
-  assert.equal((await h.fails(() => h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 500, p_method: 'cash', p_reference: null, p_job: null, p_session: null })))?.hint, 'invoice_first');
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: 500, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
+  assert.equal(await peek(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null and amount_cents = 500`, [jobId]), 1);
   await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
-  assert.equal(await peek(`select paid_cents from public.invoices where id = $1`, [inv]), 3000);
+  assert.equal(await peek(`select paid_cents from public.invoices where id = $1`, [inv]), 3500);
   // the job over: no more; paid: no more
   await h.as(null); await h.c.query('reset role');
   await h.c.query(`update public.jobs set status = 'done' where id = $1`, [jobId]);

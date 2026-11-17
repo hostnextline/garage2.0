@@ -18,6 +18,10 @@
 --                           A refund that failed, taken back (« …#echec », positive), goes where that refund is.
 --                         · locks the job, then the invoice: a card payment that lands while the invoice is being finished
 --                           no longer stays beside it.
+--                         · money a person recorded for an invoice that was opened again meanwhile (« Modifier la
+--                           facture », the payment sent later from the phone's queue) waits on the job and comes back on
+--                           the invoice when it is finished again, never more than the draft's total less what waits
+--                           (before: refused « invoice_first », the cash in a pocket and in no book).
 --   payment_remove        same lock order; a payment whose refund is noted is not removed alone (« refund_first »).
 --   invoice_finish        the totals are recomputed before the checks; a first finish under what was paid ahead is kept
 --                         « paid » and SAID (« over_cents » in the answer, activity « overpaid »); a reopened invoice keeps
@@ -282,7 +286,9 @@ end $$;
 -- ───────────────────────── payments ─────────────────────────
 
 /* payment_add(op, invoice, amount, method, reference, job, session)
-   A person (signed in): the invoice must be finished; never more than what is left to pay; never « card_online » nor a
+   A person (signed in): the invoice must be finished — or reopened (« Modifier la facture »: a draft that has its number),
+     then the money waits on the job, never more than the draft's total less what already waits there; never more than
+     what is left to pay; never « card_online » nor a
      Stripe session; a negative amount = money given back by hand, for the office (owner / « edit_invoices ») only and
      never more than what was paid.
    The server (no person):
@@ -303,6 +309,7 @@ declare v_done jsonb; inv public.invoices; j public.jobs; v_paid int; v_job uuid
   v_pjob uuid := p_job; v_stay boolean := false;
   dup public.payments; orig public.payments;
   v_why text; v_was uuid; v_was_no bigint; v_left int; v_over int := 0; v_id uuid;
+  v_draft int;   -- the total of the reopened invoice the money was meant for (it waits on the job meanwhile)
 begin
   v_done := public.op_begin(p_op, 'payment_add');
   if v_done is not null then return v_done; end if;
@@ -385,8 +392,11 @@ begin
       if v_person and not public.invoice_editable(inv.job_id) then perform public.fail('not_allowed', 'Tu ne peux pas encaisser cette facture.'); end if;
       if inv.status = 'void' then perform public.fail('void', 'Cette facture est annulée.'); end if;
       if inv.status = 'draft' then
-        -- (the server, as before) or money given back by the office while « Modifier la facture » is open: on the job
-        if inv.number is not null and inv.job_id is not null and (not v_person or v_office) then v_inv := null;
+        -- a draft that has its number is a finished invoice opened again (« Modifier la facture »): the money received
+        -- meanwhile — the server's, the office's given back, and the cash a phone recorded before it knew (sent from its
+        -- queue) — waits on the job and comes back on the invoice when it is finished again (before: a person's was
+        -- refused « Termine la facture », the cash in a pocket and in no book, invoices-quotes-10)
+        if inv.number is not null and inv.job_id is not null then v_inv := null; v_draft := inv.total_cents;
         else perform public.fail('invoice_first', 'Termine la facture avant d’encaisser.'); end if;
       end if;
     end if;
@@ -413,6 +423,15 @@ begin
       end if;
     elsif v_inv is not null then
       v_left := greatest(inv.total_cents - v_paid, 0);
+      if v_left = 0 then
+        perform public.fail('too_much', 'Cette facture est déjà payée au complet : il ne reste rien à encaisser.');
+      elsif p_amount_cents > v_left then
+        perform public.fail('too_much', format('Il reste %s $ à payer sur cette facture : le montant écrit est trop haut.', public.cents_text(v_left)));
+      end if;
+    elsif v_draft is not null then
+      -- on the reopened invoice: never more than its total less what already waits on the job (the same payment tapped
+      -- twice counts once; finishing it again refuses a total under what was paid anyway, « below_paid »)
+      v_left := greatest(v_draft - v_paid, 0);
       if v_left = 0 then
         perform public.fail('too_much', 'Cette facture est déjà payée au complet : il ne reste rien à encaisser.');
       elsif p_amount_cents > v_left then

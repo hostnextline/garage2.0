@@ -370,6 +370,48 @@ test('a person never records more than what is left to pay: the same payment tap
   assert.equal(await hint(h, () => pay(h, f2.inv, -100)), 'not_allowed', 'money given back: the office');
 }));
 
+test('a cash payment queued before « Modifier la facture » waits on the job and comes back on the invoice; a second tap is still refused (invoices-quotes-10)', () => tx(async (h) => {
+  const g = await garage(h);
+  const j = await siteJob(h, g);
+  const f = await finished(h, g, j);
+  // the mechanic records the cash without signal (queued); before it leaves the phone, the office reopens the invoice
+  const queued = uuid();
+  await h.as(g.owner);
+  await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: f.inv });
+  // the phone syncs: the cash is written, waiting on the job (before: « invoice_first », the cash in no book)
+  await h.as(g.mech);
+  const r = await pay(h, f.inv, 5000, 'cash', { op: queued });
+  assert.equal(r.ok, true);
+  await asDb(h);
+  const p = await h.one(`select invoice_id, job_id, amount_cents, method from public.payments where job_id = $1 and deleted_at is null`, [j]);
+  assert.deepEqual([p.invoice_id, p.job_id, p.amount_cents, p.method], [null, j, 5000, 'cash']);
+  // the same op sent again (a retry): its answer, still one payment
+  await h.as(g.mech);
+  assert.equal((await pay(h, f.inv, 5000, 'cash', { op: queued })).ok, true);
+  // never more than the draft's total less what already waits: the whole total again is refused, the rest passes
+  const e = await h.fails(() => pay(h, f.inv, f.total));
+  assert.equal(e?.hint, 'too_much'); assert.match(e.message, new RegExp(`${money(f.total - 5000)} \\$`));
+  await pay(h, f.inv, f.total - 5000, 'debit');
+  assert.equal(await hint(h, () => pay(h, f.inv, 100)), 'too_much', 'all of it waits: nothing more');
+  await asDb(h);
+  assert.equal(await h.val(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null and deleted_at is null`, [j]), 2);
+  assert.equal((await inv1(h, f.inv)).status, 'draft');
+  // finished again: the same number, the money back on it, paid
+  await h.as(g.owner);
+  const again = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: f.inv });
+  assert.deepEqual([Number(again.number), again.again], [f.number, true]);
+  const v = await inv1(h, f.inv);
+  assert.deepEqual([v.status, v.paid_cents], ['paid', f.total]);
+  await asDb(h);
+  assert.equal(await h.val(`select count(*)::int from public.payments where invoice_id = $1 and deleted_at is null`, [f.inv]), 2);
+  // a draft that never had a number: still « finish it first »
+  const j2 = await siteJob(h, g);
+  await h.as(g.owner);
+  const d2 = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: j2, p_refresh: true })).rows.invoices.find((x) => x.status === 'draft').id;
+  await h.as(g.mech);
+  assert.equal(await hint(h, () => pay(h, d2, 1000)), 'invoice_first');
+}));
+
 /* ───────────────────────── money given back ───────────────────────── */
 
 test('a card refund reaches the books where its payment is and the invoice follows; money given back by hand too, never more than was paid (sql-money-03, x-money-04)', () => tx(async (h) => {

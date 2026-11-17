@@ -1013,7 +1013,7 @@ test('« Terminer quand même » (asked by « argent »): the office’s word re
    Round 2
    ------------------------------------------------------------------------------------------------------------------ */
 
-test('R110: « Routes partagées » that is not a yes / no (« oui » written by hand) never breaks a mechanic’s rows', () => tx(async (h) => {
+test('R110: « Routes partagées » that is not a yes / no (« peut-être » written by hand) never breaks a mechanic’s rows', () => tx(async (h) => {
   const saleh = await h.person('Saleh', ['mechanic']);
   const tA = await h.truck('Camion', saleh, WEEK), tB = await h.truck('Voiture', null, WEEK);
   const c = await h.customer('Jean', ...near);
@@ -1022,10 +1022,12 @@ test('R110: « Routes partagées » that is not a yes / no (« oui » written by
   await put(h, null, { customer: c, day, block: 'am', truck: tB, order: 1, eta: 500 });
   const shared = (v) => server(h, saleh, `update public.settings set booking = jsonb_set(coalesce(booking, '{}'::jsonb), '{shared_routes}', $1::jsonb) where id = 1`, [JSON.stringify(v)]);
   const seen = async () => (await h.q(`select id from public.jobs where day = $1 order by id`, [day])).map((r) => r.id);
-  await shared('oui');
+  // the access rules store the setting as a yes / no whatever writes it (right_flag: « oui », « yes », 1 are a yes); a word
+  // that is neither a yes nor a no is a no
+  await shared('peut-être');
   assert.deepEqual(await seen(), [mine], 'not a yes: his own truck only, and no error');
   assert.deepEqual(await h.val(`select public.my_truck_ids()`), [tA]);
-  for (const v of [true, 'true', 1]) {
+  for (const v of [true, 'true', 1, 'oui']) {
     await shared(v);
     assert.equal((await seen()).length, 2, `${JSON.stringify(v)}: every vehicle`);
   }
