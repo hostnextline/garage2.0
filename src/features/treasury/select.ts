@@ -2,7 +2,7 @@
    expenses of a period (sorted, searched, summed by category) and the « signature » of the period's rows that tells
    the screen when the server's report must be asked again. Pure functions of rows; `categories` follows the settings. */
 import { computed } from '@preact/signals';
-import { t } from '../../lib/i18n';
+import { tMaybe } from '../../lib/i18n';
 import { matches } from '../../lib/text';
 import type { Cents } from '../../lib/money';
 import { settings } from '../../data/select';
@@ -29,9 +29,8 @@ export const EXPENSE_METHODS = ['credit', 'debit', 'cash', 'interac', 'cheque', 
 /** the words of a payment method; an unknown one is shown as stored */
 export function methodLabel(m: string | null | undefined): string {
   if (!m) return '';
-  const k = `treasury.methods.${m}`;
-  const s = t(k);
-  return s === k ? m : s;
+  // a method the dictionaries do not know (written by another app, a new kind) is shown as it is stored (R170)
+  return tMaybe(`treasury.methods.${m}`) ?? m;
 }
 
 /** the expenses of a period, newest first (same day: the one typed last first) */

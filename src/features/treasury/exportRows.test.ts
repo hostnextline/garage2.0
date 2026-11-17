@@ -3,7 +3,8 @@ import type { Expense, Invoice } from '../../data/types';
 import { normalizeReport } from './report';
 import { garageDay, revenueLines, expenseLines, exportMismatch, type LineNames } from './exportRows';
 import { workbookSheets, type ExportLabels } from '../../shared/export/exports';
-import { byCategory, categoryList, expenseMatches, filterCategories, periodExpenses, rowsSignature } from './select';
+import { byCategory, categoryList, expenseMatches, filterCategories, methodLabel, periodExpenses, rowsSignature } from './select';
+import { lang } from '../../lib/i18n';
 
 const N: LineNames = { invoiceNumber: (v) => `F-${v.number}`, customer: (id) => `C ${id}`, status: (s) => s, method: (m) => m || '', truck: (id) => id || '' };
 const NOV = { from: '2026-11-01', to: '2026-11-30' };
@@ -73,5 +74,18 @@ describe('the treasury’s reads of the phone’s copy', () => {
     expect(rowsSignature([a, b])).toBe(rowsSignature([b, a]));
     expect(rowsSignature([a, b])).not.toBe(rowsSignature([a, { ...b, category: 'Repas' }]));
     expect(rowsSignature([a])).not.toBe(rowsSignature([a, b]));
+  });
+});
+
+describe('the payment-method words (R170)', () => {
+  it('a known method in the person’s language; one the dictionaries do not know is shown as stored; none is empty', () => {
+    lang.value = 'fr';
+    expect(methodLabel('debit')).toBe('Débit');
+    expect(methodLabel('virement-interac-2')).toBe('virement-interac-2');
+    expect(methodLabel(null)).toBe('');
+    lang.value = 'en';
+    expect(methodLabel('debit')).not.toBe('treasury.methods.debit');
+    expect(methodLabel('crypto')).toBe('crypto');
+    lang.value = 'fr';
   });
 });
