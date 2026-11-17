@@ -43,6 +43,8 @@ const run = (name, fn) => async () => {
       try { await h.shot(p, tag); } catch { /* closed */ }
       try { writeFileSync(path.join(h.OUT, tag + '.txt'), (p.netlog || []).join('\n')); } catch { /* ignore */ }
     }
+    // (this file's own addition) the pages of a failed step are closed: the next step's pictures show only its own pages
+    for (const p of [...pages]) { try { await p.context().close(); } catch { /* closed */ } }
     throw e;
   }
 };
@@ -115,7 +117,7 @@ const paymentsOf = (job) => {
   const r = h.sql(`select coalesce(string_agg(p.method || ':' || p.amount_cents || ':' || (p.invoice_id is not null) || ':' || coalesce(p.created_by::text, ''), ',' order by p.paid_at, p.created_at), '')
     from public.payments p left join public.invoices v on v.id = p.invoice_id
     where p.deleted_at is null and (p.job_id = '${job}' or v.job_id = '${job}')`);
-  return r ? r.split(',').map((x) => { const [m, c, on, by] = x.split(':'); return [m, Number(c), on === 't', by]; }) : [];
+  return r ? r.split(',').map((x) => { const [m, c, on, by] = x.split(':'); return [m, Number(c), on === 'true', by]; }) : [];
 };
 const jobStatus = (job) => h.sql(`select status from public.jobs where id = '${job}'`);
 /** what a money amount reads on the screen, in French: 22995 → /229,95\s\$/ (the space before the $ is a narrow one) */
