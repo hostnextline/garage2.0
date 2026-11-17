@@ -95,13 +95,26 @@ describe('a window chosen elsewhere that the server no longer lists', () => {
           const gone = windowGone({ day: '2026-11-20', block: 'day', win_start: st, win_end: st + 240 }, { status: 'ok' }, rows, truckId, of);
           // a window the calendar shows open is never taken back
           if (shown.has(st)) expect([s, truckId, st, gone]).toEqual([s, truckId, st, false]);
-          // taken back only when the server lists no window starting there for this vehicle (a window it lists off the
-          // rule's grid stays: the server would book it)
+          // the same rule written again (a check of the rule against itself, for every setting; the answers written out by
+          // hand are in the next test)
           const listed = ofTruck(rows, truckId).some((r) => (r.win_start ?? of(r.eta!)[0]) === st);
           expect([s, truckId, st, gone]).toEqual([s, truckId, st, !listed]);
         }
       }
     }
+  });
+  // review moment-pickers-r2-3: the answers written out by hand for « avant » 60, rounding 60, first hour 8 h. The server
+  // lists 14 h (an arrival at 15 h, on the rule's grid), 9 h 30 (a half hour off the grid: arrival 10 h 40) for T1, and
+  // for T2 a row with no window whose arrival at 17 h gives 16 h. Taken back only when no window of this vehicle starts there
+  it('taken back only when the server lists no window starting there for this vehicle (R64, written by hand)', () => {
+    const rows = [row(840, 'T1', 900), row(570, 'T1', 640), { ...row(0, 'T2', 1020), win_start: null }];
+    const starts = [540, 570, 600, 840, 900, 960];
+    const gone = (truckId: string | null) => starts.map((st) => windowGone({ day: '2026-11-20', block: 'day', win_start: st, win_end: st + 240 }, { status: 'ok' }, rows, truckId, windowOf));
+    // any vehicle: 9 h 30, 14 h and 16 h are listed
+    expect(gone(null)).toEqual([true, false, true, false, true, false]);
+    // T1: 16 h is T2's only
+    expect(gone('T1')).toEqual([true, false, true, false, true, true]);
+    expect(gone('T2')).toEqual([true, true, true, true, true, false]);
   });
 });
 
