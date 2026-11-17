@@ -33,8 +33,9 @@ export interface OutboxEntry {
   v?: 2;
   /** requests ever started for this entry, counted BEFORE each request: > 0 = it may have reached the server */
   sent?: number;
-  /** how the server refused it (the words are in `error`; `said` = the server's own sentence, for another language) */
-  err?: { kind: string; sub: string; code?: string; hint?: string; status?: number; said?: string };
+  /** how the server refused it (the words are in `error`; `said` = the server's own sentence, for another language;
+      `at` = the operation that refused, whose words a code may have) */
+  err?: { kind: string; sub: string; code?: string; hint?: string; status?: number; said?: string; at?: string };
   /** settings parts: each part as the screen showed it before the edit (merged at send time, see merge3) */
   prev?: Record<string, unknown>;
   /** an insert made for a row this device did not hold: the fields the person set, sent as a change when the row exists */

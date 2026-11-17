@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { openDB } from 'idb';
 import { openLocal, type OutboxEntry } from './local';
 import { SYNCED } from './schema';
@@ -98,4 +98,34 @@ describe('the device copy (IndexedDB his-garage-<uid>, version 3)', () => {
     } finally { proto.transaction = real; }
     db.close();
   });
+
+  it('a newer version of the app can upgrade the database while this one has it open: this one lets go and reloads (x-sync-24, x-errors-26)', async () => {
+    const u = uid();
+    const db = openLocal(u);
+    await db.loadAll();
+    const reload = vi.fn();
+    const real = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...real, reload } });
+    try {
+      // the next version asks for version 4: without « blocking » it would wait for ever behind this tab
+      const next = await openDB(`his-garage-${u}`, 4);
+      expect(next.version).toBe(4);
+      expect(reload).toHaveBeenCalled();
+      next.close();
+    } finally { Object.defineProperty(window, 'location', { configurable: true, value: real }); }
+    db.close();
+  });
+
+  it('an open held up by another tab never keeps the app on its splash: it fails after a while, the engine runs in memory (x-errors-26)', async () => {
+    const u = uid();
+    // a tab of an older version holds version 2 and never lets go (no handler)
+    const holder = await openDB(`his-garage-${u}`, 2, { upgrade(d) { d.createObjectStore('meta'); } });
+    const db = openLocal(u);
+    const t0 = Date.now();
+    await expect(db.loadAll()).rejects.toMatchObject({ name: 'TimeoutError' });
+    // about 8 s for the open (twice: the driver tries once more on a fresh connection), never for ever
+    expect(Date.now() - t0).toBeLessThan(25000);
+    holder.close();
+    db.close();
+  }, 40000);
 });

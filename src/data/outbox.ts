@@ -22,11 +22,18 @@ export interface Item {
   rescued?: boolean;
   /** resolves once the entry has its place (seq) */
   ready: Promise<void>;
+  /** its rank among this tab's changes (a reload of the queue read before it was kept must not drop it) */
+  n?: number;
+  /** writes to IndexedDB still on their way for it (a merge): a reload keeps this tab's newer copy */
+  writing?: number;
+  /** the sender started marking it: from that instant nothing is merged into it (merge-fallback-order) */
+  attempting?: boolean;
 }
 
 export class Outbox {
   items: Item[] = [];
   private memSeq = 0;
+  private born = 0;
   /** the entry being sent right now by this tab */
   inFlight: Item | null = null;
 
@@ -37,17 +44,31 @@ export class Outbox {
   failed(): OutboxEntry[] { return this.items.filter((i) => i.e.state === 'failed').map((i) => i.e); }
   find(seq: number): Item | undefined { return this.items.find((i) => i.e.seq === seq); }
 
+  /** where this tab's changes stand now: a listing read after this mark knows every change made before it */
+  mark(): number { return this.born; }
   /** the queue as the device keeps it (start, or another tab changed it); `rescued`: entries IndexedDB could not
-      keep last time, put back at the end; resolves once they have their place */
-  load(entries: OutboxEntry[], rescued: OutboxEntry[] = []): Promise<void> {
-    const known = new Map(this.items.filter((i) => !i.mem).map((i) => [`${i.e.op}:${i.e.seq}`, i]));
+      keep last time, put back at the end; `since`: the mark taken before `entries` were read — a change this tab made
+      after it is kept although the listing does not have it yet (it was still being written: two-tab reload drop);
+      a change whose write has not answered yet (no seq) is kept whatever the mark says: no other tab can have
+      finished it, and when the listing already holds it, it keeps its place there, once;
+      resolves once the rescued entries have their place */
+  load(entries: OutboxEntry[], rescued: OutboxEntry[] = [], since?: number): Promise<void> {
+    const saved = this.items.filter((i) => !i.mem);
+    const known = new Map(saved.filter((i) => i.e.seq !== undefined).map((i) => [`${i.e.op}:${i.e.seq}`, i]));
+    const writing = new Map(saved.filter((i) => i.e.seq === undefined && i.e.op).map((i) => [i.e.op, i]));
+    const taken = new Set<Item>();
     const mem = this.items.filter((i) => i.mem);
     this.items = entries.slice().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).map((e) => {
       const it = known.get(`${e.op}:${e.seq}`);
-      if (it) { if (it !== this.inFlight) it.e = e; return it; }
+      // the copy read from IndexedDB, unless this tab is sending it or still writing a newer one (a merge)
+      if (it) { taken.add(it); if (it !== this.inFlight && !it.writing) it.e = e; return it; }
+      // this tab's own change, written but its answer not back yet: its copy gets the seq with that answer
+      const w = writing.get(e.op);
+      if (w && !taken.has(w)) { taken.add(w); return w; }
       return { e, kept: true, mem: false, ready: Promise.resolve() };
     });
-    this.items.push(...mem);
+    const later = saved.filter((i) => !taken.has(i) && (i.e.seq === undefined || (since !== undefined && (i.n ?? 0) > since)));
+    this.items.push(...later, ...mem);
     const have = new Set(this.items.map((i) => i.e.op));
     const back = rescued.filter((e) => !have.has(e.op)).map((e) => this.add({ ...e, seq: undefined }, true));
     return Promise.all(back.map((i) => i.ready)).then(() => undefined);
@@ -56,7 +77,7 @@ export class Outbox {
   /** a new change, at the end of the queue; resolves once it has its place */
   add(e: OutboxEntry, kept: boolean): Item {
     const inMemory = this.memMode;
-    const it: Item = { e, kept, mem: inMemory, ready: Promise.resolve() };
+    const it: Item = { e, kept, mem: inMemory, ready: Promise.resolve(), n: ++this.born };
     this.items.push(it);
     this.changed();
     if (inMemory) this.toMemory(it);
@@ -83,7 +104,8 @@ export class Outbox {
       added as its own change by `separately`. */
   merge(table: string, id: string, patch: Record<string, unknown>, prev: Record<string, unknown> | undefined, separately: () => void): boolean {
     const last = this.items[this.items.length - 1];
-    if (!last || last === this.inFlight) return false;
+    // being marked or sent: an edit is its own change, right here at the end, in the order it was asked
+    if (!last || last === this.inFlight || last.attempting) return false;
     const e = last.e;
     if (e.state !== 'pending' || e.table !== table || e.id !== id || (e.kind !== 'insert' && e.kind !== 'update')) return false;
     if (e.v !== 2 || (e.sent ?? e.tries) > 0 || e.tries > 0) return false;
@@ -97,6 +119,7 @@ export class Outbox {
     this.changed();
     if (last.mem) { this.saveMem(); return true; }
     const before = last.ready;
+    last.writing = (last.writing ?? 0) + 1;
     last.ready = before.then(async () => {
       try {
         const { result } = await this.db!.mutateEntry(last.e.seq!, (cur) => {
@@ -105,12 +128,14 @@ export class Outbox {
         });
         if (!result) separately();
       } catch { this.storageOk(false); }
+      finally { last.writing = (last.writing ?? 1) - 1; }
     });
     return true;
   }
 
   /** marks the entry as « may have reached the server », before its request leaves. null: nothing to send any more */
   async attempt(it: Item): Promise<OutboxEntry | null> {
+    it.attempting = true;
     await it.ready;
     const bump = (cur: OutboxEntry): OutboxEntry => ({ ...cur, tries: cur.tries + 1, sent: (cur.sent ?? cur.tries) + 1 });
     if (it.mem) { it.e = bump(it.e); return it.e; }
@@ -161,7 +186,7 @@ export class Outbox {
         // taken out and put back at the end in one transaction: never lost, never twice
         const { added } = await this.db!.mutateEntry(seq, (cur) => (cur ? { del: true, add: { ...cur, ...again }, result: null } : { result: null }));
         this.drop(it);
-        if (added !== undefined) this.items.push({ e: { ...again, seq: added }, kept: true, mem: false, ready: Promise.resolve() });
+        if (added !== undefined) this.items.push({ e: { ...again, seq: added }, kept: true, mem: false, ready: Promise.resolve(), n: ++this.born });
         this.changed();
         return;
       } catch { this.storageOk(false); }

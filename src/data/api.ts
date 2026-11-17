@@ -1,17 +1,18 @@
 /* Every change the app makes goes through here: on screen at once, sent when possible (see sync.ts), refused with a
    clear message when the server says no. In « Voir l'app comme… » nothing can be changed. */
-import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks, sendOrKeep, onConfirmed } from './sync';
+import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks, sendOrKeep, onConfirmed, pendingOps, flush } from './sync';
 import { getRow, rowsOf } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
 import { ask } from './client';
 import { REQUEST_MS } from './send';
-import { itemsOf, settings } from './select';
-import { t, lang } from '../lib/i18n';
-import type { Customer, CustomerNote, Vehicle, EngineSpec, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
+import { itemsOf, settings, customerName, invoiceNumber } from './select';
+import { t, tMaybe, lang } from '../lib/i18n';
+import { money } from '../lib/money';
+import type { Customer, CustomerNote, Vehicle, EngineSpec, Job, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Invoice, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
 import type { BlockKey, Range } from '../lib/dates';
 import { appBase } from '../lib/config';
-import { Refused } from '../lib/errors';
+import { Refused, fromSource, classify } from '../lib/errors';
 export { Refused, errorMessage } from '../lib/errors';
 
 function guard() { if (preview.value) throw new Refused('preview', t('errors.preview')); }
@@ -55,11 +56,13 @@ export async function bookJob(job: BookInput, items: ItemInput[]) {
   const id = job.id || uuid();
   return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: t('log.booking') }).then((r) => ({ ...r, id }));
 }
-export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null) {
+/** `opts.queue: false`: a move that must happen now or not at all (never kept on the phone for later: R188) */
+export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null, opts: { queue?: false } = {}) {
   guard();
+  const o = { label: t('log.move'), ...(opts.queue === false ? { queue: false } : {}) };
   // « Plages d'arrivée »: the new window (or flexible) goes with the move; the old call stays as it was for the blocks
-  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, { label: t('log.move') });
-  return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, { label: t('log.move') });
+  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, o);
+  return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, o);
 }
 export async function setJobDuration(jobId: string, minutes: number) {
   guard();
@@ -118,11 +121,44 @@ export async function vinHistory(vin: string, customerId: string | null = null):
 export async function invoiceForJob(jobId: string, refresh = true) { guard(); return callRpc('invoice_for_job', { p_job: jobId, p_refresh: refresh }, { label: t('log.invoice') }); }
 export async function saveInvoiceDraft(id: string, patch: { lines?: InvoiceLine[]; taxes_on?: boolean; notes?: string | null }) { guard(); await updateRow('invoices', id, patch); }
 export async function finishInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number; again?: boolean }>('invoice_finish', { p_invoice: id }, { label: t('log.invoiceFinish') }); }
-/** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network) */
-export async function reopenInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false }); }
+
+/** the payments of this invoice still waiting on this phone to be sent: those aimed at it, and those of its job that
+    name no invoice (the server puts them on the job's finished invoice). One aimed at another invoice of the same job
+    goes there whatever happens to this one: it does not hold this one back. */
+function paymentWaitingFor(invoiceId: string): boolean {
+  const jobId = getRow<Invoice>('invoices', invoiceId)?.job_id ?? null;
+  return pendingOps((e) => e.kind === 'rpc' && e.rpc === 'payment_add' && !!e.args
+    && (e.args.p_invoice === invoiceId || (e.args.p_invoice == null && !!jobId && e.args.p_job === jobId))).length > 0;
+}
+const PAYMENT_WAITING: Record<string, string> = {
+  fr: 'Un paiement de cette facture attend encore d’être envoyé. Attends qu’il parte, puis modifie la facture.',
+  en: 'A payment of this invoice is still waiting to be sent. Wait until it has left, then change the invoice.'
+};
+/** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network).
+    It goes straight to the server: while a payment of this invoice still waits in the outbox, it would get there first
+    and the payment would then be refused hours later (argent-app-03). The payment is given its chance to leave first
+    (8 s at most); still waiting, the reopen is refused here and nothing changes. */
+export async function reopenInvoice(id: string) {
+  guard();
+  if (paymentWaitingFor(id)) {
+    await Promise.race([flush(), new Promise((r) => setTimeout(r, 8000))]);
+    if (paymentWaitingFor(id)) throw new Refused('payment_waiting', tMaybe('errors.payment_waiting') ?? PAYMENT_WAITING[lang.value] ?? PAYMENT_WAITING.fr);
+  }
+  return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false });
+}
+/** what the outbox says of a payment (the « en attente » and « refusé » lists, the stuck banner): how much, how and for
+    whom, so a cash payment refused hours later still says which customer and how much to give back (argent-app-03) */
+export function paymentLabel(invoiceId: string | null, amountCents: number, method: PayMethod, jobId: string | null = null): string {
+  const inv = getRow<Invoice>('invoices', invoiceId);
+  const jb = getRow<Job>('jobs', jobId ?? inv?.job_id ?? null);
+  const who = customerName(getRow<Customer>('customers', inv?.customer_id ?? jb?.customer_id ?? null));
+  const how = tMaybe(`invoices.methods.${method}`);
+  const amount = `${money(amountCents, lang.value)}${how ? ` (${how})` : ''}`;
+  return [`${t('log.payment')} ${amount}`, who, invoiceNumber(inv)].filter(Boolean).join(' · ');
+}
 export async function addPayment(invoiceId: string | null, amountCents: number, method: PayMethod, reference: string | null = null, jobId: string | null = null) {
   guard();
-  return callRpc('payment_add', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_reference: reference, p_job: jobId, p_session: null }, { label: t('log.payment') });
+  return callRpc('payment_add', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_reference: reference, p_job: jobId, p_session: null }, { label: paymentLabel(invoiceId, amountCents, method, jobId) });
 }
 export async function removePayment(id: string) { guard(); return callRpc('payment_remove', { p_payment: id }); }
 export async function voidInvoice(id: string, reason: string) { guard(); return callRpc('invoice_void', { p_invoice: id, p_reason: reason }); }
@@ -215,21 +251,32 @@ export async function updateMe(patch: { phone?: string; lang?: string; prefs?: R
 
 /* ---------- treasury and inventory ---------- */
 export async function saveExpense(e: Partial<Expense>): Promise<string> { guard(); return upsert('expenses', e, { category: 'Autre', subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0 }, t('log.expense')); }
-export async function saveReceipt(dataUrl: string, w: number, h: number): Promise<string> {
+/** a receipt picture, sent straight away (receipts are not kept on every phone). `opts.id`: the id the screen keeps for
+    this picture, so sending it again (a lost answer) is harmless: « already there » is a success; `opts.signal` stops it
+    (R116) */
+export async function saveReceipt(dataUrl: string, w: number, h: number, opts: { id?: string; signal?: AbortSignal } = {}): Promise<string> {
   guard();
   const [head, data] = dataUrl.split(',');
   const mime = /image\/(png|jpeg|webp)|application\/pdf/.exec(head)?.[0] || 'image/jpeg';
-  const id = uuid();
-  // receipts are sent straight away (they are not kept on every phone); a picture gets the time it needs, then stops
+  const id = opts.id || uuid();
+  // a picture gets the time it needs, then stops
   const ms = Math.min(120000, REQUEST_MS + Math.floor(data.length / 20000) * 1000);
-  await ask((s) => sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h }).abortSignal(s), ms);
+  try {
+    await ask((s) => sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h }).abortSignal(s), ms, opts.signal);
+  } catch (e) {
+    if (!(opts.id && classify(e).sub === 'duplicate')) throw e;
+  }
   return id;
 }
+/** the plain pictures a kept attachment may be shown as (an SVG can carry a script: never trusted, x-security-01) */
+const SAFE_PICTURE = /^image\/(jpeg|png|webp|gif)$/;
+/** a picture kept on the server (a signature), as a data URL. null when there is none, or when what is stored is not a
+    plain picture; a read that fails throws (no signal or the server unwell is not « no signature »: R106) */
 export async function loadAttachment(id: string): Promise<string | null> {
-  try {
-    const data = await ask<{ mime: string; data: string } | null>((s) => sb.from('attachments').select('mime, data').eq('id', id).abortSignal(s).maybeSingle(), 30000);
-    return data ? `data:${data.mime};base64,${data.data}` : null;
-  } catch { return null; }
+  const data = await ask<{ mime: string; data: string } | null>((s) => sb.from('attachments').select('mime, data').eq('id', id).abortSignal(s).maybeSingle(), 30000);
+  if (!data || typeof data.data !== 'string') return null;
+  const mime = String(data.mime || '').trim().toLowerCase();
+  return SAFE_PICTURE.test(mime) ? `data:${mime};base64,${data.data}` : null;
 }
 export async function saveInventoryItem(i: Partial<InventoryItem>): Promise<string> {
   guard();
@@ -256,13 +303,15 @@ export async function deleteInventoryItem(id: string) {
 }
 /** stock bought: the quantity comes in and the money leaves the Trésorerie (an expense) or the Coffre, in one step */
 export type PaidFrom = 'treasury' | 'coffre' | 'none';
-export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null) {
+/** `op`: one id per submission of the form (a repeat after a reload is done once by the server: R212) */
+export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null, op?: string) {
   guard();
-  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note }, { label: t('log.inventory') });
+  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note, ...(op ? { p_op: op } : {}) }, { label: t('log.inventory') });
 }
-export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null) {
+/** `id`: the move's own id, given by the form (the same move sent twice is one row: R212) */
+export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null, id?: string) {
   guard();
-  return (await insertRow('inventory_moves', { id: uuid(), item_id: itemId, delta, reason, note, created_at: now() })).id;
+  return (await insertRow('inventory_moves', { id: id || uuid(), item_id: itemId, delta, reason, note, created_at: now() })).id;
 }
 
 /* ---------- the day ---------- */
@@ -293,7 +342,8 @@ export async function suggestWindows(lat: number | null, lng: number | null, dur
   return (data || []) as Suggestion[];
 }
 export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
-  return (await ask((s) => sb.rpc(name, args).abortSignal(s), ms)) as T;
+  try { return (await ask((s) => sb.rpc(name, args).abortSignal(s), ms)) as T; }
+  catch (e) { throw fromSource(e, name); }
 }
 /** `op`: one id per text sent, kept by the screen until it succeeds: the same send asked twice (an answer lost, a second
     tap) is one text on the server; a new one for a deliberate « Renvoyer » */

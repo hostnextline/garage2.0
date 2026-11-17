@@ -2,13 +2,14 @@
    so a screen that calls them redraws when the data changes. The lookups by a parent (a job's lines, a customer's
    cars, a day's jobs…) read indexes built once per change of their table, not a scan of the whole table per call:
    a list of hundreds of rows asking each row's lines stays fast (core-data-40). Lists are returned as copies. */
-import { computed, type ReadonlySignal } from '@preact/signals';
+import { computed, effect, type ReadonlySignal } from '@preact/signals';
 import { tableSignal, getRow, rowsOf, type Row } from './store';
 import type { TableName } from './schema';
 import type { Settings, Staff, Truck, TruckWeek, TruckDay, Customer, Vehicle, Job, JobItem, Invoice, Payment, Service, InventoryItem, Quote, Shift, Position, Trip, EngineSpec, CustomerNote, Expense, Message, ServicePart, InventoryMove } from './types';
-import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today } from '../lib/dates';
+import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today, dayOf, minuteOf, daysBetween } from '../lib/dates';
 import { totals, type Line } from '../lib/money';
 import { fullName, firstName } from '../lib/text';
+import { setDayMode } from '../lib/errors';
 
 export const DEFAULT_SETTINGS: Settings = {
   id: '1',
@@ -30,6 +31,8 @@ export function blockOfKey(k: BlockKey): Block {
 }
 /** the garage books by 4-hour arrival windows (Part 25) */
 export const windowsOn = computed<boolean>(() => settings.value.booking.windows_on === true);
+// the refusals of a block (« complet », « fermé ») then say « journée » (lib/errors cannot read the settings: R144)
+effect(() => { setDayMode(windowsOn.value); });
 /** the span of a booking day: first block's start → last block's end */
 export const daySpan = computed<Range>(() => [Math.min(...blocks.value.map((b) => b.start)), Math.max(...blocks.value.map((b) => b.end))]);
 /** the window told to this customer: its own (windows), else its block's hours; a « flexible » job: the whole day */
@@ -117,13 +120,33 @@ export function weekOf(truckId: string): Record<number, Range[]> {
   return out;
 }
 export interface TruckBlock { truck: Truck; cap: number; used: number; left: number; jobs: Job[] }
-/** how full a block is, per truck: the hours the truck works in it, and what its jobs take (durations + driving) */
+/** the minutes a job still takes out of its truck's hours (the planner's count, R216; the one home of this rule: the
+    agenda, « Changer de camion » and the pickers all read it through blockLoad). `now`: the garage's minute today
+    (null: another day, every job counts whole). On site: its work less the minutes since its arrival, as the server's
+    planner counts it (an arrival of another day lies whole days before today's midnight). On the way: the drive left,
+    then the work. Done: nothing. */
+export function jobTimeLeft(j: Pick<Job, 'status' | 'duration_min' | 'travel_min' | 'eta_min' | 'arrived_at'>, now: number | null, unknownMin: number, todayDay: Day = today()): number {
+  if (j.status === 'done') return 0;
+  if (now != null && j.status === 'on_site') {
+    const at = j.arrived_at ? new Date(j.arrived_at) : null;
+    // the arrival as a minute of today's garage clock (yesterday 23:30 = −30); no arrival known: it counts whole
+    const arrived = at ? minuteOf(at) + 1440 * daysBetween(todayDay, dayOf(at)) : NaN;
+    return Math.max(0, (Number.isFinite(arrived) ? arrived : now) + j.duration_min - now);
+  }
+  if (now != null && j.status === 'en_route') return (j.eta_min != null ? Math.max(0, j.eta_min - now) : j.travel_min ?? unknownMin) + j.duration_min;
+  return j.duration_min + (j.travel_min ?? unknownMin);
+}
+/** how full a block is, per truck: the hours the truck works in it, and what its jobs take (durations + driving; today a
+    job under way only for what it still needs, as the planner and the agenda count it) */
 export function blockLoad(day: Day, block: BlockKey, opts: { exclude?: string | null } = {}): { trucks: TruckBlock[]; unplaced: Job[]; open: boolean; left: number; started: boolean } {
   const b = blockOfKey(block);
-  const isToday = day === today();
-  // a block has started at its first minute; a whole day of arrival windows (block 'day') stays open until too little of it is left
+  const todayDay = today();
+  const isToday = day === todayDay;
   const minBlock = Math.min(settings.value.booking.min_block_min, b.end - b.start);
-  const started = day < today() || (isToday && nowMinute() >= (block === 'day' ? b.end - minBlock : b.start));
+  // a block has started at its first minute; a whole day of arrival windows (block 'day') at its last one, as the
+  // server's block_open and the agenda's dayState say (it no longer books before then only when too little is left: open)
+  const started = day < todayDay || (isToday && nowMinute() >= (block === 'day' ? b.end : b.start));
+  const now = isToday ? nowMinute() : null;
   const from = isToday ? Math.ceil(nowMinute() / 5) * 5 : 0;
   const js = jobsOn(day).filter((j) => j.block === block && !['cancelled', 'no_show'].includes(j.status) && j.id !== opts.exclude);
   const out: TruckBlock[] = [];
@@ -131,7 +154,7 @@ export function blockLoad(day: Day, block: BlockKey, opts: { exclude?: string | 
     const rs = truckRanges(tr.id, day).map(([a, z]) => [Math.max(a, from), z] as Range).filter(([a, z]) => z > a);
     const cap = day < today() ? 0 : overlapMinutes(rs, b.start, b.end);
     const mine = js.filter((j) => j.truck_id === tr.id).sort((x, y) => ((x.stop_order ?? 99) - (y.stop_order ?? 99)) || ((x.eta_min ?? 9999) - (y.eta_min ?? 9999)));
-    const used = mine.filter((j) => j.status !== 'done').reduce((n, j) => n + j.duration_min + (j.travel_min ?? settings.value.booking.unknown_min), 0);
+    const used = mine.reduce((n, j) => n + jobTimeLeft(j, now, settings.value.booking.unknown_min, todayDay), 0);
     if (cap > 0 || mine.length) out.push({ truck: tr, cap, used, left: cap - used, jobs: mine });
   }
   const open = !started && out.some((x) => x.cap >= minBlock);

@@ -146,6 +146,57 @@ describe('sign-out', () => {
   });
 });
 
+describe('the session ends while the device copy is still opening (auth-fastpath-race)', () => {
+  it('the sign-in screen stays: never « ready » with nobody signed in', async () => {
+    const uid = nextUid();
+    signedBefore(uid);
+    srv.hold();
+    const m = await fresh();
+    // a big copy: opening it takes a while
+    const db = m.local.openLocal(uid);
+    await db.commit({ rows: [{ table: 'job_items', put: Array.from({ length: 4000 }, (_, i) => ({ id: `i${i}`, job_id: 'j1', updated_at: '2026-11-15T10:00:00Z' })), del: [] }] });
+    db.close();
+    let fire: ((event: string, s: null) => void) | null = null;
+    (m.client.sb.auth as unknown as { onAuthStateChange: unknown }).onAuthStateChange = (cb: (event: string, s: null) => void) => { fire = cb; return { data: { subscription: { unsubscribe() {} } } }; };
+    const going = m.auth.startAuth();
+    // the library drops the revoked session right away, while the copy opens
+    fire!('SIGNED_OUT', null);
+    await going;
+    expect(m.auth.authState.value).toBe('signed_out');
+    expect(m.auth.access.value).toBeNull();
+    expect(m.sync.currentUid()).toBe('');
+  });
+  it('an ordinary sign-in from the sign-in screen still opens the app', async () => {
+    const uid = nextUid();
+    srv.rpc('my_access', () => who(uid));
+    const m = await fresh();
+    const session = { access_token: jwt(uid), refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: 4102444800, user: { id: uid, aud: 'authenticated', email: 's@x', app_metadata: {}, user_metadata: {}, created_at: '2026-01-01' } };
+    // the library keeps the session it got (as it does for real)
+    (m.client.sb.auth as unknown as { signInWithPassword: unknown }).signInWithPassword = async () => { localStorage.setItem('his.auth', JSON.stringify(session)); return { data: { session, user: session.user }, error: null }; };
+    await m.auth.startAuth();
+    expect(m.auth.authState.value).toBe('signed_out');
+    expect(await m.auth.signIn('s@x', 'pw')).toBeNull();
+    expect(m.auth.authState.value).toBe('ready');
+    expect(m.auth.access.value?.id).toBe(uid);
+    m.sync.stopSync();
+  });
+});
+
+describe('what the sign-in screen says when the server says no (i18n-06)', () => {
+  it('too many tries, the server unwell, no signal: three different sentences, never Supabase\'s English', async () => {
+    const m = await fresh();
+    const answer = (error: unknown) => { (m.client.sb.auth as unknown as { signInWithPassword: unknown }).signInWithPassword = async () => ({ data: { session: null, user: null }, error }); };
+    answer(Object.assign(new Error('Request rate limit reached'), { status: 429, code: 'over_request_rate_limit' }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('errors.busy');
+    answer(Object.assign(new Error('Internal Server Error'), { status: 503 }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('errors.server');
+    answer(Object.assign(new TypeError('Failed to fetch'), { status: 0 }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('common.networkError');
+    answer(Object.assign(new Error('Invalid login credentials'), { status: 400, code: 'invalid_credentials' }));
+    expect(await m.auth.signIn('s@x', 'pw')).toBe('auth.wrong');
+  });
+});
+
 describe('back from Google (core-data-17)', () => {
   it('the session events are heard and the session is known', async () => {
     const uid = nextUid();

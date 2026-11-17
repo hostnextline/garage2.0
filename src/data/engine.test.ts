@@ -9,6 +9,7 @@ import { openLocal, type OutboxEntry } from './local';
 import type { LockManagerLike } from './lock';
 import { readRescue } from './rescue';
 import { lang, t } from '../lib/i18n';
+import { readNet } from '../app/netView';
 
 let srv: FakeServer;
 const engines: Engine[] = [];
@@ -47,6 +48,21 @@ describe('start', () => {
     expect(net.value.ready).toBe(false);
     srv.release();
     await until(() => net.value.ready);
+  });
+});
+
+describe('a first download that hangs (ready-slower-weak-signal)', () => {
+  it('the screens stop « loading » after one request\'s limit, the download goes on', async () => {
+    const uid = nextUid();
+    srv.hold();   // no answer at all
+    const e = new Engine(clientFor(srv, uid), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined, readyAfterMs: 150 });
+    engines.push(e);
+    await e.start();
+    expect(net.value.ready).toBe(false);
+    await until(() => net.value.ready, 2000);
+    expect(net.value.firstPull).toBe('no');
+    srv.release();
+    await until(() => net.value.firstPull === 'ok');
   });
 });
 
@@ -183,6 +199,23 @@ describe('the outbox', () => {
     expect(net.value.failed[0].err?.said).toBe('Ce bloc est passé.');
   });
 
+  it('a refusal says the words of the operation that refused, on screen and in the « refusé » list (R144)', async () => {
+    const e = await boot(nextUid());
+    srv.rpc('set_job_duration', () => { throw Object.assign(new Error('Ce bloc est complet.'), { code: 'block_full' }); });
+    await expect(e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 240 })).rejects.toMatchObject({ hint: 'block_full', at: 'set_job_duration' });
+    srv.offline = true;
+    setNet({ online: false });
+    await e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 300 });
+    srv.offline = false;
+    await e.send.flush();
+    await until(() => net.value.failed.length === 1);
+    expect(lang.value).toBe('en');
+    expect(net.value.failed[0].error).toBe(t('errors.at.set_job_duration.block_full'));
+    expect(net.value.failed[0].err?.at).toBe('set_job_duration');
+    // a direct call too
+    await expect(e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 240 }, { queue: false })).rejects.toMatchObject({ at: 'set_job_duration' });
+  });
+
   it('a refusal whose code has no words keeps the server’s sentence', async () => {
     const e = await boot(nextUid());
     srv.rpc('job_step', () => { throw Object.assign(new Error('Le camion est au garage.'), { code: 'zz_no_words' }); });
@@ -279,6 +312,24 @@ describe('no valid session is not a refusal (core-data-09, x-sync-08)', () => {
     expect(net.value.failed.length).toBe(0);
     expect(net.value.session).toBe('expired');
   });
+  it('offline with a token too old to renew: the frame says « pas de réseau », never « reconnecte-toi » (offline-shows-session-expired)', async () => {
+    const uid = nextUid();
+    const e = new Engine(clientFor(srv, null), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(e);
+    srv.offline = true;
+    setNet({ online: false });
+    await e.start();
+    await e.send.insertRow('customers', { id: 'c1', first_name: 'A' });
+    await e.send.flush();
+    await until(() => net.value.ready);
+    // 'expired' is the engine's own note (it makes the queue leave the moment the token is renewed); the frame shows
+    // it as nothing more than no signal, with the change waiting
+    const v = readNet(net.value, false);
+    expect(v.chip).toBe('offline');
+    expect(v.sessionLost).toBe(false);
+    expect(v.pending).toBe(1);
+    expect(net.value.failed.length).toBe(0);
+  });
   it('a 401 permission answer waits too', async () => {
     const e = await boot(nextUid());
     await until(() => net.value.ready);
@@ -362,6 +413,55 @@ describe('one sender per account (core-data-06, x-sync-07)', () => {
     await until(() => a.outbox.pending().length === 0);
     await sleep(100);
     expect(srv.count((c) => c.table === 'rpc/payment_add')).toBe(1);
+  });
+  /* « the queue changed » from another tab while this tab is keeping a change (two-tab reload drop): tab A must not
+     lose its own change from its queue. The device copy is shared (same uid, fake-indexeddb); the poke goes through
+     the real BroadcastChannel. */
+  type Gate = { wait: Promise<void>; open: () => void };
+  const gate = (): Gate => { let open!: () => void; const wait = new Promise<void>((r) => { open = r; }); return { wait, open }; };
+  const twoTabs = async () => {
+    const uid = nextUid();
+    srv.offline = true;   // nothing leaves: what stays in each tab's queue is what is checked
+    setNet({ online: false });
+    const a = await boot(uid);
+    const b = await boot(uid);
+    const db = a.outbox.db!;
+    // asked: the reload started; got: IndexedDB answered; read: the answer was handed to the reload
+    const lists = { asked: 0, got: 0, read: 0 };
+    const list = db.listEntries;
+    let listHold: Gate | null = null;
+    db.listEntries = async () => { lists.asked++; const h = listHold; const r = await list(); lists.got++; if (h) await h.wait; lists.read++; return r; };
+    return { a, b, db, lists, holdList: (g: Gate) => { listHold = g; } };
+  };
+  const opsOf = (e: Engine) => e.outbox.pending().map((i) => i.e.table + ':' + i.e.id);
+  it('a change still being written when the other tab pokes stays in this tab\'s queue (held write)', async () => {
+    const { a, b, db, lists } = await twoTabs();
+    const write = gate();
+    const add = db.addEntry;
+    db.addEntry = async (e) => { await write.wait; return add(e); };
+    const kept = a.send.insertRow('customers', { id: 'mine', first_name: 'A' });   // A's write is held
+    await b.send.insertRow('customers', { id: 'theirs', first_name: 'B' });       // B pokes « outbox »
+    await until(() => lists.read >= 1);
+    await sleep(20);
+    expect(opsOf(a)).toContain('customers:mine');
+    write.open();
+    await kept;
+    await sleep(20);
+    expect(opsOf(a).filter((o) => o === 'customers:mine')).toEqual(['customers:mine']);
+    expect(a.outbox.items.find((i) => i.e.id === 'mine')?.e.seq).toBeGreaterThan(0);
+  });
+  it('a change kept after the listing was asked stays in this tab\'s queue (engine passes its mark to the reload)', async () => {
+    const { a, b, lists, holdList } = await twoTabs();
+    const listing = gate();
+    holdList(listing);
+    await b.send.insertRow('customers', { id: 'theirs', first_name: 'B' });       // B pokes: A's listing is read, held
+    await until(() => lists.got >= 1);
+    await a.send.insertRow('customers', { id: 'mine', first_name: 'A' });         // kept in IndexedDB, after the listing
+    listing.open();
+    await until(() => lists.read >= 1);
+    await sleep(20);
+    expect(opsOf(a)).toContain('customers:mine');
+    expect(opsOf(a).filter((o) => o === 'customers:mine').length).toBe(1);
   });
   it('a refusal for an entry another tab already delivered is not written back', async () => {
     const uid = nextUid();
