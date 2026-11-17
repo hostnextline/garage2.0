@@ -98,3 +98,22 @@ describe('Réglages: no form before the settings row (settings-team-03, st-6)', 
     expect((q('company-name') as HTMLInputElement).value).toBe('Garage');
   });
 });
+
+describe('Réglages: the guide’s anchor (R150)', () => {
+  it('on a phone, a section page carries its data-tour (the menu rows are not drawn); on a computer only the menu row does', async () => {
+    wide.value = false;
+    await show(screen('company'));
+    expect(box.querySelector('[data-testid="settings-nav"]')).toBeNull();
+    const a = box.querySelectorAll('[data-tour="settings-company"]');
+    expect(a.length).toBe(1);
+    expect(a[0].querySelector('[data-testid="settings-company"]')).toBeTruthy();
+    await show(screen());
+    expect(box.querySelectorAll('[data-tour="settings-company"]').length).toBe(1);
+    expect(box.querySelector('[data-tour="settings-company"]')?.getAttribute('data-testid')).toBe('settings-nav-company');
+    wide.value = true;
+    await show(screen('company'));
+    const b = box.querySelectorAll('[data-tour="settings-company"]');
+    expect(b.length).toBe(1);
+    expect(b[0].getAttribute('data-testid')).toBe('settings-nav-company');
+  });
+});

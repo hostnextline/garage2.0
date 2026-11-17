@@ -88,7 +88,8 @@ export default function SettingsScreen({ params }: ScreenProps) {
   if (!isWide) {
     return (
       <Page title={t(`settings.sections.${current!.key}.title`)} sub={t(`settings.sections.${current!.key}.sub`)} back="/settings" data-testid="settings-screen">
-        {body}
+        {/* the menu is not drawn here: the section itself carries the guide's anchor, so « Montre-moi » points at it (R150) */}
+        {current!.tour ? <div data-tour={current!.tour} style={{ minWidth: 0 }}>{body}</div> : body}
       </Page>
     );
   }
