@@ -2,6 +2,7 @@
    wrong with it, and the row saved. Pure: the forms only draw it. */
 import { t } from '../../lib/i18n';
 import { today, isValidDay } from '../../lib/dates';
+import { fold } from '../../lib/text';
 import type { Vehicle } from '../../data/types';
 import { vinSavable } from './vin';
 
@@ -46,9 +47,10 @@ export function withMode(d: AddDraft, mode: AddMode): Partial<AddDraft> | null {
 
 export interface EngineChosen { displacement: number | null; cylinders: number | null; fuel: string; engine: string }
 /** the year, make and model chosen in the lists (and the engine, when one was chosen). Another make or model makes
-    the engine of the first choice, or the VIN's, wrong: it goes unless a new engine was chosen (customers-b-13). */
+    the engine of the first choice, or the VIN's, wrong: it goes unless a new engine was chosen (customers-b-13). The same
+    make and model written another way (« HONDA » from the VIN, « Honda » from the list) is the same car: its engine stays. */
 export function withChoice(d: AddDraft, c: { year: string; make: string; model: string; engine?: EngineChosen | null }): Partial<AddDraft> {
-  const sameCar = c.make === d.make && c.model === d.model;
+  const sameCar = fold(c.make) === fold(d.make) && fold(c.model) === fold(d.model);
   const extra = c.engine ? { ...(sameCar ? d.extra : {}), ...c.engine } : sameCar ? d.extra : {};
   return { year: c.year, make: c.make, model: c.model, extra };
 }

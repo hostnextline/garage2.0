@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Plus } from 'lucide-preact';
 import { t } from '../../lib/i18n';
-import { vehiclesOf, vehicleLabel } from '../../data/select';
+import { vehicle, vehiclesOf, vehicleLabel } from '../../data/select';
 import { Button, Chips } from '../../ui';
 import { VehicleAddSheet } from './VehicleBits';
 import { carName } from '../../domain/vehicles/words';
@@ -24,7 +24,11 @@ export function VehiclePicker(p: VehiclePickerProps) {
   useEffect(() => {
     if (p.autoPick === false || !p.customerId || autoDone.current === p.customerId) return;
     if (cars.length) autoDone.current = p.customerId;
-    if (!p.value && cars.length === 1) p.onPick(cars[0].id);
+    // a car of another customer still in the value (the customer was changed) is not a choice for this one; any other
+    // value is kept (a car not saved yet, like the caller's car of « Appel entrant », holds the work typed: places-vehicles-r2-1)
+    const owner = p.value ? vehicle(p.value)?.customer_id : undefined;
+    const free = !p.value || (!!owner && owner !== p.customerId);
+    if (free && cars.length === 1) p.onPick(cars[0].id);
   }, [p.customerId, cars.length]);
 
   if (!p.customerId) return <p class="muted small customers-vpicker-none" data-testid="vehicle-picker">{t('vehicles.picker.noCustomer')}</p>;

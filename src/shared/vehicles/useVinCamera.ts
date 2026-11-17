@@ -37,7 +37,8 @@ export function useVinCamera(video: MutableRef<HTMLVideoElement | null>, onCode:
       if (!alive()) { s.getTracks().forEach((x) => x.stop()); return; }
       stream.current = s;
       const el = video.current;
-      if (!el) { stop(); return; }
+      // the picture is gone (the sheet is changing): the camera closes and says so, never a spinner for ever (pv-5)
+      if (!el) { stop(); setState('error'); return; }
       el.srcObject = s;
       // autoplay is refused on some phones until a tap: the frames still come, the reader still reads them
       await el.play().catch(() => undefined);

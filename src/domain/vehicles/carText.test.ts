@@ -23,6 +23,13 @@ describe('kilometres', () => {
     expect(parseKm('84200 km ')).toBe(84200);
     expect(parseKm(' 84200 ')).toBe(84200);
   });
+  it('a decimal after a thousands space is still a decimal (pv-2)', () => {
+    expect(parseKm('84 200,5')).toBe(84201);
+    expect(parseKm('84 200.5 km')).toBe(84201);
+    expect(parseKm('84\u202f200,4')).toBe(84200);
+    expect(parseKm('84\u00a0200')).toBe(84200);
+    expect(parseKm('1 084 200')).toBe(1084200);
+  });
 });
 
 describe('the engine in words', () => {

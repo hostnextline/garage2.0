@@ -37,11 +37,12 @@ export function km(n: number | null | undefined, lang: string): string {
 }
 /** what was typed in a number field ("84 200", "84,200 km", "84200.5") → 84200 ; null when empty ; NaN when it is not a
     number. A separator followed by one or two digits at the end is a decimal, rounded: « 84200.5 » was read 842005, ten
-    times too much, and the car's km never comes back down (customers-b-17). */
+    times too much, and the car's km never comes back down (customers-b-17). The spaces between thousands are left out
+    first, so « 84 200,5 » (the French way) is 84 201 too, not 842 005. */
 export function parseKm(s: string): number | null {
   const text = String(s || '').trim().replace(/\s*km$/i, '').trim();
   if (!text) return null;
-  const dec = /^(\d{1,7})[.,](\d{1,2})$/.exec(text);
+  const dec = /^(\d{1,7})[.,](\d{1,2})$/.exec(text.replace(/\s/g, ''));
   if (dec) return Math.round(Number(`${dec[1]}.${dec[2]}`));
   const d = text.replace(/[\s.,]/g, '');
   if (!/^\d{1,7}$/.test(d)) return NaN;
