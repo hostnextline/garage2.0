@@ -17,7 +17,7 @@ import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
 import type { JobRights } from '../../domain/jobs/rights';
 import { plannedParts, type UsedPart } from '../../domain/jobs/parts';
-import { jobFirstName, keepAhead, wt, invoiceWaiting } from './select';
+import { jobFirstName, keepAhead, wt, invoiceWaiting, invoiceSeen } from './select';
 import { sendText, sendTracking, wantsArrivalText, outcomeClosed } from './texts';
 import { confirmParts } from './PartsSheet';
 import { askCar, saveCar } from './CarCheckSheet';
@@ -150,7 +150,8 @@ export async function letGo(j: Job, used?: { parts?: UsedPart[] }): Promise<bool
 export async function doFinish(j: Job, rights: Pick<JobRights, 'payLater'>): Promise<boolean> {
   const parts = await partsUsed(j);
   if (!parts) return false;
-  const inv = invoiceOf(j.id);
+  // the invoice as the red button sees it (« Terminer la facture » waiting on this phone counts as finished)
+  const inv = invoiceSeen(j.id);
   const later = j.pay_later && rights.payLater && inv?.status === 'issued' ? { pay_later: true, reason: j.pay_later_reason || '' } : {};
   try {
     const r = await jobStep(j.id, 'finish', { ...later, ...parts });

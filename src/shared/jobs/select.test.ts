@@ -74,6 +74,42 @@ describe('a payment waiting is not asked a second time', () => {
   });
 });
 
+describe('the red button sees the invoice as the invoice panel does (R48)', () => {
+  const LINES = [{ item_id: 'i5', description: 'Freins', qty: 1, unit_cents: 20000, taxable: true }];
+  beforeEach(() => {
+    upsertLocal('job_items', [{ id: 'i5', job_id: 'j5', status: 'done', qty: 1, unit_cents: 20000, sort: 1, description: 'Freins' }]);
+    upsertLocal('invoices', [{ id: 'inv5', job_id: 'j5', status: 'draft', total_cents: 0, paid_cents: 0, lines: LINES }]);
+  });
+  const here = () => JOB({ id: 'j5', status: 'on_site', waiver_signed_at: 'x' });
+  it('« Terminer la facture » waiting for signal: « Encaisser » its total, not « Faire la facture » again', async () => {
+    expect(stepOf(here())).toEqual({ kind: 'invoice', draft: true, stale: false });
+    await outboxNow([rpc('invoice_finish', { p_invoice: 'inv5' })]);
+    // 200 $ + TPS + TVQ, counted from the draft's lines as the server will
+    expect(stepOf(here())).toEqual({ kind: 'pay', payLater: false, due: 22995 });
+  });
+  it('the finish and the payment covering it both wait: « Terminer » (it leaves after them), not « Encaisser »', async () => {
+    await outboxNow([rpc('invoice_finish', { p_invoice: 'inv5' }), rpc('payment_add', { p_invoice: 'inv5', p_amount_cents: 22995, p_method: 'cash', p_job: 'j5' })]);
+    expect(stepOf(here())).toEqual({ kind: 'finish', waiting: true });
+    // and the next job of the truck is not blocked by it
+    upsertLocal('jobs', [here(), JOB({ id: 'j6', number: 6, status: 'booked' })]);
+    expect(blockingJob(JOB({ id: 'j6' }))).toBeUndefined();
+  });
+  it('a prepayment already on the job counts at the waiting finish', async () => {
+    upsertLocal('payments', [{ id: 'p5', job_id: 'j5', invoice_id: null, amount_cents: 22995, method: 'card_online', reference: null }]);
+    await outboxNow([rpc('invoice_finish', { p_invoice: 'inv5' })]);
+    expect(stepOf(here())).toEqual({ kind: 'finish' });
+  });
+  it('« Payé par le Coffre » waiting: settled like the Coffre (« Terminer »), never « Faire la facture »; the next job is not blocked', async () => {
+    upsertLocal('jobs', [here(), JOB({ id: 'j6', number: 6, status: 'booked' })]);
+    expect(blockingJob(JOB({ id: 'j6' }))?.id).toBe('j5');
+    await outboxNow([rpc('coffre_add', { p_jobs: ['j5'], p_amount_cents: 0 })]);
+    expect(stepOf(here())).toEqual({ kind: 'finish' });
+    expect(blockingJob(JOB({ id: 'j6' }))).toBeUndefined();
+    // the job's own row is untouched (no pretend Coffre id outside the red button)
+    expect(seen(here()).coffre_id).toBeNull();
+  });
+});
+
 describe('a customer’s answer waiting', () => {
   it('shows as given, and the red button goes on', async () => {
     upsertLocal('job_items', [{ id: 'x1', job_id: 'j1', status: 'proposed', qty: 1, unit_cents: 18000, sort: 1, description: 'Plaquettes' }]);
