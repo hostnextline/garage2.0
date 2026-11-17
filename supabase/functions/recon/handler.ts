@@ -1,8 +1,8 @@
 // « Rapprochement quotidien »: every night, and when the owner asks, the garage checks its own books and its own data.
 // The checks that need only the database are SQL (public.recon_run, one snapshot); this function adds the ones that need
 // the outside, as findings of the same run (public.recon_add):
-//   - every card payment Stripe took in the last 72 hours is in « payments », for the same amount (skipped, and said
-//     so, while Stripe is not connected);
+//   - every card payment Stripe took in the last 72 hours is in « payments », for the same amount, and every refund
+//     (money given back from Stripe's screens) too (skipped, and said so, while Stripe is not connected);
 //   - the last good backup is younger than 26 hours (« ops_backup_runs », written by the backup job's { action: 'done' }).
 //     Every run of the database checks it too (trigger on ops_recon_runs, 20261116000500), with the same key and words:
 //     the schedule and « Vérifier maintenant » see a backup that stopped, and the two never make two rows.
@@ -102,7 +102,92 @@ async function stripeCheck(add: Add): Promise<Record<string, unknown>> {
         `Stripe took ${moneyEn(amount)} by card, but the app recorded ${moneyEn(row.amount_cents)}.`, data);
     }
   }
-  return { status: 'ok', sessions: seen, paid: paid.length, missing, wrong, foreign };
+  const refunds = await refundCheck(key, since, paid, add);
+  return { status: 'ok', sessions: seen, paid: paid.length, missing, wrong, foreign, ...refunds };
+}
+
+/** money given back from Stripe's own screens (or a refund that failed afterwards) must be in « payments » too: a refund
+    that passed is the row « <card page>#<refund> » (a negative amount), one that failed after it was written also has its
+    « …#echec ». A notice lost (or an endpoint made before it heard the refunds) would leave the invoice « payée » and the
+    day's money too high. Stripe's refunds of the last 72 hours, and those of every paid page seen above. Only reports. */
+async function refundCheck(key: string, since: number, paid: Record<string, any>[], add: Add): Promise<Record<string, unknown>> {
+  const byPi = new Map<string, Record<string, any>>();
+  for (const s of paid) if (s.payment_intent) byPi.set(String(s.payment_intent), s);
+  const found = new Map<string, Record<string, any>>();
+  try {
+    let after = '';
+    for (let page = 0; page < 20; page++) {
+      const d = await stripeCall(key, 'GET', `/refunds?limit=100&created%5Bgte%5D=${since}${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`);
+      const list: Record<string, any>[] | null = Array.isArray(d?.data) ? d.data : null;
+      if (!list) throw new Error('Stripe : liste illisible');
+      for (const r of list) if (r?.id) found.set(String(r.id), r);
+      if (!d.has_more || !list.length) break;
+      after = String(list[list.length - 1].id);
+    }
+    // the refunds of each paid page seen, asked by its payment (one more look, so a list that missed one never hides it)
+    for (const pi of byPi.keys()) {
+      const d = await stripeCall(key, 'GET', `/refunds?limit=100&payment_intent=${encodeURIComponent(pi)}`);
+      for (const r of (Array.isArray(d?.data) ? d.data : []) as Record<string, any>[]) if (r?.id) found.set(String(r.id), r);
+    }
+  } catch (e) {
+    const error = String((e as Error)?.message || e).slice(0, 200);
+    await add('stripe_unreachable', 'warn', null, null,
+      'Stripe n’a pas donné ses remboursements : l’argent remis aux clients des 3 derniers jours n’a pas pu être vérifié cette fois-ci.',
+      'Stripe did not give its refunds: the money given back to customers in the last 3 days could not be checked this time.', { sig: 'refunds', error });
+    return { refunds_status: 'error' };
+  }
+  const db = adminDb();
+  // each refund to its card page: a page seen above, else the payment in the books (its reference is Stripe's payment id),
+  // else Stripe's own page for that payment; a payment that is not the garage's own app is not ours to check
+  type Want = { re: Record<string, any>; page: string; job: string | null; invoice: string | null };
+  const want: Want[] = [];
+  let foreign = 0;
+  for (const re of found.values()) {
+    const amount = Math.round(Number(re.amount || 0)), status = String(re.status || '');
+    if (!(amount > 0) || !['succeeded', 'failed', 'canceled'].includes(status) || !/^[A-Za-z0-9_]{4,120}$/.test(String(re.id))) continue;   // still on its way: Stripe's next notice
+    const pi = String(re.payment_intent || '');
+    let s = byPi.get(pi);
+    if (!s && pi) {
+      const { data, error } = await db.from('payments').select('stripe_session, job_id, invoice_id').eq('reference', pi).eq('method', 'card_online')
+        .gt('amount_cents', 0).is('deleted_at', null).order('created_at').limit(1);
+      if (error) dbFail(error);
+      const p = ((data || []) as Record<string, any>[])[0];
+      if (p?.stripe_session) s = { id: p.stripe_session, metadata: { job_id: p.job_id, invoice_id: p.invoice_id } };
+      else {
+        try {
+          const d = await stripeCall(key, 'GET', `/checkout/sessions?limit=5&payment_intent=${encodeURIComponent(pi)}`);
+          s = ((Array.isArray(d?.data) ? d.data : []) as Record<string, any>[]).find((x) => x?.payment_status === 'paid' && (uuid(x.metadata?.job_id) || uuid(x.metadata?.invoice_id)));
+        } catch { s = undefined; }
+      }
+    }
+    if (!s || !(uuid(s.metadata?.job_id) || uuid(s.metadata?.invoice_id))) { foreign++; continue; }
+    want.push({ re, page: String(s.id), job: uuid(s.metadata?.job_id), invoice: uuid(s.metadata?.invoice_id) });
+  }
+  const keys = want.flatMap((w) => [`${w.page}#${w.re.id}`, `${w.page}#${w.re.id}#echec`]);
+  const have = new Set<string>();
+  for (let i = 0; i < keys.length; i += 40) {
+    const { data, error } = await db.from('payments').select('stripe_session').in('stripe_session', keys.slice(i, i + 40)).is('deleted_at', null);
+    if (error) dbFail(error);
+    for (const r of (data || []) as { stripe_session: string }[]) have.add(r.stripe_session);
+  }
+  let missing = 0;
+  for (const w of want) {
+    const amount = Math.round(Number(w.re.amount)), row = `${w.page}#${w.re.id}`;
+    const table = w.invoice ? 'invoices' : w.job ? 'jobs' : null, id = w.invoice || w.job;
+    const data = { sig: String(w.re.id), refund: w.re.id, status: w.re.status, session: w.page, amount_cents: amount, payment_intent: w.re.payment_intent || null, job_id: w.job, invoice_id: w.invoice };
+    if (w.re.status === 'succeeded' && !have.has(row)) {
+      missing++;
+      await add('stripe_refund_not_recorded', 'bad', table, id,
+        `Stripe a remis ${moneyFr(amount)} au client (remboursement), mais l’app ne l’a pas inscrit : la facture compte encore cet argent comme reçu.`,
+        `Stripe gave ${moneyEn(amount)} back to the customer (refund), but the app did not record it: the invoice still counts that money as received.`, data);
+    } else if (w.re.status !== 'succeeded' && have.has(row) && !have.has(`${row}#echec`)) {
+      missing++;
+      await add('stripe_refund_not_recorded', 'bad', table, id,
+        `Un remboursement de ${moneyFr(amount)} n’a finalement pas passé chez Stripe, mais l’app le compte encore comme remis au client.`,
+        `A ${moneyEn(amount)} refund finally did not go through at Stripe, but the app still counts it as given back.`, { ...data, sig: `${w.re.id}:echec` });
+    }
+  }
+  return { refunds: found.size, refunds_missing: missing, refunds_foreign: foreign };
 }
 
 /** the nightly backup: the last one that said « done » and good must be younger than 26 hours */

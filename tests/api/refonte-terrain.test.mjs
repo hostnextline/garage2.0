@@ -468,6 +468,36 @@ test('« Rapprochement quotidien » (recon): run by the backup job or by the own
       await q(`update public.payments set amount_cents = 5000 where stripe_session = $1`, [paidWrong]);
       const r5 = await fn('recon', { action: 'run' }, ownerJwt);
       assert.deepEqual([r5.outside.stripe.status, r5.outside.stripe.missing, r5.outside.stripe.wrong, r5.added.length], ['ok', 0, 0, 0], JSON.stringify(r5));
+      // money given back from Stripe's own screens whose notice never reached the books (here: no webhook secret, the notice
+      // is refused): the invoice would stay « payée » and the day's money too high — said, with the amount
+      await q(`delete from public.rate_limits where key = 'recon:run'`);
+      const back = await (await fetch(`${MOCK}/refund/${paidRight}?amount=1000`)).json();
+      assert.ok(back.refund, JSON.stringify(back));
+      const r6 = await fn('recon', { action: 'run' }, ownerJwt);
+      assert.deepEqual([r6.outside.stripe.refunds_missing, r6.bad], [1, true], JSON.stringify(r6.outside.stripe));
+      assert.deepEqual(r6.added.map((a) => [a.check, a.severity, a.entity_table, a.entity_id]), [['stripe_refund_not_recorded', 'bad', 'jobs', job]]);
+      assert.match(r6.added[0].message_fr, /10,00 \$/);
+      const seenR = (await fn('recon', { action: 'last' }, tres.jwt)).summary;
+      assert.ok((seenR.findings || []).some((x) => x.check_id === 'stripe_refund_not_recorded'), 'money: the Trésorerie sees it');
+      // written in the books (as the stripe function writes it): nothing more to say
+      await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, -1000, 'card_online', $2, $3)`, [job, `${paidRight}#${back.refund}`, back.refund]);
+      const r7 = await fn('recon', { action: 'run' }, ownerJwt);
+      assert.deepEqual([r7.outside.stripe.refunds, r7.outside.stripe.refunds_missing, r7.added.length], [1, 0, 0], JSON.stringify(r7));
+      // Stripe says later the refund failed: the books still count it as given back until its « #echec » row is there
+      await fetch(`${MOCK}/refund-update/${back.refund}?status=failed`);
+      const r8 = await fn('recon', { action: 'run' }, ownerJwt);
+      assert.deepEqual(r8.added.map((a) => [a.check, a.severity]), [['stripe_refund_not_recorded', 'bad']], JSON.stringify(r8.added));
+      assert.match(r8.added[0].message_fr, /n’a finalement pas passé/);
+      await q(`insert into public.payments (job_id, amount_cents, method, stripe_session, reference) values ($1, 1000, 'card_online', $2, $3)`, [job, `${paidRight}#${back.refund}#echec`, back.refund]);
+      assert.equal((await fn('recon', { action: 'run' }, ownerJwt)).added.length, 0);
+      // Stripe does not give its refunds: said as a check that could not be made (warn), never a crash, never « bad » by itself
+      await fetch(`${MOCK}/control?stripe=refunds`);
+      try {
+        const r9 = await fn('recon', { action: 'run' }, ownerJwt);
+        assert.equal(r9.ok, true, JSON.stringify(r9));
+        assert.deepEqual([r9.outside.stripe.status, r9.outside.stripe.refunds_status, r9.added.map((a) => [a.check, a.severity])], ['ok', 'error', [['stripe_unreachable', 'warn']]]);
+        assert.match(r9.added[0].message_fr, /remboursements/);
+      } finally { await fetch(`${MOCK}/control?stripe=ok`); }
       await q(`delete from public.payments where job_id = $1`, [job]);
     }
   } finally {
