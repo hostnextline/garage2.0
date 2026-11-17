@@ -62,12 +62,11 @@
 
 -- ---------- trucks: the owner or « Réglages », as the app shows « Les camions » (x-security-02, x-rights-10) ----------
 -- Hours and starts are not touched: truck_week / truck_days keep truck_hours_editable, the start goes through
--- set_truck_start.
-drop policy if exists trucks_write on public.trucks;
-drop policy if exists trucks_update on public.trucks;
-create policy trucks_write on public.trucks for insert to authenticated
+-- set_truck_start. (No DROP anywhere in this file, the owner's rule for live (mise-a-niveau-05): an existing rule is
+-- changed with ALTER POLICY, a trigger is made with CREATE OR REPLACE TRIGGER, a check is added only when missing.)
+alter policy trucks_write on public.trucks to authenticated
   with check (public.is_owner() or public.can('settings'));
-create policy trucks_update on public.trucks for update to authenticated
+alter policy trucks_update on public.trucks to authenticated
   using (public.is_owner() or public.can('settings')) with check (public.is_owner() or public.can('settings'));
 
 -- ---------- jobs: the length goes through set_job_duration, a job ends by job_step (x-security-09, audit A2) ----------
@@ -77,8 +76,7 @@ revoke update (duration_min, deleted_at) on public.jobs from authenticated;
 -- A person who creates a customer gets the row back (insert … returning): the read rule is then checked on the NEW row,
 -- before it is in the table, so the look-up inside customer_visible found nothing and only « Clients » passed
 -- (sql-foundation-04). The row's own author is now read from the row itself; nothing else changes.
-drop policy if exists customers_read on public.customers;
-create policy customers_read on public.customers for select to authenticated
+alter policy customers_read on public.customers to authenticated
   using (public.customer_visible(id) or (created_by = auth.uid() and public.is_staff()));
 
 -- Deleting a file: never while the customer has a coming appointment or a finished invoice not paid, whatever the
@@ -103,8 +101,7 @@ begin
 end $$;
 revoke all on function public.customers_delete_guard() from public, anon, authenticated;
 grant execute on function public.customers_delete_guard() to service_role;
-drop trigger if exists customers_delete_guard on public.customers;
-create trigger customers_delete_guard before update of deleted_at on public.customers
+create or replace trigger customers_delete_guard before update of deleted_at on public.customers
   for each row execute function public.customers_delete_guard();
 
 -- ---------- invoices: a draft leaves through « Annuler la facture », never by a direct write (R40) ----------
@@ -134,11 +131,14 @@ end $$;
 -- by its author afterwards (sql-foundation-08); an SVG receipt opened by the owner ran its script in the owner's
 -- session (x-security-01, the server's half: the app writes png / jpeg / webp / pdf only).
 revoke update on public.attachments from authenticated;
-drop policy if exists attachments_upd on public.attachments;
-create policy attachments_upd on public.attachments for update to authenticated
+alter policy attachments_upd on public.attachments to authenticated
   using (public.is_owner()) with check (public.is_owner());
-alter table public.attachments drop constraint if exists attachments_no_svg;
-alter table public.attachments add constraint attachments_no_svg check (mime <> 'image/svg+xml') not valid;
+do $svg$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.attachments'::regclass and conname = 'attachments_no_svg') then
+    alter table public.attachments add constraint attachments_no_svg check (mime <> 'image/svg+xml') not valid;
+  end if;
+end $svg$;
 
 -- ---------- service_parts: the part a service uses, set through one operation (R173, settings-team-07) ----------
 -- The panel « Pièces » of a service writes the rows itself. A part taken off a service is kept as deleted (so the
@@ -203,8 +203,7 @@ begin
 end $$;
 revoke all on function public.push_subs_takeover() from public, anon, authenticated;
 grant execute on function public.push_subs_takeover() to service_role;
-drop trigger if exists push_subs_takeover on public.push_subs;
-create trigger push_subs_takeover before insert on public.push_subs
+create or replace trigger push_subs_takeover before insert on public.push_subs
   for each row execute function public.push_subs_takeover();
 
 -- ---------- customers: a phone number corrected closes the links texted to the old one (x-security-03) ----------
@@ -252,8 +251,7 @@ begin
 end $$;
 revoke all on function public.customers_phone_links() from public, anon, authenticated;
 grant execute on function public.customers_phone_links() to service_role;
-drop trigger if exists customers_phone_links on public.customers;
-create trigger customers_phone_links after update of phone on public.customers
+create or replace trigger customers_phone_links after update of phone on public.customers
   for each row execute function public.customers_phone_links();
 
 -- ---------- settings.booking.web.on: the public booking page opens and closes through web_switch only (sql-misc-04) ----------
@@ -285,8 +283,7 @@ begin
 end $$;
 revoke all on function public.settings_web_guard() from public, anon, authenticated;
 grant execute on function public.settings_web_guard() to service_role;
-drop trigger if exists settings_web_guard on public.settings;
-create trigger settings_web_guard before update on public.settings
+create or replace trigger settings_web_guard before update on public.settings
   for each row execute function public.settings_web_guard();
 
 -- web_switch(op, on): owner only. Answers the settings row, like set_role_rights.

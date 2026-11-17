@@ -4,6 +4,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { tx, pool, futureDay, uuid } from './helpers.mjs';
 
 after(() => pool.end());
@@ -285,6 +286,8 @@ test('x-rights-19: a blocked mechanic whose session still lives no longer reads 
   assert.equal((await h.q(`select id from public.jobs where id = $1`, [job])).length, 0);
   assert.equal(await h.val(`select public.truck_hours_editable($1)`, [g.truck]), false);
   assert.equal((await h.q(`select id from public.customers where id = $1`, [g.customer])).length, 0);
+  // tests-06: and the app hears it — my_access answers nothing, so the phone signs him out
+  assert.equal(await h.val(`select public.my_access()`), null);
 }));
 
 test('R93 (x-rights-05): an answer carries only the jobs of the block the person may see; the owner’s and the server’s carry every one', () => tx(async (h) => {
@@ -559,6 +562,46 @@ test('sql-misc-13: a day, a position or a year that is not one is refused in wor
   const r = await w.web(w.form({ vehicle: { year: '99999999999', make: 'Ford', model: 'F-150' } }));
   assert.equal(r.ok, true, 'a year that is not one is simply left out');
 }));
+
+// =====================================================================================================================
+// The way back (CUTOVER §6): what this file adds can be switched off without a DROP
+// =====================================================================================================================
+
+test('mise-a-niveau-01, compat-01: the four triggers made here switch off with ALTER … DISABLE (and back with ENABLE); yesterday’s rules come back', () => tx(async (h) => {
+  // exactly these four, on these tables: the lines the way back needs
+  const mine = (await h.q(`select c.relname t, g.tgname n from pg_trigger g join pg_class c on c.oid = g.tgrelid
+    where not g.tgisinternal and g.tgname in ('customers_delete_guard', 'customers_phone_links', 'push_subs_takeover', 'settings_web_guard') order by 2`)).map((r) => `${r.t}.${r.n}`);
+  assert.deepEqual(mine, ['customers.customers_delete_guard', 'customers.customers_phone_links', 'push_subs.push_subs_takeover', 'settings.settings_web_guard']);
+  const g = await garage(h);
+  const office = await h.person('Julie Bureau', ['office'], { rights: { settings: true } });
+  const job = await bookOn(h, g);
+  await h.as(null);
+  const link = await h.val(`insert into public.public_links (token_hash, job_id, expires_at) values ($1, $2, now() + interval '90 days') returning id`, [randomUUID(), job]);
+  await h.q(`update public.settings set booking = jsonb_set(booking, '{web}', coalesce(booking->'web', '{}'::jsonb) || '{"on": false}'::jsonb) where id = 1`);
+  const off = (on) => h.q(`alter table public.customers ${on} trigger customers_delete_guard, ${on} trigger customers_phone_links;
+    alter table public.push_subs ${on} trigger push_subs_takeover; alter table public.settings ${on} trigger settings_web_guard`);
+  await off('disable');
+  // yesterday's rules: a settings save opens the page, a new number keeps the old links, a busy customer can be deleted
+  await h.as(office);
+  await h.q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
+  assert.equal(await h.val(`select booking->'web'->'on' from public.settings where id = 1`), true);
+  await h.as(g.owner);
+  await h.q(`update public.customers set phone = '514 555-9876' where id = $1`, [g.customer]);
+  await h.q(`update public.customers set deleted_at = now() where id = $1`, [g.customer]);
+  await h.as(null);
+  assert.equal(await h.val(`select revoked_at from public.public_links where id = $1`, [link]), null);
+  // switched on again: today's rules
+  await h.q(`update public.customers set deleted_at = null where id = $1`, [g.customer]);
+  await off('enable');
+  await h.as(g.owner);
+  assert.equal(code(await h.fails(() => h.q(`update public.customers set deleted_at = now() where id = $1`, [g.customer]))), 'customer_busy');
+}));
+
+test('mise-a-niveau-05: this migration sends no DROP to live (rules are altered, triggers made with create or replace)', () => {
+  const sql = readFileSync(new URL('../../supabase/migrations/20261116000300_refonte_acces.sql', import.meta.url), 'utf8')
+    .replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.deepEqual(sql.match(/\bdrop\b[^;]*/gi) ?? [], []);
+});
 
 // =====================================================================================================================
 // 6. Indexes
