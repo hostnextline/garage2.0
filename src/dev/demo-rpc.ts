@@ -1,44 +1,24 @@
 /* DEV ONLY — pretend versions of the server's main operations, close enough to try the screens.
-   The real rules (rights, planner, taxes, numbering) live in supabase/migrations and are tested there. */
-import { registerRpc as strongRpc, registerFn as strongFn, put, find, table, rows, refuse, nowIso, type DemoRow } from './fake-server';
+   The real rules (rights, planner, taxes, numbering) live in supabase/migrations and are tested there. One copy of each
+   operation (demo-11): booking, moving, suggesting and the hours are in demo-extra/agenda.ts, the invoices in
+   demo-extra/invoices.ts, the texts and trips in demo-extra/jobs.ts, the team in demo-extra/team.ts. */
+import { registerRpc as strongRpc, put, find, table, rows, refuse, nowIso, type DemoRow } from './fake-server';
 // the core's pretend operations give way to a section's own (registered in src/dev/demo-extra)
 const registerRpc = (name: string, fn: Parameters<typeof strongRpc>[1]) => strongRpc(name, fn, { weak: true });
-const registerFn = (name: string, fn: Parameters<typeof strongFn>[1]) => strongFn(name, fn, { weak: true });
 import { addDays, addMonths, today, nowMinute, dayOf, daysBetween } from '../lib/dates';
 import { can, demoUser, invoiceEditable, isField, isOwner, isStaff, jobActor, myTruckIds, need } from './demo-rules';
 import { renumber, started } from './demo-extra/agenda';
 
 const me = demoUser;
 const BLOCKS: Record<string, [number, number]> = { am: [480, 720], pm: [720, 960], eve: [960, 1200] };
-const sub = (lines: { qty: number; unit_cents: number; kind?: string }[]) => lines.reduce((n, l) => n + Math.round(Number(l.qty) * Number(l.unit_cents) * (l.kind === 'discount' ? -1 : 1)), 0);
-const withTaxes = (s: number) => ({ subtotal_cents: s, taxable_cents: s, tps_cents: Math.round(s * 0.05), tvq_cents: Math.round(s * 0.09975), total_cents: s + Math.round(s * 0.05) + Math.round(s * 0.09975) });
-let invNo = 43;
 /** the next job number, like the database's sequence (the same counter for a booking and a walk-in: demo-18) */
 const nextJobNo = () => Math.max(200, ...table('jobs').map((x) => Number(x.number) || 0)) + 1;
 
 function itemsOf(jobId: string) { return table('job_items').filter((i) => i.job_id === jobId && !i.deleted_at); }
-function place(day: string, block: string, wanted: string | null): string | null {
-  if (wanted) return wanted;
-  const trucks = table('trucks').filter((t) => t.active && !t.deleted_at);
-  const load = (tid: string) => table('jobs').filter((j) => j.truck_id === tid && j.day === day && j.block === block && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status))).length;
-  return trucks.sort((a, b) => load(a.id) - load(b.id))[0]?.id ?? null;
-}
 function addItems(jobId: string, items: DemoRow[]) {
   return items.map((it, i) => put('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', sort: i + 1, ...it, id: String(it.id || crypto.randomUUID()), job_id: jobId }));
 }
 
-registerRpc('book_job', (a) => {
-  const j = a.p_job as DemoRow & { day: string; block: string; customer_id: string; truck_id?: string };
-  if (!j.customer_id) refuse('no_customer', 'Choisis le client avant de réserver.');
-  if (!BLOCKS[j.block]) refuse('bad_block', 'Choisis la date et le bloc : matin, après-midi ou soir.');
-  if (j.day < today() || (j.day === today() && nowMinute() >= BLOCKS[j.block][0])) refuse('block_started', 'Ce bloc est déjà commencé : choisis un autre bloc.');
-  const truck = place(j.day, j.block, j.truck_id || null);
-  const n = table('jobs').filter((x) => x.day === j.day && x.block === j.block && x.truck_id === truck).length;
-  const items = addItems(j.id, (a.p_items as DemoRow[]) || []);
-  const dur = Number(j.duration_min) || items.reduce((m, i) => m + (Number(i.duration_min) || 45), 0) || 60;
-  const job = put('jobs', { status: 'booked', truck_pinned: !!j.truck_id, stop_order: n + 1, eta_min: BLOCKS[j.block][0] + 20 + n * 70, travel_min: 18, source: 'phone', number: nextJobNo(), created_by: me(), ...j, truck_id: truck, duration_min: dur });
-  return { ok: true, job_id: job.id, truck_id: truck, rows: rows({ jobs: job, job_items: items }) };
-});
 registerRpc('walk_in', (a) => {
   const j = a.p_job as DemoRow;
   need(isField(), 'Tu ne peux pas ouvrir une job.');
@@ -51,13 +31,6 @@ registerRpc('walk_in', (a) => {
   const items = addItems(j.id, ((a.p_items as DemoRow[]) || []).map((i) => ({ status: 'done', ...i })));
   const job = put('jobs', { status: 'on_site', day: today(), block, stop_order: 9, eta_min: now, travel_min: 0, duration_min: 60, source: 'walk_in', number: nextJobNo(), created_by: me(), started_at: nowIso(), arrived_at: nowIso(), ...j, truck_id: truck });
   return { ok: true, job_id: job.id, rows: rows({ jobs: job, job_items: items }) };
-});
-registerRpc('move_job', (a) => {
-  const j = find('jobs', a.p_job);
-  if (!j) refuse('not_found', 'Ce rendez-vous n’existe plus.');
-  if (j.status !== 'booked') refuse('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.');
-  const job = put('jobs', { id: j.id, day: a.p_day, block: a.p_block, truck_id: place(String(a.p_day), String(a.p_block), (a.p_truck as string) || null) });
-  return { ok: true, changed: true, rows: rows({ jobs: job }) };
 });
 registerRpc('set_stop_order', (a) => {
   need(isStaff(), 'Connecte-toi.');
@@ -178,26 +151,9 @@ registerRpc('job_step', (a) => {
 registerRpc('extra_answer', (a) => {
   const i = find('job_items', a.p_item);
   if (!i || i.status !== 'proposed') refuse('not_extra', 'Ce n’est pas un travail proposé.');
+  const j = find('jobs', i.job_id);
+  need(!!j && jobActor(j), 'Cette job n’est pas à toi.');
   return { ok: true, rows: rows({ job_items: put('job_items', { id: i.id, status: a.p_accept ? 'approved' : 'declined', answered_at: nowIso(), answered_via: a.p_via, answer_attachment: a.p_attachment || null }) }) };
-});
-registerRpc('invoice_for_job', (a) => {
-  const j = find('jobs', a.p_job);
-  if (!j) refuse('not_found', 'Cette job n’existe plus.');
-  const lines = itemsOf(j.id).filter((i) => ['planned', 'done', 'approved'].includes(String(i.status)))
-    .map((i) => ({ description: String(i.description), qty: Number(i.qty), unit_cents: Math.abs(Number(i.unit_cents)) * (i.kind === 'discount' ? -1 : 1), taxable: !!i.taxable, kind: String(i.kind) }));
-  const cur = table('invoices').find((v) => v.job_id === j.id && v.status !== 'void');
-  const s = sub(lines);
-  if (cur && cur.status !== 'draft') return { ok: true, invoice_id: cur.id, rows: rows({ invoices: cur }) };
-  const inv = put('invoices', { ...(cur ? { id: cur.id } : {}), job_id: j.id, customer_id: j.customer_id, number: null, status: 'draft', issued_at: null, due_on: null, lines, taxes_on: true, ...withTaxes(s), paid_cents: 0, lang: (find('customers', j.customer_id)?.lang as string) || 'fr', notes: null, sent_at: null, voided_at: null, void_reason: null });
-  return { ok: true, invoice_id: inv.id, rows: rows({ invoices: inv }) };
-});
-registerRpc('invoice_finish', (a) => {
-  const v = find('invoices', a.p_invoice);
-  if (!v) refuse('not_found', 'Cette facture n’existe plus.');
-  if (!(v.lines as unknown[]).length) refuse('empty', 'Ajoute au moins une ligne avant de terminer la facture.');
-  const s = sub(v.lines as { qty: number; unit_cents: number }[]);
-  const inv = put('invoices', { id: v.id, status: 'issued', number: v.number ?? ++invNo, issued_at: nowIso(), ...withTaxes(v.taxes_on === false ? 0 : s), ...(v.taxes_on === false ? { subtotal_cents: s, total_cents: s } : {}) });
-  return { ok: true, number: inv.number, rows: rows({ invoices: inv }) };
 });
 /* payment_add as a person sends it (supabase/migrations/20261116000100_refonte_argent.sql): the invoice finished, never
    more than what is left (too_much), money given back only by the office and never more than was paid, the card
@@ -252,27 +208,6 @@ registerRpc('payment_remove', (a) => {
   const paid = paidOnInvoice(v.id);
   return { ok: true, rows: rows({ payments: find('payments', p.id), invoices: put('invoices', { id: v.id, paid_cents: paid, status: paid >= Number(v.total_cents) ? 'paid' : 'issued' }) }) };
 });
-registerRpc('invoice_void', (a) => {
-  need(isOwner() || can('edit_invoices'), 'Seul le bureau peut annuler une facture.');
-  const v = find('invoices', a.p_invoice);
-  if (!v) refuse('not_found', 'Cette facture n’existe plus.');
-  if (Number(v.paid_cents) > 0) refuse('has_payments', 'Cette facture a des paiements : retire-les (ou rembourse) avant de l’annuler.');
-  return { ok: true, rows: rows({ invoices: put('invoices', { id: v.id, status: 'void', voided_at: nowIso(), void_reason: a.p_reason }) }) };
-});
-registerRpc('suggest_blocks', (a) => {
-  const from = String(a.p_from || today());
-  const out: DemoRow[] = [];
-  for (let i = 0; i < 10 && out.length < Number(a.p_limit || 6); i++) {
-    const day = addDays(from, i);
-    for (const block of ['am', 'pm', 'eve']) {
-      if (day === today() && nowMinute() >= BLOCKS[block][0]) continue;
-      if (new Date(day + 'T12:00').getDay() === 0) continue;
-      out.push({ id: `${day}-${block}`, day, block, drive_min: 8 + ((i * 7 + block.length * 3) % 19), near: (i + block.length) % 3, truck: 't-complet', left: 90 + ((i * 13) % 120) } as unknown as DemoRow);
-      if (out.length >= Number(a.p_limit || 6)) break;
-    }
-  }
-  return out;
-});
 registerRpc('shift_start', () => {
   const open = table('shifts').find((s) => s.staff_id === me() && !s.ended_at);
   return { ok: true, rows: rows({ shifts: open || put('shifts', { staff_id: me(), started_at: nowIso(), ended_at: null }) }) };
@@ -295,17 +230,6 @@ registerRpc('set_role_rights', (a) => {
   const rr = { ...(s.role_rights as Record<string, Record<string, boolean>>) };
   rr[String(a.p_role)] = { ...(rr[String(a.p_role)] || {}), [String(a.p_right)]: !!a.p_on };
   return { ok: true, rows: rows({ settings: put('settings', { id: '1', role_rights: rr }) }) };
-});
-registerRpc('apply_hours', (a) => {
-  need(isOwner() || can('hours') || myTruckIds().includes(String(a.p_truck)), 'Tu ne peux pas changer l’horaire de ce camion.');
-  const truck = String(a.p_truck), week = a.p_week as Record<string, [number, number][]>, mode = String(a.p_mode), from = String(a.p_from);
-  const changed: DemoRow[] = [];
-  if (mode === 'always') for (let d = 0; d < 7; d++) changed.push(put('truck_week', { id: `w-${truck}-${d}`, truck_id: truck, dow: d, ranges: week[d] || [] }));
-  else {
-    const n = mode === 'day' ? 1 : Number(a.p_weeks || 1) * 7;
-    for (let i = 0; i < n; i++) { const day = addDays(from, i); const d = new Date(day + 'T12:00').getDay(); changed.push(put('truck_days', { id: `d-${truck}-${day}`, truck_id: truck, day, ranges: week[d] || [], note: null })); }
-  }
-  return { ok: true, rows: rows(mode === 'always' ? { truck_week: changed } : { truck_days: changed }) };
 });
 registerRpc('team_map', (a) => {
   need(can('map'), 'Tu n’as pas accès à la carte. Parle au propriétaire.');
@@ -384,13 +308,4 @@ registerRpc('treasury_report', (a) => {
     collected: [...methods.entries()].map(([method, m]) => ({ method, total: m.total, n: m.n })),
     profit: s(inv, 'subtotal_cents') - s(ex, 'subtotal_cents'), tps_to_remit: s(inv, 'tps_cents') - s(ex, 'tps_cents'), tvq_to_remit: s(inv, 'tvq_cents') - s(ex, 'tvq_cents')
   };
-});
-registerFn('notify', (b) => ({ ok: true, status: 'sent', message: `Texto (démo) : ${String(b.kind)}`, link: 'https://example.com/client.html#t=demo', phone: '514 555-0141' }));
-registerFn('enroute', (b) => ({ ok: true, sms: 'sent', link: 'https://example.com/client.html#suivi=demo', minutes: 14, km: 6.2, eta_at: new Date(Date.now() + 14 * 60000).toISOString(), message: `Trajet (démo) : ${String(b.action)}` }));
-registerFn('vin', () => ({ ok: true, vehicle: { year: 2019, make: 'Honda', model: 'Civic', trim: 'LX', engine: '2.0 L 4 cyl.', displacement: 2.0, cylinders: 4, fuel: 'essence', drive: 'FWD' } }));
-registerFn('team', (b) => {
-  if (b.action === 'list') return { ok: true, invitations: [], sign_ins: {} };
-  if (b.action === 'secrets') return { ok: true, ghl: { on: false, token_end: null, location: null }, stripe: { on: false, test: false, end: null, webhook: false } };
-  if (b.action === 'invite' || b.action === 'reset-link') return { ok: true, link: 'https://example.com/#invite=demo-demo-demo-demo-demo', sent: 'off', channel: 'none' };
-  return { ok: true };
 });

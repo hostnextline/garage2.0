@@ -220,3 +220,15 @@ describe('demo-03: nothing leaves for the live project', () => {
     }
   });
 });
+
+describe('demo-14: the demo stays out of the real app', () => {
+  it('only main.tsx reaches src/dev, by a dynamic import behind import.meta.env.DEV', () => {
+    const users = files(SRC).filter((p) => /from\s+['"][./]*\/?dev\/|import\(\s*['"][./]*\/?dev\//.test(readFileSync(p, 'utf8')));
+    expect(users.map((p) => p.slice(SRC.length + 1))).toEqual(['main.tsx']);
+    const main = readFileSync(join(SRC, 'main.tsx'), 'utf8');
+    const lines = main.split('\n').filter((l) => l.includes('./dev/'));
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toMatch(/import\.meta\.env\.DEV\s*\?\s*async[^:]*import\('\.\/dev\/demo'\)/);
+    expect(main).not.toMatch(/^import .*['"]\.\/dev\//m);
+  });
+});

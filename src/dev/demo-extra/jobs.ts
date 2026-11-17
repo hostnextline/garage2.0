@@ -36,8 +36,33 @@ function textRow(j: DemoRow, kind: string, body: string, status: string) {
   put('messages', { job_id: j.id, customer_id: j.customer_id, staff_id: me(), kind, channel: 'sms', to_addr: String(c?.phone || ''), body, status: status === 'sent' ? 'sent' : 'skipped', error: status === 'sent' ? null : status });
 }
 
+/** the trip back to the truck's start (or « Départ des camions »), like supabase/functions/enroute returnTrip */
+function returnTrip(b: Record<string, unknown>) {
+  const mine = () => table('trips').filter((t) => t.staff_id === me() && t.kind === 'return' && t.status === 'active');
+  if (b.action === 'return_end') return { ok: true, rows: answerRows({ trips: mine().map((t) => put('trips', { id: t.id, status: 'arrived', ended_at: nowIso() })) }) };
+  const bk = (find('settings', '1')?.booking || {}) as { home?: { label?: string; lat?: number; lng?: number }; return_phone?: string };
+  const truck = myTruckIds().map((id) => find('trucks', id)).find((t) => t?.driver_id === me()) || find('trucks', myTruckIds()[0]);
+  const start = (truck?.start as { label?: string; lat?: number; lng?: number } | null) || null;
+  const home = start?.lat != null ? start : bk.home;
+  if (home?.lat == null || home.lng == null) return { ok: false, code: 'no_home', error: 'Le départ des camions n’a pas de position : choisis son adresse dans Réglages → Réservations.' };
+  const label = String(home.label || bk.home?.label || 'Centrale');
+  for (const t of mine()) put('trips', { id: t.id, status: 'cancelled', ended_at: nowIso() });
+  const minutes = 18, eta = new Date(Date.now() + minutes * 60_000);
+  const phone = String(bk.return_phone || '').trim() || null;
+  const sms = !phone ? 'no_phone' : b.notify === false ? 'quiet' : textsOnline() ? 'sent' : 'off';
+  const trip = put('trips', { job_id: null, kind: 'return', dest_label: label, staff_id: me(), status: 'active', started_at: nowIso(), ended_at: null, eta_at: eta.toISOString(),
+    km: 7.5, minutes, route: null, dest_lat: home.lat, dest_lng: home.lng, sms_status: sms, expires_at: new Date(Date.now() + 4 * 3600_000).toISOString() });
+  const mech = String(find('staff', me())?.short_name || 'Le mécano');
+  const link = `${LINK}#suivi=demo-retour`;
+  const message = `${mech} a fini sa journée et revient vers ${label}. Suivre le camion en direct : ${link}`;
+  return { ok: true, sms, link, message, phone, place: label, eta_at: trip.eta_at, minutes, km: 7.5, rows: answerRows({ trips: trip }) };
+}
+
 function fns() {
   registerFn('enroute', (b) => {
+    // « Je pars vers la Centrale » / « Je suis arrivé » after the last job: a trip with no job (demo-16: it answered
+    // « Cette job n’existe plus »)
+    if (b.action === 'return' || b.action === 'return_end') return returnTrip(b);
     const j = find('jobs', b.job_id);
     if (!j) return { ok: false, code: 'not_found', error: 'Cette job n’existe plus (ou tu n’y as pas accès).' };
     const action = String(b.action || 'start');

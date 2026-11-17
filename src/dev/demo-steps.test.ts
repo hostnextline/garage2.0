@@ -132,3 +132,19 @@ describe('booking in block mode', () => {
     expect(out.every((x) => x.far === null)).toBe(true);
   });
 });
+
+describe('« Retour à la Centrale » in the demo (demo-16)', () => {
+  it('« Je pars vers la Centrale » makes a trip with no job; « Je suis arrivé » ends it', async () => {
+    const { registeredFns } = await import('./fake-server');
+    expect(registeredFns()).toContain('enroute');
+    loadDemo(ME.saleh);
+    const fnOf = (await import('./fake-server')).fnOf;
+    const go = await fnOf('enroute')!({ action: 'return', notify: true }) as Record<string, unknown>;
+    expect(go).toMatchObject({ ok: true, place: 'Centrale' });
+    const trip = table('trips').find((t) => t.kind === 'return' && t.status === 'active' && t.staff_id === ME.saleh);
+    expect(trip?.job_id).toBeNull();
+    const end = await fnOf('enroute')!({ action: 'return_end' }) as Record<string, unknown>;
+    expect(end.ok).toBe(true);
+    expect(find('trips', trip!.id)!.status).toBe('arrived');
+  });
+});

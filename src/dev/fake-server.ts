@@ -18,6 +18,8 @@ export function registerFn(name: string, fn: Handler, o: { weak?: boolean } = {}
 /** every operation the pretend server answers right now (the test that holds the demo to the app's calls reads it) */
 export function registeredRpcs(): string[] { return [...rpcs.keys()].sort(); }
 export function registeredFns(): string[] { return [...fns.keys()].sort(); }
+/** the server function registered under a name right now */
+export function fnOf(name: string): Handler | undefined { return fns.get(name); }
 /* the answer of an operation already done, by its p_op (op_begin / op_done of the database): a change sent again
    because its first answer was lost is not applied twice */
 const doneOps = new Map<string, unknown>();
