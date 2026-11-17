@@ -223,7 +223,9 @@ export const invoices: typeof fr = {
     finishedAgain: 'Invoice {n} finished again. The customer got the old one: text it again.',
     finishedAgainQuiet: 'Invoice {n} finished again.',
     item: 'The invoice is finished. To remove this line or change its price, open it again:',
-    itemPaid: 'The invoice is paid: this line no longer changes.'
+    itemPaid: 'The invoice is paid. To remove this line or change its price, open it again:',
+    /** a billed line whose invoice nobody here may open again (paid too much: refunded first; another truck's job) */
+    itemLocked: 'The invoice is finished: to change this line, ask the office.'
   },
 
   void: {

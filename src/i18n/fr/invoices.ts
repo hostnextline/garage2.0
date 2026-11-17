@@ -223,7 +223,9 @@ export const invoices = {
     finishedAgain: 'Facture {n} terminée de nouveau. Le client a reçu l’ancienne : renvoie-la par texto.',
     finishedAgainQuiet: 'Facture {n} terminée de nouveau.',
     item: 'La facture est terminée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
-    itemPaid: 'La facture est payée : cette ligne ne change plus.'
+    itemPaid: 'La facture est payée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
+    /** a billed line whose invoice nobody here may open again (paid too much: refunded first; another truck's job) */
+    itemLocked: 'La facture est terminée : pour changer cette ligne, demande au bureau.'
   },
 
   void: {
