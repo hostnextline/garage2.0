@@ -13,12 +13,14 @@ vi.mock('../../../ui', async (orig) => {
 import { ServiceSheet } from './ServiceSheet';
 import { replaceLocal } from '../../../data/store';
 import { lang } from '../../../lib/i18n';
+import { whenHistorySettled } from '../../../platform/history';
 
 const row = (x: Record<string, unknown> = {}) => ({ id: 's1', name_fr: 'Huile', name_en: null, category: 'entretien', price_cents: 7999, duration_min: 45, taxable: true, needs_machine: false, is_promo: false, promo_until: null, includes: [], active: true, sort: 3, needs: null, updated_at: '2026-11-15T10:00:00Z', ...x });
 const box = document.createElement('div');
 document.body.appendChild(box);
 const q = (id: string) => document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
 const wait = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
+const settled = () => act(() => new Promise<void>((r) => whenHistorySettled(() => setTimeout(r, 0))));
 let closed = 0;
 
 beforeEach(async () => {
@@ -26,8 +28,12 @@ beforeEach(async () => {
   replaceLocal('services', [row()] as never);
   replaceLocal('service_parts', []);
   replaceLocal('inventory_items', []);
-  await act(async () => { render(null, box); render(<ServiceSheet id="s1" onClose={() => { closed++; }} />, box); });
+  // the sheet of the test before and its history step go first, then this one opens and its step is in place
+  await act(async () => { render(null, box); });
+  await settled();
+  await act(async () => { render(<ServiceSheet id="s1" onClose={() => { closed++; }} />, box); });
   await wait();
+  await settled();
 });
 
 describe('Réglages → Services: the sheet', () => {
