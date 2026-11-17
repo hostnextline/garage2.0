@@ -4,7 +4,8 @@
      The « en route » text goes by itself only when the demo says texts are switched on (&texts=on); &texts=off also
      makes the other texts come back « to send by hand ».
    Small on purpose; nothing here can stop the demo (every part is guarded). */
-import { registerFn, put, find, table, nowIso, type DemoRow } from '../fake-server';
+import { registerFn, registerRpc, put, find, table, rows as answerRows, refuse, nowIso, type DemoRow } from '../fake-server';
+import { can, customerVisible, hasRole, isStaff, jobIdVisible, myTruckIds, need } from '../demo-rules';
 import { addDays, today, longDay, clock } from '../../lib/dates';
 
 const D = (n: number) => addDays(today(), n);
@@ -90,7 +91,33 @@ function fns() {
   });
 }
 
+/* « Changer de client » (Part 24 nonies): the appointment goes to the right customer, with the database's rules */
+function jobCustomer() {
+  registerRpc('job_customer', (a) => {
+    need(isStaff(), 'Connecte-toi avec ton compte de l’équipe.');
+    const j = find('jobs', a.p_job);
+    if (!j || j.deleted_at || !jobIdVisible(j.id)) refuse('not_found', 'Ce rendez-vous n’existe plus (ou tu n’y as pas accès).');
+    need(can('book') || (hasRole('mechanic') && j.truck_id != null && myTruckIds().includes(String(j.truck_id))), 'Tu ne peux pas changer ce rendez-vous. Parle au propriétaire.');
+    if (j.status !== 'booked') refuse('started', 'Le client ne change plus une fois le camion parti : annule et réserve pour le bon client.');
+    if (table('invoices').some((v) => v.job_id === j.id && !v.deleted_at && !['draft', 'void'].includes(String(v.status)))) refuse('invoice_done', 'La facture est déjà terminée : annule-la d’abord.');
+    const c = find('customers', a.p_customer);
+    if (!c || c.deleted_at || !customerVisible(c.id)) refuse('no_customer', 'Choisis le client.');
+    if (c.id === j.customer_id) refuse('same', 'C’est déjà le client de ce rendez-vous.');
+    const cars = table('vehicles').filter((v) => v.customer_id === c.id && !v.deleted_at);
+    let car = (a.p_vehicle as string | null) || null;
+    if (car && !cars.some((v) => v.id === car)) refuse('bad_vehicle', 'Ce véhicule n’est pas à ce client.');
+    if (!car && cars.length === 1) car = cars[0].id;
+    const job = put('jobs', { id: j.id, customer_id: c.id, vehicle_id: car, address: c.address ?? null, unit: c.unit ?? null, postal_code: c.postal_code ?? null, lat: c.lat ?? null, lng: c.lng ?? null,
+      confirm_sent_at: null, waiver_signed_at: null, waiver_signer: null, waiver_version: null, waiver_attachment: null,
+      estimate_signed_at: null, estimate_signer: null, estimate_attachment: null, estimate_cents: null });
+    const invs = table('invoices').filter((v) => v.job_id === j.id);
+    for (const v of invs) if (v.status === 'draft' && !v.deleted_at) put('invoices', { id: v.id, customer_id: c.id });
+    return { ok: true, vehicle_id: car, rows: answerRows({ jobs: job, invoices: invs }) };
+  });
+}
+
 export function load() {
+  try { jobCustomer(); } catch { /* the demo goes on without it */ }
   // &texts=on / &texts=off: the demo says the automatic texts are (not) switched on (Access.texts_online)
   try {
     const p = textsParam();

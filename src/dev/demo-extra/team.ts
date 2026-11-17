@@ -1,7 +1,10 @@
 /* DEV ONLY — pretend answers of the « team » server function for Équipe, Réglages (Branchements) and Mon compte:
    pending invitations, links, the keys of outside services, removing someone, leaving. Registered in load() (after
    demo-rpc.ts) so they replace its basic ones. Nothing here can throw: a mistake answers { ok: false } instead. */
-import { registerFn, put, find, table, nowIso } from '../fake-server';
+import { registerFn, registerRpc, put, find, table, nowIso } from '../fake-server';
+import { isStaff } from '../demo-rules';
+import { roleGives, ruleOf, TEAM_ROLES, type RoleRights } from '../../domain/team/rights';
+import { RIGHTS } from '../../data/types';
 
 type Obj = Record<string, unknown>;
 const DAY = 86400000;
@@ -104,6 +107,14 @@ export function load() {
       { id: 'inv-karim', email: 'karim@example.com', full_name: 'Karim Benali', roles: ['mechanic'], kind: 'invite', truck_id: 't-trois', expires_at: iso(6 * DAY), used_at: null, created_at: iso(-DAY) },
       { id: 'inv-lea', email: 'lea@example.com', full_name: 'Léa Gendron', roles: ['office'], kind: 'invite', truck_id: null, expires_at: iso(-2 * DAY), used_at: null, created_at: iso(-9 * DAY) }
     ];
+    // the database's table of rights (always / can / never) for the team; the roles' choices for the owner only
+    registerRpc('rights_table', () => {
+      if (!isStaff()) return null;
+      const rr = (find('settings', '1')?.role_rights || {}) as RoleRights;
+      const rules = Object.fromEntries(TEAM_ROLES.map((ro) => [ro, Object.fromEntries(RIGHTS.map((r) => [r, ruleOf(ro, r)]))]));
+      const defaults = Object.fromEntries(TEAM_ROLES.map((ro) => [ro, Object.fromEntries(RIGHTS.map((r) => [r, roleGives(ro, r, rr)]))]));
+      return { rights: RIGHTS, rules, defaults };
+    });
     registerFn('team', (b) => { try { return team(b || {}); } catch (e) { return fail('server', String((e as Error)?.message || e)); } });
   } catch { /* never break another section's demo */ }
 }
