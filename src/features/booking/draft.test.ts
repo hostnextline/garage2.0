@@ -196,11 +196,19 @@ describe('the moment', () => {
     expect(run(fresh(), { t: 'choice', choice: block }, { t: 'refused', banner: 'x' })).toMatchObject({ choice: block, blockError: 'x', reload: 0 });
   });
   it('the picker’s score of the moment chosen is kept, and forgotten when it says nothing (m2)', () => {
-    const seen = { day: '2026-11-18', block: 'am' as const, at: 5 };
+    const ask = { lat: 45.5, lng: -73.6, minutes: 45, need: false, kind: null, truck: 'T1' };
+    const seen = { day: '2026-11-18', block: 'am' as const, at: 5, ask };
     const d = run(fresh(), { t: 'far', far: null, seen });
     expect(d.farSeen).toEqual(seen);
-    expect(run(d, { t: 'far', far: null, seen: { ...seen } })).toBe(d);
+    expect(run(d, { t: 'far', far: null, seen: { ...seen, ask: { ...ask } } })).toBe(d);
     expect(run(d, { t: 'far', far: null }).farSeen).toBeNull();
+  });
+  it('the same score said for another address or work is kept with its own question (booking-r2-1)', () => {
+    const ask = { lat: 45.5, lng: -73.6, minutes: 45, need: false, kind: null, truck: 'T1' };
+    const seen = { day: '2026-11-18', block: 'am' as const, at: 5, ask };
+    const d = run(fresh(), { t: 'far', far: null, seen });
+    expect(run(d, { t: 'far', far: null, seen: { ...seen, ask: { ...ask, lat: 45.7 } } }).farSeen?.ask.lat).toBe(45.7);
+    expect(run(d, { t: 'far', far: null, seen: { ...seen, ask: { ...ask, minutes: 90 } } }).farSeen?.ask.minutes).toBe(90);
   });
   it('what the person typed is known; what arrives by itself is not (x-reactivity-19)', () => {
     const d0 = fresh();

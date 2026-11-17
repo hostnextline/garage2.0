@@ -5,8 +5,9 @@
    its file will get), or NO_CAR (nothing chosen yet). Each entry has its own job id, made once: a car booked by a first
    tap leaves the plan for good, and a second tap after a refusal sends the other cars with their own ids, never an id
    already used (`exists`). */
-import type { ItemDraft, FarInfo, FarSeen } from '../../domain/moment/logic';
+import type { ItemDraft, FarInfo } from '../../domain/moment/logic';
 import type { BlockChoice, VehicleKind } from '../../domain/moment/choice';
+import { sameAsk, type SeenFor } from './far';
 import type { PlaceValue } from '../../shared/places/AddressField';
 import type { AddDraft, AddMode } from '../../shared/vehicles/VehicleBits';
 
@@ -45,8 +46,9 @@ export interface Draft {
   reload: number;
   blockError: string | null;
   far: FarInfo | null;
-  /** the picker scored the moment chosen (far or not), and when (m2): « Réserver » need not ask the server again */
-  farSeen: FarSeen | null;
+  /** the picker scored the moment chosen (far or not), when, and for which address, work and vehicle (m2): « Réserver »
+      need not ask the server again while that is still what it would ask (booking-r2-1) */
+  farSeen: SeenFor | null;
   truckId: string | null;
   kind: VehicleKind;
   /** the appointments this form booked (or kept on the phone to send), for the cars that left it. An estimate goes
@@ -85,7 +87,7 @@ export type Action =
   | { t: 'clearChoice' }
   | { t: 'mode'; bar: BlockChoice | null; windows: boolean }
   | { t: 'kind'; kind: VehicleKind }
-  | { t: 'far'; far: FarInfo | null; seen?: FarSeen | null }
+  | { t: 'far'; far: FarInfo | null; seen?: SeenFor | null }
   | { t: 'truck'; id: string | null }
   | { t: 'card'; on: boolean }
   | { t: 'refused'; banner: string | null; windowGone?: boolean; again?: boolean }
@@ -240,7 +242,7 @@ function step(d: Draft, a: Action): Draft {
     case 'kind': return { ...d, kind: a.kind, choice: null };
     case 'far': {
       const seen = a.seen ?? null;
-      const same = d.farSeen === seen || (!!d.farSeen && !!seen && d.farSeen.day === seen.day && d.farSeen.block === seen.block && d.farSeen.at === seen.at);
+      const same = d.farSeen === seen || (!!d.farSeen && !!seen && d.farSeen.day === seen.day && d.farSeen.block === seen.block && d.farSeen.at === seen.at && sameAsk(d.farSeen.ask, seen.ask));
       return d.far === a.far && same ? d : { ...d, far: a.far, farSeen: seen };
     }
     case 'truck': return { ...d, truckId: a.id };

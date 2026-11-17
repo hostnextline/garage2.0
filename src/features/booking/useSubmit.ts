@@ -55,8 +55,10 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     if (farOk.current === key) return true;
     let q = farQuestion(b.d.far, c, 'book');
     const { lat, lng } = place;
-    // the picker scored this very moment a moment ago, not far: nothing more to ask (m2)
-    if (!q && !seenFine(b.d.farSeen, b.d.far, c, Date.now()) && net.value.online && lat != null && lng != null) {
+    // the picker scored this very moment a moment ago, not far, for this same address, work and vehicle: nothing more
+    // to ask (m2; booking-r2-1: an address typed or located since, a service added, another vehicle is asked)
+    const now = { lat, lng, minutes: b.allMinutes, need: b.need, kind: b.d.kind, truck: b.effTruck };
+    if (!q && !seenFine(b.d.farSeen, b.d.far, c, now, Date.now()) && net.value.online && lat != null && lng != null) {
       const rows = await inTime<Suggestion[]>(suggestBlocks(lat, lng, b.allMinutes, c.day, 1, null, b.need, b.need ? null : b.d.kind), FAR_WAIT_MS, []);
       q = farQuestion(farOfAnswer(rows, c, b.effTruck, farLimits(settings.value.booking), b.l), c, 'book');
     }

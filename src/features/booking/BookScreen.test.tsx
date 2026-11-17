@@ -193,6 +193,36 @@ describe('the booking screen', () => {
     expect(api.bookJob).toHaveBeenCalledTimes(1);
   });
 
+  it('the calendar scored the moment for the address on file, another address is typed: « Réserver » asks the server for the new one (booking-r2-1)', async () => {
+    // the new address is located at « Réserver » (R164): the calendar never scored it
+    places.withPosition.mockImplementation(async (p: { address: string }) => (p.address === '9 rue Loin' ? { ...p, lat: 45.7, lng: -73.4 } : p));
+    api.suggestBlocks.mockResolvedValue([{ day: DAY, block: 'am', truck: 'T1', far: 'hop', hop_min: 62, day_min: 150, add_min: 70, stops: 3 }]);
+    ui.ask.mockResolvedValue(false);
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('stub-seen'));
+    const street = box.querySelector('[data-testid="address-input"]') as HTMLInputElement;
+    await act(async () => { street.value = '9 rue Loin'; street.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    // tapped before the calendar's new answer
+    await click(q('book-confirm'));
+    expect(api.suggestBlocks).toHaveBeenCalledWith(45.7, -73.4, 45, DAY, 1, null, false, null);
+    expect(ui.ask.mock.calls[0][0].title).toBe('Beaucoup de route ce jour-là');
+    expect(api.bookJob).not.toHaveBeenCalled();
+  });
+
+  it('the calendar scored the moment for one service, a second one is added: « Réserver » asks the server for the longer visit (booking-r2-1)', async () => {
+    await draw('customer=c-1');
+    await click(q('stub-add'));
+    await click(q('stub-pick'));
+    await click(q('stub-seen'));
+    await click(q('stub-add'));
+    await click(q('book-confirm'));
+    expect(api.suggestBlocks).toHaveBeenCalledWith(45.5, -73.6, 90, DAY, 1, null, false, null);
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+  });
+
   it('what is typed while « Réserver » waits for the garde-route answer is what gets booked', async () => {
     let answer: (rows: unknown[]) => void = () => undefined;
     api.suggestBlocks.mockImplementation(() => new Promise((r) => { answer = r; }));

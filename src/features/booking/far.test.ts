@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { farOfAnswer, inTime, seenFine, SEEN_FRESH_MS } from './far';
+import { farOfAnswer, inTime, seenFine, sameAsk, SEEN_FRESH_MS, type FarAsk } from './far';
 import { farQuestion } from '../../domain/moment/logic';
 import { readAddress, barChoice, openDayOf, backOf, callerOf } from './address';
 
@@ -69,18 +69,26 @@ describe('the address bar', () => {
 describe('the picker scored the moment chosen: no second question to the server (m2)', () => {
   const c = { day: '2026-12-08', block: 'am' as const };
   const now = 1_800_000_000_000;
-  const seen = { day: '2026-12-08', block: 'am' as const, at: now - 10_000 };
-  it('the same moment, not far, a recent answer: believed', () => {
-    expect(seenFine(seen, null, c, now)).toBe(true);
+  const ask: FarAsk = { lat: 45.5, lng: -73.6, minutes: 45, need: false, kind: null, truck: 'T1' };
+  const seen = { day: '2026-12-08', block: 'am' as const, at: now - 10_000, ask };
+  it('the same moment, not far, a recent answer, for the same question: believed', () => {
+    expect(seenFine(seen, null, c, { ...ask }, now)).toBe(true);
   });
   it('a picker that says nothing, another moment, a far one, an old answer: the server is asked', () => {
-    expect(seenFine(null, null, c, now)).toBe(false);
-    expect(seenFine(undefined, null, c, now)).toBe(false);
-    expect(seenFine(seen, null, { ...c, block: 'pm' }, now)).toBe(false);
-    expect(seenFine(seen, null, { ...c, day: '2026-12-09' }, now)).toBe(false);
-    expect(seenFine(seen, { day: c.day, block: 'am', kind: 'day', text: 'x' }, c, now)).toBe(false);
-    expect(seenFine({ ...seen, at: now - SEEN_FRESH_MS - 1 }, null, c, now)).toBe(false);
+    expect(seenFine(null, null, c, ask, now)).toBe(false);
+    expect(seenFine(undefined, null, c, ask, now)).toBe(false);
+    expect(seenFine(seen, null, { ...c, block: 'pm' }, ask, now)).toBe(false);
+    expect(seenFine(seen, null, { ...c, day: '2026-12-09' }, ask, now)).toBe(false);
+    expect(seenFine(seen, { day: c.day, block: 'am', kind: 'day', text: 'x' }, c, ask, now)).toBe(false);
+    expect(seenFine({ ...seen, at: now - SEEN_FRESH_MS - 1 }, null, c, ask, now)).toBe(false);
     // a clock that went back: not believed
-    expect(seenFine({ ...seen, at: now + 5_000 }, null, c, now)).toBe(false);
+    expect(seenFine({ ...seen, at: now + 5_000 }, null, c, ask, now)).toBe(false);
+  });
+  it('the score of another address, another work, another vehicle: the server is asked (booking-r2-1)', () => {
+    for (const other of [{ lat: 45.7 }, { lng: -73.4 }, { lat: null, lng: null }, { minutes: 90 }, { need: true }, { kind: 'car' as const }, { truck: 'T2' }, { truck: null }]) {
+      expect(seenFine(seen, null, c, { ...ask, ...other }, now)).toBe(false);
+    }
+    expect(sameAsk(ask, { ...ask })).toBe(true);
+    expect(sameAsk(ask, { ...ask, minutes: 60 })).toBe(false);
   });
 });
