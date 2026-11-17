@@ -57,7 +57,8 @@ test('sql-planner-1-01 / jobs-b-01: « Ordre des arrêts » in a block already s
     const a2 = await put(h, owner, { customer: c, day, block: 'am', truck: tA, order: 3, eta: 690, lat: laval[0], lng: laval[1] });
     const b1 = await put(h, owner, { customer: c, day, block: 'am', truck: tB, order: 1, eta: 620 });
     const b2 = await put(h, owner, { customer: c, day, block: 'am', truck: tB, order: 2, eta: 680 });
-    const before = await h.q(`select id, updated_at from public.jobs where id = any($1::uuid[])`, [[b1, b2]]);
+    // in the order of their ids (without an order the rows came back in either order: red once in a while)
+    const before = await h.q(`select id, updated_at from public.jobs where id = any($1::uuid[]) order by id`, [[b1, b2]]);
     await h.as(saleh);
     const r = await stopOrder(h, tA, day, 'am', [a2, a1]);
     assert.equal(r.ok, true);
@@ -69,7 +70,7 @@ test('sql-planner-1-01 / jobs-b-01: « Ordre des arrêts » in a block already s
     assert.deepEqual([jl.stop_order, jl.eta_min, jl.truck_id], [1, 600, tA], 'the job on site keeps its number and its time');
     assert.ok(ja2.eta_min >= at && ja1.eta_min > ja2.eta_min, `${at}: the arrivals follow the new order, from now (${ja2.eta_min}, ${ja1.eta_min})`);
     await h.as(null);
-    assert.deepEqual(await h.q(`select id, updated_at from public.jobs where id = any($1::uuid[])`, [[b1, b2]]), before, `${at}: the other truck's rows are not touched`);
+    assert.deepEqual(await h.q(`select id, updated_at from public.jobs where id = any($1::uuid[]) order by id`, [[b1, b2]]), before, `${at}: the other truck's rows are not touched`);
     assert.equal(await h.val(`select count(*)::int from public.jobs where day = $1 and block = 'am' and truck_id is null and deleted_at is null`, [day]), 0, 'nobody in « À placer »');
     // back to the planner's order: the order stays as it is, nobody moves
     await h.as(saleh);
@@ -1006,4 +1007,196 @@ test('« Terminer quand même » (asked by « argent »): the office’s word re
   assert.equal((await step(h, id, 'finish', { unbilled_ok: true })).ok, true, 'the office’s « Terminer quand même »');
   assert.equal((await row(h, id)).status, 'done');
   assert.equal(await h.val(`select coalesce(current_setting('garage.unbilled_ok', true), '')`), '', 'the word holds for that job only');
+}));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   Round 2
+   ------------------------------------------------------------------------------------------------------------------ */
+
+test('R110: « Routes partagées » that is not a yes / no (« oui » written by hand) never breaks a mechanic’s rows', () => tx(async (h) => {
+  const saleh = await h.person('Saleh', ['mechanic']);
+  const tA = await h.truck('Camion', saleh, WEEK), tB = await h.truck('Voiture', null, WEEK);
+  const c = await h.customer('Jean', ...near);
+  const day = await futureDay(h);
+  const mine = await put(h, null, { customer: c, day, block: 'am', truck: tA, order: 1, eta: 500 });
+  await put(h, null, { customer: c, day, block: 'am', truck: tB, order: 1, eta: 500 });
+  const shared = (v) => server(h, saleh, `update public.settings set booking = jsonb_set(coalesce(booking, '{}'::jsonb), '{shared_routes}', $1::jsonb) where id = 1`, [JSON.stringify(v)]);
+  const seen = async () => (await h.q(`select id from public.jobs where day = $1 order by id`, [day])).map((r) => r.id);
+  await shared('oui');
+  assert.deepEqual(await seen(), [mine], 'not a yes: his own truck only, and no error');
+  assert.deepEqual(await h.val(`select public.my_truck_ids()`), [tA]);
+  for (const v of [true, 'true', 1]) {
+    await shared(v);
+    assert.equal((await seen()).length, 2, `${JSON.stringify(v)}: every vehicle`);
+  }
+  for (const v of [false, 'non', 0, null, ['x']]) {
+    await shared(v);
+    assert.deepEqual(await seen(), [mine], `${JSON.stringify(v)}: his own`);
+  }
+}));
+
+test('R96: a job step needs a job the caller sees (« Réserver » without « Agenda » no longer acts on another truck’s job)', () => tx(async (h) => {
+  const office = await h.person('Bureau', ['office']);
+  const saleh = await h.person('Saleh', ['mechanic'], { rights: { book: true } }), adam = await h.person('Adam', ['mechanic']);
+  const tA = await h.truck('Camion', saleh, WEEK), tB = await h.truck('Voiture', adam, WEEK);
+  const c = await h.customer('Jean', ...near);
+  const day = await futureDay(h);
+  const other = await put(h, null, { customer: c, day, block: 'am', truck: tB, order: 1, eta: 500 });
+  const his = await put(h, null, { customer: c, day, block: 'pm', truck: tB, order: 1, eta: 800 });
+  await server(h, saleh, `update public.jobs set created_by = $1 where id = $2`, [saleh, his]);
+  await h.as(saleh);
+  assert.equal(await h.val(`select public.can('book')`), true, 'he may book');
+  assert.equal((await h.fails(() => h.rpc('job_step', { p_op: uuid(), p_job: other, p_action: 'leave', p_data: {} })))?.hint, 'not_allowed', 'another truck’s job he does not see');
+  assert.equal((await row(h, other)), undefined, 'he does not see it');
+  assert.equal((await h.rpc('job_step', { p_op: uuid(), p_job: his, p_action: 'leave', p_data: {} })).ok, true, 'a job he booked himself');
+  // a mechanic without « Réserver »: a job « À placer » (no truck) or booked by nobody is not his either (it was let
+  // through: the rule answered NULL, not « no »)
+  const loose = await put(h, null, { customer: c, day, block: 'eve', truck: null });
+  await h.as(adam);
+  assert.equal((await h.fails(() => h.rpc('job_step', { p_op: uuid(), p_job: loose, p_action: 'leave', p_data: {} })))?.hint, 'not_allowed', 'a job « À placer »');
+  assert.equal((await h.fails(() => h.rpc('job_step', { p_op: uuid(), p_job: his, p_action: 'back', p_data: {} })))?.hint, undefined, 'his own truck’s job: yes');
+  await h.as(office);
+  assert.equal((await h.rpc('job_step', { p_op: uuid(), p_job: other, p_action: 'leave', p_data: {} })).ok, true, 'the office (Agenda)');
+}));
+
+test('R185 / x-time-06: « ce jour-là » or « quelques semaines » on a day already past is refused; no number of weeks is one week', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const t1 = await h.truck('Camion', null, WEEK);
+  const day = await today(h), yesterday = await h.val(`select (public.local_today() - 1)::text`);
+  const week = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, [[600, 900]]]));
+  await h.as(owner);
+  const hours = (mode, from, weeks, op = uuid()) => h.rpc('apply_hours', { p_op: op, p_truck: t1, p_mode: mode, p_week: week, p_from: from, p_weeks: weeks });
+  for (const mode of ['day', 'weeks']) {
+    assert.equal((await h.fails(() => hours(mode, yesterday, 1)))?.hint, 'past', `${mode} from yesterday`);
+  }
+  assert.equal(await h.val(`select count(*)::int from public.truck_days where truck_id = $1 and deleted_at is null`, [t1]), 0, 'today was not changed instead');
+  const r = await hours('weeks', day, null);
+  assert.equal(r.changed, 7, 'no number of weeks: one week (it was 52)');
+  assert.equal((await hours('always', yesterday, null)).ok, true, '« en permanence » still starts today');
+  const op = uuid();
+  const a = await hours('day', day, 1, op), b = await hours('day', day, 1, op);
+  assert.deepEqual(b, a, 'the same change sent twice answers the same');
+}));
+
+/** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
+ *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
+async function liveRef(h, list) {
+  const { readFileSync } = await import('node:fs');
+  await h.q(`create schema if not exists live_ref`);
+  const names = list.map(([, n]) => n);
+  for (const [file, name] of list) {
+    const src = readFileSync(new URL(`../../supabase/migrations/${file}`, import.meta.url), 'utf8');
+    const at = src.indexOf(`create or replace function public.${name}(`);
+    assert.ok(at >= 0, `${name} in ${file}`);
+    const open = src.indexOf('$$', at), close = src.indexOf('$$', open + 2);
+    let body = src.slice(at, close + 2);
+    for (const n of names) body = body.replaceAll(`public.${n}(`, `live_ref.${n}(`);
+    await h.q(body);
+  }
+  // the Part 17 form of route_improve (no next block), as in 20261106000400_truck_start.sql
+  if (names.includes('route_improve')) {
+    await h.q(`create or replace function live_ref.route_improve(p_ids jsonb, p_fixed int, p_pts jsonb, p_hlat double precision, p_hlng double precision,
+      p_speed numeric, p_detour numeric, p_unknown numeric, p_stop numeric) returns jsonb language sql immutable set search_path = public, extensions as $$
+      select live_ref.route_improve(p_ids, p_fixed, p_pts, p_hlat, p_hlng, null::double precision, null::double precision, p_speed, p_detour, p_unknown, p_stop) $$`);
+  }
+}
+const LIVE_PLANNER = [['20261106000400_truck_start.sql', 'route_improve'], ['20261115000100_fenetres.sql', 'plan_block'], ['20261115000100_fenetres.sql', 'suggest_windows_core']];
+
+/** a day of window mode with `n` appointments around the Centrale (always the same ones for the same seed), each booked
+ *  at a window of the day's lattice (the next one when it is full) */
+async function windowDay(h, owner, day, n, seed) {
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  let s = seed;
+  const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  const starts = [480, 540, 600, 660, 720, 780, 840, 900, 960];
+  const ids = [];
+  for (let i = 0; i < n; i++) {
+    const c = await h.customer(`C${seed}-${i}`, home.lat + (rnd() - 0.5) * 0.14, home.lng + (rnd() - 0.5) * 0.2);
+    const dur = [45, 60, 90][Math.floor(rnd() * 3)];
+    const first = Math.floor(rnd() * starts.length);
+    for (let k = 0; k < starts.length; k++) {
+      const ws = starts[(first + k) % starts.length];
+      await h.as(owner);
+      const e = await h.fails(async () => { ids.push((await book(h, { customer_id: c, day, block: 'day', duration_min: dur, win_start: ws })).job_id); });
+      if (!e) break;
+      assert.ok(['window_full', 'block_full'].includes(e.hint), `booked or full: ${e.message}`);
+    }
+  }
+  return ids;
+}
+const pick = (rows) => rows.map((r) => ({ win_start: r.win_start, truck: r.truck, eta: r.eta, drive_min: r.drive_min, wait_min: r.wait_min, left: r.left }));
+
+test('round 2, speed: route_improve gives exactly the order of before on 150 routes (positions missing, stops fixed, a next block or none)', () => tx(async (h) => {
+  await liveRef(h, [['20261106000400_truck_start.sql', 'route_improve']]);
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  let s = 42;
+  const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  let changed = 0;
+  for (let t = 0; t < 150; t++) {
+    const n = 2 + Math.floor(rnd() * 8), f = Math.floor(rnd() * 3);
+    const ids = [], pts = {};
+    for (let i = 0; i < n; i++) {
+      const id = `s${t}-${i}`;
+      ids.push(id);
+      const r = rnd();
+      if (r < 0.08) continue;                                         // not in the points at all
+      pts[id] = r < 0.16 ? { dur: 30 } : { lat: home.lat + (rnd() - 0.5) * 0.2, lng: home.lng + (rnd() - 0.5) * 0.3, dur: 30 };
+    }
+    const start = rnd() < 0.1 ? [null, null] : [home.lat + (rnd() - 0.5) * 0.1, home.lng + (rnd() - 0.5) * 0.1];
+    const end = rnd() < 0.5 ? [null, null] : [home.lat + (rnd() - 0.5) * 0.2, home.lng + (rnd() - 0.5) * 0.2];
+    const args = [JSON.stringify(ids), f, JSON.stringify(pts), ...start, ...end, 35, 1.3, 20, 5];
+    const sql = (schema) => `select ${schema}.route_improve($1::jsonb, $2::int, $3::jsonb, $4::float8, $5::float8, $6::float8, $7::float8, $8::numeric, $9::numeric, $10::numeric, $11::numeric) r`;
+    const neu = (await h.one(sql('public'), args)).r, old = (await h.one(sql('live_ref'), args)).r;
+    assert.deepEqual(neu, old, `route ${t} (${n} stops, ${f} fixed)`);
+    if (JSON.stringify(neu) !== JSON.stringify(ids)) changed++;
+    if (end[0] === null) {
+      const nine = `($1::jsonb, $2::int, $3::jsonb, $4::float8, $5::float8, $6::numeric, $7::numeric, $8::numeric, $9::numeric) r`, a9 = [...args.slice(0, 5), ...args.slice(7)];
+      assert.deepEqual((await h.one(`select public.route_improve${nine}`, a9)).r, (await h.one(`select live_ref.route_improve${nine}`, a9)).r, `route ${t}, the Part 17 form`);
+    }
+  }
+  assert.ok(changed > 40, `many routes were put in a better order (${changed} of 150): the test compares real work`);
+}));
+
+test('round 2, speed: suggest_windows offers the windows live offers, as fast or faster (several days and loads; prints the timing)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const week = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, DAY]));
+  const car = await h.truck('Voiture', null, week);
+  await h.truck('Camion', null, week);
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  await windowsOn(h, owner);
+  const loads = [4, 8, 12];
+  const days = [];
+  for (let i = 0; i < loads.length; i++) {
+    const day = await h.val(`select (public.local_today() + $1::int)::text`, [3 + i]);
+    const ids = await windowDay(h, owner, day, loads[i], 7 + i);
+    days.push({ day, n: ids.length });
+  }
+  await h.as(null);
+  await liveRef(h, LIVE_PLANNER);
+  await h.q(`set local track_functions = 'pl'`);
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  const asks = [[home.lat + 0.03, home.lng - 0.05, 60, false, null], [home.lat - 0.02, home.lng + 0.04, 90, true, null]];
+  const calls = async (schema, fn) => Number(await h.val(`select coalesce((select calls from pg_stat_xact_user_functions where schemaname = $1 and funcname = $2), 0)`, [schema, fn]));
+  let tNew = 0, tOld = 0, pNew = 0, pOld = 0;
+  const lines = [];
+  for (const d of days) {
+    for (const [lat, lng, dur, need, kind] of asks) {
+      const args = [lat, lng, dur, d.day, null, need, kind];
+      const sql = (schema) => `select ${schema}.suggest_windows_core($1, $2, $3, $4::date, $5::uuid, $6, $7) r`;
+      const c0 = await calls('public', 'plan_route'), o0 = await calls('live_ref', 'plan_block');
+      let t = performance.now();
+      const neu = (await h.one(sql('public'), args)).r;
+      const a = performance.now() - t;
+      t = performance.now();
+      const old = (await h.one(sql('live_ref'), args)).r;
+      const b = performance.now() - t;
+      const pn = (await calls('public', 'plan_route')) - c0, po = (await calls('live_ref', 'plan_block')) - o0;
+      tNew += a; tOld += b; pNew += pn; pOld += po;
+      lines.push(`${d.day} ${String(d.n).padStart(2)} rdv  new ${a.toFixed(0).padStart(5)} ms ${String(pn).padStart(3)} plans  live ${b.toFixed(0).padStart(5)} ms ${String(po).padStart(3)} plans  ${neu.length}/${old.length} windows`);
+      assert.deepEqual(pick(neu), pick(old), `${d.day}, ${d.n} appointments: the same windows as live`);
+    }
+  }
+  console.log(['suggest_windows, new vs live:', ...lines, `total new ${tNew.toFixed(0)} ms (${pNew} plans), live ${tOld.toFixed(0)} ms (${pOld} plans)`].join('\n'));
+  assert.ok(pNew <= pOld, `no more plans than live (${pNew} for ${pOld})`);
+  assert.ok(tNew < tOld, `faster than live in all (${tNew.toFixed(0)} ms for ${tOld.toFixed(0)} ms; it was slower: the same plans, each one dearer)`);
 }));

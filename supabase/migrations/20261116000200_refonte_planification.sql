@@ -433,7 +433,7 @@ begin
   end if;
   select * into b from public.blocks() x where x.key = p_block;
   if not found then
-    perform public.fail('bad_block', case when v_wm then 'Le garage donne maintenant une plage d’arrivée de 4 heures : choisis une plage au lieu d’un bloc.' else 'Bloc inconnu.' end);
+    perform public.fail('bad_block', case when v_wm then 'Le garage donne maintenant une plage d’arrivée : choisis une plage au lieu d’un bloc.' else 'Bloc inconnu.' end);
   end if;
   if not public.block_open(p_day, p_block) then
     perform public.fail('block_started', case when v_wm then 'Cette journée est finie : choisis une autre journée.' else 'Ce bloc est déjà commencé.' end);
@@ -507,7 +507,7 @@ begin
     perform public.fail('block_full', case when v_wm then 'Cette journée est complète : la route ne rentre plus dans le temps.' else 'Ce bloc est complet : la route ne rentre plus dans le temps.' end);
   end if;
   if p_truck is not null and (v_plan1->'extra'->>'truck')::uuid is distinct from p_truck then
-    perform public.fail('truck_full', 'Ce camion n’a plus de place dans ce bloc.');
+    perform public.fail('truck_full', case when v_wm then 'Ce camion n’a plus de place ce jour-là.' else 'Ce camion n’a plus de place dans ce bloc.' end);
   end if;
   perform set_config('garage.rpc', 'on', true);
   update public.jobs set day = p_day, block = p_block, truck_id = (v_plan1->'extra'->>'truck')::uuid, truck_pinned = p_truck is not null,
@@ -668,7 +668,7 @@ begin
       -- a block (booked while the garage gave blocks): the window of that block's hours, as the switch converts a job
       select * into v_blk from public.blocks_set() x where x.key = v_block;
       if not found then
-        perform public.fail('bad_block', 'Le garage donne maintenant une plage d’arrivée de 4 heures : choisis une plage au lieu d’un bloc.');
+        perform public.fail('bad_block', 'Le garage donne maintenant une plage d’arrivée : choisis une plage au lieu d’un bloc.');
       end if;
       if v_ws is null and not v_flex then v_ws := v_blk.start_min; v_we := v_blk.end_min; end if;
     end if;
@@ -686,7 +686,9 @@ begin
     v_ws := null; v_flex := false;
   end if;
   select * into b from public.blocks() x where x.key = v_block;
-  if not found or v_day is null then perform public.fail('bad_block', 'Choisis la date et le bloc : matin, après-midi ou soir.'); end if;
+  if not found or v_day is null then
+    perform public.fail('bad_block', case when v_wm then 'Choisis la date et la plage d’arrivée.' else 'Choisis la date et le bloc : matin, après-midi ou soir.' end);
+  end if;
   if not public.block_open(v_day, v_block) then
     perform public.fail('block_started', case when v_wm then 'Cette journée est finie : choisis une autre journée.' else 'Ce bloc est déjà commencé : choisis un autre bloc.' end);
   end if;
@@ -765,7 +767,8 @@ begin
   end if;
   if v_truck is not null and ((v_plan1->'extra'->>'truck')::uuid is distinct from v_truck
      or (not v_forced and exists (select 1 from jsonb_array_elements(v_plan1->'trucks') x where x->>'id' = v_truck::text and (x->>'left')::int < 0))) then
-    perform public.fail('truck_full', 'Ce camion n’a plus de place dans ce bloc. Laisse l’app choisir le camion, ou choisis un autre bloc.');
+    perform public.fail('truck_full', case when v_wm then 'Ce camion n’a plus de place ce jour-là. Laisse l’app choisir le camion, ou choisis une autre journée.'
+      else 'Ce camion n’a plus de place dans ce bloc. Laisse l’app choisir le camion, ou choisis un autre bloc.' end);
   end if;
 
   perform set_config('garage.rpc', 'on', true);
@@ -1172,7 +1175,9 @@ end $function$;
 -- 9. « My vehicle », work on the spot, the steps of a job
 -- ---------------------------------------------------------------------------------------------------------------------
 
--- my_truck_ids (live text): in the order of Horaires, so « the first of my vehicles » is always the same one.
+-- my_truck_ids (live text): in the order of Horaires, so « the first of my vehicles » is always the same one; « Routes
+-- partagées » read as a yes / no that never fails (a value that is not one, « oui » written by hand, made the cast fail
+-- inside every row rule of every mechanic: R110; the rule of right_flag, written here because right_flag comes later).
 CREATE OR REPLACE FUNCTION public.my_truck_ids()
  RETURNS uuid[]
  LANGUAGE sql
@@ -1183,7 +1188,11 @@ AS $function$
   select coalesce(array_agg(t.id order by t.sort, t.name, t.id), '{}') from public.trucks t
    where t.deleted_at is null
      and (t.driver_id = auth.uid()
-       or (public.has_role('mechanic') and coalesce((select (st.booking->>'shared_routes')::boolean from public.settings st where st.id = 1), false)))
+       or (public.has_role('mechanic') and coalesce((select case jsonb_typeof(st.booking->'shared_routes')
+              when 'boolean' then st.booking->'shared_routes' = 'true'::jsonb
+              when 'string' then lower(st.booking->>'shared_routes') in ('true', 't', 'yes', 'y', 'on', '1')
+              when 'number' then st.booking->'shared_routes' = '1'::jsonb end
+            from public.settings st where st.id = 1), false)))
 $function$;
 
 -- walk_in (live text, patched in place by Part 25): the claim first; no vehicle said: the vehicle I drive, never an
@@ -1205,7 +1214,11 @@ begin
     -- none of them and there are several (never an arbitrary one)
     select t.id into v_truck from public.trucks t where t.driver_id = auth.uid() and t.active and t.deleted_at is null order by t.sort, t.name, t.id limit 1;
     if v_truck is null and cardinality(public.my_truck_ids()) > 1
-       and coalesce((select (st.booking->>'shared_routes')::boolean from public.settings st where st.id = 1), false) then
+       and coalesce((select case jsonb_typeof(st.booking->'shared_routes')
+              when 'boolean' then st.booking->'shared_routes' = 'true'::jsonb
+              when 'string' then lower(st.booking->>'shared_routes') in ('true', 't', 'yes', 'y', 'on', '1')
+              when 'number' then st.booking->'shared_routes' = '1'::jsonb end
+            from public.settings st where st.id = 1), false) then
       perform public.fail('no_truck', 'Choisis le véhicule de cette job : la voiture ou le camion.');
     end if;
     if v_truck is null then v_truck := (public.my_truck_ids())[1]; end if;
@@ -1239,7 +1252,8 @@ begin
   return public.op_save(p_op, 'walk_in', jsonb_build_object('ok', true, 'job_id', v_id, 'rows', public.job_payload(v_id)));
 end $function$;
 
--- job_step (live text, patched in place by Parts 24 quater and 25): the claim first; a cancellation or a « Client
+-- job_step (live text, patched in place by Parts 24 quater and 25): the claim first; only a job the caller sees (R96);
+-- a cancellation or a « Client
 -- absent » plans the block again without throwing anybody to « À placer », then the blocks after it from where the truck
 -- now ends (sql-planner-1 B7); « Remettre à l'agenda » only when nobody else loses a place (or a window) for it, as a
 -- booking. Asked by the money rules (Part 26 « argent »): « Terminer » honours the office's « payer plus tard » already
@@ -1258,7 +1272,12 @@ begin
   if v_done is not null then return v_done; end if;
   select * into j from public.jobs where id = p_job and deleted_at is null for update;
   if not found then perform public.fail('not_found', 'Cette job n’existe plus.'); end if;
-  if not public.job_actor(j) then perform public.fail('not_allowed', 'Cette job n’est pas à toi.'); end if;
+  -- who works this job, and a job the caller sees (R96: « Réserver » without « Agenda » let a mechanic act on another
+  -- truck's job he cannot see). Both read as « no » when they cannot say (a job « À placer », or booked by nobody, made
+  -- them NULL, and « if not NULL » let anybody through)
+  if not coalesce(public.job_actor(j), false) or not coalesce(public.job_visible(j.truck_id, j.created_by), false) then
+    perform public.fail('not_allowed', 'Cette job n’est pas à toi.');
+  end if;
   perform set_config('garage.rpc', 'on', true);
   inv := public.job_invoice(j.id);
   -- a discount line takes off, whatever the sign it was written with (the rule of the invoices and the Coffre: sql-money-29)
@@ -1322,7 +1341,8 @@ begin
     if j.status not in ('cancelled','no_show') then perform public.fail('bad_step', 'Cette job est déjà à l’agenda.'); end if;
     select * into b from public.blocks() x where x.key = j.block;
     if not public.block_open(j.day, j.block) then
-      perform public.fail('block_started', 'Ce bloc est passé : déplace la job vers un autre moment.');
+      perform public.fail('block_started', case when j.block = 'day' then 'Cette journée est finie : déplace la job vers un autre moment.'
+                                                else 'Ce bloc est passé : déplace la job vers un autre moment.' end);
     end if;
     perform public.lock_block(j.day, j.block);
     select coalesce(j.lat, c.lat), coalesce(j.lng, c.lng) into v_lat, v_lng from public.customers c where c.id = j.customer_id;
@@ -1406,6 +1426,87 @@ language sql stable security definer set search_path = public as $$
   where o is distinct from p_xid and j.status = 'booked' and j.deleted_at is null and j.truck_id is not null
     and j.eta_min is not null and j.win_end is not null and j.eta_min <= j.win_end
 $$;
+
+-- route_improve (live text of Part 18) with the same moves tried in the same order and the same answer, only cheaper:
+-- each candidate order was walked again with drive_min (4 to 6 thousand times for one plan of a busy day: two thirds of
+-- the time of a plan); the legs between the points are now measured once (drive_min, the same minutes) and each order is
+-- added up from them (speed of « plages d'arrivée », round 2). A point without a position counts as before: the leg to it
+-- is the unknown time, and the next leg leaves from the last point that has one.
+CREATE OR REPLACE FUNCTION public.route_improve(p_ids jsonb, p_fixed integer, p_pts jsonb, p_hlat double precision, p_hlng double precision, p_elat double precision, p_elng double precision, p_speed numeric, p_detour numeric, p_unknown numeric, p_stop numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ IMMUTABLE
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  ids text[] := array(select e from jsonb_array_elements_text(coalesce(p_ids, '[]'::jsonb)) with ordinality q(e, o) order by o);
+  n int := cardinality(ids);
+  f int := least(greatest(coalesce(p_fixed, 0), 0), cardinality(ids));
+  best int; c int; cand int[]; i int; k int; p int; better boolean := true; passes int := 0;
+  -- the points: 1 = where the route starts, 1 + s = the stop s as given, n + 2 = where it should end (the next block)
+  w int := cardinality(ids) + 2; la double precision[]; lo double precision[]; m int[]; ord int[]; a int; b int;
+  v_stop int := ceil(p_stop)::int; v_end boolean := p_elat is not null and p_elng is not null;
+begin
+  if n - f < 2 then return to_jsonb(ids); end if;
+  la := array_fill(null::double precision, array[w]); lo := la;
+  la[1] := p_hlat; lo[1] := p_hlng; la[w] := p_elat; lo[w] := p_elng;
+  for p in 1 .. n loop
+    la[p + 1] := (p_pts->ids[p]->>'lat')::double precision; lo[p + 1] := (p_pts->ids[p]->>'lng')::double precision;
+  end loop;
+  -- the legs, once: from the start or a stop, to a stop or the end
+  m := array_fill(0, array[w * w]);
+  for a in 1 .. n + 1 loop
+    for b in 2 .. w loop
+      m[(a - 1) * w + b] := public.drive_min(la[a], lo[a], la[b], lo[b], p_speed, p_detour, p_unknown);
+    end loop;
+  end loop;
+  ord := array(select generate_series(1, n));
+  -- the order as given (route_min_to)
+  best := 0; a := 1;
+  for p in 1 .. n loop
+    b := ord[p] + 1; best := best + m[(a - 1) * w + b] + v_stop;
+    if la[b] is not null then a := b; end if;
+  end loop;
+  if v_end then best := best + m[(a - 1) * w + w]; end if;
+  while better and passes < 25 loop
+    better := false; passes := passes + 1;
+    -- a piece of the route driven the other way
+    for i in f + 1 .. n - 1 loop
+      for k in i + 1 .. n loop
+        cand := ord;
+        for p in 0 .. k - i loop cand[i + p] := ord[k - p]; end loop;
+        c := 0; a := 1;
+        for p in 1 .. n loop
+          b := cand[p] + 1; c := c + m[(a - 1) * w + b] + v_stop;
+          if la[b] is not null then a := b; end if;
+        end loop;
+        if v_end then c := c + m[(a - 1) * w + w]; end if;
+        if c < best then ord := cand; best := c; better := true; end if;
+      end loop;
+    end loop;
+    -- one stop moved elsewhere
+    for i in f + 1 .. n loop
+      for k in f + 1 .. n loop
+        continue when k = i;
+        cand := ord;
+        if k < i then
+          for p in reverse i .. k + 1 loop cand[p] := ord[p - 1]; end loop;
+        else
+          for p in i .. k - 1 loop cand[p] := ord[p + 1]; end loop;
+        end if;
+        cand[k] := ord[i];
+        c := 0; a := 1;
+        for p in 1 .. n loop
+          b := cand[p] + 1; c := c + m[(a - 1) * w + b] + v_stop;
+          if la[b] is not null then a := b; end if;
+        end loop;
+        if v_end then c := c + m[(a - 1) * w + w]; end if;
+        if c < best then ord := cand; best := c; better := true; end if;
+      end loop;
+    end loop;
+  end loop;
+  return (select jsonb_agg(ids[x.s] order by x.o) from unnest(ord) with ordinality x(s, o));
+end $function$;
 
 revoke all on function public.ranges_fit(jsonb, integer, integer) from public, anon, authenticated;
 revoke all on function public.route_walk_in(jsonb, jsonb, integer, double precision, double precision, numeric, numeric, numeric, numeric, integer, jsonb, boolean) from public, anon, authenticated;
@@ -1938,4 +2039,54 @@ begin
     end if;
   end if;
   return null;
+end $function$;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- 13. A truck's hours (round 2)
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- apply_hours (live text of Part 12), with:
+--   * the claim first (op_begin: the same change sent twice at the same instant is written once);
+--   * « ce jour-là » or « quelques semaines » starting on a day already past is refused (`past`, R185, x-time-06): it
+--     was moved to today without a word, so « Départ et heure » on yesterday's map changed TODAY's hours and said
+--     « enregistré », and a « today only » kept on a phone and sent after midnight changed the new day. « En permanence »
+--     still starts today at the earliest (the usual week has no past);
+--   * no number of weeks means one week (it meant 52: least(null, 52) is 52, sql-planner-1-20).
+CREATE OR REPLACE FUNCTION public.apply_hours(p_op uuid, p_truck uuid, p_mode text, p_week jsonb, p_from date, p_weeks integer DEFAULT 1)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_done jsonb; d date; k text; v jsonb; n int := 0; v_end date; v_start timestamptz := now();
+begin
+  v_done := public.op_begin(p_op, 'apply_hours');
+  if v_done is not null then return v_done; end if;
+  if not public.truck_hours_editable(p_truck) then perform public.fail('not_allowed', 'Tu ne peux pas changer l’horaire de ce camion.'); end if;
+  if p_mode not in ('day','weeks','always') then perform public.fail('bad_mode', 'Choisis : aujourd’hui seulement, pendant quelques semaines ou en permanence.'); end if;
+  if p_mode in ('day', 'weeks') and p_from < public.local_today() then
+    perform public.fail('past', 'Cette journée est passée.');
+  end if;
+  p_from := greatest(coalesce(p_from, public.local_today()), public.local_today());
+  if p_mode = 'always' then
+    for k, v in select * from jsonb_each(p_week) loop
+      insert into public.truck_week (truck_id, dow, ranges) values (p_truck, k::int, v)
+      on conflict (truck_id, dow) do update set ranges = excluded.ranges, deleted_at = null;
+      -- days changed earlier for the coming weeks give way to the new usual week
+      update public.truck_days set deleted_at = now() where truck_id = p_truck and day >= p_from and extract(dow from day)::int = k::int and deleted_at is null;
+      n := n + 1;
+    end loop;
+  else
+    v_end := case when p_mode = 'day' then p_from else p_from + (greatest(1, least(coalesce(p_weeks, 1), 52)) * 7) - 1 end;
+    for d in select generate_series(p_from, v_end, interval '1 day')::date loop
+      v := p_week -> (extract(dow from d)::int)::text;
+      if v is null then continue; end if;
+      insert into public.truck_days (truck_id, day, ranges) values (p_truck, d, v)
+      on conflict (truck_id, day) do update set ranges = excluded.ranges, deleted_at = null;
+      n := n + 1;
+    end loop;
+  end if;
+  return public.op_save(p_op, 'apply_hours', jsonb_build_object('ok', true, 'changed', n, 'rows', jsonb_build_object(
+    'truck_week', (select coalesce(jsonb_agg(to_jsonb(w)), '[]'::jsonb) from public.truck_week w where w.truck_id = p_truck),
+    'truck_days', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.truck_days x where x.truck_id = p_truck and x.updated_at >= v_start))));
 end $function$;
