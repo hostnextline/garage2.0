@@ -19,8 +19,11 @@ describe('the words of a stop on the map', () => {
     expect(whenOf(stop({ block: 'day', etaMin: null }), null, 'fr')).toBe('Dans la journée');
     expect(whenOf(stop({ block: 'day', etaMin: null }), undefined, 'en')).toBe('During the day');
   });
-  it('« Hors plage »: a coming stop planned outside its window', () => {
-    expect(lateStop(stop({ block: 'day', win: [540, 580] }))).toBe(true);
+  it('« Hors plage »: a coming stop planned outside its window, on either side', () => {
+    expect(lateStop(stop({ block: 'day', win: [540, 580] }))).toBe(true);                // after the window (600 > 580)
+    expect(lateStop(stop({ block: 'day', win: [540, 580], etaMin: 500 }))).toBe(true);   // before it (500 < 540), as on live
+    expect(lateStop(stop({ block: 'day', win: [540, 580], etaMin: 540 }))).toBe(false);  // the window's edges are inside
+    expect(lateStop(stop({ block: 'day', win: [540, 580], etaMin: 580 }))).toBe(false);
     expect(lateStop(stop({ block: 'day', win: [540, 780] }))).toBe(false);
     expect(lateStop(stop({ block: 'day', win: [540, 580], status: 'en_route' }))).toBe(false);
     expect(lateStop(stop({ block: 'day' }), { win_start: 540, win_end: 580 })).toBe(true);

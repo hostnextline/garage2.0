@@ -16,7 +16,9 @@ export function winOf(s: Stop, row?: JobWindow | null): [number, number] | null 
   if (s.win) return s.win;
   return row && row.win_start != null && row.win_end != null ? [row.win_start, row.win_end] : null;
 }
-/** « Hors plage »: a coming stop whose planned arrival is outside its window */
+/** « Hors plage »: a coming stop whose planned arrival is outside its window, on EITHER side: before win_start (the truck
+    waits at the door) as well as after win_end (late). Live did the same (acf46c3 MapScreen.tsx) and the help says « en
+    dehors de la plage » (i18n jobs); this is not the server's « late » list, which holds only arrivals after win_end */
 export function lateStop(s: Stop, row?: JobWindow | null): boolean {
   const w = s.block === 'day' ? winOf(s, row) : null;
   return !!w && s.status === 'booked' && s.etaMin != null && (s.etaMin < w[0] || s.etaMin > w[1]);
