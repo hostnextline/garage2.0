@@ -615,6 +615,43 @@ test('« Je pars »: the trip, the name in the text and the map are those of the
   assert.equal((await fn('enroute', { action: 'start', job_id: job3, base: BASE, driver_id: randomUUID() }, ownerJwt)).code, 'not_found');
 });
 
+test('« Je pars » pressed by someone whose day is not started (an owner who is also a mechanic at the office, a mechanic under shared routes): the truck’s driver leaves, as on live — never a trip with no position', async () => {
+  const boss = await member('Hassan Patron', '{owner,mechanic}');
+  const ali = await member('Ali Partagé', '{mechanic}');
+  const saleh = await member('Saleh Chauffeur', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(saleh.id);
+  await q(`insert into public.positions (id, lat, lng, at) values ($1, 45.52, -73.60, now()) on conflict (id) do update set lat = 45.52, lng = -73.60, at = now(), deleted_at = null`, [saleh.id]);
+  const was = (await q(`select booking from public.settings where id = 1`))[0].booking;
+  try {
+    // the owner (also a mechanic) presses for Saleh's job from the office: Saleh leaves, from where Saleh is
+    const j1 = await enrouteJob(cust, truck, boss.id);
+    await clearLog();
+    const r1 = await fn('enroute', { action: 'start', job_id: j1, base: BASE, pos: { lat: 45.40, lng: -73.90 } }, boss.jwt);
+    assert.equal(r1.ok, true, JSON.stringify(r1));
+    assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [j1]))[0].staff_id, saleh.id);
+    assert.match(r1.message, /Saleh/); assert.doesNotMatch(r1.message, /Hassan/);
+    assert.ok(r1.eta_at, 'the text has its arrival time');
+    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'osrm').map((x) => x.pts[0]), [[-73.60, 45.52]], 'the route starts where Saleh is');
+    assert.equal((await q(`select count(*)::int n from public.positions where id = $1`, [boss.id]))[0].n, 0, 'the office is not on the map');
+    // shared routes on: Ali (no day started: today's app sends no position for him) presses on Saleh's truck: the truck's
+    // driver, as on live — not Ali with no position (no arrival time, a map with no truck)
+    await q(`update public.settings set booking = booking || '{"shared_routes": true}'::jsonb where id = 1`);
+    const j2 = await enrouteJob(cust, truck, ali.id);
+    const r2 = await fn('enroute', { action: 'start', job_id: j2, base: BASE }, ali.jwt);
+    assert.equal(r2.ok, true, JSON.stringify(r2));
+    assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [j2]))[0].staff_id, saleh.id);
+    assert.ok(r2.eta_at);
+    // the app that knows Ali drives says so (driver_id = himself) with his position: Ali's trip, from Ali's phone
+    const j3 = await enrouteJob(cust, truck, ali.id);
+    const r3 = await fn('enroute', { action: 'start', job_id: j3, base: BASE, driver_id: ali.id, pos: { lat: 45.50, lng: -73.66 } }, ali.jwt);
+    assert.equal(r3.ok, true, JSON.stringify(r3));
+    assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [j3]))[0].staff_id, ali.id);
+    assert.match(r3.message, /Ali/);
+  } finally {
+    await q(`update public.settings set booking = $1 where id = 1`, [was]);
+  }
+});
+
 test('« Je pars » pressed on two phones at the same instant: one trip, one text, both answers ok (no « server problem »)', async () => {
   const adam = await member('Adam Double', '{mechanic}');
   const { truck, cust } = await enrouteSetup(adam.id);
