@@ -38,16 +38,40 @@ describe('Horaires: a vehicle loses its tire machine', () => {
   });
   afterEach(() => { render(null, box); });
 
-  it('the question names the tire appointments, in day order; « Annuler » saves nothing', async () => {
+  /** the buttons of a question ignore taps for 400 ms after it appears (ask.tsx `hold`): wait that out, like a person */
+  const pastHold = () => act(() => new Promise<void>((r) => setTimeout(r, 450)));
+  /** the question's « Annuler »: the other button beside « Enregistrer quand même » (the truck's sheet has its own) */
+  const askCancel = () => { const ok = q('ask-ok'); return ok ? ([...(ok.parentElement?.querySelectorAll('button') || [])].find((b) => b !== ok) || null) : null; };
+  const openQuestion = async () => {
     await act(async () => { render(<><TrucksPanel /><AskHost /></>, box); });
     await wait();
     await click(q('truck-row-truck'));
     await click(q('truck-machine'));
     await click(q('truck-save'));
+  };
+
+  it('the question names the tire appointments, in day order; « Annuler » saves nothing', async () => {
+    await openQuestion();
     const text = document.body.textContent || '';
     expect(text).toContain('2 rendez-vous à venir sont touchés');
     expect(text).toMatch(/Lesquels : #8 \([^)]+\) et Marie \([^)]+\)\./);
     expect(text).not.toContain('#9');
     expect(h.saved).toHaveLength(0);
+    const cancel = askCancel();
+    expect(cancel?.textContent).toBe('Annuler');
+    await pastHold();
+    await click(cancel);
+    expect(q('ask-ok')).toBeNull();                                   // the question is answered, not left pending
+    expect(h.saved).toHaveLength(0);
+  });
+
+  it('« Enregistrer quand même » saves the vehicle without its tire machine', async () => {
+    await openQuestion();
+    expect(q('ask-ok')?.textContent).toBe('Enregistrer quand même');
+    await pastHold();
+    await click(q('ask-ok'));
+    expect(q('ask-ok')).toBeNull();
+    expect(h.saved).toHaveLength(1);
+    expect(h.saved[0]).toMatchObject({ id: 'truck', tire_machine: false, active: true });
   });
 });
