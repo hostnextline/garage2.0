@@ -214,5 +214,7 @@ export const customers = {
     missing: 'Ce client n’est pas (ou plus) sur ce téléphone.',
     createTitle: 'Nouveau client',
     createOk: 'Créer'
-  }
+  },
+  // the conversation sheet (src/shared/customers/ConversationSheet.tsx): a text sent again while the first one still leaves
+  texting: { pending: 'Ce message est en train de partir.' }
 };

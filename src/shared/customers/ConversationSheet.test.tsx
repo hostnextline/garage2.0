@@ -13,6 +13,7 @@ vi.mock('../../data/api', async (orig) => ({
 const { ConversationSheet } = await import('./ConversationSheet');
 const api = await import('../../data/api');
 const { toasts } = await import('../../ui/toast');
+const { lang } = await import('../../lib/i18n');
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -79,7 +80,8 @@ describe('the conversation sheet', () => {
     expect(d).not.toBe(c);
     expect(vi.mocked(api.sendChat).mock.calls.map((x) => x[1])).toEqual(['Je suis en route', 'Je suis en route', 'Bonjour', 'Bonjour,']);
   });
-  it('R28: « pending » keeps the text and its op, and says the server’s words', async () => {
+  it('R28: « pending » keeps the text and its op, and says it is still leaving', async () => {
+    lang.value = 'fr';
     vi.mocked(api.sendChat).mockClear();
     vi.mocked(api.sendChat)
       .mockImplementationOnce(() => Promise.resolve({ ok: false, status: 'pending', again: true, error: 'Ce message est en train de partir.' }))
@@ -94,5 +96,21 @@ describe('the conversation sheet', () => {
     const [a, b] = ops();
     expect(b).toBe(a);
     expect((q('conversation-input') as HTMLTextAreaElement).value).toBe('');
+  });
+  it('customers-r2-3: « pending » is said in the app’s language (the server’s sentence is French only)', async () => {
+    const before = lang.value;
+    try {
+      lang.value = 'en';
+      vi.mocked(api.sendChat).mockClear();
+      vi.mocked(api.sendChat).mockImplementationOnce(() => Promise.resolve({ ok: false, status: 'pending', again: true, error: 'Ce message est en train de partir.' }));
+      await act(() => render(<ConversationSheet customerId="c1" open onClose={() => undefined} />, box));
+      await tick();
+      await type('Hello');
+      await tap();
+      const said = toasts.value.map((x) => x.text);
+      expect(said).toContain('This message is on its way.');
+      expect(said.at(-1)).toBe('This message is on its way.');
+      expect((q('conversation-input') as HTMLTextAreaElement).value).toBe('Hello');
+    } finally { lang.value = before; }
   });
 });

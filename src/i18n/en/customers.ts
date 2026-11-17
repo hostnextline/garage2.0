@@ -214,5 +214,7 @@ export const customers: typeof fr = {
     missing: 'This customer isn’t (or is no longer) on this phone.',
     createTitle: 'New customer',
     createOk: 'Create'
-  }
+  },
+  // the conversation sheet (src/shared/customers/ConversationSheet.tsx): a text sent again while the first one still leaves
+  texting: { pending: 'This message is on its way.' }
 };

@@ -70,8 +70,10 @@ function Open(p: { customerId: string; onClose: () => void }) {
     try {
       const r = await sendChat(p.customerId, m, op.current.id);
       if (r.status === 'sent') { op.current = null; setText(''); toast(t('conversation.sent'), { kind: 'ok' }); await load(); }
-      // « pending »: the same op is still leaving (the server's words); the text and its op stay for a later tap
-      else toast(r.error && (r.code || r.status === 'pending') ? r.error : t(`conversation.status.${r.status === 'off' || r.status === 'no_phone' ? r.status : 'error'}`), { kind: 'bad' });
+      // « pending »: the same op is still leaving (said in the app's language, the server's sentence is French only);
+      // the text and its op stay for a later tap
+      else if (r.status === 'pending') toast(t('customers.texting.pending'), { kind: 'bad' });
+      else toast(r.error && r.code ? r.error : t(`conversation.status.${r.status === 'off' || r.status === 'no_phone' ? r.status : 'error'}`), { kind: 'bad' });
     } catch (e) { toast(errorMessage(e), { kind: 'bad' }); } finally { if (alive.current) setBusy(false); }
   };
   const smsOff = c?.sms_ok === false;
