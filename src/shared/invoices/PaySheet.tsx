@@ -14,10 +14,10 @@ import { money } from '../../lib/money';
 import { Sheet, Button, Field, Input, MoneyInput, Banner, Empty, run } from '../../ui';
 import { cashChange } from '../../domain/money/invoice';
 import { viewOf } from '../../domain/money/view';
-import { payMode, amountProblem } from '../../domain/money/pay';
+import { payMode, amountProblem, paidByHand } from '../../domain/money/pay';
 import { waitingEntries, coffreWaiting } from '../../domain/money/waiting';
 import { mayCoffre, openCoffre } from './CoffreHost';
-import { invoiceById, invoiceCustomer, invoiceLabel, methodWord, METHODS } from './select';
+import { invoiceById, invoiceCustomer, invoiceLabel, methodWord, METHODS, paymentsOfInvoice } from './select';
 import { PayCash } from './PayCash';
 import { PayLink } from './PayLink';
 import './invoices.css';
@@ -41,7 +41,10 @@ function PayOpen(p: PaySheetProps) {
   const raw = invoiceById(p.invoiceId);
   const view = raw ? viewOf(raw) : null;
   const refund = !!p.refund;
-  const plan = view ? payMode(view, refund) : null;
+  // money paid by card online is given back in Stripe (its refund is written by itself): by hand, only what came by hand
+  const pays = refund && raw ? paymentsOfInvoice(raw.id) : [];
+  const byCard = pays.some((x) => x.method === 'card_online');
+  const plan = view ? payMode(view, refund, refund ? { byHand: paidByHand(pays) } : {}) : null;
   // the amount in play when the payment was confirmed: its own rows arrive just before the sheet closes, keep the form
   const [frozen, setFrozen] = useState<number | null>(null);
   const inPlay = frozen ?? plan?.inPlay ?? 0;
@@ -72,6 +75,8 @@ function PayOpen(p: PaySheetProps) {
             ? <Banner kind="info" data-testid="pay-waiting">{t('invoices.pay.refund.waiting', { amount: money(-view.waitingOut, l) })}</Banner>
             : plan.mode === 'refund-none'
               ? <Banner kind="ok">{t('invoices.pay.refund.none')}</Banner>
+              : plan.mode === 'refund-card'
+                ? <Banner kind="info" data-testid="pay-refund-card">{t('invoices.pay.refund.card', { amount: money(view.over, l) })}</Banner>
               : <Banner kind={plan.mode === 'paid' ? 'ok' : 'warn'}>{t(`invoices.pay.not.${plan.mode}`)}</Banner>}
       </Sheet>
     );
@@ -116,7 +121,7 @@ function PayOpen(p: PaySheetProps) {
           {(refund || a.paid > 0) && <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>}
           {!refund && view.waitingIn > 0 && <span class="muted small" data-testid="pay-waiting-part">{t('invoices.pay.waitingPart', { amount: money(view.waitingIn, l) })}</span>}
         </div>
-        {refund && <Banner kind="info">{t('invoices.pay.refund.hint')}</Banner>}
+        {refund && <Banner kind="info" data-testid="pay-refund-hint">{t(byCard ? 'invoices.pay.refund.cardPart' : 'invoices.pay.refund.hint')}</Banner>}
 
         <Field label={t('invoices.pay.method')} group>
           <div class="pay-methods" role="radiogroup" aria-label={t('invoices.pay.method')}>

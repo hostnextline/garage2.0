@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Invoice } from '../../data/types';
-import { payMode, mayRefund, amountProblem, holdsMoney } from './pay';
+import { payMode, mayRefund, amountProblem, holdsMoney, paidByHand } from './pay';
 
 const v = (status: Invoice['status'], due: number, over = 0, waitingIn = 0, waitingOut = 0) => ({ inv: { status } as Invoice, due, over, waitingIn, waitingOut });
 
@@ -55,5 +55,23 @@ describe('« Annuler la facture » (review argent-app-07)', () => {
     expect(holdsMoney([{ amount_cents: 10000 }], [])).toBe(true);
     expect(holdsMoney([{ amount_cents: 10000 }, { amount_cents: -4000 }], [])).toBe(true);
     expect(holdsMoney([], [{ cents: 10000 }])).toBe(true);
+  });
+});
+
+describe('« Rembourser » money paid by card online (review argent-app-04)', () => {
+  const card = (c: number) => ({ amount_cents: c, method: 'card_online' }), cash = (c: number) => ({ amount_cents: c, method: 'cash' });
+  it('what was paid too much came by card: no form, it is given back in Stripe (its refund is written by itself)', () => {
+    expect(payMode(v('paid', 0, 5000), true, { byHand: paidByHand([card(30000)]) })).toEqual({ mode: 'refund-card', inPlay: 0 });
+  });
+  it('a card and cash: by hand, at most what was paid by hand', () => {
+    expect(payMode(v('paid', 0, 5000), true, { byHand: paidByHand([card(20000), cash(3000)]) })).toEqual({ mode: 'form', inPlay: 3000 });
+    expect(payMode(v('paid', 0, 5000), true, { byHand: paidByHand([card(20000), cash(10000)]) })).toEqual({ mode: 'form', inPlay: 5000 });
+  });
+  it('a refund by hand already given (or waiting here) counts; a Stripe refund is not a refund by hand', () => {
+    expect(paidByHand([cash(10000), cash(-4000), card(20000), card(-5000)])).toBe(6000);
+    expect(payMode(v('paid', 0, 5000, 0, -3000), true, { byHand: 3000 })).toEqual({ mode: 'refund-card', inPlay: 0 });
+  });
+  it('without the payments known, as before: the whole amount paid too much', () => {
+    expect(payMode(v('paid', 0, 5000), true)).toEqual({ mode: 'form', inPlay: 5000 });
   });
 });

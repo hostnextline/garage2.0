@@ -131,6 +131,24 @@ describe('« Rembourser » (review inv-r4)', () => {
     expect(q('pay-confirm')).toBeNull();
     expect(q('pay-waiting')?.textContent).toMatch(/114,98/);
   });
+  it('paid too much by card online: no form, « rembourse dans Stripe » (its refund is written by itself; by hand it would count twice) (review argent-app-04)', async () => {
+    const row = (id: string, cents: number, method: string) => ({ id, invoice_id: 'f-1', job_id: 'j-1', amount_cents: cents, method, reference: null,
+      paid_at: '2026-11-17T15:00:00Z', created_at: '2026-11-17T15:00:00Z', created_by: null, deleted_at: null }) as never;
+    access.value = { ...access.value!, roles: ['owner'], owner: true };
+    replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 16498 })]);
+    replaceLocal('payments', [row('p-1', 16498, 'card_online')]);
+    act(() => render(<PaySheet open refund invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    expect(q('pay-confirm')).toBeNull();
+    expect(q('pay-refund-card')?.textContent).toMatch(/Stripe.*50,00|50,00.*Stripe/s);
+    // a card and cash: by hand, at most the cash (30 $), and the sheet says the card part goes back in Stripe
+    act(() => render(null, box));
+    replaceLocal('payments', [row('p-1', 13498, 'card_online'), row('p-2', 3000, 'cash')]);
+    act(() => render(<PaySheet open refund invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    expect(q('pay-balance')?.textContent).toMatch(/30,00/);
+    expect(q('pay-refund-hint')?.textContent).toContain('Stripe');
+  });
   it('a cancelled invoice that holds money: no refund form (the server refuses a payment on it)', async () => {
     replaceLocal('invoices', [inv({ status: 'void', paid_cents: 3000 })]);
     act(() => render(<PaySheet open refund invoiceId="f-1" onClose={() => undefined} />, box));

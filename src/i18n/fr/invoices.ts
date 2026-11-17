@@ -270,7 +270,9 @@ export const invoices = {
       confirm: 'Inscrire {amount} remboursé',
       done: 'Remboursement de {amount} inscrit.',
       tooMuch: 'C’est plus que le trop-perçu ({max}).',
-      hint: 'Inscris ici l’argent remis en main propre ou par virement.'
+      hint: 'Inscris ici l’argent remis en main propre ou par virement.',
+      card: 'Payé par carte en ligne : rembourse {amount} dans Stripe. Le remboursement s’inscrit tout seul sur la facture.',
+      cardPart: 'Une partie a été payée par carte en ligne : elle se rembourse dans Stripe (le remboursement s’inscrit tout seul). Inscris ici seulement l’argent remis en main propre ou par virement.'
     },
     not: {
       draft: 'Termine la facture avant d’encaisser.',

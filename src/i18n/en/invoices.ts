@@ -270,7 +270,9 @@ export const invoices: typeof fr = {
       confirm: 'Record {amount} refunded',
       done: 'Refund of {amount} recorded.',
       tooMuch: 'That is more than what was paid too much ({max}).',
-      hint: 'Record here money given back in person or by transfer.'
+      hint: 'Record here money given back in person or by transfer.',
+      card: 'Paid by card online: refund {amount} in Stripe. The refund is recorded on the invoice by itself.',
+      cardPart: 'Part was paid by card online: that part is refunded in Stripe (the refund is recorded by itself). Record here only money given back in person or by transfer.'
     },
     not: {
       draft: 'Finish the invoice before taking the payment.',
