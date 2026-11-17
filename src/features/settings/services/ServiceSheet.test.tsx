@@ -13,6 +13,7 @@ vi.mock('../../../ui', async (orig) => {
 import { ServiceSheet } from './ServiceSheet';
 import { replaceLocal } from '../../../data/store';
 import { lang } from '../../../lib/i18n';
+import { whenHistorySettled } from '../../../platform/history';
 
 const row = (x: Record<string, unknown> = {}) => ({ id: 's1', name_fr: 'Huile', name_en: null, category: 'entretien', price_cents: 7999, duration_min: 45, taxable: true, needs_machine: false, is_promo: false, promo_until: null, includes: [], active: true, sort: 3, needs: null, updated_at: '2026-11-15T10:00:00Z', ...x });
 const box = document.createElement('div');
@@ -27,6 +28,9 @@ beforeEach(async () => {
   replaceLocal('service_parts', []);
   replaceLocal('inventory_items', []);
   await act(async () => { render(null, box); render(<ServiceSheet id="s1" onClose={() => { closed++; }} />, box); });
+  // the sheet of the test before steps back over its history step; this sheet's own step is pushed once that is over.
+  // A back pressed before it would be taken for that step back (a person cannot press it that fast): wait for it.
+  await act(() => new Promise<void>((r) => whenHistorySettled(() => setTimeout(r, 0))));
   await wait();
 });
 
