@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { phoneDigits, formatPhone, e164, postalCode, findPostal, provinceOfPostal, splitUnit, civicNumber, isCivicRange, isUnitPart, cleanVin, vinCheck, vinYear,
-  matches, initials, fold, firstName, fullName, norm, squash, EMAIL_RE } from './text';
+  matches, initials, fold, firstName, fullName, norm, squash, EMAIL_RE, smsHref } from './text';
 
 describe('phone numbers', () => {
   it.each([['514-771-4243', '5147714243'], ['+1 (438) 901-6606', '4389016606'], ['1 438 901 6606', '4389016606'], ['438.901.6606', '4389016606']])('%s', (a, b) => expect(phoneDigits(a)).toBe(b));
@@ -169,5 +169,20 @@ describe('names and folded text', () => {
     expect(norm(null)).toBe('');
     expect(squash('H3P 2C9')).toBe('h3p2c9');
     expect(squash('FLT-001')).toBe('flt001');
+  });
+});
+
+/* x-deadcode-09 / R53: one « sms: » link instead of two copies with different outputs */
+describe('smsHref: a text ready in the phone\'s own Messages app', () => {
+  it('a Québec number however it is typed goes as +1…, the words encoded once', () => {
+    expect(smsHref('514 555-1234', 'Bonjour, votre lien : https://x.y/?a=1&b=2'))
+      .toBe('sms:+15145551234?&body=Bonjour%2C%20votre%20lien%20%3A%20https%3A%2F%2Fx.y%2F%3Fa%3D1%26b%3D2');
+    expect(smsHref('+1 (514) 555-1234', 'ok')).toBe('sms:+15145551234?&body=ok');
+    expect(smsHref('15145551234', 'ok')).toBe('sms:+15145551234?&body=ok');
+  });
+  it('another number keeps its digits; no number lets Messages ask', () => {
+    expect(smsHref('+33 6 12 34 56 78', 'ok')).toBe('sms:+33612345678?&body=ok');
+    expect(smsHref(null, 'à demain')).toBe('sms:?&body=%C3%A0%20demain');
+    expect(smsHref('', '')).toBe('sms:?&body=');
   });
 });
