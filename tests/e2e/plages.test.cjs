@@ -524,6 +524,31 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   await p1.ctx.close();
 });
 
+// e2e-plages-03: on a phone whose page the app's service worker does not hold yet (the app opened for the first time in
+// a browser tab, or not reloaded since it was installed), a screen never opened before cannot load without signal.
+// The screen then says « Cette page ne s’ouvre pas. L’app a peut-être été mise à jour. » with « Recharger »: wrong reason,
+// and a reload without signal loses the app. Seen first as the old file's step « no signal: the office books anyway »
+// failing now and then (the agenda opened after the booking kept on the phone). The steps above open the app as the
+// team's phones have it (appOnPhone).
+step.skip('no signal on a phone where the app was never opened before: a screen not loaded yet says it is the signal, and opens once it is back', 'BUG e2e-plages-03: ScreenHost says « L’app a peut-être été mise à jour » and offers « Recharger » without signal', async () => {
+  const { page, ctx } = await openW({ kind: 'phone' });
+  await h.signIn(page, who.nadia.email, PW);
+  assert.equal(await page.evaluate(() => !!navigator.serviceWorker.controller), false, 'a first visit: the worker does not hold the page');
+  await ctx.setOffline(true);
+  await page.evaluate(() => { location.hash = '#/agenda'; });
+  const said = page.locator('.page').filter({ hasText: /ne s’ouvre pas|réseau|signal/ }).first();
+  await said.waitFor({ timeout: 20000 });
+  const words = await said.innerText();
+  assert.match(words, /réseau|signal/i, `the reason is the signal: ${words}`);
+  assert.doesNotMatch(words, /mise à jour/i, 'not an update');
+  assert.equal(await page.getByRole('button', { name: 'Recharger' }).count(), 0, 'no reload offered without signal (it would lose the app)');
+  await ctx.setOffline(false);
+  const retry = page.getByRole('button', { name: /Réessayer/ });
+  if (await retry.count()) await retry.first().click();
+  await page.getByTestId('agenda-screen').waitFor({ timeout: 20000 });
+  await ctx.close();
+});
+
 step('the window chosen is taken by another phone while the office is still on the call: the screen says it is no longer possible, nothing is booked twice', async () => {
   // tomorrow (Dina's day): Jade and Karl have long work (4 h 15), the two never arrive in the same 4-hour window
   const day = D[1];
