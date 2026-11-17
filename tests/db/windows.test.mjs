@@ -303,12 +303,15 @@ test('window mode, the same day: booked after the day started, planned from now;
   // the scheduler's routine finds nothing left to fix
   await h.as(null);
   assert.equal((await h.one(`select public.lock_windows_due() r`)).r.fixed, 0);
-  // the truck's day ends now: a plan made from « now » has no truck left, but an appointment of a day already started keeps its truck
+  // the truck's day ends now: a plan made from « now » has no truck left. The owner closed it for the rest of the day
+  // (its hours changed now): its appointment goes to « À placer », as Horaires says (round 2, plages-01: it stayed on
+  // the closed truck with its old time). A truck whose day simply ended keeps its late appointment: refonte-planification
+  // « plages-01 ».
   if (now >= 10) {
     await h.q(`insert into public.truck_days (truck_id, day, ranges) values ($1, public.local_today(), $2)`, [t1, JSON.stringify([[0, now - 5]])]);
     const kept = await row(h, r.job_id);
     assert.equal(kept.status, 'booked');
-    assert.equal(kept.truck_id, t1, 'never thrown to « À placer » on a day already started');
+    assert.equal(kept.truck_id, null, 'the truck closed by the owner: « À placer » (it was kept on the closed truck)');
   }
 }));
 

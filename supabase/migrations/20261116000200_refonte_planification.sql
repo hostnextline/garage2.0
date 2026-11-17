@@ -180,7 +180,9 @@ grant execute on function public.route_retime(uuid, date, text) to service_role;
 --   * nobody is thrown to « À placer » in a block already started or of a past day, nor by an operation on ONE
 --     appointment (garage.keep, see apply_plan_keep). Closing hours, a truck switched off, a new start: as before;
 --   * window mode, today: the stops already done are numbered 1, 2, … in the order they were finished, the plan numbers
---     the others after them (they were numbered from 1 again while the done ones kept theirs).
+--     the others after them (they were numbered from 1 again while the done ones kept theirs);
+--   * window mode, a day already started (round 2, plages-01): a vehicle closed for the rest of the day by a change of
+--     its hours (or switched off) in this operation sends its appointments to « À placer ».
 create or replace function public.apply_plan(p_plan jsonb)
  returns integer
  language plpgsql
@@ -188,6 +190,7 @@ create or replace function public.apply_plan(p_plan jsonb)
  set search_path to 'public'
 as $function$
 declare k text; v jsonb; n int := 0; c int; d date := nullif(p_plan->>'day', '')::date; bk record; p jsonb; v_moved boolean := false; v_keep boolean;
+  v_started boolean;
 begin
   perform set_config('garage.rpc', 'on', true);
   for k, v in select * from jsonb_each(coalesce(p_plan->'jobs', '{}')) loop
@@ -201,8 +204,9 @@ begin
     end if;
     get diagnostics c = row_count; n := n + c;
   end loop;
-  v_keep := (p_plan->>'block' = 'day' and d is not null and d = public.local_today() and public.windows_on()
-            and public.now_min() >= (select s.start_min from public.day_span() s))
+  v_started := p_plan->>'block' = 'day' and d is not null and d = public.local_today() and public.windows_on()
+            and public.now_min() >= (select s.start_min from public.day_span() s);
+  v_keep := v_started
             -- a block already started, or of a past day: its appointments stay on their truck
             or (d is not null and not public.block_open(d, p_plan->>'block'))
             -- an operation on one appointment: the others keep their place
@@ -211,6 +215,21 @@ begin
     update public.jobs set truck_id = null, stop_order = null, eta_min = null, travel_min = null, truck_pinned = false
     where id in (select x::uuid from jsonb_array_elements_text(coalesce(p_plan->'over', '[]')) x)
       and status = 'booked' and (truck_id is not null or stop_order is not null);
+    get diagnostics c = row_count; n := n + c;
+  elsif coalesce(v_started, false) and public.block_open(d, 'day')
+        and coalesce(current_setting('garage.unplace', true), '') = 'on' and coalesce(current_setting('garage.keep', true), '') <> 'on' then
+    -- window mode, a day already started (round 2, plages-01): the hours of a vehicle were changed by this very operation
+    -- (Horaires, « Départ et heure », the vehicle switched off or deleted) so that it no longer works for the rest of
+    -- the day: its appointments go to « À placer », as Horaires says (they stayed on the closed vehicle, numbered and
+    -- timed, and nobody came). A vehicle whose day simply ended, or that still works, keeps the rule « never
+    -- un-placed » (plan_route puts the ones of a working vehicle back, late). En route / on site are never in « over ».
+    update public.jobs j set truck_id = null, stop_order = null, eta_min = null, travel_min = null, truck_pinned = false
+    where j.id in (select x::uuid from jsonb_array_elements_text(coalesce(p_plan->'over', '[]')) x)
+      and j.status = 'booked' and j.truck_id is not null
+      and not exists (select 1 from jsonb_array_elements(coalesce(p_plan->'trucks', '[]'::jsonb)) t where t->>'id' = j.truck_id::text)
+      and (exists (select 1 from public.trucks tr where tr.id = j.truck_id and tr.updated_at >= now())
+           or exists (select 1 from public.truck_days td where td.truck_id = j.truck_id and td.day = d and td.updated_at >= now())
+           or exists (select 1 from public.truck_week tw where tw.truck_id = j.truck_id and tw.dow = extract(dow from d)::int and tw.updated_at >= now()));
     get diagnostics c = row_count; n := n + c;
   end if;
   -- window mode, today: the stops already done keep 1, 2, … on their truck, in the order they were finished (the plan
