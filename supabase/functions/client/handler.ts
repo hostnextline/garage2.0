@@ -311,7 +311,10 @@ async function pay(l: Row, b: Row): Promise<Response> {
       try { sess = { ...sess, ...(await stripeCall(key, 'GET', sessPath(String(sess.id)))) }; }
       catch { /* Stripe's answer to the making is kept */ }
     }
-    if (sess?.status !== 'open') {
+    // a page completed but not paid yet (a slow means of payment on its way) stays the one page, as before: never a
+    // second page to pay while the first payment may still pass
+    const processing = sess?.status === 'complete' && sess?.payment_status !== 'paid';
+    if (sess?.status !== 'open' && !processing) {
       // that same request was answered earlier in the slice by a page since closed (or paid): a new page, its own key
       if (sess?.payment_status === 'paid') await applyCheckout(sess);
       expires = Math.floor(Date.now() / 1000) + 3600;

@@ -17,6 +17,7 @@
 //   GET /pay/<session>[?twice=1][&replay=1][&quiet=1] the customer pays (twice: two notices; replay: the same notice again;
 //                                                     quiet: Stripe's notice never comes)
 //   GET /age/<session>?hours=N                       the page was made N hours ago (its `created`)
+//   GET /complete/<session>                          paid with a slow means (a bank debit): complete, not paid yet
 //   GET /refund/<session>[?amount=][&status=pending][&twice=1]   the garage gives money back from Stripe's own screens
 //   GET /refund-update/<refund>?status=succeeded|failed          Stripe says what became of a refund
 import http from 'node:http';
@@ -201,6 +202,13 @@ http.createServer(async (req, res) => {
     if (u.searchParams.get('twice')) await stripeHook(s);                                         // a second notice about the same page
     if (u.searchParams.get('replay')) await stripeHook(s, 'checkout.session.completed', h?.id);   // the very same notice again
     return send(res, 200, { ok: true, hook: h?.status, result: h?.body });
+  }
+  // the customer finished the card page with a slow means of payment (a bank debit): complete, not paid yet
+  if (p.startsWith('/complete/')) {
+    const s = state.sessions.get(p.split('/').pop());
+    if (!s || s.status !== 'open') return send(res, 404, { error: 'not open' });
+    s.status = 'complete'; s.payment_status = 'unpaid';
+    return send(res, 200, { ok: true });
   }
   // a card page made N hours ago (GET /age/<session>?hours=N): the tests' way to have pages older than a check's window
   if (p.startsWith('/age/')) {

@@ -978,3 +978,13 @@ test('argent-serveur-03: a job « Payé par le Coffre » while the mechanic is s
     await q(`delete from public.coffre where id = $1`, [box]);
   }
 });
+
+test('argent-serveur-02, the other side: a page paid by a slow means (complete, not paid yet) stays the one page: never a second page to pay meanwhile', async () => {
+  const { job } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8200 }] });
+  const t = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.equal((await mockGet(`/complete/${sessionOf(p1.url)}`)).ok, true);
+  const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.equal(p2.url, p1.url, JSON.stringify(p2));
+  assert.equal((await openPages(job)).length, 0, 'no other page to pay');
+});
