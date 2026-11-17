@@ -14,6 +14,7 @@ import { CustomerPicker } from '../../shared/customers/CustomerPicker';
 import { VehiclePicker } from '../../shared/vehicles/VehiclePicker';
 import { AddressField, EMPTY_PLACE, type PlaceValue } from '../../shared/places/AddressField';
 import { withPosition } from '../../shared/places/withPosition';
+import { sameDoor } from '../../shared/places/addressEdit';
 import { jobCustomer, jobName, dayInSentence, momentWord, wt } from '../../shared/jobs/select';
 import { editRights, type JobRights } from '../../domain/jobs/rights';
 
@@ -38,12 +39,15 @@ function placeOf(j: Job, c: ReturnType<typeof jobCustomer>): PlaceValue {
   return { ...EMPTY_PLACE, address: own?.address || '', unit: own?.unit ?? null, postal_code: own?.postal_code ?? null, lat: own?.lat ?? null, lng: own?.lng ?? null };
 }
 /** what the appointment's address saves. The form does not show the unit and the postal code: those of the address it
-    started from stay only while the address itself is the same (another address typed keeps no apartment of the old
-    one; a unit or a code typed with the new address is kept). The position is looked for a short moment first (the tap
-    on « Garder » is also the tap that leaves the field, whose own lookup would answer after the sheet is gone), never
-    waiting without signal (R164). */
+    started from stay only while it is the same door, by the address field's own rule (addressEdit.ts sameDoor: a typo
+    fixed in the street, the street type or the town added, the suggestion of that same door keep them, jobs-r2-3);
+    another door keeps no apartment nor code of the old one (customers-a-03: an old code makes the lookup refuse the
+    new place), and a unit or a code typed with the new address is kept. The position is looked for a short moment
+    first (the tap on « Garder » is also the tap that leaves the field, whose own lookup would answer after the sheet is
+    gone), never waiting without signal (R164). */
 export async function saveJobAddress(jobId: string, start: PlaceValue, place: PlaceValue, locate: typeof withPosition = withPosition): Promise<PlaceValue> {
-  const moved = place.address.trim() !== start.address.trim();
+  const text = place.address.trim();
+  const moved = text !== start.address.trim() && !(text && sameDoor(start.address, place.address));
   const kept: PlaceValue = moved
     ? { ...place, unit: place.unit === start.unit ? null : place.unit, postal_code: place.postal_code === start.postal_code ? null : place.postal_code }
     : place;

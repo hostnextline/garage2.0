@@ -44,6 +44,25 @@ describe('the appointment’s own address (R164)', () => {
     await saveJobAddress('j1', home, typed, found(45.6, -73.5) as never);
     expect(api.updateJob.mock.calls[0][1]).toMatchObject({ unit: null, postal_code: null });
   });
+  it('the same door written better keeps its apartment and its code: a typo fixed, the town added, the same door’s suggestion (jobs-r2-3)', async () => {
+    const keep = vi.fn(async (p: PlaceValue) => ({ ...p, lat: 45.52, lng: -73.64 }));
+    const cases: [string, string][] = [
+      ['1250 rue Grahm, Montréal', '1250 rue Graham, Montréal'],            // a typo fixed in the street
+      ['1250 rue Graham', '1250 rue Graham, Mont-Royal'],                    // the town added
+      ['1250 rue Graham, Montréal', '1250 Rue Graham, Mont-Royal, QC']       // the suggestion of that same door
+    ];
+    for (const [from, to] of cases) {
+      api.updateJob.mockClear();
+      await saveJobAddress('j1', { ...home, address: from }, { ...home, address: to, lat: null, lng: null }, keep as never);
+      expect(api.updateJob.mock.calls[0][1]).toMatchObject({ address: to, unit: '3', postal_code: 'H3P 2C9' });
+    }
+    // and the position lookup gets the code (it helps it recognise the area)
+    expect(keep.mock.calls.at(-1)![0].postal_code).toBe('H3P 2C9');
+  });
+  it('another door of the same street keeps neither, as the address field itself does (its code may be another one: the other side, a corner)', async () => {
+    await saveJobAddress('j1', home, { ...home, address: '1252 rue Graham, Montréal', lat: null, lng: null }, found(45.52, -73.64) as never);
+    expect(api.updateJob.mock.calls[0][1]).toMatchObject({ unit: null, postal_code: null });
+  });
   it('a unit or a code typed with the new address is kept; the same address keeps its own', async () => {
     await saveJobAddress('j1', home, { ...home, address: '500 rue du Chalet, Laval', unit: '12', postal_code: 'H7N 1A1', lat: null, lng: null }, found(45.6, -73.5) as never);
     expect(api.updateJob.mock.calls[0][1]).toMatchObject({ unit: '12', postal_code: 'H7N 1A1' });
