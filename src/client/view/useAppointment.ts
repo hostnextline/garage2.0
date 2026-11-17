@@ -7,7 +7,7 @@ import { lineCents } from '../format';
 import type { CLang } from '../i18n';
 import { forgetAppointment, forgetPaying, linkHash, recallPaying, rememberAppointment, rememberGarage, rememberPaying, replaceHash } from '../link';
 import { exportSignature, type Stroke } from '../../shared/sign/signature';
-import { afterCheck, estimateSigned, extraStatus, moneyIn, refusalKey, type PayCheck } from './view-state';
+import { afterCheck, cardPaid, estimateSigned, extraStatus, moneyIn, refusalKey, type PayCheck } from './view-state';
 
 export type Phase = { k: 'loading' } | { k: 'error'; code: string; garage: Garage | null } | { k: 'ready'; v: View };
 /** what the extra work panel says after an answer: thanks, or the answer another phone gave first */
@@ -75,7 +75,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     const { n, r } = await ask('check');
     if (!alive.current) return;
     // a failed check leaves the page as the first load showed it
-    if (r.ok && show(n, r.value) && r.value.kind === 'job' && (r.value.checked === 'paid' || moneyIn(r.value) > moneyIn(before))) { setCheck('paid'); setJustPaid(true); }
+    if (r.ok && show(n, r.value) && r.value.kind === 'job' && (cardPaid(r.value) || moneyIn(r.value) > moneyIn(before))) { setCheck('paid'); setJustPaid(true); }
     setPendingChecked(true);
   };
 

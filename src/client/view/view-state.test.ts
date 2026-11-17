@@ -74,6 +74,15 @@ describe('back from Stripe (client-page-07)', () => {
     expect(afterCheck({ ...v, checked: 'paid' }, 1, 5, null)).toBe('paid');
     expect(afterCheck({ ...v, checked: 'open' }, 5, 5, null)).toBe('late');
   });
+  it('reads « session » as the server sends it (R10): paid ends the check, the other states keep the balances’ rule', () => {
+    const v = job({ prepaid_cents: 22994, expected: { subtotal: 27000, tps: 1350, tvq: 2693, total: 31043 }, pay: { available: true, amount_cents: 8049, kind: 'prepay', pending: true } });
+    expect(afterCheck({ ...v, session: 'paid' }, 1, 5, null)).toBe('paid');
+    expect(afterCheck({ ...v, session: 'paid' }, 1, 5, 22994)).toBe('paid');
+    for (const s of ['open', 'processing', 'unknown', 'expired', 'none'] as const) {
+      expect(afterCheck({ ...v, session: s }, 1, 5, null)).toBe('checking');
+      expect(afterCheck({ ...v, session: s }, 5, 5, null)).toBe('late');
+    }
+  });
   it('counts the money paid on the invoice too', () => {
     expect(moneyIn(job({ prepaid_cents: 1000, invoice: inv(5000) }))).toBe(6000);
     expect(afterCheck(job({ invoice: inv(5000), pay: { available: true, amount_cents: 6498, kind: 'invoice', pending: true } }), 1, 5, 0)).toBe('paid');

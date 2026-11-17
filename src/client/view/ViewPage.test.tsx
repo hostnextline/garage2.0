@@ -165,6 +165,26 @@ describe('payment (client-page-06, 07, 31, 23)', () => {
     await wait();
     expect(q('client-checking')).toHaveLength(1);
   });
+  it('a card page already open that Stripe holds as paid (« session »: paid, R10): « reçu », even before the money shows', async () => {
+    const before = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: true } }, { status: 'done' });
+    server = (a) => (a === 'check' ? { ...before, session: 'paid' } : before);
+    await open();
+    expect(calls.map((c) => c.action)).toEqual(['view', 'check']);
+    expect(q('client-paid-note')).toHaveLength(1);
+  });
+  it('back from Stripe, the tab’s note lost (Stripe opened in another tab): « session »: paid says « reçu » at the first check (R10)', async () => {
+    server = () => ({ ...job({ prepaid_cents: 22994, expected: { subtotal: 27000, tps: 1350, tvq: 2693, total: 31043 }, pay: { available: true, amount_cents: 8049, kind: 'prepay', pending: false } }, { status: 'on_site' }), session: 'paid' });
+    await open({ retour: 'paye' });
+    expect(q('client-paid-note')).toHaveLength(1);
+    expect(q('client-checking')).toHaveLength(0);
+    expect(calls.filter((c) => c.action === 'check')).toHaveLength(1);
+  });
+  it('back from Stripe, Stripe not answering (« session »: unknown): the page keeps checking, never « reçu » on its own', async () => {
+    server = () => ({ ...job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: true } }, { status: 'done' }), session: 'unknown' });
+    await open({ retour: 'paye' });
+    expect(q('client-checking')).toHaveLength(1);
+    expect(q('client-paid-note')).toHaveLength(0);
+  });
   it('the card page opens in the page’s language', async () => {
     server = (a) => (a === 'pay' ? { ok: true } : job({ lang: 'fr', invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' }));
     await open({ lang: 'en' });

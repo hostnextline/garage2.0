@@ -29,9 +29,13 @@ export interface JobView {
   /** the invoice being made while the mechanic is there (to pay during the work) */
   bill?: { lines: InvoiceLineV[]; subtotal_cents: number; tps_cents: number; tvq_cents: number; total_cents: number } | null;
   pay: { available: boolean; amount_cents: number; kind: 'invoice' | 'prepay'; pending: boolean };
-  /** the answer of « check » from a newer server: the state of the card page Stripe was asked about (absent: unknown) */
+  /** the answer of « check »: what became of the card page this link opened, as Stripe says it now (none: no page;
+      processing: a slow means of payment, Stripe's notice will say; unknown: Stripe did not answer). Absent on « view ». */
+  session?: CardSession | null;
+  /** the same answer under its first planned name (kept for a server that would send it so) */
   checked?: 'paid' | 'open' | 'expired' | null;
 }
+export type CardSession = 'none' | 'open' | 'paid' | 'expired' | 'processing' | 'unknown';
 export interface QuoteView {
   ok: true; kind: 'quote'; garage: Garage; lang: string; number: number; vehicle: string | null;
   items: { description: string; qty: number; unit_cents: number }[]; totals: Sums; valid_until: string | null;
