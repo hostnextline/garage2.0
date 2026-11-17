@@ -81,6 +81,9 @@ before(async () => {
   J.julie = b.job_id;
   h.buildApp();
   await h.startApp();
+  // the browser is started here (its first start is slow on some machines): each step's time is its own
+  const warm = await h.open();
+  await warm.ctx.close();
   await h.clearMock();
 });
 after(async () => {
