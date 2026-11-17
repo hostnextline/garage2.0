@@ -365,6 +365,7 @@ step('the signal comes back: every change of yesterday’s app is sent once, in 
   await h.shot(mech.page, 'maj-4-mechanic-sent');
   await h.shot(office.page, 'maj-4-office-sent');
   noErrors(mech.page); noErrors(office.page);
+  await m.putAway(mech); await m.putAway(office);
 });
 
 step('the way back (a rollback): a phone that ran the rebuilt app, with a change kept offline in its format, is given yesterday’s app again; it opens and sends that change once', async () => {
@@ -482,6 +483,10 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   // « Beaucoup de route ce jour-là »: the office books it anyway
   await o.page.getByTestId('move-sheet').waitFor({ state: 'detached', timeout: 15000 }).catch(async () => { await o.page.locator('[role=dialog] button.btn-primary, [role=dialog] [data-testid$="-ok"]').last().click(); });
   assert.equal(await until(() => h.sql(`select day::text || '|' || block from public.jobs where id = '${X}'`), (v) => v === `${target}|pm`, 15000), `${target}|pm`, 'moved on the server');
+  // texts are not connected here: the message to Lina (« votre rendez-vous a changé ») is given to send by hand
+  await o.page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
+  assert.match(await o.page.getByTestId('text-outcome-message').innerText(), /Lina/);
+  await dismissSheets(o.page);
   // and the office takes Omar's cash at the counter
   await o.page.goto(h.APP + `#/job/${Y}`);
   await o.page.getByTestId('invoice-pay').click({ timeout: 15000 });

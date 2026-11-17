@@ -39,17 +39,26 @@ function envFor(version, builtAt, importantSince) {
   return { ...process.env, VITE_SUPABASE_URL: SIGNAL, VITE_SUPABASE_KEY: h.K.anon, VITE_REALTIME: 'off', VITE_APP_VERSION: version,
     VITE_BUILT_AT: builtAt, APP_IMPORTANT_SINCE: importantSince || '', APP_NOTES: version === 'e2e-new' ? 'La nouvelle app (refonte)' : 'Plages d’arrivée' };
 }
-/** the live app: copied without its packages (they are linked one by one, so that Vite's temporary files stay in the copy) */
+/** the live app: copied without its packages (they are linked one by one, so that Vite's temporary files stay in the copy).
+    Without the reference folder (another computer), the same commit is taken from a repository's history (MAJ_OLD_REPO). */
+const OLD_COMMIT = process.env.MAJ_OLD_COMMIT || 'acf46c3';
 function buildOld() {
-  if (!fs.existsSync(path.join(OLD_SRC, 'package.json'))) throw new Error(`the live app is not at ${OLD_SRC} (MAJ_OLD_SRC)`);
-  const head = execSync(`git -C ${OLD_SRC} rev-parse HEAD`, { encoding: 'utf8' }).trim();
+  const folder = fs.existsSync(path.join(OLD_SRC, 'package.json'));
+  const repo = process.env.MAJ_OLD_REPO || (folder ? OLD_SRC : h.ROOT);
+  const head = (() => { try { return execSync(`git -C ${repo} rev-parse ${OLD_COMMIT}^{commit}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } })();
+  // the folder itself when it is exactly that commit (rsync, as the brief of this test asks), else the commit from the history
+  const fromFolder = folder && !!head && execSync(`git -C ${OLD_SRC} rev-parse HEAD`, { encoding: 'utf8' }).trim() === head
+    // (GIT_OPTIONAL_LOCKS=0: « status » would otherwise refresh the reference's index, a write)
+    && execSync(`git -C ${OLD_SRC} status --porcelain --untracked-files=no`, { encoding: 'utf8', env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).trim() === '';
+  if (!head) throw new Error(`yesterday's app is neither at ${OLD_SRC} (MAJ_OLD_SRC) nor in the history of ${repo} (MAJ_OLD_REPO, commit ${OLD_COMMIT})`);
   const stamp = JSON.stringify({ head, url: SIGNAL, key: h.K.anon, built: OLD_BUILT });
   const stampFile = path.join(DIST_OLD, '.maj-stamp');
   if (fs.existsSync(stampFile) && fs.readFileSync(stampFile, 'utf8') === stamp && fs.existsSync(path.join(DIST_OLD, 'sw.js'))) return { head, cached: true };
   const src = path.join(MAJ, 'old-src');
   fs.mkdirSync(src, { recursive: true });
-  execSync(`rsync -a --delete --exclude '/.git' --exclude '/node_modules' --exclude '/dist' --exclude '/tests/out' --exclude '__scan__' --exclude '.DS_Store' ${OLD_SRC}/ ${src}/`);
-  const mods = fs.realpathSync(path.join(OLD_SRC, 'node_modules'));
+  if (fromFolder) execSync(`rsync -a --delete --exclude '/.git' --exclude '/node_modules' --exclude '/dist' --exclude '/tests/out' --exclude '__scan__' --exclude '.DS_Store' ${OLD_SRC}/ ${src}/`);
+  else { fs.rmSync(src, { recursive: true, force: true }); fs.mkdirSync(src); execSync(`git -C ${repo} archive ${head} | tar -x -C ${src}`); }
+  const mods = fs.realpathSync(path.join(fromFolder ? OLD_SRC : h.ROOT, 'node_modules'));
   const nm = path.join(src, 'node_modules');
   fs.rmSync(nm, { recursive: true, force: true });
   fs.mkdirSync(nm);
