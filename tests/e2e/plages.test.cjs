@@ -5,11 +5,18 @@
 // server, GoHighLevel faked (it keeps every text). The database is saved before and put back exactly as it was after.
 //   bash tests/stack/start.sh && node --test tests/e2e/plages.test.cjs
 // Steps waiting for a fix are kept (step.skip, « BUG … » / « WAITS … »): PLAGES_RUN_SKIPPED=1 runs them too.
-const { before, after } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const x = require('./plages.helpers.cjs');
-const { h, PW, step, openW, until, until2, jwtOf, rpcAs, noErrors, dismissSheets, clock, between, longDay, median, jobOf, stopsOf, sentTo, textsTo,
+const { h, PW, openW, appOnPhone, until, until2, jwtOf, rpcAs, noErrors, dismissSheets, clock, between, longDay, median, jobOf, stopsOf, sentTo, textsTo,
   gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays, randomUUID } = x;
+
+// a failing step leaves a picture of every open page and what it asked the server (tests/out/fail-plages-*)
+const step = (name, fn) => test(name, async (t) => {
+  try { await fn(t); } catch (e) { await x.onFail(name); throw e; }
+});
+/** a step that asserts the right behaviour but waits for a fix: `why` starts with « BUG <id> » or « WAITS <id> » */
+step.skip = (name, why, fn) => (process.env.PLAGES_RUN_SKIPPED === '1' ? step(name, fn) : test(name, { skip: why }, fn));
 
 const T = { complet: '7c1a0000-0000-4000-8000-000000000001', voiture: '7c1a0000-0000-4000-8000-000000000002' };
 const SVC = {
@@ -66,6 +73,7 @@ before(async () => {
   customer('Hugo', 'Côté', '514 555-0250', 45.5160, -73.6480);
   customer('Jade', 'Pelletier', '514 555-0251', 45.5110, -73.6350);
   customer('Karl', 'Dubois', '514 555-0252', 45.5140, -73.6520);
+  customer('Lina', 'Bouchard', '514 555-0253', 45.5090, -73.6420);
   // Julie booked last week, by blocks: Thursday-like afternoon (12 h – 16 h) four days from now
   who.nadia.jwt = await jwtOf(who.nadia.email);
   const b = await rpcAs(who.nadia.jwt, 'book_job', { p_op: randomUUID(), p_job: { customer_id: C.Julie.id, day: D[4], block: 'pm', duration_min: 45 },
@@ -314,7 +322,7 @@ step('« Déplacer »: Carla to another window the same day, then to another day
 // R84: « Déplacer » texts the customer only when move_job answers tell === true. Dina was told her window the evening
 // before (step 4); the office opens « Déplacer » and takes that same window (she is no longer « flexible »): nothing
 // changed for her (the server answers changed: false, tell: false), no text. Today the sheet texts on « not unchanged ».
-x.step.skip('« Déplacer » to the window the customer was already told: nothing new for her, no text', 'WAITS R84: MoveSheet texts on !unchanged instead of tell === true', async () => {
+step.skip('« Déplacer » to the window the customer was already told: nothing new for her, no text', 'WAITS R84: MoveSheet texts on !unchanged instead of tell === true', async () => {
   const { page, ctx } = await openW({ kind: 'desktop' });
   await h.signIn(page, who.nadia.email, PW);
   const [ws] = J.dinaWin;
@@ -416,6 +424,7 @@ step('Saleh’s day by windows: start, « Je pars », « Je suis arrivé », sig
 step('no signal: the office books a window offline (phone); when the signal is back it is booked in that window', async () => {
   const { page, ctx } = await openW({ kind: 'phone' });
   await h.signIn(page, who.nadia.email, PW);
+  await appOnPhone(page);
   await bookStart(page, 'Eric', [SVC.oil]);
   await listAnswered(page, D[3]);
   const times = await offeredTimes(page, D[3], 'list');
@@ -441,6 +450,7 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   // Ines and Farah have long work (4 h 15): two of them never arrive in the same 4-hour window
   const p1 = await openW({ kind: 'phone' });
   await h.signIn(p1.page, who.nadia.email, PW);
+  await appOnPhone(p1.page);
   await bookStart(p1.page, 'Ines', LONG);
   await listAnswered(p1.page, D[5]);
   const ws = offeredStarts(await offeredTimes(p1.page, D[5], 'list'))[0];
@@ -465,6 +475,7 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   await banner.waitFor({ timeout: 30000 });
   const said = await banner.innerText();
   t.diagnostic(`the refusal says: ${said.replace(/\s+/g, ' ')}`);
+  J.refusal = { banner: said, ws };
   assert.match(said, /plage/i, `the reason is the window: ${said}`);
   assert.match(said, /choisis/i, 'and what to do');
   assert.equal(Number(h.sql(`select count(*) from public.jobs where customer_id = '${C.Ines.id}' and deleted_at is null`)), 0, 'Ines is not booked');
@@ -476,6 +487,7 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   const sheet = p1.page.getByTestId('sync-sheet');
   await sheet.waitFor();
   await sheet.getByText(/Réservation/).first().waitFor();
+  J.refusal.sheet = await sheet.innerText();
   await dismissSheets(p1.page);
   // the office books her again: that window is no longer offered (the screen and the server agree), another one is
   await bookStart(p1.page, 'Ines', LONG);
@@ -540,16 +552,28 @@ step('the window chosen is taken by another phone while the office is still on t
   await p1.ctx.close();
 });
 
+// e2e-plages-01: a booking kept on the phone and refused once the signal is back is listed as « Réservation : Cette
+// plage n’est plus libre : choisis-en une autre. », without the customer nor the moment, with only « Réessayer » (the
+// same window, refused again) and « Retirer ». With two bookings made in a basement, the office cannot tell which one
+// to call back. The words of the step before (J.refusal) are checked here.
+step.skip('no signal, the window taken: the refusal says whose booking it was and when, so the office knows whom to call back', 'BUG e2e-plages-01: the refused booking says neither the customer nor the moment', async () => {
+  assert.ok(J.refusal, 'the step before saw the refusal');
+  const words = `${J.refusal.banner}\n${J.refusal.sheet}`;
+  assert.match(words, /Ines/, `the customer is named: ${words}`);
+  const date = longDay(D[5]).split(' ').slice(1).join(' ');            // « 21 novembre »
+  assert.ok(words.includes(date), `the day is said (${date}): ${words}`);
+});
+
 step('« Départ et heure »: Camion Complet starts at 13 h on one day; the windows offered that day follow (none before 12 h)', async (t) => {
   const day = D[6];
+  // Gilles is booked late that day (16 h – 20 h); until then the windows of the day start at 8 h
   const o = await openW({ kind: 'desktop' });
   await h.signIn(o.page, who.nadia.email, PW);
-  await bookStart(o.page, 'Gilles', [SVC.oil]);
-  await gridAnswered(o.page, day);
-  const early = offeredStarts(await offeredTimes(o.page, day, 'grid'));
-  assert.equal(early[0], 480, `the day starts at 8 h – 12 h: ${early.map(clock).join(', ')}`);
+  const g = await bookWindow(o.page, t, C.Gilles, day, (s) => s[s.length - 1]);
+  assert.equal(g.screen[0], 480, `the day starts at 8 h – 12 h: ${g.screen.map(clock).join(', ')}`);
+  J.gilles = g.id;
   await o.ctx.close();
-  // the owner, from the map: that truck leaves at 13 h that day only
+  // the owner, from the map (« Départ et heure » on the truck of the legend): that truck leaves at 13 h that day only
   const { page, ctx } = await openW({ kind: 'desktop' });
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + `#/map?day=${day}`);
@@ -560,23 +584,26 @@ step('« Départ et heure »: Camion Complet starts at 13 h on one day; the wind
   assert.match(await page.getByTestId('truck-day-after').innerText(), /^Après : 13 h à 20 h/);
   await page.getByTestId('truck-day-save').click();
   assert.equal(await until(() => h.sql(`select ranges::text from public.truck_days where truck_id = '${T.complet}' and day = '${day}' and deleted_at is null`), (v) => v === '[[780, 1200]]', 15000), '[[780, 1200]]');
+  assert.equal(h.sql(`select count(*) from public.truck_week where truck_id = '${T.complet}'`) !== '0', true, 'the usual week is still there');
   await ctx.close();
-  // the office books Gilles that day: the windows begin at 12 h – 16 h, and the screen still says what the server says
+  // the office books Lina that day: the windows begin at 12 h – 16 h, and the screen still says what the server says
   const b = await openW({ kind: 'desktop' });
   await h.signIn(b.page, who.nadia.email, PW);
-  const t0 = await bookStart(b.page, 'Gilles', [SVC.oil]);
+  const t0 = await bookStart(b.page, 'Lina', [SVC.oil]);
   await gridAnswered(b.page, day);
   t.diagnostic(`TIMING windows offered (step 8): ${((Date.now() - t0) / 1000).toFixed(1)} s on screen; suggest_windows median ${(median(b.page.sw) / 1000).toFixed(2)} s, slowest ${(Math.max(0, ...b.page.sw) / 1000).toFixed(2)} s`);
   const late = offeredStarts(await offeredTimes(b.page, day, 'grid'));
-  assert.deepEqual(late.map(clock), (await serverWindows(who.nadia.jwt, C.Gilles, day, 45)).map(clock), 'the screen says what the server says');
+  assert.deepEqual(late.map(clock), (await serverWindows(who.nadia.jwt, C.Lina, day, 45)).map(clock), 'the screen says what the server says');
   assert.ok(late.length && late[0] >= 720, `nothing before 12 h – 16 h: ${late.map(clock).join(', ')}`);
-  assert.ok(await b.page.locator(`.pk-col[data-day="${day}"] [data-testid="pick-unit-${day}-600"][data-state="off"]`).count(), '10 h is shown closed');
+  assert.equal(await b.page.getByTestId(`pick-unit-${day}-600`).getAttribute('data-state'), 'off', '10 h is shown closed');
   await pickWindow(b.page, day, late[0], 'grid');
   await b.page.getByTestId('book-confirm').click();
   await b.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
-  J.gilles = h.sql(`select id from public.jobs where customer_id = '${C.Gilles.id}' and status = 'booked'`);
-  const j = jobOf(J.gilles);
+  J.lina = h.sql(`select id from public.jobs where customer_id = '${C.Lina.id}' and status = 'booked'`);
+  const j = jobOf(J.lina);
   assert.ok(j.eta_min >= 780 && j.eta_min >= j.win_start && j.eta_min <= j.win_end, `after 13 h, inside the window: ${clock(j.eta_min)}`);
+  const gj = jobOf(J.gilles);
+  assert.ok(gj.eta_min >= gj.win_start && gj.eta_min <= gj.win_end, 'Gilles still inside his window');
   noErrors(b.page);
   await b.ctx.close();
 });

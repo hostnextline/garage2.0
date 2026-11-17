@@ -1,11 +1,10 @@
 // The helpers of tests/e2e/plages.test.cjs (« Plages d'arrivée » end to end).
-// The first block is COPIED from tests/e2e/app.test.cjs, where these helpers are private (watch, step, dismissSheets,
-// noErrors, draw, openVin, until, until2, jwtOf, rpcAs): same code, so a failing step leaves the same pictures and the
-// same log of what the app asked the server. `step` also hands node:test's context to the step (its log lines), and
-// `step.skip` keeps a step that waits for a fix (« BUG … » / « WAITS … »): PLAGES_RUN_SKIPPED=1 runs those too.
+// The first block is COPIED from tests/e2e/app.test.cjs, where these helpers are private (watch, the pictures of a
+// failing step, dismissSheets, noErrors, draw, openVin, until, until2, jwtOf, rpcAs): same code, so a failing step leaves
+// the same pictures and the same log of what the app asked the server. (The `step` wrapper itself stays in the test
+// file, so that the report names that file.)
 // The second block is what the window steps need: the windows a screen offers (read from the words of each time), the
 // server's own answer, the texts the fake GoHighLevel kept, the rows of the database.
-const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
@@ -38,11 +37,6 @@ const onFail = async (name) => {
     try { fs.writeFileSync(path.join(h.OUT, tag + '.txt'), (p.netlog || []).join('\n')); } catch { /* ignore */ }
   }
 };
-const step = (name, fn) => test(name, async (t) => {
-  try { await fn(t); } catch (e) { await onFail(name); throw e; }
-});
-/** a step that asserts the right behaviour but waits for a fix: `why` starts with « BUG <id> » or « WAITS <id> » */
-step.skip = (name, why, fn) => (process.env.PLAGES_RUN_SKIPPED === '1' ? step(name, fn) : test(name, { skip: why }, fn));
 const dismissSheets = async (page) => { for (let i = 0; i < 3; i++) { if (await page.locator('[role=dialog]').count()) await page.keyboard.press('Escape'); await page.waitForTimeout(200); } };
 const openVin = async (page) => {
   const sheet = page.getByTestId('car-check');
@@ -86,6 +80,17 @@ async function quietWorld(ctx) {
   await ctx.route('https://routing.openstreetmap.de/**', osrm);
   await ctx.route(/^https:\/\/([a-c]\.)?tile\.openstreetmap\.org\//, (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
   await ctx.route('https://photon.komoot.io/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ type: 'FeatureCollection', features: [] }) }));
+}
+/** the app as it is on the team's phones: opened before, its service worker in charge of the page (what was loaded
+    once still opens without signal). A first visit in a browser tab has no worker yet: a screen not opened before
+    cannot load without signal there. */
+async function appOnPhone(page) {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+  if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) {
+    await page.reload();
+    await page.getByTestId('app').waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
+  }
 }
 async function openW(o) {
   const r = await h.open(o);
@@ -211,7 +216,7 @@ async function mapSays(page, day, truck) {
 }
 
 module.exports = {
-  PW, h, randomUUID, watch, step, dismissSheets, openVin, noErrors, draw, until, until2, jwtOf, rpcAs, openW,
+  PW, h, randomUUID, watch, onFail, appOnPhone, dismissSheets, openVin, noErrors, draw, until, until2, jwtOf, rpcAs, openW,
   minOf, clock, between, longDay, median, jobOf, stopsOf, sentTo, textsTo,
   windowOfLabel, gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays
 };
