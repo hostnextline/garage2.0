@@ -67,8 +67,9 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
   );
 }
 
-/** one line for the booking screen: the oil the chosen car takes (grade, litres, filter), or what is missing with a link to fill it */
-export function OilHint(p: { vehicleId: string | null }) {
+/** one line for the booking screen: the oil the chosen car takes (grade, litres, filter), or what is missing with a link to fill it.
+    `onComplete`: « Compléter » opens the car's sheet in place (the booking form is kept) instead of going to the car's file (R76) */
+export function OilHint(p: { vehicleId: string | null; onComplete?: (vehicleId: string) => void }) {
   useEffect(() => { void ensureEngineRef().catch(() => undefined); }, []);
   const v = vehicleRow(p.vehicleId);
   if (!v) return null;
@@ -78,7 +79,7 @@ export function OilHint(p: { vehicleId: string | null }) {
       <Droplet size={16} aria-hidden="true" />
       <span>
         {[oil.known ? oil.main : '', oil.sub].filter(Boolean).join(', ')}
-        {oil.missing.length > 0 && <>{oil.known || oil.sub ? '. ' : ''}{t('jobs.carFirst.missing', { what: oil.missing.map((k) => t(`jobs.carFirst.piece.${k}`)).join(', ') })} <a href={`#/vehicle/${v.id}`}>{t('jobs.carFirst.fill')}</a></>}
+        {oil.missing.length > 0 && <>{oil.known || oil.sub ? '. ' : ''}{t('jobs.carFirst.missing', { what: oil.missing.map((k) => t(`jobs.carFirst.piece.${k}`)).join(', ') })} <a href={`#/vehicle/${v.id}`} onClick={p.onComplete ? (e) => { e.preventDefault(); p.onComplete!(v.id); } : undefined} data-testid="book-oil-fill">{t('jobs.carFirst.fill')}</a></>}
         {oil.toConfirm && !oil.missing.length ? ` (${t('jobs.carFirst.toConfirm').toLowerCase()})` : ''}
       </span>
     </p>
