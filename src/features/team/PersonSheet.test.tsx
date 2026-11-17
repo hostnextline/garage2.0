@@ -8,9 +8,12 @@ const sent: Record<string, unknown>[] = [];
 const asked: string[] = [];
 let sayYes = false;
 const answers: (() => void)[] = [];
+const trucksSaved: Record<string, unknown>[] = [];
+let refuse = false;
 vi.mock('../../data/api', async (orig) => {
   const real = await orig<typeof import('../../data/api')>();
-  return { ...real, memberUpdate: (_id: string, patch: Record<string, unknown>) => { sent.push(patch); return new Promise<void>((r) => answers.push(r)); } };
+  return { ...real, memberUpdate: (_id: string, patch: Record<string, unknown>) => { sent.push(patch); if (refuse) return Promise.reject(new Error('refusé')); return new Promise<void>((r) => answers.push(r)); },
+    saveTruck: async (tr: Record<string, unknown>) => { trucksSaved.push(tr); return String(tr.id); } };
 });
 vi.mock('../../ui', async (orig) => {
   const real = await orig<typeof import('../../ui')>();
@@ -28,7 +31,7 @@ document.body.appendChild(box);
 const roleChip = (label: string) => [...document.querySelectorAll('[data-testid="person-roles"] button')].find((b) => b.textContent?.includes(label)) as HTMLElement;
 
 beforeEach(async () => {
-  lang.value = 'fr'; sent.length = 0; asked.length = 0; sayYes = false; answers.length = 0;
+  lang.value = 'fr'; sent.length = 0; asked.length = 0; sayYes = false; answers.length = 0; trucksSaved.length = 0; refuse = false;
   access.value = { id: 'u-owner', roles: ['owner'], owner: true, prefs: {}, rights: {}, trucks: [] } as unknown as Access;
   replaceLocal('staff', [{ id: 'u-saleh', full_name: 'Saleh Amro', short_name: 'Saleh', email: 's@x.test', phone: null, roles: ['mechanic'], rights: {}, active: true, color: '#D3000E', lang: 'fr', prefs: {}, last_seen_at: null }] as never);
   replaceLocal('trucks', []);
@@ -54,5 +57,29 @@ describe('Équipe: the person’s sheet', () => {
     await wait();
     expect(asked).toEqual([]);
     expect(sent.length).toBe(1);
+  });
+  it('« Mécanicien » taken off: once the server said yes, the truck he drove is free again; refused, the truck stays (settings-team-26)', async () => {
+    replaceLocal('trucks', [{ id: 't1', name: 'Camion', driver_id: 'u-saleh', active: true }, { id: 't2', name: 'Voiture', driver_id: 'u-other', active: true }] as never);
+    replaceLocal('staff', [{ id: 'u-saleh', full_name: 'Saleh Amro', short_name: 'Saleh', email: 's@x.test', phone: null, roles: ['mechanic', 'office'], rights: {}, active: true, color: '#D3000E', lang: 'fr', prefs: {}, last_seen_at: null }] as never);
+    await wait();
+    // a role that keeps « Mécanicien »: the truck stays his
+    await act(async () => { roleChip('Trésor').click(); });
+    await wait();
+    await act(async () => { answers.shift()?.(); });
+    await wait();
+    expect(trucksSaved).toEqual([]);
+    // refused by the server: the truck stays
+    refuse = true;
+    await act(async () => { roleChip('Mécanicien').click(); });
+    await wait(); await wait();
+    expect(sent[sent.length - 1]).toEqual({ roles: ['office'] });
+    expect(trucksSaved).toEqual([]);
+    refuse = false;
+    await act(async () => { roleChip('Mécanicien').click(); });
+    await wait();
+    expect(sent[sent.length - 1]).toEqual({ roles: ['office'] });
+    await act(async () => { answers.shift()?.(); });
+    await wait(); await wait();
+    expect(trucksSaved).toEqual([{ id: 't1', driver_id: null }]);
   });
 });
