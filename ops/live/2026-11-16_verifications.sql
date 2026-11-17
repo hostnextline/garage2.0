@@ -88,9 +88,13 @@ select json_build_object(
 --      rights (the migrations revoke and grant per column on jobs), and the body alone (md5 of prosrc, which does not
 --      depend on the Postgres version) of the three functions F may show different. The same query on the local base at
 --      AVANT: the owners must be the same role on each side (else stop), the prosrc md5 of the three must be equal.
+--      Like F, the functions of an extension installed in public are left out (they are not ours, and the local base
+--      has none there: counting them would be a false stop).
 select json_build_object(
-  'function_owners', (select json_object_agg(o, n) from (select proowner::regrole::text o, count(*) n from pg_proc
-                        where pronamespace = 'public'::regnamespace group by 1) x),
+  'function_owners', (select json_object_agg(o, n) from (select p.proowner::regrole::text o, count(*) n from pg_proc p
+                        where p.pronamespace = 'public'::regnamespace
+                          and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+                        group by 1) x),
   'cron_jobs', case when to_regclass('cron.job') is null then null else (xpath('/row/j/text()',
                  query_to_xml('select json_agg(json_build_object(''jobname'', jobname, ''username'', username) order by jobname) as j from cron.job', false, true, '')))[1]::text::json end,
   'column_rights', (select json_agg(json_build_object('table', c.relname, 'column', a.attname, 'acl', a.attacl::text) order by c.relname, a.attname)
