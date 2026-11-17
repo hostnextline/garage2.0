@@ -316,6 +316,23 @@ test('the backup reads a table page after page by the last row seen: a row delet
   assert.ok(pics.rows.length <= 25);
 });
 
+test('the backup refuses a page « after » that is not a key of the table (code « after », 400): never a server error, never the whole pictures in place of the light rows', async () => {
+  const good = await ticket();
+  for (const [table, extra] of [['jobs', {}], ['op_log', {}], ['activity', {}], ['attachments', {}], ['attachments', { light: true }]]) {
+    const r = await oidc('backup', { action: 'rows', table, after: 'x', ...extra }, good);
+    assert.deepEqual([r.status, r.ok, r.code], [400, false, 'after'], `${table} ${JSON.stringify(extra)}: ${JSON.stringify(r).slice(0, 300)}`);
+    assert.equal(typeof r.error, 'string');
+    assert.ok(!('rows' in r), 'no rows (and no picture) with a refusal');
+  }
+  assert.equal((await oidc('backup', { action: 'rows', table: 'jobs', after: { id: 1 } }, good)).code, 'after', 'not a text');
+  assert.equal((await oidc('backup', { action: 'rows', table: 'jobs', after: 'a'.repeat(201) }, good)).code, 'after', 'too long');
+  // a key of the table's own type still pages: a number for the history (activity), a text for the counters, a uuid
+  for (const [table, after] of [['activity', '0'], ['activity', 0], ['counters', ' '], ['jobs', '00000000-0000-0000-0000-000000000000']]) {
+    const r = await oidc('backup', { action: 'rows', table, after, limit: 2 }, good);
+    assert.equal(r.ok, true, `${table} after ${JSON.stringify(after)}: ${JSON.stringify(r).slice(0, 300)}`);
+  }
+});
+
 test('the backup asks the pictures apart: « light » rows without the picture (every other column), then each picture once by its id', async () => {
   const good = await ticket();
   const pic = Buffer.from('reçu '.repeat(50)).toString('base64');
