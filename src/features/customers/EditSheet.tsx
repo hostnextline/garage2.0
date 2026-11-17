@@ -1,6 +1,8 @@
 /* « Modifier » a customer's file: the same fields as the new customer page; only the fields that changed are sent (two
    people may change the same file at the same time); leaving a changed sheet asks first. A new address is also offered
-   to the coming appointments still at the old one (followAddress.ts). « Supprimer ce client »: DeleteZone.tsx. */
+   to the coming appointments still at the old one (followAddress.ts). While « Enregistrer » runs (a new address waits a
+   moment for its position, R163) the sheet cannot be left: « Quitter ? » never opens over a save that goes through.
+   « Supprimer ce client »: DeleteZone.tsx. */
 import { useMemo } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { allJobs } from '../../data/select';
@@ -21,6 +23,7 @@ export function EditSheet(p: { c: Customer; onClose: () => void; onLeaving: (on:
   const diff = changed(before, customerPatch(f.draft));
   const dirty = Object.keys(diff).length > 0;
   const close = async () => {
+    if (f.isSaving()) return;
     if (dirty && !(await ask({ title: t('customers.file.leave.title'), text: t('customers.file.leave.text'), ok: t('customers.file.leave.ok'), danger: true }))) return;
     whenHistorySettled(p.onClose);
   };
@@ -43,10 +46,10 @@ export function EditSheet(p: { c: Customer; onClose: () => void; onLeaving: (on:
     p.onClose();
   });
   return (
-    <Sheet open onClose={() => void close()} title={t('customers.file.editTitle')} data-testid="customer-edit-sheet"
+    <Sheet open onClose={() => void close()} dismissable={!f.saving} title={t('customers.file.editTitle')} data-testid="customer-edit-sheet"
       footer={<>
-        <Button onClick={() => { void close(); }}>{t('common.cancel')}</Button>
-        <Button variant="primary" onClick={save} data-testid="customer-save">{t('common.save')}</Button>
+        <Button onClick={() => { void close(); }} disabled={f.saving}>{t('common.cancel')}</Button>
+        <Button variant="primary" onClick={save} busy={f.saving} data-testid="customer-save">{t('common.save')}</Button>
       </>}>
       <div class="stack-lg">
         {f.bad && <Banner kind="bad">{t('customers.form.fix')}</Banner>}
