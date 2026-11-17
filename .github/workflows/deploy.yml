@@ -4,6 +4,7 @@
 # Un changement qui ne touche QUE des fichiers hors de l'app (notes, tests du serveur, migrations, fonctions, scripts de
 # sauvegarde, procédures) ne publie rien : sinon chaque téléphone verrait une « nouvelle version » identique. Les
 # fonctions et les migrations se publient à part (ops/live/CUTOVER.md). « Run workflow » publie quand même, à la main.
+# Les tests de l'app qui lisent supabase/ roulent quand même pour un tel changement : tests-main.yml (ne publie rien).
 name: Publier l'app
 on:
   push:

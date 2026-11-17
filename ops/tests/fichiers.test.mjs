@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 
 // the repository's root: found from here, so the file may move
 let ROOT = new URL('.', import.meta.url).pathname;
@@ -152,4 +152,40 @@ test('the cutover asks for the unit tests on the garage\'s clock, as publishing 
   // the same clock as « Publier l'app » (deploy.yml): what passes there passes here
   assert.match(lire('.github/workflows/deploy.yml'), /TZ: America\/Toronto/);
   assert.match(rb, /`TZ=America\/Toronto npm test`/, 'CUTOVER.md step 0.1 runs the unit tests on the garage\'s clock');
+});
+
+test('a push to main that publishes nothing still runs the unit tests that read those files (ops-r2-2)', () => {
+  // the folders outside src/ that the unit tests read (an import, a glob from the root, a path built from __dirname)
+  const { dirname, resolve, relative } = path;
+  const lus = new Set();
+  const marche = (d) => {
+    for (const e of readdirSync(join(ROOT, d), { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) marche(p);
+      else if (/\.test\.tsx?$/.test(e.name)) {
+        const txt = lire(p);
+        for (const m of txt.matchAll(/['"`]((?:\.\.\/)+[^'"`]+)['"`]/g)) {
+          const r = relative(ROOT, resolve(ROOT, dirname(p), m[1])).split('/')[0];
+          if (r && r !== 'src' && r !== '..' && existsSync(join(ROOT, r))) lus.add(r);
+        }
+        for (const m of txt.matchAll(/['"`]!?\/([a-z][\w.-]*)\//g)) if (m[1] !== 'src' && existsSync(join(ROOT, m[1]))) lus.add(m[1]);
+      }
+    }
+  };
+  marche('src');
+  assert.ok(lus.has('supabase'), 'the unit tests read supabase/ (errors.test, server-texts.test, webpush.test, config.test…)');
+  const deploy = lire('.github/workflows/deploy.yml');
+  const ign = [...deploy.match(/paths-ignore:\n((?:\s+- '[^']+'\n)+)/)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const sautes = [...lus].filter((d) => ign.some((x) => x === d + '/**' || x.startsWith(d + '/')));
+  if (!sautes.length) return;   // every folder they read publishes (and so is tested) on main
+  // a workflow apart from publishing (infra-10: the publishing path stays as it is) runs the types and the unit tests
+  // on the garage's clock for a push to main touching these folders, and publishes nothing
+  const autres = readdirSync(join(ROOT, '.github/workflows')).filter((f) => /\.ya?ml$/.test(f) && f !== 'deploy.yml').map((f) => lire('.github/workflows/' + f));
+  const garde = autres.find((y) => /push:\n\s+branches: \[main\]\n\s+paths:/.test(y));
+  assert.ok(garde, 'a workflow runs the unit tests on a push to main that deploy.yml skips (' + sautes.join(', ') + ')');
+  const chemins = [...garde.match(/paths:\n((?:\s+- '[^']+'\n)+)/)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  for (const d of sautes) assert.ok(chemins.includes(d + '/**'), `it watches ${d}/**`);
+  assert.match(garde, /run: npx tsc --noEmit && npm test\n\s+env:\n\s+TZ: America\/Toronto/, 'the same checks, on the garage\'s clock');
+  assert.ok(!/git push|secrets\.|contents: write|continue-on-error/.test(garde), 'it publishes nothing and writes nothing');
+  assert.match(garde, /permissions:\n\s+contents: read/);
 });
