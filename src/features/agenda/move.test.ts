@@ -50,6 +50,37 @@ describe('a move from the agenda texts the customer when what they were told cha
   });
 });
 
+describe('the server’s « tell » decides the text when it gives it (R85)', () => {
+  it('tell: true texts even when the answer has no row and the phone’s row is still as before', async () => {
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, tell: true, window_changed: true } });
+    rows.job.mockReturnValue(julie());
+    expect(await moveToWindow(julie(), '2026-11-20', { start: 840 })).toBe(true);
+    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+  });
+  it('tell: false sends nothing even when the phone’s old row differs from the answer’s', async () => {
+    // the phone still held 9 h – 13 h; the server had 14 h – 18 h already (what the customer was told) and keeps it
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, tell: false, rows: { jobs: [julie({ win_start: 840, win_end: 1080 })] } } });
+    expect(await moveToWindow(julie(), '2026-11-20', { start: 840 })).toBe(true);
+    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+  });
+  it('a move kept on the phone follows the server’s « tell » once it lands', async () => {
+    let land: (d: unknown) => void = () => {};
+    api.moveJob.mockResolvedValue({ queued: true });
+    sync.outboxList.mockResolvedValue([{ op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } }]);
+    sync.whenDone.mockReturnValue(new Promise((r) => { land = r; }));
+    await moveToWindow(julie(), '2026-11-22', { start: 540 });
+    land({ ok: true, changed: true, tell: false, rows: { jobs: [julie({ day: '2026-11-22' })] } });
+    await flush(); await flush();
+    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+  });
+  it('a server without « tell » (the live one before the rebuild): the rows decide, as before', async () => {
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true } });
+    rows.job.mockReturnValue(julie());
+    expect(await moveToWindow(julie(), '2026-11-21', { start: 540 })).toBe(true);
+    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+  });
+});
+
 describe('a drop in the job’s own truck column (agenda-08)', () => {
   it('moves the time without keeping the truck for good, and promises no text when only the truck changes', async () => {
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, rows: { jobs: [julie({ win_start: 840 })] } } });

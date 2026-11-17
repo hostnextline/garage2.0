@@ -18,10 +18,7 @@ export function setDayView(v: DayView) {
   write(VIEW_KEY, v);
 }
 
-const ROUTE_KEY = 'his.myRoute';
-/** the route this mechanic is doing now, as remembered (routeInUse decides whether it still counts); null: all of them */
-export const myRoute = signal<string | null>(read(ROUTE_KEY));
-export function setMyRoute(id: string | null) {
-  myRoute.value = id;
-  write(ROUTE_KEY, id);
-}
+/** the route this mechanic is doing now, as remembered (routeInUse decides whether it still counts); null: all of them.
+    One signal for the whole app (key « his.myRoute »), kept by services/position.ts: the position sent and « Ma journée »
+    always read the same choice (R73). */
+export { myRoute, setMyRoute } from '../../services/position';

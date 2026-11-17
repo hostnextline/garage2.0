@@ -12,17 +12,14 @@ import { settings, truck as truckRow } from '../../data/select';
 import type { Job, Trip } from '../../data/types';
 import { clockOf } from '../../shared/jobs/select';
 import { doReturn, doReturnEnd } from '../../shared/jobs/flow';
-import { returnState } from './rules';
+import { pendingJobs } from '../../shared/jobs/pending';
+import { returnState, lastFinished } from './rules';
 
 /** where this person's truck goes home: the truck's own start, else « Départ des camions » */
 function homeOf(): { label: string; address: string; ok: boolean } {
   const own = myTrucks().map((id) => truckRow(id)?.start).find((s) => s && s.lat != null && s.lng != null);
   const h = own || settings.value.booking?.home;
   return { label: h?.label || 'Centrale', address: h?.address || '', ok: !!h && h.lat != null && h.lng != null };
-}
-/** the last time one of the day's stops was finished (a job finished after an arrival means a new way back) */
-function lastFinished(list: Job[]): string | null {
-  return list.reduce<string | null>((a, j) => (j.finished_at && (!a || j.finished_at > a) ? j.finished_at : a), null);
 }
 
 export function ReturnCard(p: { day: string; list: Job[] }) {
@@ -35,7 +32,7 @@ export function ReturnCard(p: { day: string; list: Job[] }) {
     busy.current = true;
     try { await fn(); } finally { busy.current = false; }
   };
-  const state = returnState(rowsOf<Trip>('trips'), a.id, p.day, (iso) => dayOf(new Date(iso)), lastFinished(p.list));
+  const state = returnState(rowsOf<Trip>('trips'), a.id, p.day, (iso) => dayOf(new Date(iso)), lastFinished(p.list, (id) => pendingJobs().steps.get(id)));
   const home = homeOf();
   if (state.kind === 'active') {
     const trip = state.trip;

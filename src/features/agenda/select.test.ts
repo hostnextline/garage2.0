@@ -15,7 +15,7 @@ function garage(windows: boolean) {
   // both work Tuesday and Wednesday, 8 h – 16 h
   replaceLocal('truck_week', [2, 3].flatMap((dow) => [{ id: `w1-${dow}`, truck_id: 't1', dow, ranges: [[480, 960]] }, { id: `w2-${dow}`, truck_id: 't2', dow, ranges: [[480, 960]] }]));
 }
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-17T09:00:00')); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-17T09:00:00-05:00')); });
 afterEach(() => { vi.useRealTimers(); clearAll(); access.value = null; });
 
 describe('a day of blocks', () => {
@@ -50,18 +50,18 @@ describe('a day of arrival windows', () => {
   it('today late: still working, no longer booking, never « Fermé » (agenda-06)', () => {
     garage(true);
     access.value = owner;
-    vi.setSystemTime(new Date('2026-11-17T16:30:00'));
+    vi.setSystemTime(new Date('2026-11-17T16:30:00-05:00'));
     const day = dayPlan(TODAY, TODAY).views[0];
     expect(day).toMatchObject({ key: 'day', open: false, started: false, closed: false });
   });
   it('today: a job under way counts only for what it still needs (agenda-04)', () => {
     garage(true);
     access.value = owner;
-    vi.setSystemTime(new Date('2026-11-17T14:00:00'));
+    vi.setSystemTime(new Date('2026-11-17T14:00:00-05:00'));
     // this truck works until 17 h today: 180 min left at 14 h
     replaceLocal('truck_days', [{ id: 'd1', truck_id: 't1', day: TODAY, ranges: [[480, 1020]], note: null }]);
     replaceLocal('jobs', [
-      { id: 'site', day: TODAY, block: 'day', truck_id: 't1', status: 'on_site', duration_min: 120, travel_min: 20, number: 1, stop_order: 1, arrived_at: new Date('2026-11-17T12:00:00').toISOString() },
+      { id: 'site', day: TODAY, block: 'day', truck_id: 't1', status: 'on_site', duration_min: 120, travel_min: 20, number: 1, stop_order: 1, arrived_at: new Date('2026-11-17T12:00:00-05:00').toISOString() },
       { id: 'b1', day: TODAY, block: 'day', truck_id: 't1', status: 'booked', duration_min: 60, travel_min: 20, number: 2, stop_order: 2 },
       { id: 'b2', day: TODAY, block: 'day', truck_id: 't1', status: 'booked', duration_min: 30, travel_min: 20, number: 3, stop_order: 3 }
     ]);

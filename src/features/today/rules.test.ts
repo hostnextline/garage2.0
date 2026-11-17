@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Job, Invoice, Trip } from '../../data/types';
-import { nextStopOf, summaryOf, workedMinutes, routeInUse, openBefore, returnState, collectList, invoicesByJob } from './rules';
+import { nextStopOf, summaryOf, workedMinutes, routeInUse, openBefore, returnState, collectList, invoicesByJob, lastFinished } from './rules';
 
 const job = (o: Partial<Job>): Job => ({ id: 'j', number: 1, day: '2026-11-14', block: 'am', status: 'booked', truck_id: 't1', duration_min: 60, travel_min: 10, pay_later: false, coffre_id: null, ...o } as Job);
 const inv = (o: Partial<Invoice>): Invoice => ({ id: 'i', job_id: 'j', status: 'issued', total_cents: 10000, paid_cents: 0, number: 1, deleted_at: null, ...o } as Invoice);
@@ -91,5 +91,42 @@ describe('« À encaisser »', () => {
   it('indexes each job’s invoice once, the void and deleted ones left out, the first one kept', () => {
     const map = invoicesByJob([inv({ id: 'v', status: 'void' }), inv({ id: 'd', deleted_at: '2026-11-01' }), inv({ id: 'first' }), inv({ id: 'second' })]);
     expect(map.get('j')?.id).toBe('first');
+  });
+});
+
+describe('the last stop finished, for the way back', () => {
+  const none = () => undefined;
+  it('is the latest finished_at of the day', () => {
+    expect(lastFinished([job({ id: 'a', status: 'done', finished_at: '2026-11-15T18:00:00Z' }), job({ id: 'b', status: 'done', finished_at: '2026-11-15T20:30:00Z' })], none))
+      .toBe('2026-11-15T20:30:00Z');
+    expect(lastFinished([job({ status: 'booked' })], none)).toBeNull();
+  });
+  it('a « Terminer » still waiting on the phone counts at the time it was made (no finished_at yet)', () => {
+    const steps = (id: string) => (id === 'b' ? [{ action: 'arrive' as const, at: '2026-11-15T21:00:00.000Z' }, { action: 'finish' as const, at: '2026-11-15T22:10:00.000Z' }] : undefined);
+    expect(lastFinished([job({ id: 'a', status: 'done', finished_at: '2026-11-15T18:00:00+00:00' }), job({ id: 'b', status: 'done', finished_at: null })], steps))
+      .toBe('2026-11-15T22:10:00.000Z');
+  });
+  it('the server’s finished_at counts once the row came back, and a waiting step of a job not done counts for nothing', () => {
+    const steps = () => [{ action: 'finish' as const, at: '2026-11-15T22:58:00.000Z' }];
+    expect(lastFinished([job({ status: 'done', finished_at: '2026-11-15T22:59:00+00:00' })], steps)).toBe('2026-11-15T22:59:00+00:00');
+    expect(lastFinished([job({ status: 'on_site', finished_at: null })], steps)).toBeNull();
+  });
+  it('a job finished again offline after « Défaire » counts at its new « Terminer », not at the old finished_at (today-agenda-r2-2)', () => {
+    // the row still says done at 19:00: « Défaire » then « Terminer » wait on the phone, the overlay keeps it done
+    const steps = (id: string) => (id === 'b' ? [{ action: 'back' as const, at: '2026-11-15T22:00:00.000Z' }, { action: 'finish' as const, at: '2026-11-15T22:10:00.000Z' }] : undefined);
+    const list = [job({ id: 'a', status: 'done', finished_at: '2026-11-15T18:00:00Z' }), job({ id: 'b', status: 'done', finished_at: '2026-11-15T19:00:00Z' })];
+    expect(lastFinished(list, steps)).toBe('2026-11-15T22:10:00.000Z');
+    // back home at 20:00: « Je pars » is offered again
+    const back = { id: 'r', staff_id: 'me', kind: 'return', status: 'arrived', ended_at: '2026-11-15T20:00:00Z', expires_at: '2026-11-15T21:00:00Z', deleted_at: null } as unknown as Trip;
+    expect(returnState([back], 'me', '2026-11-15', (iso) => iso.slice(0, 10), lastFinished(list, steps), Date.parse('2026-11-15T22:30:00Z')).kind).toBe('none');
+  });
+  it('a mechanic back once who finishes another job before it reaches the server is offered « Je pars » again', () => {
+    const now = Date.parse('2026-11-15T22:30:00Z');
+    const dayOf = (iso: string) => iso.slice(0, 10);
+    const back = { id: 'r', staff_id: 'me', kind: 'return', status: 'arrived', ended_at: '2026-11-15T20:00:00Z', expires_at: '2026-11-15T21:00:00Z', deleted_at: null } as unknown as Trip;
+    const steps = () => [{ action: 'finish' as const, at: '2026-11-15T22:10:00.000Z' }];
+    const list = [job({ id: 'a', status: 'done', finished_at: '2026-11-15T19:00:00Z' }), job({ id: 'b', status: 'done', finished_at: null })];
+    expect(returnState([back], 'me', '2026-11-15', dayOf, lastFinished(list, none), now).kind).toBe('arrived');
+    expect(returnState([back], 'me', '2026-11-15', dayOf, lastFinished(list, steps), now).kind).toBe('none');
   });
 });

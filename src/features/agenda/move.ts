@@ -15,7 +15,7 @@ import { farInfo, farLimits, farQuestion, momentsByKey } from '../../domain/mome
 import { notifyCustomer, wantsText } from '../../shared/moment/notify';
 import { jobPerson } from '../../domain/jobs/words';
 import { moveQuestion, winShort } from './layout';
-import { moveOutcome, textAfterMove, toldChanged, dropTruck, dropTells } from '../../domain/moment/moveRules';
+import { moveOutcome, textAfterMove, toldChanged, dropTruck, dropTells, type MoveOutcome } from '../../domain/moment/moveRules';
 
 /** the job waiting for its new window (the sheet is open), or null. Only its id: the sheet reads the live row.
     `farDone`: the « garde-route » question was already asked for that day (a drop on the time grid that did not fit):
@@ -82,6 +82,15 @@ export async function moveSettled(id: string): Promise<Settled> {
     return { kind: 'gone' };
   }
 }
+/** does the « moved » text go? move_job's own `tell` (« what the customer was told is no longer true »: day, block or
+    window, read on the server's row) decides when the answer has it (R85); a server without it (the live one before
+    the rebuild) leaves it to the rows, as before (textAfterMove) */
+function textGoes(o: MoveOutcome, data: unknown, before: Job, after: Job | null | undefined, wanted: boolean): boolean {
+  if (!wanted || o.kind !== 'moved') return false;
+  const tell = data && typeof data === 'object' ? (data as { tell?: unknown }).tell : undefined;
+  if (typeof tell === 'boolean') return tell;
+  return textAfterMove(o, before, after, wanted);
+}
 /** the customer's text once a move kept on the phone reaches the server (it may answer that nothing changed, or refuse:
     then nothing goes, the frame lists the refusal) */
 async function textWhenSent(before: Job) {
@@ -93,7 +102,7 @@ async function textWhenSent(before: Job) {
       if (after && toldChanged(before, after)) void notifyCustomer('moved', before.id);
     } else if (s.kind === 'done') {
       const o = moveOutcome({ queued: false, data: s.data }, before.id);
-      if (textAfterMove(o, before, o.kind === 'moved' ? o.after ?? jobRow(before.id) : null, true)) void notifyCustomer('moved', before.id);
+      if (textGoes(o, s.data, before, o.kind === 'moved' ? o.after ?? jobRow(before.id) : null, true)) void notifyCustomer('moved', before.id);
     }
     // refused: the frame's « refusé » list says so, and the customer has nothing new to hear
   } catch { /* the text could not be sent: the job sheet still offers it */ } finally {
@@ -116,7 +125,7 @@ async function send(j: Job, call: () => Promise<{ queued: boolean; data?: unknow
     toast(t('agenda.move.unchanged'));
   } else {
     toast(t('agenda.move.done'), { kind: 'ok' });
-    if (textAfterMove(o, j, o.after ?? jobRow(j.id), sms)) void notifyCustomer('moved', j.id);
+    if (textGoes(o, r.data, j, o.after ?? jobRow(j.id), sms)) void notifyCustomer('moved', j.id);
   }
   return { ok: true };
 }

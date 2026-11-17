@@ -2,6 +2,7 @@
    numbers, the jobs left open on a past day, the route in use, the way back, the money to collect.
    The screens feed them from the device's copy (select.ts); rules.test.ts checks them. */
 import type { Job, Invoice, Trip } from '../../data/types';
+import type { PendingStep } from '../../domain/jobs/pending';
 
 /** a job not finished yet: booked, on the way, or there */
 export const OPEN = ['booked', 'en_route', 'on_site'];
@@ -49,6 +50,25 @@ export function openBefore<J extends Pick<Job, 'day' | 'status' | 'truck_id' | '
   return jobs
     .filter((j) => j.day < todayDay && OPEN.includes(j.status) && !j.deleted_at && (trucks == null || (!!j.truck_id && trucks.includes(j.truck_id))))
     .sort((a, b) => a.day.localeCompare(b.day) || a.number - b.number);
+}
+
+/** the last time one of the day's stops was finished (a job finished after an arrival means a new way back): for each
+    job shown done, the later of the server's finished_at and the last « Terminer » still waiting on this phone (no
+    finished_at yet; or a job finished again offline after « Défaire », whose row still says the first finish).
+    `stepsOf`: the steps of a job waiting on this phone. */
+export function lastFinished(list: readonly Pick<Job, 'id' | 'status' | 'finished_at'>[], stepsOf: (id: string) => readonly PendingStep[] | undefined): string | null {
+  let best: string | null = null;
+  let bestMs = -Infinity;
+  const take = (at: string | null | undefined) => {
+    const ms = at ? Date.parse(at) : NaN;
+    if (at && Number.isFinite(ms) && ms > bestMs) { best = at; bestMs = ms; }
+  };
+  for (const j of list) {
+    if (j.status !== 'done') continue;
+    take(j.finished_at);
+    take([...(stepsOf(j.id) || [])].reverse().find((s) => s.action === 'finish')?.at);
+  }
+  return best;
 }
 
 /** the way back to the start after the last stop. `arrived`: a trip back of today that ended after the last job
