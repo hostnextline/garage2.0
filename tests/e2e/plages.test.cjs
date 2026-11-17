@@ -129,12 +129,15 @@ async function bookWindow(page, t, c, day, choose, services = [SVC.oil], duratio
   return { id, ws, waited, screen };
 }
 
-step('Réglages: the owner switches « Plages d’arrivée » on; Julie’s coming afternoon becomes her day with the window 12 h – 16 h, on the agenda and in the database', async () => {
+step('Réglages: the owner switches « Plages d’arrivée » on; Julie’s coming afternoon becomes her day with the window 12 h – 16 h, on the agenda and in the database', async (t) => {
   const was = jobOf(J.julie);
   assert.deepEqual([was.day, was.block, was.win_start], [D[4], 'pm', null], 'booked by blocks');
   const { page, ctx } = await openW({ kind: 'desktop' });
+  const t0 = Date.now();
   await h.signIn(page, who.owner.email, PW);
+  t.diagnostic(`signed in after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   const said = await flipSwitch(page, true);
+  t.diagnostic(`switched on after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   assert.match(said, /1 rendez-vous à venir converti/);
   const j = jobOf(J.julie);
   assert.deepEqual([j.day, j.block, j.win_start, j.win_end, j.win_flex], [D[4], 'day', 720, 960, false], 'her day, the window of her old block');
@@ -143,6 +146,7 @@ step('Réglages: the owner switches « Plages d’arrivée » on; Julie’s comi
   await page.getByTestId('windows-lock').waitFor();
   // the agenda of her day: her window
   const a = await agendaSays(page, D[4], [J.julie]);
+  t.diagnostic(`agenda read after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   assert.deepEqual(a[J.julie].win, [720, 960], `the agenda says 12 h – 16 h: ${a[J.julie].label}`);
   assert.equal(a[J.julie].eta, j.eta_min, 'and the arrival the server planned');
   await h.shot(page, 'plages-1-switch-on');
@@ -260,11 +264,14 @@ step('« Flexible »: Dina is booked for tomorrow without a window; « Fixer les
   assert.equal(fixed.length, 1, 'her window is texted');
   assert.ok(fixed[0].includes(between(j.win_start, j.win_end)), `in words: ${fixed[0]}`);
   assert.equal(sentTo(J.dina, 'window').length, 1);
-  // a second tap: nothing new to fix, nobody texted twice
+  // a second tap: nothing new to fix; the app asks to tell Dina again (her window is fixed and she is « flexible »), the
+  // server answers that she already has it: nobody is texted twice
+  const told = o.page.waitForResponse((r) => /\/functions\/v1\/notify/.test(r.url()) && r.request().postData()?.includes(J.dina), { timeout: 20000 });
   await o.page.getByTestId('windows-lock').click();
-  await o.page.getByTestId('toast-ok').filter({ hasText: /plage/i }).nth(1).waitFor({ timeout: 30000 }).catch(() => undefined);
-  await until2(async () => (await textsTo('Dina', /plage d’arrivée est confirmée/)).length, (n) => n > 1, 4000);
+  const again = await (await told).json();
+  t.diagnostic(`second « Fixer »: notify answered ${JSON.stringify({ ok: again.ok, status: again.status })}`);
   assert.equal((await textsTo('Dina', /plage d’arrivée est confirmée/)).length, 1, 'the same window is never texted twice');
+  assert.equal(sentTo(J.dina, 'window').length, 1);
   // the job screen now says her window
   await o.page.goto(h.APP + `#/job/${J.dina}`);
   await o.page.getByTestId('job-window').filter({ hasText: clock(j.win_start) }).waitFor({ timeout: 15000 });
@@ -581,7 +588,7 @@ step('« Départ et heure »: Camion Complet starts at 13 h on one day; the wind
   const sheet = page.getByTestId('truck-day-sheet');
   await sheet.waitFor();
   await sheet.getByTestId('truck-day-time').locator('select').selectOption('780');
-  assert.match(await page.getByTestId('truck-day-after').innerText(), /^Après : 13 h à 20 h/);
+  assert.match((await page.getByTestId('truck-day-after').innerText()).replace(/\s+/g, ' '), /^Après : 13 h à 20 h/);
   await page.getByTestId('truck-day-save').click();
   assert.equal(await until(() => h.sql(`select ranges::text from public.truck_days where truck_id = '${T.complet}' and day = '${day}' and deleted_at is null`), (v) => v === '[[780, 1200]]', 15000), '[[780, 1200]]');
   assert.equal(h.sql(`select count(*) from public.truck_week where truck_id = '${T.complet}'`) !== '0', true, 'the usual week is still there');
