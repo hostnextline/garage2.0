@@ -135,7 +135,9 @@ export const invoices = {
     percent: 'Rabais en pourcentage',
     none: 'Aucune ligne.',
     qtyTimes: '{q} × {p}',
-    notTaxable: 'Non taxable'
+    notTaxable: 'Non taxable',
+    /** a price typed wrong (red) when finishing the invoice, or sending or booking the estimate */
+    badPrice: 'Un prix est mal écrit : corrige le champ en rouge d’abord.'
   },
   catalog: {
     title: 'Du catalogue',

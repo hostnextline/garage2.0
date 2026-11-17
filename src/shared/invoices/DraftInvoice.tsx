@@ -18,7 +18,7 @@ import { withKeys, keepKeys, type EditLine } from '../../domain/money/editLines'
 import { waitingEntries, rowWaiting } from '../../domain/money/waiting';
 import { aheadOf } from '../../domain/money/view';
 import { canEditInvoiceOf, canManageInvoices } from './select';
-import { LinesEditor, percentWords } from './LinesEditor';
+import { LinesEditor, percentWords, usePriceTypos } from './LinesEditor';
 import { LinesView } from './LinesView';
 import { CatalogSheet } from './CatalogSheet';
 import { MissingWorkSheet } from './MissingWorkSheet';
@@ -47,6 +47,8 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
   const [catalog, setCatalog] = useState(false);
   const [asking, setAsking] = useState<WorkItem[]>([]);
   const check = draftProblems(v.lines, tt.total);
+  // a price typed wrong (red) keeps its line at the last good price: never finished like that (review invoices-r2-3)
+  const typos = usePriceTypos();
 
   // the draft follows the work (and « Rabais de 10 % » its lines), on this phone at once, with or without signal
   const workSig = items.map((i) => `${i.id}.${i.status}.${i.updated_at || ''}`).join(',');
@@ -71,6 +73,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
 
   const doFinish = async () => {
     setAsking([]);
+    if (typos.refused()) return;
     const now = d.peek();
     const total = linesTotals(now.lines, rates, now.taxesOn).total;
     const problem = draftProblems(now.lines, total).problem;
@@ -88,6 +91,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
     }
   };
   const finish = async () => {
+    if (typos.refused()) return;
     const missing = workMissing(v.lines, items);
     if (missing.length) { setAsking(missing); return; }
     await doFinish();
@@ -134,7 +138,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
           </Banner>
         )}
         {editable
-          ? <LinesEditor lines={v.lines} onLines={(lines) => d.update((cur) => ({ ...cur, lines }))} docLang={docLang} errorLines={showErrors ? check.lines : []} onCatalog={() => setCatalog(true)} onRemoveWork={removeWork} />
+          ? <LinesEditor lines={v.lines} onLines={(lines) => d.update((cur) => ({ ...cur, lines }))} docLang={docLang} errorLines={showErrors ? check.lines : []} onCatalog={() => setCatalog(true)} onRemoveWork={removeWork} onInvalid={typos.onInvalid} />
           : <LinesView lines={v.lines} docLang={docLang} />}
         {editable && (
           <div class="stack">

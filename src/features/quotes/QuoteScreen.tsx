@@ -15,7 +15,7 @@ import { can, me } from '../../data/auth';
 import { t, lang } from '../../lib/i18n';
 import { today, stamp as stampText } from '../../lib/dates';
 import { Page, Panel, Button, Banner, Empty, Skeleton, Field, Textarea, DateInput, Seg, attempt, toast } from '../../ui';
-import { LinesEditor, percentWords } from '../../shared/invoices/LinesEditor';
+import { LinesEditor, percentWords, usePriceTypos } from '../../shared/invoices/LinesEditor';
 import { LinesView } from '../../shared/invoices/LinesView';
 import { CatalogSheet } from '../../shared/invoices/CatalogSheet';
 import { useDraft } from '../../shared/invoices/useDraft';
@@ -90,6 +90,8 @@ function QuoteEditor(p: { q: Quote }) {
   const c = customer(v.customer_id);
   const number = q.number != null ? quoteNumber(q) : '';
   const set = (patch: Partial<QV>) => d.update((cur) => ({ ...cur, ...patch }));
+  // a price typed wrong (red) keeps its line at the last good price: not sent nor booked like that (review invoices-r2-3)
+  const typos = usePriceTypos();
 
   // an estimate opened by mistake and left empty is not kept (only by the one who just made it, see dropWhenLeft)
   const cur = useRef(v);
@@ -102,9 +104,14 @@ function QuoteEditor(p: { q: Quote }) {
     }
   }, []);
 
-  const setStatus = (status: Quote['status'], ok: string) => attempt(async () => { await d.flush(); await saveQuote({ id: q.id, status }); }, { ok });
+  const setStatus = async (status: Quote['status'], ok: string) => {
+    if (status === 'sent' && typos.refused()) return;
+    return attempt(async () => { await d.flush(); await saveQuote({ id: q.id, status }); }, { ok });
+  };
   const doc = () => quotePdfData({ quote: { ...q, ...toPatch(v), items: cleanItems(v.items) } as Quote, customer: c, vehicle: vehicle(v.customer_id ? v.vehicle_id : null), settings: settings.value });
-  const ready = () => { if (!v.items.length) { toast(t('quotes.screen.needItems'), { kind: 'bad' }); return false; } return true; };
+  const ready = () => { if (typos.refused()) return false; if (!v.items.length) { toast(t('quotes.screen.needItems'), { kind: 'bad' }); return false; } return true; };
+  // « Réserver » is a link to the booking screen: refused, it goes nowhere
+  const book = (e: MouseEvent) => { if (typos.refused()) { e.preventDefault(); return; } return d.flush(); };
   const share = async () => {
     if (!ready()) return;
     await d.flush();
@@ -127,7 +134,7 @@ function QuoteEditor(p: { q: Quote }) {
           <Panel title={t('quotes.screen.items')} sub={t('quotes.screen.itemsSub')} class="quote-items" data-tour="quote-items" data-testid="quote-items"
             action={canEdit ? <span class={`inv-saved inv-saved-${d.state}`} role="status" aria-live="polite" data-testid="quote-state">{t(`invoices.draft.state.${d.state}`)}</span> : undefined}>
             {canEdit
-              ? <LinesEditor lines={v.items} onLines={(items) => set({ items })} docLang={v.lang} onCatalog={() => setCatalog(true)} />
+              ? <LinesEditor lines={v.items} onLines={(items) => set({ items })} docLang={v.lang} onCatalog={() => setCatalog(true)} onInvalid={typos.onInvalid} />
               : <LinesView lines={q.items || []} docLang={q.lang === 'en' ? 'en' : 'fr'} />}
           </Panel>
           <QuoteWho q={q} v={v} canEdit={canEdit} set={set} />
@@ -135,7 +142,7 @@ function QuoteEditor(p: { q: Quote }) {
 
         <div class="quote-side">
           <QuoteTotal q={q} tt={tt} expired={quoteExpired(q, today())} job={jobRow(q.job_id)} canEdit={canEdit} sharesFiles={sharesFiles} bookable={bookable}
-            onShare={share} onDownload={download} onBook={() => d.flush()} onStatus={setStatus} />
+            onShare={share} onDownload={download} onBook={book} onStatus={setStatus} />
 
           <Panel title={t('quotes.screen.details')} class="quote-details">
             <div class="stack">

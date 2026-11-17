@@ -11,6 +11,7 @@ vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../..
 import { replaceLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
 import { lang } from '../../lib/i18n';
+import { toasts } from '../../ui/toast';
 import type { Access, Invoice, Job, JobItem } from '../../data/types';
 import { InvoicePanel } from './InvoicePanel';
 
@@ -40,7 +41,7 @@ beforeEach(() => {
   access.value = { id: 'u-1', full_name: 'Hassan', short_name: null, email: null, phone: null, roles: ['owner'], owner: true, lang: 'fr', prefs: {}, color: null, rights: {} as Access['rights'], trucks: [] };
   vi.clearAllMocks();
 });
-afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; });
+afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; toasts.value = []; });
 
 describe('no invoice yet', () => {
   it('« Faire la facture » asks the server for a draft without rewriting one that exists (p_refresh false, R52)', async () => {
@@ -113,6 +114,30 @@ describe('a draft invoice', () => {
     replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: made, created_at: made, deleted_at: null } as never]);
     await draw();
     expect(q('draft-paid-ahead')?.textContent).toContain('à lui remettre une fois la facture terminée');
+    await act(async () => { q('invoice-finish')!.click(); });
+    await wait();
+    expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+  });
+  it('a price typed wrong (red): « Terminer la facture » is refused and says why, never finished with the line at its old price (review invoices-r2-3)', async () => {
+    seed(draft({ lines: [{ description: 'Travail a', qty: 1, unit_cents: 0, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'] }), [item('a', { unit_cents: 0 })]);
+    await draw();
+    const price = box.querySelector('.inv-line-price input') as HTMLInputElement;
+    const type = async (s: string) => { await act(async () => { price.value = s; price.dispatchEvent(new Event('input', { bubbles: true })); }); };
+    await type('12,,5');
+    await act(async () => { q('invoice-finish')!.click(); });
+    await wait();
+    expect(api.finishInvoice).not.toHaveBeenCalled();
+    expect(toasts.value.map((x) => x.text)).toContain('Un prix est mal écrit : corrige le champ en rouge d’abord.');
+    // the missing-work sheet's buttons too
+    seed(draft({ lines: [{ description: 'Travail a', qty: 1, unit_cents: 0, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'] }), [item('a', { unit_cents: 0 }), item('old')]);
+    await wait();
+    await act(async () => { q('invoice-finish')!.click(); });
+    await wait();
+    expect(sheet('missing-work')).toBeNull();
+    expect(api.finishInvoice).not.toHaveBeenCalled();
+    // typed right: finished
+    replaceLocal('job_items', [item('a', { unit_cents: 0 })]);
+    await type('12,50');
     await act(async () => { q('invoice-finish')!.click(); });
     await wait();
     expect(api.finishInvoice).toHaveBeenCalledWith('f-1');

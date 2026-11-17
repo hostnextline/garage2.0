@@ -135,7 +135,9 @@ export const invoices: typeof fr = {
     percent: 'Discount as a percentage',
     none: 'No lines.',
     qtyTimes: '{q} × {p}',
-    notTaxable: 'Not taxable'
+    notTaxable: 'Not taxable',
+    /** a price typed wrong (red) when finishing the invoice, or sending or booking the estimate */
+    badPrice: 'A price is not written right: fix the field in red first.'
   },
   catalog: {
     title: 'From the price list',

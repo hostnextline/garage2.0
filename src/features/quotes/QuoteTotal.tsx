@@ -10,7 +10,7 @@ import { Panel, Button, Banner, Totals } from '../../ui';
 
 export function QuoteTotal(p: {
   q: Quote; tt: TotalsT; expired: boolean; job: Job | undefined; canEdit: boolean; sharesFiles: boolean; bookable: boolean;
-  onShare: () => Promise<unknown>; onDownload: () => Promise<unknown>; onBook: () => unknown; onStatus: (status: Quote['status'], ok: string) => Promise<unknown>;
+  onShare: () => Promise<unknown>; onDownload: () => Promise<unknown>; onBook: (e: MouseEvent) => unknown; onStatus: (status: Quote['status'], ok: string) => Promise<unknown>;
 }) {
   const { q, tt } = p;
   const l = lang.value;
