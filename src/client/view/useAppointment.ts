@@ -2,7 +2,7 @@
    payment check, the card page already open, the signature, the answers to extra work, card payment, and a fresh look
    when the customer comes back to the tab. The screens only draw what this hook holds. */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { attemptCall, callClient, type ClientError, type ExtraV, type Garage, type JobView, type View } from '../api';
+import { attemptCall, callClient, type ClientError, type ExtraV, type Garage, type JobStatus, type JobView, type View } from '../api';
 import { lineCents } from '../format';
 import type { CLang } from '../i18n';
 import { forgetAppointment, forgetPaying, linkHash, recallPaying, rememberAppointment, rememberGarage, rememberPaying, replaceHash } from '../link';
@@ -22,6 +22,8 @@ const CHECK_EVERY = 2500;
 const STALE_MS = 15000;
 /** the link itself is refused: the phone stops offering it from the tracking page */
 const LINK_REFUSED = ['bad_link', 'expired', 'gone'];
+/** an appointment still to happen, the one a trip of its day drives to */
+const OPEN: JobStatus[] = ['booked', 'en_route', 'on_site'];
 
 export function useAppointment(token: string, retour: string | null, linkLang: CLang | null) {
   const [phase, setPhase] = useState<Phase>({ k: 'loading' });
@@ -58,7 +60,12 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     loadedAt.current = Date.now();
     setPhase({ k: 'ready', v: nv });
     rememberGarage(nv.garage);
-    if (nv.kind === 'job') rememberAppointment(token, nv.job.day);   // a quote is never the appointment of a trip
+    // a quote is never the appointment of a trip; only an appointment still open is (booked, en route, on site): a
+    // cancelled or missed one, nearer, would keep the customer's next appointment off the phone (client-r2-2)
+    if (nv.kind === 'job') {
+      if (OPEN.includes(nv.job.status)) rememberAppointment(token, nv.job.day);
+      else if (nv.job.status === 'cancelled' || nv.job.status === 'no_show') forgetAppointment(token);
+    }
     return true;
   };
   const fail = (e: ClientError) => {

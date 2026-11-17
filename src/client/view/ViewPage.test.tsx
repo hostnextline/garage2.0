@@ -298,6 +298,46 @@ describe('a link the server refuses (x-deadcode-25)', () => {
   });
 });
 
+describe('the appointment kept on this phone is one still open (client-r2-2)', () => {
+  // the office cancels tomorrow's appointment A and books B next week (a new job, a new link)
+  const A = 'tok-appointment-A-cancelled-01', B = 'tok-appointment-B-next-week-01';
+  const pages: Record<string, JobView> = {
+    [A]: job({}, { day: '2099-01-10', status: 'cancelled' }),
+    [B]: job({}, { day: '2099-01-17', status: 'booked' })
+  };
+  async function openToken(token: string) {
+    server = () => pages[token];
+    await act(async () => { render(null, box); });   // a new visit of the page, as when a link is opened
+    await act(async () => { render(<ViewPage key={token} token={token} linkLang={null} retour={null} onLang={() => undefined} />, box); });
+    await wait(); await wait();
+  }
+  const kept = () => (JSON.parse(localStorage.getItem('his.client.t') || 'null') as { token?: string } | null)?.token ?? null;
+  it('a cancelled A opened first does not keep B, the next appointment, off the phone', async () => {
+    await openToken(A);
+    expect(kept()).toBeNull();
+    await openToken(B);
+    expect(kept()).toBe(B);
+  });
+  it('A kept while it was booked, then opened cancelled: A leaves the phone, so B is kept', async () => {
+    localStorage.setItem('his.client.t', JSON.stringify({ token: A, at: Date.now(), day: '2099-01-10' }));
+    await openToken(A);
+    expect(kept()).toBeNull();
+    await openToken(B);
+    expect(kept()).toBe(B);
+  });
+  it('a no show is not kept either; a booked, en route or on site appointment is', async () => {
+    pages[A] = job({}, { day: '2099-01-10', status: 'no_show' });
+    await openToken(A);
+    expect(kept()).toBeNull();
+    for (const status of ['booked', 'en_route', 'on_site'] as const) {
+      localStorage.clear();
+      pages[A] = job({}, { day: '2099-01-10', status });
+      await openToken(A);
+      expect(kept(), status).toBe(A);
+    }
+  });
+});
+
 describe('coming back to the tab (client-page-16)', () => {
   it('reads the file again after a while away; a quick look away asks nothing', async () => {
     let status: JobView['job']['status'] = 'booked';
