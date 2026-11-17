@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 
-const api = vi.hoisted(() => ({ saveInvoiceDraft: vi.fn(async () => undefined), finishInvoice: vi.fn(async () => ({ queued: false, data: { ok: true, number: 51 } })), updateItem: vi.fn(async () => undefined) }));
+const api = vi.hoisted(() => ({ invoiceForJob: vi.fn(async () => ({ queued: false, data: { ok: true } })), saveInvoiceDraft: vi.fn(async () => undefined), finishInvoice: vi.fn(async () => ({ queued: false, data: { ok: true, number: 51 } })), updateItem: vi.fn(async () => undefined) }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), ...api }));
 
 import { replaceLocal, clearAll } from '../../data/store';
@@ -41,6 +41,19 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; });
+
+describe('no invoice yet', () => {
+  it('« Faire la facture » asks the server for a draft without rewriting one that exists (p_refresh false, R52)', async () => {
+    replaceLocal('jobs', [job]);
+    replaceLocal('job_items', [item('a')]);
+    replaceLocal('invoices', []);
+    replaceLocal('payments', []);
+    await draw();
+    await act(async () => { q('invoice-make')!.click(); });
+    await wait();
+    expect(api.invoiceForJob).toHaveBeenCalledWith('j-1', false);
+  });
+});
 
 describe('a draft invoice', () => {
   it('an extra the customer accepted after the draft was made goes on it by itself, and is saved', async () => {

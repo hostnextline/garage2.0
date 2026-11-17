@@ -59,7 +59,7 @@ function NewQuote(p: { customerId: string | null }) {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    if (!isField()) { setFailed(t('common.notAllowed')); return; }
+    if (!may.newQuote()) { setFailed(t('common.notAllowed')); return; }
     const c = customer(p.customerId);
     const id = uuid();
     madeHere.add(id);
