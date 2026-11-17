@@ -26,6 +26,7 @@ import type { Expense } from '../../data/types';
 import { toast } from '../../ui';
 import { withTimeout } from '../../shared/charts/useReport';
 import type { Photo } from '../../shared/export/ocr';
+import { insertReceipt, selectReceipt } from './receiptCall';
 
 /** a photo with the id it will have on the server */
 export interface ReceiptPhoto extends Photo { id: string }
@@ -183,15 +184,15 @@ export function createReceiptQueue(deps: QueueDeps) {
 
 /* ---------- the real queue of the app ---------- */
 
-/** the photo goes straight to the server with its own id (« already there » is a success) */
-async function uploadPhoto(p: ReceiptPhoto, signal: AbortSignal): Promise<void> {
+/** the photo goes straight to the server with its own id (« already there » is a success). Tried on the local test
+    stack (receipts.server-check.mjs): landed = 201; the same photo again = 409 / 23505; no « Trésorerie » = 403 / 42501;
+    cut off = status 0 « AbortError »; no signal = status 0 « TypeError: fetch failed ». The answer's status goes with
+    the error, so a server that is down (502, 503 with no database code) is « try later », not a refusal. */
+export async function uploadPhoto(p: ReceiptPhoto, signal: AbortSignal): Promise<void> {
   if (preview.value) throw new Refused('preview', t('errors.preview'));
-  const data = p.dataUrl.split(',')[1] || '';
-  const { error } = await sb.from('attachments')
-    .insert({ id: p.id, kind: 'receipt', mime: 'image/jpeg', data, bytes: Math.round(data.length * 0.75), width: p.w, height: p.h })
-    .abortSignal(signal);
+  const { error, status } = await insertReceipt(sb, p, signal);
   // 23505: an earlier try of this same photo landed and its answer was lost
-  if (error && error.code !== '23505') throw error;
+  if (error && error.code !== '23505') throw Object.assign(error, { status });
 }
 
 /* the photos waiting live in Cache Storage (not in the phone's database, whose format is fixed): one entry per photo,
@@ -260,11 +261,8 @@ export function rememberReceipt(id: string, dataUrl: string) { if (SHOWN.test(da
 
 /** the stored picture of a receipt, or null when the server has none. A failed request THROWS (a weak or just-lost
     signal is not « no longer available », even while the phone still believes it is online). */
-export async function readAttachment(id: string): Promise<string | null> {
-  const { data, error } = await sb.from('attachments').select('mime, data').eq('id', id).maybeSingle();
-  if (error) throw error;
-  const row = data as { mime: string; data: string } | null;
-  return row ? `data:${row.mime};base64,${row.data}` : null;
+export function readAttachment(id: string): Promise<string | null> {
+  return selectReceipt(sb, id);
 }
 
 /** the picture of a receipt, or null when there is none (or it is not a picture). Throws when the network is
