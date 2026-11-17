@@ -74,7 +74,7 @@ before(async () => {
   customer('Jade', 'Pelletier', '514 555-0251', 45.5110, -73.6350);
   customer('Karl', 'Dubois', '514 555-0252', 45.5140, -73.6520);
   customer('Lina', 'Bouchard', '514 555-0253', 45.5090, -73.6420);
-  // Julie booked last week, by blocks: Thursday-like afternoon (12 h – 16 h) four days from now
+  // Julie booked last week, by blocks: an afternoon (12 h – 16 h) four days from now
   who.nadia.jwt = await jwtOf(who.nadia.email);
   const b = await rpcAs(who.nadia.jwt, 'book_job', { p_op: randomUUID(), p_job: { customer_id: C.Julie.id, day: D[4], block: 'pm', duration_min: 45 },
     p_items: [{ kind: 'service', service_id: SVC.oil, description: 'Changement d’huile (5 L)', qty: 1, unit_cents: 8000 }] });
@@ -165,7 +165,7 @@ step('the office books Amira: the windows offered for her day are the server’s
   // how long the screen waits for the windows offered (measured, not asserted: suggest_windows was 3 to 4 times slower than live)
   const net = page.sw;
   t.diagnostic(`TIMING windows offered: the day on screen ${(r.waited / 1000).toFixed(1)} s after the work was chosen; suggest_windows on the network: ${net.length} requests, median ${(median(net) / 1000).toFixed(2)} s, slowest ${(Math.max(0, ...net) / 1000).toFixed(2)} s`);
-  console.log(`# TIMING windows offered (step 2): ${(r.waited / 1000).toFixed(1)} s on screen; suggest_windows median ${(median(net) / 1000).toFixed(2)} s, slowest ${(Math.max(0, ...net) / 1000).toFixed(2)} s over ${net.length} requests (${((Date.now() - sugg) / 1000).toFixed(1)} s for the whole booking)`);
+  t.diagnostic(`TIMING the whole booking (sign-in to the job screen): ${((Date.now() - sugg) / 1000).toFixed(1)} s`);
   J.amira = r.id;
   const j = jobOf(r.id);
   assert.deepEqual([j.day, j.block, j.win_start, j.win_end, j.win_flex, j.truck_id], [D[2], 'day', r.ws, r.ws + 240, false, T.complet]);
