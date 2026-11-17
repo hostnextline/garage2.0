@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRecon, openCount, shownFindings, allBalanced, findingText, findingTarget, isMissingFunction, type ReconSummary } from './recon';
+import { normalizeRecon, openCount, shownFindings, allBalanced, findingText, findingTarget, isMissingFunction, runWhen, type ReconSummary } from './recon';
 
 const SHEET = { invoiced_cents: 45990, received: [{ method: 'debit', by: 'u1', by_name: 'Saleh', cents: 22995 }], refunded_cents: 0, expenses: [{ category: 'Carburant', cents: 6629 }], coffre_in_cents: 0, coffre_out_cents: 0, to_receive_cents: 22995 };
 const summary = (x: Record<string, unknown>): ReconSummary => {
@@ -78,5 +78,16 @@ describe('« Rapprochement d’hier »: what the panel shows', () => {
     const has = (id: string) => id === 'e1';
     expect(findingTarget({ entity_table: 'expenses', entity_id: 'e1' }, pay, has)).toEqual({ expense: 'e1' });
     expect(findingTarget({ entity_table: 'expenses', entity_id: 'e2' }, pay, has)).toBeNull();
+  });
+});
+
+describe('review rapprochement-05: which day the last check is about', () => {
+  it('yesterday (the night’s check), today so far (« Vérifier maintenant »), or older (the night did not run)', () => {
+    expect(runWhen('2026-11-15', '2026-11-16')).toBe('yesterday');
+    expect(runWhen('2026-11-16', '2026-11-16')).toBe('today');
+    expect(runWhen('2026-11-14', '2026-11-16')).toBe('older');
+    // across a month and a year
+    expect(runWhen('2026-11-30', '2026-12-01')).toBe('yesterday');
+    expect(runWhen('2026-12-31', '2027-01-01')).toBe('yesterday');
   });
 });

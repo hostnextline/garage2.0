@@ -130,9 +130,12 @@ export const treasury: typeof fr = {
   },
   recon: {
     title: 'Yesterday’s reconciliation',
-    help: 'Every night, the app compares the invoices, payments, expenses, the Coffre and the stock. When everything balances, you see the day’s summary. Otherwise, each difference is written here: tap it to open what it is about.',
+    titleToday: 'Today’s reconciliation',
+    titleOlder: 'Latest reconciliation',
+    help: 'Every night, the app compares the previous day’s invoices, payments, expenses, the Coffre and the stock. You see the day’s summary, and each difference is written here: tap it to open what it is about. “Check now” also checks today so far.',
     checked: 'Checked {when}',
     day: 'Day of {day}',
+    sheetToday: 'Today so far',
     allGood: 'Everything balances',
     allGoodText: 'No difference for that day.',
     toLook: { one: '1 thing to check', other: '{n} things to check' },

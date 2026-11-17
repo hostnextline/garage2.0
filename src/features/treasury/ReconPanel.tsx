@@ -5,7 +5,7 @@
    shows the last answer kept on the phone, or nothing. */
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { longDay, stamp } from '../../lib/dates';
+import { longDay, stamp, today } from '../../lib/dates';
 import { Refused } from '../../lib/errors';
 import { rpcNow } from '../../data/api';
 import { me, preview } from '../../data/auth';
@@ -14,7 +14,7 @@ import { expensesList } from '../../data/select';
 import type { Payment } from '../../data/types';
 import { Panel, Rows, RowItem, Button, Banner, Pill, attempt } from '../../ui';
 import { useReport } from '../../shared/charts/useReport';
-import { normalizeRecon, isMissingFunction, shownFindings, allBalanced, findingText, findingTarget, type ReconAnswer, type ReconFinding, type ReconSheet } from './recon';
+import { normalizeRecon, isMissingFunction, shownFindings, allBalanced, findingText, findingTarget, runWhen, type ReconAnswer, type ReconFinding, type ReconSheet } from '../../domain/recon/recon';
 import { methodLabel } from './select';
 
 async function loadRecon(): Promise<ReconAnswer> {
@@ -45,27 +45,34 @@ export function ReconPanel(p: { onOpenExpense: (id: string) => void }) {
   const findings = shownFindings(s);
   const balanced = allBalanced(s);
   const open = findings.filter((f) => f.state === 'open').length;
+  // the title says which day is shown: « Vérifier maintenant » also checks today, and then today so far is what comes back
+  const when = run ? runWhen(run.day, today()) : 'yesterday';
+  const title = when === 'today' ? t('treasury.recon.titleToday') : when === 'older' ? t('treasury.recon.titleOlder') : t('treasury.recon.title');
   const ack = (f: ReconFinding) => attempt(() => change('recon_ack', { p_finding: f.id, p_note: null }), { ok: t('treasury.recon.seenDone') }).then((ok) => { if (ok) r.reload(); });
   // the whole check can take a while on the server
   const checkNow = () => attempt(() => change('recon_now', {}, 60000), { ok: t('treasury.recon.checkDone') }).then((ok) => { if (ok) r.reload(); });
   return (
-    <Panel title={t('treasury.recon.title')} help={t('treasury.recon.help')} class="tre-o1" data-testid="treasury-recon"
+    <Panel title={title} help={t('treasury.recon.help')} class="tre-o1" data-testid="treasury-recon"
       sub={run ? (run.finished_at ? t('treasury.recon.checked', { when: stamp(run.finished_at, l) }) : t('treasury.recon.day', { day: longDay(run.day, l) })) : undefined}>
       <div class="stack">
         {r.offline && <p class="muted small" style={{ margin: 0 }}>{t('treasury.recon.offline', { when: stamp(r.at, l) })}</p>}
         {r.error && <p class="small tre-warn" style={{ margin: 0 }} role="status">{t('treasury.recon.error')}</p>}
         {!run ? <p class="muted" style={{ margin: 0 }}>{t('treasury.recon.never')}</p>
-          : balanced ? (
-            <>
-              <Banner kind="ok" title={t('treasury.recon.allGood')} data-testid="recon-ok"><span>{t('treasury.recon.allGoodText')}</span></Banner>
-              {run.sheet && <SheetLines s={run.sheet} l={l} />}
-            </>
-          ) : open > 0 && <p class="small" style={{ margin: 0 }}><b>{t('treasury.recon.toLook', { n: open })}</b></p>}
+          : balanced ? <Banner kind="ok" title={t('treasury.recon.allGood')} data-testid="recon-ok"><span>{t('treasury.recon.allGoodText')}</span></Banner>
+          : open > 0 && <p class="small" style={{ margin: 0 }}><b>{t('treasury.recon.toLook', { n: open })}</b></p>}
         {findings.length > 0 && !balanced && (
           <Rows data-testid="recon-findings">
             {findings.map((f) => <FindingRow key={f.id} f={f} l={l} canAck={s.can_ack} onAck={ack} onOpenExpense={p.onOpenExpense} />)}
           </Rows>
         )}
+        {/* the day's sheet (cash received per person…) always, also while differences are open: it is the treasurer's
+            only view of the cash of the day; its caption says which day it is */}
+        {run?.sheet && <>
+          <p class="muted small" style={{ margin: 0 }} data-testid="recon-sheet-day">
+            {when === 'today' ? t('treasury.recon.sheetToday') : t('treasury.recon.day', { day: longDay(run.day, l) })}
+          </p>
+          <SheetLines s={run.sheet} l={l} />
+        </>}
         <div class="row-wrap">
           <Button size="sm" variant="secondary" onClick={checkNow} data-testid="recon-check">{t('treasury.recon.check')}</Button>
         </div>
