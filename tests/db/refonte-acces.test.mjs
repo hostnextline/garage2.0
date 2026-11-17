@@ -103,6 +103,28 @@ test('x-security-22: a customer with a coming appointment or a finished invoice 
   assert.equal((await h.q(`update public.customers set deleted_at = now() where id = $1 returning id`, [plain])).length, 1);
 }));
 
+test('R40 (sql-money-06, invoices-quotes-04): a draft is not deleted, moved to another appointment or dated by a direct write; its lines and notes still are', () => tx(async (h) => {
+  const g = await garage(h);
+  const job = await bookOn(h, g);
+  const other = await bookOn(h, g);
+  await h.as(g.owner);
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: job, p_refresh: true })).rows.invoices[0].id;
+  assert.equal(await h.val(`select number from public.invoices where id = $1`, [inv]), null, 'a draft that never had a number');
+  // what no screen sends
+  assert.equal(code(await h.fails(() => h.q(`update public.invoices set deleted_at = now() where id = $1`, [inv]))), 'not_allowed');
+  assert.equal(code(await h.fails(() => h.q(`update public.invoices set job_id = $2 where id = $1`, [inv, other]))), 'not_allowed');
+  assert.equal(code(await h.fails(() => h.q(`update public.invoices set issued_at = now() where id = $1`, [inv]))), 'not_allowed');
+  // what the invoice editor sends (saveInvoiceDraft: lines, taxes_on, notes), and the same row sent whole, unchanged
+  assert.equal((await h.q(`update public.invoices set notes = 'Merci !', taxes_on = true where id = $1 returning id`, [inv])).length, 1);
+  assert.equal((await h.q(`update public.invoices set lines = '[{"description":"Vidange","qty":1,"unit_cents":5000}]', deleted_at = deleted_at, job_id = job_id where id = $1 returning id`, [inv])).length, 1);
+  // « Annuler la facture » still throws the draft away
+  await h.rpc('invoice_void', { p_op: uuid(), p_invoice: inv, p_reason: 'Pas besoin' });
+  await h.as(null);
+  assert.ok(await h.val(`select deleted_at from public.invoices where id = $1`, [inv]));
+  // the server itself is not held
+  assert.equal((await h.q(`update public.invoices set deleted_at = null where id = $1 returning id`, [inv])).length, 1);
+}));
+
 test('x-security-01, sql-foundation-08: no SVG stored; a signature or a receipt is written once, never replaced', () => tx(async (h) => {
   const g = await garage(h);
   const job = await bookOn(h, g);

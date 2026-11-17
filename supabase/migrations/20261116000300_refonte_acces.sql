@@ -12,6 +12,8 @@
 --                         a phone number corrected closes the customer's links texted to the old one (open jobs, open
 --                         estimates), clears what was signed online on a booked appointment (signed again at the
 --                         door) and lets the booking text go again
+--     invoices            a draft is no longer deleted, moved to another appointment or dated by a direct write
+--                         (only « Annuler la facture » / the server's operations)
 --     attachments         written once (a signature could be replaced after the fact); no SVG (a picture that runs code)
 --     push_subs           a device's alert address follows the person who asks last (a second owner got a raw error)
 --     settings.booking    web.on (the public booking page) changes only through web_switch: a settings save from a
@@ -102,6 +104,28 @@ grant execute on function public.customers_delete_guard() to service_role;
 drop trigger if exists customers_delete_guard on public.customers;
 create trigger customers_delete_guard before update of deleted_at on public.customers
   for each row execute function public.customers_delete_guard();
+
+-- ---------- invoices: a draft leaves through « Annuler la facture », never by a direct write (R40) ----------
+-- (sql-money-06, invoices-quotes-04) A person could soft-delete a draft that never had a number, move it to another
+-- appointment or give it an « issued » date straight through the API: no screen does that (a draft goes with
+-- invoice_void, follows its appointment with job_customer, gets its date from invoice_finish, all on the server). The
+-- numbered ones were already held for everybody by invoices_number_keep (« numbered », 20261116000100_refonte_argent):
+-- that refusal stays theirs. The rest of the function is the running text of 20261104000200_access.sql.
+create or replace function public.invoices_guard() returns trigger language plpgsql set search_path = public as $$
+begin
+  if not public.by_person() then return new; end if;
+  if old.status <> 'draft' then
+    raise exception 'Cette facture est terminée : elle ne se modifie plus. Annule-la pour en faire une nouvelle.' using errcode = '42501';
+  end if;
+  if new.number is distinct from old.number or new.status <> 'draft' or new.paid_cents is distinct from old.paid_cents then
+    raise exception 'Le numéro, le statut et les paiements passent par le serveur.' using errcode = '42501';
+  end if;
+  if new.job_id is distinct from old.job_id or new.issued_at is distinct from old.issued_at
+     or (new.deleted_at is distinct from old.deleted_at and new.number is null) then
+    perform public.fail('not_allowed', 'Pour enlever un brouillon de facture, utilise « Annuler la facture ». Son rendez-vous et sa date ne se changent pas à la main.');
+  end if;
+  return new;
+end $$;
 
 -- ---------- attachments: written once, and never a picture that can run code ----------
 -- The app only ever inserts and reads them. A signature (or a receipt) could be replaced, or moved to another job,
