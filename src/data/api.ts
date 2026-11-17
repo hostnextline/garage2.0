@@ -1,14 +1,15 @@
 /* Every change the app makes goes through here: on screen at once, sent when possible (see sync.ts), refused with a
    clear message when the server says no. In « Voir l'app comme… » nothing can be changed. */
-import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks, sendOrKeep, onConfirmed } from './sync';
+import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks, sendOrKeep, onConfirmed, pendingOps, flush } from './sync';
 import { getRow, rowsOf } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
 import { ask } from './client';
 import { REQUEST_MS } from './send';
-import { itemsOf, settings } from './select';
-import { t, lang } from '../lib/i18n';
-import type { Customer, CustomerNote, Vehicle, EngineSpec, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
+import { itemsOf, settings, customerName, invoiceNumber } from './select';
+import { t, tMaybe, lang } from '../lib/i18n';
+import { money } from '../lib/money';
+import type { Customer, CustomerNote, Vehicle, EngineSpec, Job, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Invoice, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
 import type { BlockKey, Range } from '../lib/dates';
 import { appBase } from '../lib/config';
 import { Refused } from '../lib/errors';
@@ -118,11 +119,41 @@ export async function vinHistory(vin: string, customerId: string | null = null):
 export async function invoiceForJob(jobId: string, refresh = true) { guard(); return callRpc('invoice_for_job', { p_job: jobId, p_refresh: refresh }, { label: t('log.invoice') }); }
 export async function saveInvoiceDraft(id: string, patch: { lines?: InvoiceLine[]; taxes_on?: boolean; notes?: string | null }) { guard(); await updateRow('invoices', id, patch); }
 export async function finishInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number; again?: boolean }>('invoice_finish', { p_invoice: id }, { label: t('log.invoiceFinish') }); }
-/** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network) */
-export async function reopenInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false }); }
+
+/** the payments of this invoice (or of its job) still waiting on this phone to be sent */
+function paymentWaitingFor(invoiceId: string): boolean {
+  const jobId = getRow<Invoice>('invoices', invoiceId)?.job_id ?? null;
+  return pendingOps((e) => e.kind === 'rpc' && e.rpc === 'payment_add' && !!e.args && (e.args.p_invoice === invoiceId || (!!jobId && e.args.p_job === jobId))).length > 0;
+}
+const PAYMENT_WAITING: Record<string, string> = {
+  fr: 'Un paiement de cette facture attend encore d’être envoyé. Attends qu’il parte, puis modifie la facture.',
+  en: 'A payment of this invoice is still waiting to be sent. Wait until it has left, then change the invoice.'
+};
+/** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network).
+    It goes straight to the server: while a payment of this invoice still waits in the outbox, it would get there first
+    and the payment would then be refused hours later (argent-app-03). The payment is given its chance to leave first
+    (8 s at most); still waiting, the reopen is refused here and nothing changes. */
+export async function reopenInvoice(id: string) {
+  guard();
+  if (paymentWaitingFor(id)) {
+    await Promise.race([flush(), new Promise((r) => setTimeout(r, 8000))]);
+    if (paymentWaitingFor(id)) throw new Refused('payment_waiting', tMaybe('errors.payment_waiting') ?? PAYMENT_WAITING[lang.value] ?? PAYMENT_WAITING.fr);
+  }
+  return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false });
+}
+/** what the outbox says of a payment (the « en attente » and « refusé » lists, the stuck banner): how much, how and for
+    whom, so a cash payment refused hours later still says which customer and how much to give back (argent-app-03) */
+export function paymentLabel(invoiceId: string | null, amountCents: number, method: PayMethod, jobId: string | null = null): string {
+  const inv = getRow<Invoice>('invoices', invoiceId);
+  const jb = getRow<Job>('jobs', jobId ?? inv?.job_id ?? null);
+  const who = customerName(getRow<Customer>('customers', inv?.customer_id ?? jb?.customer_id ?? null));
+  const how = tMaybe(`invoices.methods.${method}`);
+  const amount = `${money(amountCents, lang.value)}${how ? ` (${how})` : ''}`;
+  return [`${t('log.payment')} ${amount}`, who, invoiceNumber(inv)].filter(Boolean).join(' · ');
+}
 export async function addPayment(invoiceId: string | null, amountCents: number, method: PayMethod, reference: string | null = null, jobId: string | null = null) {
   guard();
-  return callRpc('payment_add', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_reference: reference, p_job: jobId, p_session: null }, { label: t('log.payment') });
+  return callRpc('payment_add', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_reference: reference, p_job: jobId, p_session: null }, { label: paymentLabel(invoiceId, amountCents, method, jobId) });
 }
 export async function removePayment(id: string) { guard(); return callRpc('payment_remove', { p_payment: id }); }
 export async function voidInvoice(id: string, reason: string) { guard(); return callRpc('invoice_void', { p_invoice: id, p_reason: reason }); }

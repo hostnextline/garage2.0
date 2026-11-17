@@ -1,11 +1,14 @@
 /* The change functions every screen uses, through the real façade and engine, against the pretend server. */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { FakeServer, clientFor } from './testkit';
-import { startSync, stopSync, net, flush, syncOptions } from './sync';
+import { startSync, stopSync, net, flush, syncOptions, outbox } from './sync';
 import { setNet } from './net';
 import { getRow, rowsOf } from './store';
-import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem } from './api';
+import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice } from './api';
 import { itemsOf } from './select';
+import { refusalText } from '../app/netView';
+import { money } from '../lib/money';
+import { lang } from '../lib/i18n';
 
 let srv: FakeServer;
 let n = 0;
@@ -122,5 +125,58 @@ describe('an inventory item deleted while the answer waits (core-data-14, second
     await start();
     await expect(deleteInventoryItem('it2')).rejects.toBeTruthy();
     expect(getRow('inventory_items', 'it2')).toBeTruthy();
+  });
+});
+
+describe('a cash payment refused hours later says how much and for whom (argent-app-03)', () => {
+  const seed = () => {
+    srv.put('customers', { id: 'c1', first_name: 'Jean', last_name: 'Tremblay' });
+    srv.put('jobs', { id: 'j1', customer_id: 'c1', status: 'on_site', day: '2026-11-16' });
+    srv.put('invoices', { id: 'v1', job_id: 'j1', customer_id: 'c1', number: 42, status: 'issued', total_cents: 20000 });
+  };
+  it('the waiting payment and its refusal name the amount, the method, the customer and the invoice', async () => {
+    seed();
+    srv.rpc('payment_add', () => { throw Object.assign(new Error('Ce paiement dépasse ce qui reste à payer.'), { code: 'too_much' }); });
+    await start();
+    srv.offline = true;
+    setNet({ online: false });
+    const r = await addPayment('v1', 20000, 'cash', null, 'j1');
+    expect(r.queued).toBe(true);
+    const label = outbox.value[0].label!;
+    expect(label).toContain(money(20000, lang.value));
+    expect(label).toContain('Jean Tremblay');
+    expect(label).toContain('F-0042');
+    srv.offline = false;
+    await flush();
+    await until(() => net.value.failed.length === 1);
+    const row = refusalText(net.value.failed[0]);
+    expect(row).toContain(money(20000, lang.value));
+    expect(row).toContain('Jean Tremblay');
+  });
+  it('« Modifier la facture » never overtakes a payment of that invoice still waiting on the phone', async () => {
+    seed();
+    const order: string[] = [];
+    srv.rpc('payment_add', () => { order.push('payment_add'); return { ok: true }; });
+    srv.rpc('invoice_reopen', () => { order.push('invoice_reopen'); return { ok: true, number: 42 }; });
+    await start();
+    srv.offline = true;
+    setNet({ online: false });
+    expect((await addPayment('v1', 20000, 'cash', null, 'j1')).queued).toBe(true);
+    // still no signal: refused here, nothing reaches the server
+    await expect(reopenInvoice('v1')).rejects.toMatchObject({ kind: 'refusal', hint: 'payment_waiting' });
+    expect(order).toEqual([]);
+    // the signal is back: the payment leaves first, then the invoice is reopened
+    srv.offline = false;
+    setNet({ online: true });
+    await reopenInvoice('v1');
+    expect(order).toEqual(['payment_add', 'invoice_reopen']);
+  });
+  it('without a waiting payment it goes straight to the server, as before', async () => {
+    seed();
+    srv.rpc('invoice_reopen', () => ({ ok: true, number: 42 }));
+    await start();
+    const r = await reopenInvoice('v1');
+    expect(r.data).toMatchObject({ ok: true });
+    expect(srv.count((c) => c.table === 'rpc/payment_add')).toBe(0);
   });
 });

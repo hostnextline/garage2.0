@@ -43,7 +43,8 @@ describe('the pull', () => {
     // 1 000 a page: 4 pages of the instant and the empty ends, not an endless loop
     expect(gets('job_items')).toBeLessThan(10);
     expect(net.value.firstPull).toBe('ok');
-  });
+    // 3 500 rows through the real supabase-js and fake-indexeddb: about 2 s alone, more while the whole suite runs
+  }, 20000);
 
   it('an idle table costs one request, and nothing is redrawn', async () => {
     srv.put('customers', { id: 'c1', first_name: 'A' });
