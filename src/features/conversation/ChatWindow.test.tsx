@@ -15,6 +15,8 @@ vi.mock('../../data/api', () => ({
 }));
 import { ChatWindow } from './ChatWindow';
 import { setDraft, draftOf } from './store';
+import { toasts } from '../../ui/toast';
+import { t } from '../../lib/i18n';
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -24,7 +26,7 @@ const flush = () => act(() => new Promise((r) => setTimeout(r, 0)));
 const draw = (phone: string) => act(() => render(<ChatWindow chat={chat(phone)} texts={[]} who="Lara" customerId={null} onMin={() => undefined} onClose={() => undefined} />, box));
 const q = (id: string) => box.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
 
-beforeEach(() => { api.answers = []; api.sent = []; api.replies = []; Element.prototype.scrollIntoView = () => undefined; });
+beforeEach(() => { toasts.value = []; api.answers = []; api.sent = []; api.replies = []; Element.prototype.scrollIntoView = () => undefined; });
 afterEach(() => act(() => render(null, box)));
 
 describe('the small window', () => {
@@ -117,7 +119,7 @@ describe('one text, one operation number (R28)', () => {
     expect(ops).toHaveLength(2);
     expect(ops[1]).not.toBe(ops[0]);
   });
-  it('the first tap still going out (« pending »): the words stay, nothing is lost', async () => {
+  it('the first tap still going out (« pending »): the words stay, nothing is lost, a line says it is on its way (not an error)', async () => {
     api.answers.push(ok, ok);
     await draw('+15145550184'); await flush();
     await type('Bonjour');
@@ -125,5 +127,6 @@ describe('one text, one operation number (R28)', () => {
     await tap();
     expect((q('text-window-input') as HTMLTextAreaElement).value).toBe('Bonjour');
     expect(draftOf('5145550184')).toBe('Bonjour');
+    expect(toasts.value.map((x) => ({ text: x.text, kind: x.kind }))).toEqual([{ text: t('conversation.status.pending'), kind: 'info' }]);
   });
 });
