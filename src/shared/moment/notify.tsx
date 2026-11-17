@@ -13,6 +13,7 @@ import { t } from '../../lib/i18n';
 import { e164 } from '../../lib/text';
 import type { Job } from '../../data/types';
 import { Sheet, Button, toast } from '../../ui';
+import './notify.css';
 
 export type NotifyKind = 'booking' | 'moved';
 /** `when`: « Plages d'arrivée »: the window the customer was told (« Demain, entre 14 h et 18 h »), said above the text so

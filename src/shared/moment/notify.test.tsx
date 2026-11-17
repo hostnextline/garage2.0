@@ -95,3 +95,19 @@ describe('one send = one id (R27): a lost answer never texts the customer twice'
     expect(api.notify).toHaveBeenCalledTimes(1);
   });
 });
+
+// R66: the « texto à envoyer » sheet brought its bubble only through booking.css, which the shell loads at start for
+// the call banner; once that line goes, a sheet opened on the agenda (no picker loaded) lost its bubble
+describe('the bubble of the « texto à envoyer » sheet has its own stylesheet (R66)', () => {
+  it('notify.tsx loads notify.css, whose rule is the very one of booking.css (no change of look)', async () => {
+    // the test runner empties CSS imports: the files are read from the disk
+    const disk = (await import(/* @vite-ignore */ ['node', 'fs'].join(':'))) as { readFileSync: (p: URL, enc: 'utf8') => string };
+    const here = import.meta.url.replace(/[^/]*$/, '');
+    const read = (name: string) => disk.readFileSync(new URL(here + name), 'utf8');
+    const rule = (css: string) => /\.sms-bubble\s*\{[^}]*\}/.exec(css)?.[0].replace(/\s+/g, ' ');
+    expect(read('notify.tsx')).toContain("import './notify.css';");
+    const own = rule(read('notify.css'));
+    expect(own).toContain('border-radius: 18px 18px 18px 6px');
+    expect(own).toBe(rule(read('booking.css')));
+  });
+});
