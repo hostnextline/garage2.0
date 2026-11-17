@@ -761,7 +761,15 @@ test('a lost project: a whole night restored with --neuve into a NEW database ma
     // --neuve: everything
     const tout = await ecrit(['--neuve']);
     P(['-f', tout]);
-    for (const [t, n] of Object.entries(resume.tables)) assert.equal((await nq(`select count(*)::int n from public.${t}`))[0].n, n, `${t}: every row of the night`);
+    for (const [t, n] of Object.entries(resume.tables)) {
+      const ici = (await nq(`select count(*)::int n from public.${t}`))[0].n;
+      if (t !== 'activity') { assert.equal(ici, n, `${t}: every row of the night, nothing else`); continue; }
+      // the migrations of a new project write a few lines of their own in the history (settings changed): they stay
+      // beside the night's, and every line of the night is there
+      const ids = lire(dos, 'activity.json').map((r) => String(r.id));
+      assert.equal((await nq(`select count(*)::int n from public.activity where id::text = any($1)`, [ids]))[0].n, n, 'activity: every line of the night');
+      assert.ok(ici >= n);
+    }
     const la = (await nq(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
     assert.deepEqual(la, ici, 'the garage\'s settings, as they were (company, invoice prefix, booking, web.on, rights…)');
     assert.equal(la.booking.web.on, false, 'online booking stays closed as the owner left it (the migration opens it)');

@@ -97,7 +97,8 @@ Toujours vrai, quelle que soit la façon :
 4. Les données : `node restaurer.mjs donnees --neuve > restauration.sql`, puis
    `psql "<adresse de la base du nouveau projet>" -v ON_ERROR_STOP=1 -f restauration.sql`. Un avertissement dit
    combien de personnes n'ont pas encore de compte (étape 3 à refaire).
-5. Vérifier : le nombre de lignes de chaque table est celui de `_resume.json` ; Réglages montre l'entreprise, les
+5. Vérifier : le nombre de lignes de chaque table est celui de `_resume.json` (`activity` : quelques lignes de plus,
+   écrites par les migrations du nouveau projet) ; Réglages montre l'entreprise, les
    numéros de taxes et le préfixe des factures du garage ; « Rapprochement » (Trésorerie → Vérifier maintenant).
 6. Les clés des services (ci-dessous) à retaper dans Réglages ; les fonctions publiées sur le nouveau projet ; l'adresse
    du nouveau projet dans l'app et dans `sauvegarde.mjs` (FONCTION, CLE) ; dans ce dépôt, la ligne
