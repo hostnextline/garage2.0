@@ -1418,6 +1418,51 @@ begin
   return v_wait;
 end $$;
 
+-- One walk of a route that answers at once what the planner asked three walks for (round 2, speed): {route_min,
+-- route_min_to, route_walk_in}, each exactly as those three functions answer it (the same legs with drive_min, the
+-- same waits, the same stretches of hours); the walk is 0 when p_walk is false, -1 when the route does not hold.
+-- The route is p_ids with p_add put after its first p_at stops (p_add null: p_ids as it is), so the planner no longer
+-- builds each candidate order to try it.
+create or replace function public.route_cost(p_ids jsonb, p_add text, p_at integer, p_pts jsonb, p_start integer,
+  p_hlat double precision, p_hlng double precision, p_elat double precision, p_elng double precision,
+  p_speed numeric, p_detour numeric, p_unknown numeric, p_stop numeric, p_fixed integer, p_ranges jsonb, p_windows boolean, p_walk boolean)
+returns integer[]
+language plpgsql immutable set search_path = public, extensions as $$
+declare plat double precision := p_hlat; plng double precision := p_hlng; clat double precision; clng double precision;
+  n int := jsonb_array_length(coalesce(p_ids, '[]'::jsonb)); m int; i int; id text; v jsonb; leg int;
+  v_stop int := ceil(p_stop)::int; tot int := 0; tm int := coalesce(p_start, 0); v_wait int := 0; v_ok boolean := coalesce(p_walk, false);
+  v_ws int; v_we int; v_fit int; v_rg boolean := p_ranges is not null and jsonb_typeof(p_ranges) = 'array';
+begin
+  m := n + case when p_add is null then 0 else 1 end;
+  for i in 1 .. m loop
+    id := case when p_add is null or i <= p_at then p_ids->>(i - 1) when i = p_at + 1 then p_add else p_ids->>(i - 2) end;
+    v := p_pts->id;
+    clat := (v->>'lat')::double precision; clng := (v->>'lng')::double precision;
+    leg := public.drive_min(plat, plng, clat, clng, p_speed, p_detour, p_unknown);
+    tot := tot + leg + v_stop;
+    if v_ok then
+      tm := tm + leg;
+      if i > coalesce(p_fixed, 0) then
+        v_ws := null; v_we := null;
+        if coalesce(p_windows, false) then
+          v_ws := (v->>'ws')::int; v_we := (v->>'we')::int;
+          if v_ws is not null and tm < v_ws then v_wait := v_wait + (v_ws - tm); tm := v_ws; end if;
+        end if;
+        if v_rg then
+          v_fit := public.ranges_fit(p_ranges, tm, v_stop + coalesce((v->>'dur')::int, 0));
+          if v_fit is null then v_ok := false; v_wait := -1; else tm := v_fit; end if;
+        end if;
+        if v_ok and v_we is not null and tm > v_we and not coalesce((v->>'late')::boolean, false) then v_ok := false; v_wait := -1; end if;
+      end if;
+      tm := tm + v_stop + coalesce((v->>'dur')::int, 0);
+    end if;
+    if clat is not null then plat := clat; plng := clng; end if;
+  end loop;
+  return array[tot,
+    tot + case when p_elat is not null and p_elng is not null then public.drive_min(plat, plng, p_elat, p_elng, p_speed, p_detour, p_unknown) else 0 end,
+    case when coalesce(p_walk, false) then v_wait else 0 end];
+end $$;
+
 -- the appointments a plan puts late although their stored route reaches them in their window (the stop being added aside)
 create or replace function public.plan_late_stored(p_plan jsonb, p_xid text) returns integer
 language sql stable security definer set search_path = public as $$
@@ -1511,9 +1556,11 @@ end $function$;
 revoke all on function public.ranges_fit(jsonb, integer, integer) from public, anon, authenticated;
 revoke all on function public.route_walk_in(jsonb, jsonb, integer, double precision, double precision, numeric, numeric, numeric, numeric, integer, jsonb, boolean) from public, anon, authenticated;
 revoke all on function public.plan_late_stored(jsonb, text) from public, anon, authenticated;
+revoke all on function public.route_cost(jsonb, text, integer, jsonb, integer, double precision, double precision, double precision, double precision, numeric, numeric, numeric, numeric, integer, jsonb, boolean, boolean) from public, anon, authenticated;
 grant execute on function public.ranges_fit(jsonb, integer, integer) to service_role;
 grant execute on function public.route_walk_in(jsonb, jsonb, integer, double precision, double precision, numeric, numeric, numeric, numeric, integer, jsonb, boolean) to service_role;
 grant execute on function public.plan_late_stored(jsonb, text) to service_role;
+grant execute on function public.route_cost(jsonb, text, integer, jsonb, integer, double precision, double precision, double precision, double precision, numeric, numeric, numeric, numeric, integer, jsonb, boolean, boolean) to service_role;
 
 -- plan_route = the live text of plan_block, with:
 --   * p_seed true (window mode): the booked stops already on a truck of the plan stay on it in their order (a truck whose
@@ -1564,6 +1611,7 @@ declare jkind text; carfirst boolean;
   v_ws int; v_we int; v_dur int; v_start int; v_nf int;
   -- Part 26: the stored routes as the seed (p_seed), hours with a break (a truck's 'rg'), the stops already done today
   v_seed boolean := false; v_seedfree jsonb := '{}'; fe jsonb; v_res jsonb; v_alt jsonb; v_dn int; v_fit int;
+  ev int[];                        -- round 2: one walk of a route (route_cost)
   v_pastend jsonb := '[]';        -- booked « quand même » and placed past the hours (they go at the end)
 begin
   select * into b from public.blocks() x where x.key = p_block;
@@ -1735,21 +1783,15 @@ begin
       if pinned and t->>'id' <> jtruck then continue; end if;
       n := jsonb_array_length(t->'stops');
       durs := (t->>'durs')::int;
-      base := public.route_min(t->'stops', pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
-      basee := public.route_min_to(t->'stops', pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
-      v_start := (t->>'start')::int; v_nf := (t->>'nfixed')::int; v_bw := 0;
-      if (v_win and v_try < 3) or t ? 'rg' then v_bw := greatest(0, public.route_walk_in(t->'stops', pts, v_start, hl, hg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3)); end if;
+      v_start := (t->>'start')::int; v_nf := (t->>'nfixed')::int;
+      -- route_min, route_min_to and route_walk_in in one walk (round 2, speed: the same answers)
+      ev := public.route_cost(t->'stops', null, 0, pts, v_start, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3, (v_win and v_try < 3) or t ? 'rg');
+      base := ev[1]; basee := ev[2]; v_bw := greatest(0, ev[3]);
       for pos in (t->>'nfixed')::int .. n loop
-        cand := (select coalesce(jsonb_agg(x order by o), '[]'::jsonb) from (
-                  select x, case when o <= pos then o else o + 1 end o from jsonb_array_elements(t->'stops') with ordinality s(x, o)
-                  union all select to_jsonb(jid), pos + 1) q);
-        rc := public.route_min(cand, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
-        rce := public.route_min_to(cand, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
-        v_w := 0;
-        if (v_win and v_try < 3) or t ? 'rg' then
-          v_w := public.route_walk_in(cand, pts, v_start, hl, hg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3);
-          continue when v_w < 0;
-        end if;
+        -- the stop tried after the first `pos` stops (the order is no longer built to be tried)
+        ev := public.route_cost(t->'stops', jid, pos, pts, v_start, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3, (v_win and v_try < 3) or t ? 'rg');
+        rc := ev[1]; rce := ev[2]; v_w := ev[3];
+        continue when v_w < 0;
         used := durs + jdur + rc + v_w;
         if used <= (t->>'cap')::int then
           cost := (rce - basee) + (v_w - v_bw) + 0.2 * used + case when carfirst and coalesce((t->>'machine')::boolean, true) then 10000 else 0 end;
@@ -1763,21 +1805,13 @@ begin
         t := trucks->ti;
         if (jkind = 'truck' and not coalesce((t->>'machine')::boolean, true)) or (jkind = 'car' and coalesce((t->>'machine')::boolean, true)) then continue; end if; hl := (t->>'hlat')::double precision; hg := (t->>'hlng')::double precision; el := (t->>'elat')::double precision; eg := (t->>'elng')::double precision;
         n := jsonb_array_length(t->'stops'); durs := (t->>'durs')::int;
-        base := public.route_min(t->'stops', pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
-        basee := public.route_min_to(t->'stops', pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
-        v_start := (t->>'start')::int; v_nf := (t->>'nfixed')::int; v_bw := 0;
-        if (v_win and v_try < 3) or t ? 'rg' then v_bw := greatest(0, public.route_walk_in(t->'stops', pts, v_start, hl, hg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3)); end if;
+        v_start := (t->>'start')::int; v_nf := (t->>'nfixed')::int;
+        ev := public.route_cost(t->'stops', null, 0, pts, v_start, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3, (v_win and v_try < 3) or t ? 'rg');
+        base := ev[1]; basee := ev[2]; v_bw := greatest(0, ev[3]);
         for pos in (t->>'nfixed')::int .. n loop
-          cand := (select coalesce(jsonb_agg(x order by o), '[]'::jsonb) from (
-                    select x, case when o <= pos then o else o + 1 end o from jsonb_array_elements(t->'stops') with ordinality s(x, o)
-                    union all select to_jsonb(jid), pos + 1) q);
-          rc := public.route_min(cand, pts, hl, hg, v_speed, v_detour, v_unknown, v_stop);
-          rce := public.route_min_to(cand, pts, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop);
-          v_w := 0;
-          if (v_win and v_try < 3) or t ? 'rg' then
-            v_w := public.route_walk_in(cand, pts, v_start, hl, hg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3);
-            continue when v_w < 0;
-          end if;
+          ev := public.route_cost(t->'stops', jid, pos, pts, v_start, hl, hg, el, eg, v_speed, v_detour, v_unknown, v_stop, v_nf, t->'rg', v_win and v_try < 3, (v_win and v_try < 3) or t ? 'rg');
+          rc := ev[1]; rce := ev[2]; v_w := ev[3];
+          continue when v_w < 0;
           used := durs + jdur + rc + v_w;
           if used <= (t->>'cap')::int then
             cost := (rce - basee) + (v_w - v_bw) + 0.2 * used + case when carfirst and coalesce((t->>'machine')::boolean, true) then 10000 else 0 end;

@@ -1078,6 +1078,74 @@ test('R185 / x-time-06: « ce jour-là » or « quelques semaines » on a day al
   assert.deepEqual(b, a, 'the same change sent twice answers the same');
 }));
 
+test('sql-windows-14 / sql-planner-1-22, two connections: the same booking sent twice at the same instant makes one appointment and answers twice the same', async () => {
+  const c = await pool.connect();
+  const opened = [];
+  const start = (await c.query(`select clock_timestamp() as t`)).rows[0].t;
+  const owner = randomUUID(), truck = randomUUID(), cust = randomUUID();
+  try {
+    await c.query(`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+      values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2, '', now(), now(), now(), '{}', '{}')`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.staff (id, full_name, short_name, roles, rights, email) values ($1, 'Hassan Twice', 'Hassan', '{owner}', '{}', $2)`, [owner, `${owner.slice(0, 8)}@test.local`]);
+    await c.query(`insert into public.trucks (id, name, active, sort) values ($1, 'Camion Twice', true, 0)`, [truck]);
+    for (let d = 0; d < 7; d++) await c.query(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, $3)`, [truck, d, JSON.stringify(DAY)]);
+    await c.query(`insert into public.customers (id, first_name, last_name, phone, lat, lng, address) values ($1, 'Twice', 'Test', '5145550000', $2, $3, '1 rue Test')`, [cust, ...near]);
+    const day = (await c.query(`select (public.local_today() + 31)::text d`)).rows[0].d;
+    const open = async () => {
+      const k = await pool.connect(); opened.push(k);
+      await k.query('begin');
+      await k.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [JSON.stringify({ sub: owner, role: 'authenticated' }), owner]);
+      await k.query('set local role authenticated');
+      return k;
+    };
+    const sql = `select public.book_job(p_op => $1, p_job => $2::jsonb, p_items => '[]'::jsonb) as r`;
+    const op = randomUUID(), id = randomUUID();
+    const payload = JSON.stringify({ id, customer_id: cust, day, block: 'am', duration_min: 60 });
+    const k1 = await open(), k2 = await open();
+    const r1 = (await k1.query(sql, [op, payload])).rows[0].r;
+    assert.equal(r1.ok, true);
+    const p2 = k2.query(sql, [op, payload]);
+    assert.equal(await within(p2, 400), 'waiting', 'the copy waits for the first');
+    await k1.query('commit');
+    const r2 = (await p2).rows[0].r;
+    await k2.query('commit');
+    assert.deepEqual(r2, r1, 'the copy gets the answer of the first (it was a raw « duplicate key »)');
+    assert.equal((await c.query(`select count(*)::int n from public.jobs where id = $1`, [id])).rows[0].n, 1);
+  } finally {
+    for (const k of opened) { await k.query('rollback').catch(() => {}); k.release(); }
+    await c.query(`select set_config('garage.rpc', 'on', false)`);
+    await c.query(`delete from public.job_items where job_id in (select id from public.jobs where customer_id = $1)`, [cust]);
+    await c.query(`delete from public.jobs where customer_id = $1`, [cust]);
+    await c.query(`delete from public.customers where id = $1`, [cust]);
+    await c.query(`delete from public.truck_week where truck_id = $1`, [truck]);
+    await c.query(`delete from public.trucks where id = $1`, [truck]);
+    await c.query(`delete from public.op_log where at >= $1`, [start]);
+    await c.query(`delete from public.activity where at >= $1`, [start]);
+    await c.query(`delete from public.staff where id = $1`, [owner]);
+    await c.query(`delete from auth.users where id = $1`, [owner]);
+    await c.query(`select set_config('garage.rpc', '', false)`);
+    c.release();
+  }
+});
+
+test('sql-windows-22: window mode, today, a job on the way whose truck is past its hours keeps its number and its time', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await today(h);
+  const t1 = await h.truck('Camion', null, WEEK);
+  const c = await h.customer('Jean', ...near);
+  await windowsOn(h, owner);
+  await clock(h, owner, 900);                                   // 15 h
+  const done = await put(h, owner, { customer: c, day, block: 'day', truck: t1, status: 'done', order: 1, eta: 600 });
+  const way = await put(h, owner, { customer: c, day, block: 'day', truck: t1, status: 'en_route', order: 2, eta: 905, ws: 840, we: 1080 });
+  const next = await put(h, owner, { customer: c, day, block: 'day', truck: t1, order: 3, eta: 980, ws: 900, we: 1140, lat: near2[0], lng: near2[1] });
+  await server(h, owner, `insert into public.truck_days (truck_id, day, ranges) values ($1, $2::date, '[[480, 890]]')`, [t1, day]);   // its day ended at 14 h 50
+  await server(h, owner, `select public.replan_block($1::date, 'day')`, [day]);
+  const jw = await row(h, way), jn = await row(h, next);
+  assert.deepEqual([jw.truck_id, jw.stop_order, jw.eta_min], [t1, 2, 905], 'the job on the way keeps its truck, number and time');
+  assert.equal(jn.truck_id, t1, 'the next one stays on its truck (a day already started)');
+  assert.equal((await row(h, done)).stop_order, 1);
+}));
+
 /** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
  *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
 async function liveRef(h, list) {
@@ -1155,6 +1223,42 @@ test('round 2, speed: route_improve gives exactly the order of before on 150 rou
     }
   }
   assert.ok(changed > 40, `many routes were put in a better order (${changed} of 150): the test compares real work`);
+}));
+
+test('round 2, speed: one walk of a route (route_cost) answers what route_min, route_min_to and route_walk_in answered, on 300 routes', () => tx(async (h) => {
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  let s = 7;
+  const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  const seen = { fail: 0, wait: 0 };
+  for (let t = 0; t < 300; t++) {
+    const n = Math.floor(rnd() * 8), f = Math.floor(rnd() * 3);
+    const ids = [], pts = {};
+    const point = (id) => {
+      const r = rnd();
+      if (r < 0.06) return;                                            // not in the points
+      const p = r < 0.12 ? { dur: 20 } : { lat: home.lat + (rnd() - 0.5) * 0.2, lng: home.lng + (rnd() - 0.5) * 0.3, dur: [15, 30, 60][Math.floor(rnd() * 3)] };
+      if (rnd() < 0.6) { const ws = 480 + 60 * Math.floor(rnd() * 9); Object.assign(p, { ws, we: ws + 240 }); }
+      if (rnd() < 0.1) p.late = true;
+      pts[id] = p;
+    };
+    for (let i = 0; i < n; i++) { ids.push(`s${t}-${i}`); point(ids[i]); }
+    const add = rnd() < 0.8 ? `x${t}` : null;
+    if (add) point(add);
+    const at = Math.floor(rnd() * (n + 1));
+    const start = rnd() < 0.1 ? [null, null] : [home.lat + (rnd() - 0.5) * 0.1, home.lng + (rnd() - 0.5) * 0.1];
+    const end = rnd() < 0.5 ? [null, null] : [home.lat + (rnd() - 0.5) * 0.2, home.lng + (rnd() - 0.5) * 0.2];
+    const ranges = rnd() < 0.3 ? [[480, 720], [780, 1200]] : rnd() < 0.5 ? [[480, 1200]] : null;
+    const windows = rnd() < 0.7, walk = rnd() < 0.85, from = 480 + Math.floor(rnd() * 300);
+    const route = add ? [...ids.slice(0, at), add, ...ids.slice(at)] : ids;
+    const r = await h.one(`select public.route_cost($1::jsonb, $2::text, $3::int, $4::jsonb, $5::int, $6::float8, $7::float8, $8::float8, $9::float8, 35, 1.3, 20, 5, $10::int, $11::jsonb, $12::boolean, $13::boolean) c,
+        public.route_min($14::jsonb, $4::jsonb, $6::float8, $7::float8, 35, 1.3, 20, 5) a,
+        public.route_min_to($14::jsonb, $4::jsonb, $6::float8, $7::float8, $8::float8, $9::float8, 35, 1.3, 20, 5) b,
+        case when $13::boolean then public.route_walk_in($14::jsonb, $4::jsonb, $5::int, $6::float8, $7::float8, 35, 1.3, 20, 5, $10::int, $11::jsonb, $12::boolean) else 0 end w`,
+      [JSON.stringify(ids), add, at, JSON.stringify(pts), from, ...start, ...end, f, ranges && JSON.stringify(ranges), windows, walk, JSON.stringify(route)]);
+    assert.deepEqual(r.c, [r.a, r.b, r.w], `route ${t}: ${route.length} stops, the new one at ${add ? at : '-'}, ${f} fixed`);
+    if (r.w < 0) seen.fail++; else if (r.w > 0) seen.wait++;
+  }
+  assert.ok(seen.fail > 20 && seen.wait > 20, `routes that do not hold (${seen.fail}) and routes that wait (${seen.wait}) were both compared`);
 }));
 
 test('round 2, speed: suggest_windows offers the windows live offers, as fast or faster (several days and loads; prints the timing)', () => tx(async (h) => {
