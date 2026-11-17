@@ -336,6 +336,8 @@ export async function callFn<T = Record<string, unknown>>(name: string, body: Re
   let d: Record<string, unknown> = {};
   try { d = await r.json(); } catch { d = { ok: false, code: 'server', error: `HTTP ${r.status}` }; }
   if (!r.ok && d.ok === undefined) d.ok = false;
+  // a refusal says which function gave it: its words may be that function's (« empty » from conversation, R144)
+  if (d.ok === false && d.at === undefined) d.at = name;
   if (d.rows) applyRows(d);
   return d as T & { ok: boolean; code?: string; error?: string };
 }

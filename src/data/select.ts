@@ -2,13 +2,14 @@
    so a screen that calls them redraws when the data changes. The lookups by a parent (a job's lines, a customer's
    cars, a day's jobs…) read indexes built once per change of their table, not a scan of the whole table per call:
    a list of hundreds of rows asking each row's lines stays fast (core-data-40). Lists are returned as copies. */
-import { computed, type ReadonlySignal } from '@preact/signals';
+import { computed, effect, type ReadonlySignal } from '@preact/signals';
 import { tableSignal, getRow, rowsOf, type Row } from './store';
 import type { TableName } from './schema';
 import type { Settings, Staff, Truck, TruckWeek, TruckDay, Customer, Vehicle, Job, JobItem, Invoice, Payment, Service, InventoryItem, Quote, Shift, Position, Trip, EngineSpec, CustomerNote, Expense, Message, ServicePart, InventoryMove } from './types';
 import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today } from '../lib/dates';
 import { totals, type Line } from '../lib/money';
 import { fullName, firstName } from '../lib/text';
+import { setDayMode } from '../lib/errors';
 
 export const DEFAULT_SETTINGS: Settings = {
   id: '1',
@@ -30,6 +31,8 @@ export function blockOfKey(k: BlockKey): Block {
 }
 /** the garage books by 4-hour arrival windows (Part 25) */
 export const windowsOn = computed<boolean>(() => settings.value.booking.windows_on === true);
+// the refusals of a block (« complet », « fermé ») then say « journée » (lib/errors cannot read the settings: R144)
+effect(() => { setDayMode(windowsOn.value); });
 /** the span of a booking day: first block's start → last block's end */
 export const daySpan = computed<Range>(() => [Math.min(...blocks.value.map((b) => b.start)), Math.max(...blocks.value.map((b) => b.end))]);
 /** the window told to this customer: its own (windows), else its block's hours; a « flexible » job: the whole day */

@@ -12,7 +12,7 @@ import { money } from '../lib/money';
 import type { Customer, CustomerNote, Vehicle, EngineSpec, Job, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Invoice, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
 import type { BlockKey, Range } from '../lib/dates';
 import { appBase } from '../lib/config';
-import { Refused } from '../lib/errors';
+import { Refused, fromSource } from '../lib/errors';
 export { Refused, errorMessage } from '../lib/errors';
 
 function guard() { if (preview.value) throw new Refused('preview', t('errors.preview')); }
@@ -324,7 +324,8 @@ export async function suggestWindows(lat: number | null, lng: number | null, dur
   return (data || []) as Suggestion[];
 }
 export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
-  return (await ask((s) => sb.rpc(name, args).abortSignal(s), ms)) as T;
+  try { return (await ask((s) => sb.rpc(name, args).abortSignal(s), ms)) as T; }
+  catch (e) { throw fromSource(e, name); }
 }
 /** `op`: one id per text sent, kept by the screen until it succeeds: the same send asked twice (an answer lost, a second
     tap) is one text on the server; a new one for a deliberate « Renvoyer » */

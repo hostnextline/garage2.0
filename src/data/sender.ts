@@ -16,7 +16,7 @@ import { sendEntry, REQUEST_MS, type Sent } from './send';
 import { net, setNet } from './net';
 import { ask } from './client';
 import { sampleServerTime } from './clock';
-import { AppError, classify, keptRefusal } from '../lib/errors';
+import { AppError, classify, keptRefusal, fromSource } from '../lib/errors';
 
 /** what the sender needs from its engine */
 export interface SenderHost {
@@ -104,7 +104,7 @@ export class Sender {
 
   /** an operation that needs the network now (never kept for later) */
   async direct<T>(name: string, args: Record<string, unknown>): Promise<T> {
-    const data = await ask<T>((s) => this.h.client.rpc(name, args).abortSignal(s), REQUEST_MS, this.h.signal);
+    const data = await ask<T>((s) => this.h.client.rpc(name, args).abortSignal(s), REQUEST_MS, this.h.signal).catch((e: unknown) => { throw fromSource(e, name); });
     if (!this.h.closed()) { this.h.sessionOk(); this.h.applyAnswer(data); }
     return data;
   }
@@ -273,6 +273,7 @@ export class Sender {
     }
     if (err.kind === 'bug' && err.sub === 'update' && e.tries < UPDATE_TRIES) { this.noteHead(it, 'update'); return 'wait'; }
     // a refusal (or a case nobody planned): never sent again by itself, never dropped in silence
+    if (e.kind === 'rpc' && e.rpc) fromSource(err, e.rpc);
     const w = this.waiters.get(e.op);
     this.waiters.delete(e.op);
     this.confirmed.delete(e.op);

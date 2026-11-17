@@ -184,6 +184,23 @@ describe('the outbox', () => {
     expect(net.value.failed[0].err?.said).toBe('Ce bloc est passé.');
   });
 
+  it('a refusal says the words of the operation that refused, on screen and in the « refusé » list (R144)', async () => {
+    const e = await boot(nextUid());
+    srv.rpc('set_job_duration', () => { throw Object.assign(new Error('Ce bloc est complet.'), { code: 'block_full' }); });
+    await expect(e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 240 })).rejects.toMatchObject({ hint: 'block_full', at: 'set_job_duration' });
+    srv.offline = true;
+    setNet({ online: false });
+    await e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 300 });
+    srv.offline = false;
+    await e.send.flush();
+    await until(() => net.value.failed.length === 1);
+    expect(lang.value).toBe('en');
+    expect(net.value.failed[0].error).toBe(t('errors.at.set_job_duration.block_full'));
+    expect(net.value.failed[0].err?.at).toBe('set_job_duration');
+    // a direct call too
+    await expect(e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 240 }, { queue: false })).rejects.toMatchObject({ at: 'set_job_duration' });
+  });
+
   it('a refusal whose code has no words keeps the server’s sentence', async () => {
     const e = await boot(nextUid());
     srv.rpc('job_step', () => { throw Object.assign(new Error('Le camion est au garage.'), { code: 'zz_no_words' }); });

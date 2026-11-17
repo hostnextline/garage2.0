@@ -2,7 +2,7 @@
    message to show a person. The kind is read from the HTTP status and the database's code, never from the server's
    sentence: a 503 while the server reloads, a statement timeout or a deadlock are « try again », not « refused ».
    No app knowledge here: the data layer keeps exporting these names, the design kit reads them from here. */
-import { t, lang } from './i18n';
+import { t, tMaybe, lang } from './i18n';
 
 /** network: try again later (no signal, timeout, the server is unwell); auth: the session must be renewed first;
     refusal: the server said no (tell the person); bug: something nobody planned (kept and shown, never dropped) */
@@ -16,11 +16,26 @@ export class AppError extends Error {
   hint?: string;
   details?: string;
   status?: number;
-  constructor(kind: ErrorKind, sub: string, message: string, o: { code?: string; hint?: string; details?: string; status?: number } = {}) {
+  /** the server operation or function that refused (`book_job`, `notify`…): one code can mean two things (R144) */
+  at?: string;
+  constructor(kind: ErrorKind, sub: string, message: string, o: { code?: string; hint?: string; details?: string; status?: number; at?: string } = {}) {
     super(message);
     this.kind = kind; this.sub = sub;
     this.code = o.code; this.hint = o.hint; this.details = o.details; this.status = o.status;
+    if (o.at) this.at = o.at;
   }
+}
+
+/** the garage books by 4-hour arrival windows (set by the data layer from the settings): the block refusals then have
+    their « journée » words (`errors.day.<code>`) */
+let dayMode = false;
+export function setDayMode(on: boolean) { dayMode = on; }
+
+/** the refusal `e` came from the server operation or function `name` (callRpc, rpcNow, callFn): kept on the error so
+    its words can be the ones of that operation. Only on refusals: never on no signal or the app's own time limit. */
+export function fromSource<T>(e: T, name: string): T {
+  if (e instanceof AppError && e.kind === 'refusal' && !e.at) e.at = name;
+  return e;
 }
 
 /** a refusal made on this device (« Voir l'app comme… », a missing row): same shape as the server's own refusals */
@@ -32,7 +47,10 @@ export class Refused extends AppError {
 export const NO_SESSION = 'his_no_session';
 export const OTHER_ACCOUNT = 'his_other_account';
 
-type Raw = { code?: unknown; status?: unknown; message?: unknown; name?: unknown; hint?: unknown; details?: unknown; error?: unknown } | null | undefined;
+type Raw = { code?: unknown; status?: unknown; message?: unknown; name?: unknown; hint?: unknown; details?: unknown; error?: unknown; at?: unknown } | null | undefined;
+/** a source name as the server writes its functions (`set_job_duration`, `conversation`) */
+const SOURCE = /^[a-z][a-z0-9_]*$/;
+const sourceOf = (x: unknown): string | undefined => (typeof x === 'string' && SOURCE.test(x) ? x : undefined);
 
 // what the browser says when the request never got an answer (the only place a message is read: there is no status)
 const FETCH_FAILED = /Failed to fetch|NetworkError|Load failed|network|fetch failed|ECONN|ETIMEDOUT|aborted|AbortError|TimeoutError/i;
@@ -49,7 +67,7 @@ export function classify(e: unknown, status?: number): AppError {
   const st = typeof status === 'number' ? status : typeof err?.status === 'number' ? (err.status as number) : undefined;
   const message = String(err?.message || err?.error || err?.name || code || 'erreur');
   const hint = err?.hint == null ? undefined : String(err.hint);
-  const o = { code: code || undefined, hint, details: err?.details == null ? undefined : String(err.details), status: st };
+  const o = { code: code || undefined, hint, details: err?.details == null ? undefined : String(err.details), status: st, at: sourceOf(err?.at) };
   const name = String(err?.name || '');
   if (code === 'timeout' || name === 'AbortError' || name === 'TimeoutError') return new AppError('network', 'timeout', message, o);
   if (code === NO_SESSION) return new AppError('auth', 'none', message, o);
@@ -74,13 +92,29 @@ export function isNetworkError(e: unknown): boolean {
   return classify(e).kind === 'network';
 }
 
+/** the groups of the errors dictionary: never a code of their own (t() would answer « undefined ») */
+const GROUPS = new Set(['at', 'day']);
+/** the words of a refusal code: those of the operation that refused, then the « journée » ones while the garage books by
+    arrival windows, then the code's own (R144) */
+function wordsOf(own: string, at: string | undefined): string | undefined {
+  if (GROUPS.has(own)) return undefined;
+  return (at ? tMaybe(`errors.at.${at}.${own}`) : undefined) ?? (dayMode ? tMaybe(`errors.day.${own}`) : undefined) ?? tMaybe(`errors.${own}`);
+}
+
 /** the message to show a person for an error (the server's own words, translated when we know the case) */
 export function errorMessage(e: unknown): string {
   if (!e) return t('common.genericError', { msg: '' }).replace(/\s*:\s*$/, '');
   if (typeof e === 'string') return e;
   const c = classify(e);
-  const err = e as { hint?: string; code?: string; message?: string; error?: string };
-  if (c.kind === 'network') return c.sub === 'server' || c.sub === 'busy' ? t('errors.server') : t('common.networkError');
+  const err = e as { hint?: string; code?: string; message?: string; error?: string; at?: unknown };
+  const at = sourceOf(err.at);
+  if (c.kind === 'network') {
+    // a server function that answered itself that an outside service is slow (GoHighLevel, Stripe, the VIN base:
+    // { code: 'timeout' }): the phone has signal, so not « vérifie Internet ». The app's own time limit stays the
+    // network sentence (it never carries a source).
+    if (c.sub === 'timeout' && at && !(e instanceof AppError)) return wordsOf('timeout', at) ?? t('common.networkError');
+    return c.sub === 'server' || c.sub === 'busy' ? t('errors.server') : t('common.networkError');
+  }
   // our own refusals carry a short code (database: hint; server functions: code) and a French sentence
   const hinted = /^[a-z][a-z_]*$/.test(String(err.hint || '')) ? String(err.hint) : '';
   const own = hinted || (/^[a-z_]+$/.test(String(err.code || '')) ? String(err.code) : '');
@@ -88,8 +122,8 @@ export function errorMessage(e: unknown): string {
   if (own) {
     // « server » is our transport's own code for an answer that was not JSON: its words are an HTTP status, not a sentence
     if (lang.value === 'fr' && said && own !== 'server') return said;
-    const k = `errors.${own}`; const tr = t(k);
-    if (tr !== k) return tr;
+    const tr = wordsOf(own, at);
+    if (tr !== undefined) return tr;
     return said || t('common.genericError', { msg: own });
   }
   if (err.code === '42501' || /row-level security|permission denied/i.test(said)) return lang.value === 'fr' && /[éèàù’]/.test(said) ? said : t('common.notAllowed');
@@ -106,6 +140,6 @@ export function errorText(e: unknown): string {
     are by anything that shows the entry, the previous version of the app too), and under `err` the refusal's code with
     the server's own sentence (`said`), so that the « refusé » list can say it again in another language: words kept in
     English could not be turned back into the server's French sentence once the person switches to French. */
-export function keptRefusal(e: AppError): { error: string; err: { kind: string; sub: string; code?: string; hint?: string; status?: number; said?: string } } {
-  return { error: errorText(e), err: { kind: e.kind, sub: e.sub, code: e.code, hint: e.hint, status: e.status, said: e.message ? e.message.slice(0, 300) : undefined } };
+export function keptRefusal(e: AppError): { error: string; err: { kind: string; sub: string; code?: string; hint?: string; status?: number; said?: string; at?: string } } {
+  return { error: errorText(e), err: { kind: e.kind, sub: e.sub, code: e.code, hint: e.hint, status: e.status, said: e.message ? e.message.slice(0, 300) : undefined, ...(e.at ? { at: e.at } : {}) } };
 }

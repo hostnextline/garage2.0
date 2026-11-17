@@ -1,14 +1,15 @@
 /* The change functions every screen uses, through the real façade and engine, against the pretend server. */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { FakeServer, clientFor } from './testkit';
-import { startSync, stopSync, net, flush, syncOptions, outbox } from './sync';
+import { startSync, stopSync, net, flush, syncOptions, outbox, resetScreen } from './sync';
 import { setNet } from './net';
 import { getRow, rowsOf } from './store';
-import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute } from './api';
+import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute, decodeVin } from './api';
 import { itemsOf } from './select';
 import { refusalText } from '../app/netView';
 import { money } from '../lib/money';
-import { lang } from '../lib/i18n';
+import { lang, t } from '../lib/i18n';
+import { errorMessage } from '../lib/errors';
 
 let srv: FakeServer;
 let n = 0;
@@ -199,5 +200,27 @@ describe('a text or a trip carries its operation id when the screen gives one (R
     expect('job_id' in trips[0]).toBe(false);
     expect(trips[1]).toMatchObject({ action: 'start', job_id: 'j1', notify: true });
     expect('op' in trips[1]).toBe(false);
+  });
+});
+
+describe('a server function\'s refusal says which function gave it (R144)', () => {
+  it('the VIN base too slow (504, code timeout): « un service extérieur ne répond pas », not « vérifie Internet »', async () => {
+    await start();
+    srv.failNext((c) => c.url.pathname.endsWith('/functions/v1/vin'), 504, { ok: false, code: 'timeout', error: 'La base des NIV ne répond pas.' });
+    const r = await decodeVin('1HGCM82633A004352');
+    expect(r).toMatchObject({ ok: false, code: 'timeout', at: 'vin' });
+    expect(errorMessage(r)).toBe(t('errors.timeout'));
+  });
+  it('while the garage books by arrival windows (settings), the block refusals say « day »', async () => {
+    srv.put('settings', { id: '1', booking: { windows_on: true } });
+    await start();
+    const was = lang.value;
+    lang.value = 'en';
+    try {
+      expect(errorMessage({ code: 'P0001', hint: 'block_closed', message: 'Ce bloc est fermé.' })).toBe(t('errors.day.block_closed'));
+      // back to blocks: the block words again
+      resetScreen();
+      expect(errorMessage({ code: 'P0001', hint: 'block_closed', message: 'Ce bloc est fermé.' })).toBe(t('errors.block_closed'));
+    } finally { lang.value = was; }
   });
 });
