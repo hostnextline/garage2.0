@@ -132,9 +132,10 @@ export function Select<V extends string>(p: SelectProps<V>) {
     Leaving the field without changing the amount reports nothing (it used to save the draft at every visit). */
 export interface MoneyInputProps { cents: number | null | undefined; onCents: (c: number | null, info?: { valid: boolean }) => void; allowNegative?: boolean; placeholder?: string; disabled?: boolean; id?: string; 'aria-label'?: string; autoFocus?: boolean; invalid?: boolean }
 /** what a typed amount means: its cents (null when empty or not an amount) and whether it is one (pure: tested) */
-export function readMoney(s: string, allowNegative = false): { cents: number | null; valid: boolean } {
+export function readMoney(s: string, allowNegative = false, l: string = lang.value): { cents: number | null; valid: boolean } {
   if (s.trim() === '') return { cents: null, valid: true };
-  let c = parseMoney(s);
+  // the language on screen, said each time: « 1,000 » is 1 000 $ in English and a mistyped amount in French
+  let c = parseMoney(s, l);
   if (c == null) return { cents: null, valid: false };
   if (c < 0 && !allowNegative) c = -c;
   return { cents: c, valid: true };
