@@ -182,7 +182,8 @@ grant execute on function public.route_retime(uuid, date, text) to service_role;
 --   * window mode, today: the stops already done are numbered 1, 2, … in the order they were finished, the plan numbers
 --     the others after them (they were numbered from 1 again while the done ones kept theirs);
 --   * window mode, a day already started (round 2, plages-01): a vehicle closed for the rest of the day by a change of
---     its hours (or switched off) in this operation sends its appointments to « À placer ».
+--     its hours in this operation (or switched off) sends its appointments to « À placer »; one whose day had already
+--     ended keeps its late customer whatever is written on it (srv-planif-r2-1).
 create or replace function public.apply_plan(p_plan jsonb)
  returns integer
  language plpgsql
@@ -190,7 +191,7 @@ create or replace function public.apply_plan(p_plan jsonb)
  set search_path to 'public'
 as $function$
 declare k text; v jsonb; n int := 0; c int; d date := nullif(p_plan->>'day', '')::date; bk record; p jsonb; v_moved boolean := false; v_keep boolean;
-  v_started boolean;
+  v_started boolean; v_was jsonb; v_now int;
 begin
   perform set_config('garage.rpc', 'on', true);
   for k, v in select * from jsonb_each(coalesce(p_plan->'jobs', '{}')) loop
@@ -218,18 +219,32 @@ begin
     get diagnostics c = row_count; n := n + c;
   elsif coalesce(v_started, false) and public.block_open(d, 'day')
         and coalesce(current_setting('garage.unplace', true), '') = 'on' and coalesce(current_setting('garage.keep', true), '') <> 'on' then
-    -- window mode, a day already started (round 2, plages-01): the hours of a vehicle were changed by this very operation
-    -- (Horaires, « Départ et heure », the vehicle switched off or deleted) so that it no longer works for the rest of
-    -- the day: its appointments go to « À placer », as Horaires says (they stayed on the closed vehicle, numbered and
-    -- timed, and nobody came). A vehicle whose day simply ended, or that still works, keeps the rule « never
-    -- un-placed » (plan_route puts the ones of a working vehicle back, late). En route / on site are never in « over ».
+    -- window mode, a day already started (round 2, plages-01): a vehicle switched off (or deleted), or one that still
+    -- worked after now and whose hours of the day were changed by this very operation (Horaires, « Départ et heure »)
+    -- so that it no longer works for the rest of the day: its appointments go to « À placer », as Horaires says (they
+    -- stayed on the closed vehicle, numbered and timed, and nobody came). A vehicle whose day simply ended keeps the rule
+    -- « never un-placed », whatever else is written on it (its start, its kind, its usual week or today's hours again
+    -- after its day ended: srv-planif-r2-1); one that still works too (plan_route puts its stops back, late). En route
+    -- / on site are never in « over ».
+    -- Today's hours before the change: apply_hours says them (garage.hours_was, per vehicle); a day's own hours taken
+    -- off by a plain table write (« Revenir à l'horaire ») are the row taken off; any other hours written in this
+    -- operation: the vehicle counts as closed by them.
+    v_was := coalesce(nullif(current_setting('garage.hours_was', true), '')::jsonb, '{}'::jsonb);
+    v_now := public.now_min();
     update public.jobs j set truck_id = null, stop_order = null, eta_min = null, travel_min = null, truck_pinned = false
     where j.id in (select x::uuid from jsonb_array_elements_text(coalesce(p_plan->'over', '[]')) x)
       and j.status = 'booked' and j.truck_id is not null
       and not exists (select 1 from jsonb_array_elements(coalesce(p_plan->'trucks', '[]'::jsonb)) t where t->>'id' = j.truck_id::text)
-      and (exists (select 1 from public.trucks tr where tr.id = j.truck_id and tr.updated_at >= now())
-           or exists (select 1 from public.truck_days td where td.truck_id = j.truck_id and td.day = d and td.updated_at >= now())
-           or exists (select 1 from public.truck_week tw where tw.truck_id = j.truck_id and tw.dow = extract(dow from d)::int and tw.updated_at >= now()));
+      and (exists (select 1 from public.trucks tr where tr.id = j.truck_id and (not tr.active or tr.deleted_at is not null))
+           or case when v_was ? j.truck_id::text then
+                 exists (select 1 from jsonb_array_elements(v_was->(j.truck_id::text)) x where (x->>1)::int > v_now)
+               else
+                 exists (select 1 from public.truck_days td where td.truck_id = j.truck_id and td.day = d and td.updated_at >= now()
+                         and (td.deleted_at is null
+                              or (td.deleted_at >= now() and exists (select 1 from jsonb_array_elements(td.ranges) x where (x->>1)::int > v_now))))
+                 or exists (select 1 from public.truck_week tw where tw.truck_id = j.truck_id and tw.dow = extract(dow from d)::int and tw.updated_at >= now()
+                            and not exists (select 1 from public.truck_days td where td.truck_id = j.truck_id and td.day = d and td.deleted_at is null))
+               end);
     get diagnostics c = row_count; n := n + c;
   end if;
   -- window mode, today: the stops already done keep 1, 2, … on their truck, in the order they were finished (the plan
@@ -2132,7 +2147,9 @@ end $function$;
 --     was moved to today without a word, so « Départ et heure » on yesterday's map changed TODAY's hours and said
 --     « enregistré », and a « today only » kept on a phone and sent after midnight changed the new day. « En permanence »
 --     still starts today at the earliest (the usual week has no past);
---   * no number of weeks means one week (it meant 52: least(null, 52) is 52, sql-planner-1-20).
+--   * no number of weeks means one week (it meant 52: least(null, 52) is 52, sql-planner-1-20);
+--   * today's hours of the vehicle before the change are kept for the re-plan (garage.hours_was): in window mode a
+--     vehicle whose day had already ended keeps its late customer (srv-planif-r2-1).
 CREATE OR REPLACE FUNCTION public.apply_hours(p_op uuid, p_truck uuid, p_mode text, p_week jsonb, p_from date, p_weeks integer DEFAULT 1)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -2140,6 +2157,7 @@ CREATE OR REPLACE FUNCTION public.apply_hours(p_op uuid, p_truck uuid, p_mode te
  SET search_path TO 'public'
 AS $function$
 declare v_done jsonb; d date; k text; v jsonb; n int := 0; v_end date; v_start timestamptz := now();
+  v_was text := coalesce(current_setting('garage.hours_was', true), '');
 begin
   v_done := public.op_begin(p_op, 'apply_hours');
   if v_done is not null then return v_done; end if;
@@ -2149,6 +2167,11 @@ begin
     perform public.fail('past', 'Cette journée est passée.');
   end if;
   p_from := greatest(coalesce(p_from, public.local_today()), public.local_today());
+  -- today's hours of this vehicle before the change: in window mode, on a day already started, apply_plan sends its
+  -- appointments to « À placer » only when it still worked after now (a vehicle whose day had already ended keeps its
+  -- late customer: srv-planif-r2-1)
+  perform set_config('garage.hours_was', (coalesce(nullif(v_was, '')::jsonb, '{}'::jsonb)
+    || jsonb_build_object(p_truck::text, public.truck_ranges(p_truck, public.local_today())))::text, true);
   if p_mode = 'always' then
     for k, v in select * from jsonb_each(p_week) loop
       insert into public.truck_week (truck_id, dow, ranges) values (p_truck, k::int, v)
@@ -2167,6 +2190,7 @@ begin
       n := n + 1;
     end loop;
   end if;
+  perform set_config('garage.hours_was', v_was, true);
   return public.op_save(p_op, 'apply_hours', jsonb_build_object('ok', true, 'changed', n, 'rows', jsonb_build_object(
     'truck_week', (select coalesce(jsonb_agg(to_jsonb(w)), '[]'::jsonb) from public.truck_week w where w.truck_id = p_truck),
     'truck_days', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.truck_days x where x.truck_id = p_truck and x.updated_at >= v_start))));

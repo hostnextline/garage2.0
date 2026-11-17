@@ -1305,6 +1305,70 @@ test('plages-02: back to the blocks, a flexible appointment is to call (told « 
   assert.deepEqual([(await row(h, a.job_id)).win_start, (await row(h, a.job_id)).win_flex], [480, false], 'the others as before');
 }));
 
+test('srv-planif-r2-1: window mode, a vehicle whose day simply ended keeps its late customer when its start, its usual week or its hours of the day are written again; one the hours close for the rest of the day does not', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await today(h);
+  const dow = await h.val(`select extract(dow from public.local_today())::int`);
+  const tC = await h.truck('Voiture', null, Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, [[480, 1020]]])));   // 8 h – 17 h
+  const c = await h.customer('Jean', ...near);
+  await windowsOn(h, owner);
+  // the vehicle and its usual week were set up long ago (not by the operations below)
+  await server(h, owner, `set local session_replication_role = replica`);
+  await server(h, owner, `update public.trucks set updated_at = now() - interval '30 days' where id = $1`, [tC]);
+  await server(h, owner, `update public.truck_week set updated_at = now() - interval '30 days' where truck_id = $1`, [tC]);
+  await server(h, owner, `set local session_replication_role = origin`);
+  /** today's own hours of the Voiture, written this morning (no re-plan) */
+  const dayHours = async (ranges) => {
+    await server(h, owner, `set local session_replication_role = replica`);
+    await server(h, owner, `insert into public.truck_days (truck_id, day, ranges, updated_at) values ($1, $2, $3, now() - interval '10 hours')`, [tC, day, JSON.stringify(ranges)]);
+    await server(h, owner, `set local session_replication_role = origin`);
+  };
+  await clock(h, owner, 1080);                                  // 18 h: the Voiture's day ended at 17 h
+  const late = await put(h, owner, { customer: c, day, block: 'day', truck: tC, order: 1, eta: 1000, ws: 900, we: 1140 });   // the mechanic runs late
+  for (const how of ['start', 'week', 'revert']) {
+    await h.c.query('savepoint again');
+    if (how === 'start') {
+      // « Départ de ce camion » (for tomorrow): the trucks row changes, its hours do not
+      await h.as(owner);
+      assert.equal((await h.rpc('set_truck_start', { p_op: uuid(), p_truck: tC, p_start: { label: 'Chez Adam', address: '1 rue Test', lat: near2[0], lng: near2[1] } })).ok, true);
+    } else if (how === 'week') {
+      // « En permanence » this evening: the usual day of today ends at 16 h from now on (it had already ended at 17 h)
+      await h.as(owner);
+      assert.equal((await h.rpc('apply_hours', { p_op: uuid(), p_truck: tC, p_mode: 'always', p_week: { [dow]: [[480, 960]] }, p_from: day, p_weeks: 1 })).ok, true);
+      assert.deepEqual(await h.val(`select public.truck_ranges($1, public.local_today())`, [tC]), [[480, 960]], 'the new usual week counts today');
+    } else {
+      // today's own hours (8 h – 17 h 30) taken off this evening: « Revenir à l'horaire », a plain table write
+      await dayHours([[480, 1050]]);
+      await h.as(owner);
+      await h.q(`update public.truck_days set deleted_at = now() where truck_id = $1 and day = $2`, [tC, day]);
+      assert.deepEqual(await h.val(`select public.truck_ranges($1, public.local_today())`, [tC]), [[480, 1020]], 'back to the usual day');
+    }
+    const k = await row(h, late);
+    assert.deepEqual([k.truck_id, k.stop_order, k.eta_min], [tC, 1, 1000], `${how}: the vehicle whose day ended keeps its late customer (truck, number, time)`);
+    await h.as(null);
+    await h.c.query('rollback to savepoint again');
+  }
+  // 11 h: Adam is sick, the Voiture stops at 11 h: the customer he is late for (10 h 30) goes to « À placer » with the next one
+  await h.c.query('savepoint sick');
+  await clock(h, owner, 660);
+  const was = await put(h, owner, { customer: c, day, block: 'day', truck: tC, order: 1, eta: 630, ws: 540, we: 780 });
+  const next = await put(h, owner, { customer: c, day, block: 'day', truck: tC, order: 2, eta: 780, ws: 720, we: 960, lat: near2[0], lng: near2[1] });
+  await h.as(owner);
+  assert.equal((await h.rpc('apply_hours', { p_op: uuid(), p_truck: tC, p_mode: 'day', p_week: { [dow]: [[480, 660]] }, p_from: day, p_weeks: 1 })).ok, true);
+  for (const [id, what] of [[was, 'the late one (10 h 30)'], [next, 'the next one (13 h)']]) {
+    const j = await row(h, id);
+    assert.deepEqual([j.truck_id, j.stop_order, j.eta_min], [null, null, null], `${what} is in « À placer »`);
+  }
+  await h.as(null);
+  await h.c.query('rollback to savepoint sick');
+  // 18 h, the Voiture was to work until 20 h today: its hours set to end at 17 h 30 close it by this very change
+  await dayHours([[480, 1200]]);
+  await h.as(owner);
+  assert.equal((await h.rpc('apply_hours', { p_op: uuid(), p_truck: tC, p_mode: 'day', p_week: { [dow]: [[480, 1050]] }, p_from: day, p_weeks: 1 })).ok, true);
+  const k = await row(h, late);
+  assert.deepEqual([k.truck_id, k.stop_order, k.eta_min], [null, null, null], 'a vehicle closed by the change of its hours sends its customer to « À placer »');
+}));
+
 /** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
  *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
 async function liveRef(h, list) {
