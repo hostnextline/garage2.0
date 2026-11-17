@@ -38,14 +38,17 @@ describe('work missing from a finished invoice', () => {
     expect(unbilledWork(work, inv('paid', ['a', undefined])).map((i) => i.id)).toEqual(['b']);
     expect(unbilledWork(work, inv('issued', ['a', 'b']))).toEqual([]);
   });
-  it('only work added or accepted after the invoice was finished; what was there and left off it is not missing (jobs-r3)', () => {
+  it('the server’s rule (job_unbilled): whenever the work came, left off the finished invoice it is missing (terrain-01, argent-app-01)', () => {
     const finished = { ...inv('issued', ['a']), issued_at: '2026-11-15T15:00:00Z' };
+    // already there when the invoice was finished, taken off the draft: the server refuses « Terminé » for it
     const old = [{ ...item('a', 'done'), created_at: '2026-11-15T09:00:00Z' }, { ...item('b', 'planned'), created_at: '2026-11-15T09:00:00Z' }];
-    expect(unbilledWork(old, finished)).toEqual([]);
+    expect(unbilledWork(old, finished).map((i) => i.id)).toEqual(['b']);
     const late = { ...item('c', 'planned'), created_at: '2026-11-15T15:00:01Z' };
-    expect(unbilledWork([...old, late], finished).map((i) => i.id)).toEqual(['c']);
-    // a line just added on this phone (no time yet) counts as added after
-    expect(unbilledWork([...old, item('d', 'planned')], finished).map((i) => i.id)).toEqual(['d']);
+    expect(unbilledWork([...old, late], finished).map((i) => i.id)).toEqual(['b', 'c']);
+    // a line just added on this phone (no time yet)
+    expect(unbilledWork([...old, item('d', 'planned')], finished).map((i) => i.id)).toEqual(['b', 'd']);
+    // marked « Pas fait »: no longer missing (the way out the server gives)
+    expect(unbilledWork([old[0], { ...old[1], status: 'removed' as const }], finished)).toEqual([]);
   });
   it('nothing is missing from a draft (it follows the work) nor when there is no invoice', () => {
     expect(unbilledWork(work, inv('draft', []))).toEqual([]);

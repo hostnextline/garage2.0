@@ -2,7 +2,8 @@
    - A planned line becomes « Fait » with one tap; any line opens a short sheet (fait, pas fait, remettre…).
    - « Modifier le travail »: every line gets « Changer » and « Retirer »; « Ajouter du travail » next to it.
    - « Proposer un travail »: a line written on the spot, then the customer's answer.
-   - Work on no line of the finished invoice (added or accepted after it was finished) is said here, like on the red button. */
+   - Work on no line of the finished invoice (whenever it came: the server refuses « Terminé » for it) is said here, like on
+     the red button. */
 import { useState } from 'preact/hooks';
 import { Check, Plus, PenLine, Hourglass, CircleCheck, Circle, X, Minus, Pencil, Trash2 } from 'lucide-preact';
 import type { Job, JobItem, ItemStatus } from '../../../data/types';
