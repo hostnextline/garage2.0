@@ -96,14 +96,28 @@ describe('« Je pars »', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: { lat: 45.5, lng: -73.6 }, notify: true, resend: undefined });
   });
-  it('« Routes partagées »: a mechanic leaving with a truck another one drives is the one who leaves, as the server says: his position, his day starts (R30; before: neither)', async () => {
+  it('« Routes partagées »: a mechanic leaving with a truck another one drives is the one who leaves: his position, his day starts, and he names himself (R30; jobs-r2-2)', async () => {
     // every truck is his (my_truck_ids with shared routes), Saleh is t1's named driver, Amine takes it today
     access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1', 't2'] } as unknown as Access;
     await doLeave(JOB({ status: 'booked' }), { mine: true });
     await new Promise((r) => setTimeout(r, 0));
     expect(where.quickPosition).toHaveBeenCalledTimes(1);
     expect(api.shiftStart).toHaveBeenCalledTimes(1);
-    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: { lat: 45.5, lng: -73.6 }, notify: true, resend: undefined });
+    // the server gives the trip to the truck's driver while the presser's day is not started (fn-terrain 2709e2d), and the
+    // start of his day goes beside « Je pars »: driver_id = himself, so the trip is Amine's whichever came first
+    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: { lat: 45.5, lng: -73.6 }, driver_id: 'amine', notify: true, resend: undefined });
+  });
+  it('the truck’s own driver, or a truck with no driver: no driver_id (the server already gives him the trip)', async () => {
+    access.value = mechanic;
+    await doLeave(JOB({ status: 'booked' }), { mine: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect((api.enroute.mock.calls[0][2] as Record<string, unknown>).driver_id).toBeUndefined();
+    upsertLocal('trucks', [{ id: 't1', name: 'Camion', driver_id: null, active: true, sort: 0 }]);
+    access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1'] } as unknown as Access;
+    api.enroute.mockClear();
+    await doLeave(JOB({ status: 'booked' }), { mine: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect((api.enroute.mock.calls[0][2] as Record<string, unknown>).driver_id).toBeUndefined();
   });
   it('an owner (or the office) who is also a mechanic pressing for a truck another drives, his day not started: maybe from home, no position from his phone, no day started for him (jobs-r4)', async () => {
     access.value = { id: 'owner', roles: ['mechanic'], owner: true, rights: {}, trucks: ['t1'] } as unknown as Access;

@@ -6,7 +6,8 @@ import { signal } from '@preact/signals';
 import type { Job } from '../../data/types';
 import { enroute, notify, errorMessage } from '../../data/api';
 import { pull, refetch, isNetworkError, uuid } from '../../data/sync';
-import { jobTotals, settings, customer as customerRow, itemsOf, job as jobRow } from '../../data/select';
+import { jobTotals, settings, customer as customerRow, itemsOf, job as jobRow, truck } from '../../data/select';
+import { me } from '../../data/auth';
 import { toast, whenHistorySettled } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
@@ -59,7 +60,10 @@ export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived',
 
 /** the « en route » text with the arrival time and the tracking link. `pos`: where the truck is; only the phone of the one
     driving says it (the owner pressing from home must not give the customer an arrival time from his house: without a
-    position the server takes the driver's own). */
+    position the server takes the driver's own). `driving` (actions.ts drives()) on a truck another one is the named
+    driver of (« Routes partagées »): he names himself (`driver_id`), so the trip, the name in the text and the map are
+    his — the server gives the trip to the truck's driver when the presser's day is not started yet, and the start of his
+    day goes beside « Je pars », never waited for (jobs-r2-2, fn-terrain #7). */
 export async function sendTracking(j: Job, o: { pos?: { lat: number; lng: number }; resend?: boolean; afterLeave?: boolean; driving?: boolean } = {}): Promise<boolean> {
   // in progress counts as sent (no « not sent » warning while it goes); a failure takes it back
   const mark = (on: boolean) => { const n = new Set(trackingSent.value); if (on) n.add(j.id); else n.delete(j.id); trackingSent.value = n; };
@@ -67,7 +71,12 @@ export async function sendTracking(j: Job, o: { pos?: { lat: number; lng: number
   // after « Je pars » the position was already asked (it may be unknown: the server then uses the last one it has)
   const pos = o.pos || o.afterLeave || !o.driving ? o.pos : await quickPosition();
   try {
-    const e = await enroute('start', j.id, { pos, notify: true, resend: o.resend });
+    const mine = me.value?.id;
+    const driver = truck(j.truck_id)?.driver_id;
+    const self = o.driving && mine && driver && driver !== mine ? { driver_id: mine } : {};
+    // `driver_id` is read by the server since the rebuild (an older one does not read it: the truck's driver, as before)
+    const body: NonNullable<Parameters<typeof enroute>[2]> & { driver_id?: string } = { pos, notify: true, resend: o.resend, ...self };
+    const e = await enroute('start', j.id, body);
     if (!e.ok) { mark(false); toast(errorMessage(e), { kind: 'bad' }); return false; }
     const r: TextOutcome = { status: e.sms, message: e.message, link: e.link, phone: e.phone, error: e.error };
     if (o.afterLeave) {

@@ -12,7 +12,7 @@ import { mayChangeTruck, type JobRights } from '../../domain/jobs/rights';
 import { jobName, wt } from '../../shared/jobs/select';
 import { clientLinkOf } from '../../shared/jobs/links';
 import { sendText, sendTracking } from '../../shared/jobs/texts';
-import { doBack, doCancel, doNoShow, doReopen, backTo } from '../../shared/jobs/actions';
+import { doBack, doCancel, doNoShow, doReopen, backTo, drives } from '../../shared/jobs/actions';
 import { copyText } from '../../shared/jobs/TextOutcome';
 import { stopFirst } from './StopOrderSheet';
 import { afterSheet } from './scroll';
@@ -43,7 +43,7 @@ function MenuRows(p: MenuSheetProps) {
   const row: Record<MenuKey, () => ComponentChildren> = {
     edit: () => <RowItem key="e" start={icon(<Pencil size={20} />)} title={t('jobs.edit.menu')} sub={t('jobs.edit.menuSub')} onClick={then(p.onEdit!)} data-testid="menu-edit" />,
     resend: () => <RowItem key="b" start={icon(<Send size={20} />)} title={t('jobs.menu.resendBooking')} sub={wt(j, 'jobs.menu.resendBookingSub')} onClick={then(() => sendText('booking', j, { resend: true }))} data-testid="menu-resend" />,
-    tracking: () => <RowItem key="t" start={icon(<Navigation size={20} />)} title={t('jobs.menu.sendTracking')} sub={t('jobs.menu.sendTrackingSub')} onClick={then(() => sendTracking(j, { resend: true, driving: rights.mine }))} />,
+    tracking: () => <RowItem key="t" start={icon(<Navigation size={20} />)} title={t('jobs.menu.sendTracking')} sub={t('jobs.menu.sendTrackingSub')} onClick={then(() => sendTracking(j, { resend: true, driving: drives(j, rights) }))} />,
     arrived: () => <RowItem key="a" start={icon(<Send size={20} />)} title={t('jobs.menu.sendArrived')} sub={t('jobs.menu.sendArrivedSub')} onClick={then(() => sendText('arrived', j, { resend: true, okText: t('jobs.did.arriveInvoice', { name: jobName(j) }) }))} data-testid="menu-send-arrived" />,
     link: () => <RowItem key="l" start={icon(<Link2 size={20} />)} title={t('jobs.menu.copyLink')} sub={t('jobs.menu.copyLinkSub')}
       onClick={async () => { const ok = await copyText(link!); toast(ok ? t('jobs.text.linkCopied') : t('jobs.text.copyFail'), { kind: ok ? 'ok' : 'bad' }); if (ok) p.onClose(); }} data-testid="menu-link" />,

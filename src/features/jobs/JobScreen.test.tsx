@@ -6,11 +6,13 @@ import { act } from 'preact/test-utils';
 
 const sync = vi.hoisted(() => ({ answer: null as null | (() => void), refetch: vi.fn() }));
 vi.mock('../../data/sync', async (orig) => ({ ...(await orig<typeof import('../../data/sync')>()), refetch: sync.refetch }));
-vi.mock('../../services/position', () => ({ startPositionSharing: () => undefined, quickPosition: () => Promise.resolve(undefined) }));
+const where = vi.hoisted(() => ({ quickPosition: vi.fn((): Promise<{ lat: number; lng: number } | undefined> => Promise.resolve(undefined)) }));
+vi.mock('../../services/position', () => ({ startPositionSharing: () => undefined, quickPosition: where.quickPosition }));
 const api = vi.hoisted(() => ({
   removeItem: vi.fn(() => Promise.resolve()), updateItem: vi.fn(() => Promise.resolve()),
   moveJob: vi.fn((..._a: unknown[]) => Promise.resolve({ queued: false, data: { changed: true } as Record<string, unknown> })),
-  notify: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 'sent', link: null, message: null, phone: null, error: null }))
+  notify: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 'sent', link: null, message: null, phone: null, error: null })),
+  enroute: vi.fn((..._a: unknown[]) => Promise.resolve({ ok: true, sms: 'sent', link: null, message: null, phone: null, eta_at: null }))
 }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), ...api }));
 const coffre = vi.hoisted(() => ({ openCoffre: vi.fn() }));
@@ -127,6 +129,34 @@ describe('« Payé par le Coffre » from the job’s menu (R49)', () => {
     await act(async () => { q('menu-coffre')!.click(); await new Promise((r) => setTimeout(r, 900)); });
     expect(coffre.openCoffre).toHaveBeenCalledWith('j1');
     expect(q('coffre-sheet')).toBeNull();
+  });
+});
+
+describe('« Renvoyer le texto « en route » » from the job’s menu: the one who leaves, as « Je pars » says it (jobs-r2-2)', () => {
+  const menuTracking = async () => {
+    await act(() => render(<JobScreen params={{ id: 'j1' }} query={new URLSearchParams()} />, box));
+    await act(async () => { q('job-menu')!.click(); await new Promise((r) => setTimeout(r, 0)); });
+    const row = [...document.querySelectorAll('[data-testid="job-menu-sheet"] button')].find((b) => b.textContent?.includes(t('jobs.menu.sendTracking'))) as HTMLElement;
+    await act(async () => { row.click(); await new Promise((r) => setTimeout(r, 900)); });
+  };
+  beforeEach(() => {
+    api.enroute.mockClear();
+    where.quickPosition.mockReset();
+    where.quickPosition.mockImplementation(() => Promise.resolve({ lat: 45.5, lng: -73.6 }));
+    upsertLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'Roy', phone: '5145551234' }]);
+    upsertLocal('trucks', [{ id: 't1', name: 'Camion', driver_id: 'saleh', active: true, sort: 0 }]);
+    upsertLocal('jobs', [{ id: 'j1', number: 7, status: 'en_route', day: '2030-01-15', block: 'am', truck_id: 't1', customer_id: 'c1', vehicle_id: null, waiver_signed_at: null, coffre_id: null, duration_min: 60 }]);
+  });
+  it('an owner who is also a mechanic, at the office for Saleh’s truck: no position from his phone (before: his office’s)', async () => {
+    access.value = { id: 'owner', roles: ['mechanic'], owner: true, rights: {}, trucks: ['t1'] } as unknown as Access;
+    await menuTracking();
+    expect(where.quickPosition).not.toHaveBeenCalled();
+    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: undefined, notify: true, resend: true });
+  });
+  it('« Routes partagées »: the mechanic who took Saleh’s truck sends his position and names himself', async () => {
+    access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1'] } as unknown as Access;
+    await menuTracking();
+    expect(api.enroute).toHaveBeenCalledWith('start', 'j1', { pos: { lat: 45.5, lng: -73.6 }, driver_id: 'amine', notify: true, resend: true });
   });
 });
 
