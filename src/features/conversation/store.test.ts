@@ -34,3 +34,19 @@ describe('the person signed in', () => {
     expect(off).not.toHaveBeenCalled();
   });
 });
+
+describe('the operation number of an answer (R28)', () => {
+  it('the same words keep it; other words, the answer sent or another person signed in drop it', async () => {
+    const { opOf, setDraft: draft, claimTexts } = await import('./store');
+    let n = 0; const make = () => `op-${++n}`;
+    draft('+15145550190', 'Oui');
+    expect(opOf('+15145550190', 'Oui', make)).toBe('op-1');
+    expect(opOf('514-555-0190', 'Oui', make)).toBe('op-1');
+    draft('+15145550190', 'Oui!');
+    expect(opOf('+15145550190', 'Oui!', make)).toBe('op-2');
+    draft('+15145550190', '');
+    expect(opOf('+15145550190', 'Oui!', make)).toBe('op-3');
+    claimTexts('someone-else', async () => undefined);
+    expect(opOf('+15145550190', 'Oui!', make)).toBe('op-4');
+  });
+});

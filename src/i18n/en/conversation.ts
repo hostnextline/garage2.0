@@ -32,6 +32,7 @@ export const conversation: typeof fr = {
     off: 'Automatic texts are not connected (Settings, Connections).',
     no_phone: 'This customer has no cell number.',
     error: 'The text service did not answer. Try again in a moment.',
+    pending: 'This message is on its way.',
     offline: 'No signal: the conversation will come back with the signal.'
   }
 };

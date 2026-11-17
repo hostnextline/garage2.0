@@ -32,6 +32,7 @@ export const conversation = {
     off: 'Les textos automatiques ne sont pas branchés (Réglages, Branchements).',
     no_phone: 'Ce client n’a pas de numéro de cellulaire.',
     error: 'Le service de textos n’a pas répondu. Réessaie dans un instant.',
+    pending: 'Ce message est en train de partir.',
     offline: 'Pas de réseau : la conversation reviendra avec le réseau.'
   }
 };
