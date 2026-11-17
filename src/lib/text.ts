@@ -19,6 +19,13 @@ export function e164(input: string | null | undefined): string | null {
   const d = phoneDigits(input);
   return d ? `+1${d}` : null;
 }
+/** a « sms: » link that opens this phone's own Messages app with the text written (« ?&body= » is read by both iPhone
+    and Android): a North American number as +1…, any other number as its digits, no number = Messages picks one.
+    The one rule for the copies in shared/jobs/TextOutcome.tsx and shared/invoices/share.ts (x-deadcode-09, R53). */
+export function smsHref(phone: string | null | undefined, body: string): string {
+  const to = e164(phone) || String(phone || '').replace(/[^\d+]/g, '');
+  return `sms:${to}?&body=${encodeURIComponent(String(body ?? ''))}`;
+}
 
 /** Canadian postal code "H4P 2B5" or null */
 export function postalCode(input: string | null | undefined): string | null {

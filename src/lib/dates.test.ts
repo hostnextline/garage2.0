@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { addDays, addMonths, weekStart, weekDays, dow, clock, clockRange, duration, parseHm, hm, isValidDay, mergeRanges, overlapMinutes,
   cellsToRanges, rangesToCells, daysBetween, longDay, shortDate, tinyDay, monthName, parseDay, dayOf, minuteOf, today, nowMinute, stamp,
-  windowFor } from './dates';
+  windowFor, instantOf } from './dates';
 
 describe('days', () => {
   it('adds days across months and the DST change (Nov 1 2026)', () => {
@@ -125,7 +125,7 @@ describe('blocks and ranges', () => {
 /* core-data-18 / x-time-01: the garage runs on Montréal's clock (America/Toronto), whatever zone the phone is set to.
    Instants are written with their UTC offset, never new Date(y, m, d, h), so the cases mean the same in every zone. */
 const at = (iso: string) => new Date(iso);
-const ZONES = ['America/Toronto', 'Europe/Paris', 'America/Vancouver', 'Asia/Tokyo', 'Pacific/Kiritimati', 'Pacific/Pago_Pago'];
+const ZONES = ['America/Toronto', 'UTC', 'Europe/Paris', 'America/Vancouver', 'Asia/Tokyo', 'Pacific/Kiritimati', 'Pacific/Pago_Pago'];
 
 for (const zone of ZONES) {
   describe(`the garage's clock on a phone set to ${zone}`, () => {
@@ -170,6 +170,30 @@ for (const zone of ZONES) {
       expect(minuteOf(at('2026-12-01T01:00:00Z'))).toBe(20 * 60);
       expect(dayOf(at('2026-07-01T03:59:00Z'))).toBe('2026-06-30');   // summer: UTC−4
       expect(minuteOf(at('2026-07-01T04:00:00Z'))).toBe(0);
+    });
+    it('instantOf: Montréal\'s day and minute back to an instant (a test\'s « now » on GitHub\'s UTC machine)', () => {
+      expect(instantOf('2026-11-17', 9 * 60).toISOString()).toBe('2026-11-17T14:00:00.000Z');
+      expect(instantOf('2026-11-17', 23 * 60 + 59.5).toISOString()).toBe('2026-11-18T04:59:30.000Z');
+      expect(instantOf('2026-07-01', 0).toISOString()).toBe('2026-07-01T04:00:00.000Z');
+      expect(instantOf('2026-11-17', 1440).toISOString()).toBe('2026-11-18T05:00:00.000Z'); // 24 h = midnight after
+      // the spring night: 1 h 30 EST, 3 h 30 EDT; 2 h 30 does not exist → 3 h 30
+      expect(instantOf('2026-03-08', 90).toISOString()).toBe('2026-03-08T06:30:00.000Z');
+      expect(instantOf('2026-03-08', 210).toISOString()).toBe('2026-03-08T07:30:00.000Z');
+      expect(instantOf('2026-03-08', 150).toISOString()).toBe('2026-03-08T07:30:00.000Z');
+      // the autumn night: 1 h 30 is the first one (EDT), 2 h 30 is EST
+      expect(instantOf('2026-11-01', 90).toISOString()).toBe('2026-11-01T05:30:00.000Z');
+      expect(instantOf('2026-11-01', 150).toISOString()).toBe('2026-11-01T07:30:00.000Z');
+      expect(instantOf('2026-13-01', 60).getTime()).toBeNaN();
+      expect(instantOf('2026-11-17', NaN).getTime()).toBeNaN();
+    });
+    it('instantOf and dayOf / minuteOf agree every 7 minutes over both nights the clock changes', () => {
+      for (const day of ['2026-03-08', '2026-11-01', '2027-03-14', '2027-11-07', '2026-12-31']) {
+        for (let m = 0; m < 1440; m += 7) {
+          if (day.endsWith('-03-08') || day.endsWith('-03-14')) { if (m >= 120 && m < 180) continue; } // the hour that does not exist
+          const d = instantOf(day, m);
+          expect(`${dayOf(d)} ${minuteOf(d)}`).toBe(`${day} ${m}`);
+        }
+      }
     });
     it('a time that is not a date gives nothing', () => {
       expect(dayOf(new Date('nope'))).toBe('');
@@ -228,5 +252,34 @@ describe('the garage clock remembers its answers', () => {
     expect(stamp('2026-11-16T00:30:00Z')).toBe(first);
     expect(minuteOf(new Date(Date.UTC(2026, 0, 1) + 5999 * 60000))).toBe((5999 + 19 * 60) % 1440); // 1 Jan 2026 0 h UTC = 19 h EST
     expect(today(at('2026-11-15T04:30:00Z'))).toBe('2026-11-14');
+  });
+  /* review fluidite-02: the memory used to be emptied at 5,000 minutes, so a screen going over more payments than that
+     (a year or two of a busy garage) asked Intl again for every one at every redraw (about 12 times slower) */
+  it('a second pass over 8,000 different moments does not ask Intl again', () => {
+    const spy = vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts');
+    try {
+      // 8,000 payments, one every 97 minutes: about a year and a half of distinct minutes, hours and days
+      const moments = Array.from({ length: 8000 }, (_, i) => new Date(Date.UTC(2025, 0, 1) + i * 97 * 60000 + 13000));
+      const first = moments.map((d) => `${dayOf(d)} ${minuteOf(d)}`);
+      spy.mockClear();
+      const second = moments.map((d) => `${dayOf(d)} ${minuteOf(d)}`);
+      expect(spy).not.toHaveBeenCalled();
+      expect(second).toEqual(first);
+    } finally { spy.mockRestore(); }
+  });
+  it('the answers kept are the same as Intl\'s, minute by minute, across both nights the clock changes', () => {
+    const ask = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const truth = (d: Date) => {
+      const p: Record<string, string> = {};
+      for (const x of ask.formatToParts(d)) p[x.type] = x.value;
+      return `${p.year}-${p.month}-${p.day} ${(Number(p.hour) % 24) * 60 + Number(p.minute)}`;
+    };
+    for (const night of ['2026-03-08T00:00:00Z', '2026-11-01T00:00:00Z', '2027-03-14T00:00:00Z', '2027-11-07T00:00:00Z']) {
+      const t0 = Date.parse(night);
+      for (let m = 0; m < 24 * 60; m += 7) {
+        const d = new Date(t0 + m * 60000 + 59000);
+        expect(`${dayOf(d)} ${minuteOf(d)}`).toBe(truth(d));
+      }
+    }
   });
 });

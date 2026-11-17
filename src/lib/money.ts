@@ -18,6 +18,29 @@ export function lineTotal(l: Line): Cents {
   return roundCents(l.qty * l.unitCents);
 }
 
+/** a line as the database keeps it (job_items, invoices.lines): numbers may come as strings from JSON */
+export interface DbLine { qty?: number | string | null; unit_cents?: number | string | null; kind?: string | null }
+/** What a line is worth before taxes, exactly as the database counts it (invoice_totals): quantity × price rounded to the
+    cent, a half away from zero; a discount always counts down, whatever sign it was stored with; any other line keeps its
+    sign (a credit typed as a negative price stays a credit). No quantity = 1, no price = 0, not a number = 0.
+    The one TS rule of x-money-06: every screen that adds up lines asks this one. */
+export function lineWorth(l: DbLine): Cents {
+  const q = l.qty == null || l.qty === '' ? 1 : Number(l.qty);
+  const u = l.unit_cents == null || l.unit_cents === '' ? 0 : Number(l.unit_cents);
+  if (!Number.isFinite(q) || !Number.isFinite(u)) return 0;
+  const q100 = Math.round(q * 100);
+  let t: number;
+  if (Math.abs(q * 100 - q100) < 1e-6 && Number.isInteger(u)) {
+    // a quantity of two decimals (numeric(10,2)) and a price in whole cents: exact in hundredths of a cent, no 1,15 × 1000 slip
+    const p = q100 * u;
+    t = Math.sign(p) * Math.floor((Math.abs(p) + 50) / 100);
+  } else {
+    t = roundCents(q * u);
+  }
+  if (l.kind === 'discount' && t > 0) t = -t;
+  return t || 0; // never -0
+}
+
 export interface Totals { subtotal: Cents; taxable: Cents; tps: Cents; tvq: Cents; total: Cents }
 
 export function totals(lines: Line[], rates: TaxRates = QC_TAXES): Totals {
