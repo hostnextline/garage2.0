@@ -50,7 +50,8 @@ async function view(l: Row) {
     if (!q) fail('gone', 'Cet estimé n’existe plus.', 404);
     const items = ((q as Row).items || []) as Row[];
     return { ok: true, kind: 'quote', garage, lang: (q as Row).lang || 'fr', number: (q as Row).number, vehicle: (q as Row).vehicle_text || null,
-      items: items.map((i) => ({ description: i.description, qty: Number(i.qty || 1), unit_cents: Number(i.unit_cents || 0) })),
+      // the quantity as written (an option at 0 stays 0; nothing written = 1): the lines add up to the total shown
+      items: items.map((i) => ({ description: i.description, qty: i.qty === null || i.qty === undefined || i.qty === '' ? 1 : Number(i.qty), unit_cents: Number(i.unit_cents || 0) })),
       totals: taxesOf(s, items), valid_until: (q as Row).valid_until || null };
   }
   const { data: job, error: ej } = await db.from('jobs').select('*').eq('id', l.job_id).maybeSingle();

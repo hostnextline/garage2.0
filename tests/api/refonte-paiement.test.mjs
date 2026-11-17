@@ -331,6 +331,28 @@ test('totals of the texts: a discount line is taken off ({total} of the booking 
   }
 });
 
+test('argent-app-05: the customer’s estimate counts each line as the database does (1,333 h stays 1,333 h; an option at 0 costs nothing)', async () => {
+  const items = [{ description: 'Main-d’œuvre 1 h 20', qty: 1.333, unit_cents: 9000, taxable: true }, { description: 'Option', qty: 0, unit_cents: 5000, taxable: true },
+    { description: 'Pièce', qty: 1.15, unit_cents: 1999, taxable: true }, { description: 'Sans quantité', unit_cents: 1000, taxable: true }];
+  const cust = randomUUID(); made.customers.push(cust);
+  await q(`insert into public.customers (id, first_name, last_name, phone, lang) values ($1, 'Estimé', 'Exact', '514 555-0133', 'fr')`, [cust]);
+  const quote = (await q(`insert into public.quotes (customer_id, items) values ($1, $2::jsonb) returning id`, [cust, JSON.stringify(items)]))[0].id;
+  const token = (randomUUID() + randomUUID()).replace(/-/g, '').slice(0, 40);
+  await q(`insert into public.public_links (token_hash, quote_id, expires_at) values ($1, $2, now() + interval '30 days')`, [sha(token), quote]);
+  try {
+    const v = await fn('client', { action: 'view', token });
+    assert.equal(v.kind, 'quote', JSON.stringify(v));
+    // what the database's own rule (invoice_totals) gives for the same lines
+    const [want] = await q(`select sum(round(coalesce((l->>'qty')::numeric, 1) * (l->>'unit_cents')::numeric))::int s from jsonb_array_elements($1::jsonb) l`, [JSON.stringify(items)]);
+    assert.equal(want.s, 11997 + 0 + 2299 + 1000);
+    assert.deepEqual([v.totals.subtotal, v.totals.tps, v.totals.tvq, v.totals.total], [want.s, Math.round(want.s * 0.05), Math.round(want.s * 0.09975), want.s + Math.round(want.s * 0.05) + Math.round(want.s * 0.09975)]);
+    assert.deepEqual(v.items.map((i) => i.qty), [1.333, 0, 1.15, 1], 'the lines shown are the lines counted');
+  } finally {
+    await q(`delete from public.public_links where quote_id = $1`, [quote]);
+    await q(`delete from public.quotes where id = $1`, [quote]);
+  }
+});
+
 /* ---------- the texts (notify) ---------- */
 
 test('the same text sent twice with the same op (the answer was lost, the person taps again, or two taps at once): texted once, the same answer', async () => {
