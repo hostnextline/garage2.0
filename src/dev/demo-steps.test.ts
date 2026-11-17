@@ -113,10 +113,14 @@ describe('booking in block mode', () => {
   it('« Laisser l’app choisir » un-pins; a change of truck in the same block keeps the confirmation (demo-17)', () => {
     put('jobs', { id: 'j-t2', truck_pinned: true, confirm_sent_at: '2026-01-01T12:00:00.000Z' });
     const r = call('move_job', { p_job: 'j-t2', p_day: D(1), p_block: 'pm', p_truck: null });
-    expect(r.unchanged).toBeUndefined();
+    expect(r).toMatchObject({ changed: false, tell: false });
     expect(find('jobs', 'j-t2')!.truck_pinned).toBe(false);
     expect(find('jobs', 'j-t2')!.confirm_sent_at).toBe('2026-01-01T12:00:00.000Z');
     expect(call('move_job', { p_job: 'j-t2', p_day: D(1), p_block: 'pm', p_truck: null }).unchanged).toBe(true);
+  });
+  it('a move to another day tells the customer (R23: tell)', () => {
+    const r = call('move_job', { p_job: 'j-t2', p_day: freeTuesday(), p_block: 'pm', p_truck: null });
+    expect(r).toMatchObject({ ok: true, changed: true, tell: true, was: { day: D(1), block: 'pm' } });
   });
   it('a walk-in and a booking never get the same number (demo-18)', () => {
     const b = call('book_job', { p_job: { id: 'n-b', customer_id: 'c-julie', day: freeTuesday(), block: 'pm' }, p_items: [] });
@@ -146,5 +150,42 @@ describe('« Retour à la Centrale » in the demo (demo-16)', () => {
     const end = await fnOf('enroute')!({ action: 'return_end' }) as Record<string, unknown>;
     expect(end.ok).toBe(true);
     expect(find('trips', trip!.id)!.status).toBe('arrived');
+  });
+});
+
+describe('the outside services said to the app follow the demo\'s Branchements (demo-26)', () => {
+  it('a Stripe key typed makes card_online true; a test key is refused like live', async () => {
+    loadDemo(ME.owner);
+    const { fnOf } = await import('./fake-server');
+    const { accessOf } = await import('./demo');
+    (globalThis as { __demoServices?: unknown }).__demoServices = {};
+    expect(accessOf(ME.owner).card_online).toBe(false);
+    expect((fnOf('team')!({ action: 'secrets-set', stripe_key: 'sk_test_abcdefghijklmn' }) as { code?: string }).code).toBe('stripe_key');
+    expect(fnOf('team')!({ action: 'secrets-set', stripe_key: 'sk_live_abcdefghijklmn' })).toMatchObject({ ok: true });
+    expect(accessOf(ME.owner).card_online).toBe(true);
+    (globalThis as { __demoServices?: unknown }).__demoServices = undefined;
+  });
+});
+
+describe('?demo&texto: the text shows when it comes, not 15 s later (demo-22)', () => {
+  it('the demo says « look now » right after Lara writes, as realtime would', async () => {
+    const { vi } = await import('vitest');
+    const { onCheckTexts } = await import('../services/bubbles');
+    vi.useFakeTimers();
+    const was = location.href;
+    try {
+      history.replaceState(null, '', '/?demo&texto');
+      let looked = 0;
+      onCheckTexts(() => { looked++; });
+      loadDemo(ME.owner);
+      vi.advanceTimersByTime(4200);
+      expect(table('incoming_texts').length).toBe(1);
+      expect(looked).toBe(1);
+    } finally {
+      onCheckTexts(null);
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      history.replaceState(null, '', was);
+    }
   });
 });

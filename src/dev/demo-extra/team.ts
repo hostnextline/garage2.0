@@ -88,9 +88,14 @@ function team(b: Obj): Obj {
         if (!k) { st.stripe = false; st.test = false; st.stripeEnd = null; }
         else {
           if (!/^(sk|rk)_(live|test)_[A-Za-z0-9]{10,}$/.test(k)) return fail('stripe_key', 'La clé Stripe commence par « sk_live_ », « sk_test_ » ou « rk_ ».');
+          // like live (a test copy of the server only, never live): a test key is refused
+          if (/_test_/.test(k)) return fail('stripe_key', 'Clé de test refusée : l’app n’a qu’une seule base de données, un paiement test marquerait une vraie facture payée. Mets la clé « sk_live_ ».');
           st.stripe = true; st.test = /_test_/.test(k); st.stripeEnd = k.slice(-4);
         }
       }
+      // what the app is told (my_access card_online / texts_online) follows the keys typed here (demo-26)
+      const g = globalThis as { __demoServices?: { card?: boolean; texts?: boolean } };
+      g.__demoServices = { ...(g.__demoServices || {}), card: st.stripe && !st.test, ...('ghl_token' in b || 'ghl_location' in b ? { texts: st.ghl } : {}) };
       return { ok: true };
     }
     case 'sms-test':

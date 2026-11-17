@@ -123,10 +123,14 @@ function registerOps() {
     const p = placeIn(day, block, Number(j.duration_min) || 60, wanted, j.id);
     if ('refusal' in p) refuse(p.refusal, WHY[p.refusal].replace(' Choisis un autre bloc.', ''));
     const from = { day: String(j.day), block: String(j.block) };
+    const fromTruck = (j.truck_id as string | null) ?? null;
     // the day and the time told to the customer stay: no text to send again for a change of truck in the same block
     put('jobs', { id: j.id, day, block, truck_id: p.truck, truck_pinned: !!wanted, stop_order: 99, manual_order: null, ...(same ? {} : { confirm_sent_at: null }) });
     const changed = [...renumber(day, block), ...(same ? [] : renumber(from.day, from.block))];
-    return { ok: true, job_id: j.id, changed: true, rows: rows({ jobs: changed.length ? changed : [find('jobs', j.id)!] }) };
+    // what really changed for the customer (the day, the block): « tell » (R23); a truck alone tells nothing
+    const was = { day: from.day, block: from.block, truck_id: fromTruck }, now = { day, block, truck_id: p.truck };
+    return { ok: true, job_id: j.id, changed: !same, tell: !same, window_changed: false, truck_changed: fromTruck !== p.truck, was, now,
+      rows: rows({ jobs: changed.length ? changed : [find('jobs', j.id)!] }) };
   });
 
   registerRpc('suggest_blocks', (a) => {

@@ -1,5 +1,6 @@
 /* DEV ONLY — a pretend conversation with a customer (the real one comes from GoHighLevel: supabase/functions/conversation). */
 import { registerFn, put, find } from '../fake-server';
+import { checkTexts } from '../../services/bubbles';
 
 /** « Plages d'arrivée » switched on in the pretend settings: the example says a window, never a block */
 const windowsOn = () => (find('settings', '1')?.booking as { windows_on?: boolean } | undefined)?.windows_on === true;
@@ -11,7 +12,9 @@ export function load() {
   if (/[?&]texto\b/.test(location.search)) {
     const me = find('staff', 'u-hassan');
     if (me) put('staff', { id: 'u-hassan', prefs: { ...((me.prefs as object) || {}), texts: true } });
-    const lara = (body: string) => put('incoming_texts', { phone: '+15145550177', name: 'Lara', body, at: new Date().toISOString() });
+    /* the demo has no realtime: it says « look now » itself, as the live socket would, so the bubble comes with the
+       text instead of at the next look 15 s later (demo-22) */
+    const lara = (body: string) => { put('incoming_texts', { phone: '+15145550177', name: 'Lara', body, at: new Date().toISOString() }); setTimeout(() => checkTexts(), 100); };
     setTimeout(() => lara('Bonjour, c’est Lara. Avez-vous une place demain matin pour un changement d’huile ?'), 4000);
     setTimeout(() => lara('C’est une Honda Civic 2019.'), 25000);
   }
