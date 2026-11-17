@@ -1,5 +1,5 @@
 // Receipt photos against a REAL server (the local test stack: Postgres, GoTrue, PostgREST, the front door), with the
-// very calls of receipts.ts: the insert with its own id and an abort signal, the retry of a try whose answer was lost
+// very calls of receipts.ts (imported from receiptCall.ts, not copied): the insert with its own id and an abort signal, the retry of a try whose answer was lost
 // (23505), the read back, the expense given its receipt_id afterwards (the app's update), a person without
 // « Trésorerie » refused, and what the phone gets when there is no signal or the try is cut off. Not a unit test (vitest
 // does not run it): run on the local stack, from a copy of the app, with
@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+// Node (22.18 and later) strips the types of this one file, which has no import at run time
+import { insertReceipt, selectReceipt } from './receiptCall.ts';
 
 // the lane's front door: the harness gives the lane's database port (lane A 54352, lane B 54452)
 const GW = process.env.GARAGE_DB_PORT === '54452' ? 54431 : 54331;
@@ -32,20 +34,10 @@ async function member(name, rights) {
 }
 // a small real JPEG (1×1), as shrinkPhoto gives it: data:image/jpeg;base64,…
 const JPEG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
-/** uploadPhoto of receipts.ts, word for word (the client given) */
-async function uploadPhoto(sb, p, signal) {
-  const data = p.dataUrl.split(',')[1] || '';
-  const r = await sb.from('attachments')
-    .insert({ id: p.id, kind: 'receipt', mime: 'image/jpeg', data, bytes: Math.round(data.length * 0.75), width: p.w, height: p.h })
-    .abortSignal(signal);
-  return r;
-}
-/** readAttachment of receipts.ts */
-async function readAttachment(sb, id) {
-  const { data, error } = await sb.from('attachments').select('mime, data').eq('id', id).maybeSingle();
-  if (error) throw error;
-  return data ? `data:${data.mime};base64,${data.data}` : null;
-}
+/** the app's own insert and read of a photo (receiptCall.ts, which receipts.ts uploadPhoto / readAttachment use), with
+    the client given: no copy here, so a change to the app's call is what this check runs (review treasury-recon-r2-3) */
+const uploadPhoto = (sb, p, signal) => insertReceipt(sb, p, signal);
+const readAttachment = (sb, id) => selectReceipt(sb, id);
 const shape = (r) => ({ status: r.status, code: r.error?.code ?? null, name: r.error?.name ?? null, message: String(r.error?.message ?? '').slice(0, 80) });
 
 let tre, meca;

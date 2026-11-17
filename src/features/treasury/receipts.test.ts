@@ -276,3 +276,27 @@ describe('receipt photos: the real server’s answers (recorded on the local tes
     } finally { vi.useRealTimers(); }
   });
 });
+
+describe('review treasury-recon-r2-3: the check on a real server runs the app’s own call, not a copy', () => {
+  // the sources as text (vite's ?raw): the server check is plain Node, not run by vitest
+  const SRC = import.meta.glob(['./receipts.server-check.mjs', './receipts.ts', './receiptCall.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+  const code = (f: string) => SRC[f].replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  it('the server check imports the insert and the read from receiptCall.ts and writes no attachments call of its own', () => {
+    const check = code('./receipts.server-check.mjs');
+    expect(check).toMatch(/import \{[^}]*\binsertReceipt\b[^}]*\bselectReceipt\b[^}]*\} from '\.\/receiptCall\.ts'/);
+    // (the service account still counts the rows stored: that is the check's own look at the server, not the app's call)
+    expect(check).not.toMatch(/from\('attachments'\)\s*\.insert|select\('mime, data'\)|\.abortSignal\(/);
+  });
+  it('receipts.ts sends and reads the photos only through receiptCall.ts', () => {
+    const app = code('./receipts.ts');
+    expect(app).toMatch(/insertReceipt\(sb, p, signal\)/);
+    expect(app).toMatch(/selectReceipt\(sb, id\)/);
+    expect(app).not.toMatch(/from\('attachments'\)/);
+  });
+  it('receiptCall.ts has no import at run time (Node loads it alone, stripping the types)', () => {
+    const lines = code('./receiptCall.ts').split('\n').filter((l) => /^\s*import\b/.test(l));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines) expect(l).toMatch(/^\s*import type\b/);
+    expect(code('./receiptCall.ts')).not.toMatch(/\benum\b|\bnamespace\b/);
+  });
+});
