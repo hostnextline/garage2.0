@@ -11,7 +11,8 @@ import { type LucideIcon, Truck, MapPinCheck, ScanLine, Signature, PenLine, Wren
 import type { Job, JobItem } from '../../data/types';
 import { BigStep } from '../../ui';
 import { t, lang } from '../../lib/i18n';
-import { money, lineTotal } from '../../lib/money';
+import { money } from '../../lib/money';
+import { lineCents } from '../../domain/jobs/billing';
 import { getRow } from '../../data/store';
 import { net } from '../../data/sync';
 import { me } from '../../data/auth';
@@ -65,7 +66,7 @@ function stepWords(j: Job, s: NextStep): { label: string; sub: string } {
     case 'waiver': return { label: t('jobs.step.waiver'), sub: t('jobs.step.waiverSub') };
     case 'answer': {
       const it = getRow<JobItem>('job_items', s.itemId);
-      const price = it ? money(lineTotal({ qty: Number(it.qty), unitCents: it.unit_cents }), l) : '';
+      const price = it ? money(lineCents(it), l) : '';
       return { label: t('jobs.step.answer'), sub: it ? t('jobs.step.answerSub', { what: it.description, price }) : '' };
     }
     case 'work': return { label: t('jobs.step.work'), sub: t('jobs.step.workSub') };

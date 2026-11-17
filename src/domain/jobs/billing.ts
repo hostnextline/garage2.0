@@ -1,7 +1,7 @@
 /* A job's work and its invoice: which invoice counts, which work it bills, what is still missing from it, what a line is
    worth. Pure (tested in billing.test.ts): the red button, the work panel and the line sheet ask the same questions. */
 import type { Invoice, JobItem, JobStatus } from '../../data/types';
-import { lineTotal } from '../../lib/money';
+import { lineCents as invoiceLineCents } from '../money/invoice';
 
 /** the work that goes on the invoice */
 export const BILLABLE = ['planned', 'done', 'approved'];
@@ -52,9 +52,11 @@ export function draftIsStale(v: InvoiceLike | null | undefined, items: ItemLike[
   for (const id of on) if (!work.has(id)) return true;
   return false;
 }
-/** what a line is worth before taxes (a discount counts against the total) */
+/** what a line is worth before taxes: the invoice's own rule (domain/money/invoice.ts, the server's invoice_totals), so
+    the job sheet says what the invoice will say. qty × price rounded to the cent; a discount always lowers the total
+    (stored positive or negative); any other line keeps its sign (a service priced −15 $ counts −15 $, R46) */
 export function lineCents(i: Pick<JobItem, 'qty' | 'unit_cents' | 'kind'>): number {
-  return (i.kind === 'discount' ? -1 : 1) * lineTotal({ qty: Number(i.qty), unitCents: Math.abs(i.unit_cents) });
+  return invoiceLineCents(i);
 }
 
 /** the estimate the customer signed online against what the customer owes now. The server keeps as the signed amount the

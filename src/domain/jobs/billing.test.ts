@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { liveInvoice, isFinished, isBilled, billable, unbilledWork, lineCents, estimateChanged, isOpen } from './billing';
 import type { InvoiceLine, ItemStatus } from '../../data/types';
+import { lineCents as invoiceLineCents } from '../money/invoice';
 
 const line = (item_id?: string): InvoiceLine => ({ description: 'x', qty: 1, unit_cents: 1000, taxable: true, item_id });
 const inv = (status: 'draft' | 'issued' | 'paid' | 'void', ids: (string | undefined)[], o: { deleted_at?: string | null; total_cents?: number } = {}) =>
@@ -63,6 +64,14 @@ describe('the amount of a line', () => {
     expect(lineCents({ qty: 1, unit_cents: -500, kind: 'discount' })).toBe(-500);
     expect(lineCents({ qty: 1, unit_cents: 500, kind: 'discount' })).toBe(-500);
     expect(lineCents({ qty: 4.5, unit_cents: 999, kind: 'part' })).toBe(4496);
+  });
+  it('a line that is not a discount keeps its sign, as on the invoice and on the server (R46)', () => {
+    // before: −15 $ on a service counted +15 $ on the job sheet while the invoice said −15 $
+    expect(lineCents({ qty: 1, unit_cents: -1500, kind: 'service' })).toBe(-1500);
+    expect(lineCents({ qty: 2, unit_cents: -500, kind: 'part' })).toBe(-1000);
+    // the invoice's own count of the same line
+    for (const l of [{ qty: 1, unit_cents: -1500, kind: 'service' as const }, { qty: 3, unit_cents: 333, kind: 'discount' as const }, { qty: 1.5, unit_cents: 1001, kind: 'labour' as const }])
+      expect(lineCents(l)).toBe(invoiceLineCents(l));
   });
 });
 
