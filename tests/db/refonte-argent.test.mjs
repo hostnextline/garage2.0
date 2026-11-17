@@ -76,9 +76,13 @@ test('every money operation claims its op before any work (op_begin), and saves 
     assert.doesNotMatch(body, /op_done\(/, `${name}: no more op_done`);
     assert.match(body, new RegExp(`public\\.op_save\\(p_op, '${name}'`), `${name}: its answer is saved`);
     // after the claim, every way out saves its answer or raises (a refusal returned as plain jsonb would make the
-    // retry answer « ok »): each « return » is the claim's stored answer or op_save, and no handler swallows a refusal
+    // retry answer « ok »): each « return » is the claim's stored answer or op_save UNDER ITS OWN NAME (an answer saved
+    // under another name is never found by the retry, which does the work again), and no handler swallows a refusal
+    const way = new RegExp(`\\breturn (v_done;|public\\.op_save\\(p_op, '${name}')`);
+    assert.doesNotMatch(`  return public.op_save(p_op, '${name}_x', jsonb_build_object('ok', true));`, way, `${name}: another op's name is caught`);
+    assert.doesNotMatch(`  return public.op_save(p_op, 'other', jsonb_build_object('ok', true));`, way, `${name}: another op's name is caught`);
     for (const line of body.split('\n').map((l) => l.replace(/--.*$/, ''))) {
-      if (/\breturn\b/.test(line)) assert.match(line, /\breturn (v_done;|public\.op_save\(p_op, '[a-z_]+')/, `${name}: ${line.trim()}`);
+      if (/\breturn\b/.test(line)) assert.match(line, way, `${name}: ${line.trim()}`);
     }
     assert.doesNotMatch(body, /\bexception\s+when\b/i, `${name}: no handler that could swallow a refusal`);
   }
