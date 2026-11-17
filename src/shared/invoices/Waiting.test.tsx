@@ -69,6 +69,52 @@ describe('a payment kept on the phone', () => {
   });
 });
 
+describe('an amount typed wrong in « Encaisser » (R126)', () => {
+  it('the cash received typed wrong is not taken for « exact »: no payment until it is fixed', async () => {
+    replaceLocal('invoices', [inv()]);
+    act(() => render(<PaySheet open invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    await act(async () => { (document.querySelector('button[data-testid="pay-cash"]') as HTMLElement).click(); });
+    await wait();
+    const confirm = () => q('pay-confirm') as HTMLButtonElement;
+    expect(confirm().disabled).toBe(false);
+    const received = document.querySelector('[data-testid="pay-cash"] .pay-amount input') as HTMLInputElement;
+    await act(async () => { received.value = '50,,'; received.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect(confirm().disabled).toBe(true);
+    await act(async () => { received.value = '120'; received.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect(confirm().disabled).toBe(false);
+    expect(q('pay-change')?.textContent).toMatch(/5,00/);
+  });
+  it('typed wrong, then « Débit », then « Comptant » again: the field is empty and « Encaisser » works (review invoices-r2-4)', async () => {
+    replaceLocal('invoices', [inv()]);
+    act(() => render(<PaySheet open invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    const method = (m: string) => act(async () => { (document.querySelector(`button[data-testid="pay-${m}"]`) as HTMLElement).click(); });
+    const confirm = () => q('pay-confirm') as HTMLButtonElement;
+    await method('cash');
+    await wait();
+    const received = () => document.querySelector('[data-testid="pay-cash"] .pay-amount input') as HTMLInputElement;
+    await act(async () => { received().value = '50,,'; received().dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect(confirm().disabled).toBe(true);
+    await method('debit');
+    await wait();
+    expect(confirm().disabled).toBe(false);
+    await method('cash');
+    await wait();
+    expect(received().value).toBe('');
+    expect(received().getAttribute('aria-invalid')).toBeNull();
+    expect(confirm().disabled).toBe(false);
+    // still red when « Comptant » is tapped again without leaving it
+    await act(async () => { received().value = '50,,'; received().dispatchEvent(new Event('input', { bubbles: true })); });
+    await method('cash');
+    await wait();
+    expect(confirm().disabled).toBe(true);
+  });
+});
+
 describe('« Terminer la facture » waiting for the network', () => {
   it('the draft is shown finished, read-only, and « Encaisser » its total works', async () => {
     replaceLocal('invoices', [inv({ status: 'draft', number: null, subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0, issued_at: null })]);
@@ -105,6 +151,23 @@ describe('« Terminer la facture » waiting for the network', () => {
   });
 });
 
+describe('« Modifier la facture » on a paid invoice (R42)', () => {
+  it('not while its « Terminer la facture » waits: shown paid (paid ahead), but the server still has a draft', async () => {
+    replaceLocal('invoices', [inv({ status: 'draft', number: null, subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0, issued_at: null })]);
+    replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: '2026-11-17T15:00:00Z', created_at: '2026-11-17T15:00:00Z', deleted_at: null } as never]);
+    outbox.list = [rpc('invoice_finish', { p_invoice: 'f-1', p_op: 'y' })];
+    act(() => render(<InvoicePanel jobId="j-1" />, box));
+    await wait();
+    expect(q('invoice-panel')?.classList.contains('is-paid')).toBe(true);
+    expect(q('invoice-reopen')).toBeNull();
+    // finished by the server: paid, the job under way, « Modifier la facture » is offered
+    outbox.list = [];
+    replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 11498 })]);
+    await wait();
+    expect(q('invoice-reopen')).not.toBeNull();
+  });
+});
+
 describe('« Rembourser » (review inv-r4)', () => {
   it('a refund waiting beside a payment waiting: the sheet says the refund waits, it is not cancelled out (never offered twice)', async () => {
     replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 22996 })]);
@@ -113,6 +176,24 @@ describe('« Rembourser » (review inv-r4)', () => {
     await wait();
     expect(q('pay-confirm')).toBeNull();
     expect(q('pay-waiting')?.textContent).toMatch(/114,98/);
+  });
+  it('paid too much by card online: no form, « rembourse dans Stripe » (its refund is written by itself; by hand it would count twice) (review argent-app-04)', async () => {
+    const row = (id: string, cents: number, method: string) => ({ id, invoice_id: 'f-1', job_id: 'j-1', amount_cents: cents, method, reference: null,
+      paid_at: '2026-11-17T15:00:00Z', created_at: '2026-11-17T15:00:00Z', created_by: null, deleted_at: null }) as never;
+    access.value = { ...access.value!, roles: ['owner'], owner: true };
+    replaceLocal('invoices', [inv({ status: 'paid', paid_cents: 16498 })]);
+    replaceLocal('payments', [row('p-1', 16498, 'card_online')]);
+    act(() => render(<PaySheet open refund invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    expect(q('pay-confirm')).toBeNull();
+    expect(q('pay-refund-card')?.textContent).toMatch(/Stripe.*50,00|50,00.*Stripe/s);
+    // a card and cash: by hand, at most the cash (30 $), and the sheet says the card part goes back in Stripe
+    act(() => render(null, box));
+    replaceLocal('payments', [row('p-1', 13498, 'card_online'), row('p-2', 3000, 'cash')]);
+    act(() => render(<PaySheet open refund invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    expect(q('pay-balance')?.textContent).toMatch(/30,00/);
+    expect(q('pay-refund-hint')?.textContent).toContain('Stripe');
   });
   it('a cancelled invoice that holds money: no refund form (the server refuses a payment on it)', async () => {
     replaceLocal('invoices', [inv({ status: 'void', paid_cents: 3000 })]);

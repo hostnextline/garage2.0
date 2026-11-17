@@ -135,7 +135,9 @@ export const invoices = {
     percent: 'Rabais en pourcentage',
     none: 'Aucune ligne.',
     qtyTimes: '{q} × {p}',
-    notTaxable: 'Non taxable'
+    notTaxable: 'Non taxable',
+    /** a price typed wrong (red) when finishing the invoice, or sending or booking the estimate */
+    badPrice: 'Un prix est mal écrit : corrige le champ en rouge d’abord.'
   },
   catalog: {
     title: 'Du catalogue',
@@ -171,6 +173,7 @@ export const invoices = {
     overTitle: 'Trop-perçu : {amount} à remettre au client',
     over: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Remets-lui la différence, puis inscris-la ici.',
     overButton: 'Inscrire le remboursement',
+    overOffice: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Dis-le au bureau : c’est le bureau qui le rembourse.',
     unbilled: { one: '1 travail de la job n’est pas sur la facture', other: '{n} travaux de la job ne sont pas sur la facture' },
     unbilledText: 'Pour le facturer, touche « Modifier la facture », puis termine-la de nouveau.',
     unbilledClosed: 'Cette facture ne peut plus être modifiée.',
@@ -190,6 +193,7 @@ export const invoices = {
     paidAhead: 'Le client a déjà payé {amount}. Reste à payer : {left}.',
     paidAheadAll: 'Le client a déjà tout payé ({amount}). Termine la facture : elle sera marquée PAYÉ.',
     paidAheadOver: 'Le client a déjà payé {amount}, soit {over} de plus que la facture : à lui remettre une fois la facture terminée.',
+    paidAheadBelow: 'Le client a déjà payé {amount}, soit {over} de plus que ce total. Une facture modifiée ne se termine pas plus bas que ce qui est payé : remets le travail retiré, ou parle au bureau.',
     finished: 'Facture {n} terminée',
     addedWork: 'Ajouté à la facture : {what}',
     missing: {
@@ -208,7 +212,8 @@ export const invoices = {
     problem: {
       empty: 'Ajoute au moins une ligne avant de terminer la facture.',
       no_description: 'Une ligne n’a pas de description : écris ce qui a été fait.',
-      negative: 'Le total est négatif : vérifie le rabais.'
+      negative: 'Le total est négatif : vérifie le rabais.',
+      below_paid: 'Le client a déjà payé {amount} : le total ne peut pas être plus bas.'
     }
   },
 
@@ -220,7 +225,9 @@ export const invoices = {
     finishedAgain: 'Facture {n} terminée de nouveau. Le client a reçu l’ancienne : renvoie-la par texto.',
     finishedAgainQuiet: 'Facture {n} terminée de nouveau.',
     item: 'La facture est terminée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
-    itemPaid: 'La facture est payée : cette ligne ne change plus.'
+    itemPaid: 'La facture est payée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
+    /** a billed line whose invoice nobody here may open again (paid too much: refunded first; another truck's job) */
+    itemLocked: 'La facture est terminée : pour changer cette ligne, demande au bureau.'
   },
 
   void: {
@@ -267,7 +274,9 @@ export const invoices = {
       confirm: 'Inscrire {amount} remboursé',
       done: 'Remboursement de {amount} inscrit.',
       tooMuch: 'C’est plus que le trop-perçu ({max}).',
-      hint: 'Inscris ici l’argent remis en main propre ou par virement.'
+      hint: 'Inscris ici l’argent remis en main propre ou par virement.',
+      card: 'Payé par carte en ligne : rembourse {amount} dans Stripe. Le remboursement s’inscrit tout seul sur la facture.',
+      cardPart: 'Une partie a été payée par carte en ligne : elle se rembourse dans Stripe (le remboursement s’inscrit tout seul). Inscris ici seulement l’argent remis en main propre ou par virement.'
     },
     not: {
       draft: 'Termine la facture avant d’encaisser.',

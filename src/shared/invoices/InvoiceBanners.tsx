@@ -10,11 +10,14 @@ import { Banner, Button } from '../../ui';
 import { workMissing, jobOpen } from '../../domain/money/draft';
 import { ReopenButton, mayReopen } from './Reopen';
 
-export function OverBanner(p: { over: number; canRefund: boolean; onRefund: () => void }) {
+/** `office`: the person may record money given back (the owner, « edit_invoices »: the server refuses a negative payment
+    from anyone else). Whoever may not is told to tell the office, never to hand the money back himself. */
+export function OverBanner(p: { over: number; canRefund: boolean; onRefund: () => void; office?: boolean }) {
   if (p.over <= 0) return null;
+  const office = p.office ?? p.canRefund;
   return (
     <Banner kind="warn" title={t('invoices.panel.overTitle', { amount: money(p.over, lang.value) })} data-testid="invoice-over">
-      <p style={{ margin: 0 }}>{t('invoices.panel.over')}</p>
+      <p style={{ margin: 0 }}>{t(office ? 'invoices.panel.over' : 'invoices.panel.overOffice')}</p>
       {p.canRefund && <Button size="sm" onClick={p.onRefund} data-testid="invoice-refund">{t('invoices.panel.overButton')}</Button>}
     </Banner>
   );

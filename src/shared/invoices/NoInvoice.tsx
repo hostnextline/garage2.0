@@ -18,7 +18,8 @@ export function NoInvoice(p: { job: Job }) {
   const editable = canEditInvoiceOf(p.job);
   const old = voidedOf(p.job.id);
   const waiting = waitingForNetwork(makeWaiting(waitingEntries(), p.job.id), net.value.online);
-  const make = () => run(() => invoiceForJob(p.job.id, true), { ok: t('invoices.panel.made') });
+  // p_refresh false: a « Faire la facture » sent late (no signal) never rewrites a draft someone edited meanwhile (R52)
+  const make = () => run(() => invoiceForJob(p.job.id, false), { ok: t('invoices.panel.made') });
   return (
     <Panel title={t('invoices.panel.title')} help={t('invoices.panel.help')} data-testid="invoice-panel" class="inv-panel">
       <div class="stack">

@@ -36,6 +36,8 @@ describe('« Factures » searched', () => {
     act(() => render(<InvoicesScreen params={{}} query={new URLSearchParams('tab=all')} />, box));
     await wait();
     expect(rows()).toBe(1);
+    // the search and the period carry the class whose rule out-ranks the stock screens' column (R128)
+    expect(box.querySelector('.inv-filters.inv-list-filters input[type="search"]')).not.toBeNull();
     const search = box.querySelector('input[type="search"]') as HTMLInputElement;
     await act(async () => { search.value = 'Julie'; search.dispatchEvent(new Event('input', { bubbles: true })); });
     await wait();

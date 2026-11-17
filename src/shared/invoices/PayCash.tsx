@@ -5,7 +5,7 @@ import { money } from '../../lib/money';
 import { Field, MoneyInput, Banner } from '../../ui';
 import { cashQuick, type Cash } from '../../domain/money/invoice';
 
-export function PayCash(p: { cash: Cash; received: number | null; onReceived: (c: number | null) => void; balance: number }) {
+export function PayCash(p: { cash: Cash; received: number | null; onReceived: (c: number | null, info?: { valid: boolean }) => void; balance: number }) {
   const { cash } = p;
   const l = lang.value;
   return (

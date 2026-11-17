@@ -135,7 +135,9 @@ export const invoices: typeof fr = {
     percent: 'Discount as a percentage',
     none: 'No lines.',
     qtyTimes: '{q} × {p}',
-    notTaxable: 'Not taxable'
+    notTaxable: 'Not taxable',
+    /** a price typed wrong (red) when finishing the invoice, or sending or booking the estimate */
+    badPrice: 'A price is not written right: fix the field in red first.'
   },
   catalog: {
     title: 'From the price list',
@@ -171,6 +173,7 @@ export const invoices: typeof fr = {
     overTitle: 'Overpaid: {amount} to give back to the customer',
     over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Give the difference back, then record it here.',
     overButton: 'Record the refund',
+    overOffice: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Tell the office: the office refunds it.',
     unbilled: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
     unbilledText: 'To bill it, tap “Change the invoice”, then finish it again.',
     unbilledClosed: 'This invoice can no longer be changed.',
@@ -190,6 +193,7 @@ export const invoices: typeof fr = {
     paidAhead: 'The customer already paid {amount}. Left to pay: {left}.',
     paidAheadAll: 'The customer already paid everything ({amount}). Finish the invoice: it will be marked PAID.',
     paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice: give it back once the invoice is finished.',
+    paidAheadBelow: 'The customer already paid {amount}, {over} more than this total. A changed invoice is not finished below what was paid: put back the work taken off, or talk to the office.',
     finished: 'Invoice {n} finished',
     addedWork: 'Added to the invoice: {what}',
     missing: {
@@ -208,7 +212,8 @@ export const invoices: typeof fr = {
     problem: {
       empty: 'Add at least one line before finishing the invoice.',
       no_description: 'A line has no description: write what was done.',
-      negative: 'The total is negative: check the discount.'
+      negative: 'The total is negative: check the discount.',
+      below_paid: 'The customer already paid {amount}: the total cannot be lower.'
     }
   },
 
@@ -220,7 +225,9 @@ export const invoices: typeof fr = {
     finishedAgain: 'Invoice {n} finished again. The customer got the old one: text it again.',
     finishedAgainQuiet: 'Invoice {n} finished again.',
     item: 'The invoice is finished. To remove this line or change its price, open it again:',
-    itemPaid: 'The invoice is paid: this line no longer changes.'
+    itemPaid: 'The invoice is paid. To remove this line or change its price, open it again:',
+    /** a billed line whose invoice nobody here may open again (paid too much: refunded first; another truck's job) */
+    itemLocked: 'The invoice is finished: to change this line, ask the office.'
   },
 
   void: {
@@ -267,7 +274,9 @@ export const invoices: typeof fr = {
       confirm: 'Record {amount} refunded',
       done: 'Refund of {amount} recorded.',
       tooMuch: 'That is more than what was paid too much ({max}).',
-      hint: 'Record here money given back in person or by transfer.'
+      hint: 'Record here money given back in person or by transfer.',
+      card: 'Paid by card online: refund {amount} in Stripe. The refund is recorded on the invoice by itself.',
+      cardPart: 'Part was paid by card online: that part is refunded in Stripe (the refund is recorded by itself). Record here only money given back in person or by transfer.'
     },
     not: {
       draft: 'Finish the invoice before taking the payment.',

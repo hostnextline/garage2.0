@@ -19,6 +19,20 @@ function leaves(d: unknown, prefix = ''): Record<string, string> {
 }
 const holes = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().filter((x, i, a) => a.indexOf(x) === i);
 
+describe('the billed line of a paid invoice (jobs’ item sheet, review invoices-r2-2)', () => {
+  // the sheet shows reopen.itemPaid right above « Modifier la facture », which a paid invoice of an open job has (R42):
+  // the words lead to the button, they no longer say the line never changes
+  it('says how to change the line: open the invoice again, as for a finished one', () => {
+    expect(frInvoices.reopen.itemPaid).toBe('La facture est payée. Pour retirer cette ligne ou changer son prix, rouvre-la :');
+    expect(enInvoices.reopen.itemPaid).toBe('The invoice is paid. To remove this line or change its price, open it again:');
+    for (const s of [frInvoices.reopen.itemPaid, enInvoices.reopen.itemPaid]) expect(s).not.toMatch(/ne change plus|no longer changes/);
+  });
+  it('a line no one here may reopen (paid too much, or not this person’s invoice): ask the office', () => {
+    expect(frInvoices.reopen.itemLocked).toBe('La facture est terminée : pour changer cette ligne, demande au bureau.');
+    expect(enInvoices.reopen.itemLocked).toBe('The invoice is finished: to change this line, ask the office.');
+  });
+});
+
 describe.each([['invoices', frInvoices, enInvoices], ['quotes', frQuotes, enQuotes]])('the %s words', (_name, fr, en) => {
   const f = leaves(fr), e = leaves(en);
   it('have the same keys in French and English', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ItemKind } from '../../data/types';
-import { workMissing, workToAdd, withoutGoneWork, lineOfWork, percentOf, syncPercents, discountBase, putBack, addLines, settleLines, draftPatch, jobOpen, type WorkItem } from './draft';
+import { workMissing, workToAdd, withoutGoneWork, lineOfWork, percentOf, syncPercents, discountBase, putBack, addLines, settleLines, draftPatch, jobOpen, belowPaid, type WorkItem } from './draft';
 
 const made = '2026-11-15T13:00:00.000Z';
 const item = (id: string, o: Partial<WorkItem> = {}): WorkItem => ({ id, status: 'planned', description: `work ${id}`, qty: 1, unit_cents: 10000, taxable: true, kind: 'service',
@@ -137,3 +137,12 @@ describe('only what changed is sent', () => {
   });
 });
 
+
+describe('« Modifier la facture » then a lower total (R42)', () => {
+  it('a draft that holds a number is not finished below what the customer paid; a new draft may be (the rest is « Trop-perçu »)', () => {
+    expect(belowPaid(51, 11498, 5749)).toBe(5749);
+    expect(belowPaid(51, 11498, 11498)).toBe(0);
+    expect(belowPaid(51, 0, 5749)).toBe(0);
+    expect(belowPaid(null, 11498, 5749)).toBe(0);
+  });
+});

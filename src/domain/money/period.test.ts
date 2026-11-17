@@ -56,8 +56,8 @@ describe('periods of the invoice list', () => {
     expect(listPeriodRange('30d', '2026-11-04')).toEqual(['2026-10-06', '2026-11-04']);
     expect(listPeriodRange('year', '2026-11-04')).toEqual(['2026-01-01', '2026-11-04']);
     expect(listPeriodRange('all', '2026-11-04')).toBeNull();
-    expect(inListPeriod(new Date(2026, 9, 31, 12).toISOString(), ['2026-10-01', '2026-10-31'])).toBe(true);
-    expect(inListPeriod(new Date(2026, 10, 1, 12).toISOString(), ['2026-10-01', '2026-10-31'])).toBe(false);
+    expect(inListPeriod('2026-10-31T16:00:00Z', ['2026-10-01', '2026-10-31'])).toBe(true);
+    expect(inListPeriod('2026-11-01T17:00:00Z', ['2026-10-01', '2026-10-31'])).toBe(false);
     expect(inListPeriod(null, null)).toBe(true);
   });
 });

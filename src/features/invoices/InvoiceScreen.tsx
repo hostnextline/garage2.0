@@ -17,7 +17,7 @@ import { Page, Panel, Button, Banner, Empty, Skeleton, InvoicePill, Rows, RowIte
 import { invoicePdfData } from '../../domain/money/document';
 import { viewOf, type InvoiceView } from '../../domain/money/view';
 import { waitingEntries, unsentPayments, finishEntries, waitingForNetwork } from '../../domain/money/waiting';
-import { mayRefund } from '../../domain/money/pay';
+import { mayRefund, holdsMoney } from '../../domain/money/pay';
 import { invoiceById, paymentsOfInvoice, invoiceCustomer, invoiceWho, canEditInvoiceOf, canManageInvoices, methodWord, invoiceTexts } from '../../shared/invoices/select';
 import { DraftInvoice, PaymentsList, ReopenButton } from '../../shared/invoices/InvoicePanel';
 import { OverBanner, UnbilledBanner, PayWaitingBanner } from '../../shared/invoices/InvoiceBanners';
@@ -82,7 +82,7 @@ function DocScreen(p: { view: InvoiceView }) {
     if (r) setManual(r);
   };
   const cancel = async () => {
-    if (pays.length) { toast(t('invoices.void.hasPayments'), { kind: 'bad' }); return; }
+    if (holdsMoney(pays, waiting)) { toast(t('invoices.void.hasPayments'), { kind: 'bad' }); return; }
     const reason = await askText({ title: t('invoices.void.title', { n: number }), text: t('invoices.void.text'), label: t('invoices.void.reason'), ok: t('invoices.void.ok'), danger: true });
     if (reason == null) return;
     await run(() => voidInvoice(inv.id, reason), { ok: t('invoices.void.done', { n: number }) });
@@ -114,14 +114,14 @@ function DocScreen(p: { view: InvoiceView }) {
                         : inv.issued_at ? t('invoices.screen.issuedOn', { when: stampText(inv.issued_at, l) }) : null}
                 </span>
               </div>
-              <OverBanner over={view.over} canRefund={editable && mayRefund(view)} onRefund={() => setSheet('refund')} />
+              <OverBanner over={view.over} office={manage} canRefund={manage && mayRefund(view)} onRefund={() => setSheet('refund')} />
               <UnbilledBanner inv={inv} job={j} finishing={finishing} />
               {inv.status === 'issued' && editable && (view.due > 0
                 ? <Button variant="primary" block class="inv-pay-btn" icon={<Banknote />} onClick={() => setSheet('pay')} data-tour="invoice-pay" data-testid="invoice-pay">
                   {t('invoices.panel.pay', { amount: money(view.due, l) })}
                 </Button>
                 : view.waitingIn > 0 && <PayWaitingBanner cents={view.waitingIn} />)}
-              {inv.status === 'issued' && !finishing && <ReopenButton inv={inv} job={j} block variant="ghost" />}
+              {(inv.status === 'issued' || inv.status === 'paid') && !finishing && <ReopenButton inv={inv} job={j} block variant="ghost" />}
               {inv.status !== 'void' && inv.job_id && !finishing && (
                 <div class="inv-actions">
                   <Button icon={<Send />} onClick={() => send('invoice')} data-tour="invoice-send" data-testid="invoice-send">
@@ -159,7 +159,7 @@ function DocScreen(p: { view: InvoiceView }) {
             <Panel class="inv-side-void">
               <div class="stack">
                 <Button variant="danger" icon={<Ban />} onClick={cancel} data-testid="invoice-void">{t('invoices.void.button')}</Button>
-                <p class="muted small" style={{ margin: 0 }}>{pays.length ? t('invoices.void.hasPayments') : t('invoices.void.hint')}</p>
+                <p class="muted small" style={{ margin: 0 }}>{holdsMoney(pays, waiting) ? t('invoices.void.hasPayments') : t('invoices.void.hint')}</p>
               </div>
             </Panel>
           )}

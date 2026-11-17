@@ -14,10 +14,10 @@ import { money } from '../../lib/money';
 import { Sheet, Button, Field, Input, MoneyInput, Banner, Empty, run } from '../../ui';
 import { cashChange } from '../../domain/money/invoice';
 import { viewOf } from '../../domain/money/view';
-import { payMode, amountProblem } from '../../domain/money/pay';
+import { payMode, amountProblem, paidByHand } from '../../domain/money/pay';
 import { waitingEntries, coffreWaiting } from '../../domain/money/waiting';
 import { mayCoffre, openCoffre } from './CoffreHost';
-import { invoiceById, invoiceCustomer, invoiceLabel, methodWord, METHODS } from './select';
+import { invoiceById, invoiceCustomer, invoiceLabel, methodWord, METHODS, paymentsOfInvoice } from './select';
 import { PayCash } from './PayCash';
 import { PayLink } from './PayLink';
 import './invoices.css';
@@ -41,7 +41,10 @@ function PayOpen(p: PaySheetProps) {
   const raw = invoiceById(p.invoiceId);
   const view = raw ? viewOf(raw) : null;
   const refund = !!p.refund;
-  const plan = view ? payMode(view, refund) : null;
+  // money paid by card online is given back in Stripe (its refund is written by itself): by hand, only what came by hand
+  const pays = refund && raw ? paymentsOfInvoice(raw.id) : [];
+  const byCard = pays.some((x) => x.method === 'card_online');
+  const plan = view ? payMode(view, refund, refund ? { byHand: paidByHand(pays) } : {}) : null;
   // the amount in play when the payment was confirmed: its own rows arrive just before the sheet closes, keep the form
   const [frozen, setFrozen] = useState<number | null>(null);
   const inPlay = frozen ?? plan?.inPlay ?? 0;
@@ -49,6 +52,11 @@ function PayOpen(p: PaySheetProps) {
   const [touched, setTouched] = useState(false);
   const [method, setMethod] = useState<PayMethod | null>(null);
   const [received, setReceived] = useState<number | null>(null);
+  // an amount typed wrong (the field is red) is not taken for an empty one: no payment until it is fixed (R126)
+  const [typo, setTypo] = useState({ amount: false, received: false });
+  // another method: the cash field goes away (it comes back empty), and its typo with it, or « Encaisser » would stay
+  // off with nothing red on screen (review invoices-r2-4)
+  const pick = (m: PayMethod) => { if (m !== method) setTypo((x) => ({ ...x, received: false })); setMethod(m); };
   const [reference, setReference] = useState('');
   // a payment that arrives meanwhile (card online, another phone) changes what is left: follow it until edited
   useEffect(() => { if (!touched && frozen == null) setAmount(inPlay); }, [inPlay]);
@@ -72,6 +80,8 @@ function PayOpen(p: PaySheetProps) {
             ? <Banner kind="info" data-testid="pay-waiting">{t('invoices.pay.refund.waiting', { amount: money(-view.waitingOut, l) })}</Banner>
             : plan.mode === 'refund-none'
               ? <Banner kind="ok">{t('invoices.pay.refund.none')}</Banner>
+              : plan.mode === 'refund-card'
+                ? <Banner kind="info" data-testid="pay-refund-card">{t('invoices.pay.refund.card', { amount: money(view.over, l) })}</Banner>
               : <Banner kind={plan.mode === 'paid' ? 'ok' : 'warn'}>{t(`invoices.pay.not.${plan.mode}`)}</Banner>}
       </Sheet>
     );
@@ -83,7 +93,7 @@ function PayOpen(p: PaySheetProps) {
   const problem = amountProblem(amount, inPlay);
   const amountError = problem === 'amount' ? t('invoices.pay.errAmount')
     : problem === 'tooMuch' ? t(refund ? 'invoices.pay.refund.tooMuch' : 'invoices.pay.errTooMuch', { max: money(inPlay, l) }) : null;
-  const canPay = !!method && !amountError && record > 0;
+  const canPay = !!method && !amountError && record > 0 && !typo.amount && !(isCash && typo.received);
   const needsRef = method === 'cheque' || method === 'interac' || method === 'other';
 
   const pay = async () => {
@@ -116,14 +126,14 @@ function PayOpen(p: PaySheetProps) {
           {(refund || a.paid > 0) && <span class="muted small">{t('invoices.pay.already', { paid: money(a.paid, l), total: money(a.total, l) })}</span>}
           {!refund && view.waitingIn > 0 && <span class="muted small" data-testid="pay-waiting-part">{t('invoices.pay.waitingPart', { amount: money(view.waitingIn, l) })}</span>}
         </div>
-        {refund && <Banner kind="info">{t('invoices.pay.refund.hint')}</Banner>}
+        {refund && <Banner kind="info" data-testid="pay-refund-hint">{t(byCard ? 'invoices.pay.refund.cardPart' : 'invoices.pay.refund.hint')}</Banner>}
 
         <Field label={t('invoices.pay.method')} group>
           <div class="pay-methods" role="radiogroup" aria-label={t('invoices.pay.method')}>
             {METHODS.map((m) => {
               const Icon = ICONS[m];
               return (
-                <button key={m} type="button" role="radio" aria-checked={method === m} class="pay-method" onClick={() => setMethod(m)} data-testid={`pay-${m}`}>
+                <button key={m} type="button" role="radio" aria-checked={method === m} class="pay-method" onClick={() => pick(m)} data-testid={`pay-${m}`}>
                   <Icon aria-hidden="true" /><span>{methodWord(m, l)}</span>
                 </button>
               );
@@ -139,10 +149,10 @@ function PayOpen(p: PaySheetProps) {
 
         <Field label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} error={touched ? amountError : null}
           hint={!refund && !amountError && amount != null && amount < inPlay ? t('invoices.pay.partial', { left: money(inPlay - amount, l) }) : undefined}>
-          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c) => { setTouched(true); setAmount(c); }} aria-label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} /></div>
+          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c, info) => { setTouched(true); setTypo((x) => ({ ...x, amount: info?.valid === false })); setAmount(c); }} aria-label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} /></div>
         </Field>
 
-        {cash && <PayCash cash={cash} received={received} onReceived={setReceived} balance={inPlay} />}
+        {cash && <PayCash cash={cash} received={received} onReceived={(c, info) => { setTypo((x) => ({ ...x, received: info?.valid === false })); setReceived(c); }} balance={inPlay} />}
 
         {needsRef && (
           <Field label={t(`invoices.pay.ref.${method}`)} optional>

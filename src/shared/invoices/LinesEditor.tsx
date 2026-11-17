@@ -1,5 +1,8 @@
 /* The lines editor of an invoice or an estimate: description, quantity, price, taxable, a discount (with 5/10/15/20 %
-   chips), remove with « Annuler ». The lines' amounts come from the one totals rule (domain/money/invoice.ts). */
+   chips), remove with « Annuler ». The lines' amounts come from the one totals rule (domain/money/invoice.ts).
+   A price typed wrong (« 12,,5 ») leaves the field red and the line at its last good price: it is never saved as 0 $
+   (an empty field is 0 $, as before) (R126). The editor counts the red prices (onInvalid): its hosts refuse to finish
+   the invoice, or to send or book the estimate, while one is red (usePriceTypos, review invoices-r2-3). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Plus, Trash2, Tag, ListPlus } from 'lucide-preact';
 import type { Lang } from '../../data/types';
@@ -15,13 +18,14 @@ import { newLine, type EditLine } from '../../domain/money/editLines';
 export const percentWords = () => (['fr', 'en'] as Lang[]).map((l) => tl(l, 'invoices.lines.discountPct'));
 const CHIPS = [5, 10, 15, 20];
 
-/** a quantity: « 1 », « 1,5 » (hours of labour) */
+/** a quantity: « 1 », « 1,5 » (hours of labour). Two decimals, as a job's line keeps them (job_items.qty numeric(10,2)):
+    an estimate booked, or an invoice line, never changes amount on the way (« 1,125 » h was 1,13 h once booked). */
 function QtyInput(p: { value: number; onValue: (v: number) => void; label: string; id?: string }) {
   const fmt = (v: number) => (uiLang.value === 'en' ? String(v) : String(v).replace('.', ','));
   const [text, setText] = useState(fmt(p.value));
   const [focused, setFocused] = useState(false);
   useEffect(() => { if (!focused) setText(fmt(p.value)); }, [p.value, focused]);
-  const parse = (s: string) => { const n = Number(s.replace(',', '.').trim()); return s.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.round(n * 1000) / 1000 : null; };
+  const parse = (s: string) => { const n = Number(s.replace(',', '.').trim()); return s.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null; };
   return (
     <input class="input inv-qty num" inputMode="decimal" id={p.id} aria-label={p.label} value={text} aria-invalid={parse(text) == null || undefined}
       onFocus={(e) => { setFocused(true); (e.currentTarget as HTMLInputElement).select(); }}
@@ -40,12 +44,53 @@ export interface LinesEditorProps {
   onCatalog?: () => void;
   /** a line of the job's work taken off the invoice: the work leaves the job too (gives back how to undo it), or null */
   onRemoveWork?: (line: EditLine) => { undo: () => void } | null;
+  /** how many prices are red right now (typed wrong: the line keeps its last good price), told each time it changes */
+  onInvalid?: (count: number) => void;
 }
+
+/** for the host of a LinesEditor: `onInvalid` goes to the editor; `refused()` before finishing, sending or booking
+    says the problem and answers true while a price is red (what is on screen is not what would go out) */
+export function usePriceTypos() {
+  const n = useRef(0);
+  return {
+    onInvalid: (count: number) => { n.current = count; },
+    refused: () => { if (n.current <= 0) return false; toast(t('invoices.lines.badPrice'), { kind: 'bad' }); return true; }
+  };
+}
+
+/** the price of a line. Typed wrong: the line keeps its last good price, the field stays red and is counted (onBad)
+    until a price is typed right, or until the field shows a price again: MoneyInput writes the line's price back in
+    the field when that price (or the language) changes while the field is not in use (a % chip, the server's
+    version). Taken off (unmounted): no longer counted. */
+function PriceField(p: { cents: number; disc: boolean; label: string; onCents: (c: number) => void; onBad: (bad: boolean) => void }) {
+  const box = useRef<HTMLLabelElement>(null);
+  const bad = useRef(false);
+  const onBad = useRef(p.onBad);
+  onBad.current = p.onBad;
+  const mark = (b: boolean) => { if (bad.current !== b) { bad.current = b; onBad.current(b); } };
+  useEffect(() => { if (bad.current && !box.current?.contains(document.activeElement)) mark(false); }, [p.cents, uiLang.value]);
+  useEffect(() => () => { if (bad.current) onBad.current(false); }, []);
+  return (
+    <label ref={box} class="field inv-line-price"><span class="field-label">{p.label}</span>
+      <MoneyInput cents={p.cents} allowNegative={!p.disc}
+        onCents={(c, info) => { mark(info?.valid === false); if (info?.valid !== false) p.onCents(c ?? 0); }}
+        aria-label={p.label} />
+    </label>
+  );
+}
+
 export function LinesEditor(p: LinesEditorProps) {
   // « Annuler » runs seconds later, from the toast: it must work on the lines as they are then, not as they were
   const latest = useRef(p);
   latest.current = p;
   const emit = (lines: EditLine[]) => latest.current.onLines(syncPercents(lines, percentWords()));
+  // the lines whose price is red (by their key)
+  const red = useRef(new Set<string>());
+  const markRed = (k: string, bad: boolean) => {
+    if (red.current.has(k) === bad) return;
+    if (bad) red.current.add(k); else red.current.delete(k);
+    latest.current.onInvalid?.(red.current.size);
+  };
   const set = (i: number, patch: Partial<EditLine>) => emit(p.lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const remove = (i: number) => {
     const line = p.lines[i];
@@ -89,10 +134,8 @@ export function LinesEditor(p: LinesEditorProps) {
               <label class="field inv-line-qty"><span class="field-label">{t('invoices.lines.qty')}</span>
                 <QtyInput value={l.qty} onValue={(v) => set(i, { qty: v })} label={t('invoices.lines.qty')} />
               </label>
-              <label class="field inv-line-price"><span class="field-label">{disc ? t('invoices.lines.discountAmount') : t('invoices.lines.price')}</span>
-                <MoneyInput cents={disc ? Math.abs(l.unit_cents) : l.unit_cents} allowNegative={!disc} onCents={(c) => (disc ? setDiscount(i, c ?? 0) : set(i, { unit_cents: c ?? 0 }))}
-                  aria-label={disc ? t('invoices.lines.discountAmount') : t('invoices.lines.price')} />
-              </label>
+              <PriceField cents={disc ? Math.abs(l.unit_cents) : l.unit_cents} disc={disc} label={disc ? t('invoices.lines.discountAmount') : t('invoices.lines.price')}
+                onCents={(c) => { if (disc) setDiscount(i, c); else set(i, { unit_cents: c }); }} onBad={(bad) => markRed(l._k, bad)} />
               <div class="inv-line-tax"><Check checked={l.taxable} onChange={(v) => set(i, { taxable: v })} label={t('invoices.lines.taxable')} data-testid="line-taxable" /></div>
               <span class={`inv-line-total money${disc ? ' is-neg' : ''}`} data-testid="line-total">{money(lineCents(l), uiLang.value)}</span>
               <IconButton class="inv-line-x" icon={<Trash2 />} label={t('invoices.lines.remove')} onClick={() => remove(i)} data-testid="line-remove" />

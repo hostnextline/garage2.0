@@ -2,7 +2,7 @@
    « Nouvelle estimation ». */
 import { useMemo, useState } from 'preact/hooks';
 import { FilePlus2, ClipboardList } from 'lucide-preact';
-import { isField } from '../../domain/rights';
+import { may } from '../../domain/rights';
 import { setQuery, type ScreenProps } from '../../platform/router';
 import type { Quote } from '../../data/types';
 import { quotesList, settings, customer, customerName, vehicle, vehicleLabel } from '../../data/select';
@@ -44,7 +44,8 @@ export default function QuotesScreen({ query }: ScreenProps) {
   // searched and sorted once per change (not at every redraw)
   const list = useMemo(() => all.filter((x) => inTab(x, tab) && (!q.trim() || matches(q, quoteNumber(x), x.number != null ? String(x.number) : '', quoteWho(x), quoteCar(x), x.contact_phone, customer(x.customer_id)?.phone)))
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.number ?? 0) - Number(a.number ?? 0)), [all, customers, vehicles, billing, tab, q]);
-  const canCreate = isField();
+  // the server lets only the field (owner, office, mechanic) make an estimate (quotes_ins): the « + » menu's rule (R125)
+  const canCreate = may.newQuote();
   const n = net.value;
   const day = today();
   return (
