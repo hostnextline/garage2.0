@@ -19,11 +19,16 @@
 -- 5. job_step, asked by the money rules (Part 26 « argent »): « Terminer quand même » (`p_data.unbilled_ok`, owner or
 --    « Factures »), « payer plus tard » already given holds when a job is finished again, a discount in the amount lost.
 -- Speed (window mode): a day held on its stored routes is planned once per window offered (the plan from nothing that
--- was thrown away is no longer made), « Peu importe » plans the truck again only when the car took the stop.
+-- was thrown away is no longer made), « Peu importe » plans the truck again only when the car took the stop. Round 2:
+-- route_improve adds up each order from legs measured once, and the planner walks each route it tries once
+-- (route_cost) instead of three times: the same plans, 4 to 10 times faster than live on a busy day.
+-- Round 2 also: a job step needs a job the caller sees (R96); « Routes partagées » read as a yes / no that never fails
+-- (R110); apply_hours refuses a day already past (R185, section 13); the refusals of window mode say « journée ».
 --
 -- Sections: 0 helpers · 1 apply_plan · 2 set_stop_order · 3 move_job · 4 set_job_duration · 5 book_job · 6 flexible
 -- windows · 7 suggest_windows_core, suggest_core · 8 windows_switch · 9 my_truck_ids, walk_in, job_step · 10 plan_route
--- (plan_block's body) and plan_block · 11 replan_block, replan_days · 12 trucks_kind_keep.
+-- (plan_block's body) and plan_block, route_improve, route_cost · 11 replan_block, replan_days · 12 trucks_kind_keep ·
+-- 13 apply_hours.
 -- New refusal codes: quote_done (book_job), no_truck (walk_in). New activity actions: window_to_block (windows_switch),
 -- needs_truck (an automatic re-plan). No new table, no new column.
 
