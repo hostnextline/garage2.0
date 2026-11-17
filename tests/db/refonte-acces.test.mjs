@@ -125,6 +125,41 @@ test('R40 (sql-money-06, invoices-quotes-04): a draft is not deleted, moved to a
   assert.equal((await h.q(`update public.invoices set deleted_at = null where id = $1 returning id`, [inv])).length, 1);
 }));
 
+test('R173: service_part_set puts a part on a service, changes its quantity, takes it off and puts it back, whatever the phone holds', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const stock = await h.person('Julie', ['office'], { rights: { inventory: true, settings: false } });
+  const mech = await h.person('Saleh', ['mechanic'], { rights: { inventory: false, settings: false } });
+  await h.as(null);
+  const svc = await h.val(`insert into public.services (name_fr, price_cents, duration_min, active) values ('Vidange TEST', 7999, 45, true) returning id`);
+  const item = await h.val(`insert into public.inventory_items (name, qty) values ('Filtre TEST', 10) returning id`);
+  const links = () => h.q(`select qty::float q, deleted_at is not null gone from public.service_parts where service_id = $1 and item_id = $2 order by created_at`, [svc, item]);
+  await h.as(stock);
+  const op = uuid();
+  const a = await h.rpc('service_part_set', { p_op: op, p_service: svc, p_item: item, p_qty: 2 });
+  assert.equal(a.ok, true); assert.equal(a.removed, false);
+  assert.equal(Number(a.rows.service_parts[0].qty), 2);
+  assert.deepEqual(await h.rpc('service_part_set', { p_op: op, p_service: svc, p_item: item, p_qty: 2 }), a, 'sent again: the same answer');
+  await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 1.5 });
+  assert.deepEqual(await links(), [{ q: 1.5, gone: false }]);
+  // taken off: the answer carries the row with its deleted_at, so the phone forgets it
+  const off = await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: null });
+  assert.equal(off.removed, true); assert.ok(off.rows.service_parts[0].deleted_at);
+  assert.deepEqual(await links(), [{ q: 1.5, gone: true }]);
+  // a phone that never saw that row (another device, after a reload) puts it back: the same row comes back
+  await h.as(owner);
+  const back = await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 3 });
+  assert.equal(back.rows.service_parts[0].id, a.rows.service_parts[0].id);
+  assert.deepEqual(await links(), [{ q: 3, gone: false }]);
+  // taking off what is not there: nothing to do, no error
+  await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: null });
+  assert.deepEqual((await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: null })).rows.service_parts, []);
+  // refusals in words
+  assert.equal(code(await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 0 }))), 'bad_qty');
+  assert.equal(code(await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: uuid(), p_qty: 1 }))), 'not_found');
+  await h.as(mech);
+  assert.equal(code(await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 1 }))), 'not_allowed');
+}));
+
 test('x-security-01, sql-foundation-08: no SVG stored; a signature or a receipt is written once, never replaced', () => tx(async (h) => {
   const g = await garage(h);
   const job = await bookOn(h, g);
@@ -252,6 +287,25 @@ test('x-rights-19: a blocked mechanic whose session still lives no longer reads 
   assert.equal((await h.q(`select id from public.customers where id = $1`, [g.customer])).length, 0);
 }));
 
+test('R93 (x-rights-05): an answer carries only the jobs of the block the person may see; the owner’s and the server’s carry every one', () => tx(async (h) => {
+  const g = await garage(h, { mechRights: { book: true, agenda: false } });
+  const other = await h.truck('Camion Complet', null, { [g.dow]: DAY });
+  const theirs = await bookOn(h, g, { truck_id: other });
+  await h.as(g.mech);
+  assert.equal((await h.q(`select id from public.jobs where id = $1`, [theirs])).length, 0, 'not his: he does not read it');
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'am', duration_min: 60, truck_id: g.truck }, p_items: [] });
+  const ids = r.rows.jobs.map((j) => j.id);
+  assert.ok(ids.includes(r.job_id), 'his own appointment comes back');
+  assert.ok(!ids.includes(theirs), 'the other truck’s does not (before: every job of the block)');
+  await h.as(g.owner);
+  const o = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'am', duration_min: 30, truck_id: other }, p_items: [] });
+  const all = o.rows.jobs.map((j) => j.id);
+  assert.ok(all.includes(theirs) && all.includes(r.job_id) && all.includes(o.job_id), 'the owner sees the whole block');
+  await h.as(null);
+  const srv = (await h.val(`select public.block_rows($1::date, 'am')`, [g.day])).map((j) => j.id);
+  assert.ok(srv.includes(theirs) && srv.includes(r.job_id), 'the server itself: every row');
+}));
+
 test('x-security-30: a right that is not yes / no in the rights never stops the person’s app', () => tx(async (h) => {
   const m = await h.person('Saleh', ['mechanic'], { rights: { book: 'peut-être', map: 'yes' } });
   await h.as(null);
@@ -265,6 +319,30 @@ test('x-security-30: a right that is not yes / no in the rights never stops the 
   assert.equal((await h.q(`select id from public.trucks`)).length >= 0, true, 'the row rules still answer');
 }));
 
+test('R110, x-security-30: « Routes partagées » is stored as a yes / no whoever saves it, so a mechanic’s rules never stop on it', () => tx(async (h) => {
+  const g = await garage(h);
+  const office = await h.person('Julie Bureau', ['office'], { rights: { settings: true } });
+  const job = await bookOn(h, g);
+  const shared = () => h.val(`select booking->'shared_routes' from public.settings where id = 1`);
+  // a save from the app (a phone with « oui » in its copy, a hand edit): stored as a real yes / no
+  await h.as(office);
+  await h.q(`update public.settings set booking = booking || '{"shared_routes": "oui"}'::jsonb where id = 1`);
+  assert.equal(await shared(), true);
+  await h.as(g.mech);
+  assert.equal((await h.q(`select id from public.jobs where id = $1`, [job])).length, 1, 'his rules still answer (a raw cast stopped them before)');
+  await h.as(office);
+  await h.q(`update public.settings set booking = booking || '{"shared_routes": "peut-être"}'::jsonb where id = 1`);
+  assert.equal(await shared(), false, 'not a yes: no');
+  // the server's own writes too
+  await h.as(null);
+  await h.q(`update public.settings set booking = booking || '{"shared_routes": 1}'::jsonb where id = 1`);
+  assert.equal(await shared(), true);
+  await h.q(`update public.settings set booking = booking || '{"shared_routes": false}'::jsonb where id = 1`);
+  assert.equal(await shared(), false, 'a yes / no is kept as it is');
+  await h.as(g.mech);
+  assert.deepEqual(await h.val(`select public.my_truck_ids()`), [g.truck]);
+}));
+
 test('member_update: only known roles, yes / no rights kept, an empty list of roles refused in words', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const m = await h.person('Saleh', ['mechanic']);
@@ -274,6 +352,29 @@ test('member_update: only known roles, yes / no rights kept, an empty list of ro
   const r = await h.rpc('member_update', { p_op: uuid(), p_staff: m, p_patch: { rights: { book: true, map: 'oui', nope: true, hours: null } } });
   assert.deepEqual(r.rows.staff[0].rights, { book: true });
   assert.deepEqual(r.rows.staff[0].roles, ['mechanic'], 'no roles sent: kept');
+}));
+
+test('R174: taking the « Mécano » role away frees the truck he drove; another change, or a driving owner, keeps it', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const m = await h.person('Saleh', ['mechanic', 'office']);
+  const t = await h.truck('Camion de Saleh', m);
+  const t2 = await h.truck('Voiture de Hassan', owner);
+  await h.as(owner);
+  // a change that keeps the role: the truck stays his
+  let r = await h.rpc('member_update', { p_op: uuid(), p_staff: m, p_patch: { short_name: 'Sal', roles: ['mechanic', 'office'] } });
+  assert.equal(r.rows.trucks, undefined);
+  assert.equal(await h.val(`select driver_id from public.trucks where id = $1`, [t]), m);
+  // blocked: the truck is kept (unblocking gives everything back)
+  await h.rpc('member_update', { p_op: uuid(), p_staff: m, p_patch: { active: false } });
+  assert.equal(await h.val(`select driver_id from public.trucks where id = $1`, [t]), m);
+  await h.rpc('member_update', { p_op: uuid(), p_staff: m, p_patch: { active: true } });
+  // the role taken away: the truck is free, and the answer says so
+  r = await h.rpc('member_update', { p_op: uuid(), p_staff: m, p_patch: { roles: ['office'] } });
+  assert.equal(await h.val(`select driver_id from public.trucks where id = $1`, [t]), null);
+  assert.deepEqual(r.rows.trucks.map((x) => [x.id, x.driver_id]), [[t, null]]);
+  // an owner who drives without the mechanic role keeps his car when his file changes
+  await h.rpc('member_update', { p_op: uuid(), p_staff: owner, p_patch: { short_name: 'H' } });
+  assert.equal(await h.val(`select driver_id from public.trucks where id = $1`, [t2]), owner);
 }));
 
 test('x-security-25, x-security-37: removing someone cancels their unused links; the last owner is never removed', () => tx(async (h) => {
@@ -460,6 +561,18 @@ test('sql-misc-13: a day, a position or a year that is not one is refused in wor
 }));
 
 // =====================================================================================================================
+// 6. Indexes
+// =====================================================================================================================
+
+test('sql-misc-14, sql-foundation-21: the look-ups of the row rules, the clean-up and vin_history have their index', () => tx(async (h) => {
+  const want = { jobs_vehicle: 'jobs', quotes_customer: 'quotes', trips_job: 'trips', trips_staff: 'trips', public_links_job: 'public_links',
+    payments_job: 'payments', op_log_at: 'op_log', invoices_job: 'invoices', inventory_moves_job: 'inventory_moves',
+    job_items_service: 'job_items', job_items_item: 'job_items', messages_customer: 'messages', rate_limits_at: 'rate_limits' };
+  const got = Object.fromEntries((await h.q(`select indexname, tablename from pg_indexes where schemaname = 'public' and indexname = any($1)`, [Object.keys(want)])).map((r) => [r.indexname, r.tablename]));
+  assert.deepEqual(got, want);
+}));
+
+// =====================================================================================================================
 // Two at the same instant (two real connections)
 // =====================================================================================================================
 
@@ -536,6 +649,44 @@ test('x-security-37: two owners who remove each other at the same instant leave 
     await c1.query('rollback').catch(() => {}); await c2.query('rollback').catch(() => {});
     c1.release(); c2.release();
     await cleanup([a, b]);
+  }
+});
+
+test('R173: two phones linking the same part to the same service at the same instant leave one link, no database error', async () => {
+  const owner = await committedPerson('Owner D', ['owner']);
+  const c = await pool.connect();
+  let svc, item;
+  try {
+    svc = (await c.query(`insert into public.services (name_fr, price_cents, duration_min, active) values ('Vidange 2 TEST', 1, 30, true) returning id`)).rows[0].id;
+    item = (await c.query(`insert into public.inventory_items (name, qty) values ('Filtre 2 TEST', 5) returning id`)).rows[0].id;
+  } finally { c.release(); }
+  const c1 = await pool.connect(), c2 = await pool.connect();
+  const ops = [randomUUID(), randomUUID()];
+  try {
+    await begin(c1, owner); await begin(c2, owner);
+    await c1.query(`select public.service_part_set($1, $2, $3, 1)`, [ops[0], svc, item]);
+    const second = c2.query(`select public.service_part_set($1, $2, $3, 2) r`, [ops[1], svc, item]);
+    assert.equal(await stillWaiting(second), true, 'the second waits for the first');
+    await c1.query('commit');
+    const r = (await second).rows[0].r;                        // without the lock: duplicate key value violates « service_parts_one »
+    assert.equal(Number(r.rows.service_parts[0].qty), 2);
+    await c2.query('commit');
+    const k = await pool.connect();
+    try {
+      const rows = (await k.query(`select qty::float q from public.service_parts where service_id = $1 and item_id = $2 and deleted_at is null`, [svc, item])).rows;
+      assert.deepEqual(rows, [{ q: 2 }]);
+    } finally { k.release(); }
+  } finally {
+    await c1.query('rollback').catch(() => {}); await c2.query('rollback').catch(() => {});
+    c1.release(); c2.release();
+    const k = await pool.connect();
+    try {
+      await k.query(`delete from public.service_parts where service_id = $1`, [svc]);
+      await k.query(`delete from public.activity where entity_id = any($1::uuid[])`, [[svc, item]]);
+      await k.query(`delete from public.services where id = $1`, [svc]);
+      await k.query(`delete from public.inventory_items where id = $1`, [item]);
+    } finally { k.release(); }
+    await cleanup([owner], ops);
   }
 });
 
