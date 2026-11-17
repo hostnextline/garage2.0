@@ -13,7 +13,7 @@ import { t } from '../../lib/i18n';
 import { toast } from '../../ui';
 import { tourFor, resolveStep, locate, findAnchor, type TourStep, type TourEnv, type TourCtx } from './tour-steps';
 import { markStep, markTour, nextJobId } from './guide-data';
-import type { Role, GuideStep } from './checklist';
+import { stepAnchors, type Role, type GuideStep } from './checklist';
 import { TourOverlay } from './TourOverlay';
 import { gt } from './words';
 
@@ -157,5 +157,5 @@ export function openStep(s: GuideStep) {
   if (s.kind === 'tour') { startTour(s.role); return; }
   if (s.kind === 'read' || s.kind === 'visit') markStep(s.id);
   navigate(s.href);
-  if (s.anchor) showMe([s.anchor], t(`guide.steps.${s.id}.title`), gt(`guide.steps.${s.id}.text`));
+  if (s.anchor) showMe(stepAnchors(s), t(`guide.steps.${s.id}.title`), gt(`guide.steps.${s.id}.text`));
 }

@@ -31,7 +31,7 @@ export const TOURS: Record<Role, TourStep[]> = {
   owner: [
     { key: 'add', anchors: ['quick-add', 'nav-book'], when: anyAdd },
     { key: 'today', path: '/', anchors: ['today-next', 'today-shift'], fallback: ['nav-today'] },
-    { key: 'agenda', path: '/agenda', anchors: ['agenda-week'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
+    { key: 'agenda', path: '/agenda', anchors: ['agenda-week', 'agenda-day'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
     { key: 'book', path: '/book', anchors: ['book-customer', 'book-services'], when: (c) => c.can('book') },
     { key: 'hours', path: '/hours', anchors: ['hours-grid', 'hours-truck'], when: (c) => c.can('hours') },
     { key: 'team', path: '/team', anchors: ['team-invite', 'team-rights'], when: (c) => c.can('team') },
@@ -40,7 +40,7 @@ export const TOURS: Record<Role, TourStep[]> = {
   ],
   office: [
     { key: 'add', anchors: ['quick-add', 'nav-book'], when: anyAdd },
-    { key: 'agenda', path: '/agenda', anchors: ['agenda-week'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
+    { key: 'agenda', path: '/agenda', anchors: ['agenda-day', 'agenda-week'], fallback: ['nav-agenda'], when: (c) => c.can('agenda'), teaches: 'agenda' },
     { key: 'agendaBlock', path: '/agenda', anchors: ['agenda-block'], when: (c) => c.can('agenda') },
     { key: 'bookCustomer', path: '/book', anchors: ['book-customer'], when: (c) => c.can('book') },
     { key: 'bookServices', path: '/book', anchors: ['book-services'], when: (c) => c.can('book') },

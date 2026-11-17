@@ -2,7 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOURS, tourFor, onScreen, locate, resolveStep, placeBubble, findAnchor, WAIT_MS, FALLBACK_MS, SETTLED_MS, type TourCtx, type TourEnv, type TourStep } from './tour-steps';
-import { computeChecklist } from './checklist';
+import { h, render } from 'preact';
+import { computeChecklist, stepAnchors } from './checklist';
+import { DayHead } from '../../features/agenda/DayHead';
 
 const all = (): TourCtx => ({ can: () => true, wide: false, nextJobId: 'j-2' });
 
@@ -29,7 +31,7 @@ describe('the tours', () => {
     const used = new Set<string>();
     for (const steps of Object.values(TOURS)) for (const s of steps) for (const a of [...s.anchors, ...(s.fallback || [])]) used.add(a);
     const all = { me: { id: 'u', roles: ['owner', 'office', 'mechanic', 'treasurer'] as never, owner: true, trucks: ['t'] }, company: {}, taxesOn: true, services: [], trucks: [], trucksWithHours: [], staff: [], invitations: 0, secrets: { ghl: false, stripe: false }, jobs: [], shifts: [], expenses: [], marks: {}, tours: {} };
-    for (const s of computeChecklist(all, 'j-1')) if (s.anchor) used.add(s.anchor);
+    for (const s of computeChecklist(all, 'j-1')) for (const a of stepAnchors(s)) used.add(a);
     for (const a of used) expect(carried(a), a).toBe(true);
   });
   it('leaves out what the person can’t open', () => {
@@ -134,7 +136,28 @@ describe('finding a step', () => {
 
 describe('the anchor on the real page', () => {
   afterEach(() => { document.body.innerHTML = ''; });
-  const box = (el: Element, w: number, h: number) => { (el as HTMLElement).getBoundingClientRect = () => ({ width: w, height: h, top: 10, left: 10, right: 10 + w, bottom: 10 + h, x: 10, y: 10, toJSON: () => ({}) }) as DOMRect; };
+  const box = (el: Element, w: number, ht: number) => { (el as HTMLElement).getBoundingClientRect = () => ({ width: w, height: ht, top: 10, left: 10, right: 10 + w, bottom: 10 + ht, x: 10, y: 10, toJSON: () => ({}) }) as DOMRect; };
+  it('« L’agenda » on a phone lights the day the agenda draws, on a computer the week (continuite-01)', () => {
+    const agenda = (role: 'owner' | 'office') => TOURS[role].find((s) => s.key === 'agenda')!.anchors;
+    const list = byIdAgenda();
+    // a phone: the agenda is always the day view, its header carries agenda-day (DayHead)
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    render(h(DayHead, { day: '2026-11-17', onDay: () => undefined }), host);
+    const day = document.querySelector('[data-tour="agenda-day"]')!;
+    expect(day).not.toBeNull();
+    box(day, 300, 40);
+    expect(findAnchor(agenda('office'))).toBe(day);
+    expect(findAnchor(agenda('owner'))).toBe(day);
+    expect(findAnchor(list)).toBe(day);
+    render(null, host);
+    // a computer: the week grid
+    document.body.innerHTML = '<div data-tour="agenda-week" id="week"></div>';
+    box(document.getElementById('week')!, 900, 500);
+    expect(findAnchor(agenda('office'))?.id).toBe('week');
+    expect(findAnchor(agenda('owner'))?.id).toBe('week');
+    expect(findAnchor(list)?.id).toBe('week');
+  });
   it('takes the first visible element, in the order of the ids', () => {
     document.body.innerHTML = '<nav><a data-tour="nav-agenda" id="hidden"></a><a data-tour="nav-agenda" id="shown"></a></nav><section data-tour="agenda-week" id="week"></section><div id="guide-tour-host"><b data-tour="agenda-week" id="ours"></b></div>';
     box(document.getElementById('hidden')!, 0, 0);
@@ -166,3 +189,8 @@ describe('the bubble', () => {
     expect(wide.left + 380).toBeLessThanOrEqual(1366 - 16);
   });
 });
+
+function byIdAgenda(): string[] {
+  const office = { me: { id: 'u', roles: ['office'] as never, owner: false, trucks: [] }, company: {}, taxesOn: true, services: [], trucks: [], trucksWithHours: [], staff: [], invitations: 0, secrets: { ghl: false, stripe: false }, jobs: [], shifts: [], expenses: [], marks: {}, tours: {} };
+  return stepAnchors(computeChecklist(office, null).find((s) => s.id === 'agenda')!);
+}

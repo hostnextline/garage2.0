@@ -41,8 +41,15 @@ export interface GuideStep {
   /** the screen to open, and the element to show on it */
   href: string;
   anchor?: string;
+  /** shown instead when `anchor` is not drawn (the agenda draws the day on a phone, the week on a computer) */
+  alsoAnchors?: string[];
   /** a confirm step that waits for the person's « C'est vérifié » */
   canConfirm?: boolean;
+}
+
+/** the elements « Montre-moi » looks for, the first drawn is shown */
+export function stepAnchors(s: GuideStep): string[] {
+  return s.anchor ? [s.anchor, ...(s.alsoAnchors || [])] : [];
 }
 
 /** the person's roles, the most responsible first (an owner is always « owner ») */
@@ -92,7 +99,7 @@ function officeSteps(x: GuideInput): GuideStep[] {
   return [
     { id: 'book', role: 'office', kind: 'data', done: x.jobs.some((j) => j.created_by === x.me.id), detail: null, href: '/book', anchor: 'book-customer' },
     { id: 'customers', role: 'office', kind: 'visit', done: !!x.marks.customers, detail: null, href: '/customers', anchor: 'customers-search' },
-    { id: 'agenda', role: 'office', kind: 'visit', done: !!x.marks.agenda, detail: null, href: '/agenda', anchor: 'agenda-week' }
+    { id: 'agenda', role: 'office', kind: 'visit', done: !!x.marks.agenda, detail: null, href: '/agenda', anchor: 'agenda-day', alsoAnchors: ['agenda-week'] }
   ];
 }
 
