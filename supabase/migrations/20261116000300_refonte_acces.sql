@@ -185,8 +185,13 @@ begin
      or not exists (select 1 from public.inventory_items where id = p_item and deleted_at is null) then
     perform public.fail('not_found', 'Ce service ou cet article n’existe plus.');
   end if;
-  if v_qty is not null and (v_qty <= 0 or v_qty > 9999) then
-    perform public.fail('bad_qty', 'Écris une quantité plus grande que 0.');
+  -- the words of bad_qty elsewhere (inventory_buy, the Coffre); a second sentence for the upper limit (srv-acces-r2-3;
+  -- the panel's stepper stops at 999, so only a call by hand meets it)
+  if v_qty is not null and v_qty <= 0 then
+    perform public.fail('bad_qty', 'Écris une quantité plus grande que zéro.');
+  end if;
+  if v_qty > 9999 then
+    perform public.fail('bad_qty', 'Écris une quantité de 9999 ou moins.');
   end if;
   -- one change at a time for a service and an item (two phones at the same instant: the second sees the first's)
   perform pg_advisory_xact_lock(hashtext('service_part:' || p_service::text || ':' || p_item::text));

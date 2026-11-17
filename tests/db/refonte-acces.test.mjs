@@ -155,7 +155,14 @@ test('R173: service_part_set puts a part on a service, changes its quantity, tak
   await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: null });
   assert.deepEqual((await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: null })).rows.service_parts, []);
   // refusals in words
-  assert.equal(code(await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 0 }))), 'bad_qty');
+  const zero = await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 0 }));
+  assert.equal(code(zero), 'bad_qty');
+  assert.equal(zero.message, 'Écris une quantité plus grande que zéro.', 'the words of bad_qty elsewhere (inventory_buy, the Coffre)');
+  // srv-acces-r2-3: over the limit, the advice says the limit (before: « plus grande que 0 » for 10000)
+  const big = await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 10000 }));
+  assert.equal(code(big), 'bad_qty');
+  assert.equal(big.message, 'Écris une quantité de 9999 ou moins.');
+  assert.equal(Number((await h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 9999 })).rows.service_parts[0].qty), 9999, '9999 itself is taken');
   assert.equal(code(await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: uuid(), p_qty: 1 }))), 'not_found');
   await h.as(mech);
   assert.equal(code(await h.fails(() => h.rpc('service_part_set', { p_op: uuid(), p_service: svc, p_item: item, p_qty: 1 }))), 'not_allowed');
