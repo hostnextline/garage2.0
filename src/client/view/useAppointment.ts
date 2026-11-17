@@ -47,8 +47,9 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     writing.current += 1;
     try { return await f(); } finally { writing.current -= 1; }
   };
-  // what the file had received before this tab left for Stripe (read once, on the way back)
-  const receivedBefore = useRef<number | null>(retour === 'paye' ? recallPaying(token) : null);
+  // what the file had received before this tab left for Stripe (read once, on the way back: not at every render — client-r5)
+  const [paidBefore] = useState<number | null>(() => (retour === 'paye' ? recallPaying(token) : null));
+  const receivedBefore = useRef<number | null>(paidBefore);
 
   const show = (n: number, nv: View): boolean => {
     if (!alive.current || n < shown.current) return false;
@@ -57,7 +58,7 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     loadedAt.current = Date.now();
     setPhase({ k: 'ready', v: nv });
     rememberGarage(nv.garage);
-    rememberAppointment(token, nv.kind === 'job' ? nv.job.day : null);
+    if (nv.kind === 'job') rememberAppointment(token, nv.job.day);   // a quote is never the appointment of a trip
     return true;
   };
   const fail = (e: ClientError) => {

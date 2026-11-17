@@ -155,10 +155,15 @@ describe('payment (client-page-06, 07, 31, 23)', () => {
     rememberPaying(TOKEN, 0);
     // 229,94 $ paid ahead came in; an extra accepted meanwhile leaves 80,49 $
     server = () => job({ prepaid_cents: 22994, expected: { subtotal: 27000, tps: 1350, tvq: 2693, total: 31043 }, pay: { available: true, amount_cents: 8049, kind: 'prepay', pending: true } }, { status: 'on_site' });
-    await open({ retour: 'paye' });
-    expect(q('client-paid-note')).toHaveLength(1);
-    expect(q('client-checking')).toHaveLength(0);
-    expect(calls.filter((c) => c.action === 'check')).toHaveLength(1);
+    const reads = vi.spyOn(Storage.prototype, 'getItem');
+    try {
+      await open({ retour: 'paye' });
+      expect(q('client-paid-note')).toHaveLength(1);
+      expect(q('client-checking')).toHaveLength(0);
+      expect(calls.filter((c) => c.action === 'check')).toHaveLength(1);
+      // the note of the way to Stripe is read once, not at every render (client-r5)
+      expect(reads.mock.calls.filter(([k]) => k === 'his.client.paying')).toHaveLength(1);
+    } finally { reads.mockRestore(); }
   });
   it('back from Stripe, the « Paiement en vérification… » note shows from the first moment (not grey boxes alone)', async () => {
     server = () => new Promise(() => undefined);                                  // the first check is slow
@@ -256,7 +261,7 @@ describe('the invoice being made (client-page-10, 30)', () => {
 
 describe('a link the server refuses (x-deadcode-25)', () => {
   it('is no longer offered from the tracking page', async () => {
-    localStorage.setItem('his.client.t', JSON.stringify({ token: TOKEN, at: Date.now(), day: '2026-11-20' }));
+    localStorage.setItem('his.client.t', JSON.stringify({ token: TOKEN, at: Date.now(), day: '2099-11-20' }));
     server = () => { throw new ClientError('expired', 'Ce lien a expiré.'); };
     await open();
     expect(q('client-error-expired')).toHaveLength(1);
