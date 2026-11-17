@@ -12,6 +12,7 @@ import { Page, Panel, Button, Avatar, Pill, Banner, Empty, Skeleton, Rows } from
 import { ago } from '../../shared/map/ago';
 import { loadTeamList, loadRules, rolesWords, type Invitation, type LinkResult, type TeamList } from '../../domain/team/teamApi';
 import { InviteSheet, type InviteDraft } from './InviteSheet';
+import { againDraft } from './again';
 import { PersonSheet } from './PersonSheet';
 import { InvitationSheet } from './InvitationSheet';
 import { LinkSheet } from './LinkSheet';
@@ -70,7 +71,7 @@ export default function TeamScreen(_p: ScreenProps) {
       <InviteSheet open={!!invite} prefill={invite?.prefill} again={invite?.again} onClose={() => setInvite(null)} onSent={() => void refresh()} onLink={setLink} />
       <PersonSheet id={personId} signIns={list?.sign_ins} onClose={() => setPersonId(null)} onLink={setLink} />
       <InvitationSheet inv={inv} onClose={() => setInv(null)} onCancelled={() => void refresh()}
-        onAgain={(i) => { setInv(null); setInvite({ again: true, prefill: { full_name: i.full_name, email: i.email, roles: i.roles.length ? i.roles : ['mechanic'], truck_id: i.truck_id || '' } }); }} />
+        onAgain={(i) => { setInv(null); setInvite({ again: true, prefill: againDraft(i) }); }} />
       <LinkSheet result={link} onClose={() => setLink(null)} />
     </Page>
   );
