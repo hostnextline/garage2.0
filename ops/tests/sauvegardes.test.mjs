@@ -790,3 +790,58 @@ test('a lost project: a whole night restored with --neuve into a NEW database ma
     await q(`update public.settings s set company = ($1::jsonb)->'company', billing = ($1::jsonb)->'billing', booking = ($1::jsonb)->'booking' where id = 1`, [avant]);
   }
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// The way back of the database (CUTOVER.md section 7), rehearsed: a base at AVANT, the six migrations, then the
+// runbook's own lines (the functions of before, the triggers) — the functions and the triggers that fire are AVANT's
+// (mise-a-niveau-01, compat-01: the triggers made by the migrations kept refusing what yesterday's app does)
+// ---------------------------------------------------------------------------------------------------------------
+test('the way back: after the six migrations, fonctions_avant.sql and the « Déclencheurs » block of CUTOVER.md give back the functions and the triggers of before', async () => {
+  const nom = `ops_retour_${process.pid}_${Date.now()}`;
+  const P = (args, input) => execFileSync('psql', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-d', nom, ...args],
+    { encoding: 'utf8', input, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'], maxBuffer: 1 << 28 });
+  const rb = readFileSync(join(ROOT, 'ops/live/CUTOVER.md'), 'utf8');
+  const requete = rb.match(/\*\*Le texte de toutes les fonctions SQL\*\*[\s\S]*?```sql\n([\s\S]*?)```/);
+  const bloc = rb.match(/\*\*Déclencheurs\*\*[\s\S]*?```sql\n([\s\S]*?)```/);
+  assert.ok(requete && bloc, 'CUTOVER.md holds the query of fonctions_avant.sql and the « Déclencheurs » block');
+  const migrations = readdirSync(join(ROOT, 'supabase/migrations')).filter((x) => x.endsWith('.sql')).sort();
+  const neuves = migrations.filter((f) => f >= '20261116');
+  assert.ok(neuves.length >= 6);
+  const nb = new pg.Pool({ host: '127.0.0.1', port: 54332, user: 'postgres', database: nom, max: 1 });
+  nb.on('error', () => {});
+  const nq = async (sql) => (await nb.query(sql)).rows;
+  const etat = async () => ({
+    fonctions: Object.fromEntries((await nq(`select p.oid::regprocedure::text f, md5(pg_get_functiondef(p.oid)) m from pg_proc p
+       where p.pronamespace = 'public'::regnamespace and p.prokind in ('f', 'p')
+         and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')`)).map((x) => [x.f, x.m])),
+    declencheurs: (await nq(`select pg_get_triggerdef(t.oid) d from pg_trigger t join pg_class c on c.oid = t.tgrelid
+       where c.relnamespace = 'public'::regnamespace and not t.tgisinternal and t.tgenabled <> 'D' order by 1`)).map((x) => x.d)
+  });
+  await q(`create database ${nom}`);
+  try {
+    P(['-f', join(ROOT, 'tests/stack/base.sql')]);
+    P(['-c', `alter database ${nom} set search_path to "$user", public, extensions`]);
+    P(['-c', 'drop schema auth cascade']);
+    P([], execFileSync('pg_dump', ['-h', '127.0.0.1', '-p', '54332', '-U', 'postgres', '-s', '-n', 'auth', 'postgres'], { encoding: 'utf8', maxBuffer: 1 << 28 }));
+    // AVANT: every migration before the six (none of them ever changes once applied on live)
+    for (const f of migrations.filter((x) => x < '20261116')) P(['-f', join(ROOT, 'supabase/migrations', f)]);
+    const avant = await etat();
+    const fonctionsAvant = (await nq(requete[1]))[0].string_agg;
+    assert.ok(fonctionsAvant.length > 10000, 'ops/live/rollback/fonctions_avant.sql, as section 1.3 makes it');
+    // the cutover
+    for (const f of neuves) P(['-f', join(ROOT, 'supabase/migrations', f)]);
+    const apres = await etat();
+    assert.notDeepEqual(apres.declencheurs, avant.declencheurs, 'the migrations do change the triggers');
+    // the way back: the functions of before, then the block (its last line comes from F of before: CREATE OR REPLACE)
+    P([], fonctionsAvant);
+    const suivre = avant.declencheurs.find((d) => / job_items_invoice_follow /.test(d));
+    assert.ok(suivre, 'job_items_invoice_follow existed before');
+    P([], bloc[1] + '\n' + suivre.replace(/^CREATE TRIGGER/, 'CREATE OR REPLACE TRIGGER') + ';\n');
+    const retour = await etat();
+    for (const [f, m] of Object.entries(avant.fonctions)) assert.equal(retour.fonctions[f], m, `${f}: its text of before`);
+    assert.deepEqual(retour.declencheurs, avant.declencheurs, 'the triggers that fire are those of before, no more, no less');
+  } finally {
+    await nb.end();
+    await q(`drop database if exists ${nom} with (force)`);
+  }
+});

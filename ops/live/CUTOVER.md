@@ -19,8 +19,10 @@ Dans ce fichier : **C** = le commit de la refonte, poussé sur GitHub (une branc
 l'étape 5) ; **AVANT** = `acf46c3`, la version en ligne aujourd'hui (tag `avant-refonte`) ; **le projet** = Supabase
 `garage2` (`wyxvizxabqgvsiiemvfw`).
 
-Quand : hors des heures de l'équipe (après 20 h, avant 7 h), et pas entre 3 h et 4 h (la sauvegarde de la nuit part à
-3 h 23, 4 h 23 l'été ; le rapprochement de pg_cron à 2 h 40, 3 h 40 l'été). Compter 1 h 30 en tout.
+Quand : hors des heures de l'équipe (après 20 h, avant 7 h), et **jamais entre 07:30 et 09:00 UTC** (2 h 30 à 4 h
+l'hiver, 3 h 30 à 5 h l'été : le rapprochement de pg_cron part à 07:40 UTC, la sauvegarde de la nuit à 08:23 UTC).
+Compter 1 h 30 en tout. Chaque migration tient des verrous sur les tables qu'elle change jusqu'à sa fin : le bloc de
+la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'arrête sans rien changer (réessayer).
 
 ---
 
@@ -83,6 +85,7 @@ Lancer `ops/live/2026-11-16_verifications.sql` sur la base en ligne, une requêt
 | Q7 poids | la base sous 60 % du forfait (500 Mo en gratuit) | le dire au propriétaire (les photos sont dans la base : décision de forfait) |
 | Q8 outils | `http_get` et `digest` = `true` ; `may_set_session_replication_role` = `true` | sans `http_get`/`digest` : la procédure des migrations (section 2) ne marche pas, arrêt ; sans le droit de `session_replication_role` : une restauration ne peut pas tourner en ligne, à savoir avant de compter sur elle |
 | Q9 avant la refonte | (des informations : photos SVG, noms des clés de `secrets`, personnes sans courriel, les nombres de départ du contrôle 2c) | — |
+| Q10 propriétaires et droits par colonne | le même propriétaire des fonctions de chaque côté ; le `prosrc_md5` de `job_step`, `walk_in`, `coffre_add` égal à celui de la base locale à AVANT | un propriétaire différent : arrêt (une fonction d'un autre rôle perdrait ses droits) ; un `prosrc` différent : comparer les textes avant d'appliquer |
 | F empreinte | les `md5` de la base en ligne = ceux de la base locale à AVANT, sauf les écarts attendus ci-dessous | arrêt : comprendre chaque écart avant d'appliquer quoi que ce soit |
 
 Écarts attendus entre la base en ligne et la base locale : la table `local_migrations` (locale seulement) ;
@@ -129,15 +132,17 @@ begin
   body := r.content;
   sha := encode(extensions.digest(convert_to(body, 'UTF8'), 'sha256'), 'hex');
   if sha <> '<sha256 du fichier local>' then raise exception 'sha différent : %', sha; end if;
+  perform set_config('lock_timeout', '5s', true);   -- un verrou pris par l'app plus de 5 s : arrêt, rien de changé
   execute body;
   raise exception 'ESSAI OK : <fichier> (rien n''est gardé)';
 end $do$;
 ```
 
-Toute autre erreur : arrêt, rien n'a changé. (Une migration qui ne peut pas tourner dans un bloc — `create index
+Toute autre erreur : arrêt, rien n'a changé. (`canceling statement due to lock timeout` : l'app tenait une table ;
+attendre une minute et refaire l'essai.) (Une migration qui ne peut pas tourner dans un bloc — `create index
 concurrently`, `vacuum` — le dit ici ; aucune des six n'en a.)
 
-**b. Pour vrai** (le bloc de CLAUDE.md, identique à l'essai sauf la fin) :
+**b. Pour vrai** (le bloc de CLAUDE.md, avec le même `lock_timeout` ; identique à l'essai sauf la fin) :
 
 ```sql
 do $do$
@@ -148,6 +153,7 @@ begin
   body := r.content;
   sha := encode(extensions.digest(convert_to(body, 'UTF8'), 'sha256'), 'hex');
   if sha <> '<sha256 du fichier local>' then raise exception 'sha différent : %', sha; end if;
+  perform set_config('lock_timeout', '5s', true);
   execute body;
   insert into supabase_migrations.schema_migrations (version, name, statements) values ('<version>', '<nom>', array[body]);
 end $do$;
@@ -189,8 +195,18 @@ Pendant ce temps l'app et les fonctions d'hier tournent sur la base qui change :
    - `curl -s "https://wyxvizxabqgvsiiemvfw.supabase.co/functions/v1/<nom>?version"` répond `{"ok":true,"commit":"<C>"}`
      (le commit est lu dans l'adresse des fichiers déployés : un autre commit = une fonction déployée depuis le mauvais
      commit, à refaire). Les fonctions d'hier ne savent pas répondre à `?version`.
-   - `POST /functions/v1/<nom>` avec la clé publique et le corps `{}` reçoit un refus **propre** (`{ ok: false, code,
-     error }`, 400 ou 401 — jamais 404 ni 500).
+   - `POST /functions/v1/<nom>` avec la clé publique et le corps `{}` reçoit la réponse de cette table (jamais 404 ni
+     500 ; essayé sur la copie locale du serveur à C) :
+
+     | Fonction | Réponse attendue à `{}` |
+     |---|---|
+     | `backup` | 401 `signin` (« Ticket GitHub manquant. ») |
+     | `book` | **200** `{ ok: true, garage: {…}, on: false }` (les renseignements de la page de réservation, fermée) |
+     | `client` | 400 `bad_link` |
+     | `conversation` | 400 `action` |
+     | `notify` | 400 `kind` |
+     | `stripe` | 400 `signature` (Stripe branché) ; 503 `no_stripe` si Stripe n'est pas branché |
+     | `enroute`, `hermes`, `recon`, `ring`, `team`, `vin` | 401 `signin` |
 4. Les variables des fonctions (Supabase → Edge Functions → Secrets) : **rien de nouveau à mettre**. `SUPABASE_URL`,
    `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` sont données par Supabase. Facultatives, comme hier :
    `APP_BASE_URLS` (défaut : l'adresse Vercel), `BACKUP_REPOS` (défaut : `hostnextline/garage2.0-sauvegardes`),
@@ -226,7 +242,10 @@ du travail ; l'app les montrera à l'étape 5, Trésorerie → « Rapprochement 
    `docs/`, `tests/`, `supabase/`, `ops/live/`, `ops/sauvegardes/`, `ops/tests/`, `CLAUDE.md` ou `README.md` ne publie
    rien ; la fusion de la refonte touche `src/` : elle publie. « Run workflow » publie à la main.)
 3. Contrôle : `https://mecanique-mobile-his.vercel.app/version.json` donne le commit fusionné et `"min_built_at": null` ;
-   l'app s'ouvre sur un téléphone ; « Vérifier les mises à jour » l'installe ; les données du téléphone sont là (même
+   l'app s'ouvre sur un téléphone ; « Vérifier les mises à jour » l'installe (l'app d'hier propose la nouvelle version
+   par un avis de 20 secondes ou par « Vérifier » : un téléphone qui ne l'accepte pas garde l'app d'hier, qui marche
+   avec le serveur de la refonte ; avant le prochain jour de travail, chaque téléphone de l'équipe devrait montrer le
+   nouveau commit dans Réglages → L'app — décision du propriétaire, O-17) ; les données du téléphone sont là (même
    stockage, IndexedDB version 3) ; un téléphone resté hors ligne envoie ses changements en attente au retour du réseau.
 
 ## 6. Après
@@ -247,11 +266,32 @@ revient seule : l'app d'hier marche avec le serveur de la refonte, et les foncti
 | **une fonction du serveur** | la redéployer au commit noté dans `deployed.avant.json`, même procédure (3.1). `recon` n'existait pas : la laisser (rien ne l'appelle sans le travail de nuit, qui dit « pas encore » quand elle répond `not_ready`). | minutes | rien |
 | **la clé Stripe** (4) | rien à refaire : l'adresse neuve reçoit les mêmes notifications. La fonction `team` d'hier, si elle revient, recrée une adresse sans remboursements quand on enregistre de nouveau la clé. | — | l'adresse neuve chez Stripe |
 | **une fonction SQL** changée par une migration | relancer sa définition d'avant depuis `ops/live/rollback/fonctions_avant.sql` (un `create or replace` garde ses droits ; si la migration a changé ses droits, les remettre comme le dit F d'avant : `grant`/`revoke`). D'abord dans un bloc d'essai (`raise exception`), puis pour vrai. Une fonction ajoutée par la refonte (`op_begin`, `recon_*`…) reste. | minutes | rien |
-| **une règle d'accès (policy) ou un déclencheur** (migrations 2, 4) | `alter policy … using (…) with check (…)` / `create or replace trigger …` avec le texte de F d'avant (jamais `drop`). Une policy que la migration 4 a créée sous un nouveau nom : `alter policy` pour la rendre aussi large que l'ancienne (jamais `drop`). | minutes | rien |
+| **un déclencheur ajouté par la refonte** (migrations 2 et 4 : il ne reste PAS inutilisé, il tourne à chaque écriture) | `alter table … disable trigger …` (jamais `drop` ; `enable trigger` le remet), les lignes du bloc « Déclencheurs » ci-dessous. **Obligatoire** quand une fonction SQL des migrations 2 ou 4 revient à son texte d'avant (`job_step`, `invoice_void`, `coffre_add`…) : sous `jobs_unbilled_guard` et `invoices_number_keep`, les fonctions d'avant sont refusées (`unbilled`, `numbered`). Ces lignes ramènent aussi les règles d'avant (une facture numérotée effaçable, la réservation en ligne changée par un simple enregistrement des réglages, un numéro de téléphone changé sans fermer les liens) : le rapprochement peut alors signaler des trous de numéros (M3). D'abord dans un bloc d'essai. | minutes | les fonctions des déclencheurs, éteintes |
+| **une règle d'accès (policy) ou un déclencheur d'avant** (migrations 2, 4) | `alter policy … using (…) with check (…)` / `create or replace trigger …` avec le texte de F d'avant (jamais `drop`). Une policy que la migration 4 a créée sous un nouveau nom : `alter policy` pour la rendre aussi large que l'ancienne (jamais `drop`). | minutes | rien |
 | **la tâche pg_cron `garage-recon`** (migration 5) | `select cron.unschedule('garage-recon')` (avec le go : elle ne fait qu'écrire le rapprochement de la veille) | — | — |
-| **une table, une colonne ou une fonction ajoutée** | rien : elle reste, inutilisée (jamais de `DROP` en ligne). Une colonne ajoutée a une valeur par défaut : l'app d'hier l'ignore. | — | l'objet inutilisé |
+| **une table, une colonne ou une fonction ajoutée** | rien : elle reste, inutilisée (jamais de `DROP` en ligne). Une colonne ajoutée a une valeur par défaut : l'app d'hier l'ignore. Une fonction appelée par un déclencheur, elle, tourne tant que son déclencheur est allumé (ligne « un déclencheur ajouté » ci-dessus). | — | l'objet inutilisé |
 | **des données abîmées** par la nouvelle logique | `restaurer.mjs` depuis la sauvegarde de 1.1 : `--tables <t> --ids <id>,…` (les téléphones les revoient) ou `--remplacer` sur la seule table concernée (lire le README des sauvegardes : ce que ça fait et ne fait pas). Jamais toute la base, jamais `--neuve` (refusé sur une base qui a des données). | minutes à 1 h | ce qui a été créé depuis (rien n'est effacé) |
 | **le projet lui-même** perdu | README des sauvegardes, « Après la perte du projet » : nouveau projet, toutes les migrations, `restaurer-comptes.mjs`, puis `restaurer.mjs donnees --neuve` (répété par un test de `ops/tests`) ; clés des services retapées. | heures | les mots de passe (chacun fait « Mot de passe oublié ») |
+
+**Déclencheurs** — le retour de la base aux règles d'hier (avec le retour des fonctions SQL de
+`fonctions_avant.sql`, jamais seul ; essayé d'abord dans un bloc qui finit par `raise exception`) :
+
+```sql
+-- les six déclencheurs faits par la refonte : éteints (enable trigger les rallume)
+alter table public.invoices disable trigger invoices_number_keep;
+alter table public.jobs disable trigger jobs_unbilled_guard;
+alter table public.customers disable trigger customers_delete_guard;
+alter table public.customers disable trigger customers_phone_links;
+alter table public.push_subs disable trigger push_subs_takeover;
+alter table public.settings disable trigger settings_web_guard;
+-- job_items_invoice_follow existait (sur update seulement) ; la refonte l'a refait sur insert or update.
+-- Son texte d'avant est dans F d'avant (pg_get_triggerdef) : « CREATE TRIGGER » y devient « CREATE OR REPLACE TRIGGER ».
+-- À AVANT : create or replace trigger job_items_invoice_follow after update on public.job_items for each row execute function job_items_invoice_follow()
+```
+
+La dernière ligne se prend dans F d'avant, pas recopiée d'ici : c'est F qui fait foi. Un test le répète
+(`ops/tests/sauvegardes.test.mjs`, « the way back ») : une base à AVANT, les six migrations, puis `fonctions_avant.sql`
+et ce bloc : les fonctions et les déclencheurs allumés sont ceux d'AVANT.
 
 **Ce qui ne se défait pas** (le savoir avant le go) :
 

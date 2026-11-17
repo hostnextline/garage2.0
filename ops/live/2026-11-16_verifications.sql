@@ -83,6 +83,24 @@ select json_build_object(
     'next_job_number', (select last_value from public.job_number_seq))
 ) as q9_before_refonte;
 
+-- Q10. What F does not see (mise-a-niveau-04): who OWNS each function (on live « postgres » is not a superuser: a function
+--      owned by another role keeps working only through its own grants), who runs each pg_cron job, the column-level
+--      rights (the migrations revoke and grant per column on jobs), and the body alone (md5 of prosrc, which does not
+--      depend on the Postgres version) of the three functions F may show different. The same query on the local base at
+--      AVANT: the owners must be the same role on each side (else stop), the prosrc md5 of the three must be equal.
+select json_build_object(
+  'function_owners', (select json_object_agg(o, n) from (select proowner::regrole::text o, count(*) n from pg_proc
+                        where pronamespace = 'public'::regnamespace group by 1) x),
+  'cron_jobs', case when to_regclass('cron.job') is null then null else (xpath('/row/j/text()',
+                 query_to_xml('select json_agg(json_build_object(''jobname'', jobname, ''username'', username) order by jobname) as j from cron.job', false, true, '')))[1]::text::json end,
+  'column_rights', (select json_agg(json_build_object('table', c.relname, 'column', a.attname, 'acl', a.attacl::text) order by c.relname, a.attname)
+                      from pg_attribute a join pg_class c on c.oid = a.attrelid
+                     where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and a.attacl is not null and not a.attisdropped),
+  'three_bodies', (select json_object_agg(p.oid::regprocedure::text, json_build_object('prosrc_md5', md5(p.prosrc), 'secdef', p.prosecdef,
+                      'config', p.proconfig, 'owner', p.proowner::regrole::text))
+                     from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('job_step', 'walk_in', 'coffre_add'))
+) as q10_owners_and_column_rights;
+
 -- F. THE SCHEMA FINGERPRINT — one SELECT, one JSON. Every function of public (md5 of pg_get_functiondef, its grants,
 --    security definer, settings), every table with its columns, row level security and grants, the constraints,
 --    indexes, policies, triggers, views, the tables of the realtime publication, the recorded migration versions.
