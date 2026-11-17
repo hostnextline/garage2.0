@@ -15,7 +15,8 @@ import type { PlaceValue } from '../../shared/places/AddressField';
 import { EMPTY_CAR, carIsEmpty, carErrors } from '../../shared/vehicles/VehicleBits';
 import { readAddress, barChoice, openDayOf } from './address';
 import { reduce, initialDraft, plannedCars, workOf, workCount, NO_CAR, EMPTY_PLACE, type Draft } from './draft';
-import { missing, callerOk, carBad, type CallCarCheck } from './check';
+import { missing, callerOk, carBad, routeDefault, type CallCarCheck } from './check';
+import { myRoute, refreshMyRoute } from '../../services/position';
 import { carMinutes } from './visit';
 
 /** the address on the customer's file */
@@ -113,7 +114,11 @@ export function useBooking(query: URLSearchParams) {
   const pickFrom = mechanicOnly ? mine : a.walkIn ? active.map((x) => x.id) : [];
   const fixed = mechanicOnly || a.walkIn ? own ?? (pickFrom.length === 1 ? pickFrom[0] : null) : null;
   const truckNeeded = !fixed && pickFrom.length > 1;
-  const effTruck = d.truckId || fixed;
+  // « La route que je fais » (Ma journée), read again from the phone when the form opens: a walk-in's vehicle already
+  // chosen, still changeable (R73)
+  useEffect(() => { refreshMyRoute(); }, []);
+  const routeTruck = routeDefault({ walkIn: a.walkIn, needed: truckNeeded, stored: myRoute.value, from: pickFrom, mine });
+  const effTruck = d.truckId || fixed || routeTruck;
   const mayPickTruck = !a.walkIn && !mechanicOnly && (isOwner() || hasRole('office')) && active.length > 1;
 
   /* ---------- the cars, their work, the time and the price ---------- */
@@ -143,7 +148,7 @@ export function useBooking(query: URLSearchParams) {
   const quoteDone = !!quote && !ownQuoteJob && (quote.status === 'converted' || !!quote.job_id) && !(quoteJob && GONE.includes(quoteJob.status));
   const miss = missing({
     walkIn: a.walkIn, quoteDone, customerId: d.customerId, newCaller: needNew, searchKnown: d.searchKnown, callerOk: callerOk(d.caller, phoneDigits),
-    callCars, planned: planned.length, truckNeeded, truckId: d.truckId, choice: d.choice
+    callCars, planned: planned.length, truckNeeded, truckId: d.truckId || routeTruck, choice: d.choice
   });
 
   return {

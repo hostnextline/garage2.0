@@ -35,6 +35,7 @@ vi.mock('../../shared/moment/ServicePicker', () => ({
 
 import { upsertLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
+import { setMyRoute } from '../../services/position';
 import { addDays, today } from '../../lib/dates';
 import { lang } from '../../lib/i18n';
 import BookScreen from './BookScreen';
@@ -284,5 +285,28 @@ describe('the booking screen', () => {
     await click(q('book-truck')!.querySelector('button'));
     await click(q('book-confirm'));
     expect(api.walkIn.mock.calls[0][0]).toMatchObject({ truck_id: 'T1', customer_id: 'c-1', vehicle_id: 'v-1' });
+  });
+
+  it('Routes partagées: a mechanic’s walk-in starts on « La route que je fais », and another vehicle can still be chosen (R73)', async () => {
+    access.value = { ...access.value!, owner: true, roles: ['owner', 'mechanic'], trucks: ['T1', 'T2'] };
+    setMyRoute('T2');
+    try {
+      api.walkIn.mockImplementation(async (job: { id: string }) => ({ queued: false, id: job.id }));
+      await draw('walkin=1&customer=c-1');
+      await click(q('stub-add'));
+      const chips = () => [...q('book-truck')!.querySelectorAll('button')] as HTMLButtonElement[];
+      expect(chips().map((c) => c.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+      expect((q('book-confirm') as HTMLButtonElement).disabled).toBe(false);
+      await click(q('book-confirm'));
+      expect(api.walkIn.mock.calls[0][0]).toMatchObject({ truck_id: 'T2', customer_id: 'c-1' });
+      // the other vehicle chosen by hand wins
+      act(() => render(null, box));
+      api.walkIn.mockClear();
+      await draw('walkin=1&customer=c-1');
+      await click(q('stub-add'));
+      await click(chips()[0]);
+      await click(q('book-confirm'));
+      expect(api.walkIn.mock.calls[0][0]).toMatchObject({ truck_id: 'T1' });
+    } finally { setMyRoute(null); }
   });
 });

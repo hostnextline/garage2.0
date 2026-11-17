@@ -32,6 +32,14 @@ export interface CheckInput {
   truckId: string | null;
   choice: BlockChoice | null;
 }
+/** the vehicle already chosen when the person must say it (R73): a walk-in is done now, on the route this person does
+    now (« La route que je fais » of « Ma journée », Routes partagées), when it is one of theirs and one of the vehicles to
+    choose from. The choice stays on screen and can be changed; null: nothing chosen for the person */
+export function routeDefault(o: { walkIn: boolean; needed: boolean; stored: string | null; from: readonly string[]; mine: readonly string[] }): string | null {
+  if (!o.walkIn || !o.needed || !o.stored || o.mine.length < 2) return null;
+  return o.from.includes(o.stored) && o.mine.includes(o.stored) ? o.stored : null;
+}
+
 /** the first missing piece; null: « Réserver » may go */
 export function missing(i: CheckInput): Missing {
   if (i.quoteDone) return 'quote';
