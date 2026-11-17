@@ -64,10 +64,18 @@ describe('lines', () => {
     expect(d[0]).toMatchObject({ kind: 'service', service_id: 's-f', duration_min: 90, unit_cents: 34999 });
     expect(d[1]).toMatchObject({ kind: 'part', qty: 2 });
   });
-  it('an estimate line with a quantity of 0 (or none) is booked once, never at 0 (R47, invoices-quotes-27)', () => {
-    const d = draftsFromQuote({ items: [{ description: 'Freins', qty: 0, unit_cents: 34999, taxable: true }, { description: 'Huile', qty: null as never, unit_cents: 8999, taxable: true }] });
-    expect(d.map((x) => x.qty)).toEqual([1, 1]);
-    expect(toItemInputs(d).map((x) => x.qty)).toEqual([1, 1]);
+  it('an estimate line with no quantity is booked once, never at 0 (R47, invoices-quotes-27)', () => {
+    const d = draftsFromQuote({ items: [{ description: 'Freins', qty: undefined as never, unit_cents: 34999, taxable: true }, { description: 'Huile', qty: null as never, unit_cents: 8999, taxable: true }, { description: 'Pneus', qty: 'x' as never, unit_cents: 1000, taxable: true }] });
+    expect(d.map((x) => x.qty)).toEqual([1, 1, 1]);
+    expect(toItemInputs(d).map((x) => x.qty)).toEqual([1, 1, 1]);
+  });
+  it('0-qty option is not billed once booked (S41, argent-app-05)', () => {
+    // the estimate counts « Option » at 0 × 50 $ (0 $): once booked it must not become 1 × 50 $
+    const q = { items: [{ description: 'Main-d’œuvre', kind: 'labour' as const, qty: 1.33, unit_cents: 9000, taxable: true }, { description: 'Option', qty: 0, unit_cents: 5000, taxable: true }, { description: 'Option 2', qty: '0' as never, unit_cents: 2500, taxable: true }] };
+    const d = draftsFromQuote(q);
+    expect(d.map((x) => [x.description, x.qty])).toEqual([['Main-d’œuvre', 1.33]]);
+    expect(toItemInputs(d).map((x) => x.qty)).toEqual([1.33]);
+    expect(bookSummary(d, QC_TAXES).subtotal).toBe(11970);
   });
   it('reads the block from the address', () => {
     expect(parseChoice('2026-11-05', 'eve')).toEqual({ day: '2026-11-05', block: 'eve' });
