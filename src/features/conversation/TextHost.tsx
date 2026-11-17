@@ -12,12 +12,12 @@ import { customersList, customerName } from '../../data/select';
 import { access } from '../../data/auth';
 import { Avatar } from '../../ui';
 import { phoneOwners } from '../../shared/customers/dupes';
-import { hermesOpen, setHermesOpen, textsOn } from '../../services/bubbles';
+import { hermesOpen, setHermesOpen, textsOn, checkTexts } from '../../services/bubbles';
 import { openChat, minimiseChat, closeChat, unread, textsOf, phoneId, type Chat } from '../../shared/customers/texts';
 import { ChatWindow } from './ChatWindow';
 import { useIncomingTexts } from './useIncomingTexts';
 import { chats, setChats } from './store';
-import { bubblePlan } from './bubbles';
+import { bubblePlan, openAsked } from './bubbles';
 import { repairPushOnce } from './pushRepair';
 import { openFromAlert } from './fromAlert';
 import '../../shared/customers/conversation.css';
@@ -28,9 +28,10 @@ export function TextHost() {
   const who = access.value?.id || null;
   // the alert while the app is closed: the server gets this device's address back if it lost it (comms-guide-08)
   useEffect(() => { if (on && who) repairPushOnce(who); }, [on, who]);
-  // a tap on a text's alert while the app is open: that number's conversation opens (comms-guide-14)
+  // a tap on a text's alert while the app is open: that number's conversation opens, a bubble made for it when the text
+  // came in while the app was hidden, and the texts are read at once to fill it (comms-guide-14)
   const seen = useRef(texts); seen.current = texts;
-  useEffect(() => (on ? openFromAlert((phone) => { setHermesOpen(false); setChats(openChat(chats.value, phone, seen.current)); }) : undefined), [on]);
+  useEffect(() => (on ? openFromAlert((phone) => { setHermesOpen(false); setChats(openAsked(chats.value, phone, seen.current)); checkTexts(); }) : undefined), [on]);
   if (!on) return null;
 
   const known = (c: Chat) => phoneOwners(c.phone, customersList.value)[0] || null;
