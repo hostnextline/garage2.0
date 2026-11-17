@@ -110,7 +110,7 @@ describe('« Changer de camion » keeps what the customer was told (x-dualmode-2
     api.moveJob.mockImplementationOnce(() => Promise.resolve({ queued: false, data: { ok: true, changed: false, tell: true, window_changed: true } }));
     await pick();
     expect(api.notify).toHaveBeenCalledTimes(1);
-    expect(api.notify.mock.calls[0]).toEqual(['moved', 'j1', {}]);
+    expect(api.notify.mock.calls[0]).toEqual(['moved', 'j1', { op: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
   });
 });
 

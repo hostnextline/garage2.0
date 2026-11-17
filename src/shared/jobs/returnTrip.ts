@@ -1,18 +1,24 @@
 /* « Retour à la Centrale » after the last job of the day: the trip back, and the garage's number gets the arrival time and
    the live map (« Je pars vers … »); « Je suis arrivé » ends it. Needs the network (not kept on the phone). */
 import { enroute, errorMessage } from '../../data/api';
-import { pull, isNetworkError } from '../../data/sync';
+import { pull, isNetworkError, uuid } from '../../data/sync';
+import { intents, keepOp } from '../../domain/jobs/intents';
 import { toast } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
 import { clockOf } from './select';
 import { outcome } from './texts';
 
+/** one id per « Je pars vers la Centrale », kept until the server answered: tapped again after a lost answer, one trip
+    and one text (enroute return, R28) */
+const returns = intents(uuid);
 /** « Je pars vers la Centrale » */
 export async function doReturn(): Promise<void> {
   const pos = await quickPosition();
+  const op = returns.op('return');
   try {
-    const e = await enroute('return', null, { pos, notify: true });
+    const e = await enroute('return', null, { pos, notify: true, op });
+    returns.done('return', op);
     if (!e.ok) { toast(errorMessage(e), { kind: 'bad' }); return; }
     const time = e.eta_at ? clockOf(e.eta_at) : '';
     const place = e.place || 'Centrale';
@@ -23,6 +29,7 @@ export async function doReturn(): Promise<void> {
     void pull('trips');
     void pull('messages');
   } catch (err) {
+    if (!keepOp(err, isNetworkError(err))) returns.done('return', op);
     toast(isNetworkError(err) ? t('today.return.offline') : errorMessage(err), { kind: 'bad' });
   }
 }

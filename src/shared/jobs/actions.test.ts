@@ -21,7 +21,8 @@ import { upsertLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
 import type { Job, Access } from '../../data/types';
 import { doFinish, doLeave, doArrive, startInvoice, drives } from './actions';
-import { doReturnEnd } from './returnTrip';
+import { doReturnEnd, doReturn } from './returnTrip';
+import { sendText } from './texts';
 
 const JOB = (o: Partial<Job> = {}) => ({ id: 'j1', number: 7, status: 'on_site', day: '2026-11-15', block: 'am', truck_id: 't1', customer_id: 'c1', vehicle_id: null, pay_later: false, pay_later_reason: null, waiver_signed_at: 'x', coffre_id: null, odometer_km: 1, ...o } as unknown as Job);
 const owner = { id: 'owner', roles: [], owner: true, rights: {}, trucks: [] } as unknown as Access;
@@ -163,5 +164,44 @@ describe('« Je suis arrivé » at the start', () => {
     await doReturnEnd();
     expect(ui.toast).not.toHaveBeenCalledWith(expect.stringMatching(/arriv/i), { kind: 'ok' });
     expect(ui.toast.mock.calls[0][1]).toEqual({ kind: 'bad' });
+  });
+});
+
+describe('one operation id per text and per « Je pars vers la Centrale », kept until the server answered (R27, R28)', () => {
+  const opOf = (call: unknown[]) => (call[2] as { op?: string }).op;
+  it('a text the server is still busy with, tapped again: the same id (one text); answered, the next one is a new send', async () => {
+    access.value = mechanic;
+    api.notify.mockRejectedValueOnce(Object.assign(new Error('busy'), { code: 'busy' }));
+    await sendText('moved', JOB());
+    await sendText('moved', JOB());
+    await sendText('moved', JOB());
+    const [a, b, c] = api.notify.mock.calls.map(opOf);
+    expect(a).toMatch(/^[0-9a-f-]{36}$/);
+    expect(b).toBe(a);
+    // the second one was answered: « Renvoyer » now sends again
+    expect(c).not.toBe(a);
+    // another text, or another job: its own id
+    await sendText('booking', JOB());
+    expect(opOf(api.notify.mock.calls[3])).not.toBe(c);
+  });
+  it('a refusal is an answer: the next try is a new send', async () => {
+    access.value = mechanic;
+    api.notify.mockRejectedValueOnce(refusal('nothing'));
+    await sendText('extras', JOB());
+    await sendText('extras', JOB());
+    const [a, b] = api.notify.mock.calls.map(opOf);
+    expect(b).not.toBe(a);
+  });
+  it('« Je pars vers la Centrale » goes with its id; tried again while the server is busy with it: the same id', async () => {
+    access.value = mechanic;
+    api.enroute.mockRejectedValueOnce(Object.assign(new Error('busy'), { code: 'busy' }));
+    await doReturn();
+    await doReturn();
+    await doReturn();
+    const ops = api.enroute.mock.calls.map((c) => (c[2] as { op?: string }).op);
+    expect(api.enroute.mock.calls[0].slice(0, 2)).toEqual(['return', null]);
+    expect(ops[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(ops[1]).toBe(ops[0]);
+    expect(ops[2]).not.toBe(ops[0]);
   });
 });

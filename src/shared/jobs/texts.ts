@@ -5,12 +5,13 @@
 import { signal } from '@preact/signals';
 import type { Job } from '../../data/types';
 import { enroute, notify, errorMessage } from '../../data/api';
-import { pull, refetch, isNetworkError } from '../../data/sync';
+import { pull, refetch, isNetworkError, uuid } from '../../data/sync';
 import { jobTotals, settings, customer as customerRow } from '../../data/select';
 import { toast, whenHistorySettled } from '../../ui';
 import { t } from '../../lib/i18n';
 import { quickPosition } from '../../services/position';
 import { arrivalTextWanted } from '../../domain/jobs/texts';
+import { intents, keepOp } from '../../domain/jobs/intents';
 import { jobFirstName, clockOf } from './select';
 import { rememberLink } from './links';
 
@@ -28,10 +29,15 @@ function textResult(r: TextOutcome, name: string, okText?: string) {
   else outcome.value = r;
 }
 
+/** one id per text asked, kept until the server answered it: tapped again after a lost answer, the customer gets one text */
+export const textSends = intents(uuid);
 /** a text to the customer through the server (confirmation, moved, the mechanic arrived with the invoice, extra work to approve) */
 export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived', j: Job, opts: { resend?: boolean; okText?: string } = {}): Promise<boolean> {
+  const key = `${kind}|${j.id}|${opts.resend ? 'again' : ''}`;
+  const op = textSends.op(key);
   try {
-    const r = await notify(kind, j.id, opts);
+    const r = await notify(kind, j.id, { ...opts, op });
+    textSends.done(key, op);
     rememberLink(j, r.link);
     // no status: the server refused (not booked any more, no template…)
     if (!r.status) { toast(errorMessage(r), { kind: 'bad' }); return false; }
@@ -41,6 +47,7 @@ export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived',
     void pull('messages');
     return true;
   } catch (e) {
+    if (!keepOp(e, isNetworkError(e))) textSends.done(key, op);
     toast(isNetworkError(e) ? t('jobs.text.offline') : errorMessage(e), { kind: 'bad' });
     return false;
   }
