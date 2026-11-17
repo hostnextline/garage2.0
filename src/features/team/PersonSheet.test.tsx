@@ -82,4 +82,34 @@ describe('Équipe: the person’s sheet', () => {
     await wait(); await wait();
     expect(trucksSaved).toEqual([{ id: 't1', driver_id: null }]);
   });
+  const mechanicOffice = async () => {
+    replaceLocal('trucks', [{ id: 't1', name: 'Camion', driver_id: 'u-saleh', active: true }] as never);
+    replaceLocal('staff', [{ id: 'u-saleh', full_name: 'Saleh Amro', short_name: 'Saleh', email: 's@x.test', phone: null, roles: ['mechanic', 'office'], rights: {}, active: true, color: '#D3000E', lang: 'fr', prefs: {}, last_seen_at: null }] as never);
+    await wait();
+  };
+  it('« Mécanicien » off then on again before the server answered: both are sent, the truck stays his (settings-team-r2-1)', async () => {
+    await mechanicOffice();
+    await act(async () => { roleChip('Mécanicien').click(); });
+    await wait();
+    await act(async () => { roleChip('Mécanicien').click(); });
+    await wait();
+    await act(async () => { answers.shift()?.(); });
+    await wait(); await wait();
+    await act(async () => { answers.shift()?.(); });
+    await wait(); await wait();
+    expect(sent).toEqual([{ roles: ['office'] }, { roles: ['office', 'mechanic'] }]);
+    expect(trucksSaved).toEqual([]);
+  });
+  it('off then on, the « on » refused: the server holds « Bureau » only, so the truck is freed after the last answer (settings-team-r2-1)', async () => {
+    await mechanicOffice();
+    await act(async () => { roleChip('Mécanicien').click(); });
+    await wait();
+    await act(async () => { roleChip('Mécanicien').click(); });
+    await wait();
+    refuse = true;
+    await act(async () => { answers.shift()?.(); });
+    await wait(); await wait(); await wait();
+    expect(sent).toEqual([{ roles: ['office'] }, { roles: ['office', 'mechanic'] }]);
+    expect(trucksSaved).toEqual([{ id: 't1', driver_id: null }]);
+  });
 });

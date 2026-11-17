@@ -42,6 +42,8 @@ function PersonOpen(p: { id: string; signIns?: TeamList['sign_ins']; onClose: ()
   const [pwOpen, setPwOpen] = useState(false);
   const enqueue = useQueue();
   const rolesSeq = useOptimistic(), colorSeq = useOptimistic(), activeSeq = useOptimistic();
+  /** the roles the server took last from this sheet (null: none yet) */
+  const accepted = useRef<Role[] | null>(null);
   // the person left the team (removed here or elsewhere): the sheet closes
   useEffect(() => { if (!s) p.onClose(); }, [!!s]);
   if (!s) return null;
@@ -74,13 +76,16 @@ function PersonOpen(p: { id: string; signIns?: TeamList['sign_ins']; onClose: ()
       && !(await ask({ title: t('team.person.dropOwner.title'), text: t('team.person.dropOwner.text'), ok: t('team.person.dropOwner.ok'), danger: true }))) return;
     const latest = rolesSeq.start();
     setRoles(next);
-    let done = false;
-    await enqueue(() => run(async () => { const r = await memberUpdate(p.id, { roles: next }); done = true; return r; }, { ok: t('team.person.rolesSaved') }));
+    await enqueue(() => run(async () => { const r = await memberUpdate(p.id, { roles: next }); accepted.current = next; return r; }, { ok: t('team.person.rolesSaved') }));
     // no longer a mechanic: the truck he drove is free again (the server's member_update does not free it yet, R174;
-    // once it does, this finds no truck left to free) (settings-team-26)
-    if (done && !next.includes('mechanic')) {
+    // once it does, this finds no truck left to free) (settings-team-26). Only after the LAST role change, and from the
+    // roles the server took last: « Mécanicien » taken off then put back before the server answered keeps his truck
+    // (settings-team-r2-1). In the queue, so a change tapped meanwhile waits for it.
+    await enqueue(async () => {
+      const held = accepted.current;
+      if (!latest() || !held || held.includes('mechanic')) return;
       for (const tr of trucks.value.filter((x) => x.driver_id === p.id)) await run(() => saveTruck({ id: tr.id, driver_id: null }), { quiet: true });
-    }
+    });
     if (latest()) setRoles(null);
   };
   const changeColor = async (hex: string) => {
