@@ -114,7 +114,7 @@ function DocScreen(p: { view: InvoiceView }) {
                         : inv.issued_at ? t('invoices.screen.issuedOn', { when: stampText(inv.issued_at, l) }) : null}
                 </span>
               </div>
-              <OverBanner over={view.over} canRefund={editable && mayRefund(view)} onRefund={() => setSheet('refund')} />
+              <OverBanner over={view.over} office={manage} canRefund={manage && mayRefund(view)} onRefund={() => setSheet('refund')} />
               <UnbilledBanner inv={inv} job={j} finishing={finishing} />
               {inv.status === 'issued' && editable && (view.due > 0
                 ? <Button variant="primary" block class="inv-pay-btn" icon={<Banknote />} onClick={() => setSheet('pay')} data-tour="invoice-pay" data-testid="invoice-pay">

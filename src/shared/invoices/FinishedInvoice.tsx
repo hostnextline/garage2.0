@@ -34,6 +34,8 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
   const pays = paymentsOfInvoice(inv.id);
   const waiting = unsentPayments({ invoiceId: inv.id, jobId: inv.job_id });
   const editable = canEditInvoiceOf(job);
+  // money given back (« Rembourser ») and « Annuler la facture »: the office only, as the server (payment_add, invoice_void)
+  const manage = canManageInvoices();
   const [sheet, setSheet] = useState<'pay' | 'refund' | null>(null);
   const [manual, setManual] = useState<SendResult | null>(null);
   const pdf = usePdf();
@@ -72,7 +74,7 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
           <Totals subtotal={a.subtotal} tps={a.tps} tvq={a.tvq} total={a.total} paid={a.paid} taxesOn={a.showTaxes} />
         </div>
         {(pays.length > 0 || waiting.length > 0) && <PaymentsList pays={pays} waiting={waiting} />}
-        <OverBanner over={view.over} canRefund={editable && mayRefund(view)} onRefund={() => setSheet('refund')} />
+        <OverBanner over={view.over} office={manage} canRefund={manage && mayRefund(view)} onRefund={() => setSheet('refund')} />
         {inv.status === 'issued' && (
           <div class="stack">
             {!editable
@@ -92,7 +94,7 @@ export function FinishedInvoice(p: { job: Job; view: InvoiceView }) {
             <Button variant="ghost" href={`#/invoice/${inv.id}`}>{t('invoices.panel.open')}</Button>
           </div>
         )}
-        {inv.status === 'issued' && !finishing && canManageInvoices() && (
+        {inv.status === 'issued' && !finishing && manage && (
           <Button variant="danger" icon={<Ban />} onClick={cancel} class="inv-void-btn" data-testid="invoice-void">{t('invoices.void.button')}</Button>
         )}
       </div>

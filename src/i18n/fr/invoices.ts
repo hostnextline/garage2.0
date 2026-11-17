@@ -171,6 +171,7 @@ export const invoices = {
     overTitle: 'Trop-perçu : {amount} à remettre au client',
     over: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Remets-lui la différence, puis inscris-la ici.',
     overButton: 'Inscrire le remboursement',
+    overOffice: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Dis-le au bureau : c’est le bureau qui le rembourse.',
     unbilled: { one: '1 travail de la job n’est pas sur la facture', other: '{n} travaux de la job ne sont pas sur la facture' },
     unbilledText: 'Pour le facturer, touche « Modifier la facture », puis termine-la de nouveau.',
     unbilledClosed: 'Cette facture ne peut plus être modifiée.',

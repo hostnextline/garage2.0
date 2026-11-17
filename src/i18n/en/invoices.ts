@@ -171,6 +171,7 @@ export const invoices: typeof fr = {
     overTitle: 'Overpaid: {amount} to give back to the customer',
     over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Give the difference back, then record it here.',
     overButton: 'Record the refund',
+    overOffice: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Tell the office: the office refunds it.',
     unbilled: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
     unbilledText: 'To bill it, tap “Change the invoice”, then finish it again.',
     unbilledClosed: 'This invoice can no longer be changed.',

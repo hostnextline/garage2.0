@@ -111,6 +111,28 @@ describe('a finished invoice', () => {
     expect(q('invoice-refund')).not.toBeNull();
     expect(q('invoice-unbilled')).toBeNull();
   });
+  it('paid too much, seen by the mechanic of the job: told to tell the office, no « Inscrire le remboursement » (review argent-app-02)', async () => {
+    // the server refuses a negative payment from anyone but the owner or « edit_invoices » (payment_add)
+    access.value = { ...access.value!, roles: ['mechanic'], owner: false, trucks: ['t-1'] };
+    seed(issued({ status: 'paid', paid_cents: 20000 }), [item('a')]);
+    await draw();
+    expect(q('invoice-over')?.textContent).toMatch(/Trop-perçu.*85,02/s);
+    expect(q('invoice-over')?.textContent).toContain('Dis-le au bureau');
+    expect(q('invoice-over')?.textContent).not.toContain('inscris-la ici');
+    expect(q('invoice-refund')).toBeNull();
+  });
+  it('paid too much, seen by a booker without « Factures » rights: no refund either; the office (edit_invoices) has it', async () => {
+    access.value = { ...access.value!, roles: ['office'], owner: false, rights: { book: true } as unknown as Access['rights'] };
+    seed(issued({ status: 'paid', paid_cents: 20000 }), [item('a')]);
+    await draw();
+    expect(q('invoice-over')).not.toBeNull();
+    expect(q('invoice-refund')).toBeNull();
+    act(() => render(null, box));
+    access.value = { ...access.value!, rights: { book: true, edit_invoices: true } as unknown as Access['rights'] };
+    await draw();
+    expect(q('invoice-over')?.textContent).toContain('inscris-la ici');
+    expect(q('invoice-refund')).not.toBeNull();
+  });
   it('« Encaisser » the balance', async () => {
     seed(issued(), [item('a')]);
     await draw();
