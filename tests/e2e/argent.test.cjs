@@ -447,7 +447,8 @@ step('Travail ajouté après la facture payée: Éric paid; at the door he asks 
   await m.page.getByTestId('pay-cash').click();
   await m.page.getByTestId('pay-confirm').click();
   await m.page.getByTestId('step-finish').waitFor({ timeout: 15000 });
-  assert.deepEqual(paymentsOf(a.job), [['cash', 17246, true, who.saleh.id]]);
+  // the red button moves on as soon as the payment is taken on the phone (it counts the payment still leaving): wait for the row
+  assert.deepEqual(await until(() => paymentsOf(a.job), (v) => v.length === 1, 15000), [['cash', 17246, true, who.saleh.id]]);
   // « Proposer un travail »: the wipers, 30 $; Éric signs on the phone
   await m.page.getByTestId('work-propose').click();
   await m.page.getByTestId('propose-sheet').waitFor();
