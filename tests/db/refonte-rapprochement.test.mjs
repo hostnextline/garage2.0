@@ -854,6 +854,19 @@ test('recon M6 (round 2): a card refund that failed, kept aside, says its amount
     `A card refund of $30.00 that failed was kept aside on ${today} without being recorded in the app: enter it by hand on job ${jobNo} (Stripe reference re_9).`]);
 }));
 
+test('recon M6 (round 2): a refund of an older card payment that has no Stripe session (« pi_…#re_… ») finds that payment by its reference', () => tx(async (h) => {
+  const g = await garage(h);
+  // the older row: card money with its payment intent as reference and no session (M4.card says that one)
+  await raw(h, `insert into public.payments (job_id, amount_cents, method, reference, stripe_session, paid_at) values ($1, 5000, 'card_online', 'pi_x', null, now() - interval '2 days')`, [g.jobC]);
+  // Stripe gave part of it back: applyRefunds keys the refund on the page it has, the payment intent
+  await raw(h, `insert into public.payments (job_id, amount_cents, method, reference, stripe_session) values ($1, -3000, 'card_online', 're_1', 'pi_x#re_1')`, [g.jobC]);
+  const f = await sees(h, []);
+  assert.deepEqual(ids(f), ['M4.card'], show(f));
+  // a refund whose payment is truly not in the books is still said
+  await raw(h, `insert into public.payments (job_id, amount_cents, method, reference, stripe_session) values ($1, -1000, 'card_online', 're_2', 'pi_y#re_2')`, [g.jobC]);
+  assert.deepEqual(ids(await sees(h, f)), ['M6.refund']);
+}));
+
 test('recon D5: the same car of the same customer booked twice on one day (warn), both to do or both done; one cancelled, it closes; done then booked again is no double; an old double is not news', () => tx(async (h) => {
   const g = await garage(h);
   await h.as(g.owner);

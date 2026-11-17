@@ -584,6 +584,10 @@ begin
              jsonb_build_object('amount', r.amount_cents, 'session', r.stripe_session, 'page', r.page, 'invoice_id', r.invoice_id, 'job_id', r.job_id)
       from card r where r.amount_cents < 0 and position('#' in r.stripe_session) > 1
         and not exists (select 1 from card o where o.stripe_session = r.page)
+        -- an older card payment without its Stripe session (M4.card says it) is keyed by its payment intent, its reference:
+        -- its refunds are « pi_…#re_… », and that payment IS in the books
+        and not exists (select 1 from public.payments o where o.deleted_at is null and o.method = 'card_online' and o.amount_cents > 0
+                          and o.reference = r.page)
       union all
       select 'M6.refundmore', 'bad', null, null, x.page,
              format('Pour un paiement par carte de %s, l’app a inscrit %s de remboursements : plus que ce que le client a payé. Vérifie les remboursements dans Stripe (page %s).',
