@@ -148,6 +148,7 @@ export const treasury = {
     since: 'Depuis le {day}',
     check: 'Vérifier maintenant',
     checkDone: 'Vérification faite',
+    braked: 'Vérifié il y a moins d’une minute : réessaie à {time}',
     severity: { bad: 'Important', warn: 'À regarder', info: 'Pour info' },
     sheet: {
       invoiced: 'Facturé', received: 'Reçu : {what}', refunded: 'Remboursé', expenses: 'Dépenses : {what}', coffreIn: 'Entré au Coffre', coffreOut: 'Sorti du Coffre', toReceive: 'Reste à recevoir',

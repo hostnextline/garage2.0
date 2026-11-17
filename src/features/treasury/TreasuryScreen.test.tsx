@@ -39,6 +39,7 @@ import { replaceLocal, upsertLocal } from '../../data/store';
 import { access } from '../../data/auth';
 import { net } from '../../data/sync';
 import { lang } from '../../lib/i18n';
+import { toasts } from '../../ui/toast';
 import { today, addDays, longDay, clock, minuteOf } from '../../lib/dates';
 import type { Access, Customer, Expense, Invoice } from '../../data/types';
 
@@ -165,6 +166,54 @@ describe('Trésorerie: « Rapprochement d’hier »', () => {
     expect(calls.find((c) => c.name === 'recon_ack')?.args).toEqual({ p_finding: 'f1', p_note: null });
     expect(q('recon-ack').length).toBe(0);
     expect(location.hash).not.toBe('#/invoice/i7');
+  });
+  it('review argent-recon-seen: an acked finding stays listed with « Vu »; no « Tout balance » meanwhile', async () => {
+    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day: '2026-11-14', status: 'ok', finished_at: '2026-11-15T07:40:00Z', counts: {}, sheet: SHEET }, runs: [],
+      findings: [{ id: 'f1', check_id: 'M2.paid', severity: 'bad', entity_table: 'invoices', entity_id: 'i7', message_fr: 'La facture F-1042 dit payé 20,00 $, mais ses paiements font 0,00 $.', message_en: 'x', first_day: '2026-11-14', last_day: '2026-11-14', state: 'acked' }] }));
+    await show();
+    expect(q('recon-ok').length).toBe(0);
+    expect(q('recon-finding').length).toBe(1);
+    expect(q('recon-finding')[0].textContent).toMatch(/dit payé/);
+    expect(q('recon-finding')[0].textContent).toMatch(/Vu/);
+    expect(q('recon-ack').length).toBe(0);
+    expect(q('treasury-recon')[0].textContent).not.toMatch(/Aucune différence|Tout balance/);
+    expect(q('recon-sheet').length).toBe(1);
+  });
+  const toastSaid = () => toasts.value.map((x) => x.text).join(' | ');
+  it('review argent-recon-brake: « Vérifier maintenant » twice within the minute on an older server: « réessaie à », never « Vérification faite », and the panel asks again', async () => {
+    let finished = '2026-11-16T14:00:00Z';
+    const sum = () => ({ ok: true, can_ack: true, last_run: { day: today(), status: 'ok', finished_at: finished, counts: {}, sheet: SHEET }, runs: [], findings: [] });
+    let brake = false;
+    answers.set('recon_summary', sum);
+    answers.set('recon_now', () => { if (!brake) finished = new Date().toISOString(); brake = true; return sum(); });
+    toasts.value = [];
+    await show();
+    await act(async () => { q('recon-check')[0].click(); });
+    await wait(); await wait();
+    expect(toastSaid()).toMatch(/Vérification faite/);
+    toasts.value = [];
+    const asked = calls.filter((c) => c.name === 'recon_summary').length;
+    await act(async () => { q('recon-check')[0].click(); });
+    await wait(); await wait();
+    expect(toastSaid()).toMatch(/^Vérifié il y a moins d’une minute : réessaie à \d+ h( \d\d)?$/);
+    expect(toastSaid()).not.toMatch(/Vérification faite/);
+    expect(calls.filter((c) => c.name === 'recon_summary').length).toBe(asked + 1);
+  });
+  it('review argent-recon-brake: a server that says « braked » and « next_at »: its time, in English too; « braked: false » is a check done', async () => {
+    const next = new Date(Date.now() + 40000).toISOString();
+    let braked = true;
+    answers.set('recon_summary', () => ({ ok: true, can_ack: true, last_run: { day: today(), status: 'ok', finished_at: '2026-11-16T14:00:00Z', counts: {} }, runs: [], findings: [] }));
+    answers.set('recon_now', () => ({ ok: true, can_ack: true, last_run: { day: today(), status: 'ok', finished_at: '2026-11-16T14:00:00Z', counts: {} }, runs: [], findings: [], braked, next_at: next }));
+    lang.value = 'en';
+    toasts.value = [];
+    await show();
+    await act(async () => { q('recon-check')[0].click(); });
+    await wait(); await wait();
+    expect(toastSaid()).toBe(`Checked less than a minute ago: try again at ${clock(minuteOf(new Date(next)), 'en')}`);
+    braked = false; toasts.value = [];
+    await act(async () => { q('recon-check')[0].click(); });
+    await wait(); await wait();
+    expect(toastSaid()).toBe('Check done');
   });
   const title = () => q('treasury-recon')[0].querySelector('h2, h3, .panel-title')?.textContent ?? q('treasury-recon')[0].textContent ?? '';
   /** the night's check of a day finishes the next day at 07:40 UTC (cron 'garage-recon') */

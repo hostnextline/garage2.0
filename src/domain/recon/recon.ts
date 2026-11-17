@@ -88,9 +88,11 @@ export function shownFindings(s: ReconSummary): ReconFinding[] {
     .sort((a, b) => Number(a.state === 'acked') - Number(b.state === 'acked') || RANK[a.severity] - RANK[b.severity]
       || String(b.last_day || '').localeCompare(String(a.last_day || '')));
 }
-/** « Tout balance »: the last night's run found nothing to look at */
+/** « Tout balance »: the last night's run found nothing to look at. A difference already « Vu » is still a difference
+    (the books still miss what it says): it stays listed with « Vu », and the panel never says there is none meanwhile
+    (review argent-recon-seen). Only a piece of information (« Pour info ») leaves the books balanced. */
 export function allBalanced(s: ReconSummary): boolean {
-  return !!s.last_run && s.last_run.status === 'ok' && !s.findings.some((f) => f.state === 'open' && f.severity !== 'info');
+  return !!s.last_run && s.last_run.status === 'ok' && !s.findings.some((f) => f.state !== 'closed' && f.severity !== 'info');
 }
 /** the message in the person's language (the other one when it is missing) */
 export function findingText(f: ReconFinding, lang: string): string {
@@ -123,6 +125,36 @@ export function findingTarget(f: Pick<ReconFinding, 'entity_table' | 'entity_id'
     }
     default: return null;
   }
+}
+
+/** what « Vérifier maintenant » got back from recon_now. The server checks at most once a minute for the whole garage
+    (rate_hit 'recon_now', 60 s): braked, it answers the summary it already has, with nothing checked (review
+    argent-recon-brake). A server that says so answers `braked: true` and `next_at` (when to try again); an older one
+    says nothing, and then the check did not run when the last run's finish time is not newer than the one the panel
+    already had. `nextAt`: the server's time, else the next minute after the tap (the brake is by the minute). */
+export type CheckOutcome = { braked: false } | { braked: true; nextAt: Date };
+export function checkOutcome(raw: unknown, knownFinished: string | null | undefined, tapMs: number): CheckOutcome {
+  const a = obj(raw);
+  const fallback = new Date((Math.floor(tapMs / 60000) + 1) * 60000);
+  if (a.braked === true) {
+    const at = typeof a.next_at === 'string' ? new Date(a.next_at) : null;
+    return { braked: true, nextAt: at && Number.isFinite(at.getTime()) && at.getTime() > tapMs ? at : fallback };
+  }
+  if (a.braked === false) return { braked: false };
+  const done = timeOf(str(obj(a.last_run).finished_at));
+  const known = timeOf(knownFinished);
+  return done != null && known != null && done <= known ? { braked: true, nextAt: fallback } : { braked: false };
+}
+const timeOf = (iso: string | null | undefined): number | null => {
+  if (!iso) return null;
+  const n = new Date(iso).getTime();
+  return Number.isFinite(n) ? n : null;
+};
+/** the newer of two finish times (ISO), the one that is a date when the other is not */
+export function newerFinish(a: string | null | undefined, b: string | null | undefined): string | null {
+  const x = timeOf(a), y = timeOf(b);
+  if (x == null) return y == null ? null : b!;
+  return y == null || x >= y ? a! : b!;
 }
 
 /** the server has no such function yet (an app newer than its database): not an error to show */
