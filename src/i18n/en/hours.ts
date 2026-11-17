@@ -142,6 +142,8 @@ export const hours: typeof fr = {
     askTitle: { one: '{n} coming appointment is affected', other: '{n} coming appointments are affected' },
     askOffText: 'Out of service, this vehicle no longer gets appointments: these go to another vehicle if it has room, otherwise to “To place” in the schedule.',
     askMachineText: 'Without the tire machine, this vehicle does not keep mounting or balancing: these appointments go to another vehicle if it has room, otherwise to “To place” in the schedule.',
+    askWho: 'Which ones: {who}.',
+    askMore: { one: '{n} other', other: '{n} others' },
     askOk: 'Save anyway',
     colors: { red: 'Red', blue: 'Blue', green: 'Green', amber: 'Amber', violet: 'Violet', teal: 'Teal', pink: 'Raspberry', slate: 'Slate' }
   }

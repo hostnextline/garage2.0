@@ -142,6 +142,8 @@ export const hours = {
     askTitle: { one: '{n} rendez-vous à venir est touché', other: '{n} rendez-vous à venir sont touchés' },
     askOffText: 'Hors service, ce véhicule ne reçoit plus de rendez-vous : ceux-ci vont sur un autre véhicule s’il a de la place, sinon dans « À placer » de l’agenda.',
     askMachineText: 'Sans la machine à pneus, ce véhicule ne garde pas le montage ni le balancement : ces rendez-vous vont sur un autre véhicule s’il a de la place, sinon dans « À placer » de l’agenda.',
+    askWho: 'Lesquels : {who}.',
+    askMore: { one: '{n} autre', other: '{n} autres' },
     askOk: 'Enregistrer quand même',
     colors: { red: 'Rouge', blue: 'Bleu', green: 'Vert', amber: 'Ambre', violet: 'Violet', teal: 'Sarcelle', pink: 'Framboise', slate: 'Ardoise' }
   }

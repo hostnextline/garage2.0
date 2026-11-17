@@ -4,7 +4,7 @@
    A person is tied to what he is doing (his position's job, his trip), the truck's nominal driver only last: with
    « Routes partagées » the mechanics swap vehicles during the day.
    Pure functions: no screen, no server (tested in assemble.test.ts). */
-import { TZ } from '../../lib/dates';
+import { minuteOf as garageMinute } from '../../lib/dates';
 import { sortStops } from './stopOrder';
 
 export type LatLng = [number, number];
@@ -112,18 +112,12 @@ export function normalize(raw: unknown): TeamMapAnswer {
   };
 }
 
-let tzClock: Intl.DateTimeFormat | null = null;
 /** minutes after midnight in Montréal of a moment: the planned arrivals of the server are Montréal minutes, so a live
-    arrival must be too, whatever the time zone the phone is set to */
+    arrival must be too, whatever the time zone the phone is set to (lib's one Montréal clock, R169) */
 export function minuteOf(iso: string | null | undefined): number | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  tzClock ??= new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
-  const parts = tzClock.formatToParts(d);
-  const part = (type: string) => Number(parts.find((x) => x.type === type)?.value);
-  const h = part('hour'), m = part('minute');
-  return Number.isFinite(h) && Number.isFinite(m) ? (h % 24) * 60 + m : null;
+  const m = garageMinute(new Date(iso));
+  return Number.isFinite(m) ? m : null;
 }
 
 const near = (a: LatLng, b: LatLng) => Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
