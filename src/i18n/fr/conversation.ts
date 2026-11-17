@@ -34,5 +34,7 @@ export const conversation = {
     error: 'Le service de textos n’a pas répondu. Réessaie dans un instant.',
     pending: 'Ce message est en train de partir.',
     offline: 'Pas de réseau : la conversation reviendra avec le réseau.'
-  }
+  },
+  /** said once when this device lost the alert while the app is closed and could not get it back by itself (comms-guide-08) */
+  alertLost: 'Cet appareil ne t’avertit plus quand l’app est fermée. Remets « M’avertir quand l’app est fermée » dans Réglages, Branchements.'
 };
