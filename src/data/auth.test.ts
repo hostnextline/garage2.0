@@ -146,6 +146,42 @@ describe('sign-out', () => {
   });
 });
 
+describe('the session ends while the device copy is still opening (auth-fastpath-race)', () => {
+  it('the sign-in screen stays: never « ready » with nobody signed in', async () => {
+    const uid = nextUid();
+    signedBefore(uid);
+    srv.hold();
+    const m = await fresh();
+    // a big copy: opening it takes a while
+    const db = m.local.openLocal(uid);
+    await db.commit({ rows: [{ table: 'job_items', put: Array.from({ length: 4000 }, (_, i) => ({ id: `i${i}`, job_id: 'j1', updated_at: '2026-11-15T10:00:00Z' })), del: [] }] });
+    db.close();
+    let fire: ((event: string, s: null) => void) | null = null;
+    (m.client.sb.auth as unknown as { onAuthStateChange: unknown }).onAuthStateChange = (cb: (event: string, s: null) => void) => { fire = cb; return { data: { subscription: { unsubscribe() {} } } }; };
+    const going = m.auth.startAuth();
+    // the library drops the revoked session right away, while the copy opens
+    fire!('SIGNED_OUT', null);
+    await going;
+    expect(m.auth.authState.value).toBe('signed_out');
+    expect(m.auth.access.value).toBeNull();
+    expect(m.sync.currentUid()).toBe('');
+  });
+  it('an ordinary sign-in from the sign-in screen still opens the app', async () => {
+    const uid = nextUid();
+    srv.rpc('my_access', () => who(uid));
+    const m = await fresh();
+    const session = { access_token: jwt(uid), refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: 4102444800, user: { id: uid, aud: 'authenticated', email: 's@x', app_metadata: {}, user_metadata: {}, created_at: '2026-01-01' } };
+    // the library keeps the session it got (as it does for real)
+    (m.client.sb.auth as unknown as { signInWithPassword: unknown }).signInWithPassword = async () => { localStorage.setItem('his.auth', JSON.stringify(session)); return { data: { session, user: session.user }, error: null }; };
+    await m.auth.startAuth();
+    expect(m.auth.authState.value).toBe('signed_out');
+    expect(await m.auth.signIn('s@x', 'pw')).toBeNull();
+    expect(m.auth.authState.value).toBe('ready');
+    expect(m.auth.access.value?.id).toBe(uid);
+    m.sync.stopSync();
+  });
+});
+
 describe('back from Google (core-data-17)', () => {
   it('the session events are heard and the session is known', async () => {
     const uid = nextUid();

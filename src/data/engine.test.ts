@@ -9,6 +9,7 @@ import { openLocal, type OutboxEntry } from './local';
 import type { LockManagerLike } from './lock';
 import { readRescue } from './rescue';
 import { lang, t } from '../lib/i18n';
+import { readNet } from '../app/netView';
 
 let srv: FakeServer;
 const engines: Engine[] = [];
@@ -278,6 +279,24 @@ describe('no valid session is not a refusal (core-data-09, x-sync-08)', () => {
     expect(e.outbox.items.map((i) => i.e.state)).toEqual(['pending', 'pending']);
     expect(net.value.failed.length).toBe(0);
     expect(net.value.session).toBe('expired');
+  });
+  it('offline with a token too old to renew: the frame says « pas de réseau », never « reconnecte-toi » (offline-shows-session-expired)', async () => {
+    const uid = nextUid();
+    const e = new Engine(clientFor(srv, null), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(e);
+    srv.offline = true;
+    setNet({ online: false });
+    await e.start();
+    await e.send.insertRow('customers', { id: 'c1', first_name: 'A' });
+    await e.send.flush();
+    await until(() => net.value.ready);
+    // 'expired' is the engine's own note (it makes the queue leave the moment the token is renewed); the frame shows
+    // it as nothing more than no signal, with the change waiting
+    const v = readNet(net.value, false);
+    expect(v.chip).toBe('offline');
+    expect(v.sessionLost).toBe(false);
+    expect(v.pending).toBe(1);
+    expect(net.value.failed.length).toBe(0);
   });
   it('a 401 permission answer waits too', async () => {
     const e = await boot(nextUid());

@@ -2,7 +2,9 @@
    is full), the change still goes in the engine's memory queue and is sent while the app stays open. A copy also goes
    here, in the browser's small storage (localStorage `his.rescue.<uid>`), so it survives a reload when that storage
    works: the next start puts it back at the end of the outbox. Big pictures do not fit (the limits keep the rest of
-   the small storage usable); they stay in memory only, and the frame says so. */
+   the small storage usable); they stay in memory only, and the frame says so. What is kept is always the head of the
+   queue, without a hole: once one entry does not fit, the later ones are not kept either (a « signed » step must never
+   come back after a reload without the signature picture it points to: rescue-order gap). */
 import type { OutboxEntry } from './local';
 
 const KEY = (uid: string) => `his.rescue.${uid}`;
@@ -17,7 +19,7 @@ export function saveRescue(uid: string, entries: OutboxEntry[]): Set<string> {
     let size = 2;
     for (const e of entries) {
       const s = JSON.stringify(e).length;
-      if (s > ENTRY_MAX || size + s > TOTAL_MAX) continue;
+      if (s > ENTRY_MAX || size + s > TOTAL_MAX) break;
       kept.push(e); size += s + 1;
     }
     localStorage.setItem(KEY(uid), JSON.stringify(kept));

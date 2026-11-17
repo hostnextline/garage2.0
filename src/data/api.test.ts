@@ -4,7 +4,7 @@ import { FakeServer, clientFor } from './testkit';
 import { startSync, stopSync, net, flush, syncOptions, outbox } from './sync';
 import { setNet } from './net';
 import { getRow, rowsOf } from './store';
-import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice } from './api';
+import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute } from './api';
 import { itemsOf } from './select';
 import { refusalText } from '../app/netView';
 import { money } from '../lib/money';
@@ -178,5 +178,26 @@ describe('a cash payment refused hours later says how much and for whom (argent-
     const r = await reopenInvoice('v1');
     expect(r.data).toMatchObject({ ok: true });
     expect(srv.count((c) => c.table === 'rpc/payment_add')).toBe(0);
+  });
+});
+
+describe('a text or a trip carries its operation id when the screen gives one (R28)', () => {
+  const bodies = (fn: string) => srv.calls.filter((c) => c.method === 'POST' && c.url.pathname.endsWith(`/functions/v1/${fn}`)).map((c) => c.body as Record<string, unknown>);
+  it('sendChat, sendChatPhone and enroute send `op`; without one the body is as before', async () => {
+    await start();
+    await sendChat('c1', 'Bonjour', 'op-chat');
+    await sendChatPhone('5145550000', 'Allô', 'op-phone');
+    await enroute('return', null, { pos: { lat: 45.5, lng: -73.6 }, op: 'op-trip' });
+    await sendChat('c1', 'Sans id');
+    await enroute('start', 'j1', { notify: true });
+    const chat = bodies('conversation');
+    expect(chat[0]).toMatchObject({ action: 'send', customer_id: 'c1', message: 'Bonjour', op: 'op-chat' });
+    expect(chat[1]).toMatchObject({ action: 'send', phone: '5145550000', message: 'Allô', op: 'op-phone' });
+    expect('op' in chat[2]).toBe(false);
+    const trips = bodies('enroute');
+    expect(trips[0]).toMatchObject({ action: 'return', pos: { lat: 45.5, lng: -73.6 }, op: 'op-trip' });
+    expect('job_id' in trips[0]).toBe(false);
+    expect(trips[1]).toMatchObject({ action: 'start', job_id: 'j1', notify: true });
+    expect('op' in trips[1]).toBe(false);
   });
 });

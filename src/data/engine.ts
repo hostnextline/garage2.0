@@ -390,9 +390,10 @@ export class Engine {
   private async reloadOutbox() {
     if (this.closed || !this.db) return;
     try {
+      const since = this.outbox.mark();
       const list = await this.db.listEntries();
       if (this.closed) return;
-      await this.outbox.load(list);
+      await this.outbox.load(list, [], since);
       this.outboxChanged();
     } catch { /* this tab's own view stays until its next send */ }
   }

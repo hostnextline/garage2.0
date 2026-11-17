@@ -57,6 +57,9 @@ function storedUser(): string | null {
 function lastUid(): string | null { try { return localStorage.getItem('his.lastuid'); } catch { return null; } }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** sign-outs so far: a way in that was waiting for the device copy while the session ended (the library's SIGNED_OUT
+    ran afterSignOut) must not say « ready » with nobody signed in (auth-fastpath-race) */
+let signOuts = 0;
 
 /** reads the invitation link (#invite=…) without losing it on reload */
 function readInvite(): string | null {
@@ -117,7 +120,10 @@ export async function startAuth() {
   const cached = uid ? cachedAccess(uid) : null;
   if (uid && cached && storedUser() === uid) {
     access.value = cached;
+    const outs = signOuts;
     await startSync(sb, uid);
+    // the library dropped the session (a revoked token) while the copy was opening: the sign-in screen stays
+    if (signOuts !== outs) return;
     if (!inv) authState.value = 'ready';
     void checkBehind(uid);
     return;
@@ -133,7 +139,11 @@ export async function startAuth() {
   if (!s) {
     // no signal (or the server can't be reached) with an earlier sign-in on this device: the copy on the phone opens
     if (cached && storedUser() === uid && (unreachable || !navigator.onLine)) {
-      access.value = cached; await startSync(sb, uid!); if (!inv) authState.value = 'ready';
+      access.value = cached;
+      const outs = signOuts;
+      await startSync(sb, uid!);
+      if (signOuts !== outs) return;
+      if (!inv) authState.value = 'ready';
       checkAgainLater(uid!);
       return;
     }
@@ -221,7 +231,9 @@ async function enter(uid: string) {
   }
   if (a === null) { await noAccess(uid); return; }
   if (a) setAccess(a);
+  const outs = signOuts;
   await startSync(sb, uid);
+  if (signOuts !== outs) return;
   if (authState.value !== 'invite') authState.value = 'ready';
   void sb.rpc('update_me', { p_patch: {} }).then(() => undefined, () => undefined);   // « dernière connexion »
 }
@@ -296,6 +308,7 @@ export async function signOut(force = false): Promise<'pending' | 'done'> {
   return 'done';
 }
 async function afterSignOut() {
+  signOuts++;
   stopSync();
   resetScreen();
   access.value = null; viewAs.value = null; session.value = null;
