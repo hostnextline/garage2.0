@@ -278,6 +278,59 @@ test('the end of the night on a server that does not know « done » nor « reco
   const r2 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('fin-avant-2')], { ...s2.env, COMMIT });
   assert.equal(r2.code, 0, r2.out + r2.err);
   await s2.fermer();
+  // the functions published BEFORE their migration (cutover, between the two steps): both answer 503 « not_ready »
+  const s3 = await faux((quoi) => [503, { ok: false, code: 'not_ready', error: quoi === 'backup' ? 'La table des sauvegardes n’existe pas encore sur cette base.' : 'Le rapprochement n’est pas encore installé sur cette base.' }]);
+  const r3 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('fin-avant-3')], { ...s3.env, COMMIT });
+  assert.equal(r3.code, 0, 'not_ready is « not yet », never a red night: ' + r3.out + r3.err);
+  assert.match(r3.out, /ATTENTION : Le serveur ne connaît pas encore « backup done »/);
+  assert.match(r3.out, /ATTENTION : Le serveur ne connaît pas encore le rapprochement/);
+  assert.equal(s3.vus.length, 2, 'not tried again');
+  await s3.fermer();
+});
+
+test('a night that fails is told to the garage (backup done, ok: false, the tables read whole so far) and stays red', async () => {
+  // jobs is read whole, then customers comes short: the copy is not whole
+  const s = await faux((quoi, b) => {
+    if (b.action === 'tables') return [200, { ok: true, at: 'x', tables: [{ name: 'jobs', count: 2 }, { name: 'customers', count: 3 }] }];
+    if (b.action === 'rows' && b.table === 'jobs') return [200, { ok: true, rows: [{ id: 'j1' }, { id: 'j2' }], next: null }];
+    if (b.action === 'rows') return [200, { ok: true, rows: [{ id: '1' }], next: null }];
+    if (b.action === 'done') return [200, { ok: true, id: 'run-1' }];
+    return [400, { ok: false, code: 'action', error: 'Action inconnue.' }];
+  });
+  const r = await lancer('sauvegarde.mjs', [join(dir, 'ratee', 'donnees')], s.env);
+  assert.equal(r.code, 1, 'red');
+  assert.match(r.err, /customers : 1 lignes reçues, 3 attendues/);
+  assert.deepEqual(s.vus.filter((v) => v.body.action === 'done').map((v) => v.body), [{ action: 'done', ok: false, tables: { jobs: 2 }, rows: 2, commit: null }]);
+  assert.match(r.out, /Nuit ratée notée au garage \(1 tables lues, 2 lignes\)/);
+  await s.fermer();
+  // a server that does not know « done », or does not answer: still red, said, nothing else
+  const s2 = await faux((quoi, b) => (b.action === 'tables' ? [500, { ok: false, code: 'server', error: 'panne' }] : [400, { ok: false, code: 'action', error: 'Action inconnue.' }]));
+  const r2 = await lancer('sauvegarde.mjs', [join(dir, 'ratee-2', 'donnees')], s2.env);
+  assert.equal(r2.code, 1);
+  assert.match(r2.out, /la nuit ratée n’est pas notée au garage/);
+  await s2.fermer();
+  // the push refused (the copy was whole): --echec tells the night's tables, and does not turn anything green or red
+  const s3 = await faux(() => [200, { ok: true, id: 'run-2' }]);
+  const r3 = await lancer('sauvegarde.mjs', ['--echec', nuitFaite('push-refuse')], s3.env);
+  assert.equal(r3.code, 0, r3.out + r3.err);
+  assert.deepEqual(s3.vus.map((v) => v.body), [{ action: 'done', ok: false, tables: { customers: 120, jobs: 45, invoices: 30 }, rows: 195, commit: null }]);
+  await s3.fermer();
+});
+
+test('a failed night against the functions of this copy: « done » with ok: false is accepted (one row, ok false) or not known yet', async () => {
+  const avant = (await q(`select to_regclass('public.ops_backup_runs') is not null as la`))[0].la ? (await q(`select id from public.ops_backup_runs`)).map((x) => x.id) : null;
+  const r = await lancer('sauvegarde.mjs', ['--echec', nuitFaite('echec-vrai')], VRAI);
+  try {
+    assert.equal(r.code, 0, r.out + r.err);
+    if (avant == null) assert.match(r.out, /pas notée au garage/);
+    else {
+      assert.match(r.out, /Nuit ratée notée au garage \(3 tables lues, 195 lignes\)/);
+      const neuves = await q(`select ok, tables, rows from public.ops_backup_runs where not (id = any($1))`, [avant]);
+      assert.deepEqual(neuves.map((x) => [x.ok, x.tables, Number(x.rows)]), [[false, 3, 195]]);
+    }
+  } finally {
+    if (avant != null) await q(`delete from public.ops_backup_runs where not (id = any($1))`, [avant]);
+  }
 });
 
 test('the end of the night: a reconciliation that says « bad » ends RED (GitHub e-mails the owner), after « done » was said', async () => {

@@ -68,3 +68,23 @@ test('the full test workflow runs the tests of ops too (on the work branches; ne
   assert.match(y, /node --test --test-concurrency=1 tests\/db\/\*\.test\.mjs tests\/api\/\*\.test\.mjs ops\/tests\/\*\.test\.mjs/);
   assert.match(y, /branches-ignore: \[main, vercel, gh-pages, construction-v2\]/);
 });
+
+test('the nightly job of the backup repository: a refused push is told to the garage (--echec), only then; --fin comes after the push', () => {
+  const y = lire('ops/sauvegardes/.github/workflows/sauvegarde.yml');
+  const i = (x) => { const n = y.indexOf(x); assert.ok(n >= 0, 'sauvegarde.yml no longer holds: ' + x); return n; };
+  assert.ok(i('run: node sauvegarde.mjs donnees') < i('git push') && i('git push') < i('run: node sauvegarde.mjs --fin donnees'));
+  assert.match(y, /id: garder/);
+  assert.match(y, /if: \$\{\{ failure\(\) && steps\.garder\.outcome == 'failure' \}\}\n\s+run: node sauvegarde\.mjs --echec donnees/);
+  assert.match(y, /id-token: write/);
+});
+
+test('the Linux test stack (tests/stack/start.sh) fails when the functions (8011) or Postgres do not start, or a function does not load (R200)', () => {
+  const sh = lire('tests/stack/start.sh');
+  execFileSync('bash', ['-n', join(ROOT, 'tests/stack/start.sh')]);
+  assert.match(sh, /^set -euo pipefail$/m);
+  assert.match(sh, /up 8011 \|\| \{ echo "functions did not start[^}]*exit 1; \}/, 'no functions on 8011: exit 1 (it used to say so and go on)');
+  assert.match(sh, /grep -q 'could not load' "\$RUN\/functions\.log"[\s\S]*?exit 1/, 'a function that does not load: exit 1');
+  assert.match(sh, /pg_isready -h 127\.0\.0\.1 -p 54332 -q \|\| \{ echo "Postgres did not start[^}]*exit 1; \}/);
+  const fin = sh.trim().split('\n').pop();
+  assert.match(fin, /^echo "local Supabase/, 'success is said last, after every check');
+});

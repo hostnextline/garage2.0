@@ -11,9 +11,13 @@
 //   2. the workflow keeps the copy (git commit, git push)
 //   3. node sauvegarde.mjs --fin [dossier]   tells the garage that this night is kept (backup { action: 'done' }), then
 //      asks for the daily reconciliation (recon { action: 'run' }); RED when its status is « bad »: GitHub then
-//      e-mails the owner. A server that does not know « done » or « recon » yet: a warning, never a failure.
+//      e-mails the owner. A server that does not know « done » or « recon » yet (404, « action »), or whose function is
+//      published before its migration (503 « not_ready »): a warning, never a failure.
 // Step 3 comes after step 2 on purpose: whatever the reconciliation says, the night's copy is already kept.
-// Run by hand (tests): FONCTION=… CLE=… TICKET_URL=… [RECON=…] [COMMIT=…] node sauvegarde.mjs [--fin] [dossier]
+// A night that FAILS is told to the garage too (backup { action: 'done', ok: false, tables, rows }: the tables read so
+// far): by step 1 itself when the copy is not whole, by « node sauvegarde.mjs --echec [dossier] » when the push is
+// refused. Best effort: the night stays red whatever the server answers.
+// Run by hand (tests): FONCTION=… CLE=… TICKET_URL=… [RECON=…] [COMMIT=…] node sauvegarde.mjs [--fin | --echec] [dossier]
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, statSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -25,8 +29,9 @@ const RECON = process.env.RECON || FONCTION.replace(/\/backup\/?$/, '/recon');
 const CLE = process.env.CLE || 'sb_publishable_Pzvp2qqc8Y52meAZkczSSg_trH2ZTTA';
 const args = process.argv.slice(2);
 const FIN = args.includes('--fin');
-const inconnue = args.find((a) => a.startsWith('--') && a !== '--fin');
-if (inconnue) { console.error(`Option inconnue : ${inconnue}  (node sauvegarde.mjs [--fin] [dossier])`); process.exit(2); }
+const ECHEC = args.includes('--echec');
+const inconnue = args.find((a) => a.startsWith('--') && a !== '--fin' && a !== '--echec');
+if (inconnue || (FIN && ECHEC)) { console.error(`Option inconnue : ${inconnue || '--fin avec --echec'}  (node sauvegarde.mjs [--fin | --echec] [dossier])`); process.exit(2); }
 const DOSSIER = args.find((a) => !a.startsWith('--')) || 'donnees';
 /** the key of a row (what the server orders the pages by): two rows with the same key are the same row read twice */
 const CLE_DE = { counters: 'name', op_log: 'op' };
@@ -63,7 +68,9 @@ async function call(body, t, { url = FONCTION, pasEncore = false } = {}) {
       const r = await fetch(url, { method: 'POST', headers: { apikey: CLE, 'x-github-oidc': t, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
       let d;
       try { d = await r.json(); } catch { d = {}; }
-      if (pasEncore && (r.status === 404 || d.code === 'action')) return { pasEncore: true, status: r.status };
+      // 404: no such function; « action »: a function of before; « not_ready » (503): the function is newer than the
+      // database (its migration is not applied yet). None of the three is tried again.
+      if (pasEncore && (r.status === 404 || d.code === 'action' || d.code === 'not_ready')) return { pasEncore: true, status: r.status };
       if (!r.ok || !d.ok) throw Object.assign(new Error(`${d.code || r.status} : ${d.error || 'refusé'}`), { final: r.status === 401 || r.status === 403 });
       return d;
     } catch (e) {
@@ -146,6 +153,8 @@ function tailles(dir, out = []) {
   return out;
 }
 
+/** the tables read whole so far this night (what a failed night tells the garage) */
+const lues = {};
 async function copier() {
   const { tables, at, schema } = await call({ action: 'tables' }, await frais());
   mkdirSync(DOSSIER, { recursive: true });
@@ -156,6 +165,7 @@ async function copier() {
     const { rows, etat } = await table(name, count);
     writeFileSync(join(DOSSIER, `${name}.json`), rows.length ? '[\n' + rows.map((r) => JSON.stringify(r)).join(',\n') + '\n]\n' : '[]\n');
     resume.tables[name] = rows.length;
+    lues[name] = rows.length;
     console.log(`${name.padEnd(16)} ${rows.length}`);
     if (name === 'staff') {
       // after the loss of the project, an account is made again from its staff row (restaurer-comptes.mjs): a person
@@ -229,10 +239,29 @@ async function finir() {
   return rouge;
 }
 
+/** a night that failed: the garage writes it down too (ops_backup_runs, ok false), with the tables read whole. Never
+    throws, never turns the night green: the answer only changes what is said. */
+async function direEchec(tables) {
+  const rows = Object.values(tables).reduce((a, b) => a + b, 0);
+  try {
+    const d = await call({ action: 'done', ok: false, tables, rows, commit: null }, await frais(), { pasEncore: true });
+    if (d.pasEncore) avis('Le serveur ne connaît pas encore « backup done » : la nuit ratée n’est pas notée au garage.');
+    else console.log(`Nuit ratée notée au garage (${Object.keys(tables).length} tables lues, ${rows} lignes).`);
+  } catch (e) {
+    console.log(`La nuit ratée n'a pas pu être notée au garage (${e.message}).`);
+  }
+}
+
 try {
   if (FIN) process.exitCode = await finir();
-  else await copier();
+  else if (ECHEC) {
+    // the push was refused (the copy itself was whole): the night's summary says which tables were read
+    const f = join(DOSSIER, '_resume.json');
+    const resume = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : { tables: {} };
+    await direEchec(resume.tables || {});
+  } else await copier();
 } catch (e) {
   console.error(`ERREUR : ${e.message}`);
   process.exitCode = 1;
+  if (!FIN && !ECHEC) await direEchec(lues);
 }
