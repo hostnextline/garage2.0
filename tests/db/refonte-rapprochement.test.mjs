@@ -38,6 +38,13 @@ const ids = (rows) => rows.map((f) => f.check_id).sort();
 const show = (rows) => rows.map((f) => `${f.check_id} ${f.severity}: ${f.message_fr}`).join('\n');
 async function stateOf(h, key) { await server(h); return h.val(`select state from public.ops_recon_findings where key = $1`, [key]); }
 
+/** a garage already reconciled before (the mark of the first run is there): what a run finds is new, never « déjà là » */
+async function reconciledBefore(h) {
+  await server(h);
+  await h.c.query(`insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
+    values ('first', '00000000-0000-0000-0000-000000000000', 0, public.local_today() - 30) on conflict do nothing`);
+}
+
 /**
  * A real day of the garage, made with the app's own operations: an owner, a mechanic and his truck, two customers,
  * stock. Job A: booked, on site, invoiced, paid cash + debit, finished (its parts leave the stock). Job B: on site, put in
@@ -86,6 +93,7 @@ async function garage(h) {
   await server(h);
   const gas = await h.val(`insert into public.expenses (day, vendor, category, subtotal_cents, tps_cents, tvq_cents, total_cents, method, created_by)
     values (public.local_today(), 'Shell', 'Essence', 4349, 217, 434, 5000, 'credit', $1) returning id`, [owner]);
+  await reconciledBefore(h);
   return { owner, mech, day, truck, customer, family, car, oil, filter, coil, svc, work, jobA, jobB, jobC, invoice, total, coffre, buy, gas, book };
 }
 
@@ -639,6 +647,32 @@ test('recon_ack and recon_add take the run lock first (the same order as recon_r
   });
 });
 
+test('recon: every check reads ONE snapshot — a payment committed by another connection in the middle of a run is not seen by the checks after it', async () => {
+  const other = await pool.connect();
+  const id = uuid();
+  try {
+    await tx(async (h) => {
+      await reconciledBefore(h);
+      await h.c.query(`set local garage.recon_pause = 'M3'`);       // the run waits 1.5 s before M3 (M4 comes after)
+      const running = run(h);
+      await new Promise((ok) => setTimeout(ok, 500));
+      // meanwhile, a payment on nothing (M4.orphan) is committed by another connection
+      await other.query(`set session_replication_role = replica`);
+      await other.query(`insert into public.payments (id, amount_cents, method, paid_at) values ($1, 777, 'cash', now())`, [id]);
+      const r = await running;
+      assert.equal(r.status, 'ok', 'the run saw the books as they were when it started');
+      assert.deepEqual((await open(h)).map((f) => f.check_id), []);
+      await h.c.query(`reset garage.recon_pause`);
+      await run(h);
+      assert.deepEqual((await open(h)).map((f) => f.check_id), ['M4.orphan'], 'the next run sees it');
+    });
+  } finally {
+    await other.query(`delete from public.payments where id = $1`, [id]).catch(() => {});
+    await other.query(`reset session_replication_role`).catch(() => {});
+    other.release();
+  }
+});
+
 test('recon: one row per difference — seen again it keeps its row (last_day moves), « vu » stays, new words open it again, gone it closes, back it opens', () => tx(async (h) => {
   const g = await garage(h);
   await raw(h, `update public.invoices set paid_cents = paid_cents - 2000 where id = $1`, [g.invoice]);
@@ -803,6 +837,84 @@ test('recon M6 (R34): a parked card payment is a finding for Trésorerie; a card
   assert.equal((await open(h)).filter((x) => x.check_id === 'M8.money' || x.check_id.startsWith('M6.')).length, 0, 'a payment and its refund add up to zero');
 }));
 
+test('recon D5: the same car of the same customer booked twice on one day (warn), both to do or both done; one cancelled, it closes; done then booked again is no double; an old double is not news', () => tx(async (h) => {
+  const g = await garage(h);
+  await h.as(g.owner);
+  // job A (done) has the car that day; the customer booked again for later that day: coming back, not a double
+  const back = await g.book(g.customer, { vehicle_id: g.car, block: 'pm' });
+  assert.deepEqual((await sees(h, [])).map((x) => x.check_id), []);
+  // booked a second time from another phone
+  await h.as(g.owner);
+  const twice = await g.book(g.customer, { vehicle_id: g.car, block: 'pm' });
+  let f = await sees(h, []);
+  assert.deepEqual(f.map((x) => [x.check_id, x.severity, x.entity_id]), [['D5.double', 'warn', twice]], show(f));
+  const [a, b] = await h.q(`select number from public.jobs where id = any($1::uuid[]) order by number`, [[back, twice]]);
+  assert.equal(f[0].message_fr, `Le ${g.day}, la même voiture du même client a 2 rendez-vous (jobs ${a.number}, ${b.number}) : vérifie que ce n’est pas un doublon ; sinon annule celui de trop (et sa facture).`);
+  // another car of the same customer the same day is not a double
+  const car2 = await h.val(`insert into public.vehicles (customer_id, year, make, model) values ($1, 2018, 'Toyota', 'Corolla') returning id`, [g.customer]);
+  await h.as(g.owner);
+  await g.book(g.customer, { vehicle_id: car2, block: 'pm' });
+  await raw(h, `update public.jobs set status = 'cancelled', cancelled_at = now() where id = $1`, [twice]);
+  assert.deepEqual((await sees(h, [])).map((x) => x.check_id), []);
+  // both done and billed: a double again
+  await raw(h, `update public.jobs set status = 'done', started_at = now(), arrived_at = now(), finished_at = now() where id = $1`, [back]);
+  f = (await sees(h, [])).filter((x) => x.check_id === 'D5.double');
+  assert.deepEqual(f.map((x) => x.entity_id), [back]);
+  // a double of a month ago
+  await raw(h, `update public.jobs set day = public.local_today() - 30 where id = any($1::uuid[])`, [[g.jobA, back]]);
+  assert.deepEqual((await sees(h, [])).filter((x) => x.check_id === 'D5.double'), []);
+}));
+
+test('recon X1: an operation claimed and never answered (owner only); answered, it closes; one under way for less than 10 minutes is not said', () => tx(async (h) => {
+  const owner = await h.person('Hassan Jeha', ['owner']);
+  const acc = await h.person('Comptable', ['treasurer'], { rights: { treasury: true } });
+  await reconciledBefore(h);
+  const op1 = uuid(), op2 = uuid(), op3 = uuid();
+  await h.c.query(`insert into public.op_log (op, name, result, at) values ($1, 'payment_add', null, now() - interval '3 hours'),
+    ($2, 'payment_add', null, now() - interval '1 hour'), ($3, 'book_job', null, now() - interval '2 minutes'),
+    ($4, 'book_job', '{"ok": true}', now() - interval '3 hours')`, [op1, op2, op3, uuid()]);
+  const f = await sees(h, []);
+  assert.deepEqual(f.map((x) => [x.check_id, x.severity, x.key]), [['X1.op', 'warn', 'X1.op::payment_add']], show(f));
+  assert.match(f[0].message_fr, /^2 opérations « payment_add » ont commencé sans jamais finir \(la première le \d{4}-\d\d-\d\d \d\d:\d\d\)/);
+  await h.as(acc);
+  assert.deepEqual((await h.rpc('recon_summary', {})).findings, [], 'not for « Trésorerie »');
+  await h.as(owner);
+  assert.deepEqual((await h.rpc('recon_summary', {})).findings.map((x) => x.check_id), ['X1.op']);
+  await server(h);
+  await h.c.query(`update public.op_log set result = '{"ok": true}' where op = any($1::uuid[])`, [[op1, op2]]);
+  assert.deepEqual((await sees(h, [])).map((x) => x.check_id), []);
+  assert.equal(await stateOf(h, 'X1.op::payment_add'), 'closed');
+}));
+
+test('recon: the very first run lists what was already there « vu » (old rows before the update, no wall of red); a new difference after it is open; changed, an old one opens', () => tx(async (h) => {
+  const owner = await h.person('Hassan Jeha', ['owner']);
+  const cust = await h.customer('Ancien', ...here);
+  // years of books before the daily reconciliation: a past job never closed, a finished job never billed
+  await raw(h, `insert into public.jobs (customer_id, day, block, status, duration_min) values ($1, public.local_today() - 400, 'am', 'booked', 60)`, [cust]);
+  const old = await h.val(`insert into public.jobs (customer_id, day, block, status, started_at, arrived_at, finished_at, duration_min)
+    values ($1, public.local_today() - 380, 'am', 'done', now(), now(), now(), 60) returning id`, [cust]);
+  await h.c.query(`set local garage.recon_fail = 'M9'`);
+  const r = await run(h);
+  await h.c.query(`reset garage.recon_fail`);
+  let f = await open(h);
+  assert.deepEqual(f.map((x) => [x.check_id, x.state]), [['D1.past', 'acked'], ['M5.unbilled', 'acked'], ['M9.error', 'open']], show(f));
+  assert.equal(f[0].note, 'Déjà là au premier rapprochement (avant la mise à jour) : à regarder quand tu as le temps.');
+  assert.equal(r.status, 'warn', 'only the check that could not run colours the first morning');
+  // the next night: a new difference is news
+  await raw(h, `insert into public.jobs (customer_id, day, block, status, started_at, arrived_at, finished_at, duration_min)
+    values ($1, public.local_today() - 1, 'am', 'done', now(), now(), now(), 60)`, [cust]);
+  const r2 = await run(h);
+  assert.equal(r2.status, 'bad');
+  f = await open(h);
+  assert.deepEqual(f.map((x) => [x.check_id, x.state]).sort(), [['D1.past', 'acked'], ['M5.unbilled', 'acked'], ['M5.unbilled', 'open']]);
+  // an old one repaired closes; the owner sees them all
+  await raw(h, `update public.jobs set coffre_id = null, status = 'cancelled', cancelled_at = now() where id = $1`, [old]);
+  await run(h);
+  await h.as(owner);
+  assert.deepEqual((await h.rpc('recon_summary', {})).findings.filter((x) => x.state !== 'closed').map((x) => [x.check_id, x.state]),
+    [['M5.unbilled', 'open'], ['D1.past', 'acked']]);
+}));
+
 // ───────────────────────────── who sees what ─────────────────────────────
 
 test('recon_summary: the owner sees everything, « Trésorerie » the money and stock, others are refused; the app may not run it itself', () => tx(async (h) => {
@@ -818,9 +930,10 @@ test('recon_summary: the owner sees everything, « Trésorerie » the money and 
   // the owner
   await h.as(g.owner);
   const o = await h.rpc('recon_summary', { p_days: 14 });
-  assert.deepEqual(Object.keys(o).sort(), ['can_ack', 'findings', 'last_run', 'ok', 'runs']);
-  assert.deepEqual(Object.keys(o.last_run).sort(), ['counts', 'day', 'finished_at', 'sheet', 'status']);
-  assert.deepEqual(Object.keys(o.runs[0]).sort(), ['counts', 'day', 'finished_at', 'status']);
+  // (« today », « yesterday_run », « source » and « partial » were added in round 2: the screen tells yesterday's run from today's)
+  assert.deepEqual(Object.keys(o).sort(), ['can_ack', 'findings', 'last_run', 'ok', 'runs', 'today', 'yesterday_run']);
+  assert.deepEqual(Object.keys(o.last_run).sort(), ['counts', 'day', 'finished_at', 'partial', 'sheet', 'source', 'status']);
+  assert.deepEqual(Object.keys(o.runs[0]).sort(), ['counts', 'day', 'finished_at', 'partial', 'source', 'status']);
   assert.deepEqual(Object.keys(o.findings[0]).sort(), ['check_id', 'entity_id', 'entity_table', 'first_day', 'id', 'last_day', 'message_en', 'message_fr', 'note', 'severity', 'state']);
   assert.deepEqual(Object.keys(o.last_run.sheet).sort(), ['coffre_in_cents', 'coffre_out_cents', 'expenses', 'invoiced_cents', 'received', 'refunded_cents', 'to_receive_cents']);
   assert.equal(o.ok, true);
@@ -874,17 +987,24 @@ test('recon_now: yesterday and today so far, at most once a minute, then the sum
   const owner = await h.person('Hassan Jeha', ['owner']);
   await h.as(owner);
   const empty = await h.rpc('recon_summary', {});
-  assert.deepEqual([empty.last_run, empty.runs, empty.findings], [null, [], []]);
+  assert.deepEqual([empty.last_run, empty.yesterday_run, empty.runs, empty.findings], [null, null, [], []]);
+  const today = await h.val(`select public.local_today()::text`), yday = await h.val(`select (public.local_today() - 1)::text`);
+  assert.equal(empty.today, today);
   const s = await h.rpc('recon_now', {});
-  assert.deepEqual(s.runs.map((r) => r.day), [await h.val(`select public.local_today()::text`), await h.val(`select (public.local_today() - 1)::text`)]);
+  assert.deepEqual(s.runs.map((r) => r.day), [today, yday]);
   assert.equal(s.last_run.status, 'ok');
+  // « Vérifier maintenant » ran today too: last_run is today's, not over yet; yesterday's run is there apart
+  assert.deepEqual([s.today, s.last_run.day, s.last_run.partial, s.last_run.source], [today, today, true, 'button']);
+  assert.deepEqual([s.yesterday_run.day, s.yesterday_run.partial, s.yesterday_run.source], [yday, false, 'button']);
+  assert.deepEqual(s.runs.map((r) => r.partial), [true, false]);
+  assert.equal(s.yesterday_run.sheet.invoiced_cents, 0);
   const at = s.last_run.finished_at;
   const again = await h.rpc('recon_now', {});
   assert.equal(again.last_run.finished_at, at, 'braked: nothing ran again');
 }));
 
-test('recon: a few thousand rows are checked in well under a second', () => tx(async (h) => {
-  const g = await garage(h);
+/** a few thousand rows of a real year: 1500 paid jobs, stock, purchases both ways, 1000 expenses */
+async function bulk(h, g) {
   // 1500 finished jobs over 30 past days, each with its paid invoice and payment; 300 stock items with 4 moves each
   await raw(h, `insert into public.jobs (id, customer_id, day, block, status, started_at, arrived_at, finished_at, duration_min)
     select gen_random_uuid(), $1, public.local_today() - 1 - (n % 30), 'am', 'done', now(), now(), now(), 60 from generate_series(1, 1500) n`, [g.customer]);
@@ -912,6 +1032,11 @@ test('recon: a few thousand rows are checked in well under a second', () => tx(a
     select i.id, 1, 'restock', now() - make_interval(mins => substr(i.name, 8)::int) from public.inventory_items i where i.name like 'Coffre %'`);
   await raw(h, `insert into public.coffre (kind, amount_cents, received_on, item_id, item_name, qty, created_at)
     select 'purchase', 100, public.local_today(), i.id, i.name, 1, now() - make_interval(mins => substr(i.name, 8)::int) from public.inventory_items i where i.name like 'Coffre %'`);
+}
+
+test('recon: a few thousand rows are checked in well under a second', () => tx(async (h) => {
+  const g = await garage(h);
+  await bulk(h, g);
   await run(h);   // the first run takes the baseline
   const t0 = Date.now();
   const r = await run(h);
@@ -921,4 +1046,22 @@ test('recon: a few thousand rows are checked in well under a second', () => tx(a
   assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
   assert.ok(ms < 1000, `recon_run took ${ms} ms`);
   assert.equal(await h.val(`select count(*)::int from public.ops_recon_findings where state <> 'closed' and check_id like 'M7.%'`), 0, 'each purchase found its expense');
+}));
+
+test('recon: tables whose statistics are stale (the planner believes them nearly empty) still run in well under a second', () => tx(async (h) => {
+  const g = await garage(h);
+  await bulk(h, g);
+  await run(h);   // the baseline
+  // what autovacuum leaves after it analysed the tables while they were nearly empty, then thousands of rows came: the
+  // planner believes one row per table and picks nested loops (a check over invoices was then invoices x invoices x lines)
+  await server(h);
+  await h.c.query(`update pg_class set reltuples = 0, relpages = 1000 where oid = any (array['public.invoices', 'public.payments', 'public.jobs', 'public.job_items',
+    'public.inventory_items', 'public.inventory_moves', 'public.expenses', 'public.coffre', 'public.vehicles', 'public.customers', 'public.activity', 'public.op_log']::regclass[])`);
+  const t0 = Date.now();
+  const r = await run(h);
+  const ms = Date.now() - t0;
+  console.log(`recon_run, stale statistics: ${ms} ms (by check: ${JSON.stringify(r.counts.checks_ms)})`);
+  const f = await open(h);
+  assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
+  assert.ok(ms < 1000, `recon_run took ${ms} ms with stale statistics: ${JSON.stringify(r.counts.checks_ms)}`);
 }));

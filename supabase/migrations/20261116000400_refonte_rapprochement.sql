@@ -10,7 +10,8 @@
 --                         counts, the day's sheet
 --   ops_recon_findings    one row per difference, by a stable key (check + entity): seen again the next night it stays
 --                         the same row (last_day moves); no longer true, it closes by itself; « vu » = acked
---   ops_recon_baseline    the differences that alert only when they CHANGE (S1: stock on hand vs its moves)
+--   ops_recon_baseline    the differences that alert only when they CHANGE (S1: stock on hand vs its moves), and the mark
+--                         « first » (zero uuid): the first run was made (what that run found is listed « vu », « déjà là »)
 --   recon_run(day, source)      service only: every check, in ONE snapshot (recon_collect is one query), in one transaction
 --   recon_add(run, …)           service only: a server function adds what needs the outside (Stripe, the backup's age)
 --   recon_summary(days)         owner: everything; « Trésorerie »: the money (M…) and stock (S…) checks; others: refused
@@ -58,6 +59,9 @@
 --                 on a vehicle without the machine, the number of jobs « À placer »
 --   D3.car / D3.invoice warn   the job's car is another customer's; the invoice is in another customer's name
 --   D4.phone / D4.vin info     two customers with the same phone; one VIN on two cars
+--   D5.double warn  the same car of the same customer booked twice on one day, both still to do or both done (the
+--                 last 14 days and the coming ones)
+--   X1.op warn    an operation claimed in op_log (op_begin) more than 10 minutes ago and never given its answer (owner only)
 --   S1.drift bad  stock on hand vs the sum of its moves, against the baseline taken at the first run
 --   S2.negative warn  less than zero in stock;  S2.unused warn  a job finished these 14 days that sold a stock item and
 --                 took nothing out of the stock
@@ -162,9 +166,14 @@ create or replace function public.recon_for_treasury(p_check text) returns boole
   select coalesce(p_check, '') ~ '^([MS][0-9]|stripe|money|stock)'
 $$;
 
--- the test hook: a test makes one check throw with « set garage.recon_fail = 'M3' » (never set by the app or the server)
+-- the test hooks (never set by the app or the server): a test makes one check throw with « set garage.recon_fail = 'M3' »,
+-- or wait a second and a half before it with « set garage.recon_pause = 'M3' » (to change the books from another
+-- connection in the middle of a run: the run must not see it, every check reads the same snapshot)
 create or replace function public.recon_trip(p_check text) returns void language plpgsql stable set search_path = public as $$
 begin
+  if coalesce(current_setting('garage.recon_pause', true), '') = p_check then
+    perform pg_sleep(1.5);
+  end if;
   if coalesce(current_setting('garage.recon_fail', true), '') = p_check then
     raise exception 'recon test: % made to fail', p_check;
   end if;
@@ -228,8 +237,11 @@ $$;
 -- in its own block: a check that throws gives its « .error » finding and the others go on. Each row:
 -- { c: check_id, s: severity, t: entity_table, e: entity_id, k: extra key (when one entity can differ twice), fr, en, d: data }.
 -- Answer: { findings: [...], sheet: {...}, baseline: [{ id, value }] (only while S1 has no baseline yet) }.
+-- enable_nestloop off: the checks join whole tables; with statistics gone stale (autovacuum analysed a table while it was
+-- nearly empty) the planner believed one row and looped (29 s instead of 0.4 s on a busy machine). Hash joins keep each
+-- check linear whatever the statistics say; a lateral (its only possible plan) still loops, on one row's own data.
 create or replace function public.recon_collect(p_day date) returns jsonb
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public set enable_nestloop = off as $$
 declare
   v_all jsonb := '[]'::jsonb;
   v_part jsonb;
@@ -248,17 +260,20 @@ begin
   begin
     perform public.recon_trip('M1');
     v_t := clock_timestamp();
-    with l as (
-      select v.id, x.l,
-             (case when x.l->>'kind' = 'discount' then -abs(round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)))
-                   else round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)) end)::bigint as lt,
-             coalesce((x.l->>'taxable')::boolean, true) as taxable
-      from public.invoices v cross join lateral jsonb_array_elements(v.lines) x(l)
+    -- each invoice adds up its OWN lines (a lateral over its row): the time is the number of lines whatever plan the
+    -- database picks (a grouped list joined back was invoices x invoices x lines when stale statistics made it loop)
+    with s as materialized (
+      select v.id, t.sub, t.tx, t.off
+      from public.invoices v
+      cross join lateral (
+        select sum(y.lt)::bigint as sub, coalesce(sum(y.lt) filter (where y.taxable), 0)::bigint as tx,
+               count(*) filter (where (y.l->>'total_cents') is null or (y.l->>'total_cents')::numeric <> y.lt) as off
+        from (select x.l,
+                     (case when x.l->>'kind' = 'discount' then -abs(round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)))
+                           else round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)) end)::bigint as lt,
+                     coalesce((x.l->>'taxable')::boolean, true) as taxable
+              from jsonb_array_elements(v.lines) x(l)) y) t
       where v.deleted_at is null and v.status in ('issued', 'paid')
-    ), s as (
-      select id, sum(lt)::bigint as sub, coalesce(sum(lt) filter (where taxable), 0)::bigint as tx,
-             count(*) filter (where (l->>'total_cents') is null or (l->>'total_cents')::numeric <> lt) as off
-      from l group by id
     )
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M1.sum' c, 'bad' s, 'invoices' t, v.id e, null::text k,
@@ -833,6 +848,56 @@ begin
   exception when others then v_all := v_all || public.recon_error('D4', sqlerrm);
   end;
 
+  -- ══════ D5: the same car of the same customer booked twice on one day (two phones, two operations) ══════
+  -- the last 14 days and the coming ones (an old double from long ago is not news every morning)
+  begin
+    perform public.recon_trip('D5');
+    v_t := clock_timestamp();
+    select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
+      select 'D5.double' c, 'warn' s, 'jobs' t, x.newest e, null::text k,
+             format('Le %s, la même voiture du même client a %s rendez-vous (jobs %s) : vérifie que ce n’est pas un doublon ; sinon annule celui de trop (et sa facture).', x.day, x.n, x.numbers) fr,
+             format('On %s, the same car of the same customer has %s appointments (jobs %s): check that it is not a double; if it is, cancel the extra one (and its invoice).', x.day, x.n, x.numbers) en,
+             jsonb_build_object('day', x.day, 'n', x.n, 'jobs', x.jobs, 'vehicle_id', x.vehicle_id) d
+      from (select j.day, j.vehicle_id, count(*) as n, string_agg(j.number::text, ', ' order by j.number) as numbers,
+                   (array_agg(j.id order by j.number desc, j.id))[1] as newest, jsonb_agg(j.id order by j.number) as jobs
+            from public.jobs j
+            where j.deleted_at is null and j.status not in ('cancelled', 'no_show') and j.vehicle_id is not null and j.day >= v_today - 14
+            -- both still to do (booked twice), or both done (done and billed twice); one done and one still to do the
+            -- same day is the customer coming back for more, not a double
+            group by j.day, j.customer_id, j.vehicle_id, j.status = 'done' having count(*) > 1) x
+    ) f;
+    v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('D5', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
+  exception when others then v_all := v_all || public.recon_error('D5', sqlerrm);
+  end;
+
+  -- ══════ X1: an operation claimed (op_begin) and never given its answer (op_save) ══════
+  -- every retry of it is answered « done » (op_begin), whether the work was done or not: a fault of the app's code,
+  -- for the owner (one finding per operation name; 10 minutes leave a long operation the time to finish)
+  begin
+    perform public.recon_trip('X1');
+    v_t := clock_timestamp();
+    select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
+      select 'X1.op' c, 'warn' s, null::text t, null::uuid e, o.name k,
+             case when count(*) = 1
+                  then format('Une opération « %s » a commencé sans jamais finir (le %s) : le téléphone a pu dire « fait » pour quelque chose qui ne s’est pas fait. Dis-le au responsable de l’app.',
+                              o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI'))
+                  else format('%s opérations « %s » ont commencé sans jamais finir (la première le %s) : le téléphone a pu dire « fait » pour quelque chose qui ne s’est pas fait. Dis-le au responsable de l’app.',
+                              count(*), o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI')) end fr,
+             case when count(*) = 1
+                  then format('An operation « %s » started and never finished (on %s): the phone may have said « done » for something that was not done. Tell the person in charge of the app.',
+                              o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI'))
+                  else format('%s operations « %s » started and never finished (the first on %s): the phone may have said « done » for something that was not done. Tell the person in charge of the app.',
+                              count(*), o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI')) end en,
+             jsonb_build_object('name', o.name, 'n', count(*), 'first_at', min(o.at), 'ops', to_jsonb((array_agg(o.op order by o.at))[1:20])) d
+      from public.op_log o where o.result is null and o.at < now() - interval '10 minutes'
+      group by o.name
+    ) f;
+    v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('X1', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
+  exception when others then v_all := v_all || public.recon_error('X1', sqlerrm);
+  end;
+
   -- ══════ S1: stock on hand = the sum of its moves (against the baseline: only a CHANGE is said) ══════
   begin
     perform public.recon_trip('S1');
@@ -956,11 +1021,13 @@ declare
   v_new_l int; v_closed_l int; v_errors_l int; v_seen int; v_seen_l int;
   v_failed text[];    -- the check families that threw this time (« M2 » for « M2.error »): their differences are left as they were
   v_mark date;        -- the day written on what is seen (first_day / last_day)
+  v_first boolean;    -- the very first run of this database: what it finds was there before (« déjà là »)
 begin
   -- one run at a time (the cron, the backup and « Vérifier maintenant » may meet); recon_ack and recon_add take the same
   -- lock first, so the three always lock in the same order (the lock, the run row, the findings) and never deadlock
   perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
   v := public.recon_collect(v_day);     -- ONE query: every check sees the same snapshot
+  v_first := not exists (select 1 from public.ops_recon_baseline b where b.check_id = 'first' and b.entity_id = '00000000-0000-0000-0000-000000000000');
   -- the checks read the books AS THEY ARE NOW: running an old day again never dates a difference back before the newest
   -- day already reconciled
   v_mark := greatest(v_day, coalesce((select max(r.day) from public.ops_recon_runs r), v_day));
@@ -970,6 +1037,10 @@ begin
   values (v_day, left(coalesce(nullif(trim(p_source), ''), 'manual'), 40), v_t0, coalesce(v->'sheet', '{}'::jsonb))
   returning id into v_run;
 
+  if v_first then
+    insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
+    values ('first', '00000000-0000-0000-0000-000000000000', 0, v_day) on conflict (check_id, entity_id) do nothing;
+  end if;
   -- S1, the very first run: the baseline
   if v ? 'baseline' then
     insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
@@ -996,9 +1067,17 @@ begin
     from recon_seen;
 
   -- seen again: the same row (last_day moves, first_day stays); closed before: open again from this day; « vu » stays while
-  -- the words stay the same (an « info » never opens again for new words: it never colours the day, its count just moves)
-  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, last_run)
-  select key, c, s, t, e, fr, en, d, v_mark, v_mark, v_run from recon_seen
+  -- the words stay the same (an « info » never opens again for new words: it never colours the day, its count just moves).
+  -- The very first run (the night after the update, on years of books): what it finds was there BEFORE the daily
+  -- reconciliation existed. It is listed « vu » with a note, so the first morning is not a wall of red over old rows; it
+  -- opens again like any « vu » when it changes, and closes once repaired. A check that could not run is never « vu ».
+  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, last_run,
+                                              state, acked_at, note)
+  select key, c, s, t, e, fr, en, d, v_mark, v_mark, v_run,
+         case when v_first and c not like '%.error' then 'acked' else 'open' end,
+         case when v_first and c not like '%.error' then now() end,
+         case when v_first and c not like '%.error' then 'Déjà là au premier rapprochement (avant la mise à jour) : à regarder quand tu as le temps.' end
+  from recon_seen
   on conflict (key) do update set
     check_id = excluded.check_id, severity = excluded.severity, entity_table = excluded.entity_table, entity_id = excluded.entity_id,
     data = excluded.data, last_run = excluded.last_run, outside = false, updated_at = now(), closed_at = null,
@@ -1080,29 +1159,44 @@ begin
 end $$;
 
 -- ───────────────────────────── recon_summary: what the app shows ─────────────────────────────
--- { ok, can_ack, last_run: { day, status, finished_at, counts, sheet } | null, runs: [{ day, status, finished_at, counts }] newest first,
---   findings: [{ id, check_id, severity, entity_table, entity_id, message_fr, message_en, first_day, last_day, state, note }] }
+-- { ok, can_ack, today, last_run: { day, status, finished_at, counts, sheet, source, partial } | null,
+--   yesterday_run: the same for the day before today (Montréal) | null, runs: [{ day, status, finished_at, counts, source, partial }]
+--   newest first, findings: [{ id, check_id, severity, entity_table, entity_id, message_fr, message_en, first_day, last_day, state, note }] }
+-- « Vérifier maintenant » also runs TODAY: last_run is then today's, « partial » (run before its day was over). The panel
+-- « Rapprochement d'hier » reads yesterday_run (or tells last_run's day from « today »).
 create or replace function public.recon_summary(p_days int default 14) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
   v_owner boolean := public.is_owner();
   v_treasury boolean := public.can('treasury');
   v_days int := least(greatest(coalesce(p_days, 14), 1), 92);
+  v_today date := public.local_today();
   v_last jsonb;
+  v_yday jsonb;
 begin
   if not (v_owner or v_treasury) then
     perform public.fail('not_allowed', 'Le rapprochement est pour le propriétaire et la Trésorerie.');
   end if;
   select jsonb_build_object('day', r.day, 'status', public.recon_view_status(r.status, r.counts, v_owner), 'finished_at', r.finished_at,
-                            'counts', public.recon_view_counts(r.counts, v_owner), 'sheet', r.sheet)
+                            'counts', public.recon_view_counts(r.counts, v_owner), 'sheet', r.sheet, 'source', r.source,
+                            'partial', r.finished_at < ((r.day + 1)::timestamp at time zone 'America/Toronto'))
   into v_last
   from public.ops_recon_runs r where r.finished_at is not null order by r.day desc limit 1;
+  select jsonb_build_object('day', r.day, 'status', public.recon_view_status(r.status, r.counts, v_owner), 'finished_at', r.finished_at,
+                            'counts', public.recon_view_counts(r.counts, v_owner), 'sheet', r.sheet, 'source', r.source,
+                            'partial', r.finished_at < ((r.day + 1)::timestamp at time zone 'America/Toronto'))
+  into v_yday
+  from public.ops_recon_runs r where r.finished_at is not null and r.day = v_today - 1;
   return jsonb_build_object(
     'ok', true,
     'can_ack', v_owner or v_treasury,
+    'today', v_today,
     'last_run', v_last,
+    'yesterday_run', v_yday,
     'runs', (select coalesce(jsonb_agg(jsonb_build_object('day', r.day, 'status', public.recon_view_status(r.status, r.counts, v_owner),
-                                                          'finished_at', r.finished_at, 'counts', public.recon_view_counts(r.counts, v_owner)) order by r.day desc), '[]'::jsonb)
+                                                          'finished_at', r.finished_at, 'counts', public.recon_view_counts(r.counts, v_owner),
+                                                          'source', r.source, 'partial', r.finished_at < ((r.day + 1)::timestamp at time zone 'America/Toronto'))
+                                       order by r.day desc), '[]'::jsonb)
              from (select * from public.ops_recon_runs where finished_at is not null order by day desc limit v_days) r),
     'findings', (select coalesce(jsonb_agg(jsonb_build_object('id', f.id, 'check_id', f.check_id, 'severity', f.severity, 'entity_table', f.entity_table,
                                     'entity_id', f.entity_id, 'message_fr', f.message_fr, 'message_en', f.message_en, 'first_day', f.first_day,
