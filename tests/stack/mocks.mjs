@@ -1,13 +1,18 @@
 // Fake outside services for the tests (port 8021): GoHighLevel, Stripe, OSRM, NHTSA vPIC, Hermes. They answer like the real ones
 // and keep a log of every call (GET /log, POST /log/clear) so the tests can check what would have been sent.
 // GET /control?ghl=fail makes GoHighLevel refuse the next messages; ?ghl=ok puts it back.
-// GET /control?stripe=refunds makes Stripe's list of refunds answer 500, ?stripe=all every Stripe call; ?stripe=ok puts it back.
+// GET /control?stripe=refunds makes Stripe's list of refunds answer 500, ?stripe=all every Stripe call; ?stripe=refuse makes
+// Stripe refuse the key (401, as for a key revoked or mistyped); ?stripe=ok puts it back.
+// GET /control?ghl_ms=N makes every GoHighLevel call answer after N ms (0: at once); a call the function gave up on (it closed
+// the connection) is logged with `aborted: true` and does nothing.
 // Stripe, as the real one behaves: a card page (Checkout session) is open, complete or expired (POST …/expire), and an
 // expired one cannot be paid; the same Idempotency-Key with other parameters is refused (400 idempotency_error);
 // « charge.refunded » carries the charge WITHOUT the list of its refunds (they are read with GET /v1/refunds).
 // Each secret key is its own Stripe account: a card page is seen (listed, read, expired) only with the key that made it, and
 // it carries `created` (seconds); the list takes created[gte|gt|lte|lt] like Stripe. So what one test file leaves here is
-// never in another file's list when that file uses a key of its own.
+// never in another file's list when that file uses a key of its own. Lists (card pages, refunds) come newest first, a page at
+// a time like Stripe's: `limit` (1 to 100, 10 when not said), `starting_after` (the id of the last object of the page before),
+// `has_more`.
 //   GET /pay/<session>[?twice=1][&replay=1][&quiet=1] the customer pays (twice: two notices; replay: the same notice again;
 //                                                     quiet: Stripe's notice never comes)
 //   GET /age/<session>?hours=N                       the page was made N hours ago (its `created`)
@@ -22,17 +27,34 @@ const log = [];
 const gh = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const ghJwk = { ...gh.publicKey.export({ format: 'jwk' }), kid: 'test-kid', use: 'sig', alg: 'RS256' };
 const b64u = (b) => Buffer.from(b).toString('base64url');
-function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'garage2.0-backup', exp = 300, iss = 'https://token.actions.githubusercontent.com', kid = 'test-kid' } = {}) {
+function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'garage2.0-backup', exp = 300, iss = 'https://token.actions.githubusercontent.com', kid = 'test-kid', repository_id, repository_owner_id } = {}) {
   const now = Math.floor(Date.now() / 1000);
   const head = b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid }));
-  const body = b64u(JSON.stringify({ iss, aud, repository, sub: `repo:${repository}:ref:refs/heads/main`, iat: now, nbf: now - 5, exp: now + Number(exp) }));
+  // the repository's numbers (GitHub's tickets carry them) only when the test gives them
+  const ids = { ...(repository_id ? { repository_id: String(repository_id) } : {}), ...(repository_owner_id ? { repository_owner_id: String(repository_owner_id) } : {}) };
+  const body = b64u(JSON.stringify({ iss, aud, repository, ...ids, sub: `repo:${repository}:ref:refs/heads/main`, iat: now, nbf: now - 5, exp: now + Number(exp) }));
   const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
   return `${head}.${body}.${sig}`;
 }
-const state = { ghl: 'ok', stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map() };
+const state = { ghl: 'ok', ghlMs: 0, stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map() };
 const chat = (cid) => { if (!state.chats.has(cid)) state.chats.set(cid, []); return state.chats.get(cid); };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
+/** one page of a Stripe list (`all` newest first), as Stripe answers it: limit, starting_after, has_more */
+function listPage(res, u, all, url) {
+  const asked = u.searchParams.has('limit') ? Number(u.searchParams.get('limit')) : 10;
+  if (!Number.isInteger(asked) || asked < 1 || asked > 100) return send(res, 400, { error: { type: 'invalid_request_error', param: 'limit', message: 'This value must be greater than or equal to 1 and less than or equal to 100.' } });
+  const after = u.searchParams.get('starting_after');
+  let from = 0;
+  if (after) {
+    const i = all.findIndex((x) => x.id === after);
+    if (i < 0) return send(res, 400, { error: { type: 'invalid_request_error', param: 'starting_after', message: `No such object: '${after}'` } });
+    from = i + 1;
+  }
+  return send(res, 200, { object: 'list', url, has_more: from + asked < all.length, data: all.slice(from, from + asked) });
+}
+/** newest first by `created` (seconds), then the one made last */
+const newestFirst = (list) => list.map((x, i) => [x, i]).sort((a, b) => (b[0].created || 0) - (a[0].created || 0) || b[1] - a[1]).map(([x]) => x);
 const formParse = (s) => { const o = {}; for (const p of s.split('&').filter(Boolean)) { const [k, v = ''] = p.split('='); o[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' ')); } return o; };
 
 /** a signed notice to the garage's own function, as Stripe sends it */
@@ -61,7 +83,8 @@ http.createServer(async (req, res) => {
   if (p === '/control') {
     if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl');
     if (u.searchParams.get('stripe')) state.stripe = u.searchParams.get('stripe');
-    return send(res, 200, { ghl: state.ghl, stripe: state.stripe });
+    if (u.searchParams.has('ghl_ms')) state.ghlMs = Math.max(0, Number(u.searchParams.get('ghl_ms')) || 0);
+    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe });
   }
 
   // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
@@ -73,6 +96,13 @@ http.createServer(async (req, res) => {
   // ---- GoHighLevel ----
   if (p.startsWith('/ghl/')) {
     const body = raw ? JSON.parse(raw) : {};
+    if (state.ghlMs && p !== '/ghl/_reply') {
+      // a slow GoHighLevel: the answer comes after ghl_ms; a call given up meanwhile (connection closed) does nothing
+      let gone = false;
+      res.on('close', () => { if (!res.writableEnded) gone = true; });
+      await new Promise((r) => setTimeout(r, state.ghlMs));
+      if (gone || res.destroyed) { log.push({ svc: 'ghl', path: p.slice(4), aborted: true, body }); return; }
+    }
     log.push({ svc: 'ghl', path: p.slice(4), version: req.headers.version, auth: req.headers.authorization, body });
     if (!/^Bearer pit-/.test(req.headers.authorization || '')) return send(res, 401, { message: 'Invalid token' });
     if (p === '/ghl/contacts/upsert') return send(res, 200, { contact: { id: 'ct_' + (body.phone || body.email || 'x').replace(/\W/g, '') } });
@@ -106,6 +136,7 @@ http.createServer(async (req, res) => {
     const f = formParse(raw);
     log.push({ svc: 'stripe', method: req.method, path: p.slice(7), form: f, version: req.headers['stripe-version'], idem: req.headers['idempotency-key'] });
     if (!/^Bearer (sk|rk)_(test|live)_/.test(req.headers.authorization || '')) return send(res, 401, { error: { message: 'Invalid API Key' } });
+    if (state.stripe === 'refuse') return send(res, 401, { error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_****' } });
     if (p === '/stripe/v1/webhook_endpoints' && req.method === 'POST') { state.hook = { id: 'we_' + (++state.n), secret: 'whsec_test_' + state.n, url: f.url }; return send(res, 200, state.hook); }
     if (p.startsWith('/stripe/v1/webhook_endpoints/') && req.method === 'DELETE') return send(res, 200, { deleted: true });
     if (state.stripe === 'all' || (state.stripe === 'refunds' && p === '/stripe/v1/refunds')) return send(res, 500, { error: { type: 'api_error', message: 'An unknown error occurred' } });
@@ -136,7 +167,7 @@ http.createServer(async (req, res) => {
       const [gte, gt, lte, lt] = ['gte', 'gt', 'lte', 'lt'].map(when);
       const data = [...state.sessions.values()].filter((s) => mine(s) && (!pi || s.payment_intent === pi)
         && (gte == null || s.created >= gte) && (gt == null || s.created > gt) && (lte == null || s.created <= lte) && (lt == null || s.created < lt));
-      return send(res, 200, { object: 'list', url: '/v1/checkout/sessions', has_more: false, data: data.reverse() });
+      return listPage(res, u, newestFirst(data), '/v1/checkout/sessions');
     }
     const x = /^\/stripe\/v1\/checkout\/sessions\/([\w-]+)\/expire$/.exec(p);
     if (x && req.method === 'POST') {
@@ -151,7 +182,7 @@ http.createServer(async (req, res) => {
     // the refunds of a payment (newest first, like Stripe)
     if (p === '/stripe/v1/refunds' && req.method === 'GET') {
       const pi = u.searchParams.get('payment_intent');
-      return send(res, 200, { object: 'list', url: '/v1/refunds', has_more: false, data: state.refunds.filter((r) => r.payment_intent === pi).slice().reverse() });
+      return listPage(res, u, newestFirst(state.refunds.filter((r) => r.payment_intent === pi)), '/v1/refunds');
     }
     return send(res, 404, { error: { message: 'no route' } });
   }

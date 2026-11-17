@@ -177,11 +177,16 @@ async function closePage(key: string, x: Page): Promise<boolean> {
    page is remembered (or on failure); the others wait for that page. A claim left by a function that died is old after
    CLAIM_STALE_MS and taken over. */
 const CLAIM_STALE_MS = 20000;
+/** the database does not have op_begin yet (the new migrations not applied at the moment the functions are deployed):
+    no claim, the page is made as yesterday (one page per link, Stripe's key merges the double taps of a link) */
+const NO_CLAIM = 'none';
+const noFunction = (e: { code?: string } | null) => e?.code === 'PGRST202' || e?.code === '42883';
 async function claimPage(jobId: string): Promise<string | null> {
   const db = adminDb();
   const op = await stripeOp(`pay-claim:${jobId}`);
   for (let i = 0; i < 2; i++) {
     const { data, error } = await db.rpc('op_begin', { p_op: op, p_name: 'client_pay' });
+    if (error && noFunction(error)) { console.error('client pay: op_begin missing, no claim'); return NO_CLAIM; }
     if (error) throw error;
     if (data === null) return op;                                  // claimed: this request makes the page
     // somebody holds it: taken over only when it is old (its maker died before freeing it)
@@ -193,7 +198,7 @@ async function claimPage(jobId: string): Promise<string | null> {
   return null;
 }
 async function freeClaim(op: string | null) {
-  if (!op) return;
+  if (!op || op === NO_CLAIM) return;
   const { error } = await adminDb().from('op_log').delete().eq('op', op).is('result', null);
   if (error) console.error('client pay: claim not freed', String(error.message).slice(0, 200));   // old after CLAIM_STALE_MS anyway
 }
@@ -274,7 +279,8 @@ async function pay(l: Row, b: Row): Promise<Response> {
       // the other one's page never came (it failed, or it is for another amount): never a second page without the claim
       if (Date.now() >= waitUntil - 400 || round >= 6) fail('pay_unavailable', PAY_DOWN, 502);
     }
-    const lang = v.lang === 'en' ? 'en' : 'fr';
+    // the language the page is shown in (the customer may have switched it); yesterday's page does not say: the file's
+    const lang = b.lang === 'en' || b.lang === 'fr' ? b.lang : v.lang === 'en' ? 'en' : 'fr';
     const base = baseOf(b.base);
     const back = `${base}client.html#t=${String(b.token)}${lang === 'en' ? '&l=en' : ''}`;
     const label = v.invoice ? (lang === 'en' ? `Invoice ${v.invoice.number}` : `Facture ${v.invoice.number}`)
@@ -293,12 +299,14 @@ async function pay(l: Row, b: Row): Promise<Response> {
       ['payment_intent_data[metadata][job_id]', l.job_id], ['payment_intent_data[description]', `${label} — ${v.garage.name}`]
     ], idem);
     let expires = (slice + 1) * SLICE_S + 3600;
-    let sess = await make(expires, `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}`);
+    // (the language is in the key: the same link asking in the other language is another request, never a refusal)
+    const idem = `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}${lang === 'en' ? '-en' : ''}`;
+    let sess = await make(expires, idem);
     if (sess?.status !== 'open') {
       // that same request was answered earlier in the slice by a page since closed (or paid): a new page, its own key
       if (sess?.payment_status === 'paid') await applyCheckout(sess);
       expires = Math.floor(Date.now() / 1000) + 3600;
-      sess = await make(expires, `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}-${crypto.randomUUID().slice(0, 8)}`);
+      sess = await make(expires, `${idem}-${crypto.randomUUID().slice(0, 8)}`);
     }
     await remember(l.id, sess, amount, new Date((Number(sess.expires_at) > 0 ? Number(sess.expires_at) : expires) * 1000).toISOString());
     return json({ ok: true, url: sess.url });
@@ -420,7 +428,10 @@ async function answer(req: Request): Promise<Response> {
         session = 'unknown';
       }
     }
-    return json({ ...(await view(l)), session });
+    // `checked`: the same, in the words the page reads (paid / open / expired; null = no page or still on its way;
+    // absent = Stripe did not answer)
+    const checked = session === 'paid' || session === 'open' || session === 'expired' ? session : session === 'unknown' ? undefined : null;
+    return json({ ...(await view(l)), session, checked });
   }
   fail('action', 'Action inconnue.');
 }
