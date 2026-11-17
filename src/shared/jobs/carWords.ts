@@ -1,7 +1,9 @@
 /* The words of « Le véhicule d'abord » (pure, tested in carWords.test.ts). */
 import type { Vehicle, JobItem } from '../../data/types';
 import type { CarFacts } from '../../domain/stock/needs';
-import { oilGrade } from '../../domain/stock/needs';
+import type { EngineRow } from '../../domain/vehicles/engineRef';
+import { oilGrade, carFacts } from '../../domain/stock/needs';
+import { sheetOf } from '../../domain/vehicles/sheet';
 import { t } from '../../lib/i18n';
 import { BILLABLE } from '../../domain/jobs/billing';
 
@@ -12,6 +14,12 @@ export function carLine(v: Pick<Vehicle, 'year' | 'make' | 'model' | 'trim' | 'e
   const disp = v.displacement ? `${Number(v.displacement).toFixed(1)} L` : '';
   const detail = [[disp, v.engine].filter(Boolean).join(' '), v.cylinders ? t('jobs.carFirst.cyl', { n: v.cylinders }) : ''].filter(Boolean).join(', ');
   return { name, detail };
+}
+
+/** what the job card knows of the car: from the « Fiche technique » the car's file shows (its own, else the one confirmed
+    for a car alike: domain/vehicles/sheet.ts), so the card and the file never disagree (R166), then the engine list */
+export function carFactsOf(v: Vehicle | null | undefined, refRows: EngineRow[]): CarFacts {
+  return carFacts(v ?? undefined, sheetOf(v)?.spec, refRows);
 }
 
 /** « Huile 5W-30 », « 4,5 L, filtre PH7317 »; to confirm when it comes from the engine list, not the car's sheet */

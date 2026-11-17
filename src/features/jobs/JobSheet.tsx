@@ -15,7 +15,7 @@ import { t } from '../../lib/i18n';
 import { Page, IconButton, Banner, Button, StatusPill } from '../../ui';
 import { InvoicePanel } from '../../shared/invoices/InvoicePanel';
 import { PaySheet } from '../../shared/invoices/PaySheet';
-import { CoffreSheet } from '../../shared/invoices/CoffreSheet';
+import { openCoffre } from '../../shared/invoices/CoffreHost';
 import { CarFirst } from '../../shared/jobs/CarFirst';
 import type { NextStep } from '../../domain/jobs/steps';
 import { isOpen } from '../../domain/jobs/billing';
@@ -47,7 +47,7 @@ import { TextsPanel } from './TextsPanel';
 import { MenuSheet } from './MenuSheet';
 import { afterSheet, calmScroll } from './scroll';
 
-type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'coffre' | 'order' | 'truck' | 'edit';
+type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'order' | 'truck' | 'edit';
 /** the last request reached the server (read alone: the sheet does not redraw while a pull goes table by table) */
 const online = computed(() => net.value.online);
 const invoiceBox = () => document.getElementById('job-invoice');
@@ -151,13 +151,13 @@ export function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }
       <MoveSheet job={j} open={sheet === 'move'} onClose={close} />
       <TruckSheet job={j} open={sheet === 'truck'} onClose={close} />
       <StopOrderSheet job={j} open={sheet === 'order'} onClose={close} />
-      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} onCoffre={() => setSheet('coffre')} onTruck={() => setSheet('truck')}
+      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} onCoffre={() => openCoffre(j.id)} onTruck={() => setSheet('truck')}
         onEdit={editable ? () => setSheet('edit') : undefined} />
       <EditSheet job={j} rights={rights} open={sheet === 'edit'} onClose={close}
         onMove={() => afterSheet(() => setSheet('move'))} onTruck={() => afterSheet(() => setSheet('truck'))} onNotes={() => afterSheet(() => setSheet('notes'))}
         onWork={() => afterSheet(() => calmScroll(document.querySelector('[data-testid="job-work"]')))} />
-      {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} onCoffre={() => afterSheet(() => setSheet('coffre'))} />}
-      <CoffreSheet job={j} open={sheet === 'coffre'} onClose={close} />
+      {/* « Payé par le Coffre » (from the menu or the payment sheet): the one Coffre sheet of the app, mounted by the frame (R49) */}
+      {inv && <PaySheet open={sheet === 'pay'} onClose={close} invoiceId={inv.id} onPaid={close} />}
       {openItem && <ItemSheet job={j} item={openItem} rights={rights} onClose={() => setItemFor(null)}
         onAnswer={(id) => { setItemFor(null); afterSheet(() => setAnswerFor(id)); }} />}
       {answerFor && <AnswerSheet job={j} item={answerItem} rights={rights} onClose={() => setAnswerFor(null)} />}

@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { carLine, oilLine, workLines } from './carWords';
+import { describe, it, expect, afterEach } from 'vitest';
+import { carLine, oilLine, workLines, carFactsOf } from './carWords';
+import { upsertLocal, clearAll } from '../../data/store';
+import type { Vehicle } from '../../data/types';
 import { jobs as fr } from '../../i18n/fr/jobs';
 import { jobs as en } from '../../i18n/en/jobs';
 
@@ -35,5 +37,25 @@ describe('« Le véhicule d’abord »', () => {
   });
   it('every word exists in French and English', () => {
     expect(Object.keys(en.carFirst).sort()).toEqual(Object.keys(fr.carFirst).sort());
+  });
+});
+
+describe('the job card reads the car’s sheet as the car’s file does (R166, customers-b-06)', () => {
+  afterEach(() => clearAll());
+  const civic = { id: 'v1', customer_id: 'c1', spec_key: null, year: 2019, make: 'Honda', model: 'Civic', engine: null, displacement: 2 } as unknown as Vehicle;
+  it('a car not linked yet gets the sheet confirmed for a car alike (before: « à compléter » while its file said « Confirmée »)', () => {
+    upsertLocal('engine_specs', [{ id: 'S1', key: 'honda|civic|2019|2.0', year: 2019, make: 'Honda', model: 'Civic', engine: '2.0 L', data: { oil_l: 4.2, oil_visc: '0W-20', oil_filter: 'PF63' }, confirmed_by: 'x' }], { force: true });
+    const oil = oilLine(carFactsOf(civic, []), 'fr');
+    expect(oil).toMatchObject({ known: true, toConfirm: false, missing: [] });
+    expect(oil.main).toContain('0W-20');
+  });
+  it('its own sheet first; no sheet: nothing invented', () => {
+    upsertLocal('engine_specs', [
+      { id: 'S1', key: 'honda|civic|2019|2.0', data: { oil_visc: '0W-20' } },
+      { id: 'S2', key: 'own', data: { oil_visc: '5W-30' } }
+    ], { force: true });
+    expect(carFactsOf({ ...civic, spec_key: 'own' }, []).values.oil_visc).toBe('5W-30');
+    expect(carFactsOf({ ...civic, model: 'Accord' }, []).values.oil_visc).toBeUndefined();
+    expect(carFactsOf(null, []).values).toEqual({});
   });
 });

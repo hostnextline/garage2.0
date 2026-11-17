@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   notify: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 'sent', link: null, message: null, phone: null, error: null }))
 }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), ...api }));
+const coffre = vi.hoisted(() => ({ openCoffre: vi.fn() }));
+vi.mock('../../shared/invoices/CoffreHost', async (orig) => ({ ...(await orig<typeof import('../../shared/invoices/CoffreHost')>()), ...coffre }));
 // the pad as a button that « signs » (the canvas has no drawing in jsdom)
 vi.mock('../../shared/sign/SignaturePad', () => ({
   SignaturePad: (p: { strokes: unknown[]; onStrokes: (s: unknown[]) => void; 'data-testid'?: string }) =>
@@ -23,7 +25,8 @@ import { net } from '../../data/sync';
 import { upsertLocal, getRow, clearAll } from '../../data/store';
 import { toasts } from '../../ui/toast';
 import { t } from '../../lib/i18n';
-import type { Job, JobItem } from '../../data/types';
+import type { Job, JobItem, Access } from '../../data/types';
+import { access } from '../../data/auth';
 import JobScreen from './JobScreen';
 import { WaiverSheet } from './WaiverSheet';
 import { takeOff } from './work/WorkPanel';
@@ -111,6 +114,19 @@ describe('« Changer de camion » keeps what the customer was told (x-dualmode-2
     await pick();
     expect(api.notify).toHaveBeenCalledTimes(1);
     expect(api.notify.mock.calls[0]).toEqual(['moved', 'j1', { op: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
+  });
+});
+
+describe('« Payé par le Coffre » from the job’s menu (R49)', () => {
+  it('opens the one Coffre sheet of the app (the frame’s host), not a second one of the job sheet', async () => {
+    access.value = { id: 'owner', roles: [], owner: true, rights: {}, trucks: [] } as unknown as Access;
+    upsertLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'Roy', phone: '5145551234' }]);
+    upsertLocal('jobs', [{ id: 'j1', number: 7, status: 'booked', day: '2030-01-15', block: 'am', truck_id: null, customer_id: 'c1', vehicle_id: null, waiver_signed_at: null, coffre_id: null, duration_min: 60 }]);
+    await act(() => render(<JobScreen params={{ id: 'j1' }} query={new URLSearchParams()} />, box));
+    await act(async () => { q('job-menu')!.click(); await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { q('menu-coffre')!.click(); await new Promise((r) => setTimeout(r, 900)); });
+    expect(coffre.openCoffre).toHaveBeenCalledWith('j1');
+    expect(q('coffre-sheet')).toBeNull();
   });
 });
 

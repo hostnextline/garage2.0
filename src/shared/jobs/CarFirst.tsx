@@ -8,11 +8,10 @@ import { isField } from '../../domain/rights';
 import { SpecPanel } from '../vehicles/SpecPanel';
 import { CarHistoryButton } from './CarHistory';
 import { t, lang } from '../../lib/i18n';
-import { vehicle as vehicleRow, specByKey, itemsOf } from '../../data/select';
+import { vehicle as vehicleRow, itemsOf } from '../../data/select';
 import type { Job } from '../../data/types';
 import { engineRef, ensureEngineRef } from '../../domain/vehicles/engineRef';
-import { carFacts } from '../../domain/stock/needs';
-import { carLine, oilLine, workLines } from './carWords';
+import { carLine, oilLine, workLines, carFactsOf } from './carWords';
 import './jobs.css';
 
 export function CarFirst(p: { job: Job; compact?: boolean }) {
@@ -21,7 +20,7 @@ export function CarFirst(p: { job: Job; compact?: boolean }) {
   const v = vehicleRow(j.vehicle_id);
   const [filling, setFilling] = useState(false);
   const mayFill = isField();
-  const facts = carFacts(v, specByKey(v?.spec_key), engineRef.value.rows);
+  const facts = carFactsOf(v, engineRef.value.rows);
   const car = carLine(v);
   const oil = oilLine(facts, lang.value);
   const work = workLines(itemsOf(j.id), j.problem);
@@ -73,7 +72,7 @@ export function OilHint(p: { vehicleId: string | null }) {
   useEffect(() => { void ensureEngineRef().catch(() => undefined); }, []);
   const v = vehicleRow(p.vehicleId);
   if (!v) return null;
-  const oil = oilLine(carFacts(v, specByKey(v.spec_key), engineRef.value.rows), lang.value);
+  const oil = oilLine(carFactsOf(v, engineRef.value.rows), lang.value);
   return (
     <p class={`small jobs-oilhint${oil.missing.length ? ' is-missing' : ''}`} data-testid="book-oil">
       <Droplet size={16} aria-hidden="true" />

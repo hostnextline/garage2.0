@@ -5,14 +5,15 @@
 import { useEffect, useState } from 'preact/hooks';
 import { User, Car, MapPin, CalendarClock, Truck, Wrench, NotebookPen } from 'lucide-preact';
 import type { Job } from '../../data/types';
-import { Sheet, Rows, RowItem, Button, Banner, attempt } from '../../ui';
+import { Sheet, Rows, RowItem, Button, Banner, attempt, toast } from '../../ui';
 import { t } from '../../lib/i18n';
 import { vehicle, vehicleLabel, truckLabel, itemsOf, customer as customerRow, vehiclesOf } from '../../data/select';
-import { updateJob, changeJobCustomer } from '../../data/api';
+import { updateJob, changeJobCustomer, errorMessage } from '../../data/api';
 import { outboxList } from '../../data/sync';
 import { CustomerPicker } from '../../shared/customers/CustomerPicker';
 import { VehiclePicker } from '../../shared/vehicles/VehiclePicker';
 import { AddressField, EMPTY_PLACE, type PlaceValue } from '../../shared/places/AddressField';
+import { withPosition } from '../../shared/places/withPosition';
 import { jobCustomer, jobName, dayInSentence, momentWord, wt } from '../../shared/jobs/select';
 import { editRights, type JobRights } from '../../domain/jobs/rights';
 
@@ -36,6 +37,20 @@ function placeOf(j: Job, c: ReturnType<typeof jobCustomer>): PlaceValue {
   const own = (j.address || '').trim() ? j : c;
   return { ...EMPTY_PLACE, address: own?.address || '', unit: own?.unit ?? null, postal_code: own?.postal_code ?? null, lat: own?.lat ?? null, lng: own?.lng ?? null };
 }
+/** what the appointment's address saves. The form does not show the unit and the postal code: those of the address it
+    started from stay only while the address itself is the same (another address typed keeps no apartment of the old
+    one; a unit or a code typed with the new address is kept). The position is looked for a short moment first (the tap
+    on « Garder » is also the tap that leaves the field, whose own lookup would answer after the sheet is gone), never
+    waiting without signal (R164). */
+export async function saveJobAddress(jobId: string, start: PlaceValue, place: PlaceValue, locate: typeof withPosition = withPosition): Promise<PlaceValue> {
+  const moved = place.address.trim() !== start.address.trim();
+  const kept: PlaceValue = moved
+    ? { ...place, unit: place.unit === start.unit ? null : place.unit, postal_code: place.postal_code === start.postal_code ? null : place.postal_code }
+    : place;
+  const placed = await locate(kept);
+  await updateJob(jobId, { address: placed.address.trim() || null, unit: placed.unit, postal_code: placed.postal_code, lat: placed.lat, lng: placed.lng });
+  return placed;
+}
 
 export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClose: () => void; onMove: () => void; onTruck: () => void; onNotes: () => void; onWork: () => void }) {
   const j = p.job;
@@ -44,6 +59,8 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
   const [who, setWho] = useState<string | null>(null);
   const [car, setCar] = useState<string | null>(null);
   const [place, setPlace] = useState<PlaceValue>(EMPTY_PLACE);
+  // the address the form started from (its hidden unit and postal code)
+  const [start, setStart] = useState<PlaceValue>(EMPTY_PLACE);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (p.open) { setView('list'); setWho(null); setCar(null); } }, [p.open]);
   const c = jobCustomer(j);
@@ -65,10 +82,15 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
   };
   const saveAddress = async () => {
     setBusy(true);
-    const ok = await attempt(() => updateJob(j.id, { address: place.address.trim() || null, unit: place.unit, postal_code: place.postal_code, lat: place.lat, lng: place.lng }),
-      { ok: place.lat != null ? t('jobs.edit.addressDone') : t('jobs.edit.addressNoPos') });
-    setBusy(false);
-    if (ok) p.onClose();
+    let placed: PlaceValue | null = null;
+    try {
+      placed = await saveJobAddress(j.id, start, place);
+    } catch (e) {
+      toast(errorMessage(e), { kind: 'bad' });
+    } finally { setBusy(false); }
+    if (!placed) return;
+    toast(placed.lat != null ? t('jobs.edit.addressDone') : t('jobs.edit.addressNoPos'), { kind: 'ok' });
+    p.onClose();
   };
 
   const title = view === 'customer' ? t('jobs.edit.customerTitle') : view === 'car' ? t('jobs.head.carTitle') : view === 'address' ? t('jobs.edit.addressTitle') : t('jobs.edit.title');
@@ -86,7 +108,7 @@ export function EditSheet(p: { job: Job; rights: JobRights; open: boolean; onClo
             onClick={() => { setWho(null); setCar(null); setView('customer'); }} data-testid="edit-customer" />}
           {r.car && c && <RowItem start={<span class="quick-icon"><Car size={20} /></span>} title={t('jobs.edit.car')} sub={vehicleLabel(v) || t('jobs.head.noCar')} chevron onClick={() => setView('car')} data-testid="edit-car" />}
           {r.address && <RowItem start={<span class="quick-icon"><MapPin size={20} /></span>} title={t('jobs.edit.address')} sub={(j.address || c?.address || t('jobs.head.noAddress'))} chevron
-            onClick={() => { setPlace(placeOf(j, c)); setView('address'); }} data-testid="edit-address" />}
+            onClick={() => { const from = placeOf(j, c); setStart(from); setPlace(from); setView('address'); }} data-testid="edit-address" />}
           {r.move && <RowItem start={<span class="quick-icon"><CalendarClock size={20} /></span>} title={wt(j, 'jobs.edit.when')} sub={`${dayInSentence(j.day)}, ${momentWord(j)}`} chevron onClick={go(p.onMove)} data-testid="edit-move" />}
           {r.truck && <RowItem start={<span class="quick-icon"><Truck size={20} /></span>} title={t('jobs.edit.truck')} sub={truckLabel(j.truck_id) || t('jobs.truck.noneYet')} chevron onClick={go(p.onTruck)} data-testid="edit-truck" />}
           {r.work && <RowItem start={<span class="quick-icon"><Wrench size={20} /></span>} title={t('jobs.edit.work')} sub={items.length ? items.map((i) => i.description).join(', ') : t('jobs.edit.noWork')} chevron onClick={go(p.onWork)} data-testid="edit-work" />}
