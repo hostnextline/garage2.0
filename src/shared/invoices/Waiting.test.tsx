@@ -87,6 +87,32 @@ describe('an amount typed wrong in « Encaisser » (R126)', () => {
     expect(confirm().disabled).toBe(false);
     expect(q('pay-change')?.textContent).toMatch(/5,00/);
   });
+  it('typed wrong, then « Débit », then « Comptant » again: the field is empty and « Encaisser » works (review invoices-r2-4)', async () => {
+    replaceLocal('invoices', [inv()]);
+    act(() => render(<PaySheet open invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    const method = (m: string) => act(async () => { (document.querySelector(`button[data-testid="pay-${m}"]`) as HTMLElement).click(); });
+    const confirm = () => q('pay-confirm') as HTMLButtonElement;
+    await method('cash');
+    await wait();
+    const received = () => document.querySelector('[data-testid="pay-cash"] .pay-amount input') as HTMLInputElement;
+    await act(async () => { received().value = '50,,'; received().dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect(confirm().disabled).toBe(true);
+    await method('debit');
+    await wait();
+    expect(confirm().disabled).toBe(false);
+    await method('cash');
+    await wait();
+    expect(received().value).toBe('');
+    expect(received().getAttribute('aria-invalid')).toBeNull();
+    expect(confirm().disabled).toBe(false);
+    // still red when « Comptant » is tapped again without leaving it
+    await act(async () => { received().value = '50,,'; received().dispatchEvent(new Event('input', { bubbles: true })); });
+    await method('cash');
+    await wait();
+    expect(confirm().disabled).toBe(true);
+  });
 });
 
 describe('« Terminer la facture » waiting for the network', () => {

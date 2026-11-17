@@ -54,6 +54,9 @@ function PayOpen(p: PaySheetProps) {
   const [received, setReceived] = useState<number | null>(null);
   // an amount typed wrong (the field is red) is not taken for an empty one: no payment until it is fixed (R126)
   const [typo, setTypo] = useState({ amount: false, received: false });
+  // another method: the cash field goes away (it comes back empty), and its typo with it, or « Encaisser » would stay
+  // off with nothing red on screen (review invoices-r2-4)
+  const pick = (m: PayMethod) => { if (m !== method) setTypo((x) => ({ ...x, received: false })); setMethod(m); };
   const [reference, setReference] = useState('');
   // a payment that arrives meanwhile (card online, another phone) changes what is left: follow it until edited
   useEffect(() => { if (!touched && frozen == null) setAmount(inPlay); }, [inPlay]);
@@ -130,7 +133,7 @@ function PayOpen(p: PaySheetProps) {
             {METHODS.map((m) => {
               const Icon = ICONS[m];
               return (
-                <button key={m} type="button" role="radio" aria-checked={method === m} class="pay-method" onClick={() => setMethod(m)} data-testid={`pay-${m}`}>
+                <button key={m} type="button" role="radio" aria-checked={method === m} class="pay-method" onClick={() => pick(m)} data-testid={`pay-${m}`}>
                   <Icon aria-hidden="true" /><span>{methodWord(m, l)}</span>
                 </button>
               );
