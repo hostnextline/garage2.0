@@ -46,14 +46,22 @@ function windowSaid(j: Pick<Job, 'day' | 'block' | 'win_start' | 'win_end' | 'wi
 
 /** the wait before the one new try of a send whose answer never came (a weak signal) */
 export const NOTIFY_RETRY_MS = 2000;
+/** the wait before asking once more a send the server says is still going on (« busy », after a lost answer) */
+export const NOTIFY_BUSY_MS = 5000;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** the send, with its own id (`op`, R27): when the answer is lost on the way (no network, a timeout), it is asked once more
     with the SAME id, so the server answers what the first one did (« sent ») instead of texting the customer twice; a
-    refusal or any answer of the server is never asked again */
+    refusal or any answer of the server is never asked again. After a timeout the first send may still be running on the
+    server (a slow text provider): the server then answers « busy » (409) without its outcome, and the same id is asked
+    one last time a few seconds later (moment-pickers-r2-1) */
 async function sendOnce(kind: NotifyKind, jobId: string) {
   const op = uuid();
   try { return await notify(kind, jobId, { op }); } catch (e) {
     if (!isNetworkError(e)) throw e;
-    await new Promise((r) => setTimeout(r, NOTIFY_RETRY_MS));
+    await pause(NOTIFY_RETRY_MS);
+    const r = await notify(kind, jobId, { op });
+    if (r?.code !== 'busy') return r;
+    await pause(NOTIFY_BUSY_MS);
     return await notify(kind, jobId, { op });
   }
 }
@@ -74,7 +82,11 @@ export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { cu
     else if (status === 'quiet') toast(t('booking.momentPickers.smsQuiet'));
     else if ((status === 'off' || status === 'error') && (r?.message || r?.link)) {
       toast(t(status === 'off' ? 'booking.sms.off' : 'booking.sms.error'), { kind: status === 'error' ? 'bad' : 'info', ms: 12000, action: { label: t('booking.sms.show'), run: open } });
-    } else if (r?.ok === false || status === 'error') toast(t('booking.sms.failed', { msg: r?.error || '' }).trim(), { kind: 'bad' });
+    }
+    // the same send still going on on the server: its outcome is not known yet (the customer may have the text), never
+    // « n'est pas parti »; the server's own words, calmly
+    else if (r?.code === 'busy') toast(errorMessage(r));
+    else if (r?.ok === false || status === 'error') toast(t('booking.sms.failed', { msg: r?.error || '' }).trim(), { kind: 'bad' });
   } catch (e) {
     toast(t('booking.sms.failed', { msg: errorMessage(e) }), { kind: 'bad' });
   }

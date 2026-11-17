@@ -1,14 +1,14 @@
 /* After a booking or a move: is a text wanted, and what the person is told of the server's answer (x-contract-10). */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 
-const api = vi.hoisted(() => ({ notify: vi.fn(), errorMessage: (e: unknown) => String((e as Error)?.message || e) }));
+const api = vi.hoisted(() => ({ notify: vi.fn(), errorMessage: (e: unknown) => String((e as Error)?.message || (e as { error?: string })?.error || e) }));
 const ui = vi.hoisted(() => ({ toast: vi.fn() }));
 vi.mock('../../data/api', () => api);
 vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), toast: ui.toast }));
 
 import { upsertLocal, clearAll } from '../../data/store';
 import { lang } from '../../lib/i18n';
-import { notifyCustomer, wantsText, NOTIFY_RETRY_MS } from './notify';
+import { notifyCustomer, wantsText, NOTIFY_RETRY_MS, NOTIFY_BUSY_MS } from './notify';
 
 beforeEach(() => {
   lang.value = 'fr';
@@ -93,6 +93,36 @@ describe('one send = one id (R27): a lost answer never texts the customer twice'
     api.notify.mockReset().mockResolvedValue({ ok: false, status: 'error', error: 'x' });
     await notifyCustomer('booking', 'J1');
     expect(api.notify).toHaveBeenCalledTimes(1);
+  });
+  // moment-pickers-r2-1: after a timeout the first send may still be running on the server (a slow text provider); the
+  // try at about 42 s is answered « busy » (409) after the server's 6 s wait. Before, the person read « Le texto n'est
+  // pas parti. » although the customer may already have the text
+  const BUSY = { ok: false, code: 'busy', error: 'Ce texto est déjà en train de partir. Réessaie dans un instant.' };
+  it('« busy » after a lost answer: the same id asked once more a few seconds later, and its answer is said', async () => {
+    vi.useFakeTimers();
+    api.notify.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'timeout' })).mockResolvedValueOnce(BUSY).mockResolvedValueOnce({ ok: true, status: 'sent' });
+    const done = notifyCustomer('booking', 'J1');
+    await vi.advanceTimersByTimeAsync(NOTIFY_RETRY_MS);
+    expect(api.notify).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(NOTIFY_BUSY_MS);
+    await done;
+    expect(api.notify).toHaveBeenCalledTimes(3);
+    expect(new Set(api.notify.mock.calls.map((c) => (c[2] as { op: string }).op)).size).toBe(1);
+    expect(ui.toast.mock.calls).toEqual([['Texto de confirmation envoyé', { kind: 'ok' }]]);
+  });
+  it('still « busy »: not known yet, said calmly, never « n’est pas parti »; asked no more', async () => {
+    vi.useFakeTimers();
+    api.notify.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'timeout' })).mockResolvedValue(BUSY);
+    const done = notifyCustomer('booking', 'J1');
+    await vi.advanceTimersByTimeAsync(NOTIFY_RETRY_MS + NOTIFY_BUSY_MS);
+    await done;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(api.notify).toHaveBeenCalledTimes(3);
+    expect(ui.toast).toHaveBeenCalledTimes(1);
+    const [words, o] = ui.toast.mock.calls[0];
+    expect(words).toBe(BUSY.error);
+    expect(words).not.toContain('pas parti');
+    expect(o?.kind).toBeUndefined();
   });
 });
 
