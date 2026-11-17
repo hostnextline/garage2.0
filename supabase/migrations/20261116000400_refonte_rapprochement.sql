@@ -11,7 +11,8 @@
 --   ops_recon_findings    one row per difference, by a stable key (check + entity): seen again the next night it stays
 --                         the same row (last_day moves); no longer true, it closes by itself; « vu » = acked
 --   ops_recon_baseline    the differences that alert only when they CHANGE (S1: stock on hand vs its moves), and the mark
---                         « first » (zero uuid): the first run was made (what that run found is listed « vu », « déjà là »)
+--                         « first » (zero uuid): the first run was made (what that run found is listed « vu », « déjà là »);
+--                         « first:M5 »: that family threw on the first run, its own first run is still to come
 --   recon_run(day, source)      service only: every check, in ONE snapshot (recon_collect is one query), in one transaction
 --   recon_add(run, …)           service only: a server function adds what needs the outside (Stripe, the backup's age)
 --   recon_summary(days)         owner: everything; « Trésorerie »: the money (M…) and stock (S…) checks; others: refused
@@ -1041,12 +1042,15 @@ declare
   v_failed text[];    -- the check families that threw this time (« M2 » for « M2.error »): their differences are left as they were
   v_mark date;        -- the day written on what is seen (first_day / last_day)
   v_first boolean;    -- the very first run of this database: what it finds was there before (« déjà là »)
+  v_pending text[];   -- the families that threw on that first run and have not run since: their first run is still to come
 begin
   -- one run at a time (the cron, the backup and « Vérifier maintenant » may meet); recon_ack and recon_add take the same
   -- lock first, so the three always lock in the same order (the lock, the run row, the findings) and never deadlock
   perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
   v := public.recon_collect(v_day);     -- ONE query: every check sees the same snapshot
   v_first := not exists (select 1 from public.ops_recon_baseline b where b.check_id = 'first' and b.entity_id = '00000000-0000-0000-0000-000000000000');
+  v_pending := coalesce((select array_agg(substr(b.check_id, 7)) from public.ops_recon_baseline b
+                         where b.check_id like 'first:%' and b.entity_id = '00000000-0000-0000-0000-000000000000'), '{}');
   -- the checks read the books AS THEY ARE NOW: running an old day again never dates a difference back before the newest
   -- day already reconciled
   v_mark := greatest(v_day, coalesce((select max(r.day) from public.ops_recon_runs r), v_day));
@@ -1056,10 +1060,6 @@ begin
   values (v_day, left(coalesce(nullif(trim(p_source), ''), 'manual'), 40), v_t0, coalesce(v->'sheet', '{}'::jsonb))
   returning id into v_run;
 
-  if v_first then
-    insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
-    values ('first', '00000000-0000-0000-0000-000000000000', 0, v_day) on conflict (check_id, entity_id) do nothing;
-  end if;
   -- S1, the very first run: the baseline
   if v ? 'baseline' then
     insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
@@ -1090,12 +1090,14 @@ begin
   -- The very first run (the night after the update, on years of books): what it finds was there BEFORE the daily
   -- reconciliation existed. It is listed « vu » with a note, so the first morning is not a wall of red over old rows; it
   -- opens again like any « vu » when it changes, and closes once repaired. A check that could not run is never « vu ».
+  -- A family that threw on that first run has its own first run later: the first night it runs (marker « first:M5 »).
   insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, last_run,
                                               state, acked_at, note)
   select key, c, s, t, e, fr, en, d, v_mark, v_mark, v_run,
-         case when v_first and c not like '%.error' then 'acked' else 'open' end,
-         case when v_first and c not like '%.error' then now() end,
-         case when v_first and c not like '%.error' then 'Déjà là au premier rapprochement (avant la mise à jour) : à regarder quand tu as le temps.' end
+         case when (v_first or split_part(c, '.', 1) = any (v_pending)) and c not like '%.error' then 'acked' else 'open' end,
+         case when (v_first or split_part(c, '.', 1) = any (v_pending)) and c not like '%.error' then now() end,
+         case when (v_first or split_part(c, '.', 1) = any (v_pending)) and c not like '%.error'
+              then 'Déjà là au premier rapprochement (avant la mise à jour) : à regarder quand tu as le temps.' end
   from recon_seen
   on conflict (key) do update set
     check_id = excluded.check_id, severity = excluded.severity, entity_table = excluded.entity_table, entity_id = excluded.entity_id,
@@ -1111,6 +1113,16 @@ begin
     acked_at = case when f.state = 'closed' or f.severity is distinct from excluded.severity
                          or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr) then null else f.acked_at end,
     message_fr = excluded.message_fr, message_en = excluded.message_en;
+
+  -- the marks: « first » once the first run was made; « first:<family> » for each family that threw on it, kept until
+  -- that family runs (what it finds then is « déjà là » too, never a wall of red the night after)
+  if v_first then
+    insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
+    select x, '00000000-0000-0000-0000-000000000000', 0, v_day from unnest(array['first'] || array(select 'first:' || u from unnest(v_failed) u)) x
+    on conflict (check_id, entity_id) do nothing;
+  end if;
+  delete from public.ops_recon_baseline b
+   where b.check_id like 'first:%' and b.entity_id = '00000000-0000-0000-0000-000000000000' and substr(b.check_id, 7) <> all (v_failed);
 
   -- no longer true: closed by itself. A check made outside (recon_add) closes when it was not added again for a day.
   -- A family that threw this time was NOT checked: its differences stay as they were (open or « vu »), never closed as if

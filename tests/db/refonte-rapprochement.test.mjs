@@ -984,6 +984,38 @@ test('recon: the very first run lists what was already there « vu » (old rows 
     [['M5.unbilled', 'open'], ['D1.past', 'acked']]);
 }));
 
+test('recon (round 2): a family that threw on the very first run has its own first run — its old rows are « déjà là » the night it runs, what comes after is news', () => tx(async (h) => {
+  await h.person('Hassan Jeha', ['owner']);
+  const cust = await h.customer('Ancien', ...here);
+  const note = 'Déjà là au premier rapprochement (avant la mise à jour) : à regarder quand tu as le temps.';
+  // a finished job of 380 days ago never billed (M5), a past job never closed (D1)
+  await raw(h, `insert into public.jobs (customer_id, day, block, status, started_at, arrived_at, finished_at, duration_min)
+    values ($1, public.local_today() - 380, 'am', 'done', now(), now(), now(), 60)`, [cust]);
+  await raw(h, `insert into public.jobs (customer_id, day, block, status, duration_min) values ($1, public.local_today() - 400, 'am', 'booked', 60)`, [cust]);
+  // the very first run: M5 throws
+  await h.c.query(`set local garage.recon_fail = 'M5'`);
+  await run(h);
+  await h.c.query(`reset garage.recon_fail`);
+  let f = await open(h);
+  assert.deepEqual(f.map((x) => [x.check_id, x.state]), [['D1.past', 'acked'], ['M5.error', 'open']], show(f));
+  // M5 throws again the next night: still not checked, still its first run to come
+  await h.c.query(`set local garage.recon_fail = 'M5'`);
+  await run(h);
+  await h.c.query(`reset garage.recon_fail`);
+  // the night M5 runs: the old unbilled job is « déjà là », the day is not red
+  const r = await run(h);
+  f = await open(h);
+  assert.deepEqual(f.map((x) => [x.check_id, x.state, x.note]), [['D1.past', 'acked', note], ['M5.unbilled', 'acked', note]], show(f));
+  assert.equal(r.status, 'ok');
+  // from then on M5 is like the others: a new unbilled job is news
+  await raw(h, `insert into public.jobs (customer_id, day, block, status, started_at, arrived_at, finished_at, duration_min)
+    values ($1, public.local_today() - 1, 'am', 'done', now(), now(), now(), 60)`, [cust]);
+  await run(h);
+  f = (await open(h)).filter((x) => x.state === 'open');
+  assert.deepEqual(f.map((x) => [x.check_id, x.note]), [['M5.unbilled', null]], show(f));
+  assert.equal(await h.val(`select count(*)::int from public.ops_recon_baseline where check_id like 'first%'`), 1, 'only the mark « first » is left');
+}));
+
 // ───────────────────────────── who sees what ─────────────────────────────
 
 test('recon_summary: the owner sees everything, « Trésorerie » the money and stock, others are refused; the app may not run it itself', () => tx(async (h) => {
