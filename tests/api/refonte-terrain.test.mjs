@@ -669,6 +669,37 @@ test('a backup that stops is said by EVERY reconciliation (the schedule’s, « 
   }
 });
 
+test('S120 (mise-a-niveau-05): the backup’s migration sends no DROP to live; read twice, it keeps one backup-age trigger on the reconciliation’s runs, and that trigger still works', async (t) => {
+  const file = readFileSync(new URL('../../supabase/migrations/20261116000500_refonte_sauvegarde.sql', import.meta.url), 'utf8');
+  const code = file.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.deepEqual(code.match(/\bdrop\b[^;]*/gi) ?? [], [], 'no DROP statement: the trigger is made with create or replace trigger');
+  const real = (await q(`select to_regclass('public.ops_recon_runs') is not null and to_regprocedure('public.recon_run(date,text)') is not null as there`))[0].there;
+  if (!real) { t.skip('the reconciliation’s SQL is not in this database'); return; }
+  // the whole file, twice, in one transaction that is always rolled back (nothing stays for the other tests)
+  const c = await db.connect();
+  try {
+    await c.query('begin');
+    await c.query(file);
+    await c.query(file);
+    const trg = (await c.query(`select tgname, tgenabled, pg_get_triggerdef(oid) def from pg_trigger
+      where tgrelid = 'public.ops_recon_runs'::regclass and not tgisinternal and tgfoid = 'public.ops_recon_runs_backup_age()'::regprocedure`)).rows;
+    assert.equal(trg.length, 1, JSON.stringify(trg));
+    assert.equal(trg[0].tgname, 'ops_recon_runs_backup_age');
+    assert.equal(trg[0].tgenabled, 'O');
+    assert.match(trg[0].def, /AFTER INSERT ON public\.ops_recon_runs FOR EACH ROW EXECUTE FUNCTION (public\.)?ops_recon_runs_backup_age\(\)/);
+    // still armed: a repository pin and no « done » → the next run says « never said done »
+    await c.query(`delete from public.ops_backup_runs`);
+    await c.query(`delete from public.ops_recon_findings where check_id like 'backup%'`);
+    await c.query(`insert into public.secrets (key, value) values ('backup_repo:hostnextline/garage2.0-sauvegardes', '1:2') on conflict (key) do nothing`);
+    await c.query(`select public.recon_run(public.local_today(), 'cron')`);
+    const f = (await c.query(`select check_id, entity_id from public.ops_recon_findings where check_id like 'backup%' and state <> 'closed'`)).rows;
+    assert.deepEqual(f, [{ check_id: 'backup_late', entity_id: null }]);
+  } finally {
+    await c.query('rollback').catch(() => {});
+    c.release();
+  }
+});
+
 test('the reconciliation finds each Stripe refund under the page the server writes it (applyRefunds’ own rule): a payment with no Stripe page in the books is « <payment>#<refund> », and Stripe is not asked', async () => {
   const { refundPage } = await import('../../supabase/functions/recon/pages.ts');
   const job = randomUUID(), inv = randomUUID();
