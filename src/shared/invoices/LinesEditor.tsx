@@ -1,5 +1,7 @@
 /* The lines editor of an invoice or an estimate: description, quantity, price, taxable, a discount (with 5/10/15/20 %
-   chips), remove with « Annuler ». The lines' amounts come from the one totals rule (domain/money/invoice.ts). */
+   chips), remove with « Annuler ». The lines' amounts come from the one totals rule (domain/money/invoice.ts).
+   A price typed wrong (« 12,,5 ») leaves the field red and the line at its last good price: it is never saved as 0 $
+   (an empty field is 0 $, as before) (R126). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Plus, Trash2, Tag, ListPlus } from 'lucide-preact';
 import type { Lang } from '../../data/types';
@@ -90,7 +92,8 @@ export function LinesEditor(p: LinesEditorProps) {
                 <QtyInput value={l.qty} onValue={(v) => set(i, { qty: v })} label={t('invoices.lines.qty')} />
               </label>
               <label class="field inv-line-price"><span class="field-label">{disc ? t('invoices.lines.discountAmount') : t('invoices.lines.price')}</span>
-                <MoneyInput cents={disc ? Math.abs(l.unit_cents) : l.unit_cents} allowNegative={!disc} onCents={(c) => (disc ? setDiscount(i, c ?? 0) : set(i, { unit_cents: c ?? 0 }))}
+                <MoneyInput cents={disc ? Math.abs(l.unit_cents) : l.unit_cents} allowNegative={!disc}
+                  onCents={(c, info) => { if (info?.valid === false) return; if (disc) setDiscount(i, c ?? 0); else set(i, { unit_cents: c ?? 0 }); }}
                   aria-label={disc ? t('invoices.lines.discountAmount') : t('invoices.lines.price')} />
               </label>
               <div class="inv-line-tax"><Check checked={l.taxable} onChange={(v) => set(i, { taxable: v })} label={t('invoices.lines.taxable')} data-testid="line-taxable" /></div>

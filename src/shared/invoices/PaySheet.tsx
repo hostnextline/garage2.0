@@ -52,6 +52,8 @@ function PayOpen(p: PaySheetProps) {
   const [touched, setTouched] = useState(false);
   const [method, setMethod] = useState<PayMethod | null>(null);
   const [received, setReceived] = useState<number | null>(null);
+  // an amount typed wrong (the field is red) is not taken for an empty one: no payment until it is fixed (R126)
+  const [typo, setTypo] = useState({ amount: false, received: false });
   const [reference, setReference] = useState('');
   // a payment that arrives meanwhile (card online, another phone) changes what is left: follow it until edited
   useEffect(() => { if (!touched && frozen == null) setAmount(inPlay); }, [inPlay]);
@@ -88,7 +90,7 @@ function PayOpen(p: PaySheetProps) {
   const problem = amountProblem(amount, inPlay);
   const amountError = problem === 'amount' ? t('invoices.pay.errAmount')
     : problem === 'tooMuch' ? t(refund ? 'invoices.pay.refund.tooMuch' : 'invoices.pay.errTooMuch', { max: money(inPlay, l) }) : null;
-  const canPay = !!method && !amountError && record > 0;
+  const canPay = !!method && !amountError && record > 0 && !typo.amount && !(isCash && typo.received);
   const needsRef = method === 'cheque' || method === 'interac' || method === 'other';
 
   const pay = async () => {
@@ -144,10 +146,10 @@ function PayOpen(p: PaySheetProps) {
 
         <Field label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} error={touched ? amountError : null}
           hint={!refund && !amountError && amount != null && amount < inPlay ? t('invoices.pay.partial', { left: money(inPlay - amount, l) }) : undefined}>
-          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c) => { setTouched(true); setAmount(c); }} aria-label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} /></div>
+          <div class="pay-amount"><MoneyInput cents={amount} onCents={(c, info) => { setTouched(true); setTypo((x) => ({ ...x, amount: info?.valid === false })); setAmount(c); }} aria-label={refund ? t('invoices.pay.refund.amount') : t('invoices.pay.amount')} /></div>
         </Field>
 
-        {cash && <PayCash cash={cash} received={received} onReceived={setReceived} balance={inPlay} />}
+        {cash && <PayCash cash={cash} received={received} onReceived={(c, info) => { setTypo((x) => ({ ...x, received: info?.valid === false })); setReceived(c); }} balance={inPlay} />}
 
         {needsRef && (
           <Field label={t(`invoices.pay.ref.${method}`)} optional>

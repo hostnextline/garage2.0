@@ -69,6 +69,26 @@ describe('a payment kept on the phone', () => {
   });
 });
 
+describe('an amount typed wrong in « Encaisser » (R126)', () => {
+  it('the cash received typed wrong is not taken for « exact »: no payment until it is fixed', async () => {
+    replaceLocal('invoices', [inv()]);
+    act(() => render(<PaySheet open invoiceId="f-1" onClose={() => undefined} />, box));
+    await wait();
+    await act(async () => { (document.querySelector('button[data-testid="pay-cash"]') as HTMLElement).click(); });
+    await wait();
+    const confirm = () => q('pay-confirm') as HTMLButtonElement;
+    expect(confirm().disabled).toBe(false);
+    const received = document.querySelector('[data-testid="pay-cash"] .pay-amount input') as HTMLInputElement;
+    await act(async () => { received.value = '50,,'; received.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect(confirm().disabled).toBe(true);
+    await act(async () => { received.value = '120'; received.dispatchEvent(new Event('input', { bubbles: true })); });
+    await wait();
+    expect(confirm().disabled).toBe(false);
+    expect(q('pay-change')?.textContent).toMatch(/5,00/);
+  });
+});
+
 describe('« Terminer la facture » waiting for the network', () => {
   it('the draft is shown finished, read-only, and « Encaisser » its total works', async () => {
     replaceLocal('invoices', [inv({ status: 'draft', number: null, subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0, issued_at: null })]);
