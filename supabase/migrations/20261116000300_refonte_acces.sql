@@ -21,7 +21,8 @@
 --  2. Rights
 --     job_visible, truck_hours_editable   a blocked person whose session is still alive no longer reads or changes the
 --                         truck he drove
---     block_rows          an answer (booking, move, order of the stops…) carries only the jobs the person may see
+--     block_rows          an answer (booking, move, order of the stops…) carries only the jobs the person may see, and
+--                         the ones the operation just took off a truck the person sees (with their new truck)
 --     right_of, right_flag   a value that is not yes / no in the rights never stops the person's app
 --     member_update       keeps only known rights with yes / no; an empty or unknown list of roles is refused in words;
 --                         runs exactly once (op_begin)
@@ -330,11 +331,24 @@ $$;
 -- block is the whole day: customers, addresses, notes), beyond what the row rule of jobs (jobs_read = job_visible)
 -- shows him and what a pull would ever bring. Now the same rule; the server itself (no person: a trigger, the server
 -- key) still gets every row. Same arguments, same answer shape.
+-- (srv-acces-r2-1) A job this very operation took OFF a truck the person sees also comes back, with its new truck: a
+-- mechanic with « Réserver » but not « Agenda » who sends the office's job of his truck to truck B (« Changer de camion »),
+-- or whose booking makes the planner put another job of his truck on truck B. He read that row just before; without it
+-- his phone (yesterday's app syncs by cursor only, and a row he no longer sees never comes again) kept the job on his
+-- « Ma journée » and « Je pars » was refused. « Just before » = the truck of the job's first change of truck in this
+-- transaction, by this person, read from the change log (log_activity: { truck_id: [before, after] }, written at the
+-- transaction's now()). Nothing else of truck B comes with it.
 create or replace function public.block_rows(p_day date, p_block text) returns jsonb
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(to_jsonb(j)), '[]'::jsonb) from public.jobs j
    where j.day = p_day and j.block = p_block and j.deleted_at is null
-     and (auth.uid() is null or public.job_visible(j.truck_id, j.created_by))
+     and case when auth.uid() is null then true
+              when public.job_visible(j.truck_id, j.created_by) then true
+              else exists (select 1 from (select a.data->'truck_id'->>0 as was from public.activity a
+                                           where a.entity = 'jobs' and a.entity_id = j.id and a.at = now() and a.actor = auth.uid()
+                                             and a.data ? 'truck_id'
+                                           order by a.id limit 1) f
+                           where f.was is not null and public.job_visible(f.was::uuid, j.created_by)) end
 $$;
 
 -- ---------- yes / no read from the rights, never an error (x-security-30, sql-foundation-30) ----------

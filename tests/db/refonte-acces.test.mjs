@@ -309,6 +309,60 @@ test('R93 (x-rights-05): an answer carries only the jobs of the block the person
   assert.ok(srv.includes(theirs) && srv.includes(r.job_id), 'the server itself: every row');
 }));
 
+test('srv-acces-r2-1 (R93): « Changer de camion » by a mechanic with « Réserver » but not « Agenda »: the answer carries the job he moved away, on its new truck, and still none of that truck’s others', () => tx(async (h) => {
+  const g = await garage(h, { mechRights: { book: true, agenda: false } });
+  const other = await h.truck('Camion Complet', null, { [g.dow]: DAY });
+  const theirs = await bookOn(h, g, { truck_id: other });            // truck B's own job: never his
+  const office = await bookOn(h, g, { truck_id: g.truck });          // the office's job, on his truck: he sees it
+  await h.as(g.mech);
+  assert.deepEqual((await h.q(`select id from public.jobs where id = any($1::uuid[]) order by id`, [[office, theirs]])).map((x) => x.id), [office]);
+  const pairs = (r) => r.rows.jobs.map((j) => [j.id, j.truck_id]);
+  // yesterday's app (5 arguments) and today's (7): both answer the moved job with truck B (before: [] — the job stayed
+  // on his « Ma journée », and « Je pars » was refused)
+  const r5 = await h.rpc('move_job', { p_op: uuid(), p_job: office, p_day: g.day, p_block: 'am', p_truck: other });
+  assert.equal(r5.ok, true);
+  assert.deepEqual(pairs(r5), [[office, other]], 'only the job he moved, on truck B');
+  assert.equal((await h.q(`select id from public.jobs where id = $1`, [office])).length, 0, 'the row rule is unchanged: he no longer reads it');
+  // back on his truck by the owner, then moved again with today's call
+  await h.as(g.owner);
+  await h.rpc('move_job', { p_op: uuid(), p_job: office, p_day: g.day, p_block: 'am', p_truck: g.truck });
+  await h.as(g.mech);
+  const r7 = await h.rpc('move_job', { p_op: uuid(), p_job: office, p_day: g.day, p_block: 'am', p_truck: other, p_win_start: null, p_win_flex: null });
+  assert.deepEqual(pairs(r7), [[office, other]]);
+  assert.ok(!r7.rows.jobs.some((j) => j.id === theirs), 'truck B’s other job is never in his answer');
+  // another day too: the job leaves his truck for truck B on that day; the answer of both blocks carries it once
+  const day2 = await futureDay(h, (g.dow + 1) % 7);
+  const dow2 = await h.val(`select extract(dow from $1::date)::int`, [day2]);
+  await h.as(null);
+  await h.q(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, $3), ($4, $2, $3) on conflict (truck_id, dow) do update set ranges = excluded.ranges`,
+    [g.truck, dow2, JSON.stringify(DAY), other]);
+  await h.as(g.owner);
+  await h.rpc('move_job', { p_op: uuid(), p_job: office, p_day: g.day, p_block: 'am', p_truck: g.truck });
+  await h.as(g.mech);
+  const rd = await h.rpc('move_job', { p_op: uuid(), p_job: office, p_day: day2, p_block: 'pm', p_truck: other });
+  assert.deepEqual(pairs(rd), [[office, other]]);
+  assert.equal(rd.rows.jobs[0].day, day2);
+}));
+
+test('srv-acces-r2-1 (R93): his own booking makes the planner put the office’s job of his truck on truck B: his answer says where it went', () => tx(async (h) => {
+  const g = await garage(h, { mechRights: { book: true, agenda: false } });
+  await h.as(null);
+  await h.q(`update public.truck_week set ranges = '[[480, 600]]' where truck_id = $1 and dow = $2`, [g.truck, g.dow]);   // 2 h this morning
+  const office = await bookOn(h, g, { duration_min: 60 });                                                              // the only truck: his
+  await h.as(null);
+  assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [office]), g.truck);
+  const other = await h.truck('Camion Complet', null, { [g.dow]: DAY });
+  const theirs = await bookOn(h, g, { truck_id: other, duration_min: 30 });
+  await h.as(g.mech);
+  const r = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'am', duration_min: 90, truck_id: g.truck }, p_items: [] });
+  await h.as(null);
+  assert.equal(await h.val(`select truck_id from public.jobs where id = $1`, [office]), other, 'the planner moved the office’s job to truck B');
+  const pairs = r.rows.jobs.map((j) => [j.id, j.truck_id]);
+  assert.ok(pairs.some(([id, t]) => id === office && t === other), 'it left his truck: his answer carries it, on truck B');
+  assert.ok(pairs.some(([id, t]) => id === r.job_id && t === g.truck), 'his own appointment');
+  assert.ok(!pairs.some(([id]) => id === theirs), 'nothing else of truck B');
+}));
+
 test('x-security-30: a right that is not yes / no in the rights never stops the person’s app', () => tx(async (h) => {
   const m = await h.person('Saleh', ['mechanic'], { rights: { book: 'peut-être', map: 'yes' } });
   await h.as(null);
