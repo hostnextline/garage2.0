@@ -15,7 +15,8 @@ const settings = {
 const julie = { id: 'c-julie', first_name: 'Julie', last_name: 'Tremblay', company: null, phone: '514 555-0141', email: 'julie.t@example.com', lang: 'fr',
   address: '1250 rue Graham, Mont-Royal, QC', unit: null, postal_code: 'H3P 2C9' } as unknown as Customer;
 const civic = { id: 'v-julie', year: 2019, make: 'Honda', model: 'Civic', plate: 'ABC 123', odometer_km: 84200, vin: null } as unknown as Vehicle;
-const midday = (d: number) => new Date(2026, 10, d, 12, 0).toISOString();
+// noon in Montréal (EST in November, UTC-5): the same day on the garage's clock whatever the zone of the machine
+const midday = (d: number) => new Date(Date.UTC(2026, 10, d, 17, 0)).toISOString();
 const paidInvoice = {
   id: 'f-1', job_id: 'j-1', customer_id: 'c-julie', number: 43, status: 'paid', issued_at: midday(4), due_on: '2026-11-04', lang: 'fr', taxes_on: true, notes: 'Merci Julie.',
   lines: [{ description: 'Changement d’huile et filtre', qty: 1, unit_cents: 8999, taxable: true, kind: 'service' }, { description: 'Top up des liquides', qty: 1, unit_cents: 6000, taxable: true, kind: 'service' }],

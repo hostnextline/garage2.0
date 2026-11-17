@@ -133,10 +133,11 @@ describe('numbers and dates', () => {
     expect(formatNumber('F-', 4, null)).toBe('');
   });
   it('days since issued', () => {
-    const now = new Date(2026, 10, 4, 15, 0);
-    expect(daysSince(new Date(2026, 10, 4, 9, 0).toISOString(), now)).toBe(0);
-    expect(daysSince(new Date(2026, 10, 3, 23, 0).toISOString(), now)).toBe(1);
-    expect(daysSince(new Date(2026, 9, 12, 12, 0).toISOString(), now)).toBe(23);
+    // instants written in UTC, days counted on the garage's clock (Montréal: UTC-5 in November, UTC-4 in October)
+    const now = new Date('2026-11-04T20:00:00Z');                           // 4 Nov, 15 h
+    expect(daysSince('2026-11-04T14:00:00Z', now)).toBe(0);                // 4 Nov, 9 h
+    expect(daysSince('2026-11-04T04:00:00Z', now)).toBe(1);                // 3 Nov, 23 h (4 Nov in UTC)
+    expect(daysSince('2026-10-12T16:00:00Z', now)).toBe(23);               // 12 Oct, noon
     expect(daysSince(null, now)).toBeNull();
   });
 });
