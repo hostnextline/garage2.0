@@ -1261,6 +1261,34 @@ test('round 2, speed: one walk of a route (route_cost) answers what route_min, r
   assert.ok(seen.fail > 20 && seen.wait > 20, `routes that do not hold (${seen.fail}) and routes that wait (${seen.wait}) were both compared`);
 }));
 
+test('round 2, speed: in block mode the plans are the plans live makes (each block, with and without a new stop)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const car = await h.truck('Voiture', null, WEEK);
+  await h.truck('Camion', null, WEEK);
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  const day = await futureDay(h);
+  const home = await h.one(`select lat, lng from public.home_point()`);
+  let s = 11;
+  const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  await h.as(owner);
+  for (let i = 0; i < 12; i++) {
+    const c = await h.customer(`B${i}`, home.lat + (rnd() - 0.5) * 0.14, home.lng + (rnd() - 0.5) * 0.2);
+    await h.fails(() => book(h, job(c, day, ['am', 'pm', 'eve'][i % 3], { duration_min: [45, 60, 90][Math.floor(rnd() * 3)] })));
+  }
+  await h.as(null);
+  await liveRef(h, LIVE_PLANNER);
+  let compared = 0;
+  for (const block of ['am', 'pm', 'eve']) {
+    for (const extra of [null, { id: uuid(), lat: home.lat + 0.02, lng: home.lng - 0.03, dur: 60 }, { id: uuid(), lat: home.lat - 0.04, lng: home.lng + 0.02, dur: 90, kind: 'truck' }]) {
+      const q = (schema) => h.one(`select ${schema}.plan_block($1::date, $2, $3::jsonb, null) p`, [day, block, extra && JSON.stringify(extra)]);
+      const neu = (await q('public')).p, old = (await q('live_ref')).p;
+      assert.deepEqual(neu, old, `${block}${extra ? ', with a new stop' : ''}`);
+      compared += Object.keys(neu.jobs).length;
+    }
+  }
+  assert.ok(compared >= 20, `${compared} stops compared`);
+}));
+
 test('round 2, speed: suggest_windows offers the windows live offers, as fast or faster (several days and loads; prints the timing)', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const week = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, DAY]));
