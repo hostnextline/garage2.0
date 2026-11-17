@@ -24,6 +24,11 @@
 -- (route_cost) instead of three times: the same plans, 4 to 10 times faster than live on a busy day.
 -- Round 2 also: a job step needs a job the caller sees (R96); « Routes partagées » read as a yes / no that never fails
 -- (R110); apply_hours refuses a day already past (R185, section 13); the refusals of window mode say « journée ».
+-- Window mode, a day already started: a vehicle that still worked and is closed by a change of its hours (or switched
+-- off) sends its appointments to « À placer », one whose day simply ended keeps its late customer whatever is written
+-- on it (plages-01, srv-planif-r2-1: apply_hours passes today's hours before the change in `garage.hours_was`);
+-- « Retour aux blocs » and back: whom to call, and a flexible appointment flexible again only by the mark of the last
+-- switch back to the blocks (plages-02, srv-planif-r2-2).
 --
 -- Sections: 0 helpers · 1 apply_plan · 2 set_stop_order · 3 move_job · 4 set_job_duration · 5 book_job · 6 flexible
 -- windows · 7 suggest_windows_core, suggest_core · 8 windows_switch · 9 my_truck_ids, walk_in, job_step · 10 plan_route
@@ -1126,7 +1131,9 @@ end $function$;
 --   * round 2 (plages-02): a « flexible » appointment (told « la veille ») or one with no window yet is to call too
 --     (`reason` 'flexible' / 'no_window'; the others 'window'), every one to call is to confirm again
 --     (confirm_sent_at cleared: Aujourd'hui lists it), and the way back to the windows makes a flexible one flexible
---     again when it is still in the block the switch gave it (it got the block's 4 hours that nobody told).
+--     again when it is still in the block the switch gave it (it got the block's 4 hours that nobody told), and only
+--     by the mark of the last switch back to the blocks (srv-planif-r2-2: a window fixed and told since an older one
+--     stays its window).
 CREATE OR REPLACE FUNCTION public.windows_switch(p_op uuid, p_on boolean)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1139,7 +1146,7 @@ declare v_done jsonb; v_today date := public.local_today(); n int := 0; d date; 
   v_call jsonb := '[]'::jsonb; v_kept jsonb := '[]'::jsonb;
   -- round 2 (plages-02): the appointments without a window (flexible, or none yet) on the way to the blocks, and the
   -- flexible ones on the way back
-  v_nowin uuid[]; v_flex uuid[]; v_back uuid[];
+  v_nowin uuid[]; v_flex uuid[]; v_back uuid[]; v_on_id bigint;
 begin
   v_done := public.op_begin(p_op, 'windows_switch');
   if v_done is not null then return v_done; end if;
@@ -1152,12 +1159,19 @@ begin
   perform set_config('garage.rpc', 'on', true);
   if p_on then
     select count(*) into n from public.jobs j where j.day >= v_today and j.block <> 'day' and j.deleted_at is null and j.status = 'booked';
-    -- flexible before the switch back to the blocks, and still in the block it gave them: flexible again (round 2)
+    -- flexible before the switch back to the blocks, and still in the block it gave them: flexible again (round 2). Only
+    -- the mark of the LAST switch back to the blocks counts (written after the last switch to the windows): an older one
+    -- is of a time the appointment was flexible before, and since then its window was fixed and told (lock_windows, a
+    -- move with a window), then left without a mark because it is its block's very hours (srv-planif-r2-2). In the
+    -- order the rows were written (the id: a switch and its marks may share one instant)
+    select a.id into v_on_id from public.activity a
+    where a.entity = 'settings' and a.action = 'windows_switch' and a.data->>'on' = 'true' order by a.id desc limit 1;
     select coalesce(array_agg(j.id), '{}') into v_back from public.jobs j
     where j.day >= v_today and j.block <> 'day' and j.deleted_at is null and j.status = 'booked' and j.win_start is null
       and coalesce((select a.data->>'reason' = 'flexible' and a.data->>'day' = j.day::text and a.data->>'block' = j.block
                     from public.activity a where a.entity = 'job' and a.entity_id = j.id and a.action = 'window_to_block'
-                    order by a.at desc limit 1), false);
+                      and a.id > coalesce(v_on_id, 0)
+                    order by a.id desc limit 1), false);
     -- a window still kept on the job (what the customer was told before a switch back to the blocks) is its window again
     update public.jobs j set block = 'day',
       win_start = case when j.win_start is not null and j.win_end is not null and j.win_start < x.end_min and j.win_end > x.start_min then j.win_start else x.start_min end,

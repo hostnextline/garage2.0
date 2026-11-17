@@ -1369,6 +1369,45 @@ test('srv-planif-r2-1: window mode, a vehicle whose day simply ended keeps its l
   assert.deepEqual([k.truck_id, k.stop_order, k.eta_min], [null, null, null], 'a vehicle closed by the change of its hours sends its customer to « À placer »');
 }));
 
+test('srv-planif-r2-2: a flexible appointment whose window was fixed and told stays on that window through a second « Retour aux blocs » and back', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h, 4, 3);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  await h.truck('Camion', null, { [dow]: DAY });
+  const c1 = await h.customer('Jean', ...near);
+  await windowsOn(h, owner);
+  const f = await book(h, { customer_id: c1, day, block: 'day', duration_min: 60, win_flex: true });
+  // back to the blocks: flexible, to call; back to the windows: flexible again (plages-02)
+  const off1 = await h.rpc('windows_switch', { p_op: uuid(), p_on: false });
+  assert.equal(off1.to_call.find((x) => x.job_id === f.job_id)?.reason, 'flexible');
+  assert.equal((await h.rpc('windows_switch', { p_op: uuid(), p_on: true })).ok, true);
+  assert.deepEqual([(await row(h, f.job_id)).win_start, (await row(h, f.job_id)).win_flex], [null, true], 'flexible again');
+  for (const how of ['lock', 'move']) {
+    await h.c.query('savepoint told');
+    if (how === 'lock') {
+      // the window is fixed (and texted): 8 h – 12 h, the morning's very hours
+      const lock = await h.rpc('lock_windows', { p_op: uuid(), p_day: day });
+      assert.ok(lock.jobs.includes(f.job_id));
+      const fixed = await row(h, f.job_id);
+      assert.deepEqual([fixed.win_start, fixed.win_end, fixed.win_flex], [480, 720, true], 'its window is fixed');
+    } else {
+      // the customer called: moved to 8 h – 12 h (a window given by hand)
+      assert.equal((await h.rpc('move_job', { p_op: uuid(), p_job: f.job_id, p_day: day, p_block: 'day', p_truck: null, p_win_start: 480, p_win_flex: false })).ok, true);
+      const moved = await row(h, f.job_id);
+      assert.deepEqual([moved.win_start, moved.win_end, moved.win_flex], [480, 720, false], 'its window is given');
+    }
+    // back to the blocks again: the window is the morning's hours, nothing to tell (no new mark)
+    const off2 = await h.rpc('windows_switch', { p_op: uuid(), p_on: false });
+    assert.equal(off2.to_call.find((x) => x.job_id === f.job_id), undefined, `${how}: told 8 h – 12 h, in the morning: nothing to tell`);
+    assert.equal((await row(h, f.job_id)).block, 'am');
+    // back to the windows: the window told, never a second one
+    assert.equal((await h.rpc('windows_switch', { p_op: uuid(), p_on: true })).ok, true);
+    const back = await row(h, f.job_id);
+    assert.deepEqual([back.block, back.win_start, back.win_end, back.win_flex], ['day', 480, 720, false], `${how}: the window told stays, not flexible`);
+    await h.c.query('rollback to savepoint told');
+  }
+}));
+
 /** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
  *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
 async function liveRef(h, list) {
