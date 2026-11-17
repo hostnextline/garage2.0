@@ -130,10 +130,6 @@ function paymentWaitingFor(invoiceId: string): boolean {
   return pendingOps((e) => e.kind === 'rpc' && e.rpc === 'payment_add' && !!e.args
     && (e.args.p_invoice === invoiceId || (e.args.p_invoice == null && !!jobId && e.args.p_job === jobId))).length > 0;
 }
-const PAYMENT_WAITING: Record<string, string> = {
-  fr: 'Un paiement de cette facture attend encore d’être envoyé. Attends qu’il parte, puis modifie la facture.',
-  en: 'A payment of this invoice is still waiting to be sent. Wait until it has left, then change the invoice.'
-};
 /** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network).
     It goes straight to the server: while a payment of this invoice still waits in the outbox, it would get there first
     and the payment would then be refused hours later (argent-app-03). The payment is given its chance to leave first
@@ -142,7 +138,7 @@ export async function reopenInvoice(id: string) {
   guard();
   if (paymentWaitingFor(id)) {
     await Promise.race([flush(), new Promise((r) => setTimeout(r, 8000))]);
-    if (paymentWaitingFor(id)) throw new Refused('payment_waiting', tMaybe('errors.payment_waiting') ?? PAYMENT_WAITING[lang.value] ?? PAYMENT_WAITING.fr);
+    if (paymentWaitingFor(id)) throw new Refused('payment_waiting', t('errors.payment_waiting'));
   }
   return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false });
 }

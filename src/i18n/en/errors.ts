@@ -86,6 +86,7 @@ export const errors: typeof fr = {
   too_much: 'This payment is more than what is left to pay. Refresh the invoice.',
   refund_too_much: 'You can’t give the customer back more than they paid.',
   refund_first: 'Money given back to the customer is noted on this payment: remove that refund first.',
+  payment_waiting: 'A payment of this invoice is still waiting to be sent. Wait until it has left, then change the invoice.',
   amount_changed: 'The amount has changed: look at the new total before answering.',
   pay_unavailable: 'Card payment isn’t working right now: take the payment on site.',
   signed: 'There is nothing left to sign here.',

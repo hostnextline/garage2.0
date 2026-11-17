@@ -95,6 +95,7 @@ export const errors = {
   too_much: 'Ce paiement dépasse ce qui reste à payer. Rafraîchis la facture.',
   refund_too_much: 'Tu ne peux pas remettre au client plus que ce qu’il a payé.',
   refund_first: 'De l’argent remis au client est noté sur ce paiement : retire d’abord cette remise.',
+  payment_waiting: 'Un paiement de cette facture attend encore d’être envoyé. Attends qu’il parte, puis modifie la facture.',
   amount_changed: 'Le montant a changé : regarde le nouveau total avant de répondre.',
   pay_unavailable: 'Le paiement par carte ne marche pas en ce moment : encaisse sur place.',
   signed: 'Il n’y a plus rien à signer ici.',

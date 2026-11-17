@@ -8,7 +8,7 @@ import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, add
 import { itemsOf } from './select';
 import { refusalText } from '../app/netView';
 import { money } from '../lib/money';
-import { lang, t } from '../lib/i18n';
+import { lang, t, tMaybe } from '../lib/i18n';
 import { errorMessage } from '../lib/errors';
 
 let srv: FakeServer;
@@ -211,6 +211,24 @@ describe('a cash payment refused hours later says how much and for whom (argent-
     expect((await addPayment(null, 1000, 'cash', null, 'j1')).queued).toBe(true);
     await expect(reopenInvoice('v2')).rejects.toMatchObject({ kind: 'refusal', hint: 'payment_waiting' });
     expect(reopened).toEqual(['v2']);
+  });
+  it('the words of that refusal are the dictionaries\' errors.payment_waiting, in French and in English (app-data-r2-2)', async () => {
+    for (const l of ['fr', 'en'] as const) expect(tMaybe('errors.payment_waiting', undefined, l)).toMatch(/\S/);
+    expect(tMaybe('errors.payment_waiting', undefined, 'en')).not.toBe(tMaybe('errors.payment_waiting', undefined, 'fr'));
+    seed();
+    await start();
+    srv.offline = true;
+    setNet({ online: false });
+    expect((await addPayment('v1', 20000, 'cash', null, 'j1')).queued).toBe(true);
+    const was = lang.value;
+    try {
+      for (const l of ['fr', 'en'] as const) {
+        lang.value = l;
+        const err = await reopenInvoice('v1').then(() => null, (e: unknown) => e);
+        expect(err).toMatchObject({ kind: 'refusal', hint: 'payment_waiting', message: t('errors.payment_waiting') });
+        expect(errorMessage(err)).toBe(t('errors.payment_waiting'));
+      }
+    } finally { lang.value = was; }
   });
   it('without a waiting payment it goes straight to the server, as before', async () => {
     seed();

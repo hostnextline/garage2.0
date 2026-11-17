@@ -92,7 +92,7 @@ const frE = fr.errors as unknown as Words;
 const enE = en.errors as unknown as Words;
 
 /** codes the app makes itself: no server raises them */
-const APP_CODES = ['preview'];
+const APP_CODES = ['preview', 'payment_waiting'];   // payment_waiting: app-data reopenInvoice (a payment of the invoice still waits in the outbox)
 /** codes raised by tonight's server branches (srv-acces, srv-argent, srv-planif, srv-rapprochement, fn-paiement,
     fn-terrain): their words are ready before their migrations and functions are merged here. Once merged, the sources
     raise them and this list only says where they came from. */
