@@ -37,7 +37,12 @@
 --   M4.orphan bad a payment on nothing, or on another job's invoice;  M4.card bad « carte en ligne » without its Stripe
 --                 session;  M4.waiting bad a payment waiting on a job whose invoice is finished;  M4.closed warn a
 --                 payment waiting on a finished / cancelled job that has no finished invoice;  M4.double warn the same
---                 amount and method twice on one invoice (or job) within 2 minutes
+--                 amount and method twice on one invoice (or job) within 2 minutes (M4.closed: a deleted job too; the
+--                 data of M4.orphan / M4.closed carry « why » when payment_add noted the card payment « payment_unmatched »)
+--   M6.parked bad card money (or a card refund) the server kept aside for the office (activity « payment_parked »), until
+--                 the books have it (its Stripe page, or entered by hand on its job for the same amount);  M6.refund bad  a
+--                 card refund « <page>#<refund> » whose card payment is not in the books;  M6.refundmore bad  more given
+--                 back than paid on one card page
 --   M5.unbilled bad  a finished job (not Coffre) with no invoice;  M5.draft warn  a finished job whose invoice is still a
 --                 draft;  M5.unpaid warn  finished, invoice not paid, nobody granted « payer plus tard »
 --   M7.sum bad    an expense: before taxes + TPS + TVQ is not the total (or an amount below zero);  M7.stock bad  stock
@@ -171,6 +176,27 @@ create or replace function public.recon_error(p_check text, p_err text) returns 
     'fr', format('La vérification %s n’a pas pu se faire (%s) : les autres vérifications ont marché. Dis-le au responsable de l’app.', p_check, left(p_err, 200)),
     'en', format('Check %s could not run (%s); the other checks ran. Tell the person in charge of the app.', p_check, left(p_err, 200)),
     'd', jsonb_build_object('check', p_check, 'error', left(p_err, 500))))
+$$;
+
+-- the card page of a Stripe finding (data: { session, amount_cents }) is in the books for Stripe's amount (a payment not
+-- deleted); a finding without its page or its amount is never « in the books »
+create or replace function public.recon_card_in_books(p_data jsonb) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(p_data->>'session', '') <> '' and coalesce(p_data->>'amount_cents', '') ~ '^-?[0-9]{1,12}$'
+     and exists (select 1 from public.payments p where p.stripe_session = p_data->>'session' and p.deleted_at is null
+                   and p.amount_cents = (p_data->>'amount_cents')::bigint)
+$$;
+-- that Stripe page (or refund) was kept aside for the office (activity « payment_parked », written by the server functions)
+create or replace function public.recon_card_parked(p_session text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(p_session, '') <> '' and exists (select 1 from public.activity a where a.action = 'payment_parked' and a.data->>'session' = p_session)
+$$;
+
+-- why a card payment is not where it was meant to go (activity « payment_unmatched », written by payment_add): void,
+-- deleted, missing, coffre, job_closed, no_job; null when nothing was noted
+create or replace function public.recon_unmatched_why(p_payment uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select a.data->>'why' from public.activity a where a.action = 'payment_unmatched' and a.data->>'payment' = p_payment::text order by a.at desc limit 1
 $$;
 
 -- ───────────────────────────── the day's sheet ─────────────────────────────
@@ -391,7 +417,7 @@ begin
     perform public.recon_trip('M4');
     v_t := clock_timestamp();
     with fin as (select v.job_id, v.id, v.number from public.invoices v where v.deleted_at is null and v.status in ('issued', 'paid') and v.job_id is not null),
-    p as (select p.*, j.number as job_no, j.status as job_status, j.coffre_id, v.job_id as inv_job, v.number as inv_no
+    p as (select p.*, j.number as job_no, j.status as job_status, j.deleted_at as job_gone, j.coffre_id, v.job_id as inv_job, v.number as inv_no
           from public.payments p left join public.jobs j on j.id = p.job_id left join public.invoices v on v.id = p.invoice_id
           where p.deleted_at is null)
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
@@ -406,7 +432,7 @@ begin
                               public.recon_money_en(p.amount_cents), public.recon_method_word(p.method, 'en'), to_char(p.paid_at at time zone 'America/Toronto', 'YYYY-MM-DD'))
                   else format('A payment of %s is on invoice %s, which belongs to another job (job %s): put it on the right invoice.',
                               public.recon_money_en(p.amount_cents), public.recon_inv_no(p.inv_no, 'en'), coalesce(p.job_no::text, '?')) end en,
-             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'invoice_id', p.invoice_id, 'job_id', p.job_id) d
+             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'invoice_id', p.invoice_id, 'job_id', p.job_id, 'why', public.recon_unmatched_why(p.id)) d
       from p where (p.invoice_id is null and p.job_id is null) or (p.invoice_id is not null and p.job_id is not null and p.inv_job is distinct from p.job_id)
       union all
       select 'M4.card', 'bad', 'payments', p.id, null,
@@ -423,13 +449,16 @@ begin
              jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'job_id', p.job_id, 'invoice_id', fin.id)
       from p join fin on fin.job_id = p.job_id where p.invoice_id is null
       union all
+      -- (a job deleted too: a card payment that landed on it is kept there, « payment_unmatched » why job_closed)
       select 'M4.closed', 'warn', 'payments', p.id, null,
              format('Un paiement de %s attend sur la job %s, qui est %s, sans facture terminée : fais la facture, ou rembourse le client.',
-                    public.recon_money_fr(p.amount_cents), p.job_no, public.recon_status_word(p.job_status, 'fr')),
+                    public.recon_money_fr(p.amount_cents), p.job_no, case when p.job_gone is not null then 'effacée' else public.recon_status_word(p.job_status, 'fr') end),
              format('A payment of %s is waiting on job %s, which is %s, with no finished invoice: make the invoice, or give the money back.',
-                    public.recon_money_en(p.amount_cents), p.job_no, public.recon_status_word(p.job_status, 'en')),
-             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'job_id', p.job_id, 'job_status', p.job_status)
-      from p where p.invoice_id is null and p.job_id is not null and p.coffre_id is null and p.job_status in ('done', 'cancelled', 'no_show')
+                    public.recon_money_en(p.amount_cents), p.job_no, case when p.job_gone is not null then 'deleted' else public.recon_status_word(p.job_status, 'en') end),
+             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'job_id', p.job_id, 'job_status', p.job_status, 'job_deleted', p.job_gone is not null,
+                                'why', public.recon_unmatched_why(p.id))
+      from p where p.invoice_id is null and p.job_id is not null and p.coffre_id is null
+        and (p.job_status in ('done', 'cancelled', 'no_show') or p.job_gone is not null)
         and not exists (select 1 from fin where fin.job_id = p.job_id)
       union all
       select 'M4.double', 'warn', 'payments', b.id, null,
@@ -482,6 +511,67 @@ begin
     v_all := v_all || v_part;
     v_ms := v_ms || jsonb_build_object('M5', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M5', sqlerrm);
+  end;
+
+  -- ══════ M6: card money kept aside, card refunds (the notes the money functions write in « activity ») ══════
+  -- payment_parked  the server could not put a card payment (or refund) in the books and kept it aside for the office: it
+  --                 is said until the books have it, by its Stripe page or entered by hand on its job for the same amount
+  -- a card refund (« <page>#<refund> ») whose card payment is not in the books; more given back than paid on one page
+  -- (payment_unmatched, payment_moved and overpaid leave the money in the books: M4, M8 and M2.over say what is wrong then)
+  begin
+    perform public.recon_trip('M6');
+    v_t := clock_timestamp();
+    with pk as (
+      select a.id, a.at, a.entity_id, a.data->>'session' as session, coalesce(a.data->>'kind', 'payment') as kind,
+             nullif(a.data->>'reference', '') as ref, nullif(left(a.data->>'reason', 80), '') as reason,
+             case when coalesce(a.data->>'amount_cents', '') ~ '^-?[0-9]{1,12}$' then (a.data->>'amount_cents')::bigint end as amount,
+             case when coalesce(a.data->>'job', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (a.data->>'job')::uuid end as job,
+             case when coalesce(a.data->>'invoice', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (a.data->>'invoice')::uuid end as inv
+      from public.activity a where a.action = 'payment_parked' and coalesce(a.data->>'session', '') <> ''),
+    card as (select p.id, p.amount_cents, p.stripe_session, split_part(p.stripe_session, '#', 1) as page, p.invoice_id, p.job_id
+             from public.payments p where p.deleted_at is null and p.method = 'card_online' and p.stripe_session is not null)
+    select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
+      select 'M6.parked' c, 'bad' s, case when pk.job is not null then 'jobs' end t, pk.job e, pk.session k,
+             format('%s%s a été mis de côté le %s sans être inscrit dans l’app : entre-le à la main%s (référence Stripe %s).',
+                    case pk.kind when 'refund' then 'Un remboursement par carte' when 'refund_failed' then 'Un remboursement par carte qui n’a pas passé' else 'Un paiement par carte' end,
+                    case when pk.amount is not null then ' de ' || public.recon_money_fr(abs(pk.amount)) else '' end,
+                    to_char(pk.at at time zone 'America/Toronto', 'YYYY-MM-DD'), coalesce(' sur la job ' || j.number, ''), coalesce(pk.ref, pk.session)) fr,
+             format('%s%s was kept aside on %s without being recorded in the app: enter it by hand%s (Stripe reference %s).',
+                    case pk.kind when 'refund' then 'A card refund' when 'refund_failed' then 'A card refund that failed' else 'A card payment' end,
+                    case when pk.amount is not null then ' of ' || public.recon_money_en(abs(pk.amount)) else '' end,
+                    to_char(pk.at at time zone 'America/Toronto', 'YYYY-MM-DD'), coalesce(' on job ' || j.number, ''), coalesce(pk.ref, pk.session)) en,
+             jsonb_build_object('session', pk.session, 'kind', pk.kind, 'amount', pk.amount, 'reference', pk.ref, 'reason', pk.reason, 'job_id', pk.job,
+                                'invoice_id', pk.inv, 'job', j.number, 'at', pk.at) d
+      from pk left join public.jobs j on j.id = pk.job
+      where not exists (select 1 from public.payments p where p.stripe_session = pk.session and p.deleted_at is null)
+        -- entered by hand: a payment typed after the note, on that job (or its invoice), for the same amount
+        and not (pk.amount is not null and pk.job is not null and exists (
+              select 1 from public.payments p left join public.invoices v on v.id = p.invoice_id
+              where p.deleted_at is null and p.stripe_session is null and p.amount_cents = pk.amount and p.created_at >= pk.at
+                and (p.job_id = pk.job or v.job_id = pk.job or p.invoice_id = pk.inv)))
+      union all
+      select 'M6.refund', 'bad', 'payments', r.id, null,
+             format('Stripe a remboursé %s par carte (inscrit dans l’app), mais le paiement par carte qu’il rembourse n’est pas dans l’app : retrouve ce paiement dans Stripe (page %s).',
+                    public.recon_money_fr(-r.amount_cents), r.page),
+             format('Stripe gave back %s by card (recorded in the app), but the card payment it gives back is not in the app: find that payment in Stripe (page %s).',
+                    public.recon_money_en(-r.amount_cents), r.page),
+             jsonb_build_object('amount', r.amount_cents, 'session', r.stripe_session, 'page', r.page, 'invoice_id', r.invoice_id, 'job_id', r.job_id)
+      from card r where r.amount_cents < 0 and position('#' in r.stripe_session) > 1
+        and not exists (select 1 from card o where o.stripe_session = r.page)
+      union all
+      select 'M6.refundmore', 'bad', null, null, x.page,
+             format('Pour un paiement par carte de %s, l’app a inscrit %s de remboursements : plus que ce que le client a payé. Vérifie les remboursements dans Stripe (page %s).',
+                    public.recon_money_fr(x.paid), public.recon_money_fr(x.paid - x.net), x.page),
+             format('For a card payment of %s, the app recorded %s of refunds: more than the customer paid. Check the refunds in Stripe (page %s).',
+                    public.recon_money_en(x.paid), public.recon_money_en(x.paid - x.net), x.page),
+             jsonb_build_object('page', x.page, 'paid', x.paid, 'net', x.net)
+      from (select c2.page, sum(c2.amount_cents) filter (where c2.stripe_session = c2.page)::bigint as paid, sum(c2.amount_cents)::bigint as net
+            from card c2 group by c2.page having bool_or(c2.stripe_session = c2.page) and bool_or(c2.amount_cents < 0)) x
+      where x.net < 0
+    ) f;
+    v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M6', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
+  exception when others then v_all := v_all || public.recon_error('M6', sqlerrm);
   end;
 
   -- ══════ M7: expenses add up; stock paid by the Trésorerie has its expense ══════
@@ -927,11 +1017,19 @@ begin
   -- no longer true: closed by itself. A check made outside (recon_add) closes when it was not added again for a day.
   -- A family that threw this time was NOT checked: its differences stay as they were (open or « vu »), never closed as if
   -- the books were repaired.
+  -- Card money Stripe took and the books do not have (« stripe_paid_not_recorded », « stripe_amount ») never closes by
+  -- age: Stripe's list only goes back 72 hours, so after 3 nights nobody adds it again while the money is still missing.
+  -- It closes when the books have that card page for Stripe's amount, or once someone marked it « vu » (entered by hand)
+  -- and it was not added again for a day, or once the money was kept aside for the office (« payment_parked »: M6.parked
+  -- says it from then on, without an end).
   with c as (
     update public.ops_recon_findings f set state = 'closed', closed_at = now(), updated_at = now()
     where f.state <> 'closed'
       and ((not f.outside and f.last_run is distinct from v_run and split_part(f.check_id, '.', 1) <> all (v_failed))
-           or (f.outside and f.last_day < v_day - 1))
+           or (f.outside and f.check_id = any (array['stripe_paid_not_recorded', 'stripe_amount']) and public.recon_card_in_books(f.data))
+           or (f.outside and f.last_day < v_day - 1
+               and (f.check_id <> all (array['stripe_paid_not_recorded', 'stripe_amount']) or f.state = 'acked'
+                    or public.recon_card_parked(f.data->>'session'))))
     returning f.check_id)
   select count(*), count(*) filter (where public.recon_for_treasury(c.check_id)) into v_closed, v_closed_l from c;
 
@@ -1070,7 +1168,7 @@ begin
   for f in
     select p.oid::regprocedure as sig, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = any (array['recon_money_fr', 'recon_money_en', 'recon_inv_no', 'recon_staff_name', 'recon_status_word',
-      'recon_method_word', 'recon_hhmm', 'recon_for_treasury', 'recon_trip', 'recon_error', 'recon_sheet', 'recon_collect', 'recon_tally',
+      'recon_method_word', 'recon_hhmm', 'recon_for_treasury', 'recon_trip', 'recon_error', 'recon_card_in_books', 'recon_card_parked', 'recon_unmatched_why', 'recon_sheet', 'recon_collect', 'recon_tally',
       'recon_view_counts', 'recon_view_status', 'recon_run', 'recon_add', 'recon_summary', 'recon_ack', 'recon_now'])
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);

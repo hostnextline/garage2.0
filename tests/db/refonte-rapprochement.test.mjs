@@ -694,6 +694,115 @@ test('recon_add: a check made outside (Stripe, the backup) counts in the run; no
   assert.equal((await h.fails(() => h.c.query(`select public.recon_add($1, 'B1', 'bad', null, null, 'x', 'x', '{}')`, [uuid()])))?.hint, 'not_found');
 }));
 
+test('recon_add: card money Stripe took and the books do not have never closes by age; it closes once the books have that page, once « vu » and no longer added, or once kept aside for the office', () => tx(async (h) => {
+  const g = await garage(h);
+  const day = (k) => h.val(`select (public.local_today() + $1::int)::text`, [k]);
+  const fr = 'Stripe a encaissé 120,00 $ par carte, mais aucun paiement n’est inscrit dans l’app pour cette carte.';
+  const add = async (runId, session, check = 'stripe_paid_not_recorded', recorded = null) => {
+    await server(h);
+    const data = { sig: session, session, amount_cents: 12000, payment_intent: `pi_${session}`, job_id: g.jobC, invoice_id: null, payment_id: null, recorded_cents: recorded };
+    return h.val(`select public.recon_add($1, $2, 'bad', 'jobs', $3, $4, 'Stripe took $120.00 by card, but no payment is recorded in the app for it.', $5::jsonb)`,
+      [runId, check, g.jobC, fr, JSON.stringify(data)]);
+  };
+  const state = async (id) => { await server(h); return h.val(`select state from public.ops_recon_findings where id = $1`, [id]); };
+  // nights 1 to 3: Stripe's list of the last 72 hours still has the page, the notice was lost
+  let id;
+  for (const k of [0, 1, 2]) id = await add((await run(h, await day(k))).run_id, 'cs_test_lost');
+  // nights 4 to 7: Stripe's list no longer has it, nobody adds it again; the money is still missing from the books
+  for (const k of [3, 4, 5, 6]) {
+    const r = await run(h, await day(k));
+    assert.equal(await state(id), 'open', `night ${k + 1}`);
+    assert.equal(r.status, 'bad', `night ${k + 1}`);
+  }
+  // the books get that card page (the notice tried again, the customer's page): closed at the next run
+  await server(h);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: null, p_amount_cents: 12000, p_method: 'card_online', p_reference: 'pi_cs_test_lost', p_job: g.jobC, p_session: 'cs_test_lost' });
+  const r8 = await run(h, await day(7));
+  assert.equal(await state(id), 'closed');
+  assert.equal(r8.status, 'ok');
+  // Stripe's amount is not the one written: stays open past 3 nights; written right, it closes
+  await raw(h, `update public.payments set amount_cents = 11000 where stripe_session = 'cs_test_lost'`);
+  const wrong = await add((await run(h, await day(8))).run_id, 'cs_test_lost', 'stripe_amount', 11000);
+  for (const k of [9, 10, 11]) await run(h, await day(k));
+  assert.equal(await state(wrong), 'open', 'a wrong amount does not close by age');
+  await raw(h, `update public.payments set amount_cents = 12000 where stripe_session = 'cs_test_lost'`);
+  await run(h, await day(12));
+  assert.equal(await state(wrong), 'closed');
+  // entered by hand by the office (no card page in the books): « vu », then no longer added for a day: closed
+  const hand = await add((await run(h, await day(13))).run_id, 'cs_test_hand');
+  await h.as(g.owner);
+  await h.rpc('recon_ack', { p_finding: hand, p_note: 'Entré à la main, comptant.' });
+  await run(h, await day(14));
+  assert.equal(await state(hand), 'acked');
+  await run(h, await day(15));
+  assert.equal(await state(hand), 'closed');
+  // kept aside for the office (« payment_parked »): the Stripe finding may close by age, M6.parked says it from then on
+  const kept = await add((await run(h, await day(16))).run_id, 'cs_test_kept');
+  await server(h);
+  await h.c.query(`insert into public.activity (entity, entity_id, action, data) values ('job', $1, 'payment_parked', $2::jsonb)`,
+    [g.jobC, JSON.stringify({ kind: 'payment', session: 'cs_test_kept', reference: 'pi_kept', amount_cents: 12000, invoice: null, job: g.jobC, reason: 'refused' })]);
+  await run(h, await day(17));
+  await run(h, await day(18));
+  assert.equal(await state(kept), 'closed');
+  assert.deepEqual((await open(h)).filter((f) => f.check_id.startsWith('M6.')).map((f) => [f.check_id, f.severity]), [['M6.parked', 'bad']]);
+}));
+
+test('recon M6 (R34): a parked card payment is a finding for Trésorerie; a card refund without its payment, more given back than paid; card money on a cancelled, deleted or Coffre job', () => tx(async (h) => {
+  const g = await garage(h);
+  const acc = await h.person('Comptable', ['treasurer'], { rights: { treasury: true } });
+  const card = (amount, session, job, invoice = null) => h.rpc('payment_add', { p_op: uuid(), p_invoice: invoice, p_amount_cents: amount, p_method: 'card_online',
+    p_reference: `pi_${session}`, p_job: job, p_session: session });
+  const jobNo = await h.val(`select number from public.jobs where id = $1`, [g.jobC]);
+  // kept aside by the server (the shape _shared/payments.ts writes): a bad finding, and « Trésorerie » sees it
+  await server(h);
+  await h.c.query(`insert into public.activity (entity, entity_id, action, data) values ('job', $1, 'payment_parked', $2::jsonb)`,
+    [g.jobC, JSON.stringify({ kind: 'payment', session: 'cs_park', reference: 'pi_park', amount_cents: 12000, invoice: null, job: g.jobC, reason: 'not_allowed' })]);
+  let f = await sees(h, []);
+  assert.deepEqual(f.map((x) => [x.check_id, x.severity]), [['M6.parked', 'bad']], show(f));
+  assert.equal(f[0].message_fr, `Un paiement par carte de 120,00 $ a été mis de côté le ${await h.val(`select public.local_today()::text`)} sans être inscrit dans l’app : entre-le à la main sur la job ${jobNo} (référence Stripe pi_park).`);
+  assert.match(f[0].message_en, /^A card payment of \$120\.00 was kept aside on .* enter it by hand on job \d+ \(Stripe reference pi_park\)\.$/);
+  await h.as(acc);
+  const t = await h.rpc('recon_summary', {});
+  assert.deepEqual(t.findings.map((x) => x.check_id), ['M6.parked']);
+  assert.equal(t.last_run.status, 'bad');
+  // the office enters it by hand on the job, for the same amount: closed
+  await h.as(g.owner);
+  await h.rpc('payment_add', { p_op: uuid(), p_invoice: null, p_amount_cents: 12000, p_method: 'credit', p_reference: 'pi_park', p_job: g.jobC, p_session: null });
+  assert.deepEqual((await sees(h, [])).map((x) => x.check_id), []);
+  assert.equal(await stateOf(h, `M6.parked:${g.jobC}:cs_park`), 'closed');
+  // a card refund whose card payment is not in the books; then the payment comes, smaller than the refund
+  await server(h);
+  await card(-3000, 'cs_gone#re_1', g.jobC);
+  f = await sees(h, []);
+  assert.deepEqual(f.map((x) => x.check_id), ['M6.refund'], show(f));
+  await card(2000, 'cs_gone', g.jobC);
+  f = await sees(h, []);
+  assert.deepEqual(f.map((x) => [x.check_id, x.message_fr]), [['M6.refundmore',
+    'Pour un paiement par carte de 20,00 $, l’app a inscrit 30,00 $ de remboursements : plus que ce que le client a payé. Vérifie les remboursements dans Stripe (page cs_gone).']]);
+  await raw(h, `update public.payments set amount_cents = -2000 where stripe_session = 'cs_gone#re_1'`);
+  assert.deepEqual((await sees(h, [])).map((x) => x.check_id), []);
+  // card money landing on a cancelled job (payment_add keeps it on the job, note « job_closed »), then on a deleted one
+  await h.as(g.owner);
+  const jobD = await g.book(g.customer);
+  await raw(h, `update public.jobs set status = 'cancelled', cancelled_at = now() where id = $1`, [jobD]);
+  await server(h);
+  await card(5000, 'cs_cancel', jobD);
+  f = await sees(h, []);
+  assert.deepEqual(f.map((x) => [x.check_id, x.severity]), [['M4.closed', 'warn']], show(f));
+  assert.equal(await h.val(`select data->>'why' from public.ops_recon_findings where id = $1`, [f[0].id]), 'job_closed');
+  await raw(h, `update public.jobs set status = 'booked', cancelled_at = null, deleted_at = now() where id = $1`, [jobD]);
+  f = (await sees(h, [])).filter((x) => x.check_id === 'M4.closed');
+  assert.match(f[0]?.message_fr || '', /qui est effacée, sans facture terminée/);
+  // on the Coffre job: M8.money; given back in full (net zero): closed
+  await server(h);
+  await card(4000, 'cs_coffre', g.jobB);
+  assert.ok((await sees(h, [])).some((x) => x.check_id === 'M8.money'));
+  await card(-4000, 'cs_coffre#re_2', g.jobB);
+  assert.equal((await open(h)).filter((x) => x.check_id === 'M8.money').length, 1);
+  await run(h);
+  assert.equal((await open(h)).filter((x) => x.check_id === 'M8.money' || x.check_id.startsWith('M6.')).length, 0, 'a payment and its refund add up to zero');
+}));
+
 // ───────────────────────────── who sees what ─────────────────────────────
 
 test('recon_summary: the owner sees everything, « Trésorerie » the money and stock, others are refused; the app may not run it itself', () => tx(async (h) => {
