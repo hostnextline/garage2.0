@@ -89,6 +89,9 @@ export const errors: typeof fr = {
   payment_waiting: 'A payment of this invoice is still waiting to be sent. Wait until it has left, then change the invoice.',
   amount_changed: 'The amount has changed: look at the new total before answering.',
   pay_unavailable: 'Card payment isn’t working right now: take the payment on site.',
+  pay_processing: 'A payment for this file is already being processed (a bank debit takes a few days). It will show as soon as the bank confirms it.',
+  no_answer: 'The texting service didn’t answer in time: the text may have gone. Check the conversation before sending it again.',
+  after: 'Unknown page.',
   signed: 'There is nothing left to sign here.',
   bad_amount: 'Write the amount.',
 

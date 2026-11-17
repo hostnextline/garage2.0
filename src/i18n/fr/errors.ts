@@ -98,6 +98,9 @@ export const errors = {
   payment_waiting: 'Un paiement de cette facture attend encore d’être envoyé. Attends qu’il parte, puis modifie la facture.',
   amount_changed: 'Le montant a changé : regarde le nouveau total avant de répondre.',
   pay_unavailable: 'Le paiement par carte ne marche pas en ce moment : encaisse sur place.',
+  pay_processing: 'Un paiement pour ce dossier est déjà en traitement (un débit bancaire prend quelques jours). Il s’affichera dès que la banque l’aura confirmé.',
+  no_answer: 'Le service de textos n’a pas répondu à temps : le texto est peut-être parti. Regarde la conversation avant de le renvoyer.',
+  after: 'Page inconnue.',
   signed: 'Il n’y a plus rien à signer ici.',
   bad_amount: 'Écris le montant.',
 
