@@ -9,6 +9,7 @@ import { stamp } from '../../lib/dates';
 import { customer as customerRow, customerName } from '../../data/select';
 import { conversation, sendChat, errorMessage, type ChatMessage } from '../../data/api';
 import { net } from '../../data/sync';
+import { uuid } from '../../data/sender';
 import { Sheet, Button, IconButton, Textarea, Banner, Skeleton, toast } from '../../ui';
 import { Attachments } from './Attachments';
 import './conversation.css';
@@ -31,6 +32,10 @@ function Open(p: { customerId: string; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  // one operation id per typed text (R28), kept until it is sent or edited: a second tap after a lost answer (one bar of
+  // signal) carries the same id and the server sends the text once (a text for another customer never reuses it)
+  const op = useRef<{ text: string; to: string; id: string } | null>(null);
+  const edit = (v: string) => { setText(v); if (op.current && op.current.text !== v.trim()) op.current = null; };
   const end = useRef<HTMLDivElement>(null);
   // only the answer of the latest read is used (a slow one that comes back after a newer one is dropped), never after closing
   const asked = useRef(0);
@@ -61,10 +66,12 @@ function Open(p: { customerId: string; onClose: () => void }) {
     const m = text.trim();
     if (!m || busy) return;
     setBusy(true);
+    if (!op.current || op.current.text !== m || op.current.to !== p.customerId) op.current = { text: m, to: p.customerId, id: uuid() };
     try {
-      const r = await sendChat(p.customerId, m);
-      if (r.status === 'sent') { setText(''); toast(t('conversation.sent'), { kind: 'ok' }); await load(); }
-      else toast(r.error && r.code ? r.error : t(`conversation.status.${r.status === 'off' || r.status === 'no_phone' ? r.status : 'error'}`), { kind: 'bad' });
+      const r = await sendChat(p.customerId, m, op.current.id);
+      if (r.status === 'sent') { op.current = null; setText(''); toast(t('conversation.sent'), { kind: 'ok' }); await load(); }
+      // « pending »: the same op is still leaving (the server's words); the text and its op stay for a later tap
+      else toast(r.error && (r.code || r.status === 'pending') ? r.error : t(`conversation.status.${r.status === 'off' || r.status === 'no_phone' ? r.status : 'error'}`), { kind: 'bad' });
     } catch (e) { toast(errorMessage(e), { kind: 'bad' }); } finally { if (alive.current) setBusy(false); }
   };
   const smsOff = c?.sms_ok === false;
@@ -72,7 +79,7 @@ function Open(p: { customerId: string; onClose: () => void }) {
     <Sheet open onClose={p.onClose} title={t('conversation.title')} sub={customerName(c)} wide data-testid="conversation-sheet"
       footer={state === 'ok' && !smsOff ? (
         <div class="conv-reply">
-          <Textarea value={text} onValue={setText} rows={2} maxLength={1000} placeholder={t('conversation.placeholder')} aria-label={t('conversation.placeholder')} data-testid="conversation-input" />
+          <Textarea value={text} onValue={edit} rows={2} maxLength={1000} placeholder={t('conversation.placeholder')} aria-label={t('conversation.placeholder')} data-testid="conversation-input" />
           <Button variant="primary" icon={<Send />} onClick={() => send()} disabled={!text.trim() || busy} data-testid="conversation-send">{t('conversation.send')}</Button>
         </div>
       ) : <Button onClick={p.onClose}>{t('common.close')}</Button>}>
