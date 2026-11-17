@@ -31,6 +31,7 @@ vi.mock('../../../ui', async (orig) => {
 vi.mock('../../../shared/map/MapView', () => ({ MapView: () => null }));
 vi.mock('../../../shared/places/AddressField', () => ({ AddressField: () => null }));
 import { BookingSection } from './BookingSection';
+import { lastBack } from './WindowsPanel';
 import { drafts } from '../SectionFrame';
 import { replaceLocal } from '../../../data/store';
 import { access } from '../../../data/auth';
@@ -55,7 +56,7 @@ const click = async (el: Element | undefined) => { expect(el).toBeTruthy(); awai
 const type = async (id: string, v: string) => { const el = q(id)[0] as HTMLInputElement; await act(async () => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }); };
 const show = async () => { await act(async () => { render(null, box); render(<BookingSection />, box); }); await wait(); };
 
-beforeEach(() => { lang.value = 'fr'; calls.length = 0; asked.length = 0; sayYes = true; drafts.value = {}; toasts.value = []; lockAnswer = { ok: true, fixed: 2 }; switchAnswer = { ok: true, converted: 7 }; replaceLocal('jobs', []); replaceLocal('customers', []); });
+beforeEach(() => { lastBack.value = null; lang.value = 'fr'; calls.length = 0; asked.length = 0; sayYes = true; drafts.value = {}; toasts.value = []; lockAnswer = { ok: true, fixed: 2 }; switchAnswer = { ok: true, converted: 7 }; replaceLocal('jobs', []); replaceLocal('customers', []); });
 
 describe('Réglages → Réservations : plages d’arrivée', () => {
   it('off: the panel explains, the blocks editor is there, nothing about windows is written when saving', async () => {
@@ -113,6 +114,41 @@ describe('Réglages → Réservations : plages d’arrivée', () => {
     expect(sp(rows[1].textContent)).toContain('Pas de numéro');
     expect(rows[1].querySelectorAll('a').length).toBe(0);
     expect(sp(q('windows-kept')[0].textContent)).toContain('Demain soir');
+  });
+  it('the list of customers to call stays after leaving Réglages, until « Fermer »; another account on the phone never sees it (settings-team-r2-4)', async () => {
+    seed({ windows_on: true });
+    const tomorrow = addDays(today(), 1);
+    replaceLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'Roy', phone: '514 555-1234', lang: 'fr' }] as never);
+    replaceLocal('jobs', [{ id: 'j1', number: 41, customer_id: 'c1', day: tomorrow, block: 'pm', status: 'booked' }] as never);
+    switchAnswer = { ok: true, converted: 1, on: false, to_call: [{ job_id: 'j1', day: tomorrow, block: 'pm', win_start: 600, win_end: 840, customer_id: 'c1' }],
+      kept: [{ day: tomorrow, block: 'eve' }] };
+    await show();
+    await click(q('windows-switch')[0]);
+    expect(q('windows-back-row').length).toBe(1);
+    // the owner leaves Réglages, the server's answer is already in: Réservations opened again shows it again
+    seed({ windows_on: false });
+    await act(async () => { render(null, box); });
+    await show();
+    expect(q('windows-back').length).toBe(1);
+    expect(sp(q('windows-back-row')[0].textContent)).toContain('Julie Roy');
+    expect(q('windows-kept').length).toBe(1);
+    // another account signed in on this phone: nothing of it
+    access.value = { ...who(['owner']), id: 'u2' } as Access;
+    await show();
+    expect(q('windows-back').length + q('windows-kept').length).toBe(0);
+    access.value = who(['owner']);
+    await show();
+    expect(q('windows-back').length).toBe(1);
+    // « Fermer » takes the list away, also when Réservations opens again; the days kept stay until their own « Fermer »
+    await click(q('windows-back-close')[0]);
+    expect(q('windows-back').length).toBe(0);
+    expect(q('windows-kept').length).toBe(1);
+    await show();
+    expect(q('windows-back').length).toBe(0);
+    await click(q('windows-kept-close')[0]);
+    expect(q('windows-kept').length).toBe(0);
+    await show();
+    expect(q('windows-back').length + q('windows-kept').length).toBe(0);
   });
   it('an older server answers neither list: the screen is the one of before; turning on shows only the days kept', async () => {
     seed({ windows_on: true });
