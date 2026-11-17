@@ -134,6 +134,16 @@ const tapTwice = async (loc) => {
   await loc.and(loc.page().locator('.is-armed')).waitFor({ timeout: 5000 });
   await loc.click();
 };
+/** a question that needs a few words (ui/ask.tsx): the words typed, then its OK. The question resets its field once it
+    is drawn, so the words are typed again until the OK takes them (the person sees an empty box and types). */
+async function answerAsk(page, title, words) {
+  const box = page.locator('[role=dialog]').filter({ hasText: title }).locator('textarea');
+  const ok = page.getByTestId('ask-ok');
+  await box.waitFor({ timeout: 15000 });
+  const ready = await until(async () => { if ((await box.inputValue()) !== words) await box.fill(words); return ok.isEnabled(); }, Boolean, 10000);
+  assert.ok(ready, 'the question takes the words');
+  await ok.click();
+}
 /** the job's screen on a phone, signed in */
 async function jobPhone(email, job, kind = 'phone') {
   const r = await openW({ kind });
@@ -183,6 +193,6 @@ const freeReconBrake = () => h.sql(`delete from public.rate_limits where key = '
 
 module.exports = {
   PW, MOCK, STRIPE_KEY, T, run, openW, noErrors, dismissSheets, draw, until, jwtOf, callAs, rpcAs, blockNow,
-  q, int, today, atDoor, invoiceRow, paymentsOf, jobStatus, fr, typed, tapTwice, jobPhone, makeAndFinish, amountField, receivedField,
+  q, int, today, atDoor, invoiceRow, paymentsOf, jobStatus, fr, typed, tapTwice, answerAsk, jobPhone, makeAndFinish, amountField, receivedField,
   mockLog, clearMock, mockGet, stripeSession, payOnStripe, freeReconBrake, randomUUID
 };
