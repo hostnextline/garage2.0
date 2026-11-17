@@ -5,7 +5,7 @@ import { EMAIL_RE } from '../../lib/text';
 import { settings } from '../../data/select';
 import { saveSection } from './save';
 import { Panel, Field, Input, PhoneInput, attempt, toast } from '../../ui';
-import { useSectionDraft, SaveBar, Section } from './SectionFrame';
+import { useSectionDraft, useSectionAnchor, SaveBar, Section } from './SectionFrame';
 import { cleanText } from './draft';
 
 const FIELDS = ['name', 'legal_name', 'phone', 'email', 'website', 'address', 'tps_no', 'tvq_no', 'neq'] as const;
@@ -35,9 +35,10 @@ export function CompanySection() {
     if (await attempt(() => saveSection('company', next), { ok: t('settings.saved') })) reset();
   };
 
+  const anchor = useSectionAnchor();
   return (
     <Section testid="settings-company" bar={<SaveBar dirty={dirty} onSave={save} onReset={() => { reset(); setErr({}); }} />}>
-      <Panel title={t('settings.company.garage')}>
+      <Panel title={t('settings.company.garage')} data-tour={anchor}>
         <div class="grid-2">
           <Field label={t('settings.company.name')} help={t('settings.company.nameHelp')} error={err.name}>
             <Input value={d.name} onValue={field('name')} autoComplete="organization" invalid={!!err.name} data-testid="company-name" />

@@ -10,6 +10,7 @@ import { teamDo } from '../../../domain/team/teamApi';
 import { GhlPanel } from './GhlPanel';
 import { RingPanel, TextsPanel } from './IncomingPanels';
 import { StripePanel } from './StripePanel';
+import { useSectionAnchor } from '../SectionFrame';
 import { secretsOf, type Secrets } from './secrets';
 
 export function ConnectSection() {
@@ -31,9 +32,10 @@ export function ConnectSection() {
   /** a key was plugged or unplugged: this device learns at once whether texts and card payments now work (settings-team-13) */
   const changed = async () => { await Promise.all([load(), refreshAccess()]); };
   useEffect(() => { void load(); }, []);
+  const anchor = useSectionAnchor();
   return (
     <div class="settings-section stack-lg" data-testid="settings-connect">
-      <p class="muted" style={{ margin: 0 }}>{t('settings.connect.lead')}</p>
+      <p class="muted" style={{ margin: 0 }} data-tour={anchor}>{t('settings.connect.lead')}</p>
       {state === 'loading' && !s && <Panel><Skeleton h={18} lines={3} /><p class="small muted" style={{ margin: 'var(--sp-3) 0 0' }}>{t('settings.connect.loading')}</p></Panel>}
       {state === 'error' && <Banner kind="warn" title={t('settings.connect.error')} action={<Button size="sm" onClick={() => load()}>{t('common.retry')}</Button>}>{error}</Banner>}
       {s && <GhlPanel s={s} onChanged={changed} />}

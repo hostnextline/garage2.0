@@ -108,7 +108,13 @@ describe('Réglages: the guide’s anchor (R150)', () => {
     expect(box.querySelector('[data-testid="settings-nav"]')).toBeNull();
     const a = box.querySelectorAll('[data-tour="settings-company"]');
     expect(a.length).toBe(1);
-    expect(a[0].querySelector('[data-testid="settings-company"]')).toBeTruthy();
+    // the anchor is the section's first panel (« Le garage », with Nom), small and at the top: not the whole section,
+    // taller than a phone's screen, which the guide scrolled to its middle (settings-team-r2-3)
+    const section = q('settings-company')!;
+    expect(a[0]).toBe(section.firstElementChild);
+    expect(a[0].classList.contains('panel')).toBe(true);
+    expect(a[0].contains(q('company-name'))).toBe(true);
+    expect(a[0].contains(section)).toBe(false);
     await show(screen());
     expect(box.querySelectorAll('[data-tour="settings-company"]').length).toBe(1);
     expect(box.querySelector('[data-tour="settings-company"]')?.getAttribute('data-testid')).toBe('settings-nav-company');
@@ -117,6 +123,25 @@ describe('Réglages: the guide’s anchor (R150)', () => {
     const b = box.querySelectorAll('[data-tour="settings-company"]');
     expect(b.length).toBe(1);
     expect(b[0].getAttribute('data-testid')).toBe('settings-nav-company');
+  });
+  it('on a phone, every section of the guide puts its anchor on its first block only (settings-team-r2-3)', async () => {
+    wide.value = false;
+    for (const [key, tour] of [['services', 'settings-services'], ['texts', 'settings-texts'], ['look', 'settings-look']] as const) {
+      await show(screen(key));
+      const a = box.querySelectorAll(`[data-tour="${tour}"]`);
+      expect(a.length).toBe(1);
+      expect(a[0]).toBe(q(`settings-${key}`)!.firstElementChild);
+    }
+    // the settings row not here yet: the placeholder's panel holds it meanwhile
+    replaceLocal('settings', []);
+    await show(screen('company'));
+    const w = box.querySelectorAll('[data-tour="settings-company"]');
+    expect(w.length).toBe(1);
+    expect(w[0]).toBe(q('settings-company')!.firstElementChild);
+    // a section without a guide's anchor carries none
+    seed();
+    await show(screen('billing'));
+    expect(box.querySelectorAll('[data-tour]').length).toBe(0);
   });
 });
 

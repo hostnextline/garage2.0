@@ -9,7 +9,7 @@ import { wide } from '../../platform/media';
 import { t } from '../../lib/i18n';
 import { isOwner } from '../../data/auth';
 import { Page, Panel } from '../../ui';
-import { hasDraft, settingsHere, SectionWait } from './SectionFrame';
+import { hasDraft, settingsHere, SectionWait, SectionAnchor } from './SectionFrame';
 import { CompanySection, companySaved } from './CompanySection';
 import { BillingSection, billingSaved } from './BillingSection';
 import { ServicesSection } from './services/ServicesSection';
@@ -88,8 +88,9 @@ export default function SettingsScreen({ params }: ScreenProps) {
   if (!isWide) {
     return (
       <Page title={t(`settings.sections.${current!.key}.title`)} sub={t(`settings.sections.${current!.key}.sub`)} back="/settings" data-testid="settings-screen">
-        {/* the menu is not drawn here: the section itself carries the guide's anchor, so « Montre-moi » points at it (R150) */}
-        {current!.tour ? <div data-tour={current!.tour} style={{ minWidth: 0 }}>{body}</div> : body}
+        {/* the menu is not drawn here: the section's first block carries the guide's anchor, so « Montre-moi » points at
+            the top of the section, not at the whole of it (R150, settings-team-r2-3) */}
+        <SectionAnchor.Provider value={current!.tour}>{body}</SectionAnchor.Provider>
       </Page>
     );
   }

@@ -5,7 +5,7 @@ import { t, lang } from '../../lib/i18n';
 import { settings, windowsOn } from '../../data/select';
 import { saveSection } from './save';
 import { Panel, Button, attempt } from '../../ui';
-import { useSectionDraft, SaveBar, Section } from './SectionFrame';
+import { useSectionDraft, useSectionAnchor, SaveBar, Section } from './SectionFrame';
 import { shownKinds, flatText, SWITCH_OF, type MsgKind } from './messages';
 import { viewOf, patchOf, switchOn, flipSwitch, textOf, type TextsView } from './textsModel';
 import { TextEditor } from './TextEditor';
@@ -25,9 +25,10 @@ export function TextsSection() {
     if (await attempt(() => saveSection('messages', patchOf(changes, settings.value.messages)), { ok: t('settings.saved') })) reset();
   };
 
+  const anchor = useSectionAnchor();
   return (
     <Section testid="settings-texts" bar={<SaveBar dirty={dirty} onSave={save} onReset={reset} />}>
-      <p class="muted" style={{ margin: 0 }}>{t('settings.texts.lead')}</p>
+      <p class="muted" style={{ margin: 0 }} data-tour={anchor}>{t('settings.texts.lead')}</p>
       <Panel flush class="settings-texts">
         <div class="settings-msg-cols" aria-hidden="true">
           <span class="grow small muted">{t('settings.texts.colText')}</span>
