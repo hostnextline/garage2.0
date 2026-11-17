@@ -165,6 +165,21 @@ describe('Réserver en ligne, when something goes wrong', () => {
     expect(sp(box.textContent)).not.toContain('Aucun autre moment libre');
     expect(q('book-more')).toHaveLength(1);
   });
+  it('« Voir d’autres dates » that finds nothing in the weeks it looked at says so, instead of nothing (client-r7)', async () => {
+    answer = (a, b) => {
+      if (a === 'info') return info(false);
+      if (a === 'slots') return { ok: true, from: b.from ?? null, days: 14, slots: b.from ? [] : [{ day: D(2), block: 'pm', near: true }] };
+      return {};
+    };
+    await toSlots();
+    expect(q('book-none-new')).toHaveLength(0);
+    await click(q('book-more')[0]);
+    await wait();
+    expect(calls.filter((c) => c.action === 'slots')).toHaveLength(5);         // the first page, then 4 empty fortnights
+    expect(sp(q('book-none-new')[0]?.textContent)).toBe('Aucun moment libre dans ces jours-là.');
+    expect(q('book-slot')).toHaveLength(1);
+    expect(q('book-more')).toHaveLength(1);                                     // the horizon is still ahead
+  });
   it('an answer without the customer’s link is not « C’est réservé » (client-page-17)', async () => {
     answer = (a, b) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] }
       : { ok: true, link: null, day: b.day, block: b.block, text: 'skipped' };
