@@ -1048,6 +1048,34 @@ test('recon: a few thousand rows are checked in well under a second', () => tx(a
   assert.equal(await h.val(`select count(*)::int from public.ops_recon_findings where state <> 'closed' and check_id like 'M7.%'`), 0, 'each purchase found its expense');
 }));
 
+test('recon M4 (round 2): 200 payments on nothing among 5000 activity rows — the « why » is read once, not once per payment', () => tx(async (h) => {
+  const g = await garage(h);
+  await bulk(h, g);
+  // the first run on live lists every old payment on nothing (or on a closed / deleted job); payment_add noted why for each
+  await raw(h, `insert into public.payments (id, amount_cents, method, paid_at) select gen_random_uuid(), 1000 + n, 'cash', now() - make_interval(days => n) from generate_series(1, 200) n`);
+  await raw(h, `insert into public.activity (entity, entity_id, action, data, at)
+    select 'payment', p.id, 'payment_unmatched', jsonb_build_object('payment', p.id, 'why', 'missing'), now() - interval '1 day' from public.payments p where p.invoice_id is null and p.job_id is null`);
+  await raw(h, `insert into public.activity (entity, entity_id, action, data, at)
+    select 'job', g.id, 'job_step', jsonb_build_object('step', 'arrive', 'n', n), now() - make_interval(mins => n)
+    from generate_series(1, 5000 - (select count(*)::int from public.activity)) n, lateral (select id from public.jobs limit 1) g`);
+  assert.ok(await h.val(`select count(*)::int from public.activity`) >= 5000);
+  await run(h);
+  // how many times the run reads the activity table (this transaction's own count): a few, never once per payment
+  const scans = () => h.val(`select pg_stat_get_xact_numscans('public.activity'::regclass)::int`);
+  const s0 = await scans();
+  const t0 = Date.now();
+  const r = await run(h);
+  const ms = Date.now() - t0;
+  const reads = (await scans()) - s0;
+  console.log(`recon_run, 200 orphans and 5000 activity rows: ${ms} ms, ${reads} reads of activity (by check: ${JSON.stringify(r.counts.checks_ms)})`);
+  assert.ok(reads < 20, `the run read the activity table ${reads} times (once per payment on nothing before round 2)`);
+  const why = await h.q(`select data->>'why' as why from public.ops_recon_findings where check_id = 'M4.orphan' and state <> 'closed'`);
+  assert.equal(why.length, 200);
+  assert.ok(why.every((x) => x.why === 'missing'), 'each payment on nothing carries why payment_add left it there');
+  assert.ok(r.counts.checks_ms.M4 < 100, `M4 took ${r.counts.checks_ms.M4} ms (65 to 212 ms when each payment read the whole activity table)`);
+  assert.ok(ms < 1000, `recon_run took ${ms} ms`);
+}));
+
 test('recon: tables whose statistics are stale (the planner believes them nearly empty) still run in well under a second', () => tx(async (h) => {
   const g = await garage(h);
   await bulk(h, g);

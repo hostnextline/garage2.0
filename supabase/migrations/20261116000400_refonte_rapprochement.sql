@@ -202,7 +202,8 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- why a card payment is not where it was meant to go (activity « payment_unmatched », written by payment_add): void,
--- deleted, missing, coffre, job_closed, no_job; null when nothing was noted
+-- deleted, missing, coffre, job_closed, no_job; null when nothing was noted. (One payment at a time: M4 reads the notes of
+-- every payment at once, in its own « why » list.)
 create or replace function public.recon_unmatched_why(p_payment uuid) returns text
 language sql stable security definer set search_path = public as $$
   select a.data->>'why' from public.activity a where a.action = 'payment_unmatched' and a.data->>'payment' = p_payment::text order by a.at desc limit 1
@@ -434,7 +435,12 @@ begin
     with fin as (select v.job_id, v.id, v.number from public.invoices v where v.deleted_at is null and v.status in ('issued', 'paid') and v.job_id is not null),
     p as (select p.*, j.number as job_no, j.status as job_status, j.deleted_at as job_gone, j.coffre_id, v.job_id as inv_job, v.number as inv_no
           from public.payments p left join public.jobs j on j.id = p.job_id left join public.invoices v on v.id = p.invoice_id
-          where p.deleted_at is null)
+          where p.deleted_at is null),
+    -- why payment_add left a card payment where it is (« payment_unmatched »), the newest note per payment: read ONCE for
+    -- the whole check (a call per payment read the whole activity table each time: payments × activity on the first run)
+    why as (select distinct on (a.data->>'payment') a.data->>'payment' as payment, a.data->>'why' as why
+            from public.activity a where a.action = 'payment_unmatched' and a.data ? 'payment'
+            order by a.data->>'payment', a.at desc, a.id desc)
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M4.orphan' c, 'bad' s, 'payments' t, p.id e, null::text k,
              case when p.invoice_id is null and p.job_id is null
@@ -447,8 +453,9 @@ begin
                               public.recon_money_en(p.amount_cents), public.recon_method_word(p.method, 'en'), to_char(p.paid_at at time zone 'America/Toronto', 'YYYY-MM-DD'))
                   else format('A payment of %s is on invoice %s, which belongs to another job (job %s): put it on the right invoice.',
                               public.recon_money_en(p.amount_cents), public.recon_inv_no(p.inv_no, 'en'), coalesce(p.job_no::text, '?')) end en,
-             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'invoice_id', p.invoice_id, 'job_id', p.job_id, 'why', public.recon_unmatched_why(p.id)) d
-      from p where (p.invoice_id is null and p.job_id is null) or (p.invoice_id is not null and p.job_id is not null and p.inv_job is distinct from p.job_id)
+             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'invoice_id', p.invoice_id, 'job_id', p.job_id, 'why', w.why) d
+      from p left join why w on w.payment = p.id::text
+      where (p.invoice_id is null and p.job_id is null) or (p.invoice_id is not null and p.job_id is not null and p.inv_job is distinct from p.job_id)
       union all
       select 'M4.card', 'bad', 'payments', p.id, null,
              format('Un paiement « carte en ligne » de %s n’a pas sa session Stripe : vérifie dans Stripe que la carte a vraiment été payée.', public.recon_money_fr(p.amount_cents)),
@@ -471,8 +478,9 @@ begin
              format('A payment of %s is waiting on job %s, which is %s, with no finished invoice: make the invoice, or give the money back.',
                     public.recon_money_en(p.amount_cents), p.job_no, case when p.job_gone is not null then 'deleted' else public.recon_status_word(p.job_status, 'en') end),
              jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'job_id', p.job_id, 'job_status', p.job_status, 'job_deleted', p.job_gone is not null,
-                                'why', public.recon_unmatched_why(p.id))
-      from p where p.invoice_id is null and p.job_id is not null and p.coffre_id is null
+                                'why', w.why)
+      from p left join why w on w.payment = p.id::text
+      where p.invoice_id is null and p.job_id is not null and p.coffre_id is null
         and (p.job_status in ('done', 'cancelled', 'no_show') or p.job_gone is not null)
         and not exists (select 1 from fin where fin.job_id = p.job_id)
       union all
