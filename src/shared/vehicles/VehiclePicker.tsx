@@ -24,7 +24,9 @@ export function VehiclePicker(p: VehiclePickerProps) {
   useEffect(() => {
     if (p.autoPick === false || !p.customerId || autoDone.current === p.customerId) return;
     if (cars.length) autoDone.current = p.customerId;
-    if (!p.value && cars.length === 1) p.onPick(cars[0].id);
+    // a car of another customer still in the value (the customer was changed) is not a choice for this one
+    const mine = !!p.value && cars.some((v) => v.id === p.value);
+    if (!mine && cars.length === 1) p.onPick(cars[0].id);
   }, [p.customerId, cars.length]);
 
   if (!p.customerId) return <p class="muted small customers-vpicker-none" data-testid="vehicle-picker">{t('vehicles.picker.noCustomer')}</p>;
