@@ -155,7 +155,43 @@ step('En plusieurs fois: Marc pays 100 $ cash, 150 $ by debit, the rest by credi
 });
 
 /* ---------- (3) an over-payment ---------- */
-step('Trop payé: a zero too many is refused in words before anything is sent; two phones on Sophie’s invoice: Saleh, without signal, takes it all in cash while the office records her Interac deposit; back in signal the server refuses Saleh’s payment in words, nothing recorded twice', async () => {
+/** Two phones on one invoice: the office has it open on its computer; Saleh's phone loses the signal and he takes the
+    whole invoice in cash (kept on the phone); the office records the 100 $ the customer had sent by Interac; the signal
+    comes back, Saleh's payment goes and the server refuses it. Ends with « Synchronisation » open on the refusal.
+    Returns the office's page. */
+async function refusedAtTheDoor(a, m) {
+  // the office has the same invoice open on its computer
+  const o = await jobPhone(who.nadia.email, a.job, 'desktop');
+  await o.page.getByTestId('invoice-pay').waitFor({ timeout: 15000 });
+  // Saleh's phone loses the signal; Sophie hands him the whole amount in cash: kept on the phone
+  await m.ctx.setOffline(true);
+  await m.page.getByTestId('step-pay').click();
+  await m.page.getByTestId('pay-sheet').waitFor();
+  await m.page.getByTestId('pay-cash').click();
+  assert.equal(await amountField(m.page).inputValue(), typed(invoiceRow(a.job).total));
+  await m.page.getByTestId('pay-confirm').click();
+  await m.page.getByTestId('pay-sheet').waitFor({ state: 'detached', timeout: 15000 });
+  await m.page.getByTestId('sync-chip').waitFor();
+  assert.deepEqual(paymentsOf(a.job), [], 'nothing reached the server without signal');
+  // meanwhile the office records the 100 $ she had sent by Interac this morning
+  await o.page.getByTestId('invoice-pay').click();
+  await o.page.getByTestId('pay-sheet').waitFor();
+  await o.page.getByTestId('pay-interac').click();
+  await amountField(o.page).fill('100,00');
+  await o.page.getByTestId('pay-ref').fill('INT-4471');
+  await o.page.getByTestId('pay-confirm').click();
+  await o.page.getByTestId('pay-sheet').waitFor({ state: 'detached', timeout: 15000 });
+  assert.deepEqual(await until(() => paymentsOf(a.job), (v) => v.length === 1, 15000), [['interac', 10000, true, who.nadia.id]]);
+  // the signal comes back: Saleh's payment goes, and the server refuses it, in words he can act on
+  await m.ctx.setOffline(false);
+  await m.page.locator('[data-testid="sync-chip"].has-failed').waitFor({ timeout: 30000 });
+  await m.page.getByTestId('sync-chip').click();
+  await m.page.getByTestId('sync-sheet').waitFor();
+  await m.page.getByTestId('sync-sheet').getByText(new RegExp(`Il reste ${fr(invoiceRow(a.job).total - 10000).source} à payer sur cette facture\\s:\\sle montant écrit est trop haut\\.`)).waitFor({ timeout: 15000 });
+  return o;
+}
+
+step('Trop payé: a zero too many is refused in words before anything is sent; two phones on Sophie’s invoice: Saleh, without signal, takes it all in cash while the office records her Interac deposit; back in signal the server refuses Saleh’s payment in words, nothing recorded twice; he keeps only what is left', async () => {
   const a = atDoor({ first: 'Sophie', last: 'Martin', phone: '514 555-0163', items: [{ description: 'Alternateur', unit_cents: 30000 }] });
   const m = await jobPhone(who.saleh.email, a.job);
   const inv = await makeAndFinish(m.page, a.job);
@@ -172,52 +208,47 @@ step('Trop payé: a zero too many is refused in words before anything is sent; t
   assert.deepEqual(paymentsOf(a.job), [], 'nothing recorded');
   await dismissSheets(m.page);
 
-  // the office has the same invoice open on its computer
-  const o = await jobPhone(who.nadia.email, a.job, 'desktop');
-  await o.page.getByTestId('invoice-pay').waitFor({ timeout: 15000 });
-  // Saleh's phone loses the signal; Sophie hands him the whole amount in cash: kept on the phone
-  await m.ctx.setOffline(true);
-  await m.page.getByTestId('step-pay').click();
-  await m.page.getByTestId('pay-sheet').waitFor();
-  await m.page.getByTestId('pay-cash').click();
-  assert.equal(await amountField(m.page).inputValue(), '344,93');
-  await m.page.getByTestId('pay-confirm').click();
-  await m.page.getByTestId('pay-sheet').waitFor({ state: 'detached', timeout: 15000 });
-  await m.page.getByTestId('sync-chip').waitFor();
-  assert.deepEqual(paymentsOf(a.job), [], 'nothing reached the server without signal');
-  // meanwhile the office records the 100 $ she had sent by Interac this morning
-  await o.page.getByTestId('invoice-pay').click();
-  await o.page.getByTestId('pay-sheet').waitFor();
-  await o.page.getByTestId('pay-interac').click();
-  await amountField(o.page).fill('100,00');
-  await o.page.getByTestId('pay-ref').fill('INT-4471');
-  await o.page.getByTestId('pay-confirm').click();
-  await o.page.getByTestId('pay-sheet').waitFor({ state: 'detached', timeout: 15000 });
-  assert.deepEqual(await until(() => paymentsOf(a.job), (v) => v.length === 1, 15000), [['interac', 10000, true, who.nadia.id]]);
-  // the signal comes back: Saleh's 344,93 $ goes, and the server refuses it, in words he can act on
-  await m.ctx.setOffline(false);
-  await m.page.locator('[data-testid="sync-chip"].has-failed').waitFor({ timeout: 30000 });
-  await m.page.getByTestId('sync-chip').click();
-  await m.page.getByTestId('sync-sheet').waitFor();
-  await m.page.getByTestId('sync-sheet').getByText(/Il reste 244,93\s\$ à payer sur cette facture\s:\sle montant écrit est trop haut\./).waitFor({ timeout: 15000 });
+  const o = await refusedAtTheDoor(a, m);
   await h.shot(m.page, 'argent-3-refused');
   assert.deepEqual(paymentsOf(a.job), [['interac', 10000, true, who.nadia.id]], 'only the office’s payment: nothing counted twice');
   const mid = invoiceRow(a.job);
   assert.deepEqual([mid.status, mid.paid, mid.total], ['issued', 10000, 34493]);
   await dismissSheets(m.page);
-  // Saleh gives back the cash he took too much and takes what is left by debit: the sheet offers 244,93 $
+  // Saleh gives Sophie back the 100 $ she had already sent and keeps the rest in cash: the sheet offers 244,93 $
   await m.page.getByTestId('step-pay').filter({ hasText: /244,93\s\$ à payer/ }).waitFor({ timeout: 60000 });
   await m.page.getByTestId('step-pay').click();
   await m.page.getByTestId('pay-sheet').waitFor();
   assert.match(await m.page.getByTestId('pay-balance').innerText(), fr(24493));
-  await m.page.getByTestId('pay-debit').click();
+  await m.page.getByTestId('pay-cash').click();
   await m.page.getByTestId('pay-confirm').click();
   await m.page.getByTestId('pay-sheet').waitFor({ state: 'detached', timeout: 15000 });
-  assert.deepEqual(await until(() => paymentsOf(a.job), (v) => v.length === 2, 15000), [['interac', 10000, true, who.nadia.id], ['debit', 24493, true, who.saleh.id]]);
+  assert.deepEqual(await until(() => paymentsOf(a.job), (v) => v.length === 2, 15000), [['interac', 10000, true, who.nadia.id], ['cash', 24493, true, who.saleh.id]]);
   const done = invoiceRow(a.job);
   assert.deepEqual([done.status, done.paid], ['paid', 34493]);
   await m.page.getByTestId('step-finish').click({ timeout: 15000 });
   assert.equal(await until(() => jobStatus(a.job), (v) => v === 'done', 15000), 'done');
+  noErrors(m.page); noErrors(o.page);
+  await m.ctx.close(); await o.ctx.close();
+});
+
+// BUG argent-refusal-cut: on a phone, « Synchronisation » cuts the reason of a refused change to one line with « … »
+// (src/app/sync.tsx, the RowItem `sub` of each refused change): Saleh reads « Il reste 244,93 $ à p… » and never the end of
+// the sentence that says what to do. Un-skip when the reason wraps.
+step.skip('Refusé, lisible: on a phone, the reason a payment was refused is read in full in « Synchronisation »', 'BUG argent-refusal-cut: the reason is cut to one line with « … » on a phone (src/app/sync.tsx)', async () => {
+  const a = atDoor({ first: 'Nathalie', last: 'Roy', phone: '514 555-0169', items: [{ description: 'Démarreur', unit_cents: 30000 }] });
+  const m = await jobPhone(who.saleh.email, a.job);
+  await makeAndFinish(m.page, a.job);
+  const o = await refusedAtTheDoor(a, m);
+  const reason = m.page.getByTestId('sync-sheet').getByText(/le montant écrit est trop haut\./);
+  const box = await reason.evaluate((el) => ({ cut: el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1, text: el.textContent }));
+  await h.shot(m.page, 'argent-3b-reason');
+  assert.equal(box.cut, false, `the whole reason is on the screen: « ${box.text} »`);
+  // the rest in cash, the job ends (the books of the day stay whole)
+  await dismissSheets(m.page);
+  const jwt = await jwtOf(who.saleh.email);
+  const inv = invoiceRow(a.job);
+  await rpcAs(jwt, 'payment_add', { p_op: randomUUID(), p_invoice: inv.id, p_amount_cents: inv.total - inv.paid, p_method: 'cash', p_reference: null, p_job: a.job, p_session: null });
+  await rpcAs(jwt, 'job_step', { p_op: randomUUID(), p_job: a.job, p_action: 'finish', p_data: {} });
   noErrors(m.page); noErrors(o.page);
   await m.ctx.close(); await o.ctx.close();
 });
