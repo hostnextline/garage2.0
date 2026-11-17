@@ -8,6 +8,7 @@
 //     GoHighLevel sends a text it received whatever happens to the connection, so cutting it would only make the team
 //     read « not sent » for a text that went (sent again: the customer gets two). Its answer is awaited until `until`;
 //     one that has not come by then is said in words (« peut-être parti »).
+// A failure is always an answer (status 'error'), never a throw: the caller has often written its own rows already.
 import { env, Fail } from './http.ts';
 import { secret } from './db.ts';
 import { filesOf } from './files.ts';
@@ -31,6 +32,7 @@ const endOf = (t?: SendTime) => (t && Number.isFinite(t.until) ? Math.min(Number
 const SLOW = 'Le service de textos ne répond pas.';
 const NOT_SENT = 'Le service de textos ne répond pas : le texto n’est pas parti. Réessayez dans un instant.';
 const MAYBE = 'Le service de textos n’a pas répondu à temps : le texto est peut-être parti. Regardez la conversation avant de le renvoyer.';
+const NO_SETTINGS = 'Les réglages des textos n’ont pas pu être lus. Réessayez dans un instant.';
 /** one request to GoHighLevel. A read or a contact (`keep` false): stopped for real (the connection closed) past CALL_MS or
     `until`. A text (`keep` true): never stopped once started; past `until` its answer is no longer awaited (no_answer). */
 async function request(path: string, init: RequestInit, until: number, keep = false): Promise<{ status: number; ok: boolean; text: string }> {
@@ -64,6 +66,15 @@ export async function ghlReady(): Promise<{ token: string; location: string } | 
   const token = await secret('ghl_token'), location = await secret('ghl_location');
   return token && location ? { token, location } : null;
 }
+/** the settings of the texts, read inside the send: the database not answering is an answer (status 'error', never
+    « off », never a throw after the caller's own writes) */
+async function ready(): Promise<{ token: string; location: string } | null> {
+  try { return await ghlReady(); }
+  catch (e) {
+    console.error('ghl: the settings of the texts could not be read', String((e as { message?: string })?.message || e).slice(0, 200));
+    throw new Error(NO_SETTINGS);
+  }
+}
 const failed = (e: unknown, words?: string) => ({ status: 'error' as const, error: (words || String((e as Error)?.message || e)).slice(0, 300) });
 async function contactId(cfg: { token: string; location: string }, p: Person, tag: string, until: number): Promise<string> {
   const up = await call('/contacts/upsert', '2021-07-28', cfg.token, {
@@ -78,11 +89,12 @@ async function contactId(cfg: { token: string; location: string }, p: Person, ta
     had); nothing is sent to the customer */
 export async function syncContact(p: Person, tag = 'garage-mobile', time?: SendTime): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; id?: string; error?: string }> {
   const until = endOf(time);
-  const cfg = await ghlReady();
-  if (!cfg) return { status: 'off' };
-  if (!e164(p.phone)) return { status: 'no_phone' };
-  try { return { status: 'ok', id: await contactId(cfg, p, tag, until) }; }
-  catch (e) { return failed(e); }
+  try {
+    const cfg = await ready();
+    if (!cfg) return { status: 'off' };
+    if (!e164(p.phone)) return { status: 'no_phone' };
+    return { status: 'ok', id: await contactId(cfg, p, tag, until) };
+  } catch (e) { return failed(e); }
 }
 /** one text or email: the contact first (it leaves the text its SEND_MS), then the message, started only with SEND_MS left
     and never cut once started */
@@ -96,19 +108,21 @@ async function deliver(cfg: { token: string; location: string }, p: Person, tag:
 }
 export async function sendSms(p: Person, message: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string }> {
   const until = endOf(time);
-  const cfg = await ghlReady();
-  if (!cfg) return { status: 'off' };
-  if (!e164(p.phone)) return { status: 'no_phone' };
-  try { return await deliver(cfg, p, tag, { type: 'SMS', message }, until); }
-  catch (e) { return failed(e); }
+  try {
+    const cfg = await ready();
+    if (!cfg) return { status: 'off' };
+    if (!e164(p.phone)) return { status: 'no_phone' };
+    return await deliver(cfg, p, tag, { type: 'SMS', message }, until);
+  } catch (e) { return failed(e); }
 }
 export async function sendEmail(p: Person, subject: string, html: string, text: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string }> {
   const until = endOf(time);
-  const cfg = await ghlReady();
-  if (!cfg) return { status: 'off' };
-  if (!p.email) return { status: 'no_email' };
-  try { return await deliver(cfg, p, tag, { type: 'Email', subject, html, message: text }, until); }
-  catch (e) { return failed(e); }
+  try {
+    const cfg = await ready();
+    if (!cfg) return { status: 'off' };
+    if (!p.email) return { status: 'no_email' };
+    return await deliver(cfg, p, tag, { type: 'Email', subject, html, message: text }, until);
+  } catch (e) { return failed(e); }
 }
 
 /* ---------- reading a customer's conversation (the texts both ways) ---------- */
@@ -124,11 +138,11 @@ export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out';
 /** the last messages with this person (oldest first): none when GoHighLevel does not know the number yet */
 export async function readConversation(p: Person, limit = 60, time?: SendTime): Promise<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }> {
   const until = endOf(time);
-  const cfg = await ghlReady();
-  if (!cfg) return { status: 'off' };
-  const phone = e164(p.phone);
-  if (!phone) return { status: 'no_phone' };
   try {
+    const cfg = await ready();
+    if (!cfg) return { status: 'off' };
+    const phone = e164(p.phone);
+    if (!phone) return { status: 'no_phone' };
     const q = new URLSearchParams({ locationId: cfg.location, number: phone });
     const found = await get(`/contacts/search/duplicate?${q}`, '2021-07-28', cfg.token, until);
     const cid = found?.contact?.id;

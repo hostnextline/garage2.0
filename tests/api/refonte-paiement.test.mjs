@@ -875,6 +875,30 @@ test('R208 (fn-paiement-r2-1): a conversation text (the app gives up at 20 s) wi
   assert.equal(ok.status, 'sent', JSON.stringify(ok));
 });
 
+test('fn-paiement-r2-3: the settings of the texts cannot be read at « Je pars » (the trip already written): 200 with sms « error », the trip kept, noted « failed »; the conversation answers « error » too, never a 500', async () => {
+  const { job, cust } = await newJob({ status: 'en_route' });
+  await clearLog();
+  await q(`revoke select on public.secrets from service_role`);
+  let r, sent, read;
+  try {
+    r = await fn('enroute', { action: 'start', job_id: job, base: BASE }, ownerJwt);
+    sent = await fn('conversation', { action: 'send', customer_id: cust, message: 'Bonjour, on arrive.' }, ownerJwt);
+    read = await fn('conversation', { action: 'get', customer_id: cust }, ownerJwt);
+  } finally { await q(`grant select on public.secrets to service_role`); }
+  assert.deepEqual([r.status, r.ok, r.sms], [200, true, 'error'], JSON.stringify(r).slice(0, 300));
+  assert.match(r.error, /réglages des textos/, 'said in words: ' + r.error);
+  assert.ok(r.link, 'the customer’s map link is given back (to send by hand)');
+  const trips = await q(`select sms_status from public.trips where job_id = $1 and status = 'active'`, [job]);
+  assert.deepEqual(trips.map((t) => t.sms_status), ['error'], 'the trip started is kept');
+  assert.equal((await q(`select status from public.messages where job_id = $1 and kind = 'en_route'`, [job]))[0]?.status, 'failed', 'noted « not sent », never « off »');
+  // (the answer's own « status » is the send's: a 500 would say 500 here)
+  assert.deepEqual([sent.status, sent.ok, sent.code], ['error', false, undefined], JSON.stringify(sent));
+  assert.match(sent.error, /réglages des textos/);
+  assert.equal((await q(`select status from public.messages where customer_id = $1 and kind = 'chat'`, [cust]))[0]?.status, 'failed');
+  assert.deepEqual([read.status, read.ok, read.code], ['error', true, undefined], 'the conversation says it could not be read: ' + JSON.stringify(read));
+  assert.equal((await mockLog()).filter((m) => m.svc === 'ghl').length, 0, 'nothing reached GoHighLevel');
+});
+
 test('compat: on a database where the new migrations are not applied yet (no op_begin), the customer still gets a card page', async () => {
   const { job } = await newJob();
   const t = await linkFor(job);
