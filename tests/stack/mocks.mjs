@@ -6,7 +6,8 @@
 // GET /control?ghl_ms=N makes every GoHighLevel call answer after N ms (0: at once); a call the function gave up on (it closed
 // the connection) is logged with `aborted: true` and does nothing.
 // Stripe, as the real one behaves: a card page (Checkout session) is open, complete or expired (POST …/expire), and an
-// expired one cannot be paid; the same Idempotency-Key with other parameters is refused (400 idempotency_error);
+// expired one cannot be paid; the same Idempotency-Key gives back the answer saved the first time (the page as it was
+// then), and with other parameters is refused (400 idempotency_error);
 // « charge.refunded » carries the charge WITHOUT the list of its refunds (they are read with GET /v1/refunds).
 // Each secret key is its own Stripe account: a card page is seen (listed, read, expired) only with the key that made it, and
 // it carries `created` (seconds); the list takes created[gte|gt|lte|lt] like Stripe. So what one test file leaves here is
@@ -148,7 +149,9 @@ http.createServer(async (req, res) => {
       if (idem && state.idem.has(idem)) {
         const was = state.idem.get(idem);
         if (was.raw !== raw) return send(res, 400, { error: { type: 'idempotency_error', message: 'Keys for idempotent requests can only be used with the same parameters they were first used with.' } });
-        return send(res, 200, was.session);
+        // the answer saved the first time (the page as it was then, even if it was closed or paid since), like Stripe
+        res.setHeader('idempotent-replayed', 'true');
+        return send(res, 200, JSON.parse(was.answer));
       }
       const id = 'cs_test_' + (++state.n);
       const md = {}; for (const [k, v] of Object.entries(f)) { const m = /^metadata\[(\w+)\]$/.exec(k); if (m && v !== '') md[m[1]] = v; }
@@ -157,7 +160,7 @@ http.createServer(async (req, res) => {
         expires_at: Number(f.expires_at) || Math.floor(Date.now() / 1000) + 86400, payment_intent: 'pi_' + id };
       Object.defineProperty(s, 'account', { value: account, enumerable: false });   // kept here, never in the answer
       state.sessions.set(id, s);
-      if (idem) state.idem.set(idem, { raw, session: s });
+      if (idem) state.idem.set(idem, { raw, answer: JSON.stringify(s) });
       return send(res, 200, s);
     }
     // the card pages of the account (GET /v1/checkout/sessions?payment_intent=…&created[gte]=…), newest first, as Stripe lists them

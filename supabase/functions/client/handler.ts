@@ -107,7 +107,8 @@ async function view(l: Row) {
     invoice: issued ? { number: `${prefix}${String(v!.number).padStart(pad, '0')}`, issued_at: v!.issued_at, due_on: v!.due_on, status: v!.status,
       lines: v!.lines, subtotal_cents: v!.subtotal_cents, tps_cents: v!.tps_cents, tvq_cents: v!.tvq_cents, total_cents: v!.total_cents, paid_cents: v!.paid_cents,
       notes: v!.notes } : null,
-    pay: { available: stripeOn && balance >= 50 && (issued ? !['cancelled', 'no_show'].includes(j.status) : open),
+    // a job « Payé par le Coffre » (the garage's own people) is never paid by card
+    pay: { available: stripeOn && balance >= 50 && !j.coffre_id && (issued ? !['cancelled', 'no_show'].includes(j.status) : open),
       amount_cents: balance, kind: issued ? 'invoice' : 'prepay', pending: !!l.last_session && !!l.last_session_expires && Date.parse(l.last_session_expires) > Date.now() }
   };
 }
@@ -301,15 +302,24 @@ async function pay(l: Row, b: Row): Promise<Response> {
     let expires = (slice + 1) * SLICE_S + 3600;
     // (the language is in the key: the same link asking in the other language is another request, never a refusal)
     const idem = `pay-${l.id}-${amount}-${invoiceId.slice(0, 8)}-${slice}${lang === 'en' ? '-en' : ''}`;
-    let sess = await make(expires, idem);
+    // Stripe answers a key it already saw with the answer it gave THEN (a page « open » at the time), or refuses it when
+    // the words changed since (the appointment is now under way: another label): the page is asked as it is NOW
+    let sess: Row | null = null;
+    try { sess = await make(expires, idem); }
+    catch (e) { if (!(e instanceof StripeError && e.kind === 'idempotency_error')) throw e; }
+    if (sess?.id) {
+      try { sess = { ...sess, ...(await stripeCall(key, 'GET', sessPath(String(sess.id)))) }; }
+      catch { /* Stripe's answer to the making is kept */ }
+    }
     if (sess?.status !== 'open') {
       // that same request was answered earlier in the slice by a page since closed (or paid): a new page, its own key
       if (sess?.payment_status === 'paid') await applyCheckout(sess);
       expires = Math.floor(Date.now() / 1000) + 3600;
       sess = await make(expires, `${idem}-${crypto.randomUUID().slice(0, 8)}`);
     }
-    await remember(l.id, sess, amount, new Date((Number(sess.expires_at) > 0 ? Number(sess.expires_at) : expires) * 1000).toISOString());
-    return json({ ok: true, url: sess.url });
+    const made = sess as Row;
+    await remember(l.id, made, amount, new Date((Number(made.expires_at) > 0 ? Number(made.expires_at) : expires) * 1000).toISOString());
+    return json({ ok: true, url: made.url });
   } catch (e) { stripeDown(e); }
   finally { await freeClaim(claim).catch(() => undefined); }
 }

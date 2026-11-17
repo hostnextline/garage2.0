@@ -930,3 +930,51 @@ test('x-errors-19 (notify): « the mechanic is here » never texts an amount due
     await q(`update public.settings set messages = jsonb_set(messages, '{fr,arrived}', $1::jsonb) where id = 1`, [JSON.stringify(tpl)]);
   }
 });
+
+test('argent-serveur-02: the amount changes and changes back within ten minutes: « Payer » opens a page that can still be paid (Stripe gives back its first answer for the same key)', async () => {
+  const payable = async (url) => (await stripeSession(sessionOf(url))).status === 'open';
+  // the same words: Stripe gives back the answer it saved (« open » then), the page has been closed since
+  const { job, items } = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8000 }] });
+  const t = await linkFor(job);
+  const p1 = await fn('client', { action: 'pay', token: t, base: BASE });
+  const extra = (await q(`insert into public.job_items (job_id, description, unit_cents, sort) values ($1, 'Balais', 2500, 4) returning id`, [job]))[0].id;
+  const p2 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p2.url !== p1.url && !(await payable(p1.url)), 'the first page is closed');
+  await q(`update public.job_items set deleted_at = now() where id = $1`, [extra]);   // « no blades »: the first amount again
+  const p3 = await fn('client', { action: 'pay', token: t, base: BASE });
+  assert.ok(p3.ok && p3.url, JSON.stringify(p3));
+  assert.ok(await payable(p3.url), 'a page that can be paid: ' + JSON.stringify(await stripeSession(sessionOf(p3.url))));
+  assert.equal((await fetch(p3.url + '?quiet=1')).status, 200, 'the customer can pay it');
+  // other words since (the mechanic is there now: « Travaux du … »): Stripe refuses the same key, a new page is made
+  const b = await newJob({ items: [{ description: 'Vidange d’huile', unit_cents: 8100 }] });
+  const tb = await linkFor(b.job);
+  await fn('client', { action: 'pay', token: tb, base: BASE });
+  const xb = (await q(`insert into public.job_items (job_id, description, unit_cents, sort) values ($1, 'Balais', 2500, 4) returning id`, [b.job]))[0].id;
+  await fn('client', { action: 'pay', token: tb, base: BASE });
+  await q(`update public.job_items set deleted_at = now() where id = $1`, [xb]);
+  await q(`update public.jobs set status = 'on_site' where id = $1`, [b.job]);
+  const r = await fn('client', { action: 'pay', token: tb, base: BASE });
+  assert.ok(r.ok && r.url, 'not « pay_unavailable »: ' + JSON.stringify(r));
+  assert.ok(await payable(r.url));
+  void items;
+});
+
+test('argent-serveur-03: a job « Payé par le Coffre » while the mechanic is still there: no « Payer » by card on the customer’s page', async () => {
+  const { job } = await newJob({ items: [{ description: 'Freins', unit_cents: 15000 }] });
+  await q(`update public.jobs set status = 'on_site' where id = $1`, [job]);
+  const t = await linkFor(job);
+  assert.equal((await fn('client', { action: 'view', token: t })).pay.available, true, 'before the Coffre: payable');
+  await rpc('coffre_add', { p_op: randomUUID(), p_jobs: [job], p_amount: 0, p_note: 'Le frère du patron' }, ownerJwt);
+  const [{ coffre_id: box }] = await q(`select coffre_id from public.jobs where id = $1`, [job]);
+  try {
+    assert.ok(box, 'in the Coffre');
+    const v = await fn('client', { action: 'view', token: t });
+    assert.equal(v.pay.available, false, JSON.stringify(v.pay));
+    const p = await fn('client', { action: 'pay', token: t, base: BASE });
+    assert.deepEqual([p.ok, p.code], [false, 'nothing'], JSON.stringify(p));
+    assert.equal((await openPages(job)).length, 0, 'no card page made');
+  } finally {
+    await q(`update public.jobs set coffre_id = null where id = $1`, [job]);
+    await q(`delete from public.coffre where id = $1`, [box]);
+  }
+});
