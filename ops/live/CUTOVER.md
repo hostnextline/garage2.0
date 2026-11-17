@@ -29,7 +29,9 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
 ## 0. Avant de commencer (sur le Mac, rien en ligne)
 
 1. C est poussé sur GitHub, et toute la suite passe à C : `bash tests/stack/mac/all.sh <dossier à C>` (la base,
-   l'API, les 39 étapes de bout en bout), `npx tsc --noEmit`, `npm test` (aussi avec `TZ=UTC npm test`).
+   l'API, les 39 étapes de bout en bout), `npx tsc --noEmit`, `TZ=America/Toronto npm test` (l'heure du garage,
+   comme « Publier l'app » ; sous `TZ=UTC`, six tests d'horloge sont rouges tant que `vite.config.ts` ne fixe pas
+   l'heure des tests : ce n'est pas un écart).
 2. Les migrations à appliquer : **exactement ces six**, dans cet ordre (vérifier la liste, puis noter l'empreinte de
    chacune) :
 

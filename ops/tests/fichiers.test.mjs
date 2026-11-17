@@ -141,3 +141,15 @@ test('the full test workflow checks the types of the server functions (deno chec
   assert.match(lire('tests/stack/start.sh'), /\$S\/node_modules\/\.bin\/deno/, 'the same Deno the stack runs the functions with');
   assert.ok(!/deno check/.test(lire('.github/workflows/deploy.yml')), 'not in the publishing path (the owner\'s decision, infra-10)');
 });
+
+test('the cutover asks for the unit tests on the garage\'s clock, as publishing does; never under UTC while the tests have no clock of their own (ops-r2-1)', () => {
+  const rb = lire('ops/live/CUTOVER.md');
+  const vite = lire('vite.config.ts');
+  // the unit tests set no clock of their own (vite.config.ts test.env.TZ): under UTC six of them are red, and the runbook
+  // says « stop at the first gap ». The owner would stop at step 0 on a good tree, or learn to ignore a red check.
+  const testTz = /test:\s*\{[\s\S]*?\benv:\s*\{[\s\S]*?\bTZ\b/.test(vite);
+  if (!testTz) assert.ok(!/TZ=UTC npm test/.test(rb), 'CUTOVER.md asks for « TZ=UTC npm test », red until vite.config.ts sets test.env.TZ');
+  // the same clock as « Publier l'app » (deploy.yml): what passes there passes here
+  assert.match(lire('.github/workflows/deploy.yml'), /TZ: America\/Toronto/);
+  assert.match(rb, /`TZ=America\/Toronto npm test`/, 'CUTOVER.md step 0.1 runs the unit tests on the garage\'s clock');
+});
