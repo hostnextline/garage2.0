@@ -4,14 +4,14 @@
    re-plans them (another vehicle, or « À placer »). */
 import { useEffect, useState } from 'preact/hooks';
 import { Plus, Check as CheckIcon } from 'lucide-preact';
-import { t } from '../../lib/i18n';
-import { trucks, truck as truckRow, staffList, staffName, truckColor, settings, allJobs } from '../../data/select';
+import { t, lang } from '../../lib/i18n';
+import { trucks, truck as truckRow, staffList, staffName, truckColor, settings, allJobs, customer as customerRow } from '../../data/select';
 import { saveTruck } from '../../data/api';
 import { uuid, flush, pull } from '../../data/sync';
 import { today } from '../../lib/dates';
 import type { Truck } from '../../data/types';
 import { Panel, Rows, RowItem, Button, Sheet, Field, Input, Select, Switch, ask, attempt, run } from '../../ui';
-import { comingTouched } from './trucks';
+import { comingTouched, touchedWho } from './trucks';
 import { startWords } from '../../shared/places/TruckStartPanel';
 
 /** the 8 colours a truck can take (data, the same in every theme) */
@@ -70,7 +70,7 @@ function TruckSheet(p: { id: string | 'new' | null; onClose: () => void; onAdded
     const row: Partial<Truck> = { id, name: name.trim().slice(0, 60), color, driver_id: driver || null, plate: plate.trim().toUpperCase() || null, active, tire_machine: machine };
     if (isNew) row.sort = Math.max(0, ...trucks.value.map((x) => x.sort || 0)) + 1;
     const touched = cur ? comingTouched(allJobs.value, cur, { active, tire_machine: machine }, today()) : null;
-    if (touched && !(await ask({ title: t('hours.manage.askTitle', { n: touched.jobs.length }), text: t(touched.why === 'off' ? 'hours.manage.askOffText' : 'hours.manage.askMachineText'), ok: t('hours.manage.askOk'), danger: true }))) return;
+    if (touched && !(await ask({ title: t('hours.manage.askTitle', { n: touched.jobs.length }), text: `${t(touched.why === 'off' ? 'hours.manage.askOffText' : 'hours.manage.askMachineText')} ${t('hours.manage.askWho', { who: touchedWho(touched.jobs, (j) => customerRow(j.customer_id)?.first_name || customerRow(j.customer_id)?.company || '', lang.value, today()) })}`, ok: t('hours.manage.askOk'), danger: true }))) return;
     const ok = await attempt(() => saveTruck(row), { ok: isNew ? t('hours.manage.added') : t('hours.manage.saved') });
     if (!ok) return;
     p.onClose();
