@@ -414,6 +414,55 @@ describe('one sender per account (core-data-06, x-sync-07)', () => {
     await sleep(100);
     expect(srv.count((c) => c.table === 'rpc/payment_add')).toBe(1);
   });
+  /* « the queue changed » from another tab while this tab is keeping a change (two-tab reload drop): tab A must not
+     lose its own change from its queue. The device copy is shared (same uid, fake-indexeddb); the poke goes through
+     the real BroadcastChannel. */
+  type Gate = { wait: Promise<void>; open: () => void };
+  const gate = (): Gate => { let open!: () => void; const wait = new Promise<void>((r) => { open = r; }); return { wait, open }; };
+  const twoTabs = async () => {
+    const uid = nextUid();
+    srv.offline = true;   // nothing leaves: what stays in each tab's queue is what is checked
+    setNet({ online: false });
+    const a = await boot(uid);
+    const b = await boot(uid);
+    const db = a.outbox.db!;
+    // asked: the reload started; got: IndexedDB answered; read: the answer was handed to the reload
+    const lists = { asked: 0, got: 0, read: 0 };
+    const list = db.listEntries;
+    let listHold: Gate | null = null;
+    db.listEntries = async () => { lists.asked++; const h = listHold; const r = await list(); lists.got++; if (h) await h.wait; lists.read++; return r; };
+    return { a, b, db, lists, holdList: (g: Gate) => { listHold = g; } };
+  };
+  const opsOf = (e: Engine) => e.outbox.pending().map((i) => i.e.table + ':' + i.e.id);
+  it('a change still being written when the other tab pokes stays in this tab\'s queue (held write)', async () => {
+    const { a, b, db, lists } = await twoTabs();
+    const write = gate();
+    const add = db.addEntry;
+    db.addEntry = async (e) => { await write.wait; return add(e); };
+    const kept = a.send.insertRow('customers', { id: 'mine', first_name: 'A' });   // A's write is held
+    await b.send.insertRow('customers', { id: 'theirs', first_name: 'B' });       // B pokes « outbox »
+    await until(() => lists.read >= 1);
+    await sleep(20);
+    expect(opsOf(a)).toContain('customers:mine');
+    write.open();
+    await kept;
+    await sleep(20);
+    expect(opsOf(a).filter((o) => o === 'customers:mine')).toEqual(['customers:mine']);
+    expect(a.outbox.items.find((i) => i.e.id === 'mine')?.e.seq).toBeGreaterThan(0);
+  });
+  it('a change kept after the listing was asked stays in this tab\'s queue (engine passes its mark to the reload)', async () => {
+    const { a, b, lists, holdList } = await twoTabs();
+    const listing = gate();
+    holdList(listing);
+    await b.send.insertRow('customers', { id: 'theirs', first_name: 'B' });       // B pokes: A's listing is read, held
+    await until(() => lists.got >= 1);
+    await a.send.insertRow('customers', { id: 'mine', first_name: 'A' });         // kept in IndexedDB, after the listing
+    listing.open();
+    await until(() => lists.read >= 1);
+    await sleep(20);
+    expect(opsOf(a)).toContain('customers:mine');
+    expect(opsOf(a).filter((o) => o === 'customers:mine').length).toBe(1);
+  });
   it('a refusal for an entry another tab already delivered is not written back', async () => {
     const uid = nextUid();
     const a = await boot(uid);

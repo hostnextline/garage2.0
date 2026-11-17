@@ -48,6 +48,46 @@ describe('another tab says the queue changed while this tab is keeping a change 
     expect(ob.items[0].e.values).toMatchObject({ first_name: 'A', phone: '514' });
     ob.db!.close();
   });
+  it('a change made before the mark whose write has not landed yet stays (a slow or retried write)', async () => {
+    const uid = nextUid();
+    const ob = queue(uid);
+    const add = ob.db!.addEntry;
+    let land!: () => void;
+    const landed = new Promise<void>((r) => { land = r; });
+    ob.db!.addEntry = async (e) => { await landed; return add(e); };
+    const it = ob.add(entry('slow'), true);
+    const since = ob.mark();   // the change is older than the mark…
+    await ob.load(await ob.db!.listEntries(), [], since);   // …but the listing cannot have it
+    expect(ob.items).toEqual([it]);
+    land();
+    await it.ready;
+    expect(ob.pending().map((i) => i.e.op)).toEqual(['slow']);
+    expect(it.e.seq).toBeGreaterThan(0);
+    await ob.load(await ob.db!.listEntries(), [], ob.mark());
+    expect(ob.items).toEqual([it]);
+    ob.db!.close();
+  });
+  it('a change written whose answer is not back yet is kept once, at its place in the listing, as the same item', async () => {
+    const uid = nextUid();
+    const ob = queue(uid);
+    await ob.add(entry('first'), true).ready;
+    const add = ob.db!.addEntry;
+    let answer!: () => void;
+    const back = new Promise<void>((r) => { answer = r; });
+    let wrote = false;
+    ob.db!.addEntry = async (e) => { const seq = await add(e); wrote = true; await back; return seq; };
+    const it = ob.add(entry('second'), true);
+    await new Promise<void>((r) => { const t = setInterval(() => { if (wrote) { clearInterval(t); r(); } }, 5); });
+    const listed = await ob.db!.listEntries();
+    expect(listed.map((e) => e.op)).toEqual(['first', 'second']);
+    await ob.load(listed, [], ob.mark());
+    expect(ob.items.map((i) => i.e.op)).toEqual(['first', 'second']);
+    expect(ob.items[1]).toBe(it);
+    answer();
+    await it.ready;
+    expect(ob.items.map((i) => i.e.seq)).toEqual(listed.map((e) => e.seq));
+    ob.db!.close();
+  });
   it('a change another tab finished (gone from the listing, made before the mark) leaves this tab\'s queue', async () => {
     const uid = nextUid();
     const ob = queue(uid);

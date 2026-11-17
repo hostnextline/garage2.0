@@ -49,18 +49,25 @@ export class Outbox {
   /** the queue as the device keeps it (start, or another tab changed it); `rescued`: entries IndexedDB could not
       keep last time, put back at the end; `since`: the mark taken before `entries` were read — a change this tab made
       after it is kept although the listing does not have it yet (it was still being written: two-tab reload drop);
+      a change whose write has not answered yet (no seq) is kept whatever the mark says: no other tab can have
+      finished it, and when the listing already holds it, it keeps its place there, once;
       resolves once the rescued entries have their place */
   load(entries: OutboxEntry[], rescued: OutboxEntry[] = [], since?: number): Promise<void> {
-    const known = new Map(this.items.filter((i) => !i.mem).map((i) => [`${i.e.op}:${i.e.seq}`, i]));
-    const listed = new Set(entries.map((e) => `${e.op}:${e.seq}`));
-    const later = since === undefined ? [] : this.items.filter((i) => !i.mem && (i.n ?? 0) > since && !listed.has(`${i.e.op}:${i.e.seq}`));
+    const saved = this.items.filter((i) => !i.mem);
+    const known = new Map(saved.filter((i) => i.e.seq !== undefined).map((i) => [`${i.e.op}:${i.e.seq}`, i]));
+    const writing = new Map(saved.filter((i) => i.e.seq === undefined && i.e.op).map((i) => [i.e.op, i]));
+    const taken = new Set<Item>();
     const mem = this.items.filter((i) => i.mem);
     this.items = entries.slice().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).map((e) => {
       const it = known.get(`${e.op}:${e.seq}`);
       // the copy read from IndexedDB, unless this tab is sending it or still writing a newer one (a merge)
-      if (it) { if (it !== this.inFlight && !it.writing) it.e = e; return it; }
+      if (it) { taken.add(it); if (it !== this.inFlight && !it.writing) it.e = e; return it; }
+      // this tab's own change, written but its answer not back yet: its copy gets the seq with that answer
+      const w = writing.get(e.op);
+      if (w && !taken.has(w)) { taken.add(w); return w; }
       return { e, kept: true, mem: false, ready: Promise.resolve() };
     });
+    const later = saved.filter((i) => !taken.has(i) && (i.e.seq === undefined || (since !== undefined && (i.n ?? 0) > since)));
     this.items.push(...later, ...mem);
     const have = new Set(this.items.map((i) => i.e.op));
     const back = rescued.filter((e) => !have.has(e.op)).map((e) => this.add({ ...e, seq: undefined }, true));
