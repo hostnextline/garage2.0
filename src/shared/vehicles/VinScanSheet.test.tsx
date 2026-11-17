@@ -9,7 +9,9 @@ const scan = vi.hoisted(() => ({ result: null as null | (() => Promise<unknown>)
 vi.mock('./vinScan', async (orig) => ({
   ...(await orig<typeof import('./vinScan')>()),
   hasCamera: () => scan.camera,
-  readVinPhoto: () => ({ result: scan.result!(), cancel: scan.cancel })
+  readVinPhoto: () => ({ result: scan.result!(), cancel: scan.cancel }),
+  // the live reader: loads, sees nothing (the tests never show it a barcode)
+  barcodeReader: async () => ({ detector: { detect: async () => [] }, native: true })
 }));
 
 import { lang } from '../../lib/i18n';
@@ -93,6 +95,25 @@ describe('« Scanner le NIV »', () => {
     expect(q('vin-photo-none')).not.toBeNull();
     expect(ask).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).toContain('L’app n’a pas accès à la caméra');
+  });
+  it('the camera busy at first (« La caméra ne s’ouvre pas »): a photo that gave nothing tries the live view again (places-vehicles-r2-2)', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    let busy = true;
+    const ask = phoneCamera(async () => {
+      if (busy) { busy = false; throw Object.assign(new Error('busy'), { name: 'NotReadableError' }); }
+      return { getTracks: () => [{ stop: () => undefined }], getVideoTracks: () => [] };
+    });
+    scan.result = async () => null;
+    await draw();
+    await wait();
+    expect(document.body.textContent).toContain('La caméra ne s’ouvre pas');
+    await photo();
+    await wait();
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(q('vin-photo-none')).not.toBeNull();
+    expect(document.querySelector('.customers-scan.is-live')).not.toBeNull();
+    expect(document.body.textContent).not.toContain('La caméra ne s’ouvre pas');
+    vi.restoreAllMocks();
   });
 });
 

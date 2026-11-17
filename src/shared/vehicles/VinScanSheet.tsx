@@ -37,9 +37,10 @@ export function VinScanSheet(p: { onClose: () => void; onVin: (vin: string) => v
   // a photo of the printed VIN, read on the phone
   const onPhoto = async (file: File | undefined) => {
     if (!file) return;
-    // the live view comes back after the photo only if it was there (or only its reader failed): a camera refused or
-    // absent is not asked for again after each photo, and its message stays (pv-4)
-    const again = cam.state === 'starting' || cam.state === 'loading' || cam.state === 'live' || cam.state === 'noreader';
+    // the live view comes back after the photo only if it was there, or only its reader failed, or the camera would not
+    // open (busy in another app: it may be free now, places-vehicles-r2-2); a camera refused or absent is not asked
+    // for again after each photo, and its message stays (pv-4)
+    const again = cam.state === 'starting' || cam.state === 'loading' || cam.state === 'live' || cam.state === 'noreader' || cam.state === 'error';
     if (again) cam.off();
     setDoubtful(null);
     setPhotoState('reading');
