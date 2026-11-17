@@ -192,7 +192,7 @@ export const handler = serve(async (req) => {
   owner(c);
   switch (action) {
     case 'list': {
-      const { data } = await db.from('invitations').select('id, email, full_name, roles, kind, truck_id, expires_at, used_at, created_at').is('used_at', null).order('created_at', { ascending: false }).limit(50);
+      const { data } = await db.from('invitations').select('id, email, full_name, short_name, lang, roles, kind, truck_id, expires_at, used_at, created_at').is('used_at', null).order('created_at', { ascending: false }).limit(50);
       const { data: users } = await db.auth.admin.listUsers({ page: 1, perPage: 200 });
       const seen = Object.fromEntries((users?.users || []).map((u) => [u.id, { last_sign_in_at: u.last_sign_in_at, banned: !!(u as { banned_until?: string }).banned_until }]));
       return json({ ok: true, invitations: data || [], sign_ins: seen });

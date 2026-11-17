@@ -268,6 +268,35 @@ test('the tables of the daily reconciliation are in the night’s backup once th
   else for (const name of there) assert.equal((await oidc('backup', { action: 'rows', table: name, from: 0 }, await ticket())).ok, true, name);
 });
 
+test('the backup reads a table page after page by the last row seen: a row deleted (or added) during the night never makes it skip or double another', async () => {
+  const good = await ticket();
+  const ids = (await q(`insert into public.customers (first_name, phone) select 'Page ' || g, '438 556-02' || lpad(g::text, 2, '0') from generate_series(1, 7) g returning id`)).map((r) => r.id);
+  made.customers.push(...ids);
+  const seen = [];
+  let after = null, gone = null;
+  for (let i = 0; i < 1000; i++) {
+    const r = await oidc('backup', { action: 'rows', table: 'customers', limit: 3, ...(after ? { after } : {}) }, good);
+    assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+    seen.push(...r.rows.map((x) => x.id));
+    if (i === 0) {
+      // the garage works during the night: one of the rows already written is deleted for good
+      gone = r.rows[0].id;
+      await q(`delete from public.customers where id = $1`, [gone]);
+      if (!ids.includes(gone)) ids.push(gone);
+    }
+    if (!r.last) { assert.equal(r.next, null); break; }
+    assert.equal(r.last, r.rows[r.rows.length - 1].id, 'last = the key of the last row of the page');
+    after = r.last;
+  }
+  assert.equal(new Set(seen).size, seen.length, 'no row twice');
+  const all = (await q(`select id from public.customers`)).map((x) => x.id);
+  assert.deepEqual(all.filter((id) => !seen.includes(id)), [], 'no row skipped');
+  // the pictures come a few at a time
+  const pics = await oidc('backup', { action: 'rows', table: 'attachments', limit: 500 }, good);
+  assert.equal(pics.ok, true);
+  assert.ok(pics.rows.length <= 25);
+});
+
 test('the backup knows who has an account (id and e-mail, never a password): what a restore into a new project needs', async () => {
   assert.equal((await oidc('backup', { action: 'accounts' })).status, 401);
   const a = await oidc('backup', { action: 'accounts' }, await ticket());
@@ -849,6 +878,16 @@ test('what the owner types in Équipe and Branchements: rights only as on / off,
   assert.equal((await fn('team', { action: 'secrets-set', ghl_token: 'pit-abcdef1234567890', ghl_location: 'LOC12345678' }, ownerJwt)).ok, true);
   assert.equal((await q(`select count(*)::int n from public.secrets where key like 'ghl%'`))[0].n, 2);
   await q(`delete from public.secrets where key like 'ghl%'`);
+});
+
+test('Équipe, the invitations waiting: each says its language and its short name (the screen shows them as they were typed)', async () => {
+  const email = `lea-${randomUUID().slice(0, 6)}@test.local`;
+  const inv = await fn('team', { action: 'invite', email, full_name: 'Léa Tremblay', short_name: 'Léa', roles: ['office'], lang: 'en', send: 'none', base: BASE }, ownerJwt);
+  assert.equal(inv.ok, true, JSON.stringify(inv));
+  const list = await fn('team', { action: 'list' }, ownerJwt);
+  const mine = list.invitations.find((x) => x.email === email);
+  assert.deepEqual([mine?.lang, mine?.short_name, mine?.full_name], ['en', 'Léa', 'Léa Tremblay'], JSON.stringify(mine));
+  assert.ok(!('token_hash' in mine), 'never the link’s fingerprint');
 });
 
 test('Branchements, the Stripe key: the endpoint made for the garage also hears the refunds made in Stripe (charge.refunded, charge.refund.updated) in the version the server reads; webhook made, secrets written, old one deleted', async () => {
