@@ -13,6 +13,8 @@ export const auth = {
   or: 'ou',
   wrong: 'Courriel ou mot de passe incorrect.',
   blocked: 'Ce compte est bloqué. Parle au propriétaire.',
+  tooMany: 'Trop d’essais. Attends quelques minutes, puis réessaie.',
+  notConfirmed: 'Ce compte n’est pas encore activé : ouvre le lien de l’invitation reçu par courriel.',
   missing: 'Écris ton courriel et ton mot de passe.',
   forgot: 'Mot de passe oublié',
   forgotTitle: 'Nouveau mot de passe',

@@ -11,7 +11,7 @@ import { Button, Field, Input, Form, Banner, Sheet } from '../../ui';
 import { MovedBanner } from '../../shared/app/moved';
 import { Gate, PasswordInput } from './Gate';
 import { gateNotice } from './notice';
-import { signInWords } from './words';
+import { signInWords, forgotSent } from './words';
 
 export function LoginScreen() {
   const [email, setEmail] = useState(() => { try { return localStorage.getItem('his.email') || ''; } catch { return ''; } });
@@ -72,7 +72,7 @@ function ForgotSheet(p: { open: boolean; onClose: () => void; email: string }) {
     setError(null);
     try {
       const r = await callFn('team', { action: 'forgot', email: email.trim(), base: appBase(), lang: lang.value });
-      if (!r.ok && r.code !== undefined && r.code !== 'not_found') { setError(errorMessage(r)); return; }
+      if (!forgotSent(r)) { setError(errorMessage(r)); return; }
       setSent(true);
     } catch (e) {
       // no signal: say so under the field (the button would otherwise just stop turning)

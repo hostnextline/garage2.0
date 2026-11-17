@@ -13,6 +13,8 @@ export const auth: typeof fr = {
   or: 'or',
   wrong: 'Wrong email or password.',
   blocked: 'This account is blocked. Talk to the owner.',
+  tooMany: 'Too many tries. Wait a few minutes, then try again.',
+  notConfirmed: 'This account is not activated yet: open the invitation link you got by e-mail.',
   missing: 'Write your email and password.',
   forgot: 'Forgot password',
   forgotTitle: 'New password',
