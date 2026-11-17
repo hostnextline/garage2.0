@@ -10,7 +10,9 @@
 --                         counts, the day's sheet
 --   ops_recon_findings    one row per difference, by a stable key (check + entity): seen again the next night it stays
 --                         the same row (last_day moves); no longer true, it closes by itself; « vu » = acked
---   ops_recon_baseline    the differences that alert only when they CHANGE (S1: stock on hand vs its moves)
+--   ops_recon_baseline    the differences that alert only when they CHANGE (S1: stock on hand vs its moves), and the mark
+--                         « first » (zero uuid): the first run was made (what that run found is listed « vu », « déjà là »);
+--                         « first:M5 »: that family threw on the first run, its own first run is still to come
 --   recon_run(day, source)      service only: every check, in ONE snapshot (recon_collect is one query), in one transaction
 --   recon_add(run, …)           service only: a server function adds what needs the outside (Stripe, the backup's age)
 --   recon_summary(days)         owner: everything; « Trésorerie »: the money (M…) and stock (S…) checks; others: refused
@@ -37,7 +39,12 @@
 --   M4.orphan bad a payment on nothing, or on another job's invoice;  M4.card bad « carte en ligne » without its Stripe
 --                 session;  M4.waiting bad a payment waiting on a job whose invoice is finished;  M4.closed warn a
 --                 payment waiting on a finished / cancelled job that has no finished invoice;  M4.double warn the same
---                 amount and method twice on one invoice (or job) within 2 minutes
+--                 amount and method twice on one invoice (or job) within 2 minutes (M4.closed: a deleted job too; the
+--                 data of M4.orphan / M4.closed carry « why » when payment_add noted the card payment « payment_unmatched »)
+--   M6.parked bad card money (or a card refund) the server kept aside for the office (activity « payment_parked »), until
+--                 the books have it (its Stripe page, or entered by hand on its job for the same amount);  M6.refund bad  a
+--                 card refund « <page>#<refund> » whose card payment is not in the books;  M6.refundmore bad  more given
+--                 back than paid on one card page
 --   M5.unbilled bad  a finished job (not Coffre) with no invoice;  M5.draft warn  a finished job whose invoice is still a
 --                 draft;  M5.unpaid warn  finished, invoice not paid, nobody granted « payer plus tard »
 --   M7.sum bad    an expense: before taxes + TPS + TVQ is not the total (or an amount below zero);  M7.stock bad  stock
@@ -53,6 +60,9 @@
 --                 on a vehicle without the machine, the number of jobs « À placer »
 --   D3.car / D3.invoice warn   the job's car is another customer's; the invoice is in another customer's name
 --   D4.phone / D4.vin info     two customers with the same phone; one VIN on two cars
+--   D5.double warn  the same car of the same customer booked twice on one day, both still to do or both done (the
+--                 last 14 days and the coming ones)
+--   X1.op warn    an operation claimed in op_log (op_begin) more than 10 minutes ago and never given its answer (owner only)
 --   S1.drift bad  stock on hand vs the sum of its moves, against the baseline taken at the first run
 --   S2.negative warn  less than zero in stock;  S2.unused warn  a job finished these 14 days that sold a stock item and
 --                 took nothing out of the stock
@@ -157,9 +167,14 @@ create or replace function public.recon_for_treasury(p_check text) returns boole
   select coalesce(p_check, '') ~ '^([MS][0-9]|stripe|money|stock)'
 $$;
 
--- the test hook: a test makes one check throw with « set garage.recon_fail = 'M3' » (never set by the app or the server)
+-- the test hooks (never set by the app or the server): a test makes one check throw with « set garage.recon_fail = 'M3' »,
+-- or wait a second and a half before it with « set garage.recon_pause = 'M3' » (to change the books from another
+-- connection in the middle of a run: the run must not see it, every check reads the same snapshot)
 create or replace function public.recon_trip(p_check text) returns void language plpgsql stable set search_path = public as $$
 begin
+  if coalesce(current_setting('garage.recon_pause', true), '') = p_check then
+    perform pg_sleep(1.5);
+  end if;
   if coalesce(current_setting('garage.recon_fail', true), '') = p_check then
     raise exception 'recon test: % made to fail', p_check;
   end if;
@@ -171,6 +186,32 @@ create or replace function public.recon_error(p_check text, p_err text) returns 
     'fr', format('La vérification %s n’a pas pu se faire (%s) : les autres vérifications ont marché. Dis-le au responsable de l’app.', p_check, left(p_err, 200)),
     'en', format('Check %s could not run (%s); the other checks ran. Tell the person in charge of the app.', p_check, left(p_err, 200)),
     'd', jsonb_build_object('check', p_check, 'error', left(p_err, 500))))
+$$;
+
+-- the card page of a Stripe finding (data: { session, amount_cents }) is in the books for Stripe's amount (a payment not
+-- deleted); a finding without its page or its amount is never « in the books »
+create or replace function public.recon_card_in_books(p_data jsonb) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(p_data->>'session', '') <> '' and coalesce(p_data->>'amount_cents', '') ~ '^-?[0-9]{1,12}$'
+     and exists (select 1 from public.payments p where p.stripe_session = p_data->>'session' and p.deleted_at is null
+                   and p.amount_cents = (p_data->>'amount_cents')::bigint)
+$$;
+-- that Stripe page (or refund) was kept aside for the office (activity « payment_parked », written by the server functions)
+-- and the books still do not have that page: M6.parked says that money (until it is entered by hand), so a Stripe finding
+-- for the same page would count it twice. A page the books have (even for another amount: « stripe_amount ») is not this.
+create or replace function public.recon_card_parked(p_session text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(p_session, '') <> ''
+     and exists (select 1 from public.activity a where a.action = 'payment_parked' and a.data->>'session' = p_session)
+     and not exists (select 1 from public.payments p where p.stripe_session = p_session and p.deleted_at is null)
+$$;
+
+-- why a card payment is not where it was meant to go (activity « payment_unmatched », written by payment_add): void,
+-- deleted, missing, coffre, job_closed, no_job; null when nothing was noted. (One payment at a time: M4 reads the notes of
+-- every payment at once, in its own « why » list.)
+create or replace function public.recon_unmatched_why(p_payment uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select a.data->>'why' from public.activity a where a.action = 'payment_unmatched' and a.data->>'payment' = p_payment::text order by a.at desc limit 1
 $$;
 
 -- ───────────────────────────── the day's sheet ─────────────────────────────
@@ -202,8 +243,11 @@ $$;
 -- in its own block: a check that throws gives its « .error » finding and the others go on. Each row:
 -- { c: check_id, s: severity, t: entity_table, e: entity_id, k: extra key (when one entity can differ twice), fr, en, d: data }.
 -- Answer: { findings: [...], sheet: {...}, baseline: [{ id, value }] (only while S1 has no baseline yet) }.
+-- enable_nestloop off: the checks join whole tables; with statistics gone stale (autovacuum analysed a table while it was
+-- nearly empty) the planner believed one row and looped (29 s instead of 0.4 s on a busy machine). Hash joins keep each
+-- check linear whatever the statistics say; a lateral (its only possible plan) still loops, on one row's own data.
 create or replace function public.recon_collect(p_day date) returns jsonb
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public set enable_nestloop = off as $$
 declare
   v_all jsonb := '[]'::jsonb;
   v_part jsonb;
@@ -222,17 +266,20 @@ begin
   begin
     perform public.recon_trip('M1');
     v_t := clock_timestamp();
-    with l as (
-      select v.id, x.l,
-             (case when x.l->>'kind' = 'discount' then -abs(round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)))
-                   else round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)) end)::bigint as lt,
-             coalesce((x.l->>'taxable')::boolean, true) as taxable
-      from public.invoices v cross join lateral jsonb_array_elements(v.lines) x(l)
+    -- each invoice adds up its OWN lines (a lateral over its row): the time is the number of lines whatever plan the
+    -- database picks (a grouped list joined back was invoices x invoices x lines when stale statistics made it loop)
+    with s as materialized (
+      select v.id, t.sub, t.tx, t.off
+      from public.invoices v
+      cross join lateral (
+        select sum(y.lt)::bigint as sub, coalesce(sum(y.lt) filter (where y.taxable), 0)::bigint as tx,
+               count(*) filter (where (y.l->>'total_cents') is null or (y.l->>'total_cents')::numeric <> y.lt) as off
+        from (select x.l,
+                     (case when x.l->>'kind' = 'discount' then -abs(round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)))
+                           else round(coalesce((x.l->>'qty')::numeric, 1) * coalesce((x.l->>'unit_cents')::numeric, 0)) end)::bigint as lt,
+                     coalesce((x.l->>'taxable')::boolean, true) as taxable
+              from jsonb_array_elements(v.lines) x(l)) y) t
       where v.deleted_at is null and v.status in ('issued', 'paid')
-    ), s as (
-      select id, sum(lt)::bigint as sub, coalesce(sum(lt) filter (where taxable), 0)::bigint as tx,
-             count(*) filter (where (l->>'total_cents') is null or (l->>'total_cents')::numeric <> lt) as off
-      from l group by id
     )
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M1.sum' c, 'bad' s, 'invoices' t, v.id e, null::text k,
@@ -391,9 +438,14 @@ begin
     perform public.recon_trip('M4');
     v_t := clock_timestamp();
     with fin as (select v.job_id, v.id, v.number from public.invoices v where v.deleted_at is null and v.status in ('issued', 'paid') and v.job_id is not null),
-    p as (select p.*, j.number as job_no, j.status as job_status, j.coffre_id, v.job_id as inv_job, v.number as inv_no
+    p as (select p.*, j.number as job_no, j.status as job_status, j.deleted_at as job_gone, j.coffre_id, v.job_id as inv_job, v.number as inv_no
           from public.payments p left join public.jobs j on j.id = p.job_id left join public.invoices v on v.id = p.invoice_id
-          where p.deleted_at is null)
+          where p.deleted_at is null),
+    -- why payment_add left a card payment where it is (« payment_unmatched »), the newest note per payment: read ONCE for
+    -- the whole check (a call per payment read the whole activity table each time: payments × activity on the first run)
+    why as (select distinct on (a.data->>'payment') a.data->>'payment' as payment, a.data->>'why' as why
+            from public.activity a where a.action = 'payment_unmatched' and a.data ? 'payment'
+            order by a.data->>'payment', a.at desc, a.id desc)
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M4.orphan' c, 'bad' s, 'payments' t, p.id e, null::text k,
              case when p.invoice_id is null and p.job_id is null
@@ -406,8 +458,9 @@ begin
                               public.recon_money_en(p.amount_cents), public.recon_method_word(p.method, 'en'), to_char(p.paid_at at time zone 'America/Toronto', 'YYYY-MM-DD'))
                   else format('A payment of %s is on invoice %s, which belongs to another job (job %s): put it on the right invoice.',
                               public.recon_money_en(p.amount_cents), public.recon_inv_no(p.inv_no, 'en'), coalesce(p.job_no::text, '?')) end en,
-             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'invoice_id', p.invoice_id, 'job_id', p.job_id) d
-      from p where (p.invoice_id is null and p.job_id is null) or (p.invoice_id is not null and p.job_id is not null and p.inv_job is distinct from p.job_id)
+             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'invoice_id', p.invoice_id, 'job_id', p.job_id, 'why', w.why) d
+      from p left join why w on w.payment = p.id::text
+      where (p.invoice_id is null and p.job_id is null) or (p.invoice_id is not null and p.job_id is not null and p.inv_job is distinct from p.job_id)
       union all
       select 'M4.card', 'bad', 'payments', p.id, null,
              format('Un paiement « carte en ligne » de %s n’a pas sa session Stripe : vérifie dans Stripe que la carte a vraiment été payée.', public.recon_money_fr(p.amount_cents)),
@@ -423,13 +476,17 @@ begin
              jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'job_id', p.job_id, 'invoice_id', fin.id)
       from p join fin on fin.job_id = p.job_id where p.invoice_id is null
       union all
+      -- (a job deleted too: a card payment that landed on it is kept there, « payment_unmatched » why job_closed)
       select 'M4.closed', 'warn', 'payments', p.id, null,
              format('Un paiement de %s attend sur la job %s, qui est %s, sans facture terminée : fais la facture, ou rembourse le client.',
-                    public.recon_money_fr(p.amount_cents), p.job_no, public.recon_status_word(p.job_status, 'fr')),
+                    public.recon_money_fr(p.amount_cents), p.job_no, case when p.job_gone is not null then 'effacée' else public.recon_status_word(p.job_status, 'fr') end),
              format('A payment of %s is waiting on job %s, which is %s, with no finished invoice: make the invoice, or give the money back.',
-                    public.recon_money_en(p.amount_cents), p.job_no, public.recon_status_word(p.job_status, 'en')),
-             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'job_id', p.job_id, 'job_status', p.job_status)
-      from p where p.invoice_id is null and p.job_id is not null and p.coffre_id is null and p.job_status in ('done', 'cancelled', 'no_show')
+                    public.recon_money_en(p.amount_cents), p.job_no, case when p.job_gone is not null then 'deleted' else public.recon_status_word(p.job_status, 'en') end),
+             jsonb_build_object('amount', p.amount_cents, 'method', p.method, 'job_id', p.job_id, 'job_status', p.job_status, 'job_deleted', p.job_gone is not null,
+                                'why', w.why)
+      from p left join why w on w.payment = p.id::text
+      where p.invoice_id is null and p.job_id is not null and p.coffre_id is null
+        and (p.job_status in ('done', 'cancelled', 'no_show') or p.job_gone is not null)
         and not exists (select 1 from fin where fin.job_id = p.job_id)
       union all
       select 'M4.double', 'warn', 'payments', b.id, null,
@@ -482,6 +539,74 @@ begin
     v_all := v_all || v_part;
     v_ms := v_ms || jsonb_build_object('M5', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
   exception when others then v_all := v_all || public.recon_error('M5', sqlerrm);
+  end;
+
+  -- ══════ M6: card money kept aside, card refunds (the notes the money functions write in « activity ») ══════
+  -- payment_parked  the server could not put a card payment (or refund) in the books and kept it aside for the office: it
+  --                 is said until the books have it, by its Stripe page or entered by hand on its job for the same amount
+  -- a card refund (« <page>#<refund> ») whose card payment is not in the books; more given back than paid on one page
+  -- (payment_unmatched, payment_moved and overpaid leave the money in the books: M4, M8 and M2.over say what is wrong then)
+  begin
+    perform public.recon_trip('M6');
+    v_t := clock_timestamp();
+    with pk as (
+      select a.id, a.at, a.entity_id, a.data->>'session' as session, coalesce(a.data->>'kind', 'payment') as kind,
+             nullif(a.data->>'reference', '') as ref, nullif(left(a.data->>'reason', 80), '') as reason,
+             case when coalesce(a.data->>'amount_cents', '') ~ '^-?[0-9]{1,12}$' then (a.data->>'amount_cents')::bigint end as amount,
+             case when coalesce(a.data->>'job', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (a.data->>'job')::uuid end as job,
+             case when coalesce(a.data->>'invoice', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (a.data->>'invoice')::uuid end as inv
+      from public.activity a where a.action = 'payment_parked' and coalesce(a.data->>'session', '') <> ''),
+    card as (select p.id, p.amount_cents, p.stripe_session, split_part(p.stripe_session, '#', 1) as page, p.invoice_id, p.job_id
+             from public.payments p where p.deleted_at is null and p.method = 'card_online' and p.stripe_session is not null)
+    select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
+      select 'M6.parked' c, 'bad' s, case when pk.job is not null then 'jobs' end t, pk.job e, pk.session k,
+             -- « Un remboursement par carte de 30,00 $ qui n’a pas passé … »: the amount right after what it is
+             format('%s%s%s a été mis de côté le %s sans être inscrit dans l’app : entre-le à la main%s (référence Stripe %s).',
+                    case when pk.kind in ('refund', 'refund_failed') then 'Un remboursement par carte' else 'Un paiement par carte' end,
+                    case when pk.amount is not null then ' de ' || public.recon_money_fr(abs(pk.amount)) else '' end,
+                    case when pk.kind = 'refund_failed' then ' qui n’a pas passé' else '' end,
+                    to_char(pk.at at time zone 'America/Toronto', 'YYYY-MM-DD'), coalesce(' sur la job ' || j.number, ''), coalesce(pk.ref, pk.session)) fr,
+             format('%s%s%s was kept aside on %s without being recorded in the app: enter it by hand%s (Stripe reference %s).',
+                    case when pk.kind in ('refund', 'refund_failed') then 'A card refund' else 'A card payment' end,
+                    case when pk.amount is not null then ' of ' || public.recon_money_en(abs(pk.amount)) else '' end,
+                    case when pk.kind = 'refund_failed' then ' that failed' else '' end,
+                    to_char(pk.at at time zone 'America/Toronto', 'YYYY-MM-DD'), coalesce(' on job ' || j.number, ''), coalesce(pk.ref, pk.session)) en,
+             jsonb_build_object('session', pk.session, 'kind', pk.kind, 'amount', pk.amount, 'reference', pk.ref, 'reason', pk.reason, 'job_id', pk.job,
+                                'invoice_id', pk.inv, 'job', j.number, 'at', pk.at) d
+      from pk left join public.jobs j on j.id = pk.job
+      where not exists (select 1 from public.payments p where p.stripe_session = pk.session and p.deleted_at is null)
+        -- entered by hand: a payment typed after the note, on that job (or its invoice), for the same amount
+        and not (pk.amount is not null and pk.job is not null and exists (
+              select 1 from public.payments p left join public.invoices v on v.id = p.invoice_id
+              where p.deleted_at is null and p.stripe_session is null and p.amount_cents = pk.amount and p.created_at >= pk.at
+                and (p.job_id = pk.job or v.job_id = pk.job or p.invoice_id = pk.inv)))
+      union all
+      select 'M6.refund', 'bad', 'payments', r.id, null,
+             format('Stripe a remboursé %s par carte (inscrit dans l’app), mais le paiement par carte qu’il rembourse n’est pas dans l’app : retrouve ce paiement dans Stripe (page %s).',
+                    public.recon_money_fr(-r.amount_cents), r.page),
+             format('Stripe gave back %s by card (recorded in the app), but the card payment it gives back is not in the app: find that payment in Stripe (page %s).',
+                    public.recon_money_en(-r.amount_cents), r.page),
+             jsonb_build_object('amount', r.amount_cents, 'session', r.stripe_session, 'page', r.page, 'invoice_id', r.invoice_id, 'job_id', r.job_id)
+      from card r where r.amount_cents < 0 and position('#' in r.stripe_session) > 1
+        and not exists (select 1 from card o where o.stripe_session = r.page)
+        -- an older card payment without its Stripe session (M4.card says it) is keyed by its payment intent, its reference:
+        -- its refunds are « pi_…#re_… », and that payment IS in the books
+        and not exists (select 1 from public.payments o where o.deleted_at is null and o.method = 'card_online' and o.amount_cents > 0
+                          and o.reference = r.page)
+      union all
+      select 'M6.refundmore', 'bad', null, null, x.page,
+             format('Pour un paiement par carte de %s, l’app a inscrit %s de remboursements : plus que ce que le client a payé. Vérifie les remboursements dans Stripe (page %s).',
+                    public.recon_money_fr(x.paid), public.recon_money_fr(x.paid - x.net), x.page),
+             format('For a card payment of %s, the app recorded %s of refunds: more than the customer paid. Check the refunds in Stripe (page %s).',
+                    public.recon_money_en(x.paid), public.recon_money_en(x.paid - x.net), x.page),
+             jsonb_build_object('page', x.page, 'paid', x.paid, 'net', x.net)
+      from (select c2.page, sum(c2.amount_cents) filter (where c2.stripe_session = c2.page)::bigint as paid, sum(c2.amount_cents)::bigint as net
+            from card c2 group by c2.page having bool_or(c2.stripe_session = c2.page) and bool_or(c2.amount_cents < 0)) x
+      where x.net < 0
+    ) f;
+    v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('M6', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
+  exception when others then v_all := v_all || public.recon_error('M6', sqlerrm);
   end;
 
   -- ══════ M7: expenses add up; stock paid by the Trésorerie has its expense ══════
@@ -743,6 +868,56 @@ begin
   exception when others then v_all := v_all || public.recon_error('D4', sqlerrm);
   end;
 
+  -- ══════ D5: the same car of the same customer booked twice on one day (two phones, two operations) ══════
+  -- the last 14 days and the coming ones (an old double from long ago is not news every morning)
+  begin
+    perform public.recon_trip('D5');
+    v_t := clock_timestamp();
+    select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
+      select 'D5.double' c, 'warn' s, 'jobs' t, x.newest e, null::text k,
+             format('Le %s, la même voiture du même client a %s rendez-vous (jobs %s) : vérifie que ce n’est pas un doublon ; sinon annule celui de trop (et sa facture).', x.day, x.n, x.numbers) fr,
+             format('On %s, the same car of the same customer has %s appointments (jobs %s): check that it is not a double; if it is, cancel the extra one (and its invoice).', x.day, x.n, x.numbers) en,
+             jsonb_build_object('day', x.day, 'n', x.n, 'jobs', x.jobs, 'vehicle_id', x.vehicle_id) d
+      from (select j.day, j.vehicle_id, count(*) as n, string_agg(j.number::text, ', ' order by j.number) as numbers,
+                   (array_agg(j.id order by j.number desc, j.id))[1] as newest, jsonb_agg(j.id order by j.number) as jobs
+            from public.jobs j
+            where j.deleted_at is null and j.status not in ('cancelled', 'no_show') and j.vehicle_id is not null and j.day >= v_today - 14
+            -- both still to do (booked twice), or both done (done and billed twice); one done and one still to do the
+            -- same day is the customer coming back for more, not a double
+            group by j.day, j.customer_id, j.vehicle_id, j.status = 'done' having count(*) > 1) x
+    ) f;
+    v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('D5', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
+  exception when others then v_all := v_all || public.recon_error('D5', sqlerrm);
+  end;
+
+  -- ══════ X1: an operation claimed (op_begin) and never given its answer (op_save) ══════
+  -- every retry of it is answered « done » (op_begin), whether the work was done or not: a fault of the app's code,
+  -- for the owner (one finding per operation name; 10 minutes leave a long operation the time to finish)
+  begin
+    perform public.recon_trip('X1');
+    v_t := clock_timestamp();
+    select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
+      select 'X1.op' c, 'warn' s, null::text t, null::uuid e, o.name k,
+             case when count(*) = 1
+                  then format('Une opération « %s » a commencé sans jamais finir (le %s) : le téléphone a pu dire « fait » pour quelque chose qui ne s’est pas fait. Dis-le au responsable de l’app.',
+                              o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI'))
+                  else format('%s opérations « %s » ont commencé sans jamais finir (la première le %s) : le téléphone a pu dire « fait » pour quelque chose qui ne s’est pas fait. Dis-le au responsable de l’app.',
+                              count(*), o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI')) end fr,
+             case when count(*) = 1
+                  then format('An operation « %s » started and never finished (on %s): the phone may have said « done » for something that was not done. Tell the person in charge of the app.',
+                              o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI'))
+                  else format('%s operations « %s » started and never finished (the first on %s): the phone may have said « done » for something that was not done. Tell the person in charge of the app.',
+                              count(*), o.name, to_char(min(o.at) at time zone 'America/Toronto', 'YYYY-MM-DD HH24:MI')) end en,
+             jsonb_build_object('name', o.name, 'n', count(*), 'first_at', min(o.at), 'ops', to_jsonb((array_agg(o.op order by o.at))[1:20])) d
+      from public.op_log o where o.result is null and o.at < now() - interval '10 minutes'
+      group by o.name
+    ) f;
+    v_all := v_all || v_part;
+    v_ms := v_ms || jsonb_build_object('X1', round(extract(epoch from clock_timestamp() - v_t) * 1000)::int);
+  exception when others then v_all := v_all || public.recon_error('X1', sqlerrm);
+  end;
+
   -- ══════ S1: stock on hand = the sum of its moves (against the baseline: only a CHANGE is said) ══════
   begin
     perform public.recon_trip('S1');
@@ -866,11 +1041,16 @@ declare
   v_new_l int; v_closed_l int; v_errors_l int; v_seen int; v_seen_l int;
   v_failed text[];    -- the check families that threw this time (« M2 » for « M2.error »): their differences are left as they were
   v_mark date;        -- the day written on what is seen (first_day / last_day)
+  v_first boolean;    -- the very first run of this database: what it finds was there before (« déjà là »)
+  v_pending text[];   -- the families that threw on that first run and have not run since: their first run is still to come
 begin
   -- one run at a time (the cron, the backup and « Vérifier maintenant » may meet); recon_ack and recon_add take the same
   -- lock first, so the three always lock in the same order (the lock, the run row, the findings) and never deadlock
   perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
   v := public.recon_collect(v_day);     -- ONE query: every check sees the same snapshot
+  v_first := not exists (select 1 from public.ops_recon_baseline b where b.check_id = 'first' and b.entity_id = '00000000-0000-0000-0000-000000000000');
+  v_pending := coalesce((select array_agg(substr(b.check_id, 7)) from public.ops_recon_baseline b
+                         where b.check_id like 'first:%' and b.entity_id = '00000000-0000-0000-0000-000000000000'), '{}');
   -- the checks read the books AS THEY ARE NOW: running an old day again never dates a difference back before the newest
   -- day already reconciled
   v_mark := greatest(v_day, coalesce((select max(r.day) from public.ops_recon_runs r), v_day));
@@ -906,9 +1086,19 @@ begin
     from recon_seen;
 
   -- seen again: the same row (last_day moves, first_day stays); closed before: open again from this day; « vu » stays while
-  -- the words stay the same (an « info » never opens again for new words: it never colours the day, its count just moves)
-  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, last_run)
-  select key, c, s, t, e, fr, en, d, v_mark, v_mark, v_run from recon_seen
+  -- the words stay the same (an « info » never opens again for new words: it never colours the day, its count just moves).
+  -- The very first run (the night after the update, on years of books): what it finds was there BEFORE the daily
+  -- reconciliation existed. It is listed « vu » with a note, so the first morning is not a wall of red over old rows; it
+  -- opens again like any « vu » when it changes, and closes once repaired. A check that could not run is never « vu ».
+  -- A family that threw on that first run has its own first run later: the first night it runs (marker « first:M5 »).
+  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, last_run,
+                                              state, acked_at, note)
+  select key, c, s, t, e, fr, en, d, v_mark, v_mark, v_run,
+         case when (v_first or split_part(c, '.', 1) = any (v_pending)) and c not like '%.error' then 'acked' else 'open' end,
+         case when (v_first or split_part(c, '.', 1) = any (v_pending)) and c not like '%.error' then now() end,
+         case when (v_first or split_part(c, '.', 1) = any (v_pending)) and c not like '%.error'
+              then 'Déjà là au premier rapprochement (avant la mise à jour) : à regarder quand tu as le temps.' end
+  from recon_seen
   on conflict (key) do update set
     check_id = excluded.check_id, severity = excluded.severity, entity_table = excluded.entity_table, entity_id = excluded.entity_id,
     data = excluded.data, last_run = excluded.last_run, outside = false, updated_at = now(), closed_at = null,
@@ -924,14 +1114,32 @@ begin
                          or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr) then null else f.acked_at end,
     message_fr = excluded.message_fr, message_en = excluded.message_en;
 
+  -- the marks: « first » once the first run was made; « first:<family> » for each family that threw on it, kept until
+  -- that family runs (what it finds then is « déjà là » too, never a wall of red the night after)
+  if v_first then
+    insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
+    select x, '00000000-0000-0000-0000-000000000000', 0, v_day from unnest(array['first'] || array(select 'first:' || u from unnest(v_failed) u)) x
+    on conflict (check_id, entity_id) do nothing;
+  end if;
+  delete from public.ops_recon_baseline b
+   where b.check_id like 'first:%' and b.entity_id = '00000000-0000-0000-0000-000000000000' and substr(b.check_id, 7) <> all (v_failed);
+
   -- no longer true: closed by itself. A check made outside (recon_add) closes when it was not added again for a day.
   -- A family that threw this time was NOT checked: its differences stay as they were (open or « vu »), never closed as if
   -- the books were repaired.
+  -- Card money Stripe took and the books do not have (« stripe_paid_not_recorded », « stripe_amount ») never closes by
+  -- age: Stripe's list only goes back 72 hours, so after 3 nights nobody adds it again while the money is still missing.
+  -- It closes when the books have that card page for Stripe's amount, or once someone marked it « vu » (entered by hand)
+  -- and it was not added again for a day, or at once when the money was kept aside for the office (« payment_parked »:
+  -- M6.parked says it from then on, without an end; the same money is never two red lines).
   with c as (
     update public.ops_recon_findings f set state = 'closed', closed_at = now(), updated_at = now()
     where f.state <> 'closed'
       and ((not f.outside and f.last_run is distinct from v_run and split_part(f.check_id, '.', 1) <> all (v_failed))
-           or (f.outside and f.last_day < v_day - 1))
+           or (f.outside and f.check_id = any (array['stripe_paid_not_recorded', 'stripe_amount'])
+               and (public.recon_card_in_books(f.data) or public.recon_card_parked(f.data->>'session')))
+           or (f.outside and f.last_day < v_day - 1
+               and (f.check_id <> all (array['stripe_paid_not_recorded', 'stripe_amount']) or f.state = 'acked')))
     returning f.check_id)
   select count(*), count(*) filter (where public.recon_for_treasury(c.check_id)) into v_closed, v_closed_l from c;
 
@@ -949,7 +1157,7 @@ end $$;
 create or replace function public.recon_add(p_run uuid, p_check text, p_severity text, p_entity_table text, p_entity_id uuid,
   p_message_fr text, p_message_en text, p_data jsonb) returns uuid
 language plpgsql security definer set search_path = public as $$
-declare r public.ops_recon_runs; v_key text; v_id uuid;
+declare r public.ops_recon_runs; v_key text; v_id uuid; v_aside boolean;
 begin
   -- the lock of recon_run first: its run cannot be replaced under it, and the lock order stays the same (no deadlock)
   perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
@@ -959,15 +1167,22 @@ begin
     perform public.fail('bad_finding', 'Une différence a besoin d’une vérification, d’une gravité (bad, warn, info) et d’un message.');
   end if;
   v_key := trim(p_check) || ':' || coalesce(p_entity_id::text, '') || coalesce(':' || nullif(p_data->>'sig', ''), '');
-  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, outside, last_run)
+  -- card money Stripe took that the server kept aside for the office: M6.parked already says it (one red line for one
+  -- money). It is written, already closed (the run's answer and the summary stay true), and never opens while kept aside.
+  v_aside := trim(p_check) in ('stripe_paid_not_recorded', 'stripe_amount') and public.recon_card_parked(p_data->>'session');
+  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, outside, last_run,
+                                              state, closed_at)
   values (v_key, trim(p_check), p_severity, p_entity_table, p_entity_id, left(p_message_fr, 1000), left(coalesce(nullif(trim(p_message_en), ''), p_message_fr), 1000),
-          coalesce(p_data, '{}'::jsonb), r.day, r.day, true, p_run)
+          coalesce(p_data, '{}'::jsonb), r.day, r.day, true, p_run,
+          case when v_aside then 'closed' else 'open' end, case when v_aside then now() end)
   on conflict (key) do update set
     severity = excluded.severity, entity_table = excluded.entity_table, entity_id = excluded.entity_id, data = excluded.data,
-    last_run = excluded.last_run, outside = true, updated_at = now(), closed_at = null,
+    last_run = excluded.last_run, outside = true, updated_at = now(),
+    closed_at = case when v_aside then coalesce(f.closed_at, now()) end,
     first_day = case when f.state = 'closed' then excluded.first_day else f.first_day end,
     last_day = case when f.state = 'closed' then excluded.last_day else greatest(f.last_day, excluded.last_day) end,
-    state = case when f.state = 'closed' then 'open'
+    state = case when v_aside then 'closed'
+                 when f.state = 'closed' then 'open'
                  when f.state = 'acked' and (f.severity is distinct from excluded.severity
                                              or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr)) then 'open'
                  else f.state end,
@@ -982,29 +1197,44 @@ begin
 end $$;
 
 -- ───────────────────────────── recon_summary: what the app shows ─────────────────────────────
--- { ok, can_ack, last_run: { day, status, finished_at, counts, sheet } | null, runs: [{ day, status, finished_at, counts }] newest first,
---   findings: [{ id, check_id, severity, entity_table, entity_id, message_fr, message_en, first_day, last_day, state, note }] }
+-- { ok, can_ack, today, last_run: { day, status, finished_at, counts, sheet, source, partial } | null,
+--   yesterday_run: the same for the day before today (Montréal) | null, runs: [{ day, status, finished_at, counts, source, partial }]
+--   newest first, findings: [{ id, check_id, severity, entity_table, entity_id, message_fr, message_en, first_day, last_day, state, note }] }
+-- « Vérifier maintenant » also runs TODAY: last_run is then today's, « partial » (run before its day was over). The panel
+-- « Rapprochement d'hier » reads yesterday_run (or tells last_run's day from « today »).
 create or replace function public.recon_summary(p_days int default 14) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
   v_owner boolean := public.is_owner();
   v_treasury boolean := public.can('treasury');
   v_days int := least(greatest(coalesce(p_days, 14), 1), 92);
+  v_today date := public.local_today();
   v_last jsonb;
+  v_yday jsonb;
 begin
   if not (v_owner or v_treasury) then
     perform public.fail('not_allowed', 'Le rapprochement est pour le propriétaire et la Trésorerie.');
   end if;
   select jsonb_build_object('day', r.day, 'status', public.recon_view_status(r.status, r.counts, v_owner), 'finished_at', r.finished_at,
-                            'counts', public.recon_view_counts(r.counts, v_owner), 'sheet', r.sheet)
+                            'counts', public.recon_view_counts(r.counts, v_owner), 'sheet', r.sheet, 'source', r.source,
+                            'partial', r.finished_at < ((r.day + 1)::timestamp at time zone 'America/Toronto'))
   into v_last
   from public.ops_recon_runs r where r.finished_at is not null order by r.day desc limit 1;
+  select jsonb_build_object('day', r.day, 'status', public.recon_view_status(r.status, r.counts, v_owner), 'finished_at', r.finished_at,
+                            'counts', public.recon_view_counts(r.counts, v_owner), 'sheet', r.sheet, 'source', r.source,
+                            'partial', r.finished_at < ((r.day + 1)::timestamp at time zone 'America/Toronto'))
+  into v_yday
+  from public.ops_recon_runs r where r.finished_at is not null and r.day = v_today - 1;
   return jsonb_build_object(
     'ok', true,
     'can_ack', v_owner or v_treasury,
+    'today', v_today,
     'last_run', v_last,
+    'yesterday_run', v_yday,
     'runs', (select coalesce(jsonb_agg(jsonb_build_object('day', r.day, 'status', public.recon_view_status(r.status, r.counts, v_owner),
-                                                          'finished_at', r.finished_at, 'counts', public.recon_view_counts(r.counts, v_owner)) order by r.day desc), '[]'::jsonb)
+                                                          'finished_at', r.finished_at, 'counts', public.recon_view_counts(r.counts, v_owner),
+                                                          'source', r.source, 'partial', r.finished_at < ((r.day + 1)::timestamp at time zone 'America/Toronto'))
+                                       order by r.day desc), '[]'::jsonb)
              from (select * from public.ops_recon_runs where finished_at is not null order by day desc limit v_days) r),
     'findings', (select coalesce(jsonb_agg(jsonb_build_object('id', f.id, 'check_id', f.check_id, 'severity', f.severity, 'entity_table', f.entity_table,
                                     'entity_id', f.entity_id, 'message_fr', f.message_fr, 'message_en', f.message_en, 'first_day', f.first_day,
@@ -1070,7 +1300,7 @@ begin
   for f in
     select p.oid::regprocedure as sig, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = any (array['recon_money_fr', 'recon_money_en', 'recon_inv_no', 'recon_staff_name', 'recon_status_word',
-      'recon_method_word', 'recon_hhmm', 'recon_for_treasury', 'recon_trip', 'recon_error', 'recon_sheet', 'recon_collect', 'recon_tally',
+      'recon_method_word', 'recon_hhmm', 'recon_for_treasury', 'recon_trip', 'recon_error', 'recon_card_in_books', 'recon_card_parked', 'recon_unmatched_why', 'recon_sheet', 'recon_collect', 'recon_tally',
       'recon_view_counts', 'recon_view_status', 'recon_run', 'recon_add', 'recon_summary', 'recon_ack', 'recon_now'])
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
