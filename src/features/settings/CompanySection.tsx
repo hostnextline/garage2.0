@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { EMAIL_RE } from '../../lib/text';
 import { settings } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { saveSection } from './save';
 import { Panel, Field, Input, PhoneInput, attempt, toast } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 import { cleanText } from './draft';
@@ -32,7 +32,7 @@ export function CompanySection() {
     // only the fields changed here: one changed meanwhile on another device keeps its new value
     const next: Record<string, unknown> = { ...(settings.value.company || {}) };
     for (const k of Object.keys(changes) as (keyof Company)[]) next[k] = cleanText(d[k]);
-    if (await attempt(() => saveSettings('company', next), { ok: t('settings.saved') })) reset();
+    if (await attempt(() => saveSection('company', next), { ok: t('settings.saved') })) reset();
   };
 
   return (

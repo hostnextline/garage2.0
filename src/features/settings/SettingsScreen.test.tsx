@@ -21,6 +21,8 @@ import { access } from '../../data/auth';
 import { wide } from '../../platform/media';
 import { lang } from '../../lib/i18n';
 import type { Access } from '../../data/types';
+import { net } from '../../data/sync';
+import { toasts } from '../../ui/toast';
 
 const owner = { id: 'u1', full_name: 'Test', short_name: 'Test', email: null, phone: null, roles: ['owner'], owner: true, lang: 'fr', prefs: {}, color: null,
   rights: { settings: true }, trucks: [], card_online: false, texts_online: false } as unknown as Access;
@@ -33,7 +35,7 @@ const show = async (el: preact.JSX.Element) => { await act(async () => { render(
 const type = async (el: HTMLInputElement | HTMLTextAreaElement, v: string) => { await act(async () => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }); await wait(); };
 const screen = (section?: string) => <SettingsScreen params={section ? { section } : {}} query={new URLSearchParams()} />;
 
-beforeEach(() => { lang.value = 'fr'; calls.length = 0; drafts.value = {}; access.value = owner; wide.value = true; seed(); });
+beforeEach(() => { net.value = { ...net.value, online: true }; toasts.value = []; lang.value = 'fr'; calls.length = 0; drafts.value = {}; access.value = owner; wide.value = true; seed(); });
 
 describe('Réglages: what is typed stays as typed (settings-team-st-1)', () => {
   it('a space typed after the saved name stays in the box, and the next letter follows it', async () => {
@@ -115,5 +117,21 @@ describe('Réglages: the guide’s anchor (R150)', () => {
     const b = box.querySelectorAll('[data-tour="settings-company"]');
     expect(b.length).toBe(1);
     expect(b[0].getAttribute('data-testid')).toBe('settings-nav-company');
+  });
+});
+
+describe('Réglages: a save without signal says it waits on the phone (settings-team-11)', () => {
+  it('online: « Réglages enregistrés »; offline: « Gardé sur le téléphone… », the change is written (kept) all the same', async () => {
+    await show(<CompanySection />);
+    await type(q('company-name') as HTMLInputElement, 'Garage Un');
+    await act(async () => { (q('settings-save') as HTMLElement).click(); });
+    await wait();
+    expect(String(toasts.value[toasts.value.length - 1]?.text)).toContain('enregistr');
+    net.value = { ...net.value, online: false };
+    await type(q('company-name') as HTMLInputElement, 'Garage Deux');
+    await act(async () => { (q('settings-save') as HTMLElement).click(); });
+    await wait();
+    expect(String(toasts.value[toasts.value.length - 1]?.text)).toContain('Gardé sur le téléphone');
+    expect(calls.map((c) => (c.args[1] as { name: string }).name)).toEqual(['Garage Un', 'Garage Deux']);
   });
 });

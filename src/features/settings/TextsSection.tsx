@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { Pencil, ChevronUp } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { settings, windowsOn } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { saveSection } from './save';
 import { Panel, Button, attempt } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 import { shownKinds, flatText, SWITCH_OF, type MsgKind } from './messages';
@@ -22,7 +22,7 @@ export function TextsSection() {
   const shownLang = lang.value === 'en' ? 'en' : 'fr';
 
   const save = async () => {
-    if (await attempt(() => saveSettings('messages', patchOf(changes, settings.value.messages)), { ok: t('settings.saved') })) reset();
+    if (await attempt(() => saveSection('messages', patchOf(changes, settings.value.messages)), { ok: t('settings.saved') })) reset();
   };
 
   return (

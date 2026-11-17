@@ -3,7 +3,7 @@
 import { useState } from 'preact/hooks';
 import { t, type Lang } from '../../lib/i18n';
 import { settings, garageName } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { saveSection } from './save';
 import { Panel, Tabs, Textarea, Banner, Pill, Help, attempt } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 import { nextVersion, sameValue } from './draft';
@@ -27,7 +27,7 @@ export function WaiverSection() {
     // the language not touched keeps the text stored now; the version is counted from the one stored now
     const now = settings.value.waiver || w;
     const patch = Object.fromEntries((Object.keys(changes) as (keyof Waiver)[]).map((k) => [k, d[k].trim()]));
-    const ok = await attempt(() => saveSettings('waiver', { ...now, ...patch, version: changed ? nextVersion(String(now.version || '1')) : String(now.version || '1') }), { ok: t('settings.saved') });
+    const ok = await attempt(() => saveSection('waiver', { ...now, ...patch, version: changed ? nextVersion(String(now.version || '1')) : String(now.version || '1') }), { ok: t('settings.saved') });
     if (ok) reset();
   };
   const text = d[l];

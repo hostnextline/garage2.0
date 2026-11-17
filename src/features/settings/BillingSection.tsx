@@ -3,7 +3,7 @@
 import { useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { settings, invoicesList } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { saveSection, anyQueued, type SaveAnswer } from './save';
 import { Panel, Field, Input, Textarea, MoneyInput, Banner, attempt, toast } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 import { NumInput } from './fields';
@@ -27,8 +27,10 @@ export function BillingSection() {
     if (Object.keys(e).length) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
     const p = patchOf(changes);
     const ok = await attempt(async () => {
-      if (p.billing) await saveSettings('billing', { ...settings.value.billing, ...p.billing });
-      if (p.company) await saveSettings('company', { ...(settings.value.company || {}), ...p.company });
+      const answers: SaveAnswer[] = [];
+      if (p.billing) answers.push(await saveSection('billing', { ...settings.value.billing, ...p.billing }));
+      if (p.company) answers.push(await saveSection('company', { ...(settings.value.company || {}), ...p.company }));
+      return anyQueued(answers);
     }, { ok: t('settings.saved') });
     if (ok) reset();
   };

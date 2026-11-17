@@ -1,6 +1,6 @@
 /* Apparence (owner): the team's look. The swatches and the choices themselves are shared with « Mon compte » (shared/look/LookChoices.tsx). */
 import { t } from '../../lib/i18n';
-import { saveSettings } from '../../data/api';
+import { saveSection } from './save';
 import { settings } from '../../data/select';
 import { teamLook, myLook, type Look } from '../../services/theme';
 import { Panel, Banner, Button, attempt } from '../../ui';
@@ -14,7 +14,7 @@ export function LookSection() {
   const saved = lookSaved();
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<Look>('look', saved);
   const save = async () => {
-    if (await attempt(() => saveSettings('appearance', { ...(settings.value.appearance || {}), ...changes }), { ok: t('settings.saved') })) reset();
+    if (await attempt(() => saveSection('appearance', { ...(settings.value.appearance || {}), ...changes }), { ok: t('settings.saved') })) reset();
   };
   return (
     <Section testid="settings-look" bar={<SaveBar dirty={dirty} onSave={save} onReset={reset} />}>
