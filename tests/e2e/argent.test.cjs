@@ -657,3 +657,38 @@ step('Les livres de la journée: Trésorerie for today — revenue, money in by 
   noErrors(t.page);
   await t.ctx.close();
 });
+
+// BUG argent-recon-brake: « Vérifier maintenant » runs at most once a minute for the whole garage (recon_now: rate_hit
+// 'recon_now', 60 s window). Braked, the server answers the old summary and the panel says « Vérification faite » over the
+// old « Tout balance »: a treasurer who just fixed (or broke) something and checks again within the minute is told all is
+// checked and balanced when nothing was checked. Owners: src/features/treasury/ReconPanel.tsx (checkNow) with
+// supabase/migrations/20261116000400_refonte_rapprochement.sql (recon_now says nothing about the brake). Un-skip when fixed.
+step.skip('« Vérifier maintenant » twice within the minute: the second check finds what changed, or says it could not check yet — never « Vérification faite » over the old result', 'BUG argent-recon-brake: braked, « Vérifier maintenant » says « Vérification faite » and keeps the old « Tout balance »', async () => {
+  const t = await openW({ kind: 'desktop' });
+  await h.signIn(t.page, who.louis.email, PW);
+  const day = today();
+  await t.page.goto(h.APP + `#/treasury?p=custom&from=${day}&to=${day}`);
+  await t.page.getByTestId('treasury-recon').waitFor({ timeout: 15000 });
+  // a check made a moment ago by somebody (this minute's brake is taken)
+  await checkNow(t.page);
+  // behind the app's back: a cash payment of the day is taken out of the books
+  const victim = h.sql(`select p.id from public.payments p join public.invoices v on v.id = p.invoice_id where p.deleted_at is null and p.method = 'cash' and v.status = 'paid'
+    and not exists (select 1 from public.payments o where o.invoice_id = p.invoice_id and o.id <> p.id and o.deleted_at is null) order by p.paid_at limit 1`);
+  assert.ok(victim, 'a cash payment alone on its paid invoice');
+  h.sql(`insert into public.rate_limits (key, bucket, n) values ('recon_now', floor(extract(epoch from now()) / 60), 1) on conflict (key, bucket) do update set n = 1`);
+  h.sql(`update public.payments set deleted_at = now() where id = '${victim}'`);
+  try {
+    // the panel asks the summary again once the check answered
+    const reread = t.page.waitForResponse((r) => /\/rpc\/recon_summary/.test(r.url()), { timeout: 30000 });
+    await t.page.getByTestId('recon-check').click();
+    const said = await t.page.locator('[data-testid^="toast-"]').last().innerText({ timeout: 30000 });
+    await (await reread).finished();
+    const found = await t.page.getByTestId('recon-finding').filter({ hasText: /dit payé/ }).waitFor({ timeout: 5000 }).then(() => 1, () => 0);
+    await h.shot(t.page, 'argent-11-braked');
+    assert.ok(found > 0 || !/Vérification faite/.test(said), `the second check found nothing and said « ${said} »`);
+  } finally {
+    h.sql(`update public.payments set deleted_at = null where id = '${victim}'`);
+  }
+  noErrors(t.page);
+  await t.ctx.close();
+});
