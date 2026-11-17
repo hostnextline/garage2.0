@@ -120,6 +120,16 @@ describe('the link', () => {
     expect(parseLink('#t=abcdef.').token).toBe('abcdef');
     expect(parseLink('#suivi=abcdef)').token).toBe('abcdef');
   });
+  it('opens the links of a text sent yesterday by the live server, and its way back from Stripe (terrain)', () => {
+    // supabase/functions/_shared/links.ts on live: `${base}client.html#t=${token}${lang === 'en' ? '&l=en' : ''}`
+    const token = 'k3Jx_9QwErTyUiOp-AsDfGhJkL2';
+    for (const [url, want] of [
+      [`https://app.example/client.html#t=${token}`, { kind: 't', token, l: null, retour: null }],
+      [`https://app.example/client.html#t=${token}&l=en`, { kind: 't', token, l: 'en', retour: null }],
+      [`https://app.example/client.html#suivi=${token}&l=en`, { kind: 'suivi', token, l: 'en', retour: null }],
+      [`https://app.example/client.html#t=${token}&l=en&retour=paye`, { kind: 't', token, l: 'en', retour: 'paye' }]
+    ] as const) expect(parseLink(new URL(url).hash)).toEqual(want);
+  });
   it('writes it back', () => {
     expect(linkHash('t', 'abc', 'en')).toBe('#t=abc&l=en');
     expect(linkHash('suivi', 'abc', null)).toBe('#suivi=abc');

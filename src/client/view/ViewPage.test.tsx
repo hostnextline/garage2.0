@@ -241,6 +241,35 @@ describe('the server says no in words the customer can act on (R11)', () => {
   });
 });
 
+describe('the customer’s side when the file moved under the open page (terrain)', () => {
+  const invoice = (paid: number, total = 18394) => ({ number: 'F-0001', issued_at: null, due_on: null, status: paid >= total ? 'paid' : 'issued', lines: [], subtotal_cents: 15998, tps_cents: 800, tvq_cents: 1596, total_cents: total, paid_cents: paid, notes: null });
+  it('the office cancelled the appointment meanwhile: « J’accepte et je signe » brings the file as it is (annulé), nothing more to sign', async () => {
+    let current = job();
+    server = (a) => {
+      if (a === 'sign') { current = job({ estimate: { signed_at: null, signer: null, cents: null, changed: false, can_sign: false } }, { status: 'cancelled' }); throw new ClientError('signed', 'Il n’y a plus rien à signer ici.'); }
+      return current;
+    };
+    await open();
+    await click(q('client-sign-click')[0]);
+    expect(sp(q('client-status')[0].textContent)).toBe('Rendez-vous annulé');
+    expect(q('client-sign-click')).toHaveLength(0);
+    expect(q('client-signed')).toHaveLength(0);
+  });
+  it('the invoice was paid meanwhile (another phone, the mechanic’s terminal): « Payer » reads the file again and shows it paid, no card page', async () => {
+    let current = job({ invoice: invoice(0), pay: { available: true, amount_cents: 18394, kind: 'invoice', pending: false } }, { status: 'done' });
+    server = (a) => {
+      if (a === 'pay') { current = job({ invoice: invoice(18394), pay: { available: false, amount_cents: 0, kind: 'invoice', pending: false } }, { status: 'done' }); throw new ClientError('nothing', 'Rien à payer : merci !'); }
+      return current;
+    };
+    await open();
+    await click(q('client-pay-button')[0]);
+    expect(calls.filter((c) => c.action === 'view')).toHaveLength(2);
+    expect(q('client-stamp')).toHaveLength(1);
+    expect(q('client-pay-button')).toHaveLength(0);
+    expect(sp(box.textContent)).not.toContain('n’a pas pu s’ouvrir');
+  });
+});
+
 describe('the invoice being made (client-page-10, 30)', () => {
   const bill = { lines: [{ description: 'Huile', qty: 1, unit_cents: 10000 }, { description: 'Rabais', qty: 1, unit_cents: 2000, kind: 'discount' }],
     subtotal_cents: 8000, tps_cents: 400, tvq_cents: 798, total_cents: 9198 };
