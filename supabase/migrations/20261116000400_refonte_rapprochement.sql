@@ -196,9 +196,13 @@ language sql stable security definer set search_path = public as $$
                    and p.amount_cents = (p_data->>'amount_cents')::bigint)
 $$;
 -- that Stripe page (or refund) was kept aside for the office (activity « payment_parked », written by the server functions)
+-- and the books still do not have that page: M6.parked says that money (until it is entered by hand), so a Stripe finding
+-- for the same page would count it twice. A page the books have (even for another amount: « stripe_amount ») is not this.
 create or replace function public.recon_card_parked(p_session text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce(p_session, '') <> '' and exists (select 1 from public.activity a where a.action = 'payment_parked' and a.data->>'session' = p_session)
+  select coalesce(p_session, '') <> ''
+     and exists (select 1 from public.activity a where a.action = 'payment_parked' and a.data->>'session' = p_session)
+     and not exists (select 1 from public.payments p where p.stripe_session = p_session and p.deleted_at is null)
 $$;
 
 -- why a card payment is not where it was meant to go (activity « payment_unmatched », written by payment_add): void,
@@ -1114,16 +1118,16 @@ begin
   -- Card money Stripe took and the books do not have (« stripe_paid_not_recorded », « stripe_amount ») never closes by
   -- age: Stripe's list only goes back 72 hours, so after 3 nights nobody adds it again while the money is still missing.
   -- It closes when the books have that card page for Stripe's amount, or once someone marked it « vu » (entered by hand)
-  -- and it was not added again for a day, or once the money was kept aside for the office (« payment_parked »: M6.parked
-  -- says it from then on, without an end).
+  -- and it was not added again for a day, or at once when the money was kept aside for the office (« payment_parked »:
+  -- M6.parked says it from then on, without an end; the same money is never two red lines).
   with c as (
     update public.ops_recon_findings f set state = 'closed', closed_at = now(), updated_at = now()
     where f.state <> 'closed'
       and ((not f.outside and f.last_run is distinct from v_run and split_part(f.check_id, '.', 1) <> all (v_failed))
-           or (f.outside and f.check_id = any (array['stripe_paid_not_recorded', 'stripe_amount']) and public.recon_card_in_books(f.data))
+           or (f.outside and f.check_id = any (array['stripe_paid_not_recorded', 'stripe_amount'])
+               and (public.recon_card_in_books(f.data) or public.recon_card_parked(f.data->>'session')))
            or (f.outside and f.last_day < v_day - 1
-               and (f.check_id <> all (array['stripe_paid_not_recorded', 'stripe_amount']) or f.state = 'acked'
-                    or public.recon_card_parked(f.data->>'session'))))
+               and (f.check_id <> all (array['stripe_paid_not_recorded', 'stripe_amount']) or f.state = 'acked')))
     returning f.check_id)
   select count(*), count(*) filter (where public.recon_for_treasury(c.check_id)) into v_closed, v_closed_l from c;
 
@@ -1141,7 +1145,7 @@ end $$;
 create or replace function public.recon_add(p_run uuid, p_check text, p_severity text, p_entity_table text, p_entity_id uuid,
   p_message_fr text, p_message_en text, p_data jsonb) returns uuid
 language plpgsql security definer set search_path = public as $$
-declare r public.ops_recon_runs; v_key text; v_id uuid;
+declare r public.ops_recon_runs; v_key text; v_id uuid; v_aside boolean;
 begin
   -- the lock of recon_run first: its run cannot be replaced under it, and the lock order stays the same (no deadlock)
   perform pg_advisory_xact_lock(hashtext('garage.recon_run'));
@@ -1151,15 +1155,22 @@ begin
     perform public.fail('bad_finding', 'Une différence a besoin d’une vérification, d’une gravité (bad, warn, info) et d’un message.');
   end if;
   v_key := trim(p_check) || ':' || coalesce(p_entity_id::text, '') || coalesce(':' || nullif(p_data->>'sig', ''), '');
-  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, outside, last_run)
+  -- card money Stripe took that the server kept aside for the office: M6.parked already says it (one red line for one
+  -- money). It is written, already closed (the run's answer and the summary stay true), and never opens while kept aside.
+  v_aside := trim(p_check) in ('stripe_paid_not_recorded', 'stripe_amount') and public.recon_card_parked(p_data->>'session');
+  insert into public.ops_recon_findings as f (key, check_id, severity, entity_table, entity_id, message_fr, message_en, data, first_day, last_day, outside, last_run,
+                                              state, closed_at)
   values (v_key, trim(p_check), p_severity, p_entity_table, p_entity_id, left(p_message_fr, 1000), left(coalesce(nullif(trim(p_message_en), ''), p_message_fr), 1000),
-          coalesce(p_data, '{}'::jsonb), r.day, r.day, true, p_run)
+          coalesce(p_data, '{}'::jsonb), r.day, r.day, true, p_run,
+          case when v_aside then 'closed' else 'open' end, case when v_aside then now() end)
   on conflict (key) do update set
     severity = excluded.severity, entity_table = excluded.entity_table, entity_id = excluded.entity_id, data = excluded.data,
-    last_run = excluded.last_run, outside = true, updated_at = now(), closed_at = null,
+    last_run = excluded.last_run, outside = true, updated_at = now(),
+    closed_at = case when v_aside then coalesce(f.closed_at, now()) end,
     first_day = case when f.state = 'closed' then excluded.first_day else f.first_day end,
     last_day = case when f.state = 'closed' then excluded.last_day else greatest(f.last_day, excluded.last_day) end,
-    state = case when f.state = 'closed' then 'open'
+    state = case when v_aside then 'closed'
+                 when f.state = 'closed' then 'open'
                  when f.state = 'acked' and (f.severity is distinct from excluded.severity
                                              or (excluded.severity <> 'info' and f.message_fr is distinct from excluded.message_fr)) then 'open'
                  else f.state end,

@@ -781,6 +781,45 @@ test('recon_add: card money Stripe took and the books do not have never closes b
   assert.deepEqual((await open(h)).filter((f) => f.check_id.startsWith('M6.')).map((f) => [f.check_id, f.severity]), [['M6.parked', 'bad']]);
 }));
 
+test('recon_add (round 2): card money kept aside for the office is ONE red line — Stripe adding it again for 3 nights never opens a second', () => tx(async (h) => {
+  const g = await garage(h);
+  const day = (k) => h.val(`select (public.local_today() + $1::int)::text`, [k]);
+  const add = async (runId, session, check = 'stripe_paid_not_recorded') => {
+    await server(h);
+    const data = { sig: session, session, amount_cents: 12000, payment_intent: `pi_${session}`, job_id: g.jobC, invoice_id: null, payment_id: null, recorded_cents: null };
+    return h.val(`select public.recon_add($1, $2, 'bad', 'jobs', $3, 'Stripe a encaissé 120,00 $ par carte, mais aucun paiement n’est inscrit dans l’app pour cette carte.', 'x', $4::jsonb)`,
+      [runId, check, g.jobC, JSON.stringify(data)]);
+  };
+  // the notice could not put the 120 $ in the books: kept aside for the office
+  await server(h);
+  await h.c.query(`insert into public.activity (entity, entity_id, action, data) values ('job', $1, 'payment_parked', $2::jsonb)`,
+    [g.jobC, JSON.stringify({ kind: 'payment', session: 'cs_aside', reference: 'pi_aside', amount_cents: 12000, invoice: null, job: g.jobC, reason: 'not_allowed' })]);
+  // nights 1 to 3: Stripe's list still has the page and the nightly check adds it each time
+  for (const k of [0, 1, 2]) {
+    const r = await run(h, await day(k));
+    const id = await add(r.run_id, 'cs_aside');
+    assert.ok(id, 'recon_add still answers the finding');
+    await server(h);
+    const counts = await h.val(`select counts from public.ops_recon_runs where id = $1`, [r.run_id]);
+    assert.equal(counts.bad, 1, `night ${k + 1}: one red line for one money (${JSON.stringify(counts)})`);
+    assert.deepEqual((await open(h)).map((f) => [f.check_id, f.severity]), [['M6.parked', 'bad']], `night ${k + 1}`);
+    assert.equal(await stateOf(h, `stripe_paid_not_recorded:${g.jobC}:cs_aside`), 'closed');
+  }
+  // a Stripe finding open BEFORE the money was kept aside closes at the next run, whatever its age
+  const early = await add((await run(h, await day(3))).run_id, 'cs_late');
+  assert.equal(await stateOf(h, `stripe_paid_not_recorded:${g.jobC}:cs_late`), 'open');
+  await h.c.query(`insert into public.activity (entity, entity_id, action, data) values ('job', $1, 'payment_parked', $2::jsonb)`,
+    [g.jobC, JSON.stringify({ kind: 'payment', session: 'cs_late', reference: 'pi_late', amount_cents: 12000, invoice: null, job: g.jobC, reason: 'not_allowed' })]);
+  const r = await run(h, await day(3));
+  assert.equal(await h.val(`select state from public.ops_recon_findings where id = $1`, [early]), 'closed');
+  assert.equal(r.counts.bad, 2, 'the two kept-aside moneys, each once');
+  // the page in the books for another amount: no longer « kept aside », the wrong amount is said
+  await server(h);
+  await h.c.query(`insert into public.payments (job_id, amount_cents, method, stripe_session) values ($1, 11000, 'card_online', 'cs_aside')`, [g.jobC]);
+  await add((await run(h, await day(4))).run_id, 'cs_aside', 'stripe_amount');
+  assert.equal(await stateOf(h, `stripe_amount:${g.jobC}:cs_aside`), 'open');
+}));
+
 test('recon M6 (R34): a parked card payment is a finding for Trésorerie; a card refund without its payment, more given back than paid; card money on a cancelled, deleted or Coffre job', () => tx(async (h) => {
   const g = await garage(h);
   const acc = await h.person('Comptable', ['treasurer'], { rights: { treasury: true } });
