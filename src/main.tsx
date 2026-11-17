@@ -16,11 +16,13 @@ import { runBoot, wantsDemo } from './app/boot';
 import { pickLang, showLang, storedLang } from './app/lang';
 import { preloadRoute } from './app/routes';
 import { preloadHosts } from './app/hosts';
+import { registerSignOutCleanup } from './app/signOutCleanup';
 import { startTheme } from './services/theme';
 import { startPwa } from './shared/app/pwa';
 import { startAuth, finishOAuth, access } from './data/auth';
 
 installGlobalErrorHandlers();
+registerSignOutCleanup();
 startTheme();
 showLang(lang.value);
 // a person's language follows their account once known, unless they chose one on this device
