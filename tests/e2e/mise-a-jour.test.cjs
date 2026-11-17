@@ -99,7 +99,6 @@ step('yesterday’s app: the office books Julie, Saleh starts his day and leaves
   const o = await m.phone('bureau', { fresh: true });
   await signInPhone(o, who.nadia.email);
   assert.equal(await m.whichApp(o.page), 'old', 'yesterday’s app');
-  show('office signed in', '');
   await o.page.goto(h.APP + '#/book');
   await o.page.getByTestId('book-screen').waitFor();
   await o.page.getByTestId('customer-search').fill('Julie');
@@ -114,18 +113,14 @@ step('yesterday’s app: the office books Julie, Saleh starts his day and leaves
   await dismissSheets(o.page);
   // her appointment is today, in the block that is on now, on Saleh's truck
   h.sql(`update public.jobs set day = public.local_today(), block = '${blockNow()}', truck_id = '${T.complet}' where id = '${y.jobA}'`);
-  show('office booked', '');
   noErrors(o.page);
   await m.putAway(o);
-  show('office phone put away', '');
 
   // Saleh (his phone)
   const p = await m.phone('mecano', { fresh: true });
-  show('mechanic phone open', '');
   await signInPhone(p, who.saleh.email);
   const { page } = p;
   await page.getByTestId('today-screen').waitFor();
-  show('mechanic signed in', '');
   await page.getByTestId('shift-start').click();
   await page.getByTestId('shift-end').waitFor();
   await page.goto(h.APP + '#/agenda');
@@ -138,7 +133,6 @@ step('yesterday’s app: the office books Julie, Saleh starts his day and leaves
   await dismissSheets(page);
   await page.getByTestId('step-arrive').waitFor({ timeout: 15000 });
   assert.equal(await until(() => h.sql(`select status from public.jobs where id = '${y.jobA}'`), (v) => v === 'en_route', 15000), 'en_route');
-  show('mechanic left', '');
   // English, dark, his own photo behind the glass
   await page.goto(h.APP + '#/account');
   await page.getByTestId('account-follow').locator('button, [role=radio]').filter({ hasText: /mien|own/i }).click();
@@ -146,7 +140,6 @@ step('yesterday’s app: the office books Julie, Saleh starts his day and leaves
   await page.waitForFunction(() => document.documentElement.dataset.mode === 'dark');
   await page.getByTestId('account-lang').locator('button', { hasText: 'English' }).click();
   await page.getByText('Today').first().waitFor({ timeout: 5000 });
-  show('english and dark', '');
   const b64 = await page.evaluate(() => {
     const c = document.createElement('canvas'); c.width = 1200; c.height = 900; const x = c.getContext('2d');
     x.fillStyle = '#1d3b2a'; x.fillRect(0, 0, 1200, 900); x.fillStyle = '#e8d9b0'; x.fillRect(200, 300, 500, 300);
@@ -158,7 +151,6 @@ step('yesterday’s app: the office books Julie, Saleh starts his day and leaves
   await page.getByTestId('backdrop-file').setInputFiles(photo);
   await page.waitForFunction(() => document.documentElement.dataset.photo === 'mine', null, { timeout: 15000 });
   assert.equal(await until(() => h.sql(`select lang || '|' || coalesce(prefs->'look'->>'mode', '') from public.staff where id = '${who.saleh.id}'`), (v) => v === 'en|dark', 15000), 'en|dark');
-  show('photo and server', '');
   await h.shot(page, 'maj-1-old-app');
   noErrors(page);
   await m.putAway(p);
@@ -185,8 +177,8 @@ step('yesterday’s app with no signal: Saleh arrives, types the VIN and the km,
   await page.getByTestId('waiver-sheet').waitFor({ state: 'detached', timeout: 15000 });
   await h.shot(page, 'maj-2-mechanic-offline');
   const dev = await m.readDevice(page, who.saleh.id);
+  // the entries as yesterday's app writes them (the proof of their shape, in the report)
   show('mechanic outbox', dev.outbox.map((e) => ({ seq: e.seq, kind: e.kind, table: e.table, rpc: e.rpc, op: e.op, label: e.label, tries: e.tries, state: e.state, keys: Object.keys(e) })));
-  show('mechanic meta', dev.meta);
   y.mech.entries = dev.outbox;
   y.mech.labels = [...new Set(dev.outbox.map((e) => e.label).filter(Boolean))];
   const ms = await m.syncSheet(page);
