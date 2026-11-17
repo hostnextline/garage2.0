@@ -4,7 +4,7 @@
      The « en route » text goes by itself only when the demo says texts are switched on (&texts=on); &texts=off also
      makes the other texts come back « to send by hand ».
    Small on purpose; nothing here can stop the demo (every part is guarded). */
-import { registerFn, registerRpc, put, find, table, rows as answerRows, refuse, nowIso, type DemoRow } from '../fake-server';
+import { registerFn, registerRpc, rpcOf, DemoRefusal, put, find, table, rows as answerRows, refuse, nowIso, type DemoRow } from '../fake-server';
 import { can, customerVisible, hasRole, isStaff, jobIdVisible, myTruckIds, need } from '../demo-rules';
 import { addDays, today, longDay, clock } from '../../lib/dates';
 
@@ -69,7 +69,13 @@ function fns() {
     const active = table('trips').find((x) => x.job_id === j.id && x.status === 'active');
     if (action === 'end') { if (active) put('trips', { id: active.id, status: 'cancelled', ended_at: nowIso() }); return { ok: true }; }
     // like the real one: « Je pars » goes through the same rule
-    if (j.status === 'booked') put('jobs', { id: j.id, status: 'en_route', started_at: nowIso() });
+    if (j.status === 'booked') {
+      // the same step as « Je pars » of the database: its refusals (unpaid_here, not_allowed…) come back as they are
+      try { rpcOf('job_step')?.({ p_job: j.id, p_action: 'leave', p_data: {} }); } catch (e) {
+        if (e instanceof DemoRefusal) return { ok: false, code: e.code, error: e.message };
+        throw e;
+      }
+    }
     else if (j.status !== 'en_route') return { ok: false, code: 'not_en_route', error: 'Cette job n’est pas en route.' };
     const minutes = 14, eta = new Date(Date.now() + minutes * 60_000);
     const truck = find('trucks', j.truck_id);

@@ -189,3 +189,16 @@ describe('?demo&texto: the text shows when it comes, not 15 s later (demo-22)', 
     }
   });
 });
+
+describe('enroute start goes through « Je pars » (demo-07)', () => {
+  it('refused while the truck has an unpaid job on site, like job_step leave', async () => {
+    loadDemo(ME.owner);
+    const { fnOf } = await import('./fake-server');
+    const r = await fnOf('enroute')!({ action: 'start', job_id: 'j-3' }) as Record<string, unknown>;
+    expect(r).toMatchObject({ ok: false, code: 'unpaid_here' });
+    expect(find('jobs', 'j-3')!.status).toBe('booked');
+    put('jobs', { id: 'j-2', pay_later: true });
+    expect(await fnOf('enroute')!({ action: 'start', job_id: 'j-3' })).toMatchObject({ ok: true });
+    expect(find('jobs', 'j-3')!.status).toBe('en_route');
+  });
+});
