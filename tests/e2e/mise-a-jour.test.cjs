@@ -436,12 +436,16 @@ function dayOnlyComplet() {
       and not exists (select 1 from public.truck_days t where t.day = d::date and t.deleted_at is null)
     order by d limit 1`);
 }
+/** a phone on the rebuilt app, signed in; `settled` resolves once its start-up work is over (the first pull, then the check
+    « what do I still see? » 4 s after the start, which reads every table: its last one is « messages »). A change made
+    after that reaches the phone only by the app's own following (realtime on the real server, the 45 s pull here). */
 async function phoneNew(email, kind = 'phone') {
   const { ctx, page } = await h.open({ kind });
   m.watch(page);
+  const settled = page.waitForResponse((r) => /\/rest\/v1\/messages\?select=id%2Cupdated_at/.test(r.url()), { timeout: 30000 });
   await h.signIn(page, email, PW);
   assert.equal(await m.whichApp(page), 'new', 'the rebuilt app');
-  return { ctx, page };
+  return { ctx, page, settled };
 }
 
 step('two phones at once on the rebuilt app: the office moves an appointment Saleh has open, his screen follows; the office takes a payment, his phone shows it; both press « Je pars » on the same job: once, and the second is told why', async () => {
@@ -466,6 +470,7 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
 
   const s = await phoneNew(who.saleh.email);
   const o = await phoneNew(who.nadia.email);
+  await s.settled; await o.settled;
   // Saleh has Lina's appointment open
   await s.page.goto(h.APP + `#/job/${X}`);
   await s.page.getByTestId('job-moment').getByText(/Today|Aujourd/).first().waitFor({ timeout: 15000 });
@@ -510,7 +515,8 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   const mark = m.signal.log.length;
   await Promise.all([s.page.getByTestId('step-leave').click(), o.page.getByTestId('step-leave').click()]);
   assert.equal(await until(() => h.sql(`select status from public.jobs where id = '${Z}'`), (v) => v === 'en_route', 15000), 'en_route');
-  const steps = m.signal.since(mark).filter((e) => e.rpc === 'job_step' && e.args?.p_job === Z);
+  const ofZ = () => m.signal.since(mark).filter((e) => e.rpc === 'job_step' && e.args?.p_job === Z);
+  const steps = await until(ofZ, (l) => l.length === 2 && l.every((e) => e.status !== 0), 15000);
   console.log(`# « Je pars » sent: ${steps.map((e) => e.status).join(', ')}`);
   assert.equal(steps.length, 2, 'both phones sent their « Je pars »');
   assert.equal(steps.filter((e) => e.status === 200).length, 1, 'the server took one');
