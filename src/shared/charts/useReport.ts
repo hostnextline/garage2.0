@@ -12,9 +12,10 @@ import { authState } from '../../data/auth';
 import { clearReports, readReport, writeReport } from './reportCache';
 
 /* The garage's numbers kept on this device leave it as soon as nobody is signed in on it (« Me déconnecter », a
-   session lost): on a shared phone the next person never finds the last one's revenue and taxes in its storage.
-   Covers the sign-outs that follow a report seen since the app was opened; the sign-out flow itself may call
-   clearReports() too (R104), twice is harmless. */
+   session lost): no revenue nor taxes stay in the phone's storage once its person has left it, and that person, back
+   with no signal, finds no kept numbers. This net only works once this module is loaded (a report screen opened since
+   the app started: it ships with the Dashboard, Trésorerie and Coffre chunks); a sign-out right after a restart is
+   covered by the sign-out flow itself calling clearReports() (R104, app-shell). Twice is harmless. */
 effect(() => { if (authState.value === 'signed_out') clearReports(); });
 
 export interface ReportState<T> { data: T | null; loading: boolean; error: string | null; offline: boolean; at: string | null; fromCache: boolean }
