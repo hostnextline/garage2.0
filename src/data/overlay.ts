@@ -3,6 +3,8 @@
    - a job step (« Je pars », « Je suis arrivé », the signature…): once the screen stopped waiting for the server's
      answer (the change is « kept » on the phone), so the red button never changes under a finger that taps twice.
      This is what the job section did by hand (keepAhead / seen); it now survives a restart without signal.
+   - an inventory item deleted (« Supprimer cet article ») while it is kept on the phone: hidden at once, as the
+     previous version did; refused, it comes back by itself (inventory-delete-visible).
    Operations whose effect the server computes (stock counts, prices of discounts) show nothing ahead here.
    A refused change shows nothing: the row is the server's again. */
 import { isSynced, type TableName } from './schema';
@@ -24,6 +26,7 @@ function effectsOf(e: OutboxEntry, kept: boolean): { t: TableName; id: string; f
     if (STEP_STATUS[action]) return [{ t: 'jobs', id: a.p_job, fx: { patch: { status: STEP_STATUS[action] } } }];
     if (action === 'waiver') return [{ t: 'jobs', id: a.p_job, fx: { patch: { waiver_signed_at: e.at } } }];
   }
+  if (e.rpc === 'inventory_delete' && typeof a.p_item === 'string') return [{ t: 'inventory_items', id: a.p_item, fx: { patch: { deleted_at: e.at } } }];
   return [];
 }
 

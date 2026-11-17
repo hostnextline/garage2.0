@@ -26,6 +26,8 @@ export interface Item {
   n?: number;
   /** writes to IndexedDB still on their way for it (a merge): a reload keeps this tab's newer copy */
   writing?: number;
+  /** the sender started marking it: from that instant nothing is merged into it (merge-fallback-order) */
+  attempting?: boolean;
 }
 
 export class Outbox {
@@ -95,7 +97,8 @@ export class Outbox {
       added as its own change by `separately`. */
   merge(table: string, id: string, patch: Record<string, unknown>, prev: Record<string, unknown> | undefined, separately: () => void): boolean {
     const last = this.items[this.items.length - 1];
-    if (!last || last === this.inFlight) return false;
+    // being marked or sent: an edit is its own change, right here at the end, in the order it was asked
+    if (!last || last === this.inFlight || last.attempting) return false;
     const e = last.e;
     if (e.state !== 'pending' || e.table !== table || e.id !== id || (e.kind !== 'insert' && e.kind !== 'update')) return false;
     if (e.v !== 2 || (e.sent ?? e.tries) > 0 || e.tries > 0) return false;
@@ -125,6 +128,7 @@ export class Outbox {
 
   /** marks the entry as « may have reached the server », before its request leaves. null: nothing to send any more */
   async attempt(it: Item): Promise<OutboxEntry | null> {
+    it.attempting = true;
     await it.ready;
     const bump = (cur: OutboxEntry): OutboxEntry => ({ ...cur, tries: cur.tries + 1, sent: (cur.sent ?? cur.tries) + 1 });
     if (it.mem) { it.e = bump(it.e); return it.e; }

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { FakeServer, clientFor } from './testkit';
 import { startSync, stopSync, net, flush, syncOptions, outbox, resetScreen } from './sync';
 import { setNet } from './net';
-import { getRow, rowsOf } from './store';
+import { getRow, rowsOf, baseRow } from './store';
 import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute, decodeVin, moveJob, buyStock, moveStock } from './api';
 import { itemsOf } from './select';
 import { refusalText } from '../app/netView';
@@ -114,11 +114,26 @@ describe('an inventory item deleted while the answer waits (core-data-14, second
     setNet({ online: false });
     const r = await deleteInventoryItem('it1');
     expect(r.queued).toBe(true);
-    expect(getRow('inventory_items', 'it1')).toBeTruthy();
+    // hidden at once, as the previous version did (inventory-delete-visible); still held until the server deleted it
+    expect(getRow('inventory_items', 'it1')).toBeUndefined();
+    expect(baseRow('inventory_items', 'it1')).toBeTruthy();
     srv.offline = false;
     await flush();
-    await until(() => !getRow('inventory_items', 'it1'));
+    await until(() => !baseRow('inventory_items', 'it1'));
     expect(rowsOf('inventory_moves').length).toBe(0);
+  });
+  it('kept on the phone, then refused: the item comes back by itself', async () => {
+    srv.put('inventory_items', { id: 'it3', name: 'Courroie' });
+    srv.rpc('inventory_delete', () => { throw Object.assign(new Error('Article utilisé.'), { code: 'used' }); });
+    await start();
+    srv.offline = true;
+    setNet({ online: false });
+    expect((await deleteInventoryItem('it3')).queued).toBe(true);
+    expect(getRow('inventory_items', 'it3')).toBeUndefined();
+    srv.offline = false;
+    await flush();
+    await until(() => net.value.failed.length === 1);
+    expect(getRow('inventory_items', 'it3')?.name).toBe('Courroie');
   });
   it('refused: the item stays', async () => {
     srv.put('inventory_items', { id: 'it2', name: 'Huile' });

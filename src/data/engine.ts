@@ -41,12 +41,17 @@ export interface EngineOptions {
   guard(): void;
   /** the waits between two tries of the queue's head (tests make them short) */
   retryDelays?: number[];
+  /** the screens stop « loading » after this long even when the first download hangs (tests make it short) */
+  readyAfterMs?: number;
 }
 
 
 const CYCLE_MS = 45000;
 const LIVE_CYCLE_MS = 180000;
 const SAFETY_MS = 20000;
+/** a first download that hangs (no answer at all) still lets the screens show the device copy after this long: one
+    request's limit, as when every table was asked at once (ready-slower-weak-signal) */
+const READY_AFTER_MS = REQUEST_MS + 1000;
 /** tables pulled at the same time (all 23 at once was a burst on a weak signal) */
 const PULLS_AT_ONCE = 8;
 const SCAN_MS = 30 * 60000;
@@ -138,6 +143,7 @@ export class Engine {
     this.listen();
     if (this.o.realtime) this.subscribe();
     void this.pullAll().then(() => { if (this.closed) return; this.firstPullDone = true; setNet({ ready: true }); });
+    this.later(() => { if (!net.value.ready) setNet({ ready: true }); }, this.o.readyAfterMs ?? READY_AFTER_MS);
     void this.send.flush();
     this.timers.push(
       setInterval(() => this.cycle(), CYCLE_MS),

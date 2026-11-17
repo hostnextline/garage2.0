@@ -51,6 +51,21 @@ describe('start', () => {
   });
 });
 
+describe('a first download that hangs (ready-slower-weak-signal)', () => {
+  it('the screens stop « loading » after one request\'s limit, the download goes on', async () => {
+    const uid = nextUid();
+    srv.hold();   // no answer at all
+    const e = new Engine(clientFor(srv, uid), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined, readyAfterMs: 150 });
+    engines.push(e);
+    await e.start();
+    expect(net.value.ready).toBe(false);
+    await until(() => net.value.ready, 2000);
+    expect(net.value.firstPull).toBe('no');
+    srv.release();
+    await until(() => net.value.firstPull === 'ok');
+  });
+});
+
 describe('the outbox', () => {
   it('a new row shows at once and reaches the server once', async () => {
     const e = await boot(nextUid());

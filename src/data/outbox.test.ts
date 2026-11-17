@@ -76,3 +76,17 @@ describe('the rescue copy keeps the head of the queue, never a queue with a hole
     expect(readRescue(uid).map((e) => e.op)).toEqual(['a', 'b', 'c']);
   });
 });
+
+describe('an edit asked while the queue\'s head is being marked (merge-fallback-order)', () => {
+  it('is its own change, at its place: never merged into an entry that is leaving', async () => {
+    const uid = nextUid();
+    const ob = queue(uid);
+    const it = ob.add(entry('h', { values: { id: 'h', first_name: 'A' } }), true);
+    await it.ready;
+    const marking = ob.attempt(it);   // the sender picked it: the mark is on its way to IndexedDB
+    expect(ob.merge('customers', 'h', { phone: '514' }, undefined, () => { throw new Error('never added at the end later'); })).toBe(false);
+    await marking;
+    expect(ob.items[0].e.values).toEqual({ id: 'h', first_name: 'A' });
+    ob.db!.close();
+  });
+});
