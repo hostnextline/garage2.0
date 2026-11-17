@@ -1,5 +1,11 @@
 /* Invoices: the panel of a job, « Encaisser », the list, the invoice as a document. Tokens only (6 themes). */
 
+/* Two rules that shared/stock/needs.css also holds (« Inventaire » uses the same class names), with the same
+   declarations: the invoices' screens no longer depend on that file being loaded (the card of « La journée » loads
+   it), and they keep their look when « Inventaire » takes its own names (R128). Before this file's own rules. */
+.inv-summary { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); }
+.inv-qty { font-size: var(--t-md); white-space: nowrap; }
+
 /* ---------- the hero amount ---------- */
 .inv-hero { display: flex; flex-direction: column; gap: 2px; }
 .inv-hero-label { font-size: var(--t-xs); font-weight: 520; color: var(--ink-2); }
@@ -49,7 +55,8 @@
 .inv-line-x { grid-area: x; }
 .inv-line-pct { grid-area: pct; }
 .inv-line-pct .chip { min-height: var(--tap); min-width: var(--tap); justify-content: center; }
-.inv-qty { text-align: right; }
+/* (the quantity of an invoice line; « Inventaire » has its own .inv-qty, a span that this rule must not reach) */
+.inv-editor .inv-qty { text-align: right; }
 .inv-line.is-discount .inv-line-desc .input { font-style: italic; }
 .inv-add .btn { flex: 1 1 auto; }
 @container (min-width: 440px) {
@@ -112,9 +119,13 @@
 .inv-kpi b { font-size: var(--t-lg); font-stretch: var(--w-num); font-weight: 550; }
 @media (min-width: 760px) { .inv-kpi b { font-size: var(--t-xl); } }
 .inv-kpi span { font-size: var(--t-xs); color: var(--ink-2); font-weight: 500; }
-.inv-filters { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
-.inv-filters .search { flex: 1 1 240px; }
-.inv-filters .select { flex: 0 1 220px; width: auto; }
+/* Factures' search and period: one row that wraps, whatever else is loaded (R128). « Inventaire » uses the class name
+   .inv-filters too, as a column (shared/stock/needs.css, loaded with « La journée »): with both files, Factures got a
+   240 px search and a 220 px date box, and « Inventaire » a 240 px search. Two classes out-rank needs.css in either
+   load order, and these rules no longer reach « Inventaire ». */
+.inv-filters.inv-list-filters { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.inv-list-filters .search { flex: 1 1 240px; }
+.inv-list-filters .select { flex: 0 1 220px; width: auto; }
 .inv-rows { display: flex; flex-direction: column; }
 .inv-row { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3) 0 0; }
 .inv-row + .inv-row { border-top: 1px solid var(--glass-line); }

@@ -93,7 +93,7 @@ export default function InvoicesScreen({ query }: ScreenProps) {
       <div class="stack">
         <Tabs value={tab} onValue={(v) => { setShown(PAGE); setQuery({ tab: v === 'unpaid' ? null : v }); }} label={t('invoices.title')}
           tabs={LIST_TABS.map((x) => ({ value: x, label: t(`invoices.tabs.${x}`), count: x === 'unpaid' || x === 'draft' ? counts[x] : undefined }))} />
-        <div class="inv-filters">
+        <div class="inv-filters inv-list-filters">
           <SearchInput value={q} onValue={(v) => { setQ(v); setShown(PAGE); }} placeholder={t('invoices.list.search')} />
           <Select<ListPeriod> value={period} onValue={(v) => setQuery({ period: v === 'all' ? null : v })} aria-label={t('invoices.list.period')}
             options={LIST_PERIODS.map((p) => ({ value: p, label: t(`invoices.periods.${p}`) }))} />
