@@ -555,13 +555,16 @@ begin
              from public.payments p where p.deleted_at is null and p.method = 'card_online' and p.stripe_session is not null)
     select coalesce(jsonb_agg(f), '[]'::jsonb) into v_part from (
       select 'M6.parked' c, 'bad' s, case when pk.job is not null then 'jobs' end t, pk.job e, pk.session k,
-             format('%s%s a été mis de côté le %s sans être inscrit dans l’app : entre-le à la main%s (référence Stripe %s).',
-                    case pk.kind when 'refund' then 'Un remboursement par carte' when 'refund_failed' then 'Un remboursement par carte qui n’a pas passé' else 'Un paiement par carte' end,
+             -- « Un remboursement par carte de 30,00 $ qui n’a pas passé … »: the amount right after what it is
+             format('%s%s%s a été mis de côté le %s sans être inscrit dans l’app : entre-le à la main%s (référence Stripe %s).',
+                    case when pk.kind in ('refund', 'refund_failed') then 'Un remboursement par carte' else 'Un paiement par carte' end,
                     case when pk.amount is not null then ' de ' || public.recon_money_fr(abs(pk.amount)) else '' end,
+                    case when pk.kind = 'refund_failed' then ' qui n’a pas passé' else '' end,
                     to_char(pk.at at time zone 'America/Toronto', 'YYYY-MM-DD'), coalesce(' sur la job ' || j.number, ''), coalesce(pk.ref, pk.session)) fr,
-             format('%s%s was kept aside on %s without being recorded in the app: enter it by hand%s (Stripe reference %s).',
-                    case pk.kind when 'refund' then 'A card refund' when 'refund_failed' then 'A card refund that failed' else 'A card payment' end,
+             format('%s%s%s was kept aside on %s without being recorded in the app: enter it by hand%s (Stripe reference %s).',
+                    case when pk.kind in ('refund', 'refund_failed') then 'A card refund' else 'A card payment' end,
                     case when pk.amount is not null then ' of ' || public.recon_money_en(abs(pk.amount)) else '' end,
+                    case when pk.kind = 'refund_failed' then ' that failed' else '' end,
                     to_char(pk.at at time zone 'America/Toronto', 'YYYY-MM-DD'), coalesce(' on job ' || j.number, ''), coalesce(pk.ref, pk.session)) en,
              jsonb_build_object('session', pk.session, 'kind', pk.kind, 'amount', pk.amount, 'reference', pk.ref, 'reason', pk.reason, 'job_id', pk.job,
                                 'invoice_id', pk.inv, 'job', j.number, 'at', pk.at) d

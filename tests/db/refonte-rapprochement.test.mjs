@@ -837,6 +837,23 @@ test('recon M6 (R34): a parked card payment is a finding for Trésorerie; a card
   assert.equal((await open(h)).filter((x) => x.check_id === 'M8.money' || x.check_id.startsWith('M6.')).length, 0, 'a payment and its refund add up to zero');
 }));
 
+test('recon M6 (round 2): a card refund that failed, kept aside, says its amount right after what it is', () => tx(async (h) => {
+  const g = await garage(h);
+  const jobNo = await h.val(`select number from public.jobs where id = $1`, [g.jobC]);
+  const today = await h.val(`select public.local_today()::text`);
+  await server(h);
+  await h.c.query(`insert into public.activity (entity, entity_id, action, data) values ('job', $1, 'payment_parked', $2::jsonb), ('job', $1, 'payment_parked', $3::jsonb)`,
+    [g.jobC, JSON.stringify({ kind: 'refund_failed', session: 'cs_fail#re_9#echec', reference: 're_9', amount_cents: 3000, invoice: null, job: g.jobC, reason: 'not_allowed' }),
+      JSON.stringify({ kind: 'refund', session: 'cs_fail#re_8', reference: 're_8', amount_cents: -2500, invoice: null, job: g.jobC, reason: 'not_allowed' })]);
+  const f = (await sees(h, [])).filter((x) => x.check_id === 'M6.parked').sort((a, b) => a.key.localeCompare(b.key));
+  assert.deepEqual(f.map((x) => x.message_fr), [
+    `Un remboursement par carte de 25,00 $ a été mis de côté le ${today} sans être inscrit dans l’app : entre-le à la main sur la job ${jobNo} (référence Stripe re_8).`,
+    `Un remboursement par carte de 30,00 $ qui n’a pas passé a été mis de côté le ${today} sans être inscrit dans l’app : entre-le à la main sur la job ${jobNo} (référence Stripe re_9).`]);
+  assert.deepEqual(f.map((x) => x.message_en), [
+    `A card refund of $25.00 was kept aside on ${today} without being recorded in the app: enter it by hand on job ${jobNo} (Stripe reference re_8).`,
+    `A card refund of $30.00 that failed was kept aside on ${today} without being recorded in the app: enter it by hand on job ${jobNo} (Stripe reference re_9).`]);
+}));
+
 test('recon D5: the same car of the same customer booked twice on one day (warn), both to do or both done; one cancelled, it closes; done then booked again is no double; an old double is not news', () => tx(async (h) => {
   const g = await garage(h);
   await h.as(g.owner);
