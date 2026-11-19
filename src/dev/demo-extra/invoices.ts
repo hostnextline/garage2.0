@@ -4,6 +4,7 @@
    - a new estimate gets its number (the database's sequence).
    Texts (notify) are pretended by the jobs section's demo (?texts=off: « not connected »), card payment by the team's. */
 import { put, table, find, registerRpc, rows, refuse, nowIso, type DemoRow } from '../fake-server';
+import { can, invoiceEditable, isStaff, jobIdVisible, need } from '../demo-rules';
 import { addDays, today } from '../../lib/dates';
 
 const D = (n: number) => addDays(today(), n);
@@ -55,6 +56,8 @@ function operations() {
   registerRpc('invoice_for_job', (a) => {
     const j = find('jobs', a.p_job);
     if (!j) refuse('not_found', 'Cette job n’existe plus.');
+    need(invoiceEditable(j.id), 'Tu ne peux pas faire la facture de cette job.');
+    if (j.coffre_id) refuse('coffre_job', 'Cette job est au Coffre (famille et amis) : elle n’a pas de facture.');
     const lines = table('job_items').filter((i) => i.job_id === j.id && !i.deleted_at && ['planned', 'done', 'approved'].includes(String(i.status)))
       .sort((x, y) => Number(x.sort) - Number(y.sort)).map((i) => ({ description: String(i.description), qty: Number(i.qty), unit_cents: Number(i.unit_cents), taxable: i.taxable !== false, kind: String(i.kind), item_id: i.id }));
     const cur = table('invoices').find((v) => v.job_id === j.id && v.status !== 'void' && !v.deleted_at);
@@ -67,19 +70,66 @@ function operations() {
   registerRpc('invoice_finish', (a) => {
     const v = find('invoices', a.p_invoice);
     if (!v || v.deleted_at) refuse('not_found', 'Cette facture n’existe plus.');
+    need(invoiceEditable(v.job_id), 'Tu ne peux pas terminer cette facture.');
     if (v.status !== 'draft') return { ok: true, already: true, number: v.number, rows: rows({ invoices: v }) };
     const lines = (v.lines || []) as L[];
     if (!lines.length) refuse('empty', 'Ajoute au moins une ligne avant de terminer la facture.');
     if (lines.some((l) => !String(l.description || '').trim())) refuse('no_description', 'Une ligne n’a pas de description.');
     const m = sums(lines, v.taxes_on);
     if (m.total_cents < 0) refuse('negative', 'Le total est négatif. Vérifie le rabais.');
-    const no = Math.max(0, ...table('invoices').map((x) => Number(x.number) || 0)) + 1;
-    for (const p of table('payments')) if (p.job_id === v.job_id && !p.invoice_id && !p.deleted_at) put('payments', { id: p.id, invoice_id: v.id });
-    const paid = paidOf(v.id);
+    // the payments waiting on the job (paid before the invoice, or while « Modifier la facture » was open) come back on it
+    const waiting = table('payments').filter((p) => p.job_id === v.job_id && !p.invoice_id && !p.deleted_at);
+    const paid = paidOf(v.id) + waiting.reduce((n, p) => n + Number(p.amount_cents), 0);
+    if (v.number != null && m.total_cents < paid) refuse('below_paid', 'Le total est plus bas que ce que le client a déjà payé.');
+    for (const p of waiting) put('payments', { id: p.id, invoice_id: v.id });
+    // a reopened invoice keeps its number (no number spent: again)
+    const again = v.number != null;
+    const no = again ? Number(v.number) : Math.max(0, ...table('invoices').map((x) => Number(x.number) || 0)) + 1;
     const inv = put('invoices', { id: v.id, ...m, number: no, status: paid >= m.total_cents ? 'paid' : 'issued', issued_at: nowIso(), due_on: today(), paid_cents: paid });
-    return { ok: true, number: no, rows: rows({ invoices: inv, payments: table('payments').filter((p) => p.invoice_id === v.id) }) };
+    return { ok: true, number: no, ...(again ? { again: true } : {}), rows: rows({ invoices: inv, payments: table('payments').filter((p) => p.invoice_id === v.id) }) };
+  });
+  // « Modifier la facture » (Part 24 decies): a finished invoice, its job not over, goes back to a draft with its number;
+  // what was paid waits on the job
+  registerRpc('invoice_reopen', (a) => {
+    need(isStaff(), 'Connecte-toi avec ton compte de l’équipe.');
+    const v = find('invoices', a.p_invoice);
+    if (!v || v.deleted_at) refuse('not_found', 'Cette facture n’existe plus.');
+    need(invoiceEditable(v.job_id), 'Tu ne peux pas modifier cette facture.');
+    const payload = (jobId: unknown) => rows({ jobs: find('jobs', jobId), job_items: table('job_items').filter((i) => i.job_id === jobId),
+      invoices: table('invoices').filter((x) => x.job_id === jobId), payments: table('payments').filter((p) => p.job_id === jobId) });
+    if (v.status === 'draft') return { ok: true, already: true, rows: payload(v.job_id) };
+    if (v.status === 'void') refuse('void', 'Cette facture est annulée.');
+    const j = find('jobs', v.job_id);
+    if (!j || j.deleted_at || !['booked', 'en_route', 'on_site'].includes(String(j.status))) refuse('closed', 'La job est terminée : la facture ne se modifie plus. Annule-la pour en faire une nouvelle.');
+    for (const p of table('payments')) if (p.invoice_id === v.id && !p.deleted_at) put('payments', { id: p.id, invoice_id: null, job_id: p.job_id ?? v.job_id });
+    put('invoices', { id: v.id, status: 'draft', paid_cents: 0 });
+    return { ok: true, number: v.number, rows: payload(j.id) };
+  });
+  // « Changer le prix » of a line of an appointment (Part 24 sexies)
+  registerRpc('job_item_price', (a) => {
+    need(isStaff(), 'Connecte-toi avec ton compte de l’équipe.');
+    const cents = Number(a.p_unit_cents);
+    if (a.p_unit_cents == null || !Number.isFinite(cents) || cents < 0 || cents > 10000000) refuse('bad_amount', 'Écris un prix (0 $ ou plus).');
+    const i = find('job_items', a.p_item);
+    if (!i || i.deleted_at) refuse('not_found', 'Cette ligne n’existe plus.');
+    const j = find('jobs', i.job_id);
+    if (!j || j.deleted_at || !jobIdVisible(j.id)) refuse('not_found', 'Ce rendez-vous n’existe plus (ou tu n’y as pas accès).');
+    if (!['booked', 'en_route', 'on_site'].includes(String(j.status))) refuse('closed', 'Ce rendez-vous est terminé ou annulé : son prix ne change plus.');
+    if (table('invoices').some((v) => v.job_id === j.id && !v.deleted_at && !['draft', 'void'].includes(String(v.status)))) {
+      refuse('invoice_done', 'La facture est terminée : touche « Modifier la facture » d’abord pour changer un prix.');
+    }
+    const unit = i.kind === 'discount' || Number(i.unit_cents) < 0 ? -Math.abs(cents) : cents;
+    put('job_items', { id: i.id, unit_cents: unit });
+    // the draft invoice follows the work (trigger job_items_invoice_follow)
+    for (const v of table('invoices')) {
+      if (v.job_id !== j.id || v.deleted_at || v.status !== 'draft') continue;
+      const lines = ((v.lines || []) as (L & { item_id?: string })[]).map((l) => (l.item_id === i.id ? { ...l, unit_cents: unit } : l));
+      put('invoices', { id: v.id, ...sums(lines, v.taxes_on) });
+    }
+    return { ok: true, rows: rows({ job_items: find('job_items', i.id), invoices: table('invoices').filter((v) => v.job_id === j.id) }) };
   });
   registerRpc('invoice_void', (a) => {
+    need(can('edit_invoices'), 'Seul le bureau peut annuler une facture.');
     const v = find('invoices', a.p_invoice);
     if (!v || v.deleted_at) refuse('not_found', 'Cette facture n’existe plus.');
     if (!String(a.p_reason || '').trim()) refuse('reason', 'Écris pourquoi la facture est annulée.');

@@ -4,7 +4,8 @@
      The « en route » text goes by itself only when the demo says texts are switched on (&texts=on); &texts=off also
      makes the other texts come back « to send by hand ».
    Small on purpose; nothing here can stop the demo (every part is guarded). */
-import { registerFn, put, find, table, nowIso, type DemoRow } from '../fake-server';
+import { registerFn, registerRpc, rpcOf, DemoRefusal, put, find, table, rows as answerRows, refuse, nowIso, type DemoRow } from '../fake-server';
+import { can, customerVisible, hasRole, isStaff, jobIdVisible, myTruckIds, need } from '../demo-rules';
 import { addDays, today, longDay, clock } from '../../lib/dates';
 
 const D = (n: number) => addDays(today(), n);
@@ -35,15 +36,46 @@ function textRow(j: DemoRow, kind: string, body: string, status: string) {
   put('messages', { job_id: j.id, customer_id: j.customer_id, staff_id: me(), kind, channel: 'sms', to_addr: String(c?.phone || ''), body, status: status === 'sent' ? 'sent' : 'skipped', error: status === 'sent' ? null : status });
 }
 
+/** the trip back to the truck's start (or « Départ des camions »), like supabase/functions/enroute returnTrip */
+function returnTrip(b: Record<string, unknown>) {
+  const mine = () => table('trips').filter((t) => t.staff_id === me() && t.kind === 'return' && t.status === 'active');
+  if (b.action === 'return_end') return { ok: true, rows: answerRows({ trips: mine().map((t) => put('trips', { id: t.id, status: 'arrived', ended_at: nowIso() })) }) };
+  const bk = (find('settings', '1')?.booking || {}) as { home?: { label?: string; lat?: number; lng?: number }; return_phone?: string };
+  const truck = myTruckIds().map((id) => find('trucks', id)).find((t) => t?.driver_id === me()) || find('trucks', myTruckIds()[0]);
+  const start = (truck?.start as { label?: string; lat?: number; lng?: number } | null) || null;
+  const home = start?.lat != null ? start : bk.home;
+  if (home?.lat == null || home.lng == null) return { ok: false, code: 'no_home', error: 'Le départ des camions n’a pas de position : choisis son adresse dans Réglages → Réservations.' };
+  const label = String(home.label || bk.home?.label || 'Centrale');
+  for (const t of mine()) put('trips', { id: t.id, status: 'cancelled', ended_at: nowIso() });
+  const minutes = 18, eta = new Date(Date.now() + minutes * 60_000);
+  const phone = String(bk.return_phone || '').trim() || null;
+  const sms = !phone ? 'no_phone' : b.notify === false ? 'quiet' : textsOnline() ? 'sent' : 'off';
+  const trip = put('trips', { job_id: null, kind: 'return', dest_label: label, staff_id: me(), status: 'active', started_at: nowIso(), ended_at: null, eta_at: eta.toISOString(),
+    km: 7.5, minutes, route: null, dest_lat: home.lat, dest_lng: home.lng, sms_status: sms, expires_at: new Date(Date.now() + 4 * 3600_000).toISOString() });
+  const mech = String(find('staff', me())?.short_name || 'Le mécano');
+  const link = `${LINK}#suivi=demo-retour`;
+  const message = `${mech} a fini sa journée et revient vers ${label}. Suivre le camion en direct : ${link}`;
+  return { ok: true, sms, link, message, phone, place: label, eta_at: trip.eta_at, minutes, km: 7.5, rows: answerRows({ trips: trip }) };
+}
+
 function fns() {
   registerFn('enroute', (b) => {
+    // « Je pars vers la Centrale » / « Je suis arrivé » after the last job: a trip with no job (demo-16: it answered
+    // « Cette job n’existe plus »)
+    if (b.action === 'return' || b.action === 'return_end') return returnTrip(b);
     const j = find('jobs', b.job_id);
     if (!j) return { ok: false, code: 'not_found', error: 'Cette job n’existe plus (ou tu n’y as pas accès).' };
     const action = String(b.action || 'start');
     const active = table('trips').find((x) => x.job_id === j.id && x.status === 'active');
     if (action === 'end') { if (active) put('trips', { id: active.id, status: 'cancelled', ended_at: nowIso() }); return { ok: true }; }
     // like the real one: « Je pars » goes through the same rule
-    if (j.status === 'booked') put('jobs', { id: j.id, status: 'en_route', started_at: nowIso() });
+    if (j.status === 'booked') {
+      // the same step as « Je pars » of the database: its refusals (unpaid_here, not_allowed…) come back as they are
+      try { rpcOf('job_step')?.({ p_job: j.id, p_action: 'leave', p_data: {} }); } catch (e) {
+        if (e instanceof DemoRefusal) return { ok: false, code: e.code, error: e.message };
+        throw e;
+      }
+    }
     else if (j.status !== 'en_route') return { ok: false, code: 'not_en_route', error: 'Cette job n’est pas en route.' };
     const minutes = 14, eta = new Date(Date.now() + minutes * 60_000);
     const truck = find('trucks', j.truck_id);
@@ -90,7 +122,33 @@ function fns() {
   });
 }
 
+/* « Changer de client » (Part 24 nonies): the appointment goes to the right customer, with the database's rules */
+function jobCustomer() {
+  registerRpc('job_customer', (a) => {
+    need(isStaff(), 'Connecte-toi avec ton compte de l’équipe.');
+    const j = find('jobs', a.p_job);
+    if (!j || j.deleted_at || !jobIdVisible(j.id)) refuse('not_found', 'Ce rendez-vous n’existe plus (ou tu n’y as pas accès).');
+    need(can('book') || (hasRole('mechanic') && j.truck_id != null && myTruckIds().includes(String(j.truck_id))), 'Tu ne peux pas changer ce rendez-vous. Parle au propriétaire.');
+    if (j.status !== 'booked') refuse('started', 'Le client ne change plus une fois le camion parti : annule et réserve pour le bon client.');
+    if (table('invoices').some((v) => v.job_id === j.id && !v.deleted_at && !['draft', 'void'].includes(String(v.status)))) refuse('invoice_done', 'La facture est déjà terminée : annule-la d’abord.');
+    const c = find('customers', a.p_customer);
+    if (!c || c.deleted_at || !customerVisible(c.id)) refuse('no_customer', 'Choisis le client.');
+    if (c.id === j.customer_id) refuse('same', 'C’est déjà le client de ce rendez-vous.');
+    const cars = table('vehicles').filter((v) => v.customer_id === c.id && !v.deleted_at);
+    let car = (a.p_vehicle as string | null) || null;
+    if (car && !cars.some((v) => v.id === car)) refuse('bad_vehicle', 'Ce véhicule n’est pas à ce client.');
+    if (!car && cars.length === 1) car = cars[0].id;
+    const job = put('jobs', { id: j.id, customer_id: c.id, vehicle_id: car, address: c.address ?? null, unit: c.unit ?? null, postal_code: c.postal_code ?? null, lat: c.lat ?? null, lng: c.lng ?? null,
+      confirm_sent_at: null, waiver_signed_at: null, waiver_signer: null, waiver_version: null, waiver_attachment: null,
+      estimate_signed_at: null, estimate_signer: null, estimate_attachment: null, estimate_cents: null });
+    const invs = table('invoices').filter((v) => v.job_id === j.id);
+    for (const v of invs) if (v.status === 'draft' && !v.deleted_at) put('invoices', { id: v.id, customer_id: c.id });
+    return { ok: true, vehicle_id: car, rows: answerRows({ jobs: job, invoices: invs }) };
+  });
+}
+
 export function load() {
+  try { jobCustomer(); } catch { /* the demo goes on without it */ }
   // &texts=on / &texts=off: the demo says the automatic texts are (not) switched on (Access.texts_online)
   try {
     const p = textsParam();

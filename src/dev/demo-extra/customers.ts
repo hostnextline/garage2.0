@@ -2,7 +2,8 @@
    something), a new caller with no visit yet, an English customer with a valid VIN, a business with a contact name,
    a few older visits and notes (one reminder due today). The pretend 'vin' answers like the real one (17 characters,
    the year from the VIN). Everything is wrapped: a problem here never stops another section's demo. */
-import { put, registerFn } from '../fake-server';
+import { put, registerFn, registerRpc, table } from '../fake-server';
+import { isOwner, isStaff, jobIdVisible, need } from '../demo-rules';
 import { addDays, today } from '../../lib/dates';
 import { vinYear } from '../../lib/text';
 
@@ -58,6 +59,21 @@ export function load() {
       if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) return { ok: false, code: 'vin', error: 'Un VIN a 17 caractères (jamais de I, O ou Q).' };
       if (vin === '1HGCM82633A004352') return { ok: true, vehicle: { vin, year: 2003, make: 'Honda', model: 'Accord', trim: 'EX', displacement: 3.0, cylinders: 6, turbo: null, fuel: 'essence', drive: 'fwd', engine: 'J30A4', error: null } };
       return { ok: true, vehicle: { vin, year: vinYear(vin) || 2019, make: 'Honda', model: 'Civic', trim: 'LX', displacement: 2.0, cylinders: 4, turbo: null, fuel: 'essence', drive: 'fwd', engine: 'K20C2', error: null } };
+    });
+    // « Historique du véhicule » (Part 24 undecies): every visit of a car by its VIN, whoever owned it
+    registerRpc('vin_history', (a) => {
+      need(isStaff(), 'Connecte-toi avec ton compte de l’équipe.');
+      const vin = String(a.p_vin ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (vin.length !== 17) return { vin, visits: [] };
+      const cars = new Set(table('vehicles').filter((v) => String(v.vin ?? '').toUpperCase() === vin).map((v) => v.id));
+      const visits = table('jobs')
+        .filter((j) => cars.has(String(j.vehicle_id)) && !j.deleted_at && !['cancelled', 'no_show'].includes(String(j.status)) && (j.coffre_id == null || isOwner()))
+        .sort((x, y) => String(y.day).localeCompare(String(x.day)) || Number(y.number) - Number(x.number))
+        .map((j) => ({ job_id: j.id, number: j.number, day: j.day, status: j.status, km: j.odometer_km ?? null,
+          here: a.p_customer != null && j.customer_id === a.p_customer, open: jobIdVisible(j.id),
+          work: table('job_items').filter((i) => i.job_id === j.id && !i.deleted_at && ['planned', 'done', 'approved'].includes(String(i.status)))
+            .sort((x, y) => Number(x.sort) - Number(y.sort)).map((i) => String(i.description)) }));
+      return { vin, visits };
     });
   } catch (e) {
     console.warn('demo-extra/customers', e);
