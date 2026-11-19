@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
+- Applied on live: every migration up to `20261119000100_heures.sql` (« Heures travaillées », Part 26, applied 2026-11-19 from commit `5e77db6` with the
+  sha256 check); before it: `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
   check; INERT while `settings.booking.windows_on` is not true: the owner flips it in Réglages → Réservations, `windows_switch`, and back the
   same way, nothing lost; functions `notify`, `book`, `client` deployed pinned to `6b978bd` the same day);
   before it: `20261114000100_garde_route.sql` (Part 25, applied 2026-11-15 from commit `aabe852`;
@@ -417,7 +418,7 @@ end $do$;
   10 minutes when the database has it: today's, and tomorrow's from `win_lock_min` 1080 = 18:00), or at once when booked / moved into
   a day already locked. Not done here: the texts to customers, `team_map` (it does not answer the windows), the app's screens.
   The database tests run on a Mac too against any Postgres with the migrations (`GARAGE_DB_PORT`, see `tests/db/helpers.mjs`).
-- « Heures travaillées » (`#/timesheet`, Part 26, `20261119000100_heures.sql`, NOT applied on live yet; `src/features/timesheet/`): the
+- « Heures travaillées » (`#/timesheet`, Part 26, `20261119000100_heures.sql`, applied on live 2026-11-19 from commit `5e77db6` with the sha256 check; `src/features/timesheet/`): the
   hours worked from « Commencer / Terminer ma journée » (`shifts`), a week at a time from Monday to Sunday (Hassan's choice for the
   hours; the schedule's week stays Sunday–Saturday), a day counted on the day it began, totals in h min and in decimals (pay), the
   month's total. A mechanic sees only his own (« Mes heures », also « Voir mes heures » on the day card); the owners and the
@@ -429,7 +430,8 @@ end $do$;
   housekeeping closes a forgotten day 16 h after it began (3 h 17), so it always shows that way; the 3 h 17 is not offered as the
   end in the sheet. The read rule of `shifts` adds `hours_all()` (the treasurer even without « Carte »). Dry run on live
   2026-11-19 (rolled back): applied clean, mechanic refused, treasurer's fix kept with its history. Tests: `logic.test.ts`,
-  `TimesheetScreen.test.tsx`, `tests/db/heures.test.mjs` (not run yet: needs the Linux stack).
+  `TimesheetScreen.test.tsx`, `tests/db/heures.test.mjs` (green on « Tests complets », run 44578750496). Live had 4 days « à vérifier »
+  that day (closed by the night: 33.8 h, 22.6 h, 16.5 h, 19.2 h).
 
 ## Ideas not done yet
 
