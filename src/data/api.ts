@@ -266,6 +266,16 @@ export async function moveStock(itemId: string, delta: number, reason: 'restock'
 
 /* ---------- the day ---------- */
 export async function shiftStart() { guard(); return callRpc('shift_start', {}, { noOp: true }); }
+/** « Heures travaillées » (owners and the treasurer): correct a day of work (shift given) or add one; the server checks the
+    rules again (no overlap, not in the future, 24 hours at most) and keeps the before / after in `activity` */
+export async function shiftSave(shiftId: string | null, staffId: string, startIso: string, endIso: string | null) {
+  guard();
+  return callRpc('shift_save', { p_shift: shiftId, p_staff: staffId, p_start: startIso, p_end: endIso }, { queue: false, label: t('log.shiftSave') });
+}
+export async function shiftRemove(shiftId: string) {
+  guard();
+  return callRpc('shift_remove', { p_shift: shiftId }, { queue: false, label: t('log.shiftRemove') });
+}
 export async function shiftEnd() { guard(); return callRpc('shift_end', {}, { noOp: true }); }
 export async function reportPosition(lat: number, lng: number, accuracy: number | null, heading: number | null, speed: number | null, jobId: string | null) {
   if (preview.value) return { ok: false };

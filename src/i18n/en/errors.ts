@@ -61,5 +61,12 @@ export const errors: typeof fr = {
   confirm: 'Confirm first.',
   action: 'Unknown action.',
   truck: 'This truck no longer exists. Choose another one.',
-  server: 'The server isn’t answering as expected. Try again in a moment.'
+  server: 'The server isn’t answering as expected. Try again in a moment.',
+  no_shift_row: 'This day no longer exists. Reload the page.',
+  no_staff: 'This person is no longer on the team.',
+  bad_hours: 'Check the start time and the end time.',
+  still_open: 'This day is still open: it ends when the person taps “End my day”.',
+  too_long: 'A day can’t be longer than 24 hours.',
+  future: 'This time hasn’t come yet.',
+  overlap: 'These hours overlap another day of this person.'
 };

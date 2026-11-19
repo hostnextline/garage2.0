@@ -2,7 +2,7 @@ import type { shell as fr } from '../fr/shell';
 export const shell: typeof fr = {
   nav: {
     today: 'Today', agenda: 'Schedule', customers: 'Customers', invoices: 'Invoices', quotes: 'Estimates', map: 'Map', overview: 'Overview',
-    hours: 'Hours', treasury: 'Treasury', inventory: 'Inventory', dashboard: 'Numbers', team: 'Team', settings: 'Settings',
+    hours: 'Hours', timesheet: 'Hours worked', treasury: 'Treasury', inventory: 'Inventory', dashboard: 'Numbers', team: 'Team', settings: 'Settings',
     oil: 'Oil reminders', guide: 'Where to start', info: 'Info', account: 'My account', more: 'More'
   },
   groups: { day: 'The day', office: 'The office', garage: 'The garage' },

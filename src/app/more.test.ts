@@ -19,7 +19,7 @@ describe('« Plus »: the tiles and the filters', () => {
     expect(tilesFor(owner.filter((i) => i.group !== 'garage'), 'garage')).toHaveLength(4);
   });
   it('every part of the app has its own colour', () => {
-    const keys = ['today', 'agenda', 'map', 'customers', 'quotes', 'invoices', 'treasury', 'dashboard', 'hours', 'inventory', 'team', 'settings', 'guide'];
+    const keys = ['today', 'agenda', 'map', 'customers', 'quotes', 'invoices', 'treasury', 'dashboard', 'hours', 'timesheet', 'inventory', 'team', 'settings', 'guide'];
     for (const k of keys) expect(TILE_HUE[k]).toMatch(/^#[0-9A-F]{6}$/);
     expect(new Set(keys.map((k) => TILE_HUE[k])).size).toBe(keys.length);
   });

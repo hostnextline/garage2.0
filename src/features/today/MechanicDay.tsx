@@ -41,10 +41,10 @@ export function ShiftCard(p: { compact?: boolean; calm?: boolean }) {
         <div class="grow">
           {open ? <>
             <h2 class="today-shift-title">{t('today.shift.started', { time: clockOf(open.started_at) })}</h2>
-            <p class="today-shift-sub">{t('today.shift.worked', { time: duration(worked, l) })}</p>
+            <p class="today-shift-sub">{t('today.shift.worked', { time: duration(worked, l) })}{!p.compact && may.timesheet() && <> · <a href="#/timesheet" data-testid="shift-hours">{t('timesheet.seeMine')}</a></>}</p>
           </> : last ? <>
             <h2 class="today-shift-title">{t('today.shift.ended', { time: clockOf(last.ended_at) })}</h2>
-            <p class="today-shift-sub">{t('today.shift.endedSub', { time: duration(worked, l) })}</p>
+            <p class="today-shift-sub">{t('today.shift.endedSub', { time: duration(worked, l) })}{!p.compact && may.timesheet() && <> · <a href="#/timesheet" data-testid="shift-hours">{t('timesheet.seeMine')}</a></>}</p>
           </> : <>
             <h2 class="today-shift-title">{t('today.shift.notStarted')}</h2>
             <p class="today-shift-sub">{t('today.shift.notStartedSub')} <Help text={t('today.shift.help')} /></p>

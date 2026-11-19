@@ -155,6 +155,24 @@ registerRpc('shift_end', () => {
   const pos = find('positions', me()); if (pos) put('positions', { id: me(), deleted_at: nowIso() });
   return { ok: true, rows: rows({ shifts: open, positions: pos }) };
 });
+// « Heures travaillées »: corrections by the owners and the treasurer (the real rules: shift_save / shift_remove, Part 26)
+registerRpc('shift_save', (a) => {
+  const id = a.p_shift ? String(a.p_shift) : null;
+  const old = id ? find('shifts', id) : undefined;
+  if (id && !old) refuse('no_shift_row', 'Cette journée n’existe plus. Recharge la page.');
+  const staff = old ? String(old.staff_id) : String(a.p_staff);
+  const start = String(a.p_start), end = a.p_end ? String(a.p_end) : null;
+  if (end && Date.parse(end) <= Date.parse(start)) refuse('bad_hours', 'La fin doit être après le début.');
+  const hit = table('shifts').some((s) => s.staff_id === staff && !s.deleted_at && s.id !== id && Date.parse(String(s.started_at)) < (end ? Date.parse(end) : Infinity) && Date.parse(start) < (s.ended_at ? Date.parse(String(s.ended_at)) : Infinity));
+  if (hit) refuse('overlap', 'Ces heures chevauchent une autre journée de cette personne.');
+  const row = put('shifts', { ...(id ? { id } : {}), staff_id: staff, started_at: start, ended_at: end, fixed_by: me(), fixed_at: nowIso() });
+  return { ok: true, id: row.id, rows: rows({ shifts: row }) };
+});
+registerRpc('shift_remove', (a) => {
+  const s = find('shifts', String(a.p_shift));
+  if (!s) refuse('no_shift_row', 'Cette journée n’existe plus. Recharge la page.');
+  return { ok: true, rows: rows({ shifts: put('shifts', { id: String(a.p_shift), deleted_at: nowIso(), fixed_by: me(), fixed_at: nowIso() }) }) };
+});
 registerRpc('report_position', (a) => { put('positions', { id: me(), lat: a.p_lat, lng: a.p_lng, accuracy_m: a.p_accuracy, heading: a.p_heading, speed_kmh: a.p_speed, job_id: a.p_job, at: nowIso(), deleted_at: null }); return { ok: true }; });
 registerRpc('update_me', (a) => {
   const s = find('staff', me())!;

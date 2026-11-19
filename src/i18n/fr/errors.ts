@@ -62,5 +62,12 @@ export const errors = {
   confirm: 'Confirme d’abord.',
   action: 'Action inconnue.',
   truck: 'Ce camion n’existe plus. Choisis-en un autre.',
-  server: 'Le serveur ne répond pas comme prévu. Réessaie dans un moment.'
+  server: 'Le serveur ne répond pas comme prévu. Réessaie dans un moment.',
+  no_shift_row: 'Cette journée n’existe plus. Recharge la page.',
+  no_staff: 'Cette personne ne fait plus partie de l’équipe.',
+  bad_hours: 'Vérifie l’heure du début et l’heure de la fin.',
+  still_open: 'Cette journée est encore ouverte : elle finit quand la personne appuie sur « Terminer ma journée ».',
+  too_long: 'Une journée ne peut pas dépasser 24 heures.',
+  future: 'Cette heure n’est pas encore passée.',
+  overlap: 'Ces heures chevauchent une autre journée de cette personne.'
 };

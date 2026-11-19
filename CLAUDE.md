@@ -417,6 +417,19 @@ end $do$;
   10 minutes when the database has it: today's, and tomorrow's from `win_lock_min` 1080 = 18:00), or at once when booked / moved into
   a day already locked. Not done here: the texts to customers, `team_map` (it does not answer the windows), the app's screens.
   The database tests run on a Mac too against any Postgres with the migrations (`GARAGE_DB_PORT`, see `tests/db/helpers.mjs`).
+- « Heures travaillées » (`#/timesheet`, Part 26, `20261119000100_heures.sql`, NOT applied on live yet; `src/features/timesheet/`): the
+  hours worked from « Commencer / Terminer ma journée » (`shifts`), a week at a time from Monday to Sunday (Hassan's choice for the
+  hours; the schedule's week stays Sunday–Saturday), a day counted on the day it began, totals in h min and in decimals (pay), the
+  month's total. A mechanic sees only his own (« Mes heures », also « Voir mes heures » on the day card); the owners and the
+  treasurer (`may.timesheetAll`, server `hours_all()`) see the team and each person (`#/timesheet/STAFF?week=`), and correct:
+  `shift_save(op, shift, staff, start, end)` (fix a day, or add one with shift null; an open day keeps no end; refused: end not
+  after start, more than 24 h, not yet passed, overlap with the person's other days) and `shift_remove(op, shift)` (closed days
+  only, `deleted_at`). Each correction: `shifts.fixed_by` / `fixed_at` and an `activity` row (`hours_fix` / `hours_add` /
+  `hours_remove`, before / after). « À vérifier » = a closed day of 16 h or more not corrected (`toCheck`): the night's
+  housekeeping closes a forgotten day 16 h after it began (3 h 17), so it always shows that way; the 3 h 17 is not offered as the
+  end in the sheet. The read rule of `shifts` adds `hours_all()` (the treasurer even without « Carte »). Dry run on live
+  2026-11-19 (rolled back): applied clean, mechanic refused, treasurer's fix kept with its history. Tests: `logic.test.ts`,
+  `TimesheetScreen.test.tsx`, `tests/db/heures.test.mjs` (not run yet: needs the Linux stack).
 
 ## Ideas not done yet
 

@@ -13,7 +13,7 @@ export interface RouteDef {
   /** the menu entry it belongs to (highlighted in the menu) */
   nav?: NavKey;
 }
-export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'oil' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
+export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'oil' | 'invoices' | 'quotes' | 'map' | 'hours' | 'timesheet' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
 
 export const isField = () => hasRole('owner') || hasRole('office') || hasRole('mechanic');
 export const may = {
@@ -30,6 +30,9 @@ export const may = {
   overview: () => can('map') && (can('agenda') || isOwner()),
   // a mechanic opens Horaires for the truck he drives (the server lets him change its hours and its start)
   hours: () => can('hours') || myTrucks().length > 0,
+  // « Heures travaillées »: a mechanic sees his own days; the owners and the treasurer see and correct everyone's
+  timesheet: () => hasRole('mechanic') || isOwner() || hasRole('treasurer'),
+  timesheetAll: () => isOwner() || hasRole('treasurer'),
   treasury: () => can('treasury'),
   // « Coffre » (family and friends): the owner, and the accountant (« Trésorerie ») who exports its report apart
   coffre: () => isOwner() || can('treasury'),
@@ -49,6 +52,7 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/book', load: () => import('../features/booking/BookScreen'), allow: () => may.book() || may.walkIn(), nav: 'agenda' },
   { pattern: '/call', load: () => import('../features/booking/CallScreen'), allow: may.book, nav: 'agenda' },
   { pattern: '/hours/:truck?', load: () => import('../features/hours/HoursScreen'), allow: may.hours, nav: 'hours' },
+  { pattern: '/timesheet/:staff?', load: () => import('../features/timesheet/TimesheetScreen'), allow: may.timesheet, nav: 'timesheet' },
   { pattern: '/customers', load: () => import('../features/customers/CustomersScreen'), allow: may.customers, nav: 'customers' },
   { pattern: '/customer/:id', load: () => import('../features/customers/CustomerScreen'), allow: may.customers, nav: 'customers' },
   { pattern: '/vehicle/:id', load: () => import('../features/customers/VehicleScreen'), allow: may.customers, nav: 'customers' },
