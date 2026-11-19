@@ -51,7 +51,7 @@ test('only the owners and the treasurer correct; a mechanic cannot change his ow
   assert.ok(await h.fails(() => h.q(`update public.shifts set ended_at = now() - interval '20 hours' where id = $1`, [g.forgot])), 'no direct write');
   assert.ok(await h.fails(() => h.q(`insert into public.shifts (staff_id, started_at, ended_at) values ($1, now() - interval '3 hours', now())`, [g.mech])));
   await h.as(null);
-  assert.equal(String(await h.val(`select ended_at - started_at from public.shifts where id = $1`, [g.forgot])).includes('19:17'), true, 'unchanged');
+  assert.equal(Number(await h.val(`select extract(epoch from ended_at - started_at)::int from public.shifts where id = $1`, [g.forgot])), 19 * 3600 + 17 * 60, 'unchanged');
 }));
 
 test('the treasurer corrects a forgotten end: who, when, and the before / after kept; the same op twice changes nothing more', () => tx(async (h) => {
@@ -97,7 +97,7 @@ test('the rules: both times, the end after the start, 24 hours at most, nothing 
   assert.equal((await save(await at('16 hours'), await at('8 hours')))?.hint, 'bad_hours');
   assert.equal((await save(await at('8 hours'), await at('8 hours')))?.hint, 'bad_hours');
   assert.equal((await save(await at('-1 day'), await at('1 hour')))?.hint, 'too_long');
-  assert.equal((await save(await at('8 hours'), await ago(h, `now() + interval '1 hour'`)))?.hint, 'future');
+  assert.equal((await save(await ago(h, `now() - interval '1 hour'`), await ago(h, `now() + interval '1 hour'`), null, g.mech2))?.hint, 'future', 'an end not yet passed');
   assert.equal((await save(await ago(h, `now() + interval '1 hour'`), await ago(h, `now() + interval '2 hours'`), null, g.mech))?.hint, 'future');
   // over the day before yesterday (8 h – 16 h)
   const dby = (expr) => ago(h, `date_trunc('day', now()) - interval '2 days' + interval '${expr}'`);
