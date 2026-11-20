@@ -1,6 +1,7 @@
 /* DEV ONLY — demo rows and pretend operations for invoices and estimates (see README). Small, and never throws.
    - more invoices (old unpaid, partly paid in English, paid last month) and estimates (accepted, declined);
    - invoice_for_job / invoice_finish / invoice_void compute like the database (taxable lines, taxes off, discounts);
+     invoice_reopen (« Modifier la facture ») and finishing it again under what was paid (« paid », over_cents);
    - a new estimate gets its number (the database's sequence).
    Texts (notify) are pretended by the jobs section's demo (?texts=off: « not connected »), card payment by the team's. */
 import { put, table, find, registerRpc, rows, refuse, nowIso, type DemoRow } from '../fake-server';
@@ -73,11 +74,31 @@ function operations() {
     if (lines.some((l) => !String(l.description || '').trim())) refuse('no_description', 'Une ligne n’a pas de description.');
     const m = sums(lines, v.taxes_on);
     if (m.total_cents < 0) refuse('negative', 'Le total est négatif. Vérifie le rabais.');
-    const no = Math.max(0, ...table('invoices').map((x) => Number(x.number) || 0)) + 1;
+    // « Modifier la facture »: the invoice keeps its number and its first date
+    const again = v.number != null;
+    const no = again ? Number(v.number) : Math.max(0, ...table('invoices').map((x) => Number(x.number) || 0)) + 1;
     for (const p of table('payments')) if (p.job_id === v.job_id && !p.invoice_id && !p.deleted_at) put('payments', { id: p.id, invoice_id: v.id });
     const paid = paidOf(v.id);
-    const inv = put('invoices', { id: v.id, ...m, number: no, status: paid >= m.total_cents ? 'paid' : 'issued', issued_at: nowIso(), due_on: today(), paid_cents: paid });
-    return { ok: true, number: no, rows: rows({ invoices: inv, payments: table('payments').filter((p) => p.invoice_id === v.id) }) };
+    // under what was paid (paid ahead, or a line taken off after « Modifier la facture »): never refused (owner,
+    // 2026-11-20, no more below_paid), finished « paid », and what goes back to the customer is said
+    const over = Math.max(0, paid - m.total_cents);
+    const inv = put('invoices', { id: v.id, ...m, number: no, status: paid >= m.total_cents ? 'paid' : 'issued', issued_at: again && v.issued_at ? v.issued_at : nowIso(),
+      due_on: again && v.due_on ? v.due_on : today(), paid_cents: paid });
+    return { ok: true, number: no, again, over_cents: over, rows: rows({ invoices: inv, payments: table('payments').filter((p) => p.invoice_id === v.id) }) };
+  });
+  // « Modifier la facture »: a finished invoice (paid or not, paid too much too) of a job still open goes back to a draft
+  // with its number; its payments wait on the job and come back at the next finish
+  registerRpc('invoice_reopen', (a) => {
+    const v = find('invoices', a.p_invoice);
+    if (!v || v.deleted_at) refuse('not_found', 'Cette facture n’existe plus.');
+    if (v.status === 'draft') return { ok: true, already: true, rows: rows({ invoices: v }) };
+    if (v.status === 'void') refuse('void', 'Cette facture est annulée.');
+    const j = find('jobs', v.job_id);
+    if (!j || j.deleted_at || !['booked', 'en_route', 'on_site'].includes(String(j.status))) refuse('closed', 'La job est terminée : la facture ne se modifie plus.');
+    const pays = table('payments').filter((p) => p.invoice_id === v.id && !p.deleted_at);
+    for (const p of pays) put('payments', { id: p.id, invoice_id: null });
+    const inv = put('invoices', { id: v.id, status: 'draft', paid_cents: 0 });
+    return { ok: true, number: v.number, added: [], rows: rows({ invoices: inv, payments: pays }) };
   });
   registerRpc('invoice_void', (a) => {
     const v = find('invoices', a.p_invoice);

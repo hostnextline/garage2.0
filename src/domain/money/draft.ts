@@ -15,9 +15,11 @@ type LineRef = { item_id?: string | null };
 export function isBillable(i: Pick<WorkItem, 'status' | 'deleted_at'>): boolean { return !i.deleted_at && BILLABLE.includes(i.status); }
 /** a job coming or under way: its work and its invoice may still change (« Modifier la facture » too) */
 export function jobOpen(status: string | null | undefined): boolean { return status === 'booked' || status === 'en_route' || status === 'on_site'; }
-/** a draft that holds a number (« Modifier la facture ») is never finished below what the customer already paid (the
-    server refuses `below_paid`): what is paid over the total, 0 when it may be finished. A new draft may (the money
-    over is then « Trop-perçu », given back by the office). */
+/** a draft that holds a number (« Modifier la facture ») whose total went under what the customer already paid (a part
+    taken off that does not fit): what goes back to the customer, 0 otherwise. It is finished all the same (owner,
+    2026-11-20: the server finishes it « paid » and answers `over_cents`, as for a first finish under what was paid
+    ahead); the app asks first, with the amounts, and the office gives the money back (« Trop-perçu »). A new draft is
+    not asked: its banner already says it (paidAheadOver). */
 export function belowPaid(number: number | null | undefined, paid: number, total: number): number {
   return number != null && paid > total ? paid - total : 0;
 }

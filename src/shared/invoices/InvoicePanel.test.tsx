@@ -12,6 +12,7 @@ import { replaceLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
 import { lang } from '../../lib/i18n';
 import { toasts } from '../../ui/toast';
+import { AskHost } from '../../ui/ask';
 import type { Access, Invoice, Job, JobItem } from '../../data/types';
 import { InvoicePanel } from './InvoicePanel';
 
@@ -20,7 +21,13 @@ document.body.appendChild(box);
 const q = (id: string) => box.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
 const sheet = (id: string) => document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
 const wait = async (ms = 50) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
-const draw = async () => { act(() => render(<InvoicePanel jobId="j-1" />, box)); await wait(); };
+const draw = async () => { act(() => render(<><InvoicePanel jobId="j-1" /><AskHost /></>, box)); await wait(); };
+/** the other button of the question (« Revoir la facture ») */
+const askCancel = () => { const ok = sheet('ask-ok'); return ok ? ([...(ok.parentElement?.querySelectorAll('button') || [])].find((b) => b !== ok) as HTMLElement | undefined) || null : null; };
+/** a question's buttons ignore taps for 400 ms after it appears (ask.tsx `hold`): wait that out, like a person */
+/** the words as read, no-break spaces as plain ones (« 57,49 $ », « : ») */
+const plain = (s: string | null | undefined) => (s ?? '').replace(/[\u00a0\u202f]/g, ' ');
+const answer = async (el: HTMLElement | null) => { expect(el).toBeTruthy(); await wait(450); await act(async () => { el!.click(); }); await wait(); };
 
 const made = '2026-11-17T14:00:00.000Z';
 const job = { id: 'j-1', number: 101, status: 'on_site', customer_id: 'c-1', truck_id: 't-1', day: '2026-11-17', block: 'pm', created_by: null } as unknown as Job;
@@ -160,25 +167,91 @@ describe('a draft invoice', () => {
     // the save went first (the finish is queued behind it)
     expect(api.saveInvoiceDraft.mock.invocationCallOrder[0]).toBeLessThan(api.finishInvoice.mock.invocationCallOrder[0]);
   });
-  it('a reopened draft whose total went below what the customer paid: said, and « Terminer » is refused on the phone (the server refuses below_paid)', async () => {
-    // paid 114,98 $ before « Modifier la facture » (the payment waits on the job); a line of 50 $ now: 57,49 $
-    seed(draft({ number: 51, lines: [{ description: 'Travail a', qty: 1, unit_cents: 5000, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'] }),
-      [item('a', { unit_cents: 5000 })]);
-    replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: made, created_at: made, deleted_at: null } as never]);
-    await draw();
-    expect(q('draft-paid-ahead')?.textContent).toMatch(/114,98.*57,49.*ne se termine pas plus bas/s);
-    await act(async () => { q('invoice-finish')!.click(); });
-    await wait();
-    expect(api.finishInvoice).not.toHaveBeenCalled();
-    // a new draft (no number yet) may be finished below what was paid ahead: the rest is « Trop-perçu »
-    act(() => render(null, box));
-    seed(draft({ lines: [{ description: 'Travail a', qty: 1, unit_cents: 5000, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'] }), [item('a', { unit_cents: 5000 })]);
-    replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: made, created_at: made, deleted_at: null } as never]);
-    await draw();
-    expect(q('draft-paid-ahead')?.textContent).toContain('à lui remettre une fois la facture terminée');
-    await act(async () => { q('invoice-finish')!.click(); });
-    await wait();
-    expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+  describe('« Modifier la facture », then a total under what the customer paid (owner, 2026-11-20)', () => {
+    // paid 114,98 $ before « Modifier la facture » (the payment waits on the job); a part taken off, 50 $ left: 57,49 $
+    const lowLines = [{ description: 'Travail a', qty: 1, unit_cents: 5000, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'];
+    const paidAhead = () => replaceLocal('payments', [{ id: 'p-1', invoice_id: null, job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: made, created_at: made, deleted_at: null } as never]);
+    it('numbered draft under what was paid: the question with the amounts; « Revoir la facture » stays a draft, « Oui » finishes (no refusal, no toast)', async () => {
+      seed(draft({ number: 51, lines: lowLines }), [item('a', { unit_cents: 5000 })]);
+      paidAhead();
+      api.finishInvoice.mockImplementationOnce(async () => ({ queued: false, data: { ok: true, number: 51, again: true, over_cents: 5749 } }) as never);
+      await draw();
+      // the warning says what will happen, no longer « ne se termine pas plus bas »
+      expect(plain(q('draft-paid-ahead')?.textContent)).toBe('Le client a déjà payé 114,98 $, soit 57,49 $ de plus que ce total. Si tu termines comme ça, la facture sera marquée PAYÉ et le bureau remettra 57,49 $ au client.');
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      expect(sheet('ask-ok')).not.toBeNull();
+      expect(plain(document.body.textContent)).toContain('57,49 $ à remettre au client');
+      expect(plain(document.body.textContent)).toContain('Le client a déjà payé 114,98 $. Avec ce total, 57,49 $ est à lui remettre : le bureau s’en occupe.');
+      expect(sheet('ask-ok')!.textContent).toBe('Oui, terminer la facture');
+      expect(askCancel()?.textContent).toBe('Revoir la facture');
+      expect(api.finishInvoice).not.toHaveBeenCalled();
+      // « Revoir la facture »: nothing sent, still the draft to change
+      await answer(askCancel());
+      expect(sheet('ask-ok')).toBeNull();
+      expect(api.finishInvoice).not.toHaveBeenCalled();
+      expect(q('draft-reopened')).not.toBeNull();
+      expect(q('invoice-finish')).not.toBeNull();
+      // asked again, « Oui »: finished
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      await answer(sheet('ask-ok'));
+      expect(api.finishInvoice).toHaveBeenCalledTimes(1);
+      expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+      expect(toasts.value.filter((x) => x.kind === 'bad')).toEqual([]);
+      expect(toasts.value.map((x) => plain(x.text))).toContain('Facture F-0051 terminée de nouveau.');
+    });
+    it('« Terminer sans » with the total under what was paid: the question comes first, nothing marked « Pas fait » when the answer is no (S58)', async () => {
+      seed(draft({ number: 51, lines: lowLines }), [item('a', { unit_cents: 5000 }), item('old')]);
+      paidAhead();
+      await draw();
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      await act(async () => { sheet('missing-work-without')!.click(); });
+      await wait();
+      expect(sheet('ask-ok')).not.toBeNull();
+      await answer(askCancel());
+      expect(api.updateItem).not.toHaveBeenCalled();
+      expect(api.finishInvoice).not.toHaveBeenCalled();
+    });
+    it('the mechanic of the job says yes: the invoice is PAID and he reads that the office gives the money back, with no refund button', async () => {
+      access.value = { ...access.value!, roles: ['mechanic'], owner: false, trucks: ['t-1'] };
+      seed(draft({ number: 51, lines: lowLines }), [item('a', { unit_cents: 5000 })]);
+      paidAhead();
+      // the server's answer: finished « paid », the payment back on it, over_cents 5749
+      api.finishInvoice.mockImplementationOnce(async () => {
+        replaceLocal('invoices', [draft({ number: 51, status: 'paid', lines: lowLines, subtotal_cents: 5000, tps_cents: 250, tvq_cents: 499, total_cents: 5749, paid_cents: 11498, issued_at: made })]);
+        replaceLocal('payments', [{ id: 'p-1', invoice_id: 'f-1', job_id: 'j-1', amount_cents: 11498, method: 'cash', reference: null, paid_at: made, created_at: made, deleted_at: null } as never]);
+        return { queued: false, data: { ok: true, number: 51, again: true, over_cents: 5749 } } as never;
+      });
+      await draw();
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      await answer(sheet('ask-ok'));
+      expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+      expect(plain(q('invoice-over')?.textContent)).toContain('Trop-perçu : 57,49 $ à remettre au client');
+      expect(plain(q('invoice-over')?.textContent)).toContain('Dis-le au bureau : c’est le bureau qui le rembourse.');
+      expect(q('invoice-refund')).toBeNull();
+    });
+    it('a new draft (no number yet) under what was paid ahead: finished without a question, as before (its banner says it)', async () => {
+      seed(draft({ lines: lowLines }), [item('a', { unit_cents: 5000 })]);
+      paidAhead();
+      await draw();
+      expect(q('draft-paid-ahead')?.textContent).toContain('à lui remettre une fois la facture terminée');
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      expect(sheet('ask-ok')).toBeNull();
+      expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+    });
+    it('a numbered draft at or over what was paid: no question', async () => {
+      seed(draft({ number: 51 }), [item('a')]);
+      paidAhead();
+      await draw();
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      expect(sheet('ask-ok')).toBeNull();
+      expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+    });
   });
   it('a price typed wrong (red): « Terminer la facture » is refused and says why, never finished with the line at its old price (review invoices-r2-3)', async () => {
     seed(draft({ lines: [{ description: 'Travail a', qty: 1, unit_cents: 0, taxable: true, kind: 'service', item_id: 'a' }] as unknown as Invoice['lines'] }), [item('a', { unit_cents: 0 })]);
