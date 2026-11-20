@@ -28,5 +28,6 @@ import { guide } from './guide';
 import { info } from './info';
 import { hermes } from './hermes';
 import { oil } from './oil';
+import { timesheet } from './timesheet';
 
-export const fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide, info, hermes, oil };
+export const fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide, info, hermes, oil, timesheet };

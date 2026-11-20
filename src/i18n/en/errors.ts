@@ -144,6 +144,13 @@ export const errors: typeof fr = {
   bad_finding: 'A finding needs its check, its severity and its message.',
   not_ready: 'This part is not set up on the server yet.',
 
+  no_shift_row: 'This day no longer exists. Reload the page.',
+  no_staff: 'This person is no longer on the team.',
+  bad_hours: 'Check the start time and the end time.',
+  still_open: 'This day is still open: it ends when the person taps “End my day”.',
+  future: 'This time hasn’t come yet.',
+  overlap: 'These hours overlap another day of this person.',
+
   at: {
     conversation: { empty: 'Write the message.' },
     hermes: { empty: 'Write your question.' },
@@ -154,7 +161,8 @@ export const errors: typeof fr = {
     invoice_reopen: { closed: 'The job is finished: the invoice can no longer be changed. Cancel it to make a new one.' },
     set_job_duration: { block_full: 'With this length the job no longer fits in the block. Move it or shorten it.' },
     set_truck_start: { no_truck: 'This truck no longer exists. Choose another one.' },
-    coffre_add: { too_many: '30 jobs at most at a time.' }
+    coffre_add: { too_many: '30 jobs at most at a time.' },
+    shift_save: { too_long: 'A day can’t be longer than 24 hours.' }
   },
   day: {
     bad_block: 'The garage now gives a 4-hour arrival window: choose a window instead of a block.',
