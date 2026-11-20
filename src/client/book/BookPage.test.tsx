@@ -194,7 +194,10 @@ describe('Réserver en ligne, when something goes wrong', () => {
     answer = (a) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] } : {};
     await toSlots();
     await click(q('book-slot')[0]);
-    await wait(60);   // the new step's title takes the focus 30 ms after it is drawn: a person taps later than that
+    // the new step's title takes the focus 30 ms after it is drawn: a person taps later than that. Wait for it to have
+    // happened (not a fixed time: on a busy machine the 30 ms timer could fire after the tap and take the focus back — tests-05)
+    for (let i = 0; i < 200 && document.activeElement !== box.querySelector('#bk-t4'); i++) await wait(10);
+    expect(document.activeElement).toBe(box.querySelector('#bk-t4'));
     await click(q('book-submit')[0]);
     expect(document.activeElement).toBe(q('book-first')[0]);
     expect(calls.some((c) => c.action === 'book')).toBe(false);
