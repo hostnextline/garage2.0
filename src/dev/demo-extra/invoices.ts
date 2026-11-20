@@ -1,6 +1,7 @@
 /* DEV ONLY — demo rows and pretend operations for invoices and estimates (see README). Small, and never throws.
    - more invoices (old unpaid, partly paid in English, paid last month) and estimates (accepted, declined);
    - invoice_for_job / invoice_finish / invoice_void compute like the database (taxable lines, taxes off, discounts);
+     invoice_reopen (« Modifier la facture ») and finishing it again under what was paid (« paid », over_cents);
    - a new estimate gets its number (the database's sequence).
    Texts (notify) are pretended by the jobs section's demo (?texts=off: « not connected »), card payment by the team's. */
 import { put, table, find, registerRpc, rows, refuse, nowIso, type DemoRow } from '../fake-server';
@@ -80,13 +81,16 @@ function operations() {
     // the payments waiting on the job (paid before the invoice, or while « Modifier la facture » was open) come back on it
     const waiting = table('payments').filter((p) => p.job_id === v.job_id && !p.invoice_id && !p.deleted_at);
     const paid = paidOf(v.id) + waiting.reduce((n, p) => n + Number(p.amount_cents), 0);
-    if (v.number != null && m.total_cents < paid) refuse('below_paid', 'Le total est plus bas que ce que le client a déjà payé.');
     for (const p of waiting) put('payments', { id: p.id, invoice_id: v.id });
-    // a reopened invoice keeps its number (no number spent: again)
+    // a reopened invoice keeps its number (no number spent: again) and the day it was first issued
     const again = v.number != null;
     const no = again ? Number(v.number) : Math.max(0, ...table('invoices').map((x) => Number(x.number) || 0)) + 1;
-    const inv = put('invoices', { id: v.id, ...m, number: no, status: paid >= m.total_cents ? 'paid' : 'issued', issued_at: nowIso(), due_on: today(), paid_cents: paid });
-    return { ok: true, number: no, ...(again ? { again: true } : {}), rows: rows({ invoices: inv, payments: table('payments').filter((p) => p.invoice_id === v.id) }) };
+    // under what was paid (paid ahead, or a line taken off after « Modifier la facture »): never refused (owner,
+    // 2026-11-20, no more below_paid), finished « paid », and what goes back to the customer is said (the office gives it)
+    const over = Math.max(0, paid - m.total_cents);
+    const inv = put('invoices', { id: v.id, ...m, number: no, status: paid >= m.total_cents ? 'paid' : 'issued',
+      issued_at: again && v.issued_at ? v.issued_at : nowIso(), due_on: again && v.due_on ? v.due_on : today(), paid_cents: paid });
+    return { ok: true, number: no, again, over_cents: over, rows: rows({ invoices: inv, payments: table('payments').filter((p) => p.invoice_id === v.id) }) };
   });
   // « Modifier la facture » (Part 24 decies): a finished invoice, its job not over, goes back to a draft with its number;
   // what was paid waits on the job

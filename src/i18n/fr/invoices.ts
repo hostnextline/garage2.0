@@ -193,7 +193,14 @@ export const invoices = {
     paidAhead: 'Le client a déjà payé {amount}. Reste à payer : {left}.',
     paidAheadAll: 'Le client a déjà tout payé ({amount}). Termine la facture : elle sera marquée PAYÉ.',
     paidAheadOver: 'Le client a déjà payé {amount}, soit {over} de plus que la facture : à lui remettre une fois la facture terminée.',
-    paidAheadBelow: 'Le client a déjà payé {amount}, soit {over} de plus que ce total. Une facture modifiée ne se termine pas plus bas que ce qui est payé : remets le travail retiré, ou parle au bureau.',
+    paidAheadBelow: 'Le client a déjà payé {amount}, soit {over} de plus que ce total. Si tu termines comme ça, la facture sera marquée PAYÉ et le bureau remettra {over} au client.',
+    /** « Terminer la facture » of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
+    overAsk: {
+      title: '{over} à remettre au client',
+      text: 'Le client a déjà payé {paid}. Avec ce total, {over} est à lui remettre : le bureau s’en occupe.',
+      ok: 'Oui, terminer la facture',
+      cancel: 'Revoir la facture'
+    },
     finished: 'Facture {n} terminée',
     addedWork: 'Ajouté à la facture : {what}',
     missing: {
@@ -212,8 +219,7 @@ export const invoices = {
     problem: {
       empty: 'Ajoute au moins une ligne avant de terminer la facture.',
       no_description: 'Une ligne n’a pas de description : écris ce qui a été fait.',
-      negative: 'Le total est négatif : vérifie le rabais.',
-      below_paid: 'Le client a déjà payé {amount} : le total ne peut pas être plus bas.'
+      negative: 'Le total est négatif : vérifie le rabais.'
     }
   },
 
@@ -226,7 +232,7 @@ export const invoices = {
     finishedAgainQuiet: 'Facture {n} terminée de nouveau.',
     item: 'La facture est terminée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
     itemPaid: 'La facture est payée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
-    /** a billed line whose invoice nobody here may open again (paid too much: refunded first; another truck's job) */
+    /** a billed line whose invoice nobody here may open again (the job is over, another truck's job) */
     itemLocked: 'La facture est terminée : pour changer cette ligne, demande au bureau.'
   },
 

@@ -10,7 +10,7 @@ import { net } from '../../data/sync';
 import { getRow } from '../../data/store';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { Panel, Button, Banner, Totals, InvoicePill, Switch, Field, Textarea, askText, run, attempt, toast } from '../../ui';
+import { Panel, Button, Banner, Totals, InvoicePill, Switch, Field, Textarea, ask, askText, run, attempt, toast } from '../../ui';
 import { jobRights } from '../../domain/jobs/rights';
 import { linesTotals, draftProblems, cleanLine } from '../../domain/money/invoice';
 import { workMissing, workToAdd, lineOfWork, settleLines, draftPatch, isBillable, jobOpen, belowPaid, type WorkItem } from '../../domain/money/draft';
@@ -68,20 +68,33 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
   const addNewWork = () => d.update((cur) => ({ ...cur, lines: [...cur.lines, ...keyed(workToAdd(cur.lines, items, inv.created_at))] }));
   // paid by the customer (online, from the text) while the work goes on: it counts on the invoice once it is finished
   const ahead = aheadOf(job?.id);
-  // « Modifier la facture » then a lower total: the server never finishes it below what was paid (below_paid)
+  // « Modifier la facture » then a total under what was paid: finished « paid » all the same, the rest goes back to the
+  // customer (the office); asked before finishing (owner, 2026-11-20)
   const below = belowPaid(inv.number, ahead, tt.total);
 
-  const doFinish = async () => {
+  /** `leaveOff`: « Terminer sans », the work left off the invoice is marked « Pas fait » first */
+  const doFinish = async (leaveOff: WorkItem[] = []) => {
     setAsking([]);
     if (typos.refused()) return;
     const now = d.peek();
     const total = linesTotals(now.lines, rates, now.taxesOn).total;
     const problem = draftProblems(now.lines, total).problem;
     if (problem) { setShowErrors(true); toast(t(`invoices.draft.problem.${problem}`), { kind: 'bad' }); return; }
-    // refused here, not by the server later (offline: a « Terminer » refused hours after, the invoice left a draft)
+    // under what the customer already paid (« Modifier la facture », a part taken off): never refused (the server
+    // finishes it « paid », over_cents), but asked with the amounts, before anything is sent: the mechanic is never
+    // stuck, and never hands money back by mistake (the office does)
     const paidNow = aheadOf(job?.id);
-    if (belowPaid(inv.number, paidNow, total) > 0) { toast(t('invoices.draft.problem.below_paid', { amount: money(paidNow, lang.value) }), { kind: 'bad' }); return; }
+    const over = belowPaid(inv.number, paidNow, total);
+    if (over > 0) {
+      const l = lang.value;
+      const yes = await ask({ title: t('invoices.draft.overAsk.title', { over: money(over, l) }), text: t('invoices.draft.overAsk.text', { paid: money(paidNow, l), over: money(over, l) }),
+        ok: t('invoices.draft.overAsk.ok'), cancel: t('invoices.draft.overAsk.cancel') });
+      if (!yes) return;
+    }
     await d.flush();
+    // sent before the number (the outbox keeps the order): work left billable and off a finished invoice makes the
+    // server refuse « Terminé » for the job (jobs_unbilled_guard, unbilled), the mechanic stuck at the door once paid
+    for (const it of leaveOff) if (!(await attempt(() => updateItem(it.id, { status: 'removed' })))) return;
     const r = await run(() => finishInvoice(inv.id));
     if (r && !r.queued) {
       const n = invoiceNumber({ number: r.data?.number ?? getRow<Invoice>('invoices', inv.id)?.number ?? null });
@@ -99,6 +112,20 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
   const addAndFinish = async () => {
     d.update((cur) => ({ ...cur, lines: [...cur.lines, ...keyed(workMissing(cur.lines, items))] }));
     await doFinish();
+  };
+  // « Terminer sans » while the job is coming or under way: the work left off becomes « Pas fait » (lead-watch terrain-01,
+  // argent-app-01), so only for someone whose « Pas fait » the server takes (job_items_editable); the others add it. A job
+  // already over is never finished again: nothing to mark there.
+  const leavesOff = !!job && jobOpen(job.status);
+  const mayFinishWithout = !leavesOff || workEditable;
+  const finishWithout = async () => {
+    if (!leavesOff) return doFinish();
+    if (!workEditable) return;
+    // what is missing now (work may have moved while the sheet was open): only the work the person saw is marked
+    const shown = new Set(asking.map((i) => i.id));
+    const missing = workMissing(d.peek().lines, itemsOf(job.id));
+    if (missing.some((i) => !shown.has(i.id))) { setAsking(missing); return; }
+    await doFinish(missing);
   };
   // a line of the job's work taken off the invoice leaves the job too (« Pas fait »), while the job is coming or under way
   const removeWork = (line: EditLine) => {
@@ -177,7 +204,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
         )}
       </div>
       <CatalogSheet open={catalog} onClose={() => setCatalog(false)} docLang={docLang} onAdd={(add) => d.update((cur) => ({ ...cur, lines: [...cur.lines, ...add] }))} />
-      <MissingWorkSheet work={asking} onClose={() => setAsking([])} onAdd={addAndFinish} onWithout={doFinish} />
+      <MissingWorkSheet work={asking} onClose={() => setAsking([])} onAdd={addAndFinish} onWithout={mayFinishWithout ? finishWithout : undefined} />
     </Panel>
   );
 }
