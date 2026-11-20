@@ -530,6 +530,151 @@ test('paid ahead more than the final invoice: finished « payée » and the exce
   assert.equal(await hint(h, () => pay(h, draft.id, -(v.total_cents + 1))), 'refund_too_much');
 }));
 
+/** a job on site whose invoice (oil change + brakes) the customer paid in full in cash, then reopened by the mechanic
+ *  (« Modifier la facture ») and the brakes taken off (« Pas fait »): { job, inv, brakes, paid, number, issued } */
+async function paidThenLineOff(h, g, job) {
+  const brakes = await h.val(`insert into public.job_items (job_id, description, unit_cents, status, kind, sort) values ($1, 'Plaquettes avant', 15000, 'planned', 'service', 9) returning id`, [job]);
+  await h.as(g.mech);
+  const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: job, p_refresh: true })).rows.invoices.find((v) => v.status === 'draft').id;
+  const number = Number((await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv })).number);
+  const first = await inv1(h, inv);
+  await h.as(g.mech);
+  await pay(h, inv, first.total_cents);
+  assert.equal((await inv1(h, inv)).status, 'paid');
+  await h.as(g.mech);
+  assert.equal((await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })).ok, true);
+  await h.c.query(`update public.job_items set status = 'removed' where id = $1`, [brakes]);
+  return { job, inv, brakes, paid: first.total_cents, number, issued: first.issued_at };
+}
+
+test('a paid invoice reopened on site, a line taken off, finished again: « payée », what goes back is said, same number and date; the job finishes, the next « Je pars » goes, the office gives the difference back (owner’s decision 2026-11-20, S123, O-28)', () => tx(async (h) => {
+  const g = await garage(h);
+  const job = await jobOnSite(h, g);
+  await h.as(g.owner);
+  const next = (await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'pm', duration_min: 60 },
+    p_items: [{ description: 'Pneus d’hiver', unit_cents: 8000, duration_min: 45 }] })).job_id;
+  const s = await paidThenLineOff(h, g, job);
+  // « Terminer la facture » again, by the mechanic: no longer refused « below_paid »
+  await h.as(g.mech);
+  const op = uuid();
+  const f = await h.rpc('invoice_finish', { p_op: op, p_invoice: s.inv });
+  const v = await inv1(h, s.inv);
+  assert.deepEqual((await h.val(`select lines from public.invoices where id = $1`, [s.inv])).map((l) => l.description), ['Vidange d’huile + changement de filtre'], 'the brakes are off the invoice');
+  assert.ok(v.total_cents < s.paid);
+  assert.deepEqual([f.ok, Number(f.number), f.again, f.over_cents], [true, s.number, true, s.paid - v.total_cents], 'its number, « again », and what goes back');
+  assert.deepEqual([v.status, Number(v.number), v.paid_cents], ['paid', s.number, s.paid], 'paid, with all the money on it');
+  assert.equal(v.issued_at.getTime(), s.issued.getTime(), 'the day it was first issued');
+  assert.equal(await h.val(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null and deleted_at is null`, [job]), 0, 'nothing left waiting on the job');
+  const said = async () => { await asDb(h); return h.q(`select actor, entity, entity_id, data from public.activity where action = 'overpaid' and data->>'invoice' = $1`, [s.inv]); };
+  const notes = await said();
+  assert.equal(notes.length, 1);
+  assert.deepEqual([notes[0].actor, notes[0].entity, notes[0].entity_id], [g.mech, 'job', job]);
+  assert.deepEqual(notes[0].data, { invoice: s.inv, number: s.number, total: v.total_cents, paid: s.paid, over: s.paid - v.total_cents });
+  // the same finish sent again (a phone's retry): the same answer, nothing written twice
+  await h.as(g.mech);
+  assert.deepEqual(await h.rpc('invoice_finish', { p_op: op, p_invoice: s.inv }), f);
+  assert.equal((await said()).length, 1);
+  // the mechanic does not give money back himself (the office does, O-29): refused, the invoice as it was
+  await h.as(g.mech);
+  assert.equal(await hint(h, () => pay(h, s.inv, -f.over_cents)), 'not_allowed');
+  // nothing blocks him: the next « Je pars » (this job reads « payée »), then « Terminé » (no work left off the invoice)
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: next, p_action: 'leave', p_data: {} });
+  await h.rpc('job_step', { p_op: uuid(), p_job: job, p_action: 'finish', p_data: {} });
+  await asDb(h);
+  assert.deepEqual((await h.q(`select id, status from public.jobs where id in ($1, $2)`, [job, next])).map((r) => [r.id, r.status]).sort(),
+    [[job, 'done'], [next, 'en_route']].sort());
+  // the office gives the difference back: the books balance, the invoice stays paid; never more than what was paid
+  await h.as(g.owner);
+  const back = await pay(h, s.inv, -f.over_cents, 'interac');
+  assert.equal(back.over_cents, undefined);
+  assert.deepEqual(Object.values(await h.one(`select status, paid_cents, total_cents from public.invoices where id = $1`, [s.inv])), ['paid', v.total_cents, v.total_cents]);
+  await h.as(g.owner);
+  const refused = await h.fails(() => pay(h, s.inv, -(v.total_cents + 1)));
+  assert.equal(refused?.hint, 'refund_too_much'); assert.match(refused.message, new RegExp(`${money(v.total_cents)} \\$`));
+}));
+
+test('an invoice paid MORE than its total opens again too: the money waits on the job, nothing more is taken, finished again it follows the work (owner’s decision 2026-11-20)', () => tx(async (h) => {
+  const g = await garage(h);
+  const job = await siteJob(h, g, [['Vidange', 7999]]);
+  const s = await paidThenLineOff(h, g, job);
+  await h.as(g.mech);
+  const over = (await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: s.inv })).over_cents;
+  assert.ok(over > 0);
+  // « Modifier la facture » again on the overpaid invoice: allowed, what was paid (more than the total) waits on the job
+  await h.as(g.mech);
+  const r = await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: s.inv });
+  assert.deepEqual([r.ok, Number(r.number)], [true, s.number]);
+  await asDb(h);
+  assert.equal(await h.val(`select coalesce(sum(amount_cents), 0)::int from public.payments where job_id = $1 and invoice_id is null and deleted_at is null`, [job]), s.paid);
+  // a cash payment on it now (a tap, or sent from the phone's queue): nothing is left to take, it is said — not a second
+  // payment the customer would need back
+  await h.as(g.mech);
+  const e = await h.fails(() => pay(h, s.inv, 1000));
+  assert.equal(e?.hint, 'too_much'); assert.match(e.message, /déjà payée au complet/);
+  // the brakes done after all: back on the draft; finished, paid exactly, nothing to give back
+  await h.as(g.mech);
+  await h.c.query(`update public.job_items set status = 'planned' where id = $1`, [s.brakes]);
+  const f = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: s.inv });
+  assert.deepEqual([Number(f.number), f.again, f.over_cents], [s.number, true, 0]);
+  assert.deepEqual(Object.values(await h.one(`select status, paid_cents, total_cents from public.invoices where id = $1`, [s.inv])), ['paid', s.paid, s.paid]);
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: job, p_action: 'finish', p_data: {} });
+  await asDb(h);
+  assert.equal(await h.val(`select status from public.jobs where id = $1`, [job]), 'done');
+}));
+
+test('the nightly reconciliation treats a reopened invoice finished under what was paid as a first finish paid ahead: one « À regarder » each (M2.over), never « Important », the same one night after night, gone once given back (owner’s decision 2026-11-20)', () => tx(async (h) => {
+  const g = await garage(h);
+  // a first finish under what was paid ahead (by card), and a reopened one under what was paid (cash): both finished
+  const ahead = await siteJob(h, g, [['Vidange', 7999], ['Plaquettes avant', 15000]]);
+  await h.as(g.mech);
+  const draft = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: ahead, p_refresh: true })).rows.invoices[0];
+  await h.as(null);
+  await card(h, null, draft.total_cents, 'cs_ahead', ahead);
+  await asDb(h);
+  await h.c.query(`update public.job_items set status = 'removed' where job_id = $1 and description = 'Plaquettes avant'`, [ahead]);
+  await h.as(g.mech);
+  const f1 = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: draft.id });
+  const reopened = await siteJob(h, g, [['Vidange', 7999]]);
+  const s = await paidThenLineOff(h, g, reopened);
+  await h.as(g.mech);
+  const f2 = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: s.inv });
+  const over = f1.over_cents;
+  assert.ok(over > 0);
+  assert.equal(f2.over_cents, over, 'the same money to give back on both');
+  for (const j of [ahead, reopened]) { await h.as(g.mech); await h.rpc('job_step', { p_op: uuid(), p_job: j, p_action: 'finish', p_data: {} }); }
+  // what a night's checks find about each one (its invoice, its job, its payments, its number)
+  await asDb(h);
+  const about = async (inv, job) => {
+    await asDb(h);
+    const mine = new Set([inv, job, ...(await h.q(`select id from public.payments where invoice_id = $1 or job_id = $2`, [inv, job])).map((p) => p.id)]);
+    const no = String(await h.val(`select number from public.invoices where id = $1`, [inv]));
+    const all = (await h.val(`select public.recon_collect(public.local_today())`)).findings;
+    return all.filter((x) => mine.has(x.e) || mine.has(x.d?.invoice_id) || mine.has(x.d?.job_id) || String(x.d?.number) === no)
+      .map((x) => `${x.c} ${x.s}`).sort();
+  };
+  assert.deepEqual(await about(draft.id, ahead), ['M2.over warn'], 'a first finish paid ahead');
+  assert.deepEqual(await about(s.inv, reopened), ['M2.over warn'], 'a reopened one: the same');
+  // two nights in a row (a garage already reconciled before: these are new, not « déjà là »): one difference per
+  // invoice, the same row, never « Important » (bad)
+  await asDb(h);
+  await h.c.query(`insert into public.ops_recon_baseline (check_id, entity_id, value, set_on)
+    values ('first', '00000000-0000-0000-0000-000000000000', 0, public.local_today() - 30) on conflict do nothing`);
+  const rows = async () => { await asDb(h); return h.q(`select entity_id, check_id, severity, state, first_day::text from public.ops_recon_findings where entity_id in ($1, $2) order by check_id, entity_id`, [draft.id, s.inv]); };
+  await h.val(`select public.recon_run(public.local_today() - 1, 'test')`);
+  const night1 = await rows();
+  await h.val(`select public.recon_run(public.local_today(), 'test')`);
+  assert.deepEqual(await rows(), night1, 'the second night finds the same, nothing new');
+  assert.deepEqual(night1.map((r) => [r.entity_id, r.check_id, r.severity]).sort(), [[draft.id, 'M2.over', 'warn'], [s.inv, 'M2.over', 'warn']].sort());
+  // the office gives the difference back on both: nothing more to say
+  for (const inv of [draft.id, s.inv]) { await h.as(g.owner); await pay(h, inv, -over, 'interac'); }
+  assert.deepEqual(await about(draft.id, ahead), []);
+  assert.deepEqual(await about(s.inv, reopened), []);
+  await h.val(`select public.recon_run(public.local_today(), 'test')`);
+  assert.deepEqual((await rows()).map((r) => r.state), ['closed', 'closed']);
+}));
+
 /* ───────────────────────── work and the invoice ───────────────────────── */
 
 test('work added or accepted after the invoice is finished is billed: the job does not finish without it, and a paid invoice opens again (sql-money-04, jobs-a-01, jobs-b-02)', () => tx(async (h) => {
