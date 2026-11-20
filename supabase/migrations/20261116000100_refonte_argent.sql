@@ -626,7 +626,11 @@ begin
   select * into it from public.job_items where id = p_item and deleted_at is null for update;
   if not found then perform public.fail('not_found', 'Ce travail n’existe plus.'); end if;
   select * into j from public.jobs where id = it.job_id;
-  if not public.job_actor(j) then perform public.fail('not_allowed', 'Cette job n’est pas à toi.'); end if;
+  -- who works this job, and a job the caller sees (as « Je pars », job_step). Both read as « no » when they cannot say:
+  -- a job « À placer » (no truck) or booked by nobody made the rule NULL, and « if not NULL » let anybody through (S79)
+  if not coalesce(public.job_actor(j), false) or not coalesce(public.job_visible(j.truck_id, j.created_by), false) then
+    perform public.fail('not_allowed', 'Cette job n’est pas à toi.');
+  end if;
   if p_via not in ('signature','verbal') then perform public.fail('via', 'Réponse inconnue.'); end if;
   if it.status not in ('proposed','approved','declined') then perform public.fail('not_extra', 'Ce n’est pas un travail proposé.'); end if;
   -- the signature must belong to this job

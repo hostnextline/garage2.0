@@ -607,6 +607,38 @@ test('work that becomes billable goes on the draft by itself; finishing the invo
   assert.deepEqual(f.unbilled.map((x) => [x.id, x.description]), [[brakes, 'Plaquettes avant']]);
 }));
 
+test('the customer’s « oui » to proposed work is noted only by who works the job AND sees it: a job « À placer » or booked by nobody is no longer anybody’s (S79, R96)', () => tx(async (h) => {
+  const g = await garage(h);
+  const adam = await h.person('Adam Mécano', ['mechanic']);
+  const karim = await h.person('Karim Mécano', ['mechanic'], { rights: { book: true } });   // « Réserver », not « Agenda »
+  const office = await h.person('Bureau', ['office']);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [g.day]);
+  const adamsTruck = await h.truck('Voiture d’Adam', adam, { [dow]: DAY });
+  /** a booked job written as the server writes it (nobody booked it), with one proposed extra: the extra's id */
+  const extraOn = async (truck) => {
+    await asDb(h);
+    await h.c.query(`select set_config('garage.rpc', 'on', true)`);
+    const job = await h.val(`insert into public.jobs (customer_id, day, block, truck_id, status, duration_min) values ($1, $2, 'am', $3, 'booked', 60) returning id`, [g.customer, g.day, truck]);
+    const item = await h.val(`insert into public.job_items (job_id, description, unit_cents, status, kind) values ($1, 'Essuie-glaces', 2999, 'proposed', 'service') returning id`, [job]);
+    await h.c.query(`select set_config('garage.rpc', '', true)`);
+    return item;
+  };
+  const answer = async (who, item) => { await h.as(who); return hint(h, () => h.rpc('extra_answer', { p_op: uuid(), p_item: item, p_accept: true, p_via: 'verbal' })); };
+  const status = async (item) => { await asDb(h); return h.val(`select status from public.job_items where id = $1`, [item]); };
+  const loose = await extraOn(null), adams = await extraOn(adamsTruck), salehs = await extraOn(g.truck);
+  // a mechanic without « Réserver »: the rule answered NULL for these two (no truck, no author), and « if not NULL » let him through
+  assert.equal(await answer(g.mech, loose), 'not_allowed', 'a job « À placer » is not his');
+  assert.equal(await answer(g.mech, adams), 'not_allowed', 'another truck’s job, booked by nobody, is not his');
+  // « Réserver » without « Agenda » (R96, as « Je pars »): a job he does not see
+  assert.equal(await answer(karim, adams), 'not_allowed', 'a job he does not see');
+  assert.deepEqual([await status(loose), await status(adams)], ['proposed', 'proposed'], 'nothing written');
+  // the ones who may, as before
+  assert.equal(await answer(g.mech, salehs), undefined, 'his own truck’s job');
+  assert.equal(await answer(g.owner, loose), undefined, 'the owner, a job « À placer »');
+  assert.equal(await answer(office, adams), undefined, 'the office (« Agenda » and « Réserver »)');
+  assert.deepEqual([await status(salehs), await status(loose), await status(adams)], ['approved', 'approved', 'approved']);
+}));
+
 test('« Refaire depuis le travail » on a draft: it speaks the language of the job’s customer now (invoices-quotes-26)', () => tx(async (h) => {
   const g = await garage(h);
   const j = await siteJob(h, g);
