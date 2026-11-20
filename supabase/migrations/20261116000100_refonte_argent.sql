@@ -23,10 +23,12 @@
 --                           the invoice when it is finished again, never more than the draft's total less what waits
 --                           (before: refused « invoice_first », the cash in a pocket and in no book).
 --   payment_remove        same lock order; a payment whose refund is noted is not removed alone (« refund_first »).
---   invoice_finish        the totals are recomputed before the checks; a first finish under what was paid ahead is kept
---                         « paid » and SAID (« over_cents » in the answer, activity « overpaid »); a reopened invoice keeps
---                         its first date; the number never falls behind the highest one; the answer lists the work of the
---                         job that is not on the invoice (« unbilled »).
+--   invoice_finish        the totals are recomputed before the checks; a finish under what was paid — paid ahead, or a
+--                         reopened invoice a line was taken off after the customer paid (no longer refused « below_paid »,
+--                         the owner's decision of 2026-11-20) — is kept « paid » and SAID (« over_cents » in the answer,
+--                         activity « overpaid »: the office gives it back); a reopened invoice keeps its number and its
+--                         first date (« again »); the number never falls behind the highest one; the answer lists the work
+--                         of the job that is not on the invoice (« unbilled »).
 --   invoice_reopen        a PAID invoice of an appointment still open opens again too (its payments wait on the job):
 --                         the only way to bill work added after the customer paid. The work the finished invoice missed
 --                         (« unbilled ») comes on the draft at once.
@@ -113,8 +115,8 @@ begin
   return new;
 end $$;
 revoke all on function public.invoices_number_keep() from public, anon, authenticated;
-drop trigger if exists invoices_number_keep on public.invoices;
-create trigger invoices_number_keep before update of deleted_at on public.invoices for each row
+-- (« create or replace », never a DROP sent to the live database: run twice, the same trigger — S120)
+create or replace trigger invoices_number_keep before update of deleted_at on public.invoices for each row
   when (new.deleted_at is not null and old.deleted_at is null and new.number is not null)
   execute function public.invoices_number_keep();
 
@@ -170,9 +172,10 @@ begin
   -- payments made before the invoice (online prepayment, or paid before « Modifier la facture ») count on it
   update public.payments set invoice_id = inv.id where job_id = inv.job_id and invoice_id is null and deleted_at is null;
   select coalesce(sum(amount_cents), 0)::int into v_paid from public.payments where invoice_id = inv.id and deleted_at is null;
-  if inv.number is not null and v_paid > inv.total_cents then
-    perform public.fail('below_paid', format('Le client a déjà payé %s $ : le total ne peut pas être plus bas.', public.cents_text(v_paid)));
-  end if;
+  -- a reopened invoice (it has its number) under what the customer already paid is no longer refused (« below_paid »,
+  -- the owner's decision of 2026-11-20: the mechanic took a line off after the customer paid, and his job and his next
+  -- « Je pars » stayed blocked until the office acted): it finishes « paid » like a first finish, with what must go back
+  -- to the customer said below (« over_cents », activity « overpaid ») for the office, its number and first date kept
   v_no := inv.number;
   if v_no is null then
     -- the next number; never behind the highest one already given (a counter put back by a partial restore)
@@ -188,8 +191,8 @@ begin
     due_on = case when inv.number is not null then coalesce(due_on, public.local_today() + v_due) else public.local_today() + v_due end,
     paid_cents = v_paid
   where id = inv.id;
-  -- paid ahead more than the final total (a line taken off after the customer paid): the money is in, the invoice is
-  -- paid, and what must go back to the customer is said (never silent)
+  -- paid more than the final total (paid ahead, or a line taken off after the customer paid and the invoice finished
+  -- again): the money is in, the invoice is paid, and what must go back to the customer is said (never silent)
   v_over := greatest(v_paid - inv.total_cents, 0);
   if v_over > 0 then
     insert into public.activity (actor, entity, entity_id, action, data)
@@ -218,7 +221,9 @@ begin
   end if;
   if inv.status = 'void' then perform public.fail('void', 'Cette facture est annulée.'); end if;
   -- (a PAID invoice opens again too while the appointment is still open: work added after the customer paid can be
-  -- billed; what was paid waits on the job, and the invoice finished again is « issued » with the rest to pay)
+  -- billed; what was paid waits on the job, and the invoice finished again is « issued » with the rest to pay — or
+  -- « paid » with what goes back to the customer said, when a line was taken off meanwhile; an invoice already paid
+  -- more than its total opens again the same way)
   select * into j from public.jobs where id = inv.job_id and deleted_at is null;
   if not found or j.status not in ('booked', 'en_route', 'on_site') then
     perform public.fail('closed', 'La job est terminée : la facture ne se modifie plus. Annule-la pour en faire une nouvelle.');
@@ -430,7 +435,8 @@ begin
       end if;
     elsif v_draft is not null then
       -- on the reopened invoice: never more than its total less what already waits on the job (the same payment tapped
-      -- twice counts once; finishing it again refuses a total under what was paid anyway, « below_paid »)
+      -- twice counts once). What already waits may be MORE than the draft's total (a line taken off after the customer
+      -- paid): nothing more is taken, and finishing it again is « paid » with what goes back said (« over_cents »)
       v_left := greatest(v_draft - v_paid, 0);
       if v_left = 0 then
         perform public.fail('too_much', 'Cette facture est déjà payée au complet : il ne reste rien à encaisser.');
@@ -562,8 +568,8 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists job_items_invoice_follow on public.job_items;
-create trigger job_items_invoice_follow after insert or update on public.job_items for each row execute function public.job_items_invoice_follow();
+-- (live's trigger of Part 24 decies fired on update only: replaced in place, never dropped — S120)
+create or replace trigger job_items_invoice_follow after insert or update on public.job_items for each row execute function public.job_items_invoice_follow();
 
 -- An appointment is not « Terminé » while billable work is on no line of its finished invoice: the customer would leave
 -- without paying it. Way out: « Modifier la facture » (a paid one too, see invoice_reopen) or mark that work « Pas fait ».
@@ -581,8 +587,7 @@ begin
   return new;
 end $$;
 revoke all on function public.jobs_unbilled_guard() from public, anon, authenticated;
-drop trigger if exists jobs_unbilled_guard on public.jobs;
-create trigger jobs_unbilled_guard before update of status on public.jobs for each row
+create or replace trigger jobs_unbilled_guard before update of status on public.jobs for each row
   when (new.status = 'done' and old.status is distinct from 'done')
   execute function public.jobs_unbilled_guard();
 
@@ -626,7 +631,11 @@ begin
   select * into it from public.job_items where id = p_item and deleted_at is null for update;
   if not found then perform public.fail('not_found', 'Ce travail n’existe plus.'); end if;
   select * into j from public.jobs where id = it.job_id;
-  if not public.job_actor(j) then perform public.fail('not_allowed', 'Cette job n’est pas à toi.'); end if;
+  -- who works this job, and a job the caller sees (as « Je pars », job_step). Both read as « no » when they cannot say:
+  -- a job « À placer » (no truck) or booked by nobody made the rule NULL, and « if not NULL » let anybody through (S79)
+  if not coalesce(public.job_actor(j), false) or not coalesce(public.job_visible(j.truck_id, j.created_by), false) then
+    perform public.fail('not_allowed', 'Cette job n’est pas à toi.');
+  end if;
   if p_via not in ('signature','verbal') then perform public.fail('via', 'Réponse inconnue.'); end if;
   if it.status not in ('proposed','approved','declined') then perform public.fail('not_extra', 'Ce n’est pas un travail proposé.'); end if;
   -- the signature must belong to this job
