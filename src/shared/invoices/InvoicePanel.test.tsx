@@ -48,7 +48,13 @@ beforeEach(() => {
   access.value = { id: 'u-1', full_name: 'Hassan', short_name: null, email: null, phone: null, roles: ['owner'], owner: true, lang: 'fr', prefs: {}, color: null, rights: {} as Access['rights'], trucks: [] };
   vi.clearAllMocks();
 });
-afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; toasts.value = []; });
+afterEach(async () => {
+  // a question left open (« Oui, terminer la facture ») lives in the ask queue, not in the render: answered « no » here,
+  // it never shows in the next test, nor makes that test find an « ask-ok » that is not its own (review invoices)
+  for (let i = 0; i < 5 && sheet('ask-ok'); i++) await answer(askCancel());
+  expect(sheet('ask-ok')).toBeNull();
+  act(() => render(null, box)); clearAll(); access.value = null; toasts.value = [];
+});
 
 describe('no invoice yet', () => {
   it('« Faire la facture » asks the server for a draft without rewriting one that exists (p_refresh false, R52)', async () => {
