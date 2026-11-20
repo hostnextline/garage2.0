@@ -16,7 +16,8 @@ Les règles de toujours (CLAUDE.md, « The live database ») :
   ne sont pas encore appliquées.
 
 Dans ce fichier : **C** = le commit de la refonte, poussé sur GitHub (une branche, pas `main` : `main` ne bouge qu'à
-l'étape 5) ; **AVANT** = `acf46c3`, la version en ligne aujourd'hui (tag `avant-refonte`) ; **le projet** = Supabase
+l'étape 5) ; **AVANT** = `aa1b4e6`, la version en ligne depuis le 2026-11-19 (tag `avant-refonte`) : `acf46c3`, où la refonte a
+été coupée, plus « Heures travaillées » (Part 26), que la refonte porte aussi ; **le projet** = Supabase
 `garage2` (`wyxvizxabqgvsiiemvfw`).
 
 Quand : hors des heures de l'équipe (après 20 h, avant 7 h), et **jamais entre 07:30 et 09:00 UTC** (2 h 30 à 4 h
@@ -45,10 +46,19 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
    | 6 | `20261116000500_refonte_sauvegarde.sql` | **ajout seulement** : la table `ops_backup_runs` |
 
    ```
-   git diff --name-only --diff-filter=A acf46c3 C -- supabase/migrations | sort     # les six ci-dessus, rien d'autre
-   git diff --name-only --diff-filter=M acf46c3 C -- supabase/migrations            # VIDE (une migration déjà en ligne ne change jamais)
+   git diff --name-only --diff-filter=A aa1b4e6 C -- supabase/migrations | sort     # les six ci-dessus, rien d'autre
+   git diff --name-only --diff-filter=M aa1b4e6 C -- supabase/migrations            # VIDE (une migration déjà en ligne ne change jamais)
    shasum -a 256 supabase/migrations/20261116*.sql                                   # au commit C : les six empreintes
    ```
+   **Déjà en ligne, à NE PAS appliquer** : `20261119000100_heures.sql` (« Heures travaillées », Part 26, appliquée le
+   2026-11-19 depuis le commit `5e77db6`). Elle est dans l'arbre de C parce que la refonte porte la page ; son fichier y
+   est le même, octet pour octet (`shasum -a 256` = `92f228bd5ba8fa2a369d219724f72133ed0283a32cdbd15d66169e890befaa8c`),
+   et sa ligne existe déjà dans `schema_migrations` (contrôle 1.2). Sur la base en ligne elle est donc passée AVANT les
+   six, sur une base neuve elle passe après : les deux ordres finissent au même état (aucune des six ne nomme
+   `shifts.fixed_by`, `fixed_at`, `hours_all`, `shifts_read`, `shift_save` ni `shift_remove` ; la boucle des droits de la
+   migration 4 ne visite pas ces fonctions). Vérifié par la lecture des fichiers le 2026-11-20, et par
+   `tests/db/heures.test.mjs` sur une base neuve ; PAS encore essayé dans l'ordre de la base en ligne (la répétition sur
+   une copie de la base en ligne le fera).
    Aucune de ces migrations ne réécrit de lignes de données au moment où elle s'applique (que des fonctions, des
    déclencheurs, des règles, des tables neuves) : les nombres du contrôle 2c ne doivent pas bouger.
 3. Les fonctions du serveur à C : `ls supabase/functions` = `backup book client conversation enroute hermes notify recon
@@ -76,7 +86,7 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
 
 Lancer `ops/live/2026-11-16_verifications.sql` sur la base en ligne, une requête à la fois, et garder chaque réponse
 (`ops/live/live.avant.json`). Puis lancer la requête **F** (l'empreinte) sur une base locale construite à AVANT
-(`bash tests/stack/mac/up.sh <dossier à acf46c3>`, puis `bash tests/stack/mac/psql.sh -At -f ops/live/2026-11-16_verifications.sql`) et comparer.
+(`bash tests/stack/mac/up.sh <dossier à aa1b4e6>`, puis `bash tests/stack/mac/psql.sh -At -f ops/live/2026-11-16_verifications.sql`) et comparer.
 
 | Question | On continue si… | Sinon |
 |---|---|---|
@@ -103,7 +113,7 @@ compte après la perte du projet (l'ajouter dans Réglages → Équipe).
 ### 1.3 Noter ce qui tourne (la base du retour en arrière)
 
 1. **L'app** : Vercel → projet « mecanique-mobile-his » → Deployments : noter le déploiement de production en service
-   (son adresse et son id). Créer le tag `avant-refonte` sur `acf46c3` (`git tag avant-refonte acf46c3`, poussé avec le go).
+   (son adresse et son id). Créer le tag `avant-refonte` sur `aa1b4e6` (`git tag avant-refonte aa1b4e6`, poussé avec le go).
 2. **Les fonctions du serveur** : la liste en lecture seule des fonctions (version, date, adresse d'origine : elle
    contient le commit) → `ops/live/deployed.avant.json`. (CLAUDE.md en donne une liste écrite à la main ; la liste réelle
    fait foi.)
