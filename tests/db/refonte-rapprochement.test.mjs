@@ -1104,6 +1104,32 @@ test('recon_now: yesterday and today so far, at most once a minute, then the sum
   assert.equal(again.last_run.finished_at, at, 'braked: nothing ran again');
 }));
 
+test('recon_now (round 3, S31): twice within a minute — the second answers the summary PLUS braked: true and next_at (the next minute, when a new check runs); the first says braked: false', () => tx(async (h) => {
+  const owner = await h.person('Hassan Jeha', ['owner']);
+  await h.as(owner);
+  const first = await h.rpc('recon_now', {});
+  assert.equal(first.braked, false, 'the first check ran');
+  assert.equal(first.next_at, undefined);
+  assert.equal(first.last_run.source, 'button');
+  const second = await h.rpc('recon_now', {});
+  assert.equal(second.braked, true, 'the second within the minute is braked and says so');
+  assert.match(second.next_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+  const now = Date.parse(await h.val(`select to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`));
+  const next = Date.parse(second.next_at);
+  assert.ok(next > now && next - now <= 60000, `next_at ${second.next_at} is within the next minute`);
+  // the summary is the usual one, untouched: every field of recon_summary is there, with the same values
+  const plain = await h.rpc('recon_summary', { p_days: 14 });
+  for (const k of Object.keys(plain)) assert.deepEqual(second[k], plain[k], `field ${k} as recon_summary says it`);
+  assert.equal(second.last_run.finished_at, first.last_run.finished_at, 'braked: nothing ran again');
+  // a brake taken by somebody else this minute (as the end-to-end step does) brakes the first call of this person too
+  await server(h);
+  await h.c.query(`delete from public.rate_limits where key = 'recon_now'`);
+  await h.c.query(`insert into public.rate_limits (key, bucket, n) values ('recon_now', floor(extract(epoch from now()) / 60), 1)`);
+  await h.as(owner);
+  const other = await h.rpc('recon_now', {});
+  assert.deepEqual([other.braked, other.next_at], [true, second.next_at]);
+}));
+
 /** a few thousand rows of a real year: 1500 paid jobs, stock, purchases both ways, 1000 expenses */
 async function bulk(h, g) {
   // 1500 finished jobs over 30 past days, each with its paid invoice and payment; 300 stock items with 4 moves each
@@ -1193,4 +1219,146 @@ test('recon: tables whose statistics are stale (the planner believes them nearly
   const f = await open(h);
   assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
   assert.ok(ms < 1000, `recon_run took ${ms} ms with stale statistics: ${JSON.stringify(r.counts.checks_ms)}`);
+}));
+
+test('recon (round 3): no query of a run is left to JIT — the nested loops « enable_nestloop = off » cannot remove cost 10^10 each, and a JIT server compiled M1, M3, M8 and the sheet at every run (1.7 s on GitHub)', () => tx(async (h) => {
+  const g = await garage(h);
+  await bulk(h, g);
+  await run(h);   // the baseline
+  await server(h);
+  assert.ok((await h.val(`select proconfig from pg_proc where oid = 'public.recon_collect(date)'::regprocedure`)).includes('jit=off'), 'recon_collect runs with jit off');
+  // every query of a run as the database planned it (auto_explain: the plans and the settings that changed them, no timing)
+  const loaded = !(await h.fails(() => h.c.query(`load 'auto_explain'`)));
+  if (!loaded) { console.log('auto_explain cannot be loaded here: only the function setting was checked'); return; }
+  const notes = [];
+  const listen = (n) => notes.push(n.message);
+  h.c.on('notice', listen);
+  try {
+    for (const s of [`set local auto_explain.log_min_duration = 0`, `set local auto_explain.log_nested_statements = on`, `set local auto_explain.log_settings = on`,
+      `set local auto_explain.log_format = 'json'`, `set local auto_explain.log_level = 'notice'`, `set local client_min_messages = notice`]) await h.c.query(s);
+    await run(h);
+    await h.c.query(`set local auto_explain.log_min_duration = -1`);
+  } finally { h.c.off('notice', listen); }
+  const plans = notes.filter((m) => m.includes('{')).map((m) => JSON.parse(m.slice(m.indexOf('{')))).map((x) => {
+    const q = (x['Query Text'] || '').replace(/\s+/g, ' ');
+    return { what: (q.match(/'([MDSX]\d)\.[a-z]+'/) || [])[1] || q.slice(0, 60), cost: x.Plan['Total Cost'], jit: x.Settings?.jit, compiled: 'JIT' in x };
+  });
+  assert.ok(plans.some((p) => p.what === 'M8'), 'the plans of the checks were seen');
+  const above = Number(await h.val(`select current_setting('jit_above_cost')`));
+  const heavy = plans.filter((p) => p.cost >= above);
+  console.log(`recon_run: ${plans.length} queries, ${heavy.length} costed over jit_above_cost (${above}): ${heavy.map((p) => `${p.what} ${p.cost.toExponential(1)} jit=${p.jit ?? 'on'}`).join(', ')}; JIT on this server: ${await h.val(`select pg_jit_available()`)}`);
+  for (const p of heavy) assert.equal(p.jit, 'off', `« ${p.what} » (cost ${p.cost}) would be compiled by a server with JIT`);
+  assert.deepEqual(plans.filter((p) => p.compiled).map((p) => p.what), [], 'no query was JIT-compiled');
+}));
+
+// ───────────────────────────── a reopened invoice finished under what was paid (srv-argent, owner's decision 2026-11-20) ─────────────────────────────
+
+test('recon (round 3): a reopened invoice finished under what was paid (no longer refused « below_paid ») is checked exactly like a first finish under what was paid ahead — the same finding, words and data, the same sheet, nothing while it is edited, the same row night after night, closed once given back', (t) => tx(async (h) => {
+  const g = await garage(h);
+  const r0 = await run(h);
+  const s0 = await h.val(`select sheet from public.ops_recon_runs where id = $1`, [r0.run_id]);
+  const brakes = { description: 'Plaquettes avant', unit_cents: 15000, duration_min: 60 };
+  /** the next appointment of the mechanic's day, on site: the oil change (its parts) and the front brakes */
+  const onSite = async () => {
+    await h.as(g.owner);
+    const job = (await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: g.customer, day: g.day, block: 'pm', duration_min: 90 }, p_items: [...g.work, brakes] })).job_id;
+    await h.as(g.mech);
+    for (const a of ['leave', 'arrive']) await h.rpc('job_step', { p_op: uuid(), p_job: job, p_action: a, p_data: {} });
+    await h.as(g.mech);
+    const inv = (await h.rpc('invoice_for_job', { p_op: uuid(), p_job: job, p_refresh: true })).rows.invoices.find((v) => v.status === 'draft' && v.job_id === job).id;
+    await server(h);
+    return { job, inv, total: await h.val(`select total_cents from public.invoices where id = $1`, [inv]) };
+  };
+  const brakesOff = async (job) => { await h.as(g.mech); await h.c.query(`update public.job_items set status = 'removed' where job_id = $1 and description = 'Plaquettes avant'`, [job]); };
+  const cardPay = async (inv, job, cents, session) => {
+    await h.as(null);
+    await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: cents, p_method: 'card_online', p_reference: 'pi_' + session, p_job: job, p_session: session });
+  };
+  /** what the checks find now about one appointment (its invoice, its job, its payments, its number), with its own ids and
+   *  numbers put aside so two appointments can be compared */
+  const about = async (x) => {
+    await server(h);
+    const pays = (await h.q(`select id from public.payments where invoice_id = $1 or job_id = $2`, [x.inv, x.job])).map((p) => p.id);
+    const no = await h.val(`select number from public.invoices where id = $1`, [x.inv]);
+    const jobNo = await h.val(`select number from public.jobs where id = $1`, [x.job]);
+    const mine = new Set([x.inv, x.job, ...pays]);
+    const all = (await h.val(`select public.recon_collect(public.local_today())`)).findings;
+    const found = all.filter((f) => mine.has(f.e) || mine.has(f.d?.invoice_id) || mine.has(f.d?.job_id) || (no != null && String(f.d?.number) === String(no)));
+    const label = no == null ? null : await h.val(`select public.recon_inv_no($1)`, [no]);
+    return found.map((f) => {
+      let s = JSON.stringify(f);
+      for (const [k, v] of [['<invoice>', x.inv], ['<job>', x.job], ...pays.map((p, i) => [`<payment ${i}>`, p])]) s = s.split(v).join(k);
+      if (label) s = s.replace(new RegExp(`(?<![0-9])${label}(?![0-9])`, 'g'), '<no>');
+      const y = JSON.parse(s);
+      if (y.d && 'number' in y.d) y.d.number = '<number>';
+      if (y.d && 'job' in y.d && String(y.d.job) === String(jobNo)) y.d.job = '<job no>';
+      return y;
+    }).sort((a, b) => `${a.c}${a.k}`.localeCompare(`${b.c}${b.k}`));
+  };
+
+  // A. a first finish under what was paid ahead: the customer pays the draft (oil change + brakes) by card before the work,
+  // the brakes are not done, the mechanic finishes the invoice and the job
+  const a = await onSite();
+  await cardPay(null, a.job, a.total, 'cs_ahead');
+  await brakesOff(a.job);
+  const aEdit = await about(a);    // a draft, the money waiting on the job
+  await h.as(g.mech);
+  const fa = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: a.inv });
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: a.job, p_action: 'finish', p_data: {} });
+
+  // B. the same appointment the other way: finished, paid by card, « Modifier la facture », the brakes taken off, finished again
+  const b = await onSite();
+  await h.as(g.mech);
+  await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: b.inv });
+  await cardPay(b.inv, null, b.total, 'cs_again');
+  await h.as(g.mech);
+  await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: b.inv });
+  await brakesOff(b.job);
+  const bEdit = await about(b);    // a draft again, the money waiting on the job
+  let fb;
+  const refused = await h.fails(async () => { await h.as(g.mech); fb = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: b.inv }); });
+  if (refused?.hint === 'below_paid') {
+    // the money rule before srv-argent's change of 2026-11-20: this invoice cannot be finished under what was paid
+    t.skip('this server still refuses « below_paid » (srv-argent’s rule of 2026-11-20 is not in its 000100): nothing to compare');
+    return;
+  }
+  assert.ifError(refused);
+  await h.as(g.mech);
+  await h.rpc('job_step', { p_op: uuid(), p_job: b.job, p_action: 'finish', p_data: {} });
+
+  // the same invoice on both sides: paid, the same total, the same money, the same excess said
+  await server(h);
+  const inv = async (x) => h.one(`select status, total_cents, paid_cents, issued_at is not null as dated from public.invoices where id = $1`, [x.inv]);
+  assert.deepEqual(await inv(b), await inv(a));
+  assert.equal((await inv(a)).status, 'paid');
+  assert.ok(fa.over_cents > 0);
+  assert.equal(fb.over_cents, fa.over_cents, 'the same excess, said by invoice_finish');
+
+  // the checks: while edited nothing, finished one « À regarder » (M2.over) each, in the same words with the same data
+  assert.deepEqual([aEdit, bEdit], [[], []], 'a draft with the money waiting on its job is no difference');
+  const fA = await about(a), fB = await about(b);
+  assert.deepEqual(fA.map((f) => `${f.c} ${f.s}`), ['M2.over warn'], JSON.stringify(fA));
+  assert.deepEqual(fB, fA, 'the reopened invoice: the same finding, words and data');
+  assert.equal(fA[0].d.over, fa.over_cents);
+
+  // a night: one row each, open (a garage reconciled before), never « Important »; the day's sheet counts both the same way
+  const r1 = await run(h);
+  const rows = async () => { await server(h); return h.q(`select id, entity_id, check_id, severity, state, first_day::text from public.ops_recon_findings where entity_id in ($1, $2) order by check_id, entity_id`, [a.inv, b.inv]); };
+  const night1 = await rows();
+  assert.deepEqual(night1.map((f) => [f.entity_id, f.check_id, f.severity, f.state]).sort(), [[a.inv, 'M2.over', 'warn', 'open'], [b.inv, 'M2.over', 'warn', 'open']].sort());
+  assert.deepEqual([r1.status, r1.counts.bad, r1.counts.warn - r0.counts.warn], ['warn', 0, 2]);
+  const s1 = await h.val(`select sheet from public.ops_recon_runs where id = $1`, [r1.run_id]);
+  const total = (await inv(a)).total_cents;
+  assert.equal(s1.invoiced_cents - s0.invoiced_cents, 2 * total, 'each invoice counts its final total');
+  assert.equal(s1.to_receive_cents, s0.to_receive_cents, 'neither is « to receive »');
+  assert.deepEqual(s1.received.filter((x) => x.method === 'card_online').map((x) => x.cents), [2 * a.total], 'all the money of both, by card');
+  // the next night: the same rows, nothing new
+  await run(h);
+  assert.deepEqual(await rows(), night1);
+  // the office gives the excess back on both (by hand): the books balance, both close at the next run
+  for (const x of [a, b]) { await h.as(g.owner); await h.rpc('payment_add', { p_op: uuid(), p_invoice: x.inv, p_amount_cents: -fa.over_cents, p_method: 'interac', p_reference: null, p_job: null, p_session: null }); }
+  assert.deepEqual([await about(a), await about(b)], [[], []]);
+  await run(h);
+  assert.deepEqual((await rows()).map((f) => f.state), ['closed', 'closed']);
 }));
