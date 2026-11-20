@@ -195,6 +195,9 @@ export const invoices: typeof fr = {
     /** a first finish over what was paid ahead (no question): the office gives the rest back, never the reader (owner, 2026-11-20) */
     paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice. Once the invoice is finished, the office will give {over} back to the customer.',
     paidAheadBelow: 'The customer already paid {amount}, {over} more than this total. If you finish it like this, the invoice will be marked PAID and the office will give {over} back to the customer.',
+    /** paid, then every line taken off: the server never finishes an invoice with no line (empty), so the way out is said
+        (review srv-argent, probe 1): a line at $0, then the usual question; the office gives the money back */
+    paidAheadEmpty: 'There is no line left and the customer already paid {amount}. To finish anyway, tap “A line”, write “Nothing done” and leave the price at $0: the invoice will be marked PAID and the office will give {amount} back to the customer.',
     /** “Finish the invoice” of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
     overAsk: {
       title: '{over} to give back to the customer',

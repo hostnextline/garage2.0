@@ -181,8 +181,12 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
           <Totals subtotal={tt.subtotal} tps={tt.tps} tvq={tt.tvq} total={tt.total} taxesOn={rates.enabled !== false && v.taxesOn} />
         </div>
         {ahead > 0 && (
-          <Banner kind={below > 0 ? 'warn' : 'ok'} data-testid="draft-paid-ahead">
-            {below > 0
+          <Banner kind={below > 0 || !v.lines.length ? 'warn' : 'ok'} data-testid="draft-paid-ahead">
+            {/* paid, then every line taken off: never « if you finish like this » (the server refuses an invoice with no
+                line), but the way out: a line at 0 $, then the question; the office gives it all back (review srv-argent) */}
+            {!v.lines.length
+              ? t('invoices.draft.paidAheadEmpty', { amount: money(ahead, l) })
+              : below > 0
               ? t('invoices.draft.paidAheadBelow', { amount: money(ahead, l), over: money(below, l) })
               : ahead > tt.total
               ? t('invoices.draft.paidAheadOver', { amount: money(ahead, l), over: money(ahead - tt.total, l) })

@@ -22,8 +22,8 @@ const holes = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort
 describe('money paid over the invoice: the office gives it back, never the one reading on the road (owner, 2026-11-20)', () => {
   // the words anyone who may finish an invoice reads (the job's mechanic too): each one names the office, none tells the
   // reader to hand it back (« remets-lui », « give it back »); a cash refund on site plus the office's = paid out twice
-  const fieldFr = [frInvoices.draft.paidAheadOver, frInvoices.draft.paidAheadBelow, frInvoices.draft.overAsk.text, frInvoices.panel.overOffice];
-  const fieldEn = [enInvoices.draft.paidAheadOver, enInvoices.draft.paidAheadBelow, enInvoices.draft.overAsk.text, enInvoices.panel.overOffice];
+  const fieldFr = [frInvoices.draft.paidAheadOver, frInvoices.draft.paidAheadBelow, frInvoices.draft.paidAheadEmpty, frInvoices.draft.overAsk.text, frInvoices.panel.overOffice];
+  const fieldEn = [enInvoices.draft.paidAheadOver, enInvoices.draft.paidAheadBelow, enInvoices.draft.paidAheadEmpty, enInvoices.draft.overAsk.text, enInvoices.panel.overOffice];
   it('French: « le bureau » in each, no « remets-lui » / « à lui remettre une fois »', () => {
     for (const s of fieldFr) { expect(s).toMatch(/bureau/); expect(s).not.toMatch(/remets|à lui remettre une fois|rembourse-le/i); }
   });

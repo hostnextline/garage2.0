@@ -195,6 +195,9 @@ export const invoices = {
     /** a first finish over what was paid ahead (no question): the office gives the rest back, never the reader (owner, 2026-11-20) */
     paidAheadOver: 'Le client a déjà payé {amount}, soit {over} de plus que la facture. Une fois la facture terminée, le bureau lui remettra {over}.',
     paidAheadBelow: 'Le client a déjà payé {amount}, soit {over} de plus que ce total. Si tu termines comme ça, la facture sera marquée PAYÉ et le bureau remettra {over} au client.',
+    /** paid, then every line taken off: the server never finishes an invoice with no line (empty), so the way out is said
+        (review srv-argent, probe 1): a line at 0 $, then the usual question; the office gives the money back */
+    paidAheadEmpty: 'Il n’y a plus de ligne et le client a déjà payé {amount}. Pour terminer quand même, touche « Une ligne », écris « Rien de fait » et laisse le prix à 0 $ : la facture sera marquée PAYÉ et le bureau lui remettra {amount}.',
     /** « Terminer la facture » of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
     overAsk: {
       title: '{over} à remettre au client',

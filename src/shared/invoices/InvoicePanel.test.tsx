@@ -246,6 +246,32 @@ describe('a draft invoice', () => {
       expect(plain(q('invoice-over')?.textContent)).toContain('Dis-le au bureau : c’est le bureau qui le rembourse.');
       expect(q('invoice-refund')).toBeNull();
     });
+    it('paid, then EVERY line taken off: the banner says the way out (a line at 0 $), never « if you finish like this »; with that line, the question, then finished (review srv-argent, probe 1)', async () => {
+      seed(draft({ number: 51, lines: [] as unknown as Invoice['lines'] }), [item('a', { status: 'removed' })]);
+      paidAhead();
+      await draw();
+      expect(plain(q('draft-paid-ahead')?.textContent)).toBe('Il n’y a plus de ligne et le client a déjà payé 114,98 $. Pour terminer quand même, touche « Une ligne », écris « Rien de fait » et laisse le prix à 0 $ : la facture sera marquée PAYÉ et le bureau lui remettra 114,98 $.');
+      // « Terminer la facture » with no line: refused on the phone (the server would say « empty »), nothing sent, no question
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      expect(sheet('ask-ok')).toBeNull();
+      expect(api.finishInvoice).not.toHaveBeenCalled();
+      expect(toasts.value.map((x) => x.text)).toContain('Ajoute au moins une ligne avant de terminer la facture.');
+      // the way out, as the banner says: « Une ligne », « Rien de fait », price left at 0 $
+      await act(async () => { q('add-line')!.click(); });
+      await wait();
+      const desc = box.querySelector('[data-testid="line-desc"]') as HTMLInputElement;
+      await act(async () => { desc.value = 'Rien de fait'; desc.dispatchEvent(new Event('input', { bubbles: true })); });
+      await wait();
+      expect(plain(q('draft-paid-ahead')?.textContent)).toContain('le bureau remettra 114,98 $ au client');
+      await act(async () => { q('invoice-finish')!.click(); });
+      await wait();
+      expect(plain(document.body.textContent)).toContain('114,98 $ à remettre au client');
+      await answer(sheet('ask-ok'));
+      expect(api.saveInvoiceDraft).toHaveBeenCalledWith('f-1', { lines: [{ description: 'Rien de fait', qty: 1, unit_cents: 0, taxable: true, kind: 'service' }] });
+      expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
+      expect(api.saveInvoiceDraft.mock.invocationCallOrder[0]).toBeLessThan(api.finishInvoice.mock.invocationCallOrder[0]);
+    });
     it('a new draft (no number yet) under what was paid ahead: finished without a question, as before (its banner says it)', async () => {
       seed(draft({ lines: lowLines }), [item('a', { unit_cents: 5000 })]);
       paidAhead();
