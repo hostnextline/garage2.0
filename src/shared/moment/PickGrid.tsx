@@ -1,18 +1,19 @@
 /* The time calendar of the booking screen on a computer (« Plages d'arrivée »): the hours on the left, one line per
    15 minutes, one column per day. In each column: the appointments already booked (light blocks at their planned
    arrival), the units where this booking can arrive (green), the others hatched. A unit = an arrival time: resting
-   the mouse on it says the window told to the customer, draws it down the column and opens the day's route on a small
-   map; a click chooses it. The maths is in units.ts and agenda/grid.ts; WindowPicker builds the days. */
+   the mouse on it says the window told to the customer, draws it down the column and opens the real map of that day
+   with the new stop in a window beside the picker (it stays open, and follows, while the mouse goes from a time to the
+   next); a click chooses it. The maths is in units.ts and agenda/grid.ts; WindowPicker builds the days. */
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { createPortal, memo } from 'preact/compat';
 import { ChevronLeft, ChevronRight, Route } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
-import { clock, nowMinute, parseDay, type Day, type Range } from '../../lib/dates';
+import { clock, longDay, nowMinute, parseDay, type Day, type Range } from '../../lib/dates';
 import { unitCount, unitIndex, unitMinutes, unitsAt } from '../../domain/moment/grid';
 import { moveFocus, type UnitState, type Win } from '../../domain/moment/units';
-import { RoutePreview, type PreviewAsk } from './RoutePreview';
-import { floatPlace, floatStyle, type FloatAt } from './place';
-import { useFinePointer } from './hooks';
+import { RouteHover, type PreviewAsk } from './RoutePreview';
+import { floatPlace, floatStyle, LABEL_H, type FloatAt, type Rect } from './place';
+import { useFinePointer, groupBox, HOVER_MS, SWITCH_MS, GRACE_MS } from './hooks';
 import type { GridDay } from './windowDays';
 
 export type { GridDay, GridJob, DayKind } from './windowDays';
@@ -39,7 +40,7 @@ export interface PickGridProps {
   force: boolean;
 }
 
-const HOVER_MS = 350;
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 /** the focus came from the keyboard (not from a click) */
 const byKeys = (el: HTMLElement) => { try { return el.matches(':focus-visible'); } catch { return false; } };
 
@@ -85,28 +86,44 @@ export function PickGrid(p: PickGridProps) {
      and the map would open under the finger and stay. Only a mouse that hovers gets them. */
   const mouse = useFinePointer(true);
 
-  /* ---------- the unit under the mouse (or with the keyboard's focus): its words, its window, then the map ---------- */
+  /* ---------- the unit under the mouse (or with the keyboard's focus): its words and its window at once, then the map ---------- */
   const [active, setActive] = useState<{ day: Day; m: number; at: FloatAt; by: 'mouse' | 'keys' } | null>(null);
-  const [mapOn, setMapOn] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
+  /* the time whose day the map window shows. It opens once the mouse rested on a time, follows it from a time to the
+     next, and stays a moment after the mouse left the times (over a booked stop, between two columns) */
+  const [mapAt, setMapAt] = useState<{ day: Day; m: number; item: Rect; group: Rect | null } | null>(null);
+  const opener = useRef<number | undefined>(undefined);
+  const closer = useRef<number | undefined>(undefined);
+  const mapOpen = useRef(false);
+  mapOpen.current = !!mapAt;
   const unitOf = (target: EventTarget | null) => {
     const el = (target as HTMLElement | null)?.closest?.('[data-m]') as HTMLElement | null;
     return el ? { el, day: el.dataset.d as Day, m: Number(el.dataset.m), state: el.dataset.state as UnitState } : null;
   };
   const show = (u: NonNullable<ReturnType<typeof unitOf>>, by: 'mouse' | 'keys') => {
+    clearTimeout(closer.current);
     if (active && active.day === u.day && active.m === u.m) return;
     const r = u.el.getBoundingClientRect();
     const c = (u.el.parentElement as HTMLElement).getBoundingClientRect();
-    setActive({ day: u.day, m: u.m, by, at: floatPlace(r, c, window.innerWidth, window.innerHeight) });
-    setMapOn(false);
-    clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setMapOn(true), HOVER_MS);
+    setActive({ day: u.day, m: u.m, by, at: floatPlace(r, c, window.innerWidth, window.innerHeight, LABEL_H) });
+    // the map never covers the column of the time pointed at
+    const next = { day: u.day, m: u.m, item: { left: c.left, right: c.right, top: r.top, bottom: r.bottom }, group: groupBox(u.el) };
+    clearTimeout(opener.current);
+    opener.current = window.setTimeout(() => setMapAt(next), mapOpen.current ? SWITCH_MS : HOVER_MS);
   };
-  const hide = () => { clearTimeout(timer.current); setActive(null); setMapOn(false); };
-  useEffect(() => () => clearTimeout(timer.current), []);
+  /** no time is pointed at any more: its words go at once, the map a moment later */
+  const leave = () => {
+    clearTimeout(opener.current);
+    setActive(null);
+    if (!mapOpen.current) return;
+    clearTimeout(closer.current);
+    closer.current = window.setTimeout(() => setMapAt(null), GRACE_MS);
+  };
+  const hide = () => { clearTimeout(opener.current); clearTimeout(closer.current); setActive(null); setMapAt(null); };
+  useEffect(() => () => { clearTimeout(opener.current); clearTimeout(closer.current); }, []);
   // the days changed under the pointer (another week, new answers): nothing is pointed at any more
-  useEffect(() => { if (active && !days.some((d) => d.day === active.day && d.states[unitIndex(span, active.m)] === 'open')) hide(); }, [days]);
-  const ask = active && mapOn ? p.askOf(active.day, active.m) : null;
+  const stillOpen = (x: { day: Day; m: number } | null) => !x || days.some((d) => d.day === x.day && d.states[unitIndex(span, x.m)] === 'open');
+  useEffect(() => { if (!stillOpen(active) || !stillOpen(mapAt)) hide(); }, [days]);
+  const ask = mapAt ? p.askOf(mapAt.day, mapAt.m) : null;
   const activeWin = active ? p.winOf(active.m) : null;
 
   /* ---------- keyboard: one tab stop, the arrows move ---------- */
@@ -178,7 +195,7 @@ export function PickGrid(p: PickGridProps) {
           </button>
         ))}
       </div>
-      <div class="pk-scroll" ref={scroll} onScroll={() => { if (active?.by === 'mouse') hide(); }}>
+      <div class="pk-scroll" ref={scroll} onScroll={() => { if (active ? active.by === 'mouse' : !!mapAt) hide(); }}>
         <div class="pk-body">
           <div class="pk-axis" aria-hidden="true">
             {unitMinutes(span).map((m) => <span key={m} class={m % 60 === 0 ? 'is-hour' : ''}>{m % 60 === 0 ? clock(m, l) : `:${String(m % 60).padStart(2, '0')}`}</span>)}
@@ -196,10 +213,10 @@ export function PickGrid(p: PickGridProps) {
               p.onDayMenu(e, col.dataset.day as Day, span[0] + i * 15);
             }}
             onClick={(e) => { const u = unitOf(e.target); if (u) { setFocus({ day: u.day, m: u.m }); p.onUnit(u.day, u.m, u.state); } }}
-            onMouseOver={mouse ? (e) => { const u = unitOf(e.target); if (u && u.state === 'open') show(u, 'mouse'); else if (active?.by === 'mouse') hide(); } : undefined}
-            onMouseLeave={mouse ? () => { if (active?.by === 'mouse') hide(); } : undefined}
+            onMouseOver={mouse ? (e) => { const u = unitOf(e.target); if (u && u.state === 'open') show(u, 'mouse'); else if (active?.by === 'mouse') leave(); } : undefined}
+            onMouseLeave={mouse ? () => { if (active?.by === 'mouse') leave(); } : undefined}
             onFocusCapture={(e) => { const u = unitOf(e.target); if (u && u.state === 'open' && byKeys(u.el)) show(u, 'keys'); }}
-            onBlurCapture={() => { if (active?.by === 'keys') hide(); }}
+            onBlurCapture={() => { if (active?.by === 'keys') leave(); }}
             onKeyDown={onKey}>
             {days.map((d) => <Column key={d.day} d={d} span={span} today={p.today} tab={tab && tab.day === d.day ? tab.m : null} force={p.force} unitLabel={p.unitLabel} />)}
             {/* the unit pointed at: lit, its time in it, its window down the column */}
@@ -229,10 +246,10 @@ export function PickGrid(p: PickGridProps) {
         {days.some((d) => d.far) && <li data-testid="pick-legend-far"><span class="bp-swatch is-far"><Route size={11} /></span>{t('booking.far.legend')}</li>}
       </ul>
       <p class="pk-hint">{p.hint}</p>
-      {/* the words of the unit pointed at, then the day's route on a map: beside its column */}
-      {active && (ask
-        ? <RoutePreview ask={ask} float={{ ...active.at, title: p.labelOf(active.m) }} onClose={hide} />
-        : createPortal(<div class="bp-hover-map is-label" style={floatStyle(active.at)} role="tooltip" data-testid="pick-label"><p class="bp-hover-when">{p.labelOf(active.m)}</p></div>, document.body))}
+      {/* the words of the unit pointed at, beside its column; then the real map of that day, which says them in its title
+          (the words would sit on the map: it opens beside the picker, where they are) */}
+      {active && !ask && createPortal(<div class="bp-hover-map is-label" style={floatStyle(active.at)} role="tooltip" data-testid="pick-label"><p class="bp-hover-when">{p.labelOf(active.m)}</p></div>, document.body)}
+      {ask && mapAt && <RouteHover ask={ask} at={mapAt.item} group={mapAt.group} title={`${cap(longDay(mapAt.day, l))} · ${p.labelOf(mapAt.m)}`} />}
     </div>
   );
 }

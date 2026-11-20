@@ -9,7 +9,7 @@ const api = vi.hoisted(() => ({ suggestBlocks: vi.fn(), suggestWindows: vi.fn() 
 const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 vi.mock('../../data/api', () => api);
 vi.mock('../../data/auth', () => ({ isOwner: () => auth.owner, hasRole: () => false }));
-vi.mock('./RoutePreview', () => ({ RoutePreview: () => null, floatStyle: () => ({}) }));
+vi.mock('./RoutePreview', () => ({ RoutePreview: () => null, RouteHover: () => null, MapHover: () => null }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ask: ui.ask, toast: ui.toast }));
 const auth = { owner: false };
 

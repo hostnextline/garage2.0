@@ -1,4 +1,4 @@
-/* The hooks the two moment pickers share: the server's best moments (`suggest_blocks`), the clock, and the small map
+/* The hooks the two moment pickers share: the server's best moments (`suggest_blocks`), the clock, and the map
    window that follows the mouse on a computer. */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { today as todayOf, nowMinute, type Day } from '../../lib/dates';
@@ -86,7 +86,7 @@ export function useClock(): { today: Day; now: number } {
   return { today: todayOf(), now: nowMinute() };
 }
 
-/* ---------- the small map beside a moment under the mouse ---------- */
+/* ---------- the map window of the moment under the mouse ---------- */
 /** a mouse that hovers (a computer): the touch screens get the long press instead. `unknown`: the answer where the
     browser cannot tell (no matchMedia: the tests' page) */
 export function useFinePointer(unknown = false): boolean {
@@ -94,32 +94,58 @@ export function useFinePointer(unknown = false): boolean {
     ? window.matchMedia('(hover: hover) and (pointer: fine)').matches : unknown), [unknown]);
 }
 
+/** the mouse rests that long on a moment: the map window opens */
+export const HOVER_MS = 250;
+/** the window is open: it follows the mouse to another moment after that long (the eye compares the moments; a route is
+    not asked for every moment the mouse only crosses) */
+export const SWITCH_MS = 110;
+/** the mouse left the moments (between two rows, over a booked stop): the window waits that long before closing */
+export const GRACE_MS = 220;
+/** the box on screen of the whole picker a moment belongs to (the map window goes beside it); null: not marked */
+export const groupBox = (el: Element | null): DOMRect | null => el?.closest?.('[data-pop-group]')?.getBoundingClientRect() ?? null;
+
 /** the moment the mouse rests on, after `delay` ms. Armed by any move of the mouse over the moment (not only when it
     comes in): after a scroll closed the window, or when the page scrolled under a mouse that did not move, the next small
-    move opens it again. Closed when the mouse leaves, at any scroll, and when the picker goes away. `on` false (a touch
-    screen, no address): no handlers at all. */
+    move opens it again. Once open, the window stays while the mouse goes from a moment to the next (it shows the new
+    moment after SWITCH_MS) and closes GRACE_MS after the mouse left them all; at once at any scroll, with `off`, and
+    when the picker goes away. `at`: the moment's box on screen, `group`: its picker's. `on` false (a touch screen, no
+    address): no handlers at all. */
 export function useHover<T>(delay: number, on: boolean) {
-  const [hover, setHover] = useState<{ item: T; key: string; at: DOMRect } | null>(null);
+  const [hover, setHover] = useState<{ item: T; key: string; at: DOMRect; group: DOMRect | null } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const waiting = useRef<string | null>(null);
   const shown = useRef<string | null>(null);
   shown.current = hover?.key ?? null;
-  const off = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; waiting.current = null; setHover(null); };
+  const stop = (t: { current: ReturnType<typeof setTimeout> | null }) => { if (t.current) clearTimeout(t.current); t.current = null; };
+  const off = () => { stop(timer); stop(closer); waiting.current = null; setHover(null); };
   useEffect(() => {
     if (!hover) return;
     window.addEventListener('scroll', off, true);
     return () => window.removeEventListener('scroll', off, true);
   }, [hover]);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useEffect(() => () => { stop(timer); stop(closer); }, []);
   const props = (key: string, item: T) => (!on ? {} : {
     onMouseMove: (e: MouseEvent) => {
-      if (waiting.current === key || shown.current === key) return;
+      // back on a moment: the window stays
+      stop(closer);
+      if (waiting.current === key) return;
+      // back on the moment shown, before the window went to the one the mouse only crossed
+      if (shown.current === key) { stop(timer); waiting.current = null; return; }
       const el = e.currentTarget as HTMLElement;
-      if (timer.current) clearTimeout(timer.current);
+      stop(timer);
       waiting.current = key;
-      timer.current = setTimeout(() => { waiting.current = null; setHover({ item, key, at: el.getBoundingClientRect() }); }, delay);
+      timer.current = setTimeout(() => {
+        timer.current = null; waiting.current = null;
+        setHover({ item, key, at: el.getBoundingClientRect(), group: groupBox(el) });
+      }, shown.current ? SWITCH_MS : delay);
     },
-    onMouseLeave: off
+    onMouseLeave: () => {
+      stop(timer);
+      waiting.current = null;
+      if (!shown.current || closer.current) return;
+      closer.current = setTimeout(() => { closer.current = null; setHover(null); }, GRACE_MS);
+    }
   });
   return { hover, props, off };
 }

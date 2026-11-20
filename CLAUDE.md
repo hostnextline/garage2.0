@@ -385,9 +385,14 @@ end $do$;
   « Choisir sur la carte » (`moment-map`, above the suggestions, in booking and in « Déplacer »): the days of the page in a strip
   (appointments that day, the driving added, « Meilleur choix », « loin »), then the day's three blocks. On a phone the map is in
   the page (overview « Tous les jours »: every coming appointment as a dot with its date; a day: its routes with the new stop). On a
-  computer (`(hover: hover) and (pointer: fine)`) there is no map in the page: the mouse over a day, a block, a suggestion or a
-  calendar cell opens a small window beside it (`route-hover`, `MapHover`; armed by `mousemove`, closed by a scroll; it never takes
-  the mouse) with every vehicle's route that day, small points without labels, the new stop in black.
+  computer (`(hover: hover) and (pointer: fine)`) there is no map in the page: the mouse resting on a day, a block, a suggestion, a
+  calendar cell, a best moment or a time of « Plages d’arrivée » opens the real map of that day in a window (`route-hover`,
+  `MapHover` / `RouteHover` in `src/shared/moment/RoutePreview.tsx`; asked by Hassan on 2026-11-19: « i want the actual map to open,
+  we are visual »): up to 640 × 460, every vehicle's route by the streets with its numbered stops at full size, the new stop in
+  black with its name, under it the stops of the route it joins in order and what it adds. It goes beside the whole picker
+  (`popPlace` in `place.ts`, the picker marked `data-pop-group`), so it does not move, stays open and follows while the mouse goes
+  from a moment to the next (`useHover`: opens after 250 ms, follows after 110 ms, closes 220 ms after the mouse left, at once
+  at a scroll or when a menu opens); it never takes the mouse.
   Known limits: the driving is still the straight-line estimate (Tuesday's real driving was well over it); the planner still places
   inside one block (it can put a job on an empty vehicle while another is already next door that day).
   The dev demo (`?demo`) only runs in one browser tab at a time: a second tab stays blank while an older one is open.

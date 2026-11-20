@@ -11,7 +11,7 @@ import { upsertLocal, clearAll } from '../../data/store';
 import type { Suggestion } from '../../data/api';
 import { useDayWindows, forgetWindows, type DayWins } from './useDayWindows';
 import { dayStamp } from './useWindowModels';
-import { useSuggestions, useLaterScores, useClock, type SuggState } from './hooks';
+import { useSuggestions, useLaterScores, useClock, useHover, HOVER_MS, SWITCH_MS, GRACE_MS, type SuggState } from './hooks';
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -182,5 +182,71 @@ describe('the clock', () => {
       await act(async () => { vi.advanceTimersByTime(31_000); });
       expect(at).toBe('2026-11-21 0');
     } finally { vi.useRealTimers(); }
+  });
+});
+
+describe('the moment under the mouse (useHover)', () => {
+  let now: { key: string; item: string; group: DOMRect | null } | null = null;
+  let offNow: () => void = () => {};
+  function Rows(p: { on?: boolean }) {
+    const hov = useHover<string>(HOVER_MS, p.on ?? true);
+    now = hov.hover ? { key: hov.hover.key, item: hov.hover.item, group: hov.hover.group } : null;
+    offNow = hov.off;
+    return <div data-pop-group><button id="ra" {...hov.props('a', 'A')} /><button id="rb" {...hov.props('b', 'B')} /></div>;
+  }
+  const fire = (id: string, type: string) => act(async () => { document.getElementById(id)!.dispatchEvent(new MouseEvent(type, { bubbles: type !== 'mouseleave' })); });
+  beforeEach(() => { now = null; });
+  it('opens after a rest, not when the mouse only passes', async () => {
+    act(() => render(<Rows />, box));
+    await fire('ra', 'mousemove');
+    await wait(HOVER_MS - 120);
+    expect(now).toBeNull();
+    await fire('ra', 'mouseleave');
+    await wait(HOVER_MS);
+    expect(now).toBeNull();
+    await fire('ra', 'mousemove');
+    await wait(HOVER_MS + 60);
+    expect(now).toMatchObject({ key: 'a', item: 'A' });
+    // the picker's box is known: the map window goes beside it
+    expect(now!.group).toBeTruthy();
+  });
+  it('once open, goes to the next moment sooner than it opened, without closing on the way', async () => {
+    act(() => render(<Rows />, box));
+    await fire('ra', 'mousemove');
+    await wait(HOVER_MS + 60);
+    await fire('ra', 'mouseleave');
+    expect(now?.key).toBe('a');
+    await fire('rb', 'mousemove');
+    await wait(SWITCH_MS + 60);
+    expect(SWITCH_MS).toBeLessThan(HOVER_MS);
+    expect(now).toMatchObject({ key: 'b', item: 'B' });
+    // and never closed by the first row's leave, even after its wait is over
+    await wait(GRACE_MS + 60);
+    expect(now?.key).toBe('b');
+  });
+  it('closes a moment after the mouse left, at once when asked (a menu opens, a moment is chosen) and at a scroll', async () => {
+    act(() => render(<Rows />, box));
+    await fire('ra', 'mousemove');
+    await wait(HOVER_MS + 60);
+    await fire('ra', 'mouseleave');
+    await wait(GRACE_MS - 120);
+    expect(now?.key).toBe('a');
+    await wait(200);
+    expect(now).toBeNull();
+    await fire('ra', 'mousemove');
+    await wait(HOVER_MS + 60);
+    act(() => offNow());
+    expect(now).toBeNull();
+    await fire('ra', 'mousemove');
+    await wait(HOVER_MS + 60);
+    expect(now?.key).toBe('a');
+    await act(async () => { window.dispatchEvent(new Event('scroll')); });
+    expect(now).toBeNull();
+  });
+  it('a touch screen, or no address: no handlers at all', async () => {
+    act(() => render(<Rows on={false} />, box));
+    await fire('ra', 'mousemove');
+    await wait(HOVER_MS + 60);
+    expect(now).toBeNull();
   });
 });

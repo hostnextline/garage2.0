@@ -180,7 +180,7 @@ export const booking: typeof fr = {
     mapAll: 'The coming appointments around the new address',
     mapDay: 'The routes of {day} with the new appointment',
     hintAll: 'Each dot is an appointment already booked, with its date inside. Tap a day, or a dot, to see the route of that day.',
-    hintHover: 'Move the mouse over a day or a moment: that day’s map opens beside it. A click chooses.',
+    hintHover: 'Rest the mouse on a day or a moment: that day’s map opens beside it, with the new appointment. A click chooses.',
     blocks: 'The times of {day}',
     noBlock: 'No free time that day.'
   },
@@ -285,6 +285,7 @@ export const booking: typeof fr = {
     },
     picker: {
       title: 'The best times',
+      hintHover: 'Rest the mouse on a moment or on a time: that day’s map opens beside it, with the new appointment. A click chooses.',
       current: 'Current time',
       loading: 'Looking for the best times…',
       offline: 'No network, no suggestions. Choose a day in the calendar: the app will check the room when it is sent.',

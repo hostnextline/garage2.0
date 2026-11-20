@@ -11,12 +11,13 @@ const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 const seen = vi.hoisted(() => ({ preview: [] as { onPick?: () => void }[], menus: [] as MenuAction[][] }));
 vi.mock('../../data/api', () => api);
 vi.mock('../../data/auth', () => ({ isOwner: () => false, hasRole: () => false }));
-// the small map beside a moment under the mouse leaves a mark (RouteHover in blocks mode, RoutePreview `float` with windows)
+// the map window beside a moment under the mouse leaves a mark (RouteHover, in both modes), with the moment it shows
 vi.mock('./RoutePreview', async () => {
   const { h } = await import('preact');
   return {
-    RoutePreview: (p: { onPick?: () => void; float?: unknown }) => { seen.preview.push(p); return p.float ? h('i', { 'data-testid': 'test-hover-map' }) : null; },
-    RouteHover: () => h('i', { 'data-testid': 'test-hover-map' }), MapHover: () => null, floatStyle: () => ({})
+    RoutePreview: (p: { onPick?: () => void }) => { seen.preview.push(p); return null; },
+    RouteHover: (p: { ask: { day: string; eta?: number | null }; title?: string }) => h('i', { 'data-testid': 'test-hover-map', 'data-day': p.ask.day, 'data-eta': String(p.ask.eta ?? ''), 'data-title': p.title || '' }),
+    MapHover: () => null
   };
 });
 vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ask: ui.ask, toast: ui.toast }));
@@ -281,6 +282,118 @@ describe('the small map of a moment closes when its menu opens (booking-b-31)', 
       await act(async () => { row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
       expect(seen.menus).toHaveLength(1);
       expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
+  });
+});
+
+// 2026-11-19, Hassan: « i want the actual map to open, we are visual ». The map of a moment under the mouse is the real map
+// of that day in a window that stays open while the mouse goes from a moment to the next
+describe('the map window follows the mouse from a moment to the next, and closes a moment after it left', () => {
+  const fine = () => { const mm = window.matchMedia; window.matchMedia = ((query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia; return () => { window.matchMedia = mm; }; };
+  const fire = (el: Element, type: string) => act(async () => { el.dispatchEvent(new MouseEvent(type, { bubbles: type !== 'mouseleave' })); });
+  const shown = () => q('test-hover-map');
+  it('the best moments: it opens after a rest, goes to the next moment without closing, closes after the mouse left', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const [a, b] = [q('win-sugg-0')!, q('win-sugg-1')!];
+      await fire(a, 'mousemove');
+      expect(shown()).toBeNull();          // not at once: the mouse only passing opens nothing
+      await wait(320);
+      expect(shown()?.dataset.day).toBe(a.dataset.day);
+      // to the next moment: the window never closes on the way, then shows that moment
+      await fire(a, 'mouseleave');
+      await fire(b, 'mousemove');
+      expect(shown()?.dataset.day).toBe(a.dataset.day);
+      await wait(180);
+      expect(shown()?.dataset.day).toBe(b.dataset.day);
+      // the mouse leaves the moments: still there a moment (it may be on its way to another), then gone
+      await fire(b, 'mouseleave');
+      expect(shown()).toBeTruthy();
+      await wait(320);
+      expect(shown()).toBeNull();
+    } finally { back(); }
+  });
+  it('a moment only crossed on the way back to the one shown changes nothing', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const [a, b] = [q('win-sugg-0')!, q('win-sugg-1')!];
+      await fire(a, 'mousemove');
+      await wait(320);
+      await fire(a, 'mouseleave');
+      await fire(b, 'mousemove');
+      await fire(b, 'mouseleave');
+      await fire(a, 'mousemove');
+      await wait(400);
+      expect(shown()?.dataset.day).toBe(a.dataset.day);
+    } finally { back(); }
+  });
+  it('the time grid: the words at once beside the time, then the map instead; it follows from a time to the next and outlives a booked stop crossed', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      expect(unit(900).dataset.state).toBe('open');
+      expect(unit(915).dataset.state).toBe('open');
+      await fire(unit(900), 'mouseover');
+      expect(q('pick-label')).toBeTruthy();
+      expect(shown()).toBeNull();
+      await wait(320);
+      expect(shown()?.dataset.eta).toBe('900');
+      // the window says the words itself, with the day (it is beside the picker, no longer beside the column)
+      expect(shown()?.dataset.title).toMatch(/^Jeudi 19 novembre · Arrivée vers 15 h/);
+      expect(q('pick-label')).toBeNull();
+      await fire(unit(915), 'mouseover');
+      expect(shown()?.dataset.eta).toBe('900');
+      await wait(180);
+      expect(shown()?.dataset.eta).toBe('915');
+      // off the possible times (a refused time, a booked stop): the words go at once, the map waits
+      await fire(unit(660), 'mouseover');
+      expect(q('pick-label')).toBeNull();
+      expect(shown()?.dataset.eta).toBe('915');
+      // back on a time before it closed: it stays, and follows
+      await wait(100);
+      expect(unit(885).dataset.state).toBe('open');
+      await fire(unit(885), 'mouseover');
+      await wait(260);
+      expect(shown()?.dataset.eta).toBe('885');
+      // the mouse leaves the calendar for good
+      await fire(q('pick-grid')!.querySelector('.pk-cols')!, 'mouseleave');
+      await wait(320);
+      expect(shown()).toBeNull();
+    } finally { back(); }
+  });
+  it('the times of the list (a narrow window on a computer) open the same map', async () => {
+    const back = fine();
+    try {
+      draw({ layout: 'list' });
+      await wait();
+      await act(async () => { q(`pick-daychip-${tomorrow}`)!.click(); });
+      await fire(q('pick-time-900')!, 'mousemove');
+      await wait(320);
+      expect(shown()?.dataset.day).toBe(tomorrow);
+      expect(shown()?.dataset.eta).toBe('900');
+      expect(shown()?.dataset.title).toMatch(/^Jeudi 19 novembre · Arrivée vers 15 h/);
+    } finally { back(); }
+  });
+  it('blocks: from a moment offered to the next', async () => {
+    windowsOn(false);
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }, { day: later, block: 'am', drive_min: 15, near: 1, truck: null, left: 200 }]);
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const [a, b] = [...box.querySelectorAll('[data-testid="bp-sugg"]')];
+      await fire(a, 'mousemove');
+      await wait(320);
+      expect(shown()?.dataset.day).toBe(tomorrow);
+      await fire(a, 'mouseleave');
+      await fire(b, 'mousemove');
+      await wait(180);
+      expect(shown()?.dataset.day).toBe(later);
     } finally { back(); }
   });
 });
