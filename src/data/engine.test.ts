@@ -294,6 +294,33 @@ describe('the outbox', () => {
   });
 });
 
+describe('two quick edits of one row while IndexedDB is slow (hors-ligne-01)', () => {
+  it('the corrected value is what the server keeps, also after a restart: nothing old is left on the phone', async () => {
+    const uid = nextUid();
+    srv.put('customers', { id: 'c8', first_name: 'A', sms_ok: true });
+    const e = await boot(uid);
+    await e.pullAll();
+    // an iPhone just woken: the first write of the change takes a moment
+    const db = e.outbox.db!;
+    const add = db.addEntry;
+    db.addEntry = async (x) => { await sleep(120); return add(x); };
+    const off = e.send.updateRow('customers', 'c8', { sms_ok: false });   // « Textos OK » off by mistake…
+    await sleep(40);
+    const on = e.send.updateRow('customers', 'c8', { sms_ok: true });     // …and back on
+    await off; await on;
+    await until(() => net.value.pending === 0 && srv.count((c) => c.method === 'PATCH') > 0);
+    expect(srv.table('customers')[0].sms_ok).toBe(true);
+    expect(await db.listEntries()).toEqual([]);
+    e.stop();
+    const patches = srv.count((c) => c.method === 'PATCH');
+    const again = await boot(uid);
+    await until(() => net.value.ready);
+    await again.send.flush();
+    expect(srv.count((c) => c.method === 'PATCH')).toBe(patches);
+    expect(srv.table('customers')[0].sms_ok).toBe(true);
+  });
+});
+
 describe('no valid session is not a refusal (core-data-09, x-sync-08)', () => {
   it('nothing leaves with the public key; the changes wait and the frame says so', async () => {
     const uid = nextUid();

@@ -4,7 +4,8 @@ import { FakeServer, clientFor } from './testkit';
 import { startSync, stopSync, net, flush, syncOptions, outbox, resetScreen } from './sync';
 import { setNet } from './net';
 import { getRow, rowsOf, baseRow } from './store';
-import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute, decodeVin, moveJob, buyStock, moveStock } from './api';
+import { addItem, saveSettings, updateMe, saveCustomer, deleteInventoryItem, addPayment, reopenInvoice, sendChat, sendChatPhone, enroute, decodeVin, moveJob, buyStock, moveStock, bookJob } from './api';
+import { longDay } from '../lib/dates';
 import { itemsOf } from './select';
 import { refusalText } from '../app/netView';
 import { money } from '../lib/money';
@@ -237,6 +238,50 @@ describe('a cash payment refused hours later says how much and for whom (argent-
     const r = await reopenInvoice('v1');
     expect(r.data).toMatchObject({ ok: true });
     expect(srv.count((c) => c.table === 'rpc/payment_add')).toBe(0);
+  });
+});
+
+describe('a booking kept on the phone and refused later says whose it was and when (e2e-plages-01, S37)', () => {
+  const was = lang.value;
+  afterEach(() => { lang.value = was; });
+  it('a window: the customer, the day and the window are in the waiting label and in the refusal', async () => {
+    srv.put('customers', { id: 'c9', first_name: 'Ines', last_name: 'Tremblay' });
+    srv.rpc('book_job', () => { throw Object.assign(new Error('Cette plage n’est plus libre.'), { code: 'window_full' }); });
+    await start();
+    lang.value = 'fr';
+    srv.offline = true;
+    setNet({ online: false });
+    const r = await bookJob({ customer_id: 'c9', day: '2026-11-21', block: 'day', win_start: 540 }, []);
+    expect(r.queued).toBe(true);
+    const label = outbox.value[0].label!;
+    expect(label.startsWith(t('log.booking'))).toBe(true);
+    expect(label).toContain('Ines Tremblay');
+    expect(label).toContain('21 novembre');
+    expect(label).toContain('entre 9 h et 13 h');
+    srv.offline = false;
+    await flush();
+    await until(() => net.value.failed.length === 1);
+    const row = refusalText(net.value.failed[0]);
+    expect(row).toContain('Ines Tremblay');
+    expect(row).toContain('21 novembre');
+  });
+  it('a block, a flexible day, English: the block or the day, in the words of the moment it was asked', async () => {
+    srv.put('customers', { id: 'c10', first_name: 'Karl', last_name: 'Roy' });
+    await start();
+    srv.offline = true;
+    setNet({ online: false });
+    // asked one after the other without waiting (each would wait 1.5 s for an answer): the label is written when asked
+    lang.value = 'fr';
+    const am = bookJob({ customer_id: 'c10', day: '2026-11-23', block: 'am' }, []);
+    const flex = bookJob({ customer_id: 'c10', day: '2026-11-24', block: 'day', win_flex: true }, []);
+    lang.value = 'en';
+    const pm = bookJob({ customer_id: 'c10', day: '2026-11-25', block: 'pm' }, []);
+    expect((await Promise.all([am, flex, pm])).map((r) => r.queued)).toEqual([true, true, true]);
+    expect(outbox.value.map((e) => e.label)).toEqual([
+      `${t('log.booking', undefined, 'fr')} · Karl Roy · ${longDay('2026-11-23', 'fr')}, matin`,
+      `${t('log.booking', undefined, 'fr')} · Karl Roy · ${longDay('2026-11-24', 'fr')}, dans la journée`,
+      `${t('log.booking', undefined, 'en')} · Karl Roy · ${longDay('2026-11-25', 'en')}, afternoon`
+    ]);
   });
 });
 

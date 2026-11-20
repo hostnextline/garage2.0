@@ -58,6 +58,19 @@ describe('the device copy (IndexedDB his-garage-<uid>, version 3)', () => {
     db.close();
   });
 
+  it('an entry without its key is refused at once: nothing read, the connection kept (hors-ligne-01)', async () => {
+    const db = openLocal(uid());
+    await db.listEntries();
+    const close = vi.spyOn(IDBDatabase.prototype, 'close');
+    const fn = vi.fn(() => ({ result: null }));
+    try {
+      await expect(db.mutateEntry(undefined as unknown as number, fn)).rejects.toThrow('outbox entry without its key');
+      expect(fn).not.toHaveBeenCalled();
+      expect(close).not.toHaveBeenCalled();
+    } finally { close.mockRestore(); }
+    db.close();
+  });
+
   it('taken out and put back at the end in one transaction (« Réessayer »)', async () => {
     const db = openLocal(uid());
     const a = await db.addEntry(entry({ op: 'a', state: 'failed' }));
