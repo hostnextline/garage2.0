@@ -22,6 +22,10 @@ describe('refusal codes of the « client » function (R11)', () => {
     answer(409, { ok: false, code: 'closed', error: 'Ce rendez-vous est terminé.' });
     expect((await refusal()).code).toBe('closed');
   });
+  it('409 pay_processing (a bank debit on its way) → code kept, not « server »', async () => {
+    answer(409, { ok: false, code: 'pay_processing', error: 'Un paiement pour ce dossier est déjà en traitement.' });
+    expect((await refusal()).code).toBe('pay_processing');
+  });
   it('409 amount_changed keeps the current amount', async () => {
     answer(409, { ok: false, code: 'amount_changed', error: 'x', current_cents: 29891 });
     const e = await refusal();
