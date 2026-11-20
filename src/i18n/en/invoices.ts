@@ -192,7 +192,8 @@ export const invoices: typeof fr = {
     finishHint: 'It gets its number. Then: take the payment or text it to the customer.',
     paidAhead: 'The customer already paid {amount}. Left to pay: {left}.',
     paidAheadAll: 'The customer already paid everything ({amount}). Finish the invoice: it will be marked PAID.',
-    paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice: give it back once the invoice is finished.',
+    /** a first finish over what was paid ahead (no question): the office gives the rest back, never the reader (owner, 2026-11-20) */
+    paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice. Once the invoice is finished, the office will give {over} back to the customer.',
     paidAheadBelow: 'The customer already paid {amount}, {over} more than this total. If you finish it like this, the invoice will be marked PAID and the office will give {over} back to the customer.',
     /** “Finish the invoice” of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
     overAsk: {

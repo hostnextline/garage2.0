@@ -244,7 +244,8 @@ describe('a draft invoice', () => {
       seed(draft({ lines: lowLines }), [item('a', { unit_cents: 5000 })]);
       paidAhead();
       await draw();
-      expect(q('draft-paid-ahead')?.textContent).toContain('à lui remettre une fois la facture terminée');
+      // the office gives the rest back, never the mechanic (one cash refund on site + one by the office = paid out twice)
+      expect(plain(q('draft-paid-ahead')?.textContent)).toBe('Le client a déjà payé 114,98 $, soit 57,49 $ de plus que la facture. Une fois la facture terminée, le bureau lui remettra 57,49 $.');
       await act(async () => { q('invoice-finish')!.click(); });
       await wait();
       expect(sheet('ask-ok')).toBeNull();
