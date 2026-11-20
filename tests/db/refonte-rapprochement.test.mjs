@@ -1104,6 +1104,32 @@ test('recon_now: yesterday and today so far, at most once a minute, then the sum
   assert.equal(again.last_run.finished_at, at, 'braked: nothing ran again');
 }));
 
+test('recon_now (round 3, S31): twice within a minute — the second answers the summary PLUS braked: true and next_at (the next minute, when a new check runs); the first says braked: false', () => tx(async (h) => {
+  const owner = await h.person('Hassan Jeha', ['owner']);
+  await h.as(owner);
+  const first = await h.rpc('recon_now', {});
+  assert.equal(first.braked, false, 'the first check ran');
+  assert.equal(first.next_at, undefined);
+  assert.equal(first.last_run.source, 'button');
+  const second = await h.rpc('recon_now', {});
+  assert.equal(second.braked, true, 'the second within the minute is braked and says so');
+  assert.match(second.next_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+  const now = Date.parse(await h.val(`select to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`));
+  const next = Date.parse(second.next_at);
+  assert.ok(next > now && next - now <= 60000, `next_at ${second.next_at} is within the next minute`);
+  // the summary is the usual one, untouched: every field of recon_summary is there, with the same values
+  const plain = await h.rpc('recon_summary', { p_days: 14 });
+  for (const k of Object.keys(plain)) assert.deepEqual(second[k], plain[k], `field ${k} as recon_summary says it`);
+  assert.equal(second.last_run.finished_at, first.last_run.finished_at, 'braked: nothing ran again');
+  // a brake taken by somebody else this minute (as the end-to-end step does) brakes the first call of this person too
+  await server(h);
+  await h.c.query(`delete from public.rate_limits where key = 'recon_now'`);
+  await h.c.query(`insert into public.rate_limits (key, bucket, n) values ('recon_now', floor(extract(epoch from now()) / 60), 1)`);
+  await h.as(owner);
+  const other = await h.rpc('recon_now', {});
+  assert.deepEqual([other.braked, other.next_at], [true, second.next_at]);
+}));
+
 /** a few thousand rows of a real year: 1500 paid jobs, stock, purchases both ways, 1000 expenses */
 async function bulk(h, g) {
   // 1500 finished jobs over 30 past days, each with its paid invoice and payment; 300 stock items with 4 moves each

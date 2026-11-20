@@ -18,6 +18,7 @@
 --   recon_summary(days)         owner: everything; « Trésorerie »: the money (M…) and stock (S…) checks; others: refused
 --   recon_ack(finding, note)    owner or « Trésorerie »: « vu »
 --   recon_now()                 owner or « Trésorerie »: yesterday and today so far, at most once a minute, then the summary
+--                               (+ braked: true / next_at when the minute's check was already made; braked: false otherwise)
 --   pg_cron « garage-recon »    07:40 UTC every day when the extension exists (the nightly backup job is the second trigger)
 --
 -- Every check reads the books AS THEY ARE NOW (the day only chooses the sheet and the dates written on the findings), so
@@ -1278,7 +1279,9 @@ begin
 end $$;
 
 -- ───────────────────────────── recon_now: « Vérifier maintenant » ─────────────────────────────
--- Yesterday and today so far, at most once a minute for the whole garage (rate_hit); braked, it answers the summary as it is.
+-- Yesterday and today so far, at most once a minute for the whole garage (rate_hit); braked, it answers the summary as it is
+-- PLUS « braked: true » and « next_at » (the start of the next minute of rate_hit's window: from then a new check runs), so the
+-- app never says « Vérification faite » over the old result. Not braked: « braked: false », no « next_at ». Fields only added.
 create or replace function public.recon_now() returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
@@ -1288,8 +1291,11 @@ begin
   if public.rate_hit('recon_now', 60, 1) then
     perform public.recon_run(public.local_today() - 1, 'button');
     perform public.recon_run(public.local_today(), 'button');
+    return public.recon_summary(14) || jsonb_build_object('braked', false);
   end if;
-  return public.recon_summary(14);
+  -- the same window as rate_hit('recon_now', 60, 1): bucket = floor(epoch / 60); the next bucket starts at (bucket + 1) * 60
+  return public.recon_summary(14) || jsonb_build_object('braked', true,
+    'next_at', to_char(to_timestamp((floor(extract(epoch from now()) / 60) + 1) * 60) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'));
 end $$;
 
 -- ───────────────────────────── rights ─────────────────────────────
