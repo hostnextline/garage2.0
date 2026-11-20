@@ -16,6 +16,9 @@ export const may = {
   overview: () => can('map') && (can('agenda') || isOwner()),
   // a mechanic opens Horaires for the truck he drives (the server lets him change its hours and its start)
   hours: () => can('hours') || myTrucks().length > 0,
+  // « Heures travaillées »: a mechanic sees his own days; the owners and the treasurer see and correct everyone's
+  timesheet: () => hasRole('mechanic') || isOwner() || hasRole('treasurer'),
+  timesheetAll: () => isOwner() || hasRole('treasurer'),
   treasury: () => can('treasury'),
   // « Coffre » (family and friends): the owner, and the accountant (« Trésorerie ») who exports its report apart
   coffre: () => isOwner() || can('treasury'),

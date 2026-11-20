@@ -60,7 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
+- Applied on live: every migration up to `20261119000100_heures.sql` (« Heures travaillées », Part 26 of live, applied 2026-11-19 from commit `5e77db6` of the
+  live branch with the sha256 check; this file is the same byte for byte); before it: `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
   check; INERT while `settings.booking.windows_on` is not true: the owner flips it in Réglages → Réservations, `windows_switch`, and back the
   same way, nothing lost; functions `notify`, `book`, `client` deployed pinned to `6b978bd` the same day);
   before it: `20261114000100_garde_route.sql` (Part 25, applied 2026-11-15 from commit `aabe852`;
@@ -422,6 +423,26 @@ end $do$;
   10 minutes when the database has it: today's, and tomorrow's from `win_lock_min` 1080 = 18:00), or at once when booked / moved into
   a day already locked. Not done here: the texts to customers, `team_map` (it does not answer the windows), the app's screens.
   The database tests run on a Mac too against any Postgres with the migrations (`GARAGE_DB_PORT`, see `tests/db/helpers.mjs`).
+- « Heures travaillées » (`#/timesheet`, Part 26 of live, `20261119000100_heures.sql`, applied on live 2026-11-19 from commit `5e77db6` with the sha256 check; `src/features/timesheet/`): the
+  hours worked from « Commencer / Terminer ma journée » (`shifts`), a week at a time from Monday to Sunday (Hassan's choice for the
+  hours; the schedule's week stays Sunday–Saturday), a day counted on the day it began, totals in h min and in decimals (pay), the
+  month's total. A mechanic sees only his own (« Mes heures », also « Voir mes heures » on the day card, `src/features/today/ShiftCard.tsx`); the owners and the
+  treasurer (`may.timesheetAll` in `src/domain/rights.ts`, server `hours_all()`) see the team and each person (`#/timesheet/STAFF?week=`), and correct:
+  `shift_save(op, shift, staff, start, end)` (fix a day, or add one with shift null; an open day keeps no end; refused: end not
+  after start, more than 24 h, not yet passed, overlap with the person's other days) and `shift_remove(op, shift)` (closed days
+  only, `deleted_at`). Each correction: `shifts.fixed_by` / `fixed_at` and an `activity` row (`hours_fix` / `hours_add` /
+  `hours_remove`, before / after). « À vérifier » = a closed day of 16 h or more not corrected (`toCheck`): the night's
+  housekeeping closes a forgotten day 16 h after it began (3 h 17), so it always shows that way; the 3 h 17 is not offered as the
+  end in the sheet. The read rule of `shifts` adds `hours_all()` (the treasurer even without « Carte »). Dry run on live
+  2026-11-19 (rolled back): applied clean, mechanic refused, treasurer's fix kept with its history. Tests: `logic.test.ts`,
+  `TimesheetScreen.test.tsx`, `tests/db/heures.test.mjs` (green on live's « Tests complets », run 44578750496). Live had 4 days « à vérifier »
+  that day (closed by the night: 33.8 h, 22.6 h, 16.5 h, 19.2 h).
+  In the refonte: the moments are read and written on the garage's clock (`dayOf`, `minuteOf`, `instantOf` of `lib/dates`), like
+  the rest of the app; `too_long` of a day has its words under `errors.at.shift_save` (`errors.too_long` is a message too long);
+  `shift_save`, `shift_remove` (APP) and `hours_all` (AS_PERSON) are named in `tests/db/refonte-droits.test.mjs`; the demo is
+  `src/dev/demo-extra/timesheet.ts`. On a fresh database the file runs after the six forward migrations (`20261116000050` …
+  `000500`); the end state is the same as on live, where it ran before them (the D1 grant loop of `000300` only goes over its
+  own list of names, which does not hold `hours_all`, `shift_save`, `shift_remove`; the migration grants them itself).
 
 ## Ideas not done yet
 

@@ -40,4 +40,14 @@ describe('rights', () => {
     access.value = who(['mechanic']);
     expect(may.hours()).toBe(false);
   });
+  it('« Heures travaillées »: a mechanic sees his own, the owners and the treasurer see and correct everyone’s', () => {
+    access.value = who(['mechanic']);
+    expect([may.timesheet(), may.timesheetAll()]).toEqual([true, false]);
+    access.value = who(['treasurer'], ['treasury']);
+    expect([may.timesheet(), may.timesheetAll()]).toEqual([true, true]);
+    access.value = who(['owner'], [], { owner: true });
+    expect([may.timesheet(), may.timesheetAll()]).toEqual([true, true]);
+    access.value = who(['office'], ['agenda', 'book', 'clients', 'hours', 'map']);
+    expect([may.timesheet(), may.timesheetAll()]).toEqual([false, false]);
+  });
 });

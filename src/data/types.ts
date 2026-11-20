@@ -137,7 +137,8 @@ export interface Expense extends Base {
   day: string; vendor: string | null; category: string; description: string | null; subtotal_cents: number; tps_cents: number; tvq_cents: number; total_cents: number;
   method: string | null; truck_id: string | null; receipt_id: string | null; notes: string | null;
 }
-export interface Shift extends Base { staff_id: string; started_at: string; ended_at: string | null }
+/** fixed_by / fixed_at: an owner or the treasurer corrected or added it in « Heures travaillées » (Part 26 of live) */
+export interface Shift extends Base { staff_id: string; started_at: string; ended_at: string | null; fixed_by?: string | null; fixed_at?: string | null }
 export interface Position extends Base { lat: number; lng: number; accuracy_m: number | null; heading: number | null; speed_kmh: number | null; job_id: string | null; at: string }
 export interface Trip extends Base {
   /** null for a trip back to the start (kind 'return') */

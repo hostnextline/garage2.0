@@ -1,5 +1,5 @@
 /* The menu: what each person sees depends on their rights (the server checks every action again). */
-import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen, PhoneIncoming, Droplet } from 'lucide-preact';
+import { type LucideIcon, LayoutDashboard, CalendarCheck, CalendarDays, Users, Receipt, ClipboardList, MapIcon, Clock, Wallet, Package, ChartColumn, UsersRound, Settings, Compass, UserRound, Timer, CalendarPlus, Wrench, FileText, UserPlus, ReceiptText, BookOpen, PhoneIncoming, Droplet } from 'lucide-preact';
 import type { NavKey } from './routes';
 import { may } from '../domain/rights';
 import { t } from '../lib/i18n';
@@ -17,6 +17,7 @@ export const NAV: NavItem[] = [
   { key: 'treasury', href: '#/treasury', icon: Wallet, show: may.treasury, group: 'office' },
   { key: 'dashboard', href: '#/dashboard', icon: ChartColumn, show: may.dashboard, group: 'office' },
   { key: 'hours', href: '#/hours', icon: Clock, show: may.hours, group: 'garage' },
+  { key: 'timesheet', href: '#/timesheet', icon: Timer, show: may.timesheet, group: 'garage' },
   { key: 'inventory', href: '#/inventory', icon: Package, show: may.inventory, group: 'garage' },
   { key: 'team', href: '#/team', icon: UsersRound, show: may.team, group: 'garage' },
   { key: 'settings', href: '#/settings', icon: Settings, show: may.settings, group: 'garage' },

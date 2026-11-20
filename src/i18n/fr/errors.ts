@@ -159,6 +159,14 @@ export const errors = {
   bad_finding: 'Une différence doit dire sa vérification, sa gravité et son message.',
   not_ready: 'Cette partie n’est pas encore installée sur le serveur.',
 
+  // « Heures travaillées » (shift_save, shift_remove; too_long of a day: at.shift_save)
+  no_shift_row: 'Cette journée n’existe plus. Recharge la page.',
+  no_staff: 'Cette personne ne fait plus partie de l’équipe.',
+  bad_hours: 'Vérifie l’heure du début et l’heure de la fin.',
+  still_open: 'Cette journée est encore ouverte : elle finit quand la personne appuie sur « Terminer ma journée ».',
+  future: 'Cette heure n’est pas encore passée.',
+  overlap: 'Ces heures chevauchent une autre journée de cette personne.',
+
   /** a code that means something else when this SQL function or server function raises it */
   at: {
     conversation: { empty: 'Écris le message.' },
@@ -170,7 +178,8 @@ export const errors = {
     invoice_reopen: { closed: 'La job est terminée : la facture ne se modifie plus. Annule-la pour en faire une nouvelle.' },
     set_job_duration: { block_full: 'Avec cette durée, la job ne rentre plus dans le bloc. Déplace-la ou raccourcis-la.' },
     set_truck_start: { no_truck: 'Ce camion n’existe plus. Choisis-en un autre.' },
-    coffre_add: { too_many: 'Au plus 30 jobs à la fois.' }
+    coffre_add: { too_many: 'Au plus 30 jobs à la fois.' },
+    shift_save: { too_long: 'Une journée ne peut pas dépasser 24 heures.' }
   },
   /** the block codes when the garage books by arrival windows (Réglages, Réservations) */
   day: {
