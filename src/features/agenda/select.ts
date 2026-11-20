@@ -7,7 +7,7 @@ import { blockLoad, activeTrucks, blocks, blockOfKey, settings, windowsOn, truck
 import type { Job, Truck } from '../../data/types';
 import { nowMinute, minuteOf, overlapMinutes, type BlockKey, type Day } from '../../lib/dates';
 import { byArrival, isWindowDay } from './layout';
-import { dayState, blockState, hasRoom, usedBy } from './load';
+import { dayState, blockState, hasRoom } from './load';
 import { jobsOfDay } from './days';
 
 export function seesAll(): boolean { return can('agenda'); }
@@ -41,13 +41,10 @@ export function blockView(day: Day, b: { key: BlockKey; start: number; end: numb
   const load = blockLoad(day, b.key);
   const whole = b.key === 'day';
   const minBlock = settings.value.booking.min_block_min;
-  const now = day === todayDay ? nowMinute() : null;
   // today: a job under way counts only for the time it still needs (as the planner counts it), not whole against
-  // the hours left; a whole day: its stops by the hour (the planned arrival, then the stop number)
-  const lanes = load.trucks.filter((x) => laneShown(x.truck.id)).map((x) => {
-    const used = usedBy(x.jobs, now, (j) => arrivedMinute(j.arrived_at), settings.value.booking.unknown_min);
-    return { ...x, used, left: x.cap - used, jobs: whole ? [...x.jobs].sort(byArrival) : x.jobs };
-  });
+  // the hours left: blockLoad's own used / left, the numbers the pickers show (an arrival of yesterday counts as
+  // yesterday, S06); a whole day: its stops by the hour (the planned arrival, then the stop number)
+  const lanes = load.trucks.filter((x) => laneShown(x.truck.id)).map((x) => (whole ? { ...x, jobs: [...x.jobs].sort(byArrival) } : x));
   // a whole day is over at its last hour, not when it starts (a block is « commencé » at its first minute)
   const st = whole
     ? dayState(day, todayDay, nowMinute(), [b.start, b.end], load.trucks.map((x) => x.cap), minBlock, activeTrucks.value.some((tr) => overlapMinutes(truckRanges(tr.id, day), b.start, b.end) > 0))

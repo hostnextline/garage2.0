@@ -72,6 +72,25 @@ describe('a day of arrival windows', () => {
   });
 });
 
+describe('a job under way counts as the pickers count it (S06)', () => {
+  const onSite = (arrived: string) => [{ id: 'site', day: TODAY, block: 'am', truck_id: 't1', status: 'on_site', duration_min: 120, travel_min: 20, number: 1, stop_order: 1, arrived_at: new Date(arrived).toISOString() }];
+  const lane = () => dayPlan(TODAY, TODAY).views[0].lanes.find((x) => x.truck.id === 't1')!;
+  it('on site since yesterday 15:00: its time is over at 10:00, not 420 min still to come', () => {
+    garage(false);
+    access.value = owner;
+    vi.setSystemTime(new Date('2026-11-17T10:00:00-05:00'));
+    replaceLocal('jobs', onSite('2026-11-16T15:00:00-05:00'));
+    expect(lane()).toMatchObject({ used: 0, cap: 120, left: 120 });
+  });
+  it('on site since 10:00 today, at 11:00: 60 min still to do', () => {
+    garage(false);
+    access.value = owner;
+    vi.setSystemTime(new Date('2026-11-17T11:00:00-05:00'));
+    replaceLocal('jobs', onSite('2026-11-17T10:00:00-05:00'));
+    expect(lane()).toMatchObject({ used: 60, cap: 60, left: 0 });
+  });
+});
+
 describe('who sees what', () => {
   it('a mechanic without « agenda » keeps to his truck’s lanes and jobs (and the ones he booked)', () => {
     access.value = saleh;

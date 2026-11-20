@@ -123,7 +123,7 @@ export const agenda = {
     ok: 'Déplacer',
     done: 'Job déplacée',
     unchanged: 'Rien à changer : le rendez-vous est déjà à cette place.',
-    textLater: 'Le texto au client partira quand le déplacement sera envoyé.',
+    textLater: 'Le texto au client partira quand le déplacement sera envoyé, si l’app reste ouverte.',
     started: 'Ce bloc est déjà commencé : choisis un bloc à venir.',
     closed: 'Ce bloc est fermé : aucun camion ne travaille.',
     notBooked: 'Seule une job réservée, pas encore partie, se déplace.',
