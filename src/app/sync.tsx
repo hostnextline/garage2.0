@@ -8,11 +8,22 @@ import { stamp } from '../lib/dates';
 import { browserOnline } from '../platform/media';
 import { net, flush, pullAll, dismissFailed, outboxList } from '../data/sync';
 import type { OutboxEntry } from '../data/local';
-import { Button, Sheet, Banner, Rows, RowItem } from '../ui';
+import { Button, Sheet, Banner, Rows, RowItem, ask } from '../ui';
 import { readNet, refusalText, type NetView } from './netView';
 
 /** the frame's view of the connection (old and new shapes of `net`) */
 export const netView = (): NetView => readNet(net.value, browserOnline.value);
+
+/** a payment taken on the phone and refused by the server: its entry is the only trace of money the customer may have
+    handed over (argent-app-03, S01) */
+export const isPaymentEntry = (e: Pick<OutboxEntry, 'kind' | 'rpc'>): boolean => e.kind === 'rpc' && e.rpc === 'payment_add';
+/** « Retirer » on a refused change: a payment asks first (the customer may have paid), anything else goes in one tap.
+    true = the entry was taken off the phone */
+export async function removeFailed(e: OutboxEntry): Promise<boolean> {
+  if (isPaymentEntry(e) && !(await ask({ title: t('shell.failed.paymentAsk'), text: t('shell.failed.paymentConfirm'), ok: t('shell.failed.dismiss'), danger: true }))) return false;
+  await dismissFailed(e.seq!);
+  return true;
+}
 
 export const syncOpen = signal(false);
 const openSync = () => { syncOpen.value = true; };
@@ -69,7 +80,7 @@ export function SyncSheet() {
                 <RowItem key={e.seq} title={e.label || t('log.change')} sub={refusalText({ ...e, label: null })}
                   end={<span class="row">
                     <Button size="sm" onClick={async () => { await dismissFailed(e.seq!, true); refresh(); }}>{t('shell.failed.retry')}</Button>
-                    <Button size="sm" variant="ghost" onClick={async () => { await dismissFailed(e.seq!); refresh(); }}>{t('shell.failed.dismiss')}</Button>
+                    <Button size="sm" variant="ghost" onClick={async () => { if (await removeFailed(e)) refresh(); }}>{t('shell.failed.dismiss')}</Button>
                   </span>} />
               ))}
             </Rows>
