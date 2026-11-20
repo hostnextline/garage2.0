@@ -16,7 +16,7 @@ export interface RouteDef {
       a parameter changes (for a screen that follows its parameters by itself) */
   key?: 'path' | 'pattern';
 }
-export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'oil' | 'invoices' | 'quotes' | 'map' | 'hours' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
+export type NavKey = 'today' | 'overview' | 'agenda' | 'customers' | 'oil' | 'invoices' | 'quotes' | 'map' | 'hours' | 'timesheet' | 'treasury' | 'inventory' | 'dashboard' | 'team' | 'settings' | 'guide' | 'info' | 'account' | 'more';
 
 const ROUTES: RouteDef[] = [
   { pattern: '/', load: () => import('../features/today/TodayScreen'), nav: 'today' },
@@ -24,6 +24,7 @@ const ROUTES: RouteDef[] = [
   { pattern: '/book', load: () => import('../features/booking/BookScreen'), allow: () => may.book() || may.walkIn(), nav: 'agenda' },
   { pattern: '/call', load: () => import('../features/booking/CallScreen'), allow: may.book, nav: 'agenda' },
   { pattern: '/hours/:truck?', load: () => import('../features/hours/HoursScreen'), allow: may.hours, nav: 'hours' },
+  { pattern: '/timesheet/:staff?', load: () => import('../features/timesheet/TimesheetScreen'), allow: may.timesheet, nav: 'timesheet' },
   { pattern: '/customers', load: () => import('../features/customers/CustomersScreen'), allow: may.customers, nav: 'customers' },
   { pattern: '/customer/:id', load: () => import('../features/customers/CustomerScreen'), allow: may.customers, nav: 'customers' },
   { pattern: '/vehicle/:id', load: () => import('../features/customers/VehicleScreen'), allow: may.customers, nav: 'customers' },
