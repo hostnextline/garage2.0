@@ -47,7 +47,9 @@ export const shell = {
     dismiss: 'Retirer',
     show: 'Voir',
     line: '{label} : {error}',
-    chip: { one: '1 refusé', other: '{n} refusés' }
+    chip: { one: '1 refusé', other: '{n} refusés' },
+    paymentAsk: 'Retirer ce paiement ?',
+    paymentConfirm: 'Ce paiement n’a pas été enregistré. Le client a peut-être payé : vérifie avant de retirer.'
   },
   session: {
     lost: { one: 'Reconnecte-toi : 1 changement attend', other: 'Reconnecte-toi : {n} changements attendent' },
