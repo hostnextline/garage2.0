@@ -72,7 +72,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
   // customer (the office); asked before finishing (owner, 2026-11-20)
   const below = belowPaid(inv.number, ahead, tt.total);
 
-  /** `leaveOff`: « Terminer sans », the work left off the invoice is marked « Pas fait » first */
+  /** `leaveOff`: « Pas fait, terminer », the work left off the invoice is marked « Pas fait » first */
   const doFinish = async (leaveOff: WorkItem[] = []) => {
     setAsking([]);
     if (typos.refused()) return;
@@ -113,7 +113,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
     d.update((cur) => ({ ...cur, lines: [...cur.lines, ...keyed(workMissing(cur.lines, items))] }));
     await doFinish();
   };
-  // « Terminer sans » while the job is coming or under way: the work left off becomes « Pas fait » (lead-watch terrain-01,
+  // « Pas fait, terminer » while the job is coming or under way: the work left off becomes « Pas fait » (lead-watch terrain-01,
   // argent-app-01), so only for someone whose « Pas fait » the server takes (job_items_editable); the others add it. A job
   // already over is never finished again: nothing to mark there.
   const leavesOff = !!job && jobOpen(job.status);
@@ -204,7 +204,7 @@ export function DraftInvoice(p: { job: Job | undefined; inv: Invoice }) {
         )}
       </div>
       <CatalogSheet open={catalog} onClose={() => setCatalog(false)} docLang={docLang} onAdd={(add) => d.update((cur) => ({ ...cur, lines: [...cur.lines, ...add] }))} />
-      <MissingWorkSheet work={asking} onClose={() => setAsking([])} onAdd={addAndFinish} onWithout={mayFinishWithout ? finishWithout : undefined} />
+      <MissingWorkSheet work={asking} onClose={() => setAsking([])} onAdd={addAndFinish} onWithout={mayFinishWithout ? finishWithout : undefined} notDone={leavesOff} />
     </Panel>
   );
 }

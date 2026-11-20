@@ -207,7 +207,11 @@ export const invoices = {
       title: { one: '1 travail de la job n’est pas sur la facture', other: '{n} travaux de la job ne sont pas sur la facture' },
       text: 'C’est fait ou prévu sur la job, mais pas facturé.',
       add: 'Ajouter et terminer',
-      without: 'Terminer sans'
+      /** a job already over: the invoice is finished as it is, the work is not touched */
+      without: 'Terminer sans',
+      /** the job coming or under way: that work is marked « Pas fait » first (S58), and said before the tap */
+      notDone: 'Pas fait, terminer',
+      notDoneText: { one: '« Pas fait, terminer » : ce travail sera marqué « Pas fait » et ne sera pas facturé.', other: '« Pas fait, terminer » : ces travaux seront marqués « Pas fait » et ne seront pas facturés.' }
     },
     newWork: { one: 'Du travail a été ajouté à la job', other: '{n} travaux ont été ajoutés à la job' },
     addNewWork: 'Ajouter à la facture',

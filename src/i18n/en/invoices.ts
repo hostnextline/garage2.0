@@ -207,7 +207,11 @@ export const invoices: typeof fr = {
       title: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
       text: 'It is done or planned on the job, but not billed.',
       add: 'Add and finish',
-      without: 'Finish without'
+      /** a job already over: the invoice is finished as it is, the work is not touched */
+      without: 'Finish without',
+      /** the job coming or under way: that work is marked “Not done” first (S58), and said before the tap */
+      notDone: 'Not done, finish',
+      notDoneText: { one: '“Not done, finish”: this work will be marked “Not done” and not billed.', other: '“Not done, finish”: this work will be marked “Not done” and not billed.' }
     },
     newWork: { one: 'Work was added to the job', other: '{n} pieces of work were added to the job' },
     addNewWork: 'Add to the invoice',

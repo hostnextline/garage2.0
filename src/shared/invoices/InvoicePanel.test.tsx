@@ -80,13 +80,16 @@ describe('a draft invoice', () => {
     await wait(900);
     expect(api.saveInvoiceDraft).not.toHaveBeenCalled();
   });
-  it('« Terminer la facture » with billable work missing asks first; « Terminer sans » marks that work « Pas fait », then finishes (lead-watch terrain-01, S58)', async () => {
+  it('« Terminer la facture » with billable work missing asks first; « Pas fait, terminer » says it and marks that work « Pas fait », then finishes (lead-watch terrain-01, S58)', async () => {
     // work older than the draft and not on it: it was taken off by hand, so it is not put back by itself
     seed(draft(), [item('a'), item('old')]);
     await draw();
     await act(async () => { q('invoice-finish')!.click(); });
     await wait();
     expect(sheet('missing-work')?.textContent).toContain('Travail old');
+    // what the tap does is said before it (review invoices: before, « Terminer sans » did it without a word)
+    expect(sheet('missing-work-without')!.textContent).toBe('Pas fait, terminer');
+    expect(plain(sheet('missing-work-not-done')!.textContent)).toBe('« Pas fait, terminer » : ce travail sera marqué « Pas fait » et ne sera pas facturé.');
     expect(api.finishInvoice).not.toHaveBeenCalled();
     await act(async () => { sheet('missing-work-without')!.click(); });
     await wait();
@@ -97,12 +100,13 @@ describe('a draft invoice', () => {
     expect(api.updateItem.mock.invocationCallOrder[0]).toBeLessThan(api.finishInvoice.mock.invocationCallOrder[0]);
     expect(api.saveInvoiceDraft).not.toHaveBeenCalled();
   });
-  it('« Terminer sans » with two pieces of work left off marks both; work that came missing while the sheet was open is asked again first (S58)', async () => {
+  it('« Pas fait, terminer » with two pieces of work left off marks both; work that came missing while the sheet was open is asked again first (S58)', async () => {
     seed(draft(), [item('a'), item('old'), item('old2')]);
     await draw();
     await act(async () => { q('invoice-finish')!.click(); });
     await wait();
     expect(sheet('missing-work')?.textContent).toMatch(/Travail old.*Travail old2/s);
+    expect(plain(sheet('missing-work-not-done')!.textContent)).toBe('« Pas fait, terminer » : ces travaux seront marqués « Pas fait » et ne seront pas facturés.');
     // another piece of work, already older than the draft, shows up on the phone (pulled) while the sheet is open
     replaceLocal('job_items', [item('a'), item('old'), item('old2'), item('late', { created_at: '2026-11-17T12:00:00.000Z' })]);
     await wait();
@@ -117,7 +121,7 @@ describe('a draft invoice', () => {
       .toEqual([['late', { status: 'removed' }], ['old', { status: 'removed' }], ['old2', { status: 'removed' }]]);
     expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
   });
-  it('« Terminer sans » refused on the phone (no « Pas fait » sent): the invoice is not finished (S58)', async () => {
+  it('« Pas fait, terminer » refused on the phone (no « Pas fait » sent): the invoice is not finished (S58)', async () => {
     api.updateItem.mockImplementationOnce(async () => { throw new Error('nope'); });
     seed(draft(), [item('a'), item('old')]);
     await draw();
@@ -128,7 +132,7 @@ describe('a draft invoice', () => {
     expect(api.updateItem).toHaveBeenCalledWith('old', { status: 'removed' });
     expect(api.finishInvoice).not.toHaveBeenCalled();
   });
-  it('someone who may finish the invoice but not change the job\'s work (« Factures » only): no « Terminer sans », only « Ajouter et terminer » (S58)', async () => {
+  it('someone who may finish the invoice but not change the job\'s work (« Factures » only): no « Pas fait, terminer », only « Ajouter et terminer » (S58)', async () => {
     // job_items_editable: the booking right, the job's truck or its author; « Factures » alone is not enough for « Pas fait »
     access.value = { ...access.value!, roles: ['office'], owner: false, rights: { edit_invoices: true } as unknown as Access['rights'] };
     seed(draft(), [item('a'), item('old')]);
@@ -137,6 +141,7 @@ describe('a draft invoice', () => {
     await wait();
     expect(sheet('missing-work')?.textContent).toContain('Travail old');
     expect(sheet('missing-work-without')).toBeNull();
+    expect(sheet('missing-work-not-done')).toBeNull();
     expect(sheet('missing-work-add')).not.toBeNull();
     await act(async () => { sheet('missing-work-add')!.click(); });
     await wait();
@@ -144,12 +149,14 @@ describe('a draft invoice', () => {
     expect(api.finishInvoice).toHaveBeenCalledWith('f-1');
     expect(api.updateItem).not.toHaveBeenCalled();
   });
-  it('a job already over: « Terminer sans » finishes as it is, the work is not touched (S58)', async () => {
+  it('a job already over: « Terminer sans » finishes as it is, the work is not touched, and no « Pas fait » is said (S58)', async () => {
     seed(draft(), [item('a'), item('old')]);
     replaceLocal('jobs', [{ ...job, status: 'done' } as Job]);
     await draw();
     await act(async () => { q('invoice-finish')!.click(); });
     await wait();
+    expect(sheet('missing-work-without')!.textContent).toBe('Terminer sans');
+    expect(sheet('missing-work-not-done')).toBeNull();
     await act(async () => { sheet('missing-work-without')!.click(); });
     await wait();
     expect(api.updateItem).not.toHaveBeenCalled();
@@ -201,7 +208,7 @@ describe('a draft invoice', () => {
       expect(toasts.value.filter((x) => x.kind === 'bad')).toEqual([]);
       expect(toasts.value.map((x) => plain(x.text))).toContain('Facture F-0051 terminée de nouveau.');
     });
-    it('« Terminer sans » with the total under what was paid: the question comes first, nothing marked « Pas fait » when the answer is no (S58)', async () => {
+    it('« Pas fait, terminer » with the total under what was paid: the question comes first, nothing marked « Pas fait » when the answer is no (S58)', async () => {
       seed(draft({ number: 51, lines: lowLines }), [item('a', { unit_cents: 5000 }), item('old')]);
       paidAhead();
       await draw();
