@@ -234,15 +234,18 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   const open = await h.one(`select status, number, paid_cents from public.invoices where id = $1`, [inv]);
   assert.deepEqual([open.status, Number(open.number), open.paid_cents], ['draft', n, 0]);
   assert.equal(await peek(`select count(*)::int from public.payments where job_id = $1 and invoice_id is null`, [jobId]), 1, 'the 20 $ wait on the job');
-  // the brakes come back, then go again; under what was paid: refused
+  // the brakes come back, then go again; under what was paid: no longer refused (the owner's decision of 2026-11-20):
+  // « payée », what goes back said (« over_cents ») — tried, then undone
   await h.c.query(`update public.job_items set status = 'planned' where id = $1`, [brakes]);
   await h.rpc('invoice_for_job', { p_op: uuid(), p_job: jobId, p_refresh: true });
   assert.equal((await lines(inv)).length, 2);
   await h.c.query(`update public.job_items set deleted_at = now() where id = $1`, [brakes]);
   assert.deepEqual(await lines(inv), [['Vidange d’huile + changement de filtre', 6999]]);
   await h.c.query(`update public.invoices set lines = jsonb_set(lines, '{0,unit_cents}', '1000') where id = $1`, [inv]);
-  const low = await h.fails(() => h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv }));
-  assert.equal(low?.hint, 'below_paid'); assert.match(low.message, /20,00 \$/);
+  await h.c.query('savepoint low');
+  const low = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
+  assert.deepEqual([low.ok, low.number, low.again, low.over_cents > 0], [true, n, true, true]);
+  await h.c.query('rollback to savepoint low');
   await h.c.query(`update public.invoices set lines = jsonb_set(lines, '{0,unit_cents}', '6999') where id = $1`, [inv]);
   // finished again: the same number, no number used, the 20 $ back on it
   const again = await h.rpc('invoice_finish', { p_op: uuid(), p_invoice: inv });
