@@ -113,8 +113,8 @@ begin
   return new;
 end $$;
 revoke all on function public.invoices_number_keep() from public, anon, authenticated;
-drop trigger if exists invoices_number_keep on public.invoices;
-create trigger invoices_number_keep before update of deleted_at on public.invoices for each row
+-- (« create or replace », never a DROP sent to the live database: run twice, the same trigger — S120)
+create or replace trigger invoices_number_keep before update of deleted_at on public.invoices for each row
   when (new.deleted_at is not null and old.deleted_at is null and new.number is not null)
   execute function public.invoices_number_keep();
 
@@ -562,8 +562,8 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists job_items_invoice_follow on public.job_items;
-create trigger job_items_invoice_follow after insert or update on public.job_items for each row execute function public.job_items_invoice_follow();
+-- (live's trigger of Part 24 decies fired on update only: replaced in place, never dropped — S120)
+create or replace trigger job_items_invoice_follow after insert or update on public.job_items for each row execute function public.job_items_invoice_follow();
 
 -- An appointment is not « Terminé » while billable work is on no line of its finished invoice: the customer would leave
 -- without paying it. Way out: « Modifier la facture » (a paid one too, see invoice_reopen) or mark that work « Pas fait ».
@@ -581,8 +581,7 @@ begin
   return new;
 end $$;
 revoke all on function public.jobs_unbilled_guard() from public, anon, authenticated;
-drop trigger if exists jobs_unbilled_guard on public.jobs;
-create trigger jobs_unbilled_guard before update of status on public.jobs for each row
+create or replace trigger jobs_unbilled_guard before update of status on public.jobs for each row
   when (new.status = 'done' and old.status is distinct from 'done')
   execute function public.jobs_unbilled_guard();
 

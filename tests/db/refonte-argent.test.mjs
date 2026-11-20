@@ -5,6 +5,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { tx, pool, futureDay, uuid } from './helpers.mjs';
 
 after(() => pool.end());
@@ -807,4 +808,36 @@ test('« Terminer » with a quantity of parts that rounds to zero: left out, no 
   assert.equal(await h.val(`select status from public.jobs where id = $1`, [j]), 'done');
   assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.oil])), 20);
   assert.equal(Number(await h.val(`select qty from public.inventory_items where id = $1`, [g.filter])), 4);
+}));
+
+/* ───────────────────────── the migration itself ───────────────────────── */
+
+test('the money migration sends no DROP, DELETE or TRUNCATE to the live database, and applied again (twice) it leaves the same triggers (S120)', () => tx(async (h) => {
+  const file = new URL('../../supabase/migrations/20261116000100_refonte_argent.sql', import.meta.url);
+  const sql = readFileSync(file, 'utf8');
+  // what the migration itself runs: the bodies of its functions ($$ … $$) are only stored, its comments are words
+  const sent = sql.replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').replace(/'(?:[^']|'')*'/g, "''");
+  assert.doesNotMatch(sent, /\b(drop|truncate|delete)\b/i, 'no statement that removes something');
+  assert.doesNotMatch(sent, /\bcreate\s+trigger\b/i, 'a trigger is made with « create or replace » (a plain create needs a drop first)');
+  assert.equal(sent.match(/\bcreate\s+or\s+replace\s+trigger\b/gi)?.length, 3);
+  // the triggers of the three tables, as the build left them; then the file again, twice in a row (inside this test's
+  // transaction, rolled back): the same triggers, the same definitions, none more, none less, still on
+  await asDb(h);
+  const triggers = () => h.q(`select c.relname as table, t.tgname as name, t.tgenabled as on, pg_get_triggerdef(t.oid) as def
+    from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where not t.tgisinternal and c.relnamespace = 'public'::regnamespace and c.relname in ('invoices', 'job_items', 'jobs') order by 1, 2`);
+  const built = await triggers();
+  const def = (name) => built.find((t) => t.name === name)?.def;
+  assert.match(def('invoices_number_keep'), /BEFORE UPDATE OF deleted_at ON public\.invoices FOR EACH ROW WHEN \(\(\(new\.deleted_at IS NOT NULL\) AND \(old\.deleted_at IS NULL\) AND \(new\.number IS NOT NULL\)\)\) EXECUTE FUNCTION invoices_number_keep\(\)/);
+  assert.match(def('job_items_invoice_follow'), /AFTER INSERT OR UPDATE ON public\.job_items FOR EACH ROW EXECUTE FUNCTION job_items_invoice_follow\(\)/);
+  assert.match(def('jobs_unbilled_guard'), /BEFORE UPDATE OF status ON public\.jobs FOR EACH ROW WHEN \(\(\(new\.status = 'done'::text\) AND \(old\.status IS DISTINCT FROM 'done'::text\)\)\) EXECUTE FUNCTION jobs_unbilled_guard\(\)/);
+  await h.c.query(sql);
+  assert.deepEqual(await triggers(), built, 'applied a second time');
+  await h.c.query(sql);
+  assert.deepEqual(await triggers(), built, 'and a third');
+  // and they still hold: a numbered invoice is not deleted
+  const g = await garage(h);
+  const f = await finished(h, g, await siteJob(h, g));
+  await asDb(h);
+  assert.equal((await h.fails(() => h.c.query(`update public.invoices set deleted_at = now() where id = $1`, [f.inv])))?.hint, 'numbered');
 }));
