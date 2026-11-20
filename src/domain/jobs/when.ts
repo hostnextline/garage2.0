@@ -61,11 +61,15 @@ export function momentShort(j: Moment, l = lang.value): string {
 }
 /** the last argument of `moveJob` that keeps what the customer was told when only the vehicle changes: the same window,
     or still « flexible » (null for a block job: the old call). On the same day the 5-argument call (null) keeps the window
-    exactly as it is (its end and « flexible » too): « Changer de camion » sends null. */
+    exactly as it is (its end and « flexible » too): « Changer de camion » sends null.
+    A flexible job whose window the evening lock already fixed stays « flexible »: move_job then keeps that window too,
+    and the job is still among the windows to text (its window as a fixed one made it « not flexible »: never texted,
+    review plages-03). */
 export function keepWindow(j: Moment): { start: number | null; flex: boolean } | null {
   if (!isWindowJob(j)) return null;
+  if (j.win_flex) return { start: null, flex: true };
   const w = promisedWindow(j);
-  return { start: w ? w[0] : null, flex: !w && !!j.win_flex };
+  return { start: w ? w[0] : null, flex: false };
 }
 /** a text of the job section that says « bloc »: its twin under jobs.win for a job booked by window (the base text when a
     twin is missing, never the raw key) */
