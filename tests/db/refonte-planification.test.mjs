@@ -1410,6 +1410,54 @@ test('srv-planif-r2-2: a flexible appointment whose window was fixed and told st
   }
 }));
 
+/* ------------------------------------------------------------------------------------------------------------------
+   Round 3
+   ------------------------------------------------------------------------------------------------------------------ */
+
+/** the windows of a day as the booking calendar can offer them: a quarter hour T of the day is open when one of these
+ *  ranges works some of it (« fermé » otherwise) and, today, when it is not behind `now`; its window is win_for(T) */
+async function calendarWindows(h, who, ranges, now = null) {
+  return (await server(h, who, `select distinct w.win_start from public.day_span() s, generate_series(s.start_min, s.end_min - 15, 15) t(m)
+      cross join lateral public.win_for(t.m) w
+      where exists (select 1 from jsonb_array_elements($1::jsonb) x where (x->>0)::int < t.m + 15 and (x->>1)::int > t.m)
+        and ($2::int is null or t.m + 15 > $2::int) order by 1`, [JSON.stringify(ranges), now])).map((x) => x.win_start);
+}
+const startsOf = (rows) => [...new Set(rows.map((x) => x.win_start))].sort((a, b) => a - b);
+
+test('S38 / e2e-plages-02: a day that starts late offers only the windows of the quarter hours a vehicle able to take the job works (the calendar’s); today, none of the hours behind us', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const day = await futureDay(h);
+  const dow = await h.val(`select extract(dow from $1::date)::int`, [day]);
+  const truck = await h.truck('Camion', null, { [dow]: DAY }), car = await h.truck('Voiture', null, { [dow]: DAY });
+  await h.q(`update public.trucks set tire_machine = false where id = $1`, [car]);
+  // « Départ et heure », that day only: the truck leaves at 13 h; the car works 8 h – 12 h
+  await h.q(`insert into public.truck_days (truck_id, day, ranges) values ($1, $3, '[[780, 1200]]'), ($2, $3, '[[480, 720]]')`, [truck, car, day]);
+  await windowsOn(h, owner);
+  const ask = (need, kind, d = day) => h.rpc('suggest_windows', { p_lat: near2[0], p_lng: near2[1], p_duration: 45, p_day: d, p_exclude: null, p_need: need, p_kind: kind });
+  // tire work: the truck only, from 13 h. An arrival at 13 h 05 is inside 10 h – 14 h and 11 h – 15 h, but no time of
+  // the calendar gives them (its times before 13 h are « fermé »): they were offered, by the screen's list and online
+  const tire = startsOf(await ask(true, null));
+  assert.deepEqual(tire, [720, 780, 840, 900, 960], `the truck from 13 h: the first window is 12 h – 16 h (${tire})`);
+  assert.deepEqual(tire, await calendarWindows(h, owner, [[780, 1200]]), 'exactly the windows the calendar can offer');
+  assert.deepEqual(startsOf(await ask(false, 'truck')), tire, '« Camion » asked: the same');
+  // the car (8 h – 12 h), and « Peu importe » (both): the hours of the vehicles that can take it
+  const byCar = startsOf(await ask(false, 'car'));
+  assert.ok(byCar.length > 0 && byCar.every((w) => w <= 660), `the car only works the morning: ${byCar}`);
+  assert.deepEqual(byCar, (await calendarWindows(h, owner, [[480, 720]])).filter((w) => byCar.includes(w)));
+  const any = startsOf(await ask(false, null));
+  assert.ok(any.includes(480) && any.includes(960), `« Peu importe »: the car's morning and the truck's afternoon (${any})`);
+  assert.deepEqual(any.filter((w) => !(byCar.includes(w) || tire.includes(w))), [], 'nothing neither vehicle gives');
+  // today at 11 h (a truck working the whole day): the times before 11 h are past on the calendar, so are their windows
+  const now = await today(h);
+  await h.as(null);
+  await h.truck('Camion 2', null, WEEK);
+  await clock(h, owner, 660);
+  const late = startsOf(await h.rpc('suggest_windows', { p_lat: near2[0], p_lng: near2[1], p_duration: 45, p_day: now, p_exclude: null, p_need: false, p_kind: 'truck' }));
+  assert.ok(late.length > 0 && late[0] === 600, `today at 11 h: from 10 h – 14 h, never 8 h – 12 h nor 9 h – 13 h (${late})`);
+  const cal = await calendarWindows(h, owner, [[480, 1200]], 660);
+  assert.deepEqual(late.filter((w) => !cal.includes(w)), [], `nothing the calendar of today cannot offer (${cal})`);
+}));
+
 /** the live text of functions of earlier migrations ([file, name] pairs, the first definition of that name in that
  *  file), made again in the schema live_ref (the planner as it runs on live): their calls of each other go to live_ref */
 async function liveRef(h, list) {
