@@ -139,10 +139,13 @@ describe('only what changed is sent', () => {
 
 
 describe('« Modifier la facture » then a lower total (R42)', () => {
-  it('a draft that holds a number is not finished below what the customer paid; a new draft may be (the rest is « Trop-perçu »)', () => {
+  it('a draft that holds a number, under what the customer paid: what goes back to him, asked before finishing (owner, 2026-11-20); a new draft is not asked', () => {
     expect(belowPaid(51, 11498, 5749)).toBe(5749);
+    expect(belowPaid(51, 11498, 11497)).toBe(1);
     expect(belowPaid(51, 11498, 11498)).toBe(0);
     expect(belowPaid(51, 0, 5749)).toBe(0);
+    expect(belowPaid(51, 11498, 0)).toBe(11498);
     expect(belowPaid(null, 11498, 5749)).toBe(0);
+    expect(belowPaid(undefined, 11498, 5749)).toBe(0);
   });
 });

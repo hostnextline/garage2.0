@@ -19,6 +19,23 @@ function leaves(d: unknown, prefix = ''): Record<string, string> {
 }
 const holes = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().filter((x, i, a) => a.indexOf(x) === i);
 
+describe('money paid over the invoice: the office gives it back, never the one reading on the road (owner, 2026-11-20)', () => {
+  // the words anyone who may finish an invoice reads (the job's mechanic too): each one names the office, none tells the
+  // reader to hand it back (« remets-lui », « give it back »); a cash refund on site plus the office's = paid out twice
+  const fieldFr = [frInvoices.draft.paidAheadOver, frInvoices.draft.paidAheadBelow, frInvoices.draft.paidAheadEmpty, frInvoices.draft.overAsk.text, frInvoices.panel.overOffice];
+  const fieldEn = [enInvoices.draft.paidAheadOver, enInvoices.draft.paidAheadBelow, enInvoices.draft.paidAheadEmpty, enInvoices.draft.overAsk.text, enInvoices.panel.overOffice];
+  it('French: « le bureau » in each, no « remets-lui » / « à lui remettre une fois »', () => {
+    for (const s of fieldFr) { expect(s).toMatch(/bureau/); expect(s).not.toMatch(/remets|à lui remettre une fois|rembourse-le/i); }
+  });
+  it('English: “the office” in each, no “give it back” said to the reader', () => {
+    for (const s of fieldEn) { expect(s).toMatch(/office/); expect(s).not.toMatch(/: give it back|^give|refund it yourself/i); }
+  });
+  it('a first finish over what was paid ahead says it like a changed one (paidAheadOver, review invoices)', () => {
+    expect(frInvoices.draft.paidAheadOver).toBe('Le client a déjà payé {amount}, soit {over} de plus que la facture. Une fois la facture terminée, le bureau lui remettra {over}.');
+    expect(enInvoices.draft.paidAheadOver).toBe('The customer already paid {amount}, {over} more than the invoice. Once the invoice is finished, the office will give {over} back to the customer.');
+  });
+});
+
 describe('the billed line of a paid invoice (jobs’ item sheet, review invoices-r2-2)', () => {
   // the sheet shows reopen.itemPaid right above « Modifier la facture », which a paid invoice of an open job has (R42):
   // the words lead to the button, they no longer say the line never changes
@@ -27,7 +44,7 @@ describe('the billed line of a paid invoice (jobs’ item sheet, review invoices
     expect(enInvoices.reopen.itemPaid).toBe('The invoice is paid. To remove this line or change its price, open it again:');
     for (const s of [frInvoices.reopen.itemPaid, enInvoices.reopen.itemPaid]) expect(s).not.toMatch(/ne change plus|no longer changes/);
   });
-  it('a line no one here may reopen (paid too much, or not this person’s invoice): ask the office', () => {
+  it('a line no one here may reopen (not this person’s invoice; paid too much no longer locks it, owner 2026-11-20): ask the office', () => {
     expect(frInvoices.reopen.itemLocked).toBe('La facture est terminée : pour changer cette ligne, demande au bureau.');
     expect(enInvoices.reopen.itemLocked).toBe('The invoice is finished: to change this line, ask the office.');
   });

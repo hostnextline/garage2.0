@@ -17,3 +17,7 @@ Register your pretend operations inside `load()`: they win over the core's (`src
 only when no section did). One copy per operation. An operation the app calls and the demo does not know answers like
 a database without that function (404 PGRST202), and `demo-server.test.ts` fails until the demo has it. Who is on
 screen and what they may read or do: `src/dev/demo-rules.ts` (the database's row rules and rights).
+
+Tests of a section go in `src/dev` (for example `src/dev/demo-invoices.test.ts`), never in this folder: `demo.ts` loads
+every `.ts` file here into the demo (`import.meta.glob`). It skips `*.test.ts` / `*.spec.ts` so a test put here by
+mistake cannot stop the demo, and `demo-server.test.ts` checks it.

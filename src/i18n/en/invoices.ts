@@ -192,15 +192,30 @@ export const invoices: typeof fr = {
     finishHint: 'It gets its number. Then: take the payment or text it to the customer.',
     paidAhead: 'The customer already paid {amount}. Left to pay: {left}.',
     paidAheadAll: 'The customer already paid everything ({amount}). Finish the invoice: it will be marked PAID.',
-    paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice: give it back once the invoice is finished.',
-    paidAheadBelow: 'The customer already paid {amount}, {over} more than this total. A changed invoice is not finished below what was paid: put back the work taken off, or talk to the office.',
+    /** a first finish over what was paid ahead (no question): the office gives the rest back, never the reader (owner, 2026-11-20) */
+    paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice. Once the invoice is finished, the office will give {over} back to the customer.',
+    paidAheadBelow: 'The customer already paid {amount}, {over} more than this total. If you finish it like this, the invoice will be marked PAID and the office will give {over} back to the customer.',
+    /** paid, then every line taken off: the server never finishes an invoice with no line (empty), so the way out is said
+        (review srv-argent, probe 1): a line at $0, then the usual question; the office gives the money back */
+    paidAheadEmpty: 'There is no line left and the customer already paid {amount}. To finish anyway, tap “A line”, write “Nothing done” and leave the price at $0: the invoice will be marked PAID and the office will give {amount} back to the customer.',
+    /** “Finish the invoice” of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
+    overAsk: {
+      title: '{over} to give back to the customer',
+      text: 'The customer already paid {paid}. With this total, {over} goes back to them: the office takes care of it.',
+      ok: 'Yes, finish the invoice',
+      cancel: 'Check the invoice again'
+    },
     finished: 'Invoice {n} finished',
     addedWork: 'Added to the invoice: {what}',
     missing: {
       title: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
       text: 'It is done or planned on the job, but not billed.',
       add: 'Add and finish',
-      without: 'Finish without'
+      /** a job already over: the invoice is finished as it is, the work is not touched */
+      without: 'Finish without',
+      /** the job coming or under way: that work is marked “Not done” first (S58), and said before the tap */
+      notDone: 'Not done, finish',
+      notDoneText: { one: '“Not done, finish”: this work will be marked “Not done” and not billed.', other: '“Not done, finish”: this work will be marked “Not done” and not billed.' }
     },
     newWork: { one: 'Work was added to the job', other: '{n} pieces of work were added to the job' },
     addNewWork: 'Add to the invoice',
@@ -212,8 +227,7 @@ export const invoices: typeof fr = {
     problem: {
       empty: 'Add at least one line before finishing the invoice.',
       no_description: 'A line has no description: write what was done.',
-      negative: 'The total is negative: check the discount.',
-      below_paid: 'The customer already paid {amount}: the total cannot be lower.'
+      negative: 'The total is negative: check the discount.'
     }
   },
 
@@ -226,7 +240,7 @@ export const invoices: typeof fr = {
     finishedAgainQuiet: 'Invoice {n} finished again.',
     item: 'The invoice is finished. To remove this line or change its price, open it again:',
     itemPaid: 'The invoice is paid. To remove this line or change its price, open it again:',
-    /** a billed line whose invoice nobody here may open again (paid too much: refunded first; another truck's job) */
+    /** a billed line whose invoice nobody here may open again (the job is over, another truck's job) */
     itemLocked: 'The invoice is finished: to change this line, ask the office.'
   },
 

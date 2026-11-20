@@ -192,15 +192,30 @@ export const invoices = {
     finishHint: 'Elle reçoit son numéro. Ensuite : encaisser ou texter au client.',
     paidAhead: 'Le client a déjà payé {amount}. Reste à payer : {left}.',
     paidAheadAll: 'Le client a déjà tout payé ({amount}). Termine la facture : elle sera marquée PAYÉ.',
-    paidAheadOver: 'Le client a déjà payé {amount}, soit {over} de plus que la facture : à lui remettre une fois la facture terminée.',
-    paidAheadBelow: 'Le client a déjà payé {amount}, soit {over} de plus que ce total. Une facture modifiée ne se termine pas plus bas que ce qui est payé : remets le travail retiré, ou parle au bureau.',
+    /** a first finish over what was paid ahead (no question): the office gives the rest back, never the reader (owner, 2026-11-20) */
+    paidAheadOver: 'Le client a déjà payé {amount}, soit {over} de plus que la facture. Une fois la facture terminée, le bureau lui remettra {over}.',
+    paidAheadBelow: 'Le client a déjà payé {amount}, soit {over} de plus que ce total. Si tu termines comme ça, la facture sera marquée PAYÉ et le bureau remettra {over} au client.',
+    /** paid, then every line taken off: the server never finishes an invoice with no line (empty), so the way out is said
+        (review srv-argent, probe 1): a line at 0 $, then the usual question; the office gives the money back */
+    paidAheadEmpty: 'Il n’y a plus de ligne et le client a déjà payé {amount}. Pour terminer quand même, touche « Une ligne », écris « Rien de fait » et laisse le prix à 0 $ : la facture sera marquée PAYÉ et le bureau lui remettra {amount}.',
+    /** « Terminer la facture » of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
+    overAsk: {
+      title: '{over} à remettre au client',
+      text: 'Le client a déjà payé {paid}. Avec ce total, {over} est à lui remettre : le bureau s’en occupe.',
+      ok: 'Oui, terminer la facture',
+      cancel: 'Revoir la facture'
+    },
     finished: 'Facture {n} terminée',
     addedWork: 'Ajouté à la facture : {what}',
     missing: {
       title: { one: '1 travail de la job n’est pas sur la facture', other: '{n} travaux de la job ne sont pas sur la facture' },
       text: 'C’est fait ou prévu sur la job, mais pas facturé.',
       add: 'Ajouter et terminer',
-      without: 'Terminer sans'
+      /** a job already over: the invoice is finished as it is, the work is not touched */
+      without: 'Terminer sans',
+      /** the job coming or under way: that work is marked « Pas fait » first (S58), and said before the tap */
+      notDone: 'Pas fait, terminer',
+      notDoneText: { one: '« Pas fait, terminer » : ce travail sera marqué « Pas fait » et ne sera pas facturé.', other: '« Pas fait, terminer » : ces travaux seront marqués « Pas fait » et ne seront pas facturés.' }
     },
     newWork: { one: 'Du travail a été ajouté à la job', other: '{n} travaux ont été ajoutés à la job' },
     addNewWork: 'Ajouter à la facture',
@@ -212,8 +227,7 @@ export const invoices = {
     problem: {
       empty: 'Ajoute au moins une ligne avant de terminer la facture.',
       no_description: 'Une ligne n’a pas de description : écris ce qui a été fait.',
-      negative: 'Le total est négatif : vérifie le rabais.',
-      below_paid: 'Le client a déjà payé {amount} : le total ne peut pas être plus bas.'
+      negative: 'Le total est négatif : vérifie le rabais.'
     }
   },
 
@@ -226,7 +240,7 @@ export const invoices = {
     finishedAgainQuiet: 'Facture {n} terminée de nouveau.',
     item: 'La facture est terminée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
     itemPaid: 'La facture est payée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
-    /** a billed line whose invoice nobody here may open again (paid too much: refunded first; another truck's job) */
+    /** a billed line whose invoice nobody here may open again (the job is over, another truck's job) */
     itemLocked: 'La facture est terminée : pour changer cette ligne, demande au bureau.'
   },
 
