@@ -25,9 +25,10 @@ export async function removeFailed(e: OutboxEntry): Promise<boolean> {
   return true;
 }
 
-/** a refused change, read whole (S30): the server's reason as a paragraph under the label, wrapping over as many lines
-    as it needs. Never the one-line sub of the kit's row, which cuts with « … » the end of the sentence that says what to
-    do. On a narrow phone the two buttons go under the words (shell.css, .sync-refused). */
+/** a refused change, read whole (S30, S37): its label in full (whose booking or payment, which day: written by the data
+    layer) and the server's reason as a paragraph under it, both wrapping over as many lines as they need. Never the
+    one-line row of the kit, which cuts with « … » the end of the sentence that says what to do. On a narrow phone the two
+    buttons go under the words (shell.css, .sync-refused). */
 function RefusedRow({ e, refresh }: { e: OutboxEntry; refresh: () => void }) {
   return (
     <div class="row-item sync-refused" role="listitem">

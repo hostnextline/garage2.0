@@ -155,6 +155,11 @@ describe('a refused change is read whole (S30, S37)', () => {
       expect(cut(why)).toEqual(whole);
     }
   });
+  it('the label is printed in full and wraps: whose booking, which day (S37)', () => {
+    const title = rowOf('Réservation de Ines').querySelector('.row-title')!;
+    expect(title.textContent).toBe(booking.label);
+    expect(cut(title)).toEqual(whole);
+  });
   it('on a narrow phone the buttons may go under the words (the row wraps)', () => {
     const row = rowOf('Réservation de Ines');
     expect(getComputedStyle(row).flexWrap).toBe('wrap');
