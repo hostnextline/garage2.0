@@ -54,11 +54,19 @@ export function draftOfService(s: Service, l: 'fr' | 'en'): ItemDraft {
     unit_cents: s.price_cents ?? 0, taxable: s.taxable, duration_min: s.duration_min ?? null, note: null
   };
 }
-/** the lines of an estimate */
+/** the quantity an estimate line says: a number at 0 (or below) is an option the estimate counts at 0 $ (S41,
+    argent-app-05); a line with no quantity (or none readable) counts once */
+function quoteQty(qty: unknown): number {
+  if (qty == null || (typeof qty === 'string' && qty.trim() === '')) return 1;
+  const n = Number(qty);
+  return Number.isFinite(n) ? n : 1;
+}
+/** the lines of an estimate: an option left at quantity 0 is not booked (the estimate counts it 0 $, a job line is
+    never at 0, so it would become billed once) */
 export function draftsFromQuote(q: Pick<Quote, 'items'>): ItemDraft[] {
-  return (q.items || []).filter((it) => it && String(it.description || '').trim()).map((it) => ({
+  return (q.items || []).filter((it) => it && String(it.description || '').trim() && quoteQty(it.qty) > 0).map((it) => ({
     kind: it.kind || (it.service_id ? 'service' : 'labour'), service_id: it.service_id ?? null, item_id: null, description: String(it.description),
-    qty: Number(it.qty) || 1, unit_cents: Number(it.unit_cents) || 0, taxable: it.taxable !== false, duration_min: it.duration_min ?? null, note: null
+    qty: quoteQty(it.qty), unit_cents: Number(it.unit_cents) || 0, taxable: it.taxable !== false, duration_min: it.duration_min ?? null, note: null
   }));
 }
 
