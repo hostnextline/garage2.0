@@ -173,7 +173,7 @@ end $do$;
   activity `invoice_reopened`. `invoice_finish` keeps a reopened invoice's number (`again: true`, no number spent). On live
   until the refonte it refuses a total under what was paid (`below_paid`); in the refonte (owner's decision of 2026-11-20: « easy for
   the mechanic, prevent mistakes, don't restrict them too much ») it finishes « paid » with `over_cents` and the activity `overpaid`:
-  the phone asks « Oui, terminer la facture » first and the office gives the difference back (« Trop-perçu »). `payment_add`: a card payment (no person) landing on a reopened draft waits on the
+  the phone asks first (« {over} à remettre au client », « Oui, terminer ») and the office gives the difference back (« Trop-perçu »). `payment_add`: a card payment (no person) landing on a reopened draft waits on the
   job instead of being refused. Trigger `job_items_invoice_follow`: a job line taken off (removed, declined, deleted) leaves the
   draft invoice; a new price / quantity / words go on its line (only what changed: a price typed on the invoice stays when the work
   is only marked done); a person may not take off or reprice work billed on a FINISHED invoice (`invoice_done`: « Modifier la

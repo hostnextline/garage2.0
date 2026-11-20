@@ -49,7 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 afterEach(async () => {
-  // a question left open (« Oui, terminer la facture ») lives in the ask queue, not in the render: answered « no » here,
+  // a question left open (« Oui, terminer ») lives in the ask queue, not in the render: answered « no » here,
   // it never shows in the next test, nor makes that test find an « ask-ok » that is not its own (review invoices)
   for (let i = 0; i < 5 && sheet('ask-ok'); i++) await answer(askCancel());
   expect(sheet('ask-ok')).toBeNull();
@@ -196,7 +196,7 @@ describe('a draft invoice', () => {
       expect(sheet('ask-ok')).not.toBeNull();
       expect(plain(document.body.textContent)).toContain('57,49 $ à remettre au client');
       expect(plain(document.body.textContent)).toContain('Le client a déjà payé 114,98 $. Avec ce total, 57,49 $ est à lui remettre : le bureau s’en occupe.');
-      expect(sheet('ask-ok')!.textContent).toBe('Oui, terminer la facture');
+      expect(sheet('ask-ok')!.textContent).toBe('Oui, terminer');
       expect(askCancel()?.textContent).toBe('Revoir la facture');
       expect(api.finishInvoice).not.toHaveBeenCalled();
       // « Revoir la facture »: nothing sent, still the draft to change

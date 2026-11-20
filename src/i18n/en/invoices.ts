@@ -202,8 +202,8 @@ export const invoices: typeof fr = {
     overAsk: {
       title: '{over} to give back to the customer',
       text: 'The customer already paid {paid}. With this total, {over} goes back to them: the office takes care of it.',
-      ok: 'Yes, finish the invoice',
-      cancel: 'Check the invoice again'
+      ok: 'Yes, finish',
+      cancel: 'Check again'
     },
     finished: 'Invoice {n} finished',
     addedWork: 'Added to the invoice: {what}',

@@ -202,7 +202,7 @@ export const invoices = {
     overAsk: {
       title: '{over} à remettre au client',
       text: 'Le client a déjà payé {paid}. Avec ce total, {over} est à lui remettre : le bureau s’en occupe.',
-      ok: 'Oui, terminer la facture',
+      ok: 'Oui, terminer',
       cancel: 'Revoir la facture'
     },
     finished: 'Facture {n} terminée',
