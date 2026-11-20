@@ -36,7 +36,7 @@ export function ItemSheet(p: { job: Job; item: JobItem | undefined; rights: JobR
         ]} />
         {billed && open ? (
           <div class="stack" data-testid="item-locked">
-            {/* « rouvre-la : » only when the button follows; else (paid more than its total, no right on its invoice) the office */}
+            {/* « rouvre-la : » only when the button follows; else (no right on its invoice, its « Terminer » still waiting here) the office */}
             <p class="small muted" style={{ margin: 0 }}>{t(!mayReopen(inv, p.job) ? 'invoices.reopen.itemLocked' : inv!.status === 'paid' ? 'invoices.reopen.itemPaid' : 'invoices.reopen.item')}</p>
             <ReopenButton inv={inv!} job={p.job} block />
           </div>

@@ -177,11 +177,11 @@ describe('a billed line whose invoice may not be opened again here (invoices 1, 
   const line = { id: 'i1', job_id: 'j1', status: 'done', description: 'Huile', qty: 1, unit_cents: 11498, sort: 1 } as unknown as JobItem;
   const inv = (paid: number) => ({ id: 'v1', job_id: 'j1', number: 12, status: 'paid', total_cents: 11498, paid_cents: paid,
     lines: [{ item_id: 'i1', description: 'Huile', qty: 1, unit_cents: 11498 }] });
-  const open = async () => {
+  const open = async (j: Job = job) => {
     access.value = { id: 'amine', roles: ['mechanic'], owner: false, rights: {}, trucks: ['t1'] } as unknown as Access;
-    upsertLocal('jobs', [job]);
+    upsertLocal('jobs', [j]);
     upsertLocal('job_items', [line]);
-    await act(() => render(<ItemSheet job={job} item={line} rights={jobRights(job)} onClose={() => undefined} onAnswer={() => undefined} />, box));
+    await act(() => render(<ItemSheet job={j} item={line} rights={jobRights(j)} onClose={() => undefined} onAnswer={() => undefined} />, box));
   };
   it('paid exactly: « rouvre-la : » and the « Modifier la facture » button', async () => {
     upsertLocal('invoices', [inv(11498) as never]);
@@ -189,9 +189,16 @@ describe('a billed line whose invoice may not be opened again here (invoices 1, 
     expect(q('item-locked')!.textContent).toContain(t('invoices.reopen.itemPaid'));
     expect(q('invoice-reopen')).not.toBeNull();
   });
-  it('paid more than its total: « demande au bureau », no button (before: « rouvre-la : » with nothing after it)', async () => {
+  it('paid more than its total: « rouvre-la : » and the button too (owner, 2026-11-20: finished again « payée », the office gives the rest back)', async () => {
     upsertLocal('invoices', [inv(20000) as never]);
     await open();
+    expect(q('invoice-reopen')).not.toBeNull();
+    expect(q('item-locked')!.textContent).toContain(t('invoices.reopen.itemPaid'));
+    expect(q('item-locked')!.textContent).not.toContain(t('invoices.reopen.itemLocked'));
+  });
+  it('another truck’s job, for a mechanic without « Réserver »: « demande au bureau », no button', async () => {
+    upsertLocal('invoices', [inv(11498) as never]);
+    await open({ ...job, truck_id: 't2' } as Job);
     expect(q('invoice-reopen')).toBeNull();
     expect(q('item-locked')!.textContent).toContain(t('invoices.reopen.itemLocked'));
     expect(q('item-locked')!.textContent).not.toContain(t('invoices.reopen.itemPaid'));
