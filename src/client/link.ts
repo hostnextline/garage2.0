@@ -59,9 +59,11 @@ function recalled(now: number): Remembered | null {
     return { token: v.token, at: v.at, day };
   } catch { return null; }
 }
-/** the link the server refused (revoked, expired, deleted file) is not offered again from the tracking page */
-export function forgetAppointment(token: string) {
-  try { if (recalled(Date.now())?.token === token) localStorage.removeItem(APPOINTMENT); } catch { /* nothing to forget */ }
+/** the link the server refused (revoked, expired, deleted file) is not offered again from the tracking page.
+    `now` as the other functions here: read with the real clock, an entry of a pretended day (the tests') counted as
+    past and left the phone at the first call, whatever link was named (link.test was red from 2026-11-18 on) */
+export function forgetAppointment(token: string, now: number = Date.now()) {
+  try { if (recalled(now)?.token === token) localStorage.removeItem(APPOINTMENT); } catch { /* nothing to forget */ }
 }
 /** the appointment behind a trip, when this phone knows it: the page was opened with the appointment's own link
     (public_track accepts it), or the appointment remembered is today's (a trip is always on its appointment's day).
