@@ -268,7 +268,7 @@ revient seule : l'app d'hier marche avec le serveur de la refonte, et les foncti
 | **une fonction du serveur** | la redéployer au commit noté dans `deployed.avant.json`, même procédure (3.1). `recon` n'existait pas : la laisser (rien ne l'appelle sans le travail de nuit, qui dit « pas encore » quand elle répond `not_ready`). | minutes | rien |
 | **la clé Stripe** (4) | rien à refaire : l'adresse neuve reçoit les mêmes notifications. La fonction `team` d'hier, si elle revient, recrée une adresse sans remboursements quand on enregistre de nouveau la clé. | — | l'adresse neuve chez Stripe |
 | **une fonction SQL** changée par une migration | relancer sa définition d'avant depuis `ops/live/rollback/fonctions_avant.sql` (un `create or replace` garde ses droits ; si la migration a changé ses droits, les remettre comme le dit F d'avant : `grant`/`revoke`). D'abord dans un bloc d'essai (`raise exception`), puis pour vrai. Une fonction ajoutée par la refonte (`op_begin`, `recon_*`…) reste. | minutes | rien |
-| **un déclencheur ajouté par la refonte** (migrations 2 et 4 : il ne reste PAS inutilisé, il tourne à chaque écriture) | `alter table … disable trigger …` (jamais `drop` ; `enable trigger` le remet), les lignes du bloc « Déclencheurs » ci-dessous. **Obligatoire** quand une fonction SQL des migrations 2 ou 4 revient à son texte d'avant (`job_step`, `invoice_void`, `coffre_add`…) : sous `jobs_unbilled_guard` et `invoices_number_keep`, les fonctions d'avant sont refusées (`unbilled`, `numbered`). Ces lignes ramènent aussi les règles d'avant (une facture numérotée effaçable, la réservation en ligne changée par un simple enregistrement des réglages, un numéro de téléphone changé sans fermer les liens) : le rapprochement peut alors signaler des trous de numéros (M3). D'abord dans un bloc d'essai. | minutes | les fonctions des déclencheurs, éteintes |
+| **un déclencheur ajouté par la refonte** (migrations 2, 4 et 6 : il ne reste PAS inutilisé, il tourne à chaque écriture) | `alter table … disable trigger …` (jamais `drop` ; `enable trigger` le remet), les lignes du bloc « Déclencheurs » ci-dessous. **Obligatoire** quand une fonction SQL des migrations 2 ou 4 revient à son texte d'avant (`job_step`, `invoice_void`, `coffre_add`…) : sous `jobs_unbilled_guard` et `invoices_number_keep`, les fonctions d'avant sont refusées (`unbilled`, `numbered`). Ces lignes ramènent aussi les règles d'avant (une facture numérotée effaçable, la réservation en ligne changée par un simple enregistrement des réglages, un numéro de téléphone changé sans fermer les liens) : le rapprochement peut alors signaler des trous de numéros (M3). D'abord dans un bloc d'essai. | minutes | les fonctions des déclencheurs, éteintes |
 | **une règle d'accès (policy) ou un déclencheur d'avant** (migrations 2, 4) | `alter policy … using (…) with check (…)` / `create or replace trigger …` avec le texte de F d'avant (jamais `drop`). Une policy que la migration 4 a créée sous un nouveau nom : `alter policy` pour la rendre aussi large que l'ancienne (jamais `drop`). | minutes | rien |
 | **la tâche pg_cron `garage-recon`** (migration 5) | `select cron.unschedule('garage-recon')` (avec le go : elle ne fait qu'écrire le rapprochement de la veille) | — | — |
 | **une table, une colonne ou une fonction ajoutée** | rien : elle reste, inutilisée (jamais de `DROP` en ligne). Une colonne ajoutée a une valeur par défaut : l'app d'hier l'ignore. Une fonction appelée par un déclencheur, elle, tourne tant que son déclencheur est allumé (ligne « un déclencheur ajouté » ci-dessus). | — | l'objet inutilisé |
@@ -279,13 +279,16 @@ revient seule : l'app d'hier marche avec le serveur de la refonte, et les foncti
 `fonctions_avant.sql`, jamais seul ; essayé d'abord dans un bloc qui finit par `raise exception`) :
 
 ```sql
--- les six déclencheurs faits par la refonte : éteints (enable trigger les rallume)
+-- les sept déclencheurs faits par la refonte : éteints (enable trigger les rallume)
 alter table public.invoices disable trigger invoices_number_keep;
 alter table public.jobs disable trigger jobs_unbilled_guard;
 alter table public.customers disable trigger customers_delete_guard;
 alter table public.customers disable trigger customers_phone_links;
 alter table public.push_subs disable trigger push_subs_takeover;
 alter table public.settings disable trigger settings_web_guard;
+-- le septième, ajouté au tour 2 par la migration 6 (sauvegarde) sur une table neuve : il manquait ici, et le test
+-- « the way back » était rouge sur GitHub le 2026-11-20 (un déclencheur de plus qu'AVANT restait allumé)
+alter table public.ops_recon_runs disable trigger ops_recon_runs_backup_age;
 -- job_items_invoice_follow existait (sur update seulement) ; la refonte l'a refait sur insert or update.
 -- Son texte d'avant est dans F d'avant (pg_get_triggerdef) : « CREATE TRIGGER » y devient « CREATE OR REPLACE TRIGGER ».
 -- À AVANT : create or replace trigger job_items_invoice_follow after update on public.job_items for each row execute function job_items_invoice_follow()
