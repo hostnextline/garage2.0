@@ -1220,3 +1220,33 @@ test('recon: tables whose statistics are stale (the planner believes them nearly
   assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
   assert.ok(ms < 1000, `recon_run took ${ms} ms with stale statistics: ${JSON.stringify(r.counts.checks_ms)}`);
 }));
+
+test('recon (round 3): no query of a run is left to JIT — the nested loops « enable_nestloop = off » cannot remove cost 10^10 each, and a JIT server compiled M1, M3, M8 and the sheet at every run (1.7 s on GitHub)', () => tx(async (h) => {
+  const g = await garage(h);
+  await bulk(h, g);
+  await run(h);   // the baseline
+  await server(h);
+  assert.ok((await h.val(`select proconfig from pg_proc where oid = 'public.recon_collect(date)'::regprocedure`)).includes('jit=off'), 'recon_collect runs with jit off');
+  // every query of a run as the database planned it (auto_explain: the plans and the settings that changed them, no timing)
+  const loaded = !(await h.fails(() => h.c.query(`load 'auto_explain'`)));
+  if (!loaded) { console.log('auto_explain cannot be loaded here: only the function setting was checked'); return; }
+  const notes = [];
+  const listen = (n) => notes.push(n.message);
+  h.c.on('notice', listen);
+  try {
+    for (const s of [`set local auto_explain.log_min_duration = 0`, `set local auto_explain.log_nested_statements = on`, `set local auto_explain.log_settings = on`,
+      `set local auto_explain.log_format = 'json'`, `set local auto_explain.log_level = 'notice'`, `set local client_min_messages = notice`]) await h.c.query(s);
+    await run(h);
+    await h.c.query(`set local auto_explain.log_min_duration = -1`);
+  } finally { h.c.off('notice', listen); }
+  const plans = notes.filter((m) => m.includes('{')).map((m) => JSON.parse(m.slice(m.indexOf('{')))).map((x) => {
+    const q = (x['Query Text'] || '').replace(/\s+/g, ' ');
+    return { what: (q.match(/'([MDSX]\d)\.[a-z]+'/) || [])[1] || q.slice(0, 60), cost: x.Plan['Total Cost'], jit: x.Settings?.jit, compiled: 'JIT' in x };
+  });
+  assert.ok(plans.some((p) => p.what === 'M8'), 'the plans of the checks were seen');
+  const above = Number(await h.val(`select current_setting('jit_above_cost')`));
+  const heavy = plans.filter((p) => p.cost >= above);
+  console.log(`recon_run: ${plans.length} queries, ${heavy.length} costed over jit_above_cost (${above}): ${heavy.map((p) => `${p.what} ${p.cost.toExponential(1)} jit=${p.jit ?? 'on'}`).join(', ')}; JIT on this server: ${await h.val(`select pg_jit_available()`)}`);
+  for (const p of heavy) assert.equal(p.jit, 'off', `« ${p.what} » (cost ${p.cost}) would be compiled by a server with JIT`);
+  assert.deepEqual(plans.filter((p) => p.compiled).map((p) => p.what), [], 'no query was JIT-compiled');
+}));
