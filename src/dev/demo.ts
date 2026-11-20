@@ -13,7 +13,11 @@ import { sb, access, authState, session } from '../data/auth';
 import { startSync, syncOptions } from '../data/sync';
 import { RIGHTS, type Access, type Right, type Role } from '../data/types';
 
-const extras = import.meta.glob('./demo-extra/*.ts', { eager: true }) as Record<string, { load?: () => void }>;
+/** every section file of demo-extra/, never a test file: a test there would be pulled into the demo with vitest and
+    stop it from starting (review invoices, 2026-11-20); a section's tests live in src/dev (demo-invoices.test.ts) */
+const extras = import.meta.glob(['./demo-extra/*.ts', '!./demo-extra/*.test.ts', '!./demo-extra/*.spec.ts'], { eager: true }) as Record<string, { load?: () => void }>;
+/** the section files the demo loads (checked by demo-server.test.ts) */
+export const extraFiles = (): string[] => Object.keys(extras).sort();
 
 /** what my_access answers for this person: the rights by the database's rule (right_of), the vehicles they drive */
 export function accessOf(staffId: string): Access {

@@ -6,7 +6,7 @@ import type { RealtimeClient } from '@supabase/supabase-js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { handle, registeredRpcs, registeredFns, rpcOf, registerRpc, find, table, installFakeServer } from './fake-server';
-import { loadDemo, accessOf, sealDemo } from './demo';
+import { loadDemo, accessOf, sealDemo, extraFiles } from './demo';
 import { ME } from './demo-data';
 import { SUPABASE_URL } from '../lib/config';
 import { sb } from '../data/auth';
@@ -277,5 +277,10 @@ describe('demo-14: the demo stays out of the real app', () => {
     expect(lines.length).toBe(1);
     expect(lines[0]).toMatch(/import\.meta\.env\.DEV\s*\?\s*async[^:]*import\('\.\/dev\/demo'\)/);
     expect(main).not.toMatch(/^import .*['"]\.\/dev\//m);
+  });
+  it('the demo loads every section file of demo-extra/, never a test file (one there would pull vitest in and stop the demo)', () => {
+    const sections = readdirSync(join(__dirname, 'demo-extra')).filter((f) => /\.ts$/.test(f) && !/\.(test|spec)\.ts$/.test(f)).map((f) => `./demo-extra/${f}`).sort();
+    expect(extraFiles()).toEqual(sections);
+    expect(extraFiles().filter((f) => /\.(test|spec)\.ts$/.test(f))).toEqual([]);
   });
 });
