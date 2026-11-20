@@ -80,11 +80,12 @@ end $$;
 revoke all on function public.ops_recon_runs_backup_age() from public, anon, authenticated;
 
 -- the reconciliation's tables come with 20261116000400: a database without them yet gets the trigger later (this file again)
+-- (made with create or replace trigger, Postgres 14 and later: no DROP is ever sent to live, and reading the file twice
+-- keeps one trigger)
 do $$
 begin
   if to_regclass('public.ops_recon_runs') is not null and to_regclass('public.ops_recon_findings') is not null then
-    drop trigger if exists ops_recon_runs_backup_age on public.ops_recon_runs;
-    create trigger ops_recon_runs_backup_age after insert on public.ops_recon_runs
+    create or replace trigger ops_recon_runs_backup_age after insert on public.ops_recon_runs
       for each row execute function public.ops_recon_runs_backup_age();
   end if;
 end $$;
