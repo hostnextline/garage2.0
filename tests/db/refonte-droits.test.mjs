@@ -19,9 +19,11 @@ after(() => pool.end());
  *  now go through its own `change`, which the scan below does not see) and the function « recon »; each checks the owner or
  *  « Trésorerie » inside (20261116000400_refonte_rapprochement, tested in refonte-rapprochement.test.mjs).
  *  service_part_set: « Pièces » of a service in Réglages (R173; settings-team's PartsPanel switches to it, tested in
- *  refonte-acces.test.mjs). */
+ *  refonte-acces.test.mjs).
+ *  shift_save, shift_remove: « Heures travaillées » (Part 26 of live, 20261119000100_heures.sql: its own grant to the app;
+ *  each checks hours_all() inside, tested in heures.test.mjs). */
 const APP = [
-  'service_part_set',
+  'service_part_set', 'shift_save', 'shift_remove',
   'access_of', 'apply_hours', 'blocks_overview', 'book_job', 'coffre_add', 'coffre_remove', 'coffre_report', 'dashboard',
   'extra_answer', 'inventory_buy', 'inventory_delete', 'invoice_finish', 'invoice_for_job', 'invoice_reopen', 'invoice_void',
   'job_customer', 'job_item_price', 'job_step', 'lock_windows', 'member_update', 'move_job', 'my_access', 'payment_add', 'payment_remove',
@@ -29,8 +31,10 @@ const APP = [
   'shift_end', 'shift_start', 'suggest_blocks', 'suggest_windows', 'team_map', 'treasury_report', 'update_me', 'vin_history', 'walk_in',
   'web_switch', 'windows_switch'
 ];
-/** what the row rules, the guards and the functions that run as the person (not security definer) call */
+/** what the row rules, the guards and the functions that run as the person (not security definer) call
+ *  (hours_all: the read rule of shifts, 20261119000100_heures.sql) */
 const AS_PERSON = [
+  'hours_all',
   'all_rights', 'block_pos', 'blocks', 'bset', 'by_person', 'can', 'coffre_may_add', 'customer_visible', 'fail', 'has_role', 'home_point',
   'invoice_editable', 'invoice_visible', 'is_field', 'is_owner', 'is_staff', 'items_need_machine', 'job_actor', 'job_id_visible',
   'job_items_editable', 'job_visible', 'km_between', 'local_now', 'local_today', 'me', 'my_truck_ids', 'now_min', 'payment_visible',
@@ -94,6 +98,9 @@ const OLD = [
   ['authenticated', 'vin_history', ['p_customer', 'p_vin']],
   ['authenticated', 'walk_in', ['p_op', 'p_items', 'p_job']],
   ['authenticated', 'windows_switch', ['p_op', 'p_on']],
+  // live's app since 2026-11-19 (aa1b4e6, « Heures travaillées »)
+  ['authenticated', 'shift_save', ['p_op', 'p_end', 'p_shift', 'p_staff', 'p_start']],
+  ['authenticated', 'shift_remove', ['p_op', 'p_shift']],
   // its server functions as the person (_shared/db.ts caller(), notify, enroute)
   ['authenticated', 'invoice_for_job', ['p_job', 'p_op', 'p_refresh']],
   ['authenticated', 'job_step', ['p_action', 'p_data', 'p_job', 'p_op']],
