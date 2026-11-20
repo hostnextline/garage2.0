@@ -27,7 +27,7 @@ describe('the billed line of a paid invoice (jobs’ item sheet, review invoices
     expect(enInvoices.reopen.itemPaid).toBe('The invoice is paid. To remove this line or change its price, open it again:');
     for (const s of [frInvoices.reopen.itemPaid, enInvoices.reopen.itemPaid]) expect(s).not.toMatch(/ne change plus|no longer changes/);
   });
-  it('a line no one here may reopen (paid too much, or not this person’s invoice): ask the office', () => {
+  it('a line no one here may reopen (not this person’s invoice; paid too much no longer locks it, owner 2026-11-20): ask the office', () => {
     expect(frInvoices.reopen.itemLocked).toBe('La facture est terminée : pour changer cette ligne, demande au bureau.');
     expect(enInvoices.reopen.itemLocked).toBe('The invoice is finished: to change this line, ask the office.');
   });

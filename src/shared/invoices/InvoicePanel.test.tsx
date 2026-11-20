@@ -343,23 +343,24 @@ describe('a finished invoice', () => {
     await draw();
     expect(q('invoice-reopen')).toBeNull();
   });
-  it('paid MORE than the total (« Trop-perçu »), the job still under way: no « Modifier la facture » until the office gives the money back (review invoices-r2-1)', async () => {
-    // reopened, its draft would hold 200 $ against 114,98 $: « Terminer » refused (below_paid), the invoice stuck as a draft
+  it('paid MORE than the total (« Trop-perçu »), the job still under way: « Modifier la facture » too, so work added after can be billed without waiting for the office (owner, 2026-11-20)', async () => {
+    // reopened, its draft holds 200 $ against 114,98 $: finished again « paid » after the question (no more below_paid)
     seed(issued({ status: 'paid', paid_cents: 20000 }), [item('a')]);
     await draw();
     expect(q('invoice-over')).not.toBeNull();
-    expect(q('invoice-reopen')).toBeNull();
-    // the refund recorded: paid what it costs, « Modifier la facture » again
-    act(() => render(null, box));
-    seed(issued({ status: 'paid', paid_cents: 11498 }), [item('a')]);
-    await draw();
     expect(q('invoice-reopen')).not.toBeNull();
-    // work added after it was paid too much: said, but no button (« Modifier la facture » would leave it stuck)
+    // work added after it was paid too much: said, with the button (before: no button, the job could not be « Terminé »)
     act(() => render(null, box));
     seed(issued({ status: 'paid', paid_cents: 20000 }), [item('a'), item('b', { status: 'approved', updated_at: '2026-11-17T15:00:00.000Z' })]);
     await draw();
     expect(q('invoice-unbilled')?.textContent).toContain('Travail b');
-    expect(q('invoice-reopen')).toBeNull();
+    expect(q('invoice-unbilled')?.querySelector('[data-testid="invoice-reopen"]')).not.toBeNull();
+    // for the mechanic of the job as well
+    act(() => render(null, box));
+    access.value = { ...access.value!, roles: ['mechanic'], owner: false, trucks: ['t-1'] };
+    seed(issued({ status: 'paid', paid_cents: 20000 }), [item('a'), item('b', { status: 'approved', updated_at: '2026-11-17T15:00:00.000Z' })]);
+    await draw();
+    expect(q('invoice-unbilled')?.querySelector('[data-testid="invoice-reopen"]')).not.toBeNull();
   });
   it('« Encaisser » the balance', async () => {
     seed(issued(), [item('a')]);
