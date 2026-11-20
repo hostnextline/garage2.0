@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRecon, openCount, shownFindings, allBalanced, findingText, findingTarget, isMissingFunction, runWhen, sheetCaption, type ReconSummary } from './recon';
+import { normalizeRecon, openCount, shownFindings, allBalanced, findingText, findingTarget, isMissingFunction, runWhen, sheetCaption, checkOutcome, newerFinish, type ReconSummary } from './recon';
 
 const SHEET = { invoiced_cents: 45990, received: [{ method: 'debit', by: 'u1', by_name: 'Saleh', cents: 22995 }], refunded_cents: 0, expenses: [{ category: 'Carburant', cents: 6629 }], coffre_in_cents: 0, coffre_out_cents: 0, to_receive_cents: 22995 };
 const summary = (x: Record<string, unknown>): ReconSummary => {
@@ -50,10 +50,17 @@ describe('« Rapprochement d’hier »: what the panel shows', () => {
     expect(openCount({ available: false })).toBe(0);
     expect(allBalanced(s)).toBe(false);
   });
-  it('« Tout balance » holds with only a piece of information or what was already seen', () => {
-    expect(allBalanced(summary({ last_run: { day: '2026-11-14', status: 'ok' }, findings: [f('a', 'info'), f('b', 'bad', 'acked')] }))).toBe(true);
+  it('« Tout balance » holds with only a piece of information', () => {
+    expect(allBalanced(summary({ last_run: { day: '2026-11-14', status: 'ok' }, findings: [f('a', 'info'), f('c', 'bad', 'closed')] }))).toBe(true);
     expect(allBalanced(summary({ last_run: { day: '2026-11-14', status: 'warn' }, findings: [] }))).toBe(false);
     expect(allBalanced(summary({ last_run: null, runs: [] }))).toBe(false);
+  });
+  it('review argent-recon-seen: a difference « Vu » is still a difference: no « Tout balance », it stays listed', () => {
+    const s = summary({ last_run: { day: '2026-11-14', status: 'ok' }, findings: [f('b', 'bad', 'acked'), f('a', 'info')] });
+    expect(allBalanced(s)).toBe(false);
+    expect(shownFindings(s).map((x) => x.id)).toEqual(['a', 'b']);
+    expect(openCount({ available: true, summary: s })).toBe(0);
+    expect(allBalanced(summary({ last_run: { day: '2026-11-14', status: 'ok' }, findings: [f('w', 'warn', 'acked')] }))).toBe(false);
   });
   it('the words in the person’s language, the other one when missing', () => {
     const s = summary({ runs: [], findings: [f('a', 'bad'), { id: 'z', message_fr: 'Seulement en français' }] });
@@ -113,5 +120,40 @@ describe('review treasury-recon-r2-1 / r2-2: the caption above the day’s sheet
   it('no finish time: no caption (the sub line already says « Journée du … »); a finish time that is not a date: the day', () => {
     expect(sheetCaption({ day: '2026-11-15', finished_at: null }, '2026-11-16')).toBeNull();
     expect(sheetCaption({ day: '2026-11-15', finished_at: 'pas une date' }, '2026-11-16')).toEqual({ kind: 'day', day: '2026-11-15' });
+  });
+});
+
+describe('review argent-recon-brake: what « Vérifier maintenant » got back', () => {
+  const tap = Date.parse('2026-11-16T15:04:20Z');
+  const summaryAt = (finished_at: string | null, extra: Record<string, unknown> = {}) => ({ ok: true, can_ack: true, last_run: { day: '2026-11-16', status: 'ok', finished_at, counts: {} }, runs: [], findings: [], ...extra });
+  it('a server that says it braked: braked, try again at its next_at', () => {
+    expect(checkOutcome(summaryAt('2026-11-16T15:04:02Z', { braked: true, next_at: '2026-11-16T15:05:00Z' }), '2026-11-16T15:04:02Z', tap))
+      .toEqual({ braked: true, nextAt: new Date('2026-11-16T15:05:00Z') });
+  });
+  it('braked without next_at, or with one that is not a time or already past: the next minute after the tap', () => {
+    for (const next_at of [undefined, 'soon', '2026-11-16T15:00:00Z', 42]) {
+      expect(checkOutcome(summaryAt(null, { braked: true, next_at }), null, tap)).toEqual({ braked: true, nextAt: new Date('2026-11-16T15:05:00Z') });
+    }
+  });
+  it('a server that says it checked: not braked, even when the finish time did not move', () => {
+    expect(checkOutcome(summaryAt('2026-11-16T15:04:02Z', { braked: false }), '2026-11-16T15:04:02Z', tap)).toEqual({ braked: false });
+  });
+  it('an older server (no « braked »): the finish time did not move past the one the panel had → braked', () => {
+    expect(checkOutcome(summaryAt('2026-11-16T15:04:02Z'), '2026-11-16T15:04:02.000+00:00', tap)).toEqual({ braked: true, nextAt: new Date('2026-11-16T15:05:00Z') });
+    expect(checkOutcome(summaryAt('2026-11-16T15:03:00Z'), '2026-11-16T15:04:02Z', tap).braked).toBe(true);
+  });
+  it('an older server: a newer finish time is a check that ran; nothing to compare with says nothing', () => {
+    expect(checkOutcome(summaryAt('2026-11-16T15:04:21Z'), '2026-11-16T15:04:02Z', tap)).toEqual({ braked: false });
+    expect(checkOutcome(summaryAt('2026-11-16T15:04:21Z'), null, tap)).toEqual({ braked: false });
+    expect(checkOutcome(summaryAt(null), '2026-11-16T15:04:02Z', tap)).toEqual({ braked: false });
+    expect(checkOutcome(null, '2026-11-16T15:04:02Z', tap)).toEqual({ braked: false });
+    expect(checkOutcome({ ok: true }, '2026-11-16T15:04:02Z', tap)).toEqual({ braked: false });
+  });
+  it('the newer of two finish times', () => {
+    expect(newerFinish(null, '2026-11-16T15:04:02Z')).toBe('2026-11-16T15:04:02Z');
+    expect(newerFinish('2026-11-16T15:05:00Z', '2026-11-16T15:04:02Z')).toBe('2026-11-16T15:05:00Z');
+    expect(newerFinish('2026-11-16T15:04:02Z', '2026-11-16T15:05:00Z')).toBe('2026-11-16T15:05:00Z');
+    expect(newerFinish('x', null)).toBeNull();
+    expect(newerFinish(undefined, undefined)).toBeNull();
   });
 });
