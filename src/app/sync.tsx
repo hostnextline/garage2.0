@@ -25,6 +25,26 @@ export async function removeFailed(e: OutboxEntry): Promise<boolean> {
   return true;
 }
 
+/** a refused change, read whole (S30): the server's reason as a paragraph under the label, wrapping over as many lines
+    as it needs. Never the one-line sub of the kit's row, which cuts with « … » the end of the sentence that says what to
+    do. On a narrow phone the two buttons go under the words (shell.css, .sync-refused). */
+function RefusedRow({ e, refresh }: { e: OutboxEntry; refresh: () => void }) {
+  return (
+    <div class="row-item sync-refused" role="listitem">
+      <div class="row-main">
+        <span class="row-title">{e.label || t('log.change')}</span>
+        <p class="sync-why">{refusalText({ ...e, label: null })}</p>
+      </div>
+      <span class="row-end">
+        <span class="row">
+          <Button size="sm" onClick={async () => { await dismissFailed(e.seq!, true); refresh(); }}>{t('shell.failed.retry')}</Button>
+          <Button size="sm" variant="ghost" onClick={async () => { if (await removeFailed(e)) refresh(); }}>{t('shell.failed.dismiss')}</Button>
+        </span>
+      </span>
+    </div>
+  );
+}
+
 export const syncOpen = signal(false);
 const openSync = () => { syncOpen.value = true; };
 
@@ -75,15 +95,7 @@ export function SyncSheet() {
           <>
             <h3>{t('shell.failed.title', { n: failed.length })}</h3>
             <p class="muted small" style={{ margin: 0 }}>{t('shell.failed.lead')}</p>
-            <Rows>
-              {failed.map((e) => (
-                <RowItem key={e.seq} title={e.label || t('log.change')} sub={refusalText({ ...e, label: null })}
-                  end={<span class="row">
-                    <Button size="sm" onClick={async () => { await dismissFailed(e.seq!, true); refresh(); }}>{t('shell.failed.retry')}</Button>
-                    <Button size="sm" variant="ghost" onClick={async () => { if (await removeFailed(e)) refresh(); }}>{t('shell.failed.dismiss')}</Button>
-                  </span>} />
-              ))}
-            </Rows>
+            <Rows>{failed.map((e) => <RefusedRow key={e.seq} e={e} refresh={refresh} />)}</Rows>
           </>
         )}
         {pending.length > 0 && (
