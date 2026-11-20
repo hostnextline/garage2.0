@@ -11,7 +11,7 @@
      client.html?demo#reserver          « Réserver en ligne » (demo-book-closed in sessionStorage: closed)
      client.html?demo#reserver&plages=1 the same with « Plages d’arrivée » (4-hour windows; last name « plein »: the window was just taken)
      client.html?demo#t=demo-window     booked with a window (« Entre 14 h et 18 h »)        demo-flex: free all day, the window comes the day before
-     client.html?demo#suivi=demo        the truck on the way (moves at each refresh)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
+     client.html?demo#suivi=demo        the truck on the way (drives the way in 2 min 30, a position every 10 s)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
 import { SUPABASE_URL } from '../lib/config';
 import { totals } from '../lib/money';
 import { addDays, today, longDay } from '../lib/dates';
@@ -220,18 +220,38 @@ function bookAnswer(b: Record<string, unknown>): Answer {
 /* ---------- the truck on the way ---------- */
 const WAY: [number, number][] = [[45.5005, -73.6577], [45.5033, -73.6604], [45.5061, -73.6612], [45.5089, -73.6619], [45.5112, -73.6628], [45.5139, -73.6637],
   [45.5162, -73.6644], [45.5188, -73.6651], [45.5213, -73.6659], [45.5241, -73.6672], [45.5266, -73.6684], [45.5289, -73.6694], [45.5307, -73.6702]];
-let step = 0;
+/* the pretend mechanic leaves at the page's first question and drives the whole way in DRIVE_S (much faster than the
+   14 minutes planned, so the live arrival is seen going down); his phone sends its position every PHONE_S, as the real
+   one does while driving. eta_at is fixed when he leaves, as the server does. */
+const PLANNED_MIN = 14;
+const DRIVE_S = 150;
+const PHONE_S = 10;
+let leftAt = 0;
+function wayAt(f: number): [number, number] {
+  const seg: number[] = [];
+  let total = 0;
+  for (let i = 1; i < WAY.length; i++) { const d = Math.hypot(WAY[i][0] - WAY[i - 1][0], (WAY[i][1] - WAY[i - 1][1]) * 0.7); seg.push(d); total += d; }
+  let along = Math.max(0, Math.min(1, f)) * total;
+  for (let i = 0; i < seg.length; i++) {
+    if (along <= seg[i] || i === seg.length - 1) {
+      const t = seg[i] > 0 ? Math.min(1, along / seg[i]) : 0;
+      return [Math.round((WAY[i][0] + t * (WAY[i + 1][0] - WAY[i][0])) * 1e5) / 1e5, Math.round((WAY[i][1] + t * (WAY[i + 1][1] - WAY[i][1])) * 1e5) / 1e5];
+    }
+    along -= seg[i];
+  }
+  return WAY[WAY.length - 1];
+}
 function trackAnswer(token: string) {
   const now = new Date();
-  const base = { garage: { name: GARAGE.name, phone: GARAGE.phone }, mechanic: 'Adam', customer: 'Amira', lang: 'fr', now: now.toISOString(), km: 6.2, minutes: 14 };
+  const base = { garage: { name: GARAGE.name, phone: GARAGE.phone }, mechanic: 'Adam', customer: 'Amira', lang: 'fr', now: now.toISOString(), km: 6.2, minutes: PLANNED_MIN };
   // the appointment's own link opens its trip too, as public_track does (« Suivre le camion » of demo-route)
   const key = token === 'demo' || token === 'demo-route' ? 'demo-active' : token;
   if (key === 'demo-active' || key === 'demo-nopos') {
-    const i = Math.min(step, WAY.length - 2);
-    if (key === 'demo-active') step += 1;
-    const left = Math.max(1, Math.round((WAY.length - 1 - i) * 1.2));
-    return { ...base, status: 'active', dest: { lat: 45.5307, lng: -73.6702 }, route: WAY, eta_at: new Date(now.getTime() + left * 60000).toISOString(), ended_at: null,
-      pos: key === 'demo-nopos' ? null : { lat: WAY[i][0], lng: WAY[i][1], at: new Date(now.getTime() - 20000).toISOString() } };
+    if (!leftAt) leftAt = now.getTime();
+    const sent = leftAt + Math.floor((now.getTime() - leftAt) / (PHONE_S * 1000)) * PHONE_S * 1000;
+    const [lat, lng] = wayAt((sent - leftAt) / (DRIVE_S * 1000));
+    return { ...base, status: 'active', dest: { lat: 45.5307, lng: -73.6702 }, route: WAY, eta_at: new Date(leftAt + PLANNED_MIN * 60000).toISOString(), ended_at: null,
+      pos: key === 'demo-nopos' ? null : { lat, lng, at: new Date(sent).toISOString() } };
   }
   if (key === 'demo-arrived') return { ...base, status: 'arrived', dest: null, route: null, eta_at: null, ended_at: new Date(now.getTime() - 3 * 60000).toISOString(), pos: null };
   if (key === 'demo-cancelled') return { ...base, status: 'cancelled', dest: null, route: null, eta_at: null, ended_at: now.toISOString(), pos: null };
