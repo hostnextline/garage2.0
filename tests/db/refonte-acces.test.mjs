@@ -504,7 +504,7 @@ test('sql-foundation-26: the position no longer keeps a job that is finished', (
   assert.equal(await h.val(`select job_id from public.positions where id = $1`, [g.mech]), null);
 }));
 
-test('sql-misc-11, audit A4, securite-02: housekeeping empties what was promised short-lived and the change log after 7 years, never the money’s nor a named proof', () => tx(async (h) => {
+test('sql-misc-11, audit A4, securite-02: housekeeping empties what was promised short-lived, never the change log nor a named proof', () => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
   const m = await h.person('Saleh', ['mechanic']);
   await h.as(null);
@@ -517,8 +517,7 @@ test('sql-misc-11, audit A4, securite-02: housekeeping empties what was promised
   await h.q(`insert into public.activity (at, entity, entity_id, action) values
     (${old}, 'job', $1, 'update'), (${old}, 'job', $1, 'insert'), (${old}, 'job', $1, 'signed_online'), (${old}, 'job', $1, 'price_changed'),
     (now() - interval '100 days', 'web', null, 'web_robot'), (now() - interval '23 months', 'job', $1, 'update')`, [e]);
-  // securite-02: the automatic change log older than 7 years goes, except the money's (who changed or removed an
-  // invoice, a payment or an expense is kept for ever); one of 25 months always stays (Revenu Québec: 6 years)
+  // securite-02 / S107: the automatic change log is never deleted, whatever its entity or its age
   const e2 = uuid(), ancient = `now() - interval '8 years'`;
   await h.q(`insert into public.activity (at, entity, entity_id, action) values
     (${ancient}, 'jobs', $1, 'update'), (${ancient}, 'customers', $1, 'delete'), (${ancient}, 'payments', $1, 'update'),
@@ -530,10 +529,35 @@ test('sql-misc-11, audit A4, securite-02: housekeeping empties what was promised
   assert.deepEqual((await h.q(`select endpoint from public.push_subs where endpoint like 'https://p/%'`)).map((r) => r.endpoint), ['https://p/owner']);
   const left = (await h.q(`select action from public.activity where entity_id = $1 order by action, at`, [e])).map((r) => r.action);
   // round 1 asserted ['price_changed', 'signed_online', 'update'] (the 25-month « update » and « insert » erased): that was the bug
-  assert.deepEqual(left, ['insert', 'price_changed', 'signed_online', 'update', 'update'], 'nothing of less than 7 years goes');
-  const money = (await h.q(`select entity || ':' || action a from public.activity where entity_id = $1 order by 1`, [e2])).map((r) => r.a);
-  assert.deepEqual(money, ['expenses:insert', 'invoices:delete', 'payments:update', 'payments:update'], 'the money’s change log stays; the rest goes after 7 years');
+  assert.deepEqual(left, ['insert', 'price_changed', 'signed_online', 'update', 'update'], 'no change row goes');
+  const ancientLeft = (await h.q(`select entity || ':' || action a from public.activity where entity_id = $1 order by 1`, [e2])).map((r) => r.a);
+  // round 2 asserted ['expenses:insert', 'invoices:delete', 'payments:update', 'payments:update'] (jobs:update and
+  // customers:delete of 8 years erased): S107, the owner wants no deletion of the change history at all
+  assert.deepEqual(ancientLeft, ['customers:delete', 'expenses:insert', 'invoices:delete', 'jobs:update', 'payments:update', 'payments:update'], 'the change log stays for ever, the money’s and the rest');
   assert.equal(await h.val(`select count(*)::int from public.activity where action = 'web_robot' and at < now() - interval '90 days'`), 0);
+}));
+
+test('S107 (securite-02, owner’s decision): housekeeping never deletes the change history — a change row 8 years old survives, by the night job and by « Je commence ma journée »', () => tx(async (h) => {
+  const m = await h.person('Saleh', ['mechanic']);
+  await h.as(null);
+  const e = uuid();
+  // who changed a payment, an invoice, a customer… : every kind of entity, every automatic action, 8 and 20 years old
+  const rows = [];
+  for (const entity of ['payments', 'invoices', 'customers', 'jobs', 'vehicles', 'expenses', 'staff', 'settings', 'job_items']) {
+    for (const action of ['insert', 'update', 'delete']) {
+      rows.push(`(now() - interval '8 years', '${entity}', $1, '${action}')`, `(now() - interval '20 years', '${entity}', $1, '${action}')`);
+    }
+  }
+  await h.q(`insert into public.activity (at, entity, entity_id, action) values ${rows.join(', ')}`, [e]);
+  const count = () => h.val(`select count(*)::int from public.activity where entity_id = $1`, [e]);
+  assert.equal(await count(), 54);
+  await h.q(`select public.housekeeping()`);
+  assert.equal(await count(), 54, 'the night job (pg_cron « garage-housekeeping ») deletes no change row, however old');
+  await h.as(m);
+  await h.rpc('shift_start', {});
+  await h.as(null);
+  assert.equal(await count(), 54, 'the clean-up run by « Je commence ma journée » deletes none either');
+  assert.equal(await h.val(`select count(*)::int from public.activity where entity_id = $1 and entity = 'customers' and action = 'update' and at < now() - interval '8 years' + interval '1 day'`, [e]), 2);
 }));
 
 // =====================================================================================================================
