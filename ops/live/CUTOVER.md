@@ -68,6 +68,11 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
 
 ### 1.1 Les scripts de sauvegarde, puis une sauvegarde à la main
 
+0. **Ce dépôt n'existait pas le 2026-11-20** (vérifié : `gh repo view hostnextline/garage2.0-sauvegardes` → introuvable ; aucun
+   appel à la fonction `backup` dans les journaux en ligne des dernières 24 h ; le dépôt `hostnextline/garage-sauvegardes`, lui,
+   tourne chaque nuit mais lit le projet Supabase de l'ANCIENNE app). La base en ligne n'avait donc aucune sauvegarde. Le créer
+   d'abord, **privé**, avec le go du propriétaire (toutes les données des clients y seront copiées chaque nuit) ; sans lui, la
+   bascule ne commence pas.
 1. Copier dans le dépôt privé `hostnextline/garage2.0-sauvegardes` les fichiers de `ops/sauvegardes/` au commit C
    (liste exacte : section 8). Les nouveaux scripts marchent avec la fonction `backup` d'aujourd'hui (essayé par
    `ops/tests/sauvegardes.test.mjs`).
@@ -90,7 +95,7 @@ Lancer `ops/live/2026-11-16_verifications.sql` sur la base en ligne, une requêt
 
 | Question | On continue si… | Sinon |
 |---|---|---|
-| Q1 migrations enregistrées | `fenetres_20261115000100` = `true` et la dernière version est `20261115000100` ; aucune `20261116…` | arrêt : la base en ligne n'est pas où les migrations la croient |
+| Q1 migrations enregistrées | `fenetres_20261115000100` = `true` et la dernière version est `20261119000100` (« Heures travaillées », en ligne depuis le 2026-11-19 ; 44 versions en tout) ; aucune `20261116…` | arrêt : la base en ligne n'est pas où les migrations la croient |
 | Q2 mode de réservation | (une information : `windows_on` dit si l'équipe réserve par plages ; `web_on` doit être `false`, la réservation en ligne fermée depuis le 2026-11-09) | `web_on` = `true` : le dire au propriétaire avant de continuer |
 | Q3 version de Postgres | 15, 16 ou 17 | (le texte reconstruit par Postgres peut différer d'une version majeure à l'autre : comparer F à l'œil) |
 | Q4 pg_cron | (une information : `garage-housekeeping`, `garage-lock-windows` existent-elles ; la migration 5 ajoute `garage-recon` seulement si pg_cron est là) | — |
