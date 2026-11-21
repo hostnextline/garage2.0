@@ -127,12 +127,18 @@ const typed = (c) => `${Math.floor(c / 100)},${String(c % 100).padStart(2, '0')}
 
 /* ---------- the kit's buttons ---------- */
 /** a « confirm » button: the first tap arms it (it says the question), a second tap once its short pause is over does it.
-    The pause shows as aria-disabled (ui/Button.tsx), which Playwright's click waits for; waiting for « is-armed » first
-    makes sure the second tap is not taken before the first one was drawn. */
+    The pause shows as aria-disabled (ui/Button.tsx), which Playwright's click waits for; waiting for the armed button to be
+    ready first (« is-armed », aria-disabled gone) makes sure the second tap is not taken before the first one was drawn.
+    Right after it the button must no longer be armed: a lost tap is said at once, with its times (same helper as
+    app.test.cjs). */
 const tapTwice = async (loc) => {
+  const t0 = Date.now();
   await loc.click();
-  await loc.and(loc.page().locator('.is-armed')).waitFor({ timeout: 5000 });
+  await loc.and(loc.page().locator('.is-armed:not([aria-disabled="true"])')).waitFor({ timeout: 3500 });
+  const ready = Date.now() - t0;
   await loc.click();
+  const armed = await loc.evaluateAll((els) => els.some((el) => el.classList.contains('is-armed')));
+  assert.equal(armed, false, `the second tap was not taken as the confirmation (armed and ready ${ready} ms after the first tap, second tap done at ${Date.now() - t0} ms)`);
 };
 /** a question that needs a few words (ui/ask.tsx): the words typed, then its OK. The question resets its field once it
     is drawn, so the words are typed again until the OK takes them (the person sees an empty box and types). */
