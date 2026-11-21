@@ -3,9 +3,19 @@
 // Then, for each check: break the invariant on purpose, see exactly its finding, repair, see it close by itself.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { tx, pool, futureDay, uuid } from './helpers.mjs';
+import { tx as txBase, pool, futureDay, uuid } from './helpers.mjs';
 
 after(() => pool.end());
+/* Every test here starts from a garage whose books were NEVER checked, whatever ran before on this database. On GitHub the
+   files of tests/api run first: since 2026-11-20 one of them (rapprochement-serveur) presses « Vérifier maintenant » for
+   real, so a first run, its baseline and the minute's brake were already there and the « very first run » tests were red
+   (run 44844605199). Emptied inside the test's own transaction: rolled back with it, nothing is lost for anybody. */
+const tx = (fn) => txBase(async (h) => {
+  await h.c.query('reset role');
+  await h.c.query(`delete from public.ops_recon_findings; delete from public.ops_recon_runs; delete from public.ops_recon_baseline;
+                   delete from public.rate_limits where key = 'recon_now'`);
+  return fn(h);
+});
 const DAY = [[480, 1200]];
 const here = [45.515, -73.64];
 
