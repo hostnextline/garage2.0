@@ -1,5 +1,6 @@
 # Les types et les tests de l'app sur main, pour un changement que « Publier l'app » ne publie pas mais que des tests de
-# l'app lisent : les migrations et les fonctions du serveur (src/i18n/errors.test.ts, server-texts, webpush, config…).
+# l'app lisent : les migrations et les fonctions du serveur (src/i18n/errors.test.ts, server-texts, webpush, config…), et
+# le test d'API des reçus (tests/api/recus-serveur.test.mjs, lu par src/features/treasury/receipts.test.ts).
 # Sans lui, un changement du serveur poussé sur main qui casse un de ces tests passerait sans un mot, et la prochaine
 # correction de l'app serait refusée à la publication au moment où on en a besoin. Ne publie rien, n'écrit rien
 # (la publication reste dans deploy.yml, infra-10).
@@ -9,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'supabase/**'
+      - 'tests/**'
 permissions:
   contents: read
 concurrency:

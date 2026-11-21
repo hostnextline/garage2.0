@@ -22,10 +22,11 @@ const API_PORT = Number(new URL(h.API).port);
 /** the switch in front of the server: next to the app's port (lane A 4176, lane B 4276) */
 const SIGNAL_PORT = APP_PORT + 3;
 const SIGNAL = `http://127.0.0.1:${SIGNAL_PORT}`;
-/** the live app (commit acf46c3), never written */
-const OLD_SRC = process.env.MAJ_OLD_SRC || '/Users/hassan/garage2.0-refonte';
+/** a folder holding the live app at exactly its commit (MAJ_OLD_SRC, only read), when there is one; else the commit is
+    taken from a repository's history (MAJ_OLD_REPO, else this copy's: the workflow checks it out with its history) */
+const OLD_SRC = process.env.MAJ_OLD_SRC || '';
 /** where the old app is copied and built, and where the phones keep their profiles (one folder per lane: its app port) */
-const MAJ_ROOT = process.env.MAJ_DIR || '/private/tmp/claude-501/-Users-hassan/cf4f02b8-8e97-461a-b869-3d36fa2329c9/scratchpad/wave2/e2e/maj';
+const MAJ_ROOT = process.env.MAJ_DIR || path.join(h.ROOT, 'tests/out/maj');
 const MAJ = path.join(MAJ_ROOT, `lane-${APP_PORT}`);
 const DIST_OLD = path.join(MAJ, 'dist-old');
 const DIST_NEW = path.join(h.ROOT, 'tests/out/dist-maj-new');
@@ -40,10 +41,12 @@ function envFor(version, builtAt, importantSince) {
     VITE_BUILT_AT: builtAt, APP_IMPORTANT_SINCE: importantSince || '', APP_NOTES: version === 'e2e-new' ? 'La nouvelle app (refonte)' : 'Plages d’arrivée' };
 }
 /** the live app: copied without its packages (they are linked one by one, so that Vite's temporary files stay in the copy).
-    Without the reference folder (another computer), the same commit is taken from a repository's history (MAJ_OLD_REPO). */
-const OLD_COMMIT = process.env.MAJ_OLD_COMMIT || 'acf46c3';
+    Without the reference folder (another computer), the same commit is taken from a repository's history (MAJ_OLD_REPO).
+    The live app is aa1b4e6 since 2026-11-19 (« Heures travaillées », Part 26; ops/live/CUTOVER.md: AVANT = aa1b4e6); it was
+    acf46c3 when this test was written. */
+const OLD_COMMIT = process.env.MAJ_OLD_COMMIT || 'aa1b4e6';
 function buildOld() {
-  const folder = fs.existsSync(path.join(OLD_SRC, 'package.json'));
+  const folder = !!OLD_SRC && fs.existsSync(path.join(OLD_SRC, 'package.json'));
   const repo = process.env.MAJ_OLD_REPO || (folder ? OLD_SRC : h.ROOT);
   const head = (() => { try { return execSync(`git -C ${repo} rev-parse ${OLD_COMMIT}^{commit}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } })();
   // the folder itself when it is exactly that commit (rsync, as the brief of this test asks), else the commit from the history
