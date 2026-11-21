@@ -221,7 +221,7 @@ function bookAnswer(b: Record<string, unknown>): Answer {
 /* the road of the pretend trip: a REAL road between its two ends, asked once to the road planner in full and thinned by
    the server's own rule (supabase/functions/_shared/road.ts, thinRoad: 346 points → these 34, never more than 3 m from
    the street), so the demo draws what a customer sees on a real job: the streets the truck takes, not a straight line */
-const WAY: [number, number][] = [[45.50053, -73.65755], [45.49956, -73.65721], [45.49913, -73.66009], [45.50007, -73.66163], [45.5005, -73.6622], [45.5011, -73.66288],
+const WAY: [number, number][] = [[45.50053, -73.65755], [45.49956, -73.65721], [45.49913, -73.66009], [45.50007, -73.66163], [45.5005, -73.6622], [45.50131, -73.66309],
   [45.5022, -73.6639], [45.5026, -73.66411], [45.50336, -73.66406], [45.50417, -73.6645], [45.50449, -73.66458], [45.50608, -73.6636], [45.50711, -73.66285],
   [45.50774, -73.66253], [45.50803, -73.66333], [45.50815, -73.66383], [45.50972, -73.6687], [45.50998, -73.6693], [45.51098, -73.67133], [45.51157, -73.67242],
   [45.51405, -73.67633], [45.51501, -73.67799], [45.51621, -73.67992], [45.52067, -73.67423], [45.52101, -73.67384], [45.52147, -73.67349], [45.52381, -73.67193],

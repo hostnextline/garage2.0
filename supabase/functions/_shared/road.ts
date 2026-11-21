@@ -13,54 +13,75 @@ export type RoadPt = [number, number];
 export const ROAD_TOL_M = 3;
 /** never more points than this in a trip's line: the customer's page reads the trip again every few seconds */
 export const ROAD_MAX = 400;
+/** the most points of the planner's road looked at (about 150 km of road): a longer list is first read one point in N,
+    so the work stays small whatever the planner answers (the function has little time to give) */
+export const ROAD_IN_MAX = 4000;
 
 const M_LAT = 111320;
+const EPS = 1e-9;
 
-/** metres from p to the piece of line a–b (flat ground around it: exact enough at the size of a trip) */
-function offPiece(p: RoadPt, a: RoadPt, b: RoadPt): number {
-  const kx = M_LAT * Math.cos((a[0] * Math.PI) / 180);
-  const px = (p[1] - a[1]) * kx, py = (p[0] - a[0]) * M_LAT;
-  const bx = (b[1] - a[1]) * kx, by = (b[0] - a[0]) * M_LAT;
-  const len2 = bx * bx + by * by;
-  const t = len2 > 0 ? Math.max(0, Math.min(1, (px * bx + py * by) / len2)) : 0;
-  return Math.hypot(px - t * bx, py - t * by);
-}
+/** the road's line for a map: both ends, and every point that bends it by more than `tolM` metres (a point is dropped
+    only when the line without it passes within `tolM` of it). A road that still has more than `max` points loses its
+    smallest bends first, never one point in N. A broken point (not two numbers) is dropped; the list given is not changed.
 
-/** the points that shape the line: between two kept points, the farthest point is kept too while it is more than
-    `tolM` from the piece that joins them (Douglas–Peucker; a list of pieces to look at, no function calling itself:
-    a long road is thousands of points) */
-function shape(line: RoadPt[], tolM: number): RoadPt[] {
-  const n = line.length;
-  const keep = new Uint8Array(n);
-  keep[0] = 1; keep[n - 1] = 1;
-  const todo: [number, number][] = [[0, n - 1]];
-  while (todo.length) {
-    const [i, j] = todo.pop()!;
-    let far = -1, most = tolM;
-    for (let k = i + 1; k < j; k++) {
-      const d = offPiece(line[k], line[i], line[j]);
-      if (d > most) { most = d; far = k; }
-    }
-    if (far > 0) { keep[far] = 1; todo.push([i, far], [far, j]); }
-  }
-  return line.filter((_, k) => keep[k] === 1);
-}
-
-/** the road's line for a map: both ends, and every point that bends it by more than `tolM` metres. A road so long
-    that this is still more than `max` points is shaped more loosely (twice the distance, then twice again: 6 m, 12 m…),
-    so it is the smallest bends that go first, never one point in N. A broken point (not two numbers) is dropped. */
+    How: between two kept points, the point farthest from the straight piece that joins them is kept while it is more
+    than `tolM` from it, and each half is looked at the same way (Douglas–Peucker, with a list of pieces instead of a
+    function calling itself). Each kept point remembers how far it was (never more than the point kept before it on its
+    piece): the most points = the ones that were the farthest. One pass, on flat ground measured in metres. */
 export function thinRoad(line: RoadPt[] | null | undefined, max: number = ROAD_MAX, tolM: number = ROAD_TOL_M): RoadPt[] {
-  const good: RoadPt[] = [];
+  let pts: RoadPt[] = [];
   for (const p of line || []) {
     if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
-    const last = good[good.length - 1];
+    const last = pts[pts.length - 1];
     // the same point twice in a row (the planner does it at a turn): once
     if (last && last[0] === p[0] && last[1] === p[1]) continue;
-    good.push([p[0], p[1]]);
+    pts.push([p[0], p[1]]);
   }
-  if (good.length < 3) return good;
+  if (pts.length < 3) return pts;
+  if (pts.length > ROAD_IN_MAX) {
+    const step = Math.ceil(pts.length / ROAD_IN_MAX), end = pts.length - 1;
+    pts = pts.filter((_, i) => i % step === 0 || i === end);
+  }
+  const n = pts.length;
+  // flat ground around the road's first point, in metres (exact enough at the size of a trip)
+  const kx = M_LAT * Math.cos((pts[0][0] * Math.PI) / 180);
+  const X = new Float64Array(n), Y = new Float64Array(n);
+  for (let i = 0; i < n; i++) { X[i] = (pts[i][1] - pts[0][1]) * kx; Y[i] = (pts[i][0] - pts[0][0]) * M_LAT; }
+
+  // far[k]: how far point k was from its piece when it was kept (0: dropped)
+  const far = new Float64Array(n);
+  far[0] = Infinity; far[n - 1] = Infinity;
+  const pieces: number[] = [0, n - 1];
+  const tops: number[] = [Infinity];
+  while (pieces.length) {
+    const j = pieces.pop()!, i = pieces.pop()!, top = tops.pop()!;
+    const ax = X[i], ay = Y[i], bx = X[j] - ax, by = Y[j] - ay, len2 = bx * bx + by * by, mid = (i + j) / 2;
+    let at = -1, most = tolM;
+    for (let k = i + 1; k < j; k++) {
+      const px = X[k] - ax, py = Y[k] - ay;
+      let t = len2 > 0 ? (px * bx + py * by) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const dx = px - t * bx, dy = py - t * by, d = Math.sqrt(dx * dx + dy * dy);
+      if (d > most + EPS) { most = d; at = k; }
+      // as far as the farthest so far: the one nearer the middle of the piece (two halves of the same size: a road of
+      // equal bends, a street grid, is then looked at in few steps)
+      else if (at >= 0 && d > most - EPS && Math.abs(k - mid) < Math.abs(at - mid)) at = k;
+    }
+    if (at < 0) continue;
+    const kept = Math.min(most, top);
+    far[at] = kept;
+    pieces.push(i, at, at, j);
+    tops.push(kept, kept);
+  }
+
+  let floor = 0;
   const most = Math.max(2, Math.floor(max));
-  let out = shape(good, tolM);
-  for (let t = tolM * 2; out.length > most && t <= 5000; t *= 2) out = shape(good, t);
-  return out;
+  let count = 0;
+  for (let k = 0; k < n; k++) if (far[k] > 0) count++;
+  if (count > most) {
+    // too many: only the points that were farther than the (most − 1)th farthest of them
+    const inner = Array.from(far).filter((d, k) => d > 0 && k > 0 && k < n - 1).sort((a, b) => b - a);
+    floor = inner[most - 2];
+  }
+  return pts.filter((_, k) => far[k] > floor);
 }

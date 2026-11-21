@@ -2,7 +2,7 @@
    planner's full road, thinned to the points that shape it. Hassan, 2026-11-21, on the tracking page: « it's a straight
    line, it doesn't show the actual route »: the line must stay on the streets, bends and all. */
 import { describe, it, expect } from 'vitest';
-import { thinRoad, ROAD_MAX, ROAD_TOL_M, type RoadPt } from '../../../supabase/functions/_shared/road';
+import { thinRoad, ROAD_MAX, ROAD_IN_MAX, ROAD_TOL_M, type RoadPt } from '../../../supabase/functions/_shared/road';
 import handler from '../../../supabase/functions/enroute/handler.ts?raw';
 
 const M = 111320;
@@ -58,19 +58,56 @@ describe('thinRoad: the points that shape the road, and only those', () => {
     expect(thinRoad([at(0, 0), at(100, 8), at(200, 0)])).toEqual([at(0, 0), at(100, 8), at(200, 0)]);
   });
 
-  it('a very long winding road: never more than the most points, the smallest bends go first, the ends stay', () => {
-    // 6 000 points: a zigzag of 30 m every 40 m (every point is a bend of its own)
-    const line: RoadPt[] = Array.from({ length: 6000 }, (_, i) => at(i * 40, i % 2 ? 30 : 0));
+  it('too many bends for a map: never more than the most points, the smallest bends go first, the ends stay', () => {
+    // a street with 120 small jogs of 6 m and 10 big detours of 300 m (out and back)
+    const line: RoadPt[] = [at(0, 0)];
+    for (let i = 1; i <= 130; i++) line.push(at(i * 200 - 100, i % 13 === 0 ? 300 : 6), at(i * 200, 0));
+    const ends = (l: RoadPt[]) => same(l[0], line[0]) && same(l[l.length - 1], line[line.length - 1]);
+    expect(thinRoad(line).length).toBe(line.length);   // every jog is a bend of its own: all kept while they fit
+    // room for the big detours only: they are all still drawn, what is lost is the small jogs (6 m), nothing more
+    const thin = thinRoad(line, 60);
+    expect(thin.length).toBeLessThanOrEqual(60);
+    expect(ends(thin)).toBe(true);
+    expect(worst(line, thin)).toBeLessThanOrEqual(6.01);
+    // the old way, one point in N for the same number of points, lost detours themselves
+    const step = Math.ceil(line.length / 60);
+    const oneInN = line.filter((_, i) => i % step === 0 || i === line.length - 1);
+    expect(worst(line, oneInN)).toBeGreaterThan(250);
+    // fewer still: never more than asked, the two ends always
+    for (const most of [30, 12, 5, 3]) {
+      const few = thinRoad(line, most);
+      expect(few.length).toBeLessThanOrEqual(most);
+      expect(ends(few)).toBe(true);
+    }
+    expect(thinRoad(line, 2)).toEqual([line[0], line[line.length - 1]]);
+  });
+
+  it('a very long winding road (3 000 points, each one a bend): the most points, in little work', () => {
+    const line: RoadPt[] = Array.from({ length: 3000 }, (_, i) => at(i * 40, i % 2 ? 30 : 0));
     const thin = thinRoad(line);
     expect(thin.length).toBeLessThanOrEqual(ROAD_MAX);
-    expect(thin.length).toBeGreaterThanOrEqual(2);
+    expect(thin.length).toBeGreaterThan(ROAD_MAX / 2);
     expect(same(thin[0], line[0]) && same(thin[thin.length - 1], line[line.length - 1])).toBe(true);
-    // a smaller most: obeyed too
     expect(thinRoad(line, 50).length).toBeLessThanOrEqual(50);
-    // the same road with one big detour of 2 km in it: the detour is what is kept
-    const far = at(120000, 2000);
-    const withDetour = [...line.slice(0, 3000), far, ...line.slice(3000)];
-    expect(thinRoad(withDetour, 50).some((p) => same(p, far))).toBe(true);
+  });
+
+  it('the worst road for the work (each bend a little bigger than the one before) and a road longer than what is looked at: still quick, still within the most points', () => {
+    // every piece splits at its far end: the slowest case there is, at the most points looked at
+    const teeth: RoadPt[] = Array.from({ length: ROAD_IN_MAX }, (_, i) => at(i * 40, i % 2 ? 30 + i * 0.01 : 0));
+    const t0 = performance.now();
+    const thin = thinRoad(teeth);
+    const ms = performance.now() - t0;
+    expect(thin.length).toBeLessThanOrEqual(ROAD_MAX);
+    expect(same(thin[0], teeth[0]) && same(thin[thin.length - 1], teeth[teeth.length - 1])).toBe(true);
+    // a second on the slowest test machine; a few ms on a real road (the function has about 2 s of work in all)
+    expect(ms).toBeLessThan(1000);
+    // 30 000 points (a road across the province): read one point in N first, the last point kept
+    const long: RoadPt[] = Array.from({ length: 30000 }, (_, i) => at(i * 15, 400 * Math.sin(i / 300)));
+    const cut = thinRoad(long);
+    expect(cut.length).toBeLessThanOrEqual(ROAD_MAX);
+    expect(same(cut[0], long[0]) && same(cut[cut.length - 1], long[long.length - 1])).toBe(true);
+    // its shape is still there: no point of the road more than 25 m from the line
+    expect(worst(long.filter((_, i) => i % 50 === 0), cut)).toBeLessThan(25);
   });
 
   it('a road that comes back to where it started (a loop) keeps its far end', () => {
