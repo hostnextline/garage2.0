@@ -535,9 +535,9 @@ step('Travail ajouté après la facture payée, suite: Saleh opens the PAID invo
 // opened again, a line taken off (a part that did not fit), finished under what was paid, is no longer refused: the phone
 // asks first (« {over} à remettre au client », « Oui, terminer la facture »), then it ends « payée », the server says
 // over_cents and notes « overpaid », the office gives the difference back (« Trop-perçu »). The server half is on the merge
-// line (srv-argent 1066094); the phone half is r3/invoices 474d4d0, not merged yet: today's app still stops « Terminer »
-// with its below-paid message. Un-skip once r3/invoices is merged.
-step.skip('Trop-perçu après « Modifier la facture »: Sami paid; the spark plugs did not fit and come off; « Terminer la facture » asks first, then the invoice ends paid with what goes back to him said to the office', 'WAITS the invoices merge (r3/invoices 474d4d0): « a reopened invoice finished under what was paid is no longer refused: the phone asks, then it ends paid with Trop-perçu »', async () => {
+// line (srv-argent 1066094); the phone half is r3/invoices 474d4d0 (merged the same evening,
+// with the review's fixes: the question's buttons are « Revoir la facture » / « Oui, terminer »).
+step('Trop-perçu après « Modifier la facture »: Sami paid; the spark plugs did not fit and come off; « Terminer la facture » asks first, then the invoice ends paid with what goes back to him said to the office', async () => {
   const a = atDoor({ first: 'Sami', last: 'Haddad', phone: '514 555-0171', items: [{ description: 'Courroie', unit_cents: 15000 }, { description: 'Bougies', unit_cents: 5000 }] });
   const jwt = await jwtOf(who.saleh.email);
   const d = await rpcAs(jwt, 'invoice_for_job', { p_op: randomUUID(), p_job: a.job, p_refresh: true });
@@ -568,6 +568,15 @@ step.skip('Trop-perçu après « Modifier la facture »: Sami paid; the spark pl
   assert.equal(h.sql(`select status from public.job_items where id = '${a.items[1]}'`), 'removed', 'the spark plugs: « Pas fait »');
   noErrors(m.page);
   await m.ctx.close();
+  // the end of the story: the OFFICE gives the difference back and records it (a mechanic cannot); the invoice is then
+  // paid exactly its total, and the day's books balance again (« Les livres de la journée », below, checks « Tout balance »:
+  // an overpayment still waiting for its refund is a difference the reconciliation lists, as it must)
+  const over = first.total - done.total;
+  const refused = await rpcAs(jwt, 'payment_add', { p_op: randomUUID(), p_invoice: invId, p_amount_cents: -over, p_method: 'cash', p_reference: null, p_job: a.job, p_session: null }).then((r) => r, (e) => ({ refused: String(e && e.message || e) }));
+  assert.equal(invoiceRow(a.job).paid, first.total, `the mechanic's refund is not taken (${JSON.stringify(refused).slice(0, 120)})`);
+  await rpcAs(await jwtOf(who.owner.email), 'payment_add', { p_op: randomUUID(), p_invoice: invId, p_amount_cents: -over, p_method: 'cash', p_reference: null, p_job: a.job, p_session: null });
+  const back = invoiceRow(a.job);
+  assert.deepEqual([back.status, back.paid], ['paid', done.total], 'after the office’s refund: paid, exactly its total');
 });
 
 /* ---------- (8) the Coffre ---------- */
