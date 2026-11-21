@@ -3,7 +3,7 @@
 // the screens — the mechanic's phone at the door, the customer's phone, the office's computer, the treasurer — and checks
 // what the screen says AND what the database holds (invoices, payments, activity, the Coffre, expenses, the
 // reconciliation). The file runs by itself on a fresh database; the database is saved before and put back after.
-//   bash <lane>/e2e-file.sh tests/e2e/argent.test.cjs ["part of a step's name"]
+//   on a Mac: bash tests/stack/mac/e2e.sh argent ["part of a step's name"]   on Linux: node --test tests/e2e/argent.test.cjs
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const h = require('./harness.cjs');
@@ -231,10 +231,10 @@ step('Trop payé: a zero too many is refused in words before anything is sent; t
   await m.ctx.close(); await o.ctx.close();
 });
 
-// BUG argent-refusal-cut: on a phone, « Synchronisation » cuts the reason of a refused change to one line with « … »
-// (src/app/sync.tsx, the RowItem `sub` of each refused change): Saleh reads « Il reste 244,93 $ à p… » and never the end of
-// the sentence that says what to do. Un-skip when the reason wraps.
-step.skip('Refusé, lisible: on a phone, the reason a payment was refused is read in full in « Synchronisation »', 'BUG argent-refusal-cut: the reason is cut to one line with « … » on a phone (src/app/sync.tsx)', async () => {
+// argent-refusal-cut (S30): on a phone, « Synchronisation » used to cut the reason of a refused change to one line with
+// « … » (src/app/sync.tsx, the RowItem `sub`): Saleh read « Il reste 244,93 $ à p… » and never the end of the sentence that
+// says what to do. The reason is now a paragraph that wraps (`sync-why`).
+step('Refusé, lisible: on a phone, the reason a payment was refused is read in full in « Synchronisation »', async () => {
   const a = atDoor({ first: 'Nathalie', last: 'Roy', phone: '514 555-0169', items: [{ description: 'Démarreur', unit_cents: 30000 }] });
   const m = await jobPhone(who.saleh.email, a.job);
   await makeAndFinish(m.page, a.job);
@@ -286,8 +286,17 @@ const sheetLines = async (page) => page.getByTestId('recon-sheet').locator('div'
 async function checkNow(page) {
   freeReconBrake();
   const before = h.sql(`select coalesce(max(finished_at)::text, '') from public.ops_recon_runs`);
+  // the panel's own answer, then the summary it asks again: the next look at the panel (its sheet, a toast, the server's
+  // answer to another tap) never takes what was on screen before this check (a race seen on 2026-11-20: the sheet of an
+  // older check read, the toast of this check taken for the next one's)
+  const answered = page.waitForResponse((r) => /\/rpc\/recon_now/.test(r.url()), { timeout: 30000 });
   await page.getByTestId('recon-check').click();
+  const reread = page.waitForResponse((r) => /\/rpc\/recon_summary/.test(r.url()), { timeout: 30000 });
+  await (await answered).finished();
+  await (await reread).finished();
   await until(() => h.sql(`select coalesce(max(finished_at)::text, '') from public.ops_recon_runs`), (v) => v !== before, 30000);
+  // the panel drawn from that summary (a moment after the answer)
+  await page.waitForTimeout(300);
 }
 const owingNow = () => int(`select coalesce(sum(greatest(total_cents - paid_cents, 0)), 0) from public.invoices where deleted_at is null and status = 'issued'`);
 
@@ -482,10 +491,10 @@ step('Travail ajouté après la facture payée: Éric paid; at the door he asks 
   await m.ctx.close();
 });
 
-// WAITS R42: « Modifier la facture » on a PAID invoice (src/shared/invoices/Reopen.tsx, mayReopen: inv.status === 'issued'
-// only, so neither the invoice panel nor the « not on the invoice » banner offers it for a paid invoice; the server's
-// invoice_reopen already takes a paid one since Part 27). Un-skip when R42 is merged.
-step.skip('Travail ajouté après la facture payée, suite: Saleh opens the PAID invoice again (« Modifier la facture »), the wipers go on it, he takes the difference and finishes; the invoice keeps its number', 'WAITS R42: no « Modifier la facture » on a paid invoice in this copy (src/shared/invoices/Reopen.tsx)', async () => {
+// R42: « Modifier la facture » on a PAID invoice (src/shared/invoices/Reopen.tsx, mayReopen): the invoice panel and the
+// « not on the invoice » banner offer it for a paid invoice while the job is booked, en route or on site (the server's
+// invoice_reopen takes a paid one since Part 27).
+step('Travail ajouté après la facture payée, suite: Saleh opens the PAID invoice again (« Modifier la facture »), the wipers go on it, he takes the difference and finishes; the invoice keeps its number', async () => {
   const a = await ericPaidWithWipers();
   const counter = h.sql(`select next_value from public.counters where name = 'invoice'`);
   const before7 = invoiceRow(a.job);
@@ -512,8 +521,9 @@ step.skip('Travail ajouté après la facture payée, suite: Saleh opens the PAID
   await m.page.getByTestId('pay-cash').click();
   await m.page.getByTestId('pay-confirm').click();
   await m.page.getByTestId('step-finish').waitFor({ timeout: 15000 });
-  assert.deepEqual(paymentsOf(a.job), [['cash', 17246, true, who.saleh.id], ['cash', 3450, true, who.saleh.id]]);
-  const done = invoiceRow(a.job);
+  // the red button moves on as soon as the payment is taken on the phone (it counts the payment still leaving): wait for the row
+  assert.deepEqual(await until(() => paymentsOf(a.job), (v) => v.length === 2, 15000), [['cash', 17246, true, who.saleh.id], ['cash', 3450, true, who.saleh.id]]);
+  const done = await until(() => invoiceRow(a.job), (v) => v.paid === 20696, 15000);
   assert.deepEqual([done.status, done.paid, done.total, done.number], ['paid', 20696, 20696, before7.number]);
   await m.page.getByTestId('step-finish').click();
   assert.equal(await until(() => jobStatus(a.job), (v) => v === 'done', 15000), 'done');
@@ -688,11 +698,10 @@ step('Les livres de la journée: Trésorerie for today — revenue, money in by 
   await t.ctx.close();
 });
 
-// BUG argent-recon-seen: once every difference is « Vu », the panel says « Tout balance — Aucune différence pour cette
-// journée » and hides the differences seen (src/features/treasury/ReconPanel.tsx: the list is drawn only when not
-// `allBalanced`), although recon.ts `shownFindings` keeps the seen ones « after » to show them. The books still miss the
-// payment. Un-skip when a seen difference stays listed with « Vu » and the panel no longer says there is none.
-step.skip('« Vu » keeps the difference in sight: a payment missing from the books, seen, stays listed with « Vu »; the panel never says « Aucune différence » meanwhile', 'BUG argent-recon-seen: after « Vu » the panel says « Tout balance — Aucune différence pour cette journée » and hides the difference', async () => {
+// argent-recon-seen (S32): once every difference was « Vu », the panel used to say « Tout balance — Aucune différence pour
+// cette journée » and hide the differences seen (src/features/treasury/ReconPanel.tsx), although the books still miss the
+// payment. A seen difference stays listed with « Vu », and the panel never says there is none meanwhile.
+step('« Vu » keeps the difference in sight: a payment missing from the books, seen, stays listed with « Vu »; the panel never says « Aucune différence » meanwhile', async () => {
   const t = await openW({ kind: 'desktop' });
   await h.signIn(t.page, who.louis.email, PW);
   const day = today();
@@ -722,12 +731,11 @@ step.skip('« Vu » keeps the difference in sight: a payment missing from the bo
   await t.ctx.close();
 });
 
-// BUG argent-recon-brake: « Vérifier maintenant » runs at most once a minute for the whole garage (recon_now: rate_hit
-// 'recon_now', 60 s window). Braked, the server answers the old summary and the panel says « Vérification faite » over the
-// old « Tout balance »: a treasurer who just fixed (or broke) something and checks again within the minute is told all is
-// checked and balanced when nothing was checked. Owners: src/features/treasury/ReconPanel.tsx (checkNow) with
-// supabase/migrations/20261116000400_refonte_rapprochement.sql (recon_now says nothing about the brake). Un-skip when fixed.
-step.skip('« Vérifier maintenant » twice within the minute: the second check finds what changed, or says it could not check yet — never « Vérification faite » over the old result', 'BUG argent-recon-brake: braked, « Vérifier maintenant » says « Vérification faite » and keeps the old « Tout balance »', async () => {
+// argent-recon-brake (S31): « Vérifier maintenant » runs at most once a minute for the whole garage (recon_now: rate_hit
+// 'recon_now', 60 s window). Braked, the server used to answer the old summary silently and the panel said « Vérification
+// faite » over the old « Tout balance ». Now recon_now answers `braked` and `next_at` (000400) and the panel says it could
+// not check yet (ReconPanel.tsx checkNow), never « Vérification faite » over the old result.
+step('« Vérifier maintenant » twice within the minute: the second check finds what changed, or says it could not check yet — never « Vérification faite » over the old result', async () => {
   const t = await openW({ kind: 'desktop' });
   await h.signIn(t.page, who.louis.email, PW);
   const day = today();
@@ -743,13 +751,20 @@ step.skip('« Vérifier maintenant » twice within the minute: the second check 
   h.sql(`update public.payments set deleted_at = now() where id = '${victim}'`);
   try {
     // the panel asks the summary again once the check answered
+    // the first check's toast is closed first: the words read are this check's own
+    const toasts = t.page.locator('[data-testid^="toast-"]');
+    while (await toasts.count()) await toasts.first().locator('.toast-x').click();
     const reread = t.page.waitForResponse((r) => /\/rpc\/recon_summary/.test(r.url()), { timeout: 30000 });
+    // what the server answered (braked or not), said if the step fails
+    const answered = t.page.waitForResponse((r) => /\/rpc\/recon_now/.test(r.url()), { timeout: 30000 })
+      .then((r) => r.json()).then((j) => JSON.stringify({ braked: j?.braked, next_at: j?.next_at, last_run: j?.last_run?.finished_at, open: (j?.findings || []).filter((f) => f.state === 'open').map((f) => f.check_id) }), (e) => `no answer: ${e}`);
     await t.page.getByTestId('recon-check').click();
-    const said = await t.page.locator('[data-testid^="toast-"]').last().innerText({ timeout: 30000 });
+    const said = await toasts.last().innerText({ timeout: 30000 });
     await (await reread).finished();
     const found = await t.page.getByTestId('recon-finding').filter({ hasText: /dit payé/ }).waitFor({ timeout: 5000 }).then(() => 1, () => 0);
     await t.page.getByTestId('treasury-recon').scrollIntoViewIfNeeded(); await h.shot(t.page, 'argent-11-braked');
-    assert.ok(found > 0 || !/Vérification faite/.test(said), `the second check found nothing and said « ${said} »`);
+    // either it checked and found the payment, or it says it could not check yet (« Vérifié il y a moins d’une minute : réessaie à … »)
+    assert.ok(found > 0 || (/réessaie à/.test(said) && !/Vérification faite/.test(said)), `the second check found nothing and said « ${said} »; recon_now answered ${await answered}`);
   } finally {
     h.sql(`update public.payments set deleted_at = null where id = '${victim}'`);
   }
