@@ -531,6 +531,45 @@ step('Travail ajouté après la facture payée, suite: Saleh opens the PAID invo
   await m.ctx.close();
 });
 
+// The owner's rule of 2026-11-20 (« easy for the mechanic, prevent mistakes, don't restrict them too much »): a PAID invoice
+// opened again, a line taken off (a part that did not fit), finished under what was paid, is no longer refused: the phone
+// asks first (« {over} à remettre au client », « Oui, terminer la facture »), then it ends « payée », the server says
+// over_cents and notes « overpaid », the office gives the difference back (« Trop-perçu »). The server half is on the merge
+// line (srv-argent 1066094); the phone half is r3/invoices 474d4d0, not merged yet: today's app still stops « Terminer »
+// with its below-paid message. Un-skip once r3/invoices is merged.
+step.skip('Trop-perçu après « Modifier la facture »: Sami paid; the spark plugs did not fit and come off; « Terminer la facture » asks first, then the invoice ends paid with what goes back to him said to the office', 'WAITS the invoices merge (r3/invoices 474d4d0): « a reopened invoice finished under what was paid is no longer refused: the phone asks, then it ends paid with Trop-perçu »', async () => {
+  const a = atDoor({ first: 'Sami', last: 'Haddad', phone: '514 555-0171', items: [{ description: 'Courroie', unit_cents: 15000 }, { description: 'Bougies', unit_cents: 5000 }] });
+  const jwt = await jwtOf(who.saleh.email);
+  const d = await rpcAs(jwt, 'invoice_for_job', { p_op: randomUUID(), p_job: a.job, p_refresh: true });
+  const invId = d.rows.invoices[0].id;
+  await rpcAs(jwt, 'invoice_finish', { p_op: randomUUID(), p_invoice: invId });
+  const first = invoiceRow(a.job);
+  await rpcAs(jwt, 'payment_add', { p_op: randomUUID(), p_invoice: invId, p_amount_cents: first.total, p_method: 'cash', p_reference: null, p_job: a.job, p_session: null });
+  assert.equal(invoiceRow(a.job).status, 'paid');
+  const m = await jobPhone(who.saleh.email, a.job);
+  // « Modifier la facture » on the paid invoice (a confirm button: two taps)
+  await tapTwice(m.page.getByTestId('invoice-reopen').first());
+  assert.equal((await until(() => invoiceRow(a.job), (v) => v.status === 'draft', 15000)).number, first.number, 'back to a draft, same number');
+  await m.page.getByTestId('draft-reopened').waitFor({ timeout: 15000 });
+  // the spark plugs taken off the invoice (the last line): the work becomes « Pas fait »
+  await m.page.getByTestId('line-remove').last().click();
+  await m.page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="line-desc"]')].some((i) => i.value === 'Bougies'), null, { timeout: 15000 });
+  // « Terminer la facture »: the question with the amounts first, nothing sent before « Oui »
+  await m.page.getByTestId('invoice-finish').click();
+  const question = m.page.locator('[role=dialog]').filter({ hasText: /à remettre au client/ });
+  await question.waitFor({ timeout: 15000 });
+  assert.equal(invoiceRow(a.job).status, 'draft', 'nothing finished before the answer');
+  await m.page.getByTestId('ask-ok').click();
+  const done = await until(() => invoiceRow(a.job), (v) => v.status !== 'draft', 15000);
+  assert.deepEqual([done.status, done.number, done.paid], ['paid', first.number, first.total], 'paid, the same number, what Sami paid kept');
+  assert.ok(done.total < first.total, `the new total (${done.total}) is under what was paid (${first.total})`);
+  // what goes back is said to the office: the activity « overpaid » with the amount
+  assert.equal(Number(h.sql(`select data->>'over' from public.activity where action = 'overpaid' and entity_id = '${a.job}' order by id desc limit 1`)), first.total - done.total);
+  assert.equal(h.sql(`select status from public.job_items where id = '${a.items[1]}'`), 'removed', 'the spark plugs: « Pas fait »');
+  noErrors(m.page);
+  await m.ctx.close();
+});
+
 /* ---------- (8) the Coffre ---------- */
 step('Coffre: the owner puts his aunt Mona’s oil change in the Coffre (40 $ given, no invoice, no taxes); Saleh finishes without collecting; the Coffre screen of the day and its totals', async () => {
   const a = atDoor({ first: 'Mona', last: 'Haddad', phone: '514 555-0168', items: [{ description: 'Vidange d’huile', unit_cents: 8000 }] });
