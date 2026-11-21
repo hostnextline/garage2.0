@@ -87,6 +87,32 @@ const draw = async (page, testid) => {
   for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + 30 + i * 18, box.y + box.height / 2 + (i % 2 ? -22 : 22));
   await page.mouse.up();
 };
+/** the app as it is on the team's phones: opened before, its service worker in charge of the page, so a screen not
+    opened yet still loads without signal (same as appOnPhone in plages.helpers.cjs). A first visit in a browser tab has
+    no worker yet: the screen the app opens after a booking kept on the phone could not load offline (S40). */
+const appOnPhone = async (page) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+  if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) {
+    await page.reload();
+    await page.getByTestId('app').waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
+  }
+};
+/** a « confirm » button (ui/Button.tsx, ui/tapGuard.ts): the first tap arms it and shows the question; taps in the next
+    450 ms are ignored (a double tap is never a confirmation; aria-disabled meanwhile); a tap within 4 s does it. Playwright's
+    click waits on aria-disabled only once the first tap was drawn: the second tap waits for the armed button to be ready
+    (« is-armed », aria-disabled gone). Right after it the button must no longer be armed (the tap was taken): a lost tap
+    is said at once, with its times, instead of a later check waiting 15 s for an action that never left (GitHub run
+    44833208139, step « Modifier la facture »). Same helper as argent.helpers.cjs. */
+const tapTwice = async (loc) => {
+  const t0 = Date.now();
+  await loc.click();
+  await loc.and(loc.page().locator('.is-armed:not([aria-disabled="true"])')).waitFor({ timeout: 3500 });
+  const ready = Date.now() - t0;
+  await loc.click();
+  const armed = await loc.evaluateAll((els) => els.some((el) => el.classList.contains('is-armed')));
+  assert.equal(armed, false, `the second tap was not taken as the confirmation (armed and ready ${ready} ms after the first tap, second tap done at ${Date.now() - t0} ms)`);
+};
 /* today's block that is still on (the morning after noon is over: a job brought to today goes in the current block) */
 const blockNow = () => h.sql(`select case when public.now_min() < 720 then 'am' when public.now_min() < 960 then 'pm' else 'eve' end`);
 
@@ -243,6 +269,7 @@ step('the customer’s page: the appointment, the invoice paid, in the customer�
 step('no signal: the office books anyway; the booking leaves when the signal is back', async () => {
   const { ctx, page } = await h.openW({ kind: 'phone' });
   await h.signIn(page, who.nadia.email, PW);
+  await appOnPhone(page);
   await page.goto(h.APP + '#/book');
   await page.getByTestId('book-screen').waitFor();
   await page.getByTestId('customer-search').fill('Julie');
@@ -445,8 +472,7 @@ step('the estimate signed online from the confirmation link; at the door nothing
   await dismissSheets(m.page);
   // « NIV illisible » (two taps): the job goes on without it
   await openVin(m.page);
-  await m.page.getByTestId('car-check-skip').click();
-  await m.page.getByTestId('car-check-skip').click();
+  await tapTwice(m.page.getByTestId('car-check-skip'));
   await m.page.getByTestId('car-check').waitFor({ state: 'detached', timeout: 10000 });
   await m.page.getByTestId('step-invoice').waitFor({ timeout: 15000 });
   assert.equal(await m.page.getByTestId('step-waiver').count(), 0, 'already signed online: no signature at the door');
@@ -1535,8 +1561,7 @@ step('« Modifier la facture »: before the appointment, work taken off the job 
   assert.match(await until(lines, (v) => /Essuie-glaces/.test(v), 15000), /Plaquettes avant e2e,Essuie-glaces e2e$/);
   // the wipers taken off the job's work: they leave the invoice by themselves (screen and server)
   await page.getByTestId('job-item').filter({ hasText: 'Essuie-glaces e2e' }).locator('.jobs-item-main').click();
-  await page.getByTestId('item-remove').click();
-  await page.getByTestId('item-remove').click();
+  await tapTwice(page.getByTestId('item-remove'));
   assert.doesNotMatch(await until(lines, (v) => !/Essuie-glaces/.test(v), 15000), /Essuie-glaces/);
   await page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="line-desc"]')].some((i) => /Essuie-glaces/.test(i.value)), null, { timeout: 15000 });
   // finished: it has its number
@@ -1547,8 +1572,7 @@ step('« Modifier la facture »: before the appointment, work taken off the job 
   await page.getByTestId('job-item').filter({ hasText: 'Plaquettes avant e2e' }).locator('.jobs-item-main').click();
   await page.getByTestId('item-locked').waitFor();
   await h.shot(page, 'e2e-invoice-locked');
-  await page.getByTestId('item-locked').getByTestId('invoice-reopen').click();
-  await page.getByTestId('item-locked').getByTestId('invoice-reopen').click();
+  await tapTwice(page.getByTestId('item-locked').getByTestId('invoice-reopen'));
   assert.equal(await until(invoice, (v) => v.startsWith('draft|'), 15000), `draft|${number}`, 'back to a draft, same number');
   await dismissSheets(page);
   await page.getByTestId('draft-reopened').waitFor({ timeout: 15000 });

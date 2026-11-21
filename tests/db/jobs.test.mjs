@@ -276,7 +276,9 @@ test('Part 24 decies: « Modifier la facture »: the draft follows the work, a f
   await h.rpc('payment_add', { p_op: uuid(), p_invoice: inv, p_amount_cents: left, p_method: 'cash', p_reference: null, p_job: null, p_session: null });
   assert.equal((await h.rpc('invoice_reopen', { p_op: uuid(), p_invoice: inv })).ok, true, 'paid, the appointment still open: it reopens too (Part 27)');
   await h.as(null); await h.c.query('reset role');
-  const note = await h.one(`select actor, data from public.activity where action = 'invoice_reopened' and entity_id = $1 limit 1`, [jobId]);
+  // the reopens were noted in turn: the FIRST one is read, by the order the rows were written (`id`; the test is one
+  // transaction, so their `at` are all the same now() and « order by at » would not decide) (S94, tests-07)
+  const note = await h.one(`select actor, data from public.activity where action = 'invoice_reopened' and entity_id = $1 order by id asc limit 1`, [jobId]);
   assert.deepEqual([note.actor, Number(note.data.number), note.data.paid, note.data.payments], [g.mech, n, 2000, 1]);
 }));
 

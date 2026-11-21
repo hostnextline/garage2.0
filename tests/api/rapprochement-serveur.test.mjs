@@ -1,7 +1,8 @@
 // « Rapprochement d'hier » against a REAL server (the local test stack): the calls of ReconPanel.tsx (recon_summary 14,
 // recon_now, recon_ack) as a treasurer, and the answer has every field normalizeRecon (src/domain/recon/recon.ts) reads.
 // After « Vérifier maintenant » the newest run is TODAY (Montréal): the panel's title follows it (runWhen). Not a unit
-// test (vitest does not run it):  SRC=<copy> bash <lane>/api-tests.sh src/features/treasury/recon.server-check.mjs
+// test (vitest does not run it): an API test, run with the other files of tests/api on the local stack (as tests-complets.yml
+// does; on a Mac `bash tests/stack/mac/api-tests.sh rapprochement-serveur`). Was src/features/treasury/recon.server-check.mjs (S106).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

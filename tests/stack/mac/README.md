@@ -34,7 +34,8 @@ report in `$HIS_STACK/logs/`.
 | `bash M/db-tests.sh [file or pattern]` | `tests/db/*.test.mjs` | 2 s |
 | `bash M/api-tests.sh [file or pattern]` | `tests/api/*.test.mjs` (also any test file given by its path: `bash M/api-tests.sh ops/tests/sauvegardes.test.mjs`) | 5 s |
 | `bash M/e2e.sh [test name pattern]` | `tests/e2e/app.test.cjs` (production build, Playwright 1.55.0, `TZ=America/Toronto`) | 2 min |
-| `bash M/all.sh [source folder]` | The four above in GitHub's order on a new database, one table at the end | about 2 min 10 s |
+| `bash M/e2e.sh <file> [pattern]` | another end-to-end file: `plages`, `argent`, `mise-a-jour` (or its path, or `all` for every `tests/e2e/*.test.cjs`) | 2 to 4 min each |
+| `bash M/all.sh [source folder]` | The four above in GitHub's order on a new database, then `plages`, `argent` and `mise-a-jour` each alone; one table at the end | about 10 min |
 | `bash M/down.sh` | Stops everything this stack started (and nothing else) | 1 s |
 | `bash M/psql.sh "<sql>"` | SQL on the test database (or psql options: `psql.sh -f file.sql`) | |
 
@@ -69,8 +70,12 @@ Options: `NOSYNC=1` runs what is already in the copy. `FRESH=1` starts from a ne
 - Database and API tests: a file name without its ending (`jobs`, `planner`, `windows`, `functions`, `backup-restore`)
   runs that file; a path to a test file runs that file; anything else is a test name pattern (regular expression, as
   `--test-name-pattern`). Both: `bash M/db-tests.sh planner "truck"`.
-- End-to-end: a test name pattern: `bash M/e2e.sh "Coffre"`. Some steps use what an earlier step made: if a step fails
-  alone, run it with the ones before.
+- End-to-end: a test name pattern: `bash M/e2e.sh "Coffre"`; another file first: `bash M/e2e.sh plages "Déplacer"`.
+  Some steps use what an earlier step made: if a step fails alone, run it with the ones before.
+- `mise-a-jour` (yesterday's app on a phone, then the rebuilt one) builds yesterday's app too: its commit (`MAJ_OLD_COMMIT`,
+  default the live one written in `tests/e2e/mise-a-jour.helpers.cjs`) comes from the git history of the source folder
+  (`MAJ_OLD_REPO`, only read); its switch in front of the server listens on port 4176. On GitHub it does not run
+  (`tests-complets.yml` runs `app`, `plages` and `argent`): run it here before a release.
 - A pattern that matches nothing prints `NOTHING RAN` and exits with 3: it is never a pass.
 
 ### Several people (or agents), one stack
