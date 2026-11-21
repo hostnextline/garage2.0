@@ -1171,7 +1171,7 @@ test('recon: a few thousand rows are checked in well under a second', () => tx(a
   const f = await open(h);
   console.log(`recon_run: ${ms} ms on ${await h.val(`select (select count(*) from public.jobs) + (select count(*) from public.invoices) + (select count(*) from public.payments) + (select count(*) from public.inventory_moves) + (select count(*) from public.inventory_items) + (select count(*) from public.expenses) + (select count(*) from public.coffre)`)} rows (server ${r.counts.ms} ms; by check: ${JSON.stringify(r.counts.checks_ms)})`);
   assert.deepEqual(f.filter((x) => x.severity !== 'info'), [], show(f));
-  assert.ok(ms < 1000, `recon_run took ${ms} ms`);
+  assert.ok(ms < 1000, `recon_run took ${ms} ms (server ${r.counts.ms} ms; by check: ${JSON.stringify(r.counts.checks_ms)})`);
   assert.equal(await h.val(`select count(*)::int from public.ops_recon_findings where state <> 'closed' and check_id like 'M7.%'`), 0, 'each purchase found its expense');
 }));
 
@@ -1200,7 +1200,7 @@ test('recon M4 (round 2): 200 payments on nothing among 5000 activity rows — t
   assert.equal(why.length, 200);
   assert.ok(why.every((x) => x.why === 'missing'), 'each payment on nothing carries why payment_add left it there');
   assert.ok(r.counts.checks_ms.M4 < 100, `M4 took ${r.counts.checks_ms.M4} ms (65 to 212 ms when each payment read the whole activity table)`);
-  assert.ok(ms < 1000, `recon_run took ${ms} ms`);
+  assert.ok(ms < 1000, `recon_run took ${ms} ms (by check: ${JSON.stringify(r.counts.checks_ms)})`);
 }));
 
 test('recon: tables whose statistics are stale (the planner believes them nearly empty) still run in well under a second', () => tx(async (h) => {

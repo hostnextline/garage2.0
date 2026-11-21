@@ -226,7 +226,9 @@ function readTree(): Map<string, string> {
 
 describe('the layers of src (docs/ARCHITECTURE.md, « Folders »)', () => {
   let found: ReturnType<typeof check>;
-  beforeAll(() => { found = check(readTree()); });
+  /* every file of src parsed once (about 7 s measured on a machine under heavy load): vitest's 10 s for a hook was cut on a
+     busy machine (tests-05, S66), and a cut hook fails the tests below for nothing. A real failure is a broken rule. */
+  beforeAll(() => { found = check(readTree()); }, 30000);
 
   it('reads the whole tree', () => {
     expect(found.code).toBeGreaterThan(200);
