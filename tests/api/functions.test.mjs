@@ -271,6 +271,32 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   // « Je suis arrivé »
   assert.equal((await fn('enroute', { action: 'return_end', base: BASE }, jwt)).ok, true);
   assert.equal((await rpc('public_track', { p_token: tokenOf(back2.link) }, K.anon)).status, 'arrived');
+  // the second road planner (Hassan, 2026-11-21: « add it just in case »: on live, 3 trips of 39 had no road because the
+  // first planner had not answered). The first one down: the road still comes, by the streets, from the second.
+  // Both down: a straight line and an estimate, as before; never an error for the mechanic.
+  await clearLog();
+  await fetch(`${MOCK}/control?osrm=fail`);
+  try {
+    const second = await fn('enroute', { action: 'return', base: BASE, notify: false, pos: { lat: 45.50, lng: -73.66 } }, jwt);
+    assert.equal(second.ok, true, JSON.stringify(second));
+    assert.equal(second.route_source, 'osrm-backup');
+    assert.ok(second.minutes > 0 && second.km > 0 && second.eta_at, 'a road time and an arrival time from the second planner');
+    assert.deepEqual((await mockLog()).filter((x) => /^osrm/.test(x.svc)).map((x) => [x.svc, x.overview, !!x.failed]),
+      [['osrm', 'full', true], ['osrm-backup', 'full', false]], 'the first is asked first, then the second, both for the road in full');
+    assert.deepEqual((await rpc('public_track', { p_token: tokenOf(second.link) }, K.anon)).route, [[45.5, -73.66], [45.5, -73.65446], [45.53129, -73.65446]],
+      'the second planner’s road, with its corner, on the map');
+    await fetch(`${MOCK}/control?osrm_backup=fail`);
+    await clearLog();
+    const none = await fn('enroute', { action: 'return', base: BASE, notify: false, pos: { lat: 45.50, lng: -73.66 } }, jwt);
+    assert.equal(none.ok, true, JSON.stringify(none));
+    assert.equal(none.route_source, 'line');
+    assert.ok(none.minutes >= 2 && none.km > 0 && none.eta_at, 'an estimate all the same');
+    assert.deepEqual((await mockLog()).filter((x) => /^osrm/.test(x.svc)).map((x) => x.svc), ['osrm', 'osrm-backup'], 'each planner is asked once, no more');
+    assert.deepEqual((await rpc('public_track', { p_token: tokenOf(none.link) }, K.anon)).route, [[45.5, -73.66], [45.5312898, -73.6544639]]);
+  } finally {
+    await fetch(`${MOCK}/control?osrm=ok&osrm_backup=ok`);
+  }
+  assert.equal((await fn('enroute', { action: 'return_end', base: BASE }, jwt)).ok, true);
   // ending the day while heading back = arrived (not cancelled)
   const back3 = await fn('enroute', { action: 'return', base: BASE, pos: { lat: 45.51, lng: -73.65 } }, jwt);
   await rpc('shift_end', {}, jwt);

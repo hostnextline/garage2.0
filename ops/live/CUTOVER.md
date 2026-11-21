@@ -228,7 +228,7 @@ Pendant ce temps l'app et les fonctions d'hier tournent sur la base qui change :
    `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` sont données par Supabase. Facultatives, comme hier :
    `APP_BASE_URLS` (défaut : l'adresse Vercel), `BACKUP_REPOS` (défaut : `hostnextline/garage2.0-sauvegardes`),
    `HERMES_URL` / `HERMES_KEY` (la table `secrets` passe d'abord), `CODE_COMMIT` (nouvelle, facultative : le commit se
-   lit dans l'adresse). **Jamais en ligne** : `GHL_API_BASE`, `STRIPE_API_BASE`, `OSRM_BASE`, `VPIC_BASE`,
+   lit dans l'adresse). **Jamais en ligne** : `GHL_API_BASE`, `STRIPE_API_BASE`, `OSRM_BASE`, `OSRM_BACKUP_BASE`, `VPIC_BASE`,
    `GITHUB_OIDC_JWKS` (elles servent aux tests, elles enverraient les appels ailleurs).
 5. Les 6 fonctions qui tournent aujourd'hui avec un `_shared` d'un autre commit (`enroute`, `team`, `backup`, `hermes`,
    `stripe`, `vin`) changent donc aussi par leur `_shared` : c'est voulu, c'est la combinaison que les tests de l'API

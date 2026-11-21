@@ -135,4 +135,18 @@ describe('« Je pars » asks the road planner for the road in full', () => {
     expect(handler).toMatch(/const line = thinRoad\(/);
     expect(handler).not.toMatch(/i % step === 0/);
   });
+
+  it('two planners, in the order of the app’s own maps; a test copy never reaches the real second one', async () => {
+    const roads = await import('../../shared/map/roads');
+    // the same two servers as the app's maps (src/shared/map/roads.ts), the first one first
+    expect(handler).toContain(`'${roads.OSRM}'`);
+    expect(handler).toContain(`'${roads.OSRM_BACKUP}'`);
+    expect(handler).toContain(`return [{ base: first || '${roads.OSRM}', source: 'osrm' }, { base: second, source: 'osrm-backup' }];`);
+    // a server whose first planner is sent elsewhere (the tests' OSRM_BASE) asks « <OSRM_BASE>-backup », not the internet
+    expect(handler).toMatch(/env\('OSRM_BACKUP_BASE'\) \|\| \(first \? `\$\{first\}-backup` : 'https:\/\/routing\.openstreetmap\.de\/routed-car'\)/);
+    // each planner is waited for a few seconds only: both fit well inside the app's own wait for « Je pars » (40 s)
+    const wait = Number(/const ROAD_WAIT_MS = (\d+);/.exec(handler)?.[1]);
+    expect(wait).toBeGreaterThanOrEqual(3000);
+    expect(wait * 2).toBeLessThanOrEqual(15000);
+  });
 });

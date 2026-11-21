@@ -460,6 +460,11 @@ end $do$;
   thinned the same way. Tests: `src/client/track/server-road.test.ts`, and `tests/api/functions.test.mjs` (the stand-in planner
   answers a road with a corner when asked in full: the trip keeps the corner). Only on the test copies until the functions are
   deployed; live's `enroute` (pinned at `a4f2da6`) still asks the simplified road.
+  Two road planners (Hassan, same day: « yes add it just in case »; on live 3 trips of 39 had no road at all, the planner had not
+  answered): `route()` asks OSRM's own server, then its FOSSGIS copy (`routing.openstreetmap.de/routed-car`, the same two and the
+  same order as the app's maps), each waited 6 s at most, then the straight-line estimate as before; `route_source` says `osrm`,
+  `osrm-backup` or `line`. A copy of the server with `OSRM_BASE` set (the tests) asks `<OSRM_BASE>-backup` as its second planner,
+  never the real one (`OSRM_BACKUP_BASE` names another); the stand-in fails on demand (`/control?osrm=fail`, `?osrm_backup=fail`).
 
 ## Ideas not done yet
 

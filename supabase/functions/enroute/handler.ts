@@ -29,23 +29,41 @@ function km(a: Pt, b: Pt) {
   const d = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(d)));
 }
-/** the road route (OSRM), or a straight line estimate when it does not answer. The road is asked in FULL (every bend
-    of every street) and thinned to the points that shape it (thinRoad): the customer's map shows the streets the truck
-    takes, not a line across the blocks (OSRM's « simplified » road: about 15 points for 9 km). */
+/** how long one road planner is waited for (the app waits 40 s for « Je pars »: two planners fit well inside) */
+const ROAD_WAIT_MS = 6000;
+/** the road planners, asked in this order: OSRM's own server, then its FOSSGIS copy when the first does not answer
+    (the same two, in the same order, as the app's own maps: src/shared/map/roads.ts). Hassan, 2026-11-21: « yes add it
+    just in case »: 3 of the last 39 trips on live had no road at all, the first planner had not answered.
+    A copy of the server whose first planner is sent elsewhere (OSRM_BASE: the tests) never reaches the real second
+    one: its second planner is then « <OSRM_BASE>-backup », unless OSRM_BACKUP_BASE names it. */
+function planners(): { base: string; source: string }[] {
+  const first = env('OSRM_BASE');
+  const second = env('OSRM_BACKUP_BASE') || (first ? `${first}-backup` : 'https://routing.openstreetmap.de/routed-car');
+  return [{ base: first || 'https://router.project-osrm.org', source: 'osrm' }, { base: second, source: 'osrm-backup' }];
+}
+
+/** the road route (OSRM, then its copy), or a straight line estimate when neither answers. The road is asked in FULL
+    (every bend of every street) and thinned to the points that shape it (thinRoad): the customer's map shows the streets
+    the truck takes, not a line across the blocks (OSRM's « simplified » road: about 15 points for 9 km). */
 export async function route(a: Pt, b: Pt): Promise<{ km: number; minutes: number; line: [number, number][]; source: string }> {
-  try {
-    const u = `${env('OSRM_BASE', 'https://router.project-osrm.org')}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
-    const r = await withTimeout(fetch(u, { headers: { 'User-Agent': 'his-garage-app' } }), 8000, 'calcul de trajet');
-    const d = await r.json();
-    const rt = d?.routes?.[0];
-    if (!rt) throw new Error('no route');
-    const line = thinRoad((rt.geometry?.coordinates || []).map(([x, y]: [number, number]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5] as [number, number]));
-    if (line.length < 2) throw new Error('no road');
-    return { km: Math.round(rt.distance / 100) / 10, minutes: Math.max(1, Math.round((rt.duration / 60) * 1.2)), line, source: 'osrm' };
-  } catch {
-    const d = km(a, b) * 1.35;
-    return { km: Math.round(d * 10) / 10, minutes: Math.max(2, Math.round((d / 30) * 60 + 2)), line: [[a.lat, a.lng], [b.lat, b.lng]], source: 'line' };
+  for (const p of planners()) {
+    try {
+      const u = `${p.base}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
+      const r = await withTimeout(fetch(u, { headers: { 'User-Agent': 'his-garage-app' } }), ROAD_WAIT_MS, 'calcul de trajet');
+      // a planner that is down or too busy answers 5xx or 429, often with a page that is not JSON: the next one
+      if (!r.ok) { await r.body?.cancel().catch(() => undefined); throw new Error(`planner ${r.status}`); }
+      const d = await r.json();
+      const rt = d?.routes?.[0];
+      if (!rt || !Number.isFinite(Number(rt.distance)) || !Number.isFinite(Number(rt.duration))) throw new Error('no route');
+      const line = thinRoad((rt.geometry?.coordinates || []).map(([x, y]: [number, number]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5] as [number, number]));
+      if (line.length < 2) throw new Error('no road');
+      return { km: Math.round(rt.distance / 100) / 10, minutes: Math.max(1, Math.round((rt.duration / 60) * 1.2)), line, source: p.source };
+    } catch (e) {
+      console.error('enroute route', p.source, (e as Error)?.message || String(e));
+    }
   }
+  const d = km(a, b) * 1.35;
+  return { km: Math.round(d * 10) / 10, minutes: Math.max(2, Math.round((d / 30) * 60 + 2)), line: [[a.lat, a.lng], [b.lat, b.lng]], source: 'line' };
 }
 
 /** the garage's texts without an arrival time fall back to these (the owner may have erased the template) */

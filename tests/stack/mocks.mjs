@@ -42,7 +42,7 @@ function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'gar
   const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
   return `${head}.${body}.${sig}`;
 }
-const state = { ghl: 'ok', ghlMs: 0, stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map() };
+const state = { ghl: 'ok', ghlMs: 0, stripe: 'ok', osrm: 'ok', osrmBackup: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map() };
 const chat = (cid) => { if (!state.chats.has(cid)) state.chats.set(cid, []); return state.chats.get(cid); };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
@@ -90,7 +90,9 @@ http.createServer(async (req, res) => {
     if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl');
     if (u.searchParams.get('stripe')) state.stripe = u.searchParams.get('stripe');
     if (u.searchParams.has('ghl_ms')) state.ghlMs = Math.max(0, Number(u.searchParams.get('ghl_ms')) || 0);
-    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe });
+    if (u.searchParams.get('osrm')) state.osrm = u.searchParams.get('osrm');
+    if (u.searchParams.get('osrm_backup')) state.osrmBackup = u.searchParams.get('osrm_backup');
+    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe, osrm: state.osrm, osrm_backup: state.osrmBackup });
   }
 
   // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
@@ -264,13 +266,18 @@ http.createServer(async (req, res) => {
   if (p === '/github/jwks') return send(res, 200, { keys: [ghJwk] });
   if (p === '/github/token') { const o = Object.fromEntries(u.searchParams); if (o.audience) o.aud = o.audience; delete o.audience; return send(res, 200, { value: ghToken(o) }); }
 
-  // ---- OSRM ----
-  if (p.startsWith('/osrm/route/v1/driving/')) {
+  // ---- OSRM, and its second server (« <OSRM_BASE>-backup »: the FOSSGIS copy on live) ----
+  // GET /control?osrm=fail makes the first planner answer 503 (a page that is not JSON), ?osrm_backup=fail the second;
+  // =ok puts each back.
+  for (const [prefix, svc, key] of [['/osrm/route/v1/driving/', 'osrm', 'osrm'], ['/osrm-backup/route/v1/driving/', 'osrm-backup', 'osrmBackup']]) {
+    if (!p.startsWith(prefix)) continue;
     const pts = p.split('/').pop().split(';').map((x) => x.split(',').map(Number));
     const [[x1, y1], [x2, y2]] = pts;
     const km = Math.hypot((x2 - x1) * 78, (y2 - y1) * 111) * 1.25;
     const overview = u.searchParams.get('overview') || 'simplified';
-    log.push({ svc: 'osrm', pts, overview });
+    const failed = state[key] === 'fail';
+    log.push({ svc, pts, overview, ...(failed ? { failed: true } : {}) });
+    if (failed) { res.writeHead(503, { 'content-type': 'text/html' }); return res.end('<html><body>503 Service Unavailable</body></html>'); }
     // the road in full, as the real planner gives it: by the streets (east or west first, a corner, then north or
     // south), a point every 1/40 of each street. « simplified »: the planner's rough line, which cuts the corner.
     const along = (ax, ay, bx, by) => Array.from({ length: 40 }, (_, i) => [ax + ((bx - ax) * (i + 1)) / 40, ay + ((by - ay) * (i + 1)) / 40]);
