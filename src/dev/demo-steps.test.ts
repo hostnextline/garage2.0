@@ -111,12 +111,15 @@ describe('booking in block mode', () => {
     expect(code(() => call('book_job', { p_job: { id: 'f4', customer_id: 'c-julie', day, block: 'pm', truck_id: 't-complet', force: true }, p_items: [] }))).toBe('not_allowed');
   });
   it('« Laisser l’app choisir » un-pins; a change of truck in the same block keeps the confirmation (demo-17)', () => {
-    put('jobs', { id: 'j-t2', truck_pinned: true, confirm_sent_at: '2026-01-01T12:00:00.000Z' });
-    const r = call('move_job', { p_job: 'j-t2', p_day: D(1), p_block: 'pm', p_truck: null });
+    // on a day the garage works: the demo's own « tomorrow » is a closed Sunday when this runs on a Saturday
+    // (red on 2026-11-21 for that reason alone: « Ce bloc est fermé ce jour-là »)
+    const day = freeTuesday();
+    put('jobs', { id: 'j-t2', day, block: 'pm', truck_pinned: true, confirm_sent_at: '2026-01-01T12:00:00.000Z' });
+    const r = call('move_job', { p_job: 'j-t2', p_day: day, p_block: 'pm', p_truck: null });
     expect(r).toMatchObject({ changed: false, tell: false });
     expect(find('jobs', 'j-t2')!.truck_pinned).toBe(false);
     expect(find('jobs', 'j-t2')!.confirm_sent_at).toBe('2026-01-01T12:00:00.000Z');
-    expect(call('move_job', { p_job: 'j-t2', p_day: D(1), p_block: 'pm', p_truck: null }).unchanged).toBe(true);
+    expect(call('move_job', { p_job: 'j-t2', p_day: day, p_block: 'pm', p_truck: null }).unchanged).toBe(true);
   });
   it('a move to another day tells the customer (R23: tell)', () => {
     const r = call('move_job', { p_job: 'j-t2', p_day: freeTuesday(), p_block: 'pm', p_truck: null });

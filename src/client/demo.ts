@@ -11,7 +11,7 @@
      client.html?demo#reserver          « Réserver en ligne » (demo-book-closed in sessionStorage: closed)
      client.html?demo#reserver&plages=1 the same with « Plages d’arrivée » (4-hour windows; last name « plein »: the window was just taken)
      client.html?demo#t=demo-window     booked with a window (« Entre 14 h et 18 h »)        demo-flex: free all day, the window comes the day before
-     client.html?demo#suivi=demo        the truck on the way (drives the way in 2 min 30, a position every 10 s)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
+     client.html?demo#suivi=demo        the truck on the way (a real road, driven in 2 min 30, a position every 10 s)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
 import { SUPABASE_URL } from '../lib/config';
 import { totals } from '../lib/money';
 import { addDays, today, longDay } from '../lib/dates';
@@ -218,12 +218,19 @@ function bookAnswer(b: Record<string, unknown>): Answer {
 }
 
 /* ---------- the truck on the way ---------- */
-const WAY: [number, number][] = [[45.5005, -73.6577], [45.5033, -73.6604], [45.5061, -73.6612], [45.5089, -73.6619], [45.5112, -73.6628], [45.5139, -73.6637],
-  [45.5162, -73.6644], [45.5188, -73.6651], [45.5213, -73.6659], [45.5241, -73.6672], [45.5266, -73.6684], [45.5289, -73.6694], [45.5307, -73.6702]];
+/* the road of the pretend trip: a REAL road between its two ends, asked once to the road planner in full and thinned by
+   the server's own rule (supabase/functions/_shared/road.ts, thinRoad: 346 points → these 34, never more than 3 m from
+   the street), so the demo draws what a customer sees on a real job: the streets the truck takes, not a straight line */
+const WAY: [number, number][] = [[45.50053, -73.65755], [45.49956, -73.65721], [45.49913, -73.66009], [45.50007, -73.66163], [45.5005, -73.6622], [45.5011, -73.66288],
+  [45.5022, -73.6639], [45.5026, -73.66411], [45.50336, -73.66406], [45.50417, -73.6645], [45.50449, -73.66458], [45.50608, -73.6636], [45.50711, -73.66285],
+  [45.50774, -73.66253], [45.50803, -73.66333], [45.50815, -73.66383], [45.50972, -73.6687], [45.50998, -73.6693], [45.51098, -73.67133], [45.51157, -73.67242],
+  [45.51405, -73.67633], [45.51501, -73.67799], [45.51621, -73.67992], [45.52067, -73.67423], [45.52101, -73.67384], [45.52147, -73.67349], [45.52381, -73.67193],
+  [45.52737, -73.66973], [45.52782, -73.67115], [45.53024, -73.66974], [45.5304, -73.66974], [45.53056, -73.66983], [45.53067, -73.66997], [45.53074, -73.67017]];
 /* the pretend mechanic leaves at the page's first question and drives the whole way in DRIVE_S (much faster than the
-   14 minutes planned, so the live arrival is seen going down); his phone sends its position every PHONE_S, as the real
-   one does while driving. eta_at is fixed when he leaves, as the server does. */
-const PLANNED_MIN = 14;
+   11 minutes planned, so the live arrival is seen going down); his phone sends its position every PHONE_S, as the real
+   one does while driving. eta_at is fixed when he leaves, as the server does. (5.1 km and 11 min: what the server
+   counts for this road, the planner's time + 20 %.) */
+const PLANNED_MIN = 11;
 const DRIVE_S = 150;
 const PHONE_S = 10;
 let leftAt = 0;
@@ -243,7 +250,7 @@ function wayAt(f: number): [number, number] {
 }
 function trackAnswer(token: string) {
   const now = new Date();
-  const base = { garage: { name: GARAGE.name, phone: GARAGE.phone }, mechanic: 'Adam', customer: 'Amira', lang: 'fr', now: now.toISOString(), km: 6.2, minutes: PLANNED_MIN };
+  const base = { garage: { name: GARAGE.name, phone: GARAGE.phone }, mechanic: 'Adam', customer: 'Amira', lang: 'fr', now: now.toISOString(), km: 5.1, minutes: PLANNED_MIN };
   // the appointment's own link opens its trip too, as public_track does (« Suivre le camion » of demo-route)
   const key = token === 'demo' || token === 'demo-route' ? 'demo-active' : token;
   if (key === 'demo-active' || key === 'demo-nopos') {

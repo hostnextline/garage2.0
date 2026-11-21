@@ -269,8 +269,13 @@ http.createServer(async (req, res) => {
     const pts = p.split('/').pop().split(';').map((x) => x.split(',').map(Number));
     const [[x1, y1], [x2, y2]] = pts;
     const km = Math.hypot((x2 - x1) * 78, (y2 - y1) * 111) * 1.25;
-    log.push({ svc: 'osrm', pts });
-    return send(res, 200, { code: 'Ok', routes: [{ distance: km * 1000, duration: (km / 32) * 3600, geometry: { coordinates: [[x1, y1], [(x1 + x2) / 2, (y1 + y2) / 2], [x2, y2]] } }] });
+    const overview = u.searchParams.get('overview') || 'simplified';
+    log.push({ svc: 'osrm', pts, overview });
+    // the road in full, as the real planner gives it: by the streets (east or west first, a corner, then north or
+    // south), a point every 1/40 of each street. « simplified »: the planner's rough line, which cuts the corner.
+    const along = (ax, ay, bx, by) => Array.from({ length: 40 }, (_, i) => [ax + ((bx - ax) * (i + 1)) / 40, ay + ((by - ay) * (i + 1)) / 40]);
+    const coordinates = overview === 'full' ? [[x1, y1], ...along(x1, y1, x2, y1), ...along(x2, y1, x2, y2)] : [[x1, y1], [(x1 + x2) / 2, (y1 + y2) / 2], [x2, y2]];
+    return send(res, 200, { code: 'Ok', routes: [{ distance: km * 1000, duration: (km / 32) * 3600, geometry: { coordinates } }] });
   }
   // ---- Hermes (the owner's assistant, OpenAI-compatible): answers « Réponse à : <the last question> » ----
   if (p === '/hermes/v1/chat/completions' && req.method === 'POST') {

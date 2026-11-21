@@ -236,6 +236,11 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   assert.equal(t.mechanic, 'Adam');
   assert.ok(t.pos, 'the truck is on the map');
   assert.ok(Array.isArray(t.route) && t.route.length >= 2);
+  // the road the customer sees is the real one, by the streets: the planner was asked for it in FULL (the stand-in
+  // answers 81 points: west along the first street, a corner, north along the second), and the trip keeps the points
+  // that shape it: where the truck is, the corner, the customer's door. Never the « simplified » line that cuts the corner.
+  assert.deepEqual((await mockLog()).filter((x) => x.svc === 'osrm').map((x) => x.overview), ['full'], 'the road is asked in full');
+  assert.deepEqual(t.route, [[45.5, -73.66], [45.5, -73.61], [45.53, -73.61]], 'the corner of the two streets is on the customer’s map: ' + JSON.stringify(t.route));
   // arriving ends the tracking
   await rpc('job_step', { p_op: randomUUID(), p_job: job, p_action: 'arrive', p_data: {} }, jwt);
   assert.equal((await rpc('public_track', { p_token: tokenOf(r.link) }, K.anon)).status, 'arrived');

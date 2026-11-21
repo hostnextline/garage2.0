@@ -445,6 +445,21 @@ end $do$;
   `src/dev/demo-extra/timesheet.ts`. On a fresh database the file runs after the six forward migrations (`20261116000050` …
   `000500`); the end state is the same as on live, where it ran before them (the D1 grant loop of `000300` only goes over its
   own list of names, which does not hold `hours_all`, `shift_save`, `shift_remove`; the migration grants them itself).
+- The customer's tracking page, live (`client.html#suivi=…`, `src/client/track/`; asked by Hassan on 2026-11-20: « see the mechanic
+  moving in real time, smoothly, as if there was no refresh »; no server change for that part): `useTrack` asks `public_track` every
+  5 s (15 / 30 / 60 s after failures, nothing while the page is hidden), the truck glides from one position to the next along the
+  road's bends (`glide.ts`, requestAnimationFrame), the map does not refit, and the arrival is live (`liveEta`: what is left of the
+  road over its length × the planned minutes, kept calm; the server's `eta_at` when the position is over 2 min old or over 400 m
+  from the road).
+  The road itself is the REAL one (2026-11-21, Hassan on the first picture: « it's a straight line, it doesn't show the actual
+  route »): « Je pars » (`enroute`, `route()`) asks OSRM for the road in FULL (`overview=full`) and keeps the points that shape it
+  (`supabase/functions/_shared/road.ts`, `thinRoad`: a point is dropped only when the line passes within 3 m of it, 400 points at
+  most, the smallest bends first on a very long road; 5 km of city = about 35 points, 47 km = about 140). Before, the « simplified »
+  road was asked: about 15 points for 9 km on live (39 trips looked at), up to 15 m off the streets on a short trip and over 100 m
+  on a long one. The team's « Carte » draws the same line. The demo's pretend trip (`src/client/demo.ts`, `WAY`) is a real road
+  thinned the same way. Tests: `src/client/track/server-road.test.ts`, and `tests/api/functions.test.mjs` (the stand-in planner
+  answers a road with a corner when asked in full: the trip keeps the corner). Only on the test copies until the functions are
+  deployed; live's `enroute` (pinned at `a4f2da6`) still asks the simplified road.
 
 ## Ideas not done yet
 

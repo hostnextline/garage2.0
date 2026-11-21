@@ -20,6 +20,7 @@ import { newToken, sha256hex } from '../_shared/tokens.ts';
 import { baseOf, trackLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
 import { clock, fill, first, localMinute, type Lang } from '../_shared/texts.ts';
+import { thinRoad } from '../_shared/road.ts';
 
 interface Pt { lat: number; lng: number }
 const okPt = (p: unknown): p is Pt => !!p && typeof (p as Pt).lat === 'number' && typeof (p as Pt).lng === 'number' && Math.abs((p as Pt).lat) <= 90 && Math.abs((p as Pt).lng) <= 180;
@@ -28,16 +29,18 @@ function km(a: Pt, b: Pt) {
   const d = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(d)));
 }
-/** the road route (OSRM), or a straight line estimate when it does not answer */
+/** the road route (OSRM), or a straight line estimate when it does not answer. The road is asked in FULL (every bend
+    of every street) and thinned to the points that shape it (thinRoad): the customer's map shows the streets the truck
+    takes, not a line across the blocks (OSRM's « simplified » road: about 15 points for 9 km). */
 export async function route(a: Pt, b: Pt): Promise<{ km: number; minutes: number; line: [number, number][]; source: string }> {
   try {
-    const u = `${env('OSRM_BASE', 'https://router.project-osrm.org')}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=simplified&geometries=geojson`;
+    const u = `${env('OSRM_BASE', 'https://router.project-osrm.org')}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
     const r = await withTimeout(fetch(u, { headers: { 'User-Agent': 'his-garage-app' } }), 8000, 'calcul de trajet');
     const d = await r.json();
     const rt = d?.routes?.[0];
     if (!rt) throw new Error('no route');
-    let line = (rt.geometry?.coordinates || []).map(([x, y]: [number, number]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5] as [number, number]);
-    if (line.length > 250) { const step = Math.ceil(line.length / 250); line = line.filter((_: unknown, i: number) => i % step === 0 || i === line.length - 1); }
+    const line = thinRoad((rt.geometry?.coordinates || []).map(([x, y]: [number, number]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5] as [number, number]));
+    if (line.length < 2) throw new Error('no road');
     return { km: Math.round(rt.distance / 100) / 10, minutes: Math.max(1, Math.round((rt.duration / 60) * 1.2)), line, source: 'osrm' };
   } catch {
     const d = km(a, b) * 1.35;
