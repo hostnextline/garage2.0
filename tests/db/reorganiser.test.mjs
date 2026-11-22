@@ -335,7 +335,7 @@ test('D5 today: the stops done and under way stay first, never moved; the order 
    D6 — order by hand, trucks, minutes pointed
    ------------------------------------------------------------------------------------------------------------------ */
 
-test('D6 after a save: no order by hand; truck_pinned only where the truck changed; a minute kept when it holds, lost when pushed past it; a DRAGGED stop with a minute: pin_lost + pin_moved, refused unless accepted', () => tx(async (h) => {
+test('D6 after a save: no order by hand; truck_pinned where the truck changed (and, Part 29, on every dragged stop); a minute kept when it holds, lost when pushed past it; a DRAGGED stop (Part 29, G1): pointed at the hour of its new place (pin_new, pin_was its old minute, accept.at), refused unless accepted', () => tx(async (h) => {
   const w = await world(h, { jobs: { A: { t: 'tk', ws: 480 }, B: { t: 'tk', ws: 600, arrive_at: 660 }, C: { t: 'tk', ws: 720, arrive_at: 730 },
     D: { t: 'tk', ws: 840, arrive_at: 900, dur: 120 }, E: { t: 'tk2', ws: 540 }, F: { t: 'tk2', ws: 720 } } });
   await set(h, w.ids.A, { manual_order: 1 });
@@ -347,18 +347,22 @@ test('D6 after a save: no order by hand; truck_pinned only where the truck chang
   const [sa, sb, sd, sc, sf] = [w.ids.A, w.ids.B, w.ids.D, w.ids.C, w.ids.F].map((id) => stopOf(p, id));
   assert.deepEqual([sa.eta, sb.eta, sd.eta, sc.eta, sf.eta], [480, 660, 725, 850, 915], 'A 8 h, B at its 11 h, D right after, C pushed, F last');
   assert.deepEqual([sb.pin, sb.pin_lost], [660, null], 'B keeps its minute');
-  assert.deepEqual([sd.pin, sd.pin_lost, sd.pin_moved], [null, 900, true], 'D dragged: its minute goes, said');
+  // Part 29 (G1; Part 28 said « pin_lost 900, pin_moved »): D dragged takes the hour of its new place, 12 h 05, pointed there
+  assert.deepEqual([sd.pin, sd.pin_lost, sd.pin_moved, sd.pin_new, sd.pin_was], [725, null, false, true, 900], 'D dragged: pointed at its new place, its old 15 h said');
   assert.deepEqual([sc.pin, sc.pin_lost, sc.pin_moved], [null, 730, false], 'C pushed past 12 h 10: its minute no longer holds');
-  assert.deepEqual(p.accept.pins, { [w.ids.D]: 900, [w.ids.C]: 730 });
+  assert.deepEqual(p.accept.pins, { [w.ids.C]: 730 }, 'Part 29: only the minute lost (Part 28: D 900 too)');
+  assert.deepEqual(p.accept.at, { [w.ids.D]: 725, [w.ids.F]: 915 }, 'Part 29: the dragged stops’ minutes');
   assert.deepEqual(sd.new_win, await winFor(h, 725));
-  const noPin = { ...p.accept, pins: { [w.ids.C]: 730 } };
+  const noPin = { ...p.accept, at: { [w.ids.F]: 915 } };
   const e = await h.fails(() => save(h, w.day, lists, { moved, was: b.was, accept: noPin }));
-  assert.equal(e?.hint, 'outcome_changed', 'the dragged stop’s minute was not accepted');
+  assert.equal(e?.hint, 'outcome_changed', 'the dragged stop’s minute was not accepted');   // (Part 29: its new minute, accept.at)
   assert.deepEqual(JSON.parse(e.detail).accept, p.accept, 'the refusal carries the whole answer');
   assert.equal((await save(h, w.day, lists, { moved, was: b.was, accept: p.accept })).saved, true);
   for (const k of ['A', 'B', 'C', 'D', 'F']) assert.equal((await row(h, w.ids[k])).manual_order, null, `${k}: no order by hand`);
   assert.deepEqual([(await row(h, w.ids.F)).truck_pinned, (await row(h, w.ids.A)).truck_pinned, (await row(h, w.ids.E)).truck_pinned], [true, false, false]);
-  assert.deepEqual([(await row(h, w.ids.B)).arrive_at, (await row(h, w.ids.C)).arrive_at, (await row(h, w.ids.D)).arrive_at], [660, null, null]);
+  // Part 29: D written at its new minute (Part 28: null), on the vehicle he put it on
+  assert.deepEqual([(await row(h, w.ids.B)).arrive_at, (await row(h, w.ids.C)).arrive_at, (await row(h, w.ids.D)).arrive_at, (await row(h, w.ids.F)).arrive_at], [660, null, 725, 915]);
+  assert.equal((await row(h, w.ids.D)).truck_pinned, true, 'Part 29: a dragged stop stays on its vehicle');
   assert.equal((await row(h, w.ids.F)).vehicle_kind, 'truck', 'its kind follows the vehicle');
 }));
 
@@ -407,7 +411,7 @@ test('D8 pushed past its window → the window of its arrival; still inside → 
   assert.equal((await row(h, w.ids.B)).hand_at, null);
 }));
 
-test('D8 flexible: tomorrow after 18 h → its window at the save (win_flex kept); 3 days ahead → stays flexible (flex_later)', () => tx(async (h) => {
+test('D8 flexible: tomorrow after 18 h → its window at the save (win_flex kept); 3 days ahead, or tomorrow before 18 h → stays flexible (flex_later) unless he DRAGGED it (Part 29, D5: then its window at the save, on any day)', () => tx(async (h) => {
   const tomorrow = await h.val(`select (public.local_today() + 1)::text`);
   for (const [day, at, want] of [[tomorrow, 1100, 'fixed'], [await h.val(`select (public.local_today() + 3)::text`), 1100, 'later'], [tomorrow, 900, 'later']]) {
     await h.c.query('savepoint d');
@@ -426,8 +430,15 @@ test('D8 flexible: tomorrow after 18 h → its window at the save (win_flex kept
       const rg = await row(h, w.ids.G);
       assert.deepEqual([rg.win_start, rg.win_end, rg.win_flex], [480, 720, true]);
     } else {
-      assert.deepEqual([sg.flex_fixed, sg.flex_later, sg.new_win], [false, true, null], `${day} at ${at}: « sa plage se fixe la veille à 18 h »`);
-      assert.equal((await save(h, day, lists, { moved: [w.ids.G], was: b.was, accept: p.accept })).saved, true);
+      // Part 29 (D5; Part 28 said flex_later here): he DRAGGED G, he chose its hour → its window now, pointed there
+      assert.deepEqual([sg.flex_fixed, sg.flex_later, sg.new_win, sg.pin, sg.pin_new], [true, false, await winFor(h, 480), 480, true], `${day} at ${at}: dragged → its window`);
+      assert.deepEqual(p.accept.flex, { [w.ids.G]: 480 });
+      // a flexible stop he did NOT drag (B dragged first instead): still « sa plage se fixe la veille à 18 h »
+      const l2 = moveIn(b.lists, w.ids.B, w.tk, 0);
+      const q = await preview(h, day, l2, { moved: [w.ids.B], was: b.was });
+      const qg = stopOf(q, w.ids.G);
+      assert.deepEqual([qg.flex_fixed, qg.flex_later, qg.new_win, qg.pin], [false, true, null, null], `${day} at ${at}: « sa plage se fixe la veille à 18 h »`);
+      assert.equal((await save(h, day, l2, { moved: [w.ids.B], was: b.was, accept: q.accept })).saved, true);
       assert.equal((await row(h, w.ids.G)).win_start, null);
     }
     await h.c.query('rollback to savepoint d');
@@ -440,7 +451,8 @@ test('D8 TOLD: told 9 h à 13 h, planned 13 h à 17 h by an earlier save: a save
   let b = await basis(h, w, [w.tk]);
   const p = await preview(h, w.day, b.lists, { was: b.was });
   const sb = stopOf(p, w.ids.B);
-  assert.equal(sb.eta, 545, 'held to the window she was told (9 h), right after A');
+  // Part 29 (G2; Part 28 held her to 9 h, 545): a stop he did not drag keeps her arrival, 13 h — the end of what she was told
+  assert.equal(sb.eta, 780, 'she keeps her hour (never pulled earlier)');
   assert.deepEqual([sb.win, sb.new_win, sb.win_back], [[780, 1020], [540, 780], true]);
   assert.deepEqual(p.accept.windows, {}, 'back to what she was told: not a warning');
   assert.equal((await save(h, w.day, b.lists, { was: b.was, accept: {} })).saved, true, 'saved with nothing to accept');
@@ -518,9 +530,11 @@ test('D9 the evening lock after a save of tomorrow after 18 h has nothing to fix
   const a3 = await put(h, { customer_id: c, day: d3, truck_id: w.tk, stop_order: 2, win_start: 600, win_end: 840, lat: HERE[0], lng: HERE[1] });
   b = await basis(h, w, [w.tk], d3);
   lists = [{ truck: w.tk, block: 'day', jobs: [a3, f3] }];
-  p = await preview(h, d3, lists, { moved: [f3], was: b.was });
+  // (Part 29, D5: a flexible stop he DRAGS gets its window at the save; here he drags the other one, a3, before it, so f3,
+  // not dragged, stays flexible — Part 28 dragged f3 itself)
+  p = await preview(h, d3, lists, { moved: [a3], was: b.was });
   assert.equal(stopOf(p, f3).flex_later, true);
-  assert.equal((await save(h, d3, lists, { moved: [f3], was: b.was, accept: p.accept })).saved, true);
+  assert.equal((await save(h, d3, lists, { moved: [a3], was: b.was, accept: p.accept })).saved, true);
   assert.equal((await row(h, f3)).win_start, null);
   const lock3 = await sval(h, `select public.lock_windows_core($1::date) v`, [d3]);
   assert.equal(lock3.fixed, 1, 'the evening lock fixes it (and plans that day: the cost said in Q4)');
@@ -921,7 +935,9 @@ const FILE = MIG + '20261122000100_reorganiser.sql';
 test('D18 Part 27 untouched: no function its generator copies (nor the off test’s list) is written again here, no « alter function », no pg_get_functiondef; the generator still makes exactly the applied file', () => {
   const sql = readFileSync(FILE, 'utf8');
   assert.match(sql.split('\n')[0], /^-- Part 28 — Réorganiser la journée et Envoyer les heures aux clients/);
-  assert.equal(readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort().at(-1), '20261122000100_reorganiser.sql', 'after every migration');
+  // after every migration but Part 29's (20261122000200_garder_ordre.sql, tests/db/reorganiser-garde.test.mjs), the one after it
+  const all = readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort();
+  assert.deepEqual(all.slice(all.indexOf('20261122000100_reorganiser.sql')), ['20261122000100_reorganiser.sql', '20261122000200_garder_ordre.sql'], 'Part 28, then only Part 29');
   const copied = ['route_walk_in', 'route_cost', 'route_retime', 'plan_route', 'day_drive', 'suggest_core', 'suggest_windows_core', 'web_suggest', 'web_windows',
     'book_job', 'move_job', 'lock_windows_core', 'plan_late_new', 'plan_inputs', 'customers_replan_on_position', 'replan_block_safe', 'apply_plan', 'log_activity',
     'stop_order_one', 'windows_switch', 'drive_min', 'route_hold', 'route_mark', 'eta_known', 'exact_works', 'plan_block', 'win_for', 'roads_on', 'roads_no'];

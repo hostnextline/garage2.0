@@ -5,7 +5,7 @@ import { FakeServer, clientFor } from './testkit';
 import { startSync, stopSync, net, syncOptions } from './sync';
 import { setNet } from './net';
 import { getRow } from './store';
-import { dayAnswer, dayOrderPreview, dayOrderSave, dayRefusal, dropDraft, isDeadlock, isLockBusy, isNoAnswer, keepDraft, keptDraft, needsConfirm, type DayAnswer } from './dayOrder';
+import { dayAnswer, dayOrderPreview, dayOrderSave, dayRefusal, dropDraft, isDeadlock, isLockBusy, isNoAnswer, keepDraft, keptDraft, needsConfirm, newWinOf, newWindows, pushedOf, repinnedOf, type DayAnswer } from './dayOrder';
 
 let srv: FakeServer;
 let n = 0;
@@ -85,6 +85,69 @@ describe('the preview and the save (§1.4)', () => {
     setNet({ online: false });
     await expect(dayOrderSave(ASK, {}, 'op-2')).rejects.toMatchObject({ kind: 'network' });
     expect(net.value.pending).toBe(0);
+  });
+});
+
+describe('Part 29: the stop dragged keeps the hour of its new place (drag-keeps-spec.md §4.2, §5)', () => {
+  // B dragged down after E: pinned at 15 h 29 (its old pin 9 h 15 replaced); E's late pin pinned again at its arrival (D2);
+  // F pushed inside its window; an older server's answer reads as before
+  const P29 = {
+    ...ANSWER,
+    stops: [
+      { id: 'B', truck_id: 't1', truck_before: 't1', block: 'day', order: 5, order_before: 2, eta: 929, eta_before: 569, measured: null, win: [870, 1110], new_win: [870, 1110], win_back: false, flex_fixed: false, flex_later: false, late_min: null, early_min: null, pin: 929, pin_lost: null, pin_moved: false, pin_new: true, pin_was: 555 },
+      { id: 'E', truck_id: 't1', truck_before: 't1', block: 'day', order: 4, order_before: 5, eta: 878, eta_before: 878, measured: null, win: [795, 1035], new_win: null, win_back: false, flex_fixed: false, flex_later: false, late_min: null, early_min: null, pin: 878, pin_lost: null, pin_moved: false, pin_new: false, pin_was: 875 },
+      { id: 'F', truck_id: 't1', truck_before: 't1', block: 'day', order: 6, order_before: 6, eta: 1044, eta_before: 932, measured: null, win: [870, 1110], new_win: null, win_back: false, flex_fixed: false, flex_later: false, late_min: null, early_min: null, pin: null, pin_lost: null, pin_moved: false, pin_new: false, pin_was: null }
+    ],
+    accept: { windows: { B: 870 }, flex: {}, late: {}, early: {}, pins: {}, over: {}, at: { B: 929, E: 878 } }
+  };
+  it('pin_new, pin_was and accept.at are read; accept.at goes back raw with the save', () => {
+    const a = dayAnswer(P29) as DayAnswer;
+    expect(a.byId.get('B')).toMatchObject({ pinNew: true, pinWas: 555, pin: 929, eta: 929, etaBefore: 569, pinLost: null });
+    expect(a.byId.get('E')).toMatchObject({ pinNew: false, pinWas: 875, pin: 878 });
+    expect(a.byId.get('F')).toMatchObject({ pinNew: false, pinWas: null, pin: null });
+    expect(a.accept.at).toEqual({ B: 929, E: 878 });
+    expect(a.acceptRaw).toEqual(P29.accept);
+    // an older server (Part 28): no such keys, read as nothing new
+    const old = dayAnswer(ANSWER) as DayAnswer;
+    expect(old.byId.get('j2')).toMatchObject({ pinNew: false, pinWas: null });
+    expect(old.accept.at).toEqual({});
+  });
+  it('a minute pinned is never a warning on its own (needsConfirm does not read accept.at); a « new window » equal to the one it has is none (F4)', () => {
+    const a = dayAnswer(P29) as DayAnswer;
+    expect(newWinOf(a.byId.get('B')!)).toBeNull();
+    expect(newWindows(a)).toEqual([]);
+    // B alone (dragged, pinned): no warning
+    const alone = dayAnswer({ ...P29, stops: P29.stops.filter((x) => x.id === 'B'), accept: { ...P29.accept, at: { B: 929 } } }) as DayAnswer;
+    expect(needsConfirm(alone, { moved: ['B'] })).toBe(false);
+    const real = dayAnswer({ ...P29, stops: P29.stops.map((x) => (x.id === 'B' ? { ...x, win: [480, 720] } : x)) }) as DayAnswer;
+    expect(newWinOf(real.byId.get('B')!)).toEqual([870, 1110]);
+    expect(newWindows(real)).toEqual(['B']);
+    expect(needsConfirm(real)).toBe(true);
+    // a window entry for a stop the answer does not list is kept (said, warned)
+    expect(newWindows(dayAnswer({ ...P29, accept: { ...P29.accept, windows: { Z: 500 } } }) as DayAnswer)).toEqual(['Z']);
+  });
+  it('a stop NOT dragged pushed later (the lead\'s G2 « warn first », the reviews\' S1), or a late minute moved to its arrival (D2, F6), IS a warning; one dragged, one pushed by 4 min or less, an earlier one, a trip not measured or « Laisser l\'app choisir » is not', () => {
+    const a = dayAnswer(P29) as DayAnswer;
+    expect(pushedOf(a, { moved: ['B'] }).map((s) => s.id)).toEqual(['F']);
+    expect(repinnedOf(a).map((s) => s.id)).toEqual(['E']);
+    expect(needsConfirm(a, { moved: ['B'] })).toBe(true);
+    const of = (stops: Record<string, unknown>[]) => dayAnswer({ ...P29, stops, accept: { ...P29.accept, at: { B: 929 } } }) as DayAnswer;
+    const B = P29.stops[0], F = P29.stops[2];
+    expect(needsConfirm(of([B, F]), { moved: ['B'] })).toBe(true);
+    expect(needsConfirm(of([B, F]), { moved: ['B', 'F'] })).toBe(false);                 // he dragged F too
+    expect(needsConfirm(of([B, { ...F, eta: F.eta_before + 4 }]), { moved: ['B'] })).toBe(false);
+    expect(needsConfirm(of([B, { ...F, eta: F.eta_before - 30 }]), { moved: ['B'] })).toBe(false);
+    expect(needsConfirm(of([B, { ...F, measured: false }]), { moved: ['B'] })).toBe(false);
+    expect(needsConfirm(of([B, F]), { moved: [], auto: true })).toBe(false);
+    expect(needsConfirm(of([B, { ...P29.stops[1] }]), { moved: ['B'] })).toBe(true);    // E: 875 → 878
+  });
+  it('the save sends accept.at back exactly as the preview gave it', async () => {
+    const got: Record<string, unknown>[] = [];
+    srv.rpc('day_order_save', (a) => { got.push(a); return { ...P29, saved: true }; });
+    await start();
+    const pv = dayAnswer(P29) as DayAnswer;
+    await dayOrderSave(ASK, pv.acceptRaw, 'op-29');
+    expect(got[0].p_accept).toEqual({ windows: { B: 870 }, flex: {}, late: {}, early: {}, pins: {}, over: {}, at: { B: 929, E: 878 } });
   });
 });
 

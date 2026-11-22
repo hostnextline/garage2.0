@@ -22,7 +22,9 @@ function start() {
   put('trucks', { id: V, tire_machine: false });
   const J = (id: string, truck: string, stop: number, ws: number | null, o: Partial<DemoRow> = {}) =>
     put('jobs', { id, number: 900 + stop + (truck === V ? 10 : 0), customer_id: 'c-julie', day: DAY, block: 'day', truck_id: truck, status: 'booked', stop_order: stop,
-      duration_min: truck === C ? 120 : 60, travel_min: 20, eta_min: 500 + stop * 80, win_start: ws, win_end: ws == null ? null : ws + 240, arrive_at: null, ...o });
+      // the arrivals a walk wrote (8 h + 20 min of road, then each 120-min job + 20 min): Part 29 holds a stop not dragged
+      // not before its arrival now
+      duration_min: truck === C ? 120 : 60, travel_min: 20, eta_min: truck === C ? 500 + (stop - 1) * 140 : 540, win_start: ws, win_end: ws == null ? null : ws + 240, arrive_at: null, ...o });
   J('r1', C, 1, 480); J('r2', C, 2, 480); J('r3', C, 3, 600);
   J('r4', V, 1, 540);
 }
@@ -100,3 +102,59 @@ describe('day_order_save: writes exactly what the preview showed', () => {
     expect(find('jobs', 'r2')!.hand_at ?? null).toBeNull();
   });
 });
+
+describe('Part 29: the stop dragged takes the hour of its new place and keeps it; the others keep theirs (drag-keeps-spec.md §5)', () => {
+  type S = { id: string; eta: number; eta_before: number | null; pin: number | null; pin_new: boolean; pin_was: number | null; new_win: [number, number] | null; win: [number, number] | null; pin_lost: number | null };
+  const byId = (a: ReturnType<typeof call>) => Object.fromEntries((a.stops as unknown as S[]).map((x) => [x.id, x]));
+  it('dragged DOWN (r1 last): r1 right after r3 (its end + the drive), pinned there (pin_new, accept.at); r2 and r3 keep their hour; a save without that minute is refused; saved: arrive_at, truck_pinned, his order', () => {
+    const eta0 = Object.fromEntries((call('day_order_preview', ask(['r1', 'r2', 'r3'], ['r4'])).stops as unknown as S[]).map((x) => [x.id, x.eta]));
+    const args = ask(['r2', 'r3', 'r1'], ['r4'], ['r1']);
+    const a = call('day_order_preview', args);
+    const s = byId(a);
+    expect([s.r2.eta, s.r3.eta]).toEqual([eta0.r2, eta0.r3]);
+    expect([s.r2.eta_before, s.r3.eta_before]).toEqual([eta0.r2, eta0.r3]);
+    expect(s.r1.eta).toBe(eta0.r3 + 120 + 20);
+    expect(s.r1).toMatchObject({ pin: s.r1.eta, pin_new: true, pin_was: null, pin_lost: null, eta_before: eta0.r1 });
+    expect(a.accept!.at).toEqual({ r1: s.r1.eta });
+    expect(a.accept!.pins).toEqual({});
+    expect(code(() => call('day_order_save', { ...args, p_accept: { ...a.accept, at: {} } }))).toBe('outcome_changed');
+    expect(find('jobs', 'r1')!.arrive_at ?? null).toBeNull();
+    call('day_order_save', { ...args, p_accept: a.accept });
+    expect(find('jobs', 'r1')).toMatchObject({ arrive_at: s.r1.eta, eta_min: s.r1.eta, truck_pinned: true, stop_order: 3, manual_order: null });
+    expect(find('jobs', 'r2')).toMatchObject({ stop_order: 1, eta_min: eta0.r2, arrive_at: null });
+    expect(find('jobs', 'r3')).toMatchObject({ stop_order: 2, eta_min: eta0.r3, arrive_at: null });
+    // opened again: the day as it is keeps r1 at its minute, nothing to accept
+    const again = byId(call('day_order_preview', ask(['r2', 'r3', 'r1'], ['r4'])));
+    expect(again.r1).toMatchObject({ eta: s.r1.eta, pin: s.r1.eta, pin_new: false });
+    // and the others stay at their hour (r2 is first now: walked from the garage it would come back to 8 h 20)
+    expect([again.r2.eta, again.r3.eta]).toEqual([eta0.r2, eta0.r3]);
+  });
+  it('dragged UP (r3 first): r3 at the garage\'s first hour, pinned; the ones after it pushed only by the time it truly takes (never earlier)', () => {
+    const eta0 = Object.fromEntries((call('day_order_preview', ask(['r1', 'r2', 'r3'], ['r4'])).stops as unknown as S[]).map((x) => [x.id, x.eta]));
+    const s = byId(call('day_order_preview', ask(['r3', 'r1', 'r2'], ['r4'], ['r3'])));
+    expect(s.r3).toMatchObject({ pin_new: true, pin: s.r3.eta });
+    expect(s.r1.eta).toBe(s.r3.eta + 120 + 20);
+    expect(s.r1.eta).toBeGreaterThan(eta0.r1);
+    expect(s.r2.eta).toBeGreaterThanOrEqual(eta0.r2);
+  });
+  it('D2: a pin already late, not made later by the order: pinned again at its arrival (accept.at, pin_was); made later: lost (accept.pins)', () => {
+    put('jobs', { id: 'r2', arrive_at: 600 });                                     // r1 holds the truck until 10 h 20: r2 arrives 10 h 40
+    const a = call('day_order_preview', ask(['r1', 'r2', 'r3'], ['r4']));
+    const s = byId(a);
+    expect(s.r2).toMatchObject({ eta: 640, pin: 640, pin_was: 600, pin_new: false, pin_lost: null });
+    expect(a.accept!.at).toEqual({ r2: 640 });
+    const b = call('day_order_preview', ask(['r3', 'r1', 'r2'], ['r4'], ['r3']));
+    expect(byId(b).r2).toMatchObject({ pin_lost: 600, pin: null });
+    expect(b.accept!.pins).toEqual({ r2: 600 });
+  });
+  it('a stop dragged with a pin: its old minute is replaced by the new one (pin_was), never « lost »; « Laisser l\'app choisir » forgets the pins', () => {
+    put('jobs', { id: 'r1', arrive_at: 500 });
+    const a = call('day_order_preview', ask(['r2', 'r3', 'r1'], ['r4'], ['r1']));
+    expect(byId(a).r1).toMatchObject({ pin_new: true, pin_was: 500, pin_lost: null, pin_moved: false });
+    expect(a.accept!.pins).toEqual({});
+    const auto = call('day_order_preview', { p_day: DAY, p_lists: null, p_moved: [], p_was: wasNow(), p_auto: true });
+    expect(Object.keys(auto.accept!.at)).toEqual([]);
+    expect(byId(auto).r1.pin).toBeNull();
+  });
+});
+

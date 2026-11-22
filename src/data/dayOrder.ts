@@ -7,6 +7,15 @@
      stored answer when it was saved);
    - the answer of both: { ok, day, basis_ok, mode, roads, rewin, auto, lists, stops, trucks, accept, due_after } (+ saved,
      rows on a save); basis_ok false: { gone, new, changed, by };
+   - Part 29 (Hassan, 2026-11-22: « if i move an appointement down, i need it to change its hour, and accept the
+     appointement where i put it without moving all the others arround »; drag-keeps-spec.md §4.2, §5): a stop dragged
+     takes the hour of its new place and that minute is PINNED at the save: `pin_new` true, `pin` = that minute,
+     `pin_was` = its pin before (or null), and `accept.at` = { id: minute } (sent back raw; never a warning on its own:
+     needsConfirm does not read it). A stop NOT dragged whose pin was already late and is not made later is pinned again
+     at its arrival (`pin_new` false, `pin_was` the old minute, `accept.at` too): that one IS a warning (the reviews' F6:
+     his minute changes), and so is a stop NOT dragged that the drag pushes later (the reviews' S1, the lead's G2: « pushed
+     later only when the dragged one truly takes their time: warn first, « Enregistrer quand même » accepts »). An older
+     server sends none of these: everything reads as before (pinNew false, pinWas null, at {}).
    - the refusals: raise … hint = code, detail = JSON (truck_off, truck_ends, needs_truck, changed, day_changed,
      outcome_changed with the whole answer in detail, bad_list, past, bad_block, not_allowed).
    The draft kept on the phone while it is not saved (days F12): localStorage `his.dayOrder.<staff id>.<day>`, every read
@@ -50,13 +59,19 @@ export interface DayStop {
   win: Win | null; newWin: Win | null; winBack: boolean;
   flexFixed: boolean; flexLater: boolean;
   lateMin: number; earlyMin: number;
-  /** its pinned minute, and the pin that does not hold (pinMoved: the person dragged it) */
+  /** its pinned minute (after the save), and the pin that does not hold (pinMoved: the person dragged it, older server) */
   pin: number | null; pinLost: number | null; pinMoved: boolean;
+  /** Part 29: the person dragged it here, and the save pins it at `pin` (its new hour); `pinWas`: its pin before, or null */
+  pinNew: boolean; pinWas: number | null;
   /** « Laisser l'app choisir »: the planner found no room for it (left at the end of its truck, late) — an optional flag */
   over: boolean;
 }
 export interface DayTruck { id: string; block: string | null; hoursEnd: number | null; finish: number | null; overMin: number; driveMin: number | null; unmeasured: number }
-export interface DayAccept { windows: Record<string, number>; flex: Record<string, number>; late: Record<string, number>; early: Record<string, number>; pins: Record<string, number>; over: Record<string, number> }
+export interface DayAccept {
+  windows: Record<string, number>; flex: Record<string, number>; late: Record<string, number>; early: Record<string, number>; pins: Record<string, number>; over: Record<string, number>;
+  /** Part 29: the minutes the save pins (the stops dragged, a late pin pinned again at its arrival): not a warning */
+  at: Record<string, number>;
+}
 export interface DayAnswer {
   kind: 'answer';
   day: string | null; mode: 'windows' | 'blocks'; roads: boolean; rewin: boolean; auto: boolean;
@@ -98,6 +113,7 @@ function stopOf(raw: unknown): DayStop | null {
     flexFixed: s.flex_fixed === true, flexLater: s.flex_later === true,
     lateMin: pos(s.late_min), earlyMin: pos(s.early_min),
     pin: num(s.pin), pinLost: num(s.pin_lost), pinMoved: s.pin_moved === true,
+    pinNew: s.pin_new === true, pinWas: num(s.pin_was),
     over: s.over === true
   };
 }
@@ -124,17 +140,45 @@ export function dayAnswer(raw: unknown): DayAnswer | DayBasis | null {
     lists: (Array.isArray(r.lists) ? r.lists : []).map(listOf).filter((x): x is DayOrderList => !!x),
     stops, byId: new Map(stops.map((s) => [s.id, s])),
     trucks: (Array.isArray(r.trucks) ? r.trucks : []).map(truckOf).filter((x): x is DayTruck => !!x),
-    accept: { windows: minutes(a.windows), flex: minutes(a.flex), late: minutes(a.late), early: minutes(a.early), pins: minutes(a.pins), over: minutes(a.over) },
+    accept: { windows: minutes(a.windows), flex: minutes(a.flex), late: minutes(a.late), early: minutes(a.early), pins: minutes(a.pins), over: minutes(a.over), at: minutes(a.at) },
     acceptRaw: a,
     dueAfter: num(r.due_after),
     saved: r.saved === true
   };
 }
+/** the window a stop gets at the save when it is truly another one: a « new window » equal to the window it has is no
+    change (spec F4: an arrival past the day's end, win_for clamps it to the same 16 h – 20 h) */
+export function newWinOf(s: Pick<DayStop, 'win' | 'newWin'>): Win | null {
+  const n = s.newWin;
+  return n && !(s.win && s.win[0] === n[0] && s.win[1] === n[1]) ? n : null;
+}
+/** the stops the save gives a NEW window (accept.windows, minus a « new » one equal to the window it has: F4) */
+export function newWindows(a: DayAnswer): string[] {
+  return Object.keys(a.accept.windows).filter((id) => { const s = a.byId.get(id); return !s || !!newWinOf(s); });
+}
+/** an hour that moves by more than this is « another hour » on the screen (« avant : vers … », a push) */
+export const SHIFT_MIN = 4;
+/** what the draft is (the stops dragged; « Laisser l'app choisir »): needed to tell a stop pushed from one dragged */
+export interface DraftOf { moved?: Iterable<string>; auto?: boolean }
+/** Part 29 (the reviews' S1; G2): the stops he did NOT drag that this draft pushes later (by more than SHIFT_MIN, from a
+    sure arrival). None in « Laisser l'app choisir » (the app's order: every hour is the planner's) */
+export function pushedOf(a: DayAnswer, o: DraftOf = {}): DayStop[] {
+  if (o.auto) return [];
+  const moved = new Set(o.moved ?? []);
+  return a.stops.filter((s) => !s.pinNew && !moved.has(s.id) && s.measured !== false && s.eta != null && s.etaBefore != null && s.eta - s.etaBefore > SHIFT_MIN);
+}
+/** Part 29 (the reviews' F6, D2): a stop he did NOT drag whose minute pointed moves to its arrival (it was already past it) */
+export function repinnedOf(a: DayAnswer): DayStop[] {
+  return a.stops.filter((s) => !s.pinNew && s.pinWas != null && s.pin != null && s.pin !== s.pinWas);
+}
 /** the verdict must be SHOWN before the save (« Enregistrer quand même »): a new window, someone late or early, a pin
-    that goes, a truck past its hours. A flexible stop given its window is not a warning. */
-export function needsConfirm(a: DayAnswer): boolean {
+    that goes, a truck past its hours; Part 29: a stop not dragged pushed later, a minute pointed moved to its arrival. A
+    flexible stop given its window is not a warning, nor the minute of the stop he dragged (`accept.at`: the hour of the
+    place he put it). */
+export function needsConfirm(a: DayAnswer, o: DraftOf = {}): boolean {
   const any = (m: Record<string, number>) => Object.keys(m).length > 0;
-  return any(a.accept.windows) || any(a.accept.late) || any(a.accept.early) || any(a.accept.pins) || any(a.accept.over);
+  return newWindows(a).length > 0 || any(a.accept.late) || any(a.accept.early) || any(a.accept.pins) || any(a.accept.over)
+    || pushedOf(a, o).length > 0 || repinnedOf(a).length > 0;
 }
 
 /* ---------- the calls ---------- */

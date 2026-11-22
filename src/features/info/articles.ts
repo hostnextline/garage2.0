@@ -422,8 +422,8 @@ export const ARTICLES: InfoArticle[] = [
       short: 'Tous les arrêts de la journée dans une liste, camion par camion : glisse un arrêt plus haut, plus bas ou sur l’autre camion. Rien ne change avant « Enregistrer », et aucun texto ne part.',
       steps: [
         'Ouvre la journée (agenda, Carte ou Aujourd’hui) → « Réorganiser la journée ».',
-        'Appuie sur ≡ et glisse l’arrêt. Les heures se calculent quand tu le lâches.',
-        'Un client qui change d’heure est montré avant : rien ne lui est envoyé.',
+        'Appuie sur ≡ et glisse l’arrêt. L’arrêt glissé prend l’heure de sa nouvelle place et la garde ; les autres gardent leur heure.',
+        'Un client qui change d’heure (un autre arrêt repoussé, une nouvelle plage) est montré avant : « Enregistrer quand même ». Rien ne lui est envoyé.',
         '« Enregistrer ». Quand ta journée est prête : « Envoyer les heures aux clients ».'
       ],
       example: 'Mahdi est urgent. Hassan ouvre sa job → « … » → « Mettre en premier » : la journée s’ouvre avec Mahdi en premier. « Amro : 9 h à 13 h devient 13 h à 17 h » est montré avant. Hassan enregistre, puis touche « Envoyer les heures aux clients (1) » : Amro reçoit sa nouvelle heure.',
@@ -433,7 +433,7 @@ export const ARTICLES: InfoArticle[] = [
     en: {
       title: 'Rearrange the day (change the order, Put first)',
       short: 'Every stop of the day in a list, truck by truck: drag a stop higher, lower or onto the other truck. Nothing changes before “Save”, and no text goes out.',
-      steps: ['Open the day (agenda, Map or Today) → “Rearrange the day”.', 'Press ≡ and drag the stop. The times are worked out when you let go.', 'A customer whose time changes is shown first: nothing is sent to them.', '“Save”. When your day is ready: “Send the times to customers”.'],
+      steps: ['Open the day (agenda, Map or Today) → “Rearrange the day”.', 'Press ≡ and drag the stop. The stop you drag takes the time of its new place and keeps it; the others keep their time.', 'A customer whose time changes (another stop pushed later, a new window) is shown first: “Save anyway”. Nothing is sent to them.', '“Save”. When your day is ready: “Send the times to customers”.'],
       example: 'Mahdi is urgent. Hassan opens his job → “…” → “Put first”: the day opens with Mahdi first. “Amro: 9 a.m. to 1 p.m. becomes 1 to 5 p.m.” is shown first. Hassan saves, then taps “Send the times to customers (1)”: Amro gets his new time.',
       tips: ['Those on the way or on site always stay first.', 'Tap a stop (without dragging it) to “Put first”, “Move up”, “Move down” or put it on the other truck.', 'The owner and the office change every truck; the mechanic, the order of his own truck only.', '“Let the app choose” suggests the app’s order: nothing is saved before “Save”.'],
       keys: 'rearrange order stops drag truck day send times customers texts first urgent priority'

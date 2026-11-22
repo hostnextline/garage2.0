@@ -110,8 +110,8 @@ test('the cutover runbook is exact for this tree: the six migrations in order, t
   const rb = lire('ops/live/CUTOVER.md');
   // every migration added since the rebuild was cut (acf46c3 has up to 20261115000100), in the order of their names; one of
   // them, 20261119000100_heures, is already on live (aa1b4e6): the runbook names it as « not to apply ». The ones of a
-  // later Part with its own runbook (Part 28: ops/live/PARTIE28.md) are that runbook's, not CUTOVER's
-  const rb28 = existsSync(join(ROOT, 'ops/live/PARTIE28.md')) ? lire('ops/live/PARTIE28.md') : '';
+  // later Part with its own runbook (Part 28: ops/live/PARTIE28.md; Part 29: ops/live/PARTIE29.md) are that runbook's, not CUTOVER's
+  const rb28 = ['ops/live/PARTIE28.md', 'ops/live/PARTIE29.md'].map((f) => (existsSync(join(ROOT, f)) ? lire(f) : '')).join('\n');
   const neuves = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261115000100_zzz' && !rb28.includes(f)).sort();
   assert.ok(neuves.length >= 6);
   let avant = -1;
@@ -146,8 +146,9 @@ test('Part 27 alone, from today\'s live (the rebuild went live 2026-11-21): its 
   // what runs today: the app d7b6c0d2, the functions and migrations at 837c89d8
   for (const x of ['d7b6c0d2', '837c89d8', '`20261119000200`', 'fonctions_avant_27.sql', 'ESSAI OK', 'lock_timeout', 'Le retour'])
     assert.ok(rb.includes(x), 'PARTIE27.md speaks of ' + x);
-  // the one migration Part 27 added to live's (and nothing else in supabase/migrations is newer, but Part 28's: ops/live/PARTIE28.md)
-  const rb28 = existsSync(join(ROOT, 'ops/live/PARTIE28.md')) ? lire('ops/live/PARTIE28.md') : '';
+  // the one migration Part 27 added to live's (and nothing else in supabase/migrations is newer, but Part 28's and Part 29's:
+  // ops/live/PARTIE28.md, ops/live/PARTIE29.md)
+  const rb28 = ['ops/live/PARTIE28.md', 'ops/live/PARTIE29.md'].map((f) => (existsSync(join(ROOT, f)) ? lire(f) : '')).join('\n');
   const neuves = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261119000100_zzz' && !rb28.includes(f));
   assert.deepEqual(neuves, ['20261119000200_vraies_routes.sql']);
   // the four functions it redeploys exist, the order: drive first (it needs the migration)
@@ -170,8 +171,10 @@ test('Part 28 after Part 27 (REARRANGE.md §6.5, §7.3 b): its own runbook from 
   for (const x of ['`20261122000100_reorganiser.sql`', '`20261119000200`', 'ESSAI OK', 'lock_timeout', 'told_install', 'a-avertir.sql', 'Le retour',
     '5e23639e', '837c89d8', '6f91d6f9'])
     assert.ok(rb.includes(x), 'PARTIE28.md speaks of ' + x);
-  // Part 28's migration is the only one after Part 27's, and Part 27's is named by its version only (it is live: not to apply)
-  const after27 = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261119000200_zzz').sort();
+  // Part 28's migration is the only one after Part 27's (but a later Part's own: Part 29, ops/live/PARTIE29.md), and Part 27's
+  // is named by its version only (it is live: not to apply)
+  const rb29 = existsSync(join(ROOT, 'ops/live/PARTIE29.md')) ? lire('ops/live/PARTIE29.md') : '';
+  const after27 = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261119000200_zzz' && !rb29.includes(f)).sort();
   assert.deepEqual(after27, ['20261122000100_reorganiser.sql']);
   assert.ok(!rb.includes('20261119000200_vraies_routes.sql'), 'Part 27 is not one of this runbook\'s migrations');
   // the try comes before the real thing, the functions after the migration, told_install again after them, the app last
@@ -204,6 +207,52 @@ test('Part 28 after Part 27 (REARRANGE.md §6.5, §7.3 b): its own runbook from 
   const cut = lire('ops/live/CUTOVER.md');
   assert.ok(cut.indexOf('ops/live/PARTIE28.md') >= 0 && cut.indexOf('ops/live/PARTIE28.md') < cut.indexOf('## 0. '), 'CUTOVER.md points to PARTIE28.md at its top');
   assert.match(lire('CLAUDE.md'), /ops\/live\/PARTIE28\.md/, 'CLAUDE.md names PARTIE28.md beside PARTIE27.md');
+});
+
+test('Part 29 after Part 28 (Hassan, 2026-11-22: the dragged stop keeps the hour of its place): its own runbook from today\'s live names its migration, what runs, the try, no function to redeploy, the app, the way back; its read-only file only reads; the way back is Part 28\'s and Part 27\'s texts byte for byte; CUTOVER.md points to it', () => {
+  const rb = lire('ops/live/PARTIE29.md');
+  for (const x of ['`20261122000200_garder_ordre.sql`', '`20261122000100`', 'ESSAI OK : garder_ordre', 'lock_timeout', 'Le retour', 'retour-partie29.sql', 'avant.sql',
+    '0b15944d', '5e23639e', '837c89d8', 'a34413e9', '[important]', 'jours_reorganises'])
+    assert.ok(rb.includes(x), 'PARTIE29.md speaks of ' + x);
+  // Part 29's migration is the only one after Part 28's; Part 28's is named by its version only (it is live: not to apply)
+  const after28 = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261122000100_zzz').sort();
+  assert.deepEqual(after28, ['20261122000200_garder_ordre.sql']);
+  assert.ok(!rb.includes('20261122000100_reorganiser.sql') && !rb.includes('20261119000200_vraies_routes.sql'), 'Parts 27 and 28 are not this runbook\'s migrations');
+  assert.match(lire('supabase/migrations/20261122000200_garder_ordre.sql').split('\n')[0], /^-- Part 29 — /);
+  // the try before the real thing, then the functions (none), the app, after, the way back
+  let from = 0;
+  const at = ['## 0. ', '## 1. ', 'essai-partie29.sql', 'POUR VRAI', '## 2. ', '## 3. ', '## 4. ', '## 5. '].map((x) => (from = rb.indexOf(x, from)));
+  assert.ok(at.every((x) => x >= 0), 'before, the try, the migration, the functions, the app, after, the way back, in that order');
+  const s2 = rb.slice(rb.indexOf('## 2. '), rb.indexOf('## 3. '));
+  assert.match(s2, /Aucune fonction du serveur ne change/);
+  assert.match(rb, /git diff --stat a34413e9 C29 -- supabase\/functions/, 'step 0 checks that no server function changes');
+  // the files it names are there; avant.sql only reads; the try ends by undoing everything and removes nothing
+  for (const f of ['ops/live/partie29/avant.sql', 'ops/live/partie29/essai-partie29.sql', 'ops/live/partie29/retour-partie29.sql'])
+    assert.ok(rb.includes(f.replace('ops/live/', '')) && existsSync(join(ROOT, f)), f);
+  const q = lire('ops/live/partie29/avant.sql').replace(/--.*$/gm, '');
+  assert.ok(!/\b(insert|update|delete|truncate|drop|alter|create|grant|revoke|do)\b\s/i.test(q), 'avant.sql only reads');
+  const essai = lire('ops/live/partie29/essai-partie29.sql');
+  assert.match(essai, /raise exception 'ESSAI OK : garder_ordre \(rien n''est gardé\)[^']*'/);
+  assert.match(essai, /20261122000200_garder_ordre\.sql/);
+  assert.match(essai, /set_config\('lock_timeout', '5s', true\)/);
+  assert.ok(!/\b(drop|truncate|delete from)\b/i.test(essai.replace(/--.*$/gm, '')), 'the try sends no DROP, TRUNCATE or DELETE');
+  // the way back: « create or replace » of the five functions only, each the very text of the file before Part 29
+  const back = lire('ops/live/partie29/retour-partie29.sql');
+  const code = back.replace(/--.*$/gm, '');
+  assert.ok(!/\b(drop|truncate|delete\s+from)\b/i.test(code), 'the way back removes nothing');
+  const fnOf = (src, name, end = '\nend $$;\n') => { const m = new RegExp(`^create or replace function public\\.${name}\\(`, 'm').exec(src); assert.ok(m, name); return src.slice(m.index, src.indexOf(end, m.index) + end.length); };
+  const p27 = lire('supabase/migrations/20261119000200_vraies_routes.sql'), p28 = lire('supabase/migrations/20261122000100_reorganiser.sql');
+  assert.equal(fnOf(back, 'day_order_core'), fnOf(p28, 'day_order_core'), 'day_order_core: Part 28\'s text');
+  assert.equal(fnOf(back, 'replan_block_safe'), fnOf(p27, 'replan_block_safe'), 'replan_block_safe: Part 27\'s text');
+  assert.equal(fnOf(back, 'roads_replan'), fnOf(p27, 'roads_replan'), 'roads_replan: Part 27\'s text');
+  // the reviews' F1 (plan_route freezes a vehicle whose stored day a plan would break): Part 27's two planner texts
+  assert.equal(fnOf(back, 'plan_route_core', '\nend $function$;\n'), fnOf(p27, 'plan_route_core', '\nend $function$;\n'), 'plan_route_core: Part 27\'s text');
+  assert.equal(fnOf(back, 'plan_route'), fnOf(p27, 'plan_route'), 'plan_route: Part 27\'s text');
+  assert.deepEqual([...back.matchAll(/^create or replace function public\.([a-z_]+)\(/gm)].map((m) => m[1]).sort(), ['day_order_core', 'plan_route', 'plan_route_core', 'replan_block_safe', 'roads_replan']);
+  assert.match(back, /^begin;$/m); assert.match(back, /^commit;$/m);
+  // CUTOVER.md's top note points to it
+  const cut = lire('ops/live/CUTOVER.md');
+  assert.ok(cut.indexOf('ops/live/PARTIE29.md') >= 0 && cut.indexOf('ops/live/PARTIE29.md') < cut.indexOf('## 0. '), 'CUTOVER.md points to PARTIE29.md at its top');
 });
 
 test('the full test workflow checks the types of the server functions (deno check), after the stack is installed (infra-15)', () => {

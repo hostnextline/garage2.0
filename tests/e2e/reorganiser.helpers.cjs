@@ -178,10 +178,16 @@ async function rowMenu(page, number, entry) {
 }
 /** « vers 9 h 40 » as the sheet prints a server's arrival */
 const vers = (m) => `vers ${x.clock(m)}`;
+/** Part 29: « fixé à 15 h 29 », the hour of a stop dragged (pinned at the hour of its new place), and « avant : vers 10 h »,
+    the hour a stop had before the draft (said when the answer moves it) */
+const fixe = (m) => `fixé à ${x.clock(m)}`;
+const avant = (m) => `avant : vers ${x.clock(m)}`;
+/** the lines under a stop's hours as the sheet draws them (its notes), in order */
+const notesOf = (page, number) => page.evaluate((n) => [...document.querySelectorAll(`[data-testid="dayorder-note-${n}"]`)].map((e) => (e.textContent || '').replace(/\s+/g, ' ').trim()), number);
 /** what the fake GoHighLevel was asked to send since its log was cleared: every SMS */
 async function allTexts() {
   const log = await h.mockLog();
   return log.filter((l) => l.svc === 'ghl' && l.path === '/conversations/messages' && l.body && l.body.type === 'SMS').map((l) => l.body.message);
 }
 
-module.exports = { x, h, d, assert, openO, onFail, snapshot, putBack, endStep, dayRows, wasOf, openSheet, rowsShown, centre, ghostUnder, mouseDrag, fingerDrag, saveDay, rowMenu, vers, allTexts };
+module.exports = { x, h, d, assert, openO, onFail, snapshot, putBack, endStep, dayRows, wasOf, openSheet, rowsShown, centre, ghostUnder, mouseDrag, fingerDrag, saveDay, rowMenu, vers, fixe, avant, notesOf, allTexts };

@@ -3,6 +3,9 @@
 // cases are run with today's functions, then the definitions of before (read from the migrations before 20261119000200) are
 // put back and the same cases run again; every answer and every row written must be the same. Road times are stored (absurd
 // ones) and the day of the week left set to anything (« garage.drive_dow »), so nothing of Part 27 may leak while it is off.
+// One exception, Part 29 (20261122000200_garder_ordre.sql): on a TIGHT window day (a plan would make late someone the
+// stored day serves on time, or a late minute later still) plan_route freezes that vehicle and the re-plans keep the stored
+// routes, switch off too; the cases here are blocks or days with room (tests/db/reorganiser-garde.test.mjs covers the rest).
 // Run: node --test tests/db/vraies-routes-off.test.mjs
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,10 +17,11 @@ after(() => pool.end());
 
 const MIG = fileURLToPath(new URL('../../supabase/migrations/', import.meta.url));
 const PART27 = '20261119000200';
-/** the latest definition of public.<name> in the migrations before Part 27 (what tools/fn.py reads, Part 27 left out) */
+/** the latest definition of public.<name> in the migrations before Part 27 (what tools/fn.py reads, Part 27 left out; and
+ *  every later one too: Part 29, 20261122000200, makes replan_block_safe and roads_replan again) */
 function before(name) {
   let out = null;
-  for (const f of readdirSync(MIG).filter((x) => x.endsWith('.sql') && !x.startsWith(PART27)).sort()) {
+  for (const f of readdirSync(MIG).filter((x) => x.endsWith('.sql') && x < PART27).sort()) {
     const s = readFileSync(MIG + f, 'utf8');
     const re = new RegExp(`^create or replace function public\\.${name}\\s*\\(`, 'gim');
     for (const m of s.matchAll(re)) {
