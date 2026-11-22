@@ -26,8 +26,12 @@ export function ToastHost() {
     <div class="toasts" role="status" aria-live="polite">
       {toasts.value.map((x) => (
         <div key={x.id} class={`toast${x.kind === 'bad' ? ' toast-bad' : ''}`} data-testid={`toast-${x.kind}`}>
-          <span class="grow">{x.text}</span>
-          {x.action && <button type="button" class="btn btn-sm" onClick={() => { dismissToast(x.id); void x.action!.run(); }}>{x.action.label}</button>}
+          {/* the words and the button share a line when they fit; a long button (« Envoyer les heures aux clients (1) »)
+              goes under the words instead of squeezing them to one word a line on a phone */}
+          <span class="toast-body">
+            <span class="toast-text">{x.text}</span>
+            {x.action && <button type="button" class="btn btn-sm" onClick={() => { dismissToast(x.id); void x.action!.run(); }}>{x.action.label}</button>}
+          </span>
           <button type="button" class="toast-x" aria-label={t('common.close')} onClick={() => dismissToast(x.id)}>×</button>
         </div>
       ))}

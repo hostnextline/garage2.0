@@ -53,6 +53,15 @@ describe('a text after a booking or a move', () => {
     await notifyCustomer('moved', 'J1');
     expect(ui.toast.mock.calls.at(-1)).toEqual(['Le texto n’est pas parti. boom', { kind: 'bad' }]);
   });
+  // Part 28 (REARRANGE.md §1.6-2): « Envoyer le texto » of « Texter … ? » is the single « moved » text, which the server now
+  // takes under the day's lease: a customer already told those hours (the day's button went first, another phone) or
+  // being texted right now answers `already`, and nothing goes
+  it('« moved » under the lease: `already` is said calmly, once, never as a failure', async () => {
+    api.notify.mockResolvedValue({ ok: true, status: 'already' });
+    await notifyCustomer('moved', 'J1');
+    expect(api.notify.mock.calls[0].slice(0, 2)).toEqual(['moved', 'J1']);
+    expect(ui.toast.mock.calls).toEqual([['Le texto avait déjà été envoyé']]);
+  });
 });
 
 describe('one send = one id (R27): a lost answer never texts the customer twice', () => {

@@ -236,7 +236,6 @@ export const settings: typeof fr = {
       lock: 'Fix tomorrow’s windows',
       locked: { one: '{n} window fixed for tomorrow.', other: '{n} windows fixed for tomorrow.' },
       lockedNone: 'No flexible appointment to fix for tomorrow.',
-      untoldTitle: { one: '{n} customer did not get their window: tell them yourself.', other: '{n} customers did not get their window: tell them yourself.' },
       untoldText: 'Text',
       untoldNoPhone: 'No number',
       backTitle: { one: '{n} customer was told a window that is no longer inside their block: call or text them.', other: '{n} customers were told a window that is no longer inside their block: call or text them.' },
@@ -358,7 +357,7 @@ export const settings: typeof fr = {
     emptyEn: 'This English text is empty: English-speaking customers will get the French text.',
     kinds: {
       booking: { title: 'Appointment confirmed', when: 'When an appointment is booked.' },
-      moved: { title: 'Appointment changed', when: 'When an appointment changes day or block. The app asks you first whether to send it.' },
+      moved: { title: 'Appointment changed', when: 'When an appointment changes day or time: the app asks you first whether to send it; otherwise it goes with “Send the times to customers”.' },
       en_route: { title: 'On the way', when: 'When the mechanic leaves for the customer, with the arrival time.' },
       en_route_no_eta: { title: 'On the way, no time', when: 'When the arrival time is not known.' },
       arrived: { title: 'Mechanic arrived (invoice to pay)', when: 'When the mechanic taps « I have arrived »: the invoice, to pay online during the work.' },

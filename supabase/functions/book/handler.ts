@@ -10,6 +10,8 @@
 //          transaction (web_book); then the usual confirmation text. A failure after the booking never hides it:
 //          the page still gets « ok » and the link (text: 'error'); the same booking sent again gets the same job.
 // Brakes (Part 24, rate_hit): « slots » 20 per 10 min per visitor and 150 an hour in all; « book » 12 tries an hour per visitor.
+// Part 28: the confirmation goes under the appointment's lease (tell_take, as notify's texts and the day's button: never
+// two texts at once) and, once sent (or « peut-être parti »), writes what the customer was told (tell_done, by nobody).
 import { serve, json, body, fail } from '../_shared/http.ts';
 import { adminDb, settings, secret } from '../_shared/db.ts';
 import { sha256hex, newToken } from '../_shared/tokens.ts';
@@ -86,6 +88,16 @@ async function measureFirst(lat: number, lng: number, from: string | null, days:
 }
 /** the total of lines, the same way everywhere (a discount counts negative): _shared/money.ts */
 const taxed = (lines: Row[], s: Row): number => sumLines(lines, s).total;
+/** Part 28: the day and the hours the confirmation tells (a 'day' booking its window, none = flexible; a block booking its
+    block's hours: the settings', else the garage's three, as blocks_set() of the database) */
+const DEFAULT_BLOCKS = [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }];
+function toldOf(j: Row, s: Row): { day: string; start: number | null; end: number | null } {
+  if (j.block === 'day') { const w = jobWindow(j as never); return { day: String(j.day), start: w ? w[0] : null, end: w ? w[1] : null }; }
+  const b = ((Array.isArray(s.booking?.blocks) ? s.booking.blocks : DEFAULT_BLOCKS) as Row[]).find((x) => x.key === j.block);
+  return { day: String(j.day), start: b && Number.isFinite(Number(b.start)) ? Number(b.start) : null, end: b && Number.isFinite(Number(b.end)) ? Number(b.end) : null };
+}
+/** the lease's number: tell_done / tell_release drop exactly the lease this booking took */
+const leaseToken = () => 1 + Math.floor(Math.random() * 2147483646);
 
 async function info() {
   const s = await settings();
@@ -164,6 +176,8 @@ async function book(req: Request, b: Row) {
 
   // the usual confirmation text; whatever happens here, the booking is made and the page gets its link
   let text = 'off';
+  const lease = leaseToken();
+  let leased = false, went = false;
   try {
     if (again) {
       const { data: prev, error: ep } = await db.from('messages').select('id').eq('job_id', jobId).eq('kind', 'booking').eq('status', 'sent').limit(1);
@@ -178,6 +192,11 @@ async function book(req: Request, b: Row) {
     const cu = (cust || {}) as Row;
     const tpl = String(s.messages?.[lang]?.booking || s.messages?.fr?.booking || '');
     if (tpl) {
+      // the appointment's lease (Part 28): already told, or another send holding him right now → no second text
+      const taken = await rpc('tell_take', { p_jobs: [jobId], p_again: null, p_token: lease, p_force: false });
+      const mine = (Array.isArray(taken) ? taken as Row[] : []).find((x) => String(x?.id).toLowerCase() === jobId.toLowerCase());
+      if (!mine?.take) return { ok: true, link, day: res.day, block: res.block, ...extra, text: 'already', again };
+      leased = true;
       const w = whenText(tpl, when as never, s.booking?.blocks, lang);
       const { data: items, error: ei } = await db.from('job_items').select('description, kind, qty, unit_cents, taxable, status, sort').eq('job_id', jobId).is('deleted_at', null).order('sort');
       if (ei) throw ei;
@@ -192,12 +211,21 @@ async function book(req: Request, b: Row) {
       const quiet = cu.sms_ok === false || s.messages?.on?.booking === false;
       const r = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message);
       text = r.status;
+      const maybe = r.status === 'error' && (r as { maybe?: boolean }).maybe === true;
+      went = r.status === 'sent' || maybe;
       await db.from('messages').insert({ job_id: jobId, customer_id: cu.id || null, staff_id: null, kind: 'booking', channel: 'sms', to_addr: cu.phone || null,
         body: message, status: r.status === 'sent' ? 'sent' : r.status === 'error' ? 'failed' : 'skipped', provider_ref: (r as { id?: string }).id || null,
         error: (r as { error?: string }).error || r.status, created_by: null });
-      if (r.status === 'sent') await db.from('jobs').update({ confirm_sent_at: new Date().toISOString() }).eq('id', jobId);
+      // what the text said is what he was told (tell_done writes confirm_sent_at with it); a text that may have gone
+      // (« peut-être parti ») too: never a second one by itself; one that did not go drops the lease
+      if (went) {
+        const told = toldOf(when, s);
+        const { error: et } = await db.rpc('tell_done', { p_job: jobId, p_token: lease, p_now: { ...told, rewin: false }, p_how: maybe ? 'maybe' : 'sms', p_by: null, p_kind: 'booking' });
+        if (et) console.error('book: tell_done', String(et.message || et).slice(0, 200));
+      } else { leased = false; await db.rpc('tell_release', { p_job: jobId, p_token: lease }); }
     }
   } catch (e) {
+    if (leased && !went) { try { await adminDb().rpc('tell_release', { p_job: jobId, p_token: lease }); } catch { /* the lease ends by itself in 2 minutes */ } }
     console.error('book: after the booking', String((e as Error)?.message || e).slice(0, 200));
     text = 'error';
     try {

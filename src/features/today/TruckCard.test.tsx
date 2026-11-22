@@ -62,3 +62,37 @@ describe('arrivalOf, ticketJob', () => {
     expect(ticketJob(N)).toBe(N);
   });
 });
+
+/* Part 28 (R5a, REARRANGE.md §3.8, U7): « Dit au client » says what the customer was TOLD; while he is due, « nouvelle
+   plage … : pas encore envoyée »; never told: « Pas encore averti ». */
+describe('« Dit au client » reads what he was told', () => {
+  const W = { ...N, block: 'day', status: 'booked', win_start: 780, win_end: 1020, win_flex: false, eta_min: 840 } as unknown as Job;
+  const card = async (next: Job) => {
+    await act(async () => { render(<TruckCard x={{ ...now(C), jobs: [C, next], next }} now={Date.now()} day={DAY} />, box); });
+    return box.querySelector('[data-testid="today-truck-window"]')?.textContent ?? null;
+  };
+  beforeEach(() => { replaceLocal('settings', [{ id: '1', booking: { windows_on: true } }] as never); });
+  it('told the window it has: « Dit au client : entre 13 h et 17 h », nothing more', async () => {
+    expect(await card({ ...W, told_day: DAY, told_start: 780, told_end: 1020, told_at: '2026-11-20T10:00:00-05:00' } as Job)).toBe('Dit au client : entre 13 h et 17 h');
+  });
+  it('told 9 h à 13 h, planned 13 h à 17 h since: what he was told, and the new window not sent yet', async () => {
+    const text = await card({ ...W, told_day: DAY, told_start: 540, told_end: 780, told_at: '2026-11-20T10:00:00-05:00' } as Job);
+    expect(text).toBe('Dit au client : entre 9 h et 13 h, nouvelle plage entre 13 h et 17 h : pas encore envoyée');
+    expect(box.querySelector('[data-testid="today-truck-notsent"]')).toBeTruthy();
+  });
+  it('his sure arrival still inside what he was told: nothing new to say (days F1) — when it is a minute pointed, or his planned window does not hold it', async () => {
+    const told = { told_day: DAY, told_start: 780, told_end: 1020, told_at: '2026-11-20T10:00:00-05:00' };
+    // told 13 h à 17 h; moved exactly to 14 h (a minute pointed): planned 14 h à 18 h, served inside what he was told
+    expect(await card({ ...W, win_start: 840, win_end: 1080, eta_min: 840, arrive_at: 840, ...told } as Job)).toBe('Dit au client : entre 13 h et 17 h');
+    // an earlier save cut 14 h à 18 h, he arrives 13 h 30 (outside it, inside what he was told): « Hors plage » for the
+    // truck (the planned window, §3.8), nothing new for the customer
+    expect(await card({ ...W, win_start: 840, win_end: 1080, eta_min: 810, ...told } as Job)).toBe('Dit au client : entre 13 h et 17 h Hors plage');
+  });
+  it('« Déplacer » to 14 h à 18 h, the truck there at 14 h (also inside what he was told): a new window to tell him (review R0)', async () => {
+    expect(await card({ ...W, win_start: 840, win_end: 1080, eta_min: 840, told_day: DAY, told_start: 780, told_end: 1020, told_at: '2026-11-20T10:00:00-05:00' } as Job))
+      .toBe('Dit au client : entre 13 h et 17 h, nouvelle plage entre 14 h et 18 h : pas encore envoyée');
+  });
+  it('never told anything: « Pas encore averti »', async () => {
+    expect(await card(W)).toBe('Pas encore averti');
+  });
+});

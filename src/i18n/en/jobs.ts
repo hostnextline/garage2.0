@@ -280,6 +280,7 @@ export const jobs: typeof fr = {
     pushedLine: '{name}: around {eta} instead of {was}.',
     lateTitle: { one: 'Moving {who} to {time} makes {name} late', other: 'Moving {who} to {time} makes {n} customers late' },
     lateLine: '{name}: around {eta}, {by} after their window ({from} to {to}).',
+    lateNew: 'They get {from} to {to} with “Send the times to customers”.',
     overHours: 'The truck would end its day {by} after its hours.',
     lateOk: 'Move anyway',
     other: 'Pick another time',
@@ -293,7 +294,8 @@ export const jobs: typeof fr = {
     offline: 'No signal: I can’t check whether this move makes someone late. Try again when the signal is back.',
     lost: 'No answer from the server: the move may have gone through. Check the agenda in a moment before trying again.',
     done: 'Appointment moved: {when} at {time}.',
-    doneLate: { one: 'Tell {names}: reached after their window.', other: 'Tell {names}: reached after their window.' },
+    doneLate: { one: '{names} gets a new window: it goes with “Send the times to customers”.', other: '{names} get new windows: they go with “Send the times to customers”.' },
+    doneLateToday: { one: 'Tell {names}: reached after their window.', other: 'Tell {names}: reached after their window.' },
     notAt: 'Placed at {real}: the truck couldn’t be there at {time}.',
     someone: 'a customer',
     otherTruck: 'Its truck doesn’t work that day: the job goes on {truck}.'
@@ -302,34 +304,14 @@ export const jobs: typeof fr = {
     title: 'Text {name}?',
     lead: 'The text will tell them the new time:',
     send: 'Send the text',
-    skip: 'No text'
+    skip: 'Not now',
+    later: 'Not now: nothing goes, their new time goes with “Send the times to customers”.'
   },
   order: {
-    open: 'Order of the stops',
-    openSub: 'Choose who comes before whom in this truck’s route',
-    title: 'Order of the stops',
-    lead: 'Put the customers in the order you want. Those on the way or on site stay first. Arrival times are worked out again for everyone.',
-    first: 'Put {name} first',
-    up: 'Move {name} up',
-    down: 'Move {name} down',
-    eta: 'around {time}',
-    /* « Vraies routes » on: a trip up to that stop not measured yet (stop_order_preview measured false) */
+    /* « Vraies routes » on: a trip up to that stop not measured yet (eta_measured false; day_order_preview measured false) */
     etaUnmeasured: 'time: trips not measured yet',
-    save: 'Save the order',
-    saved: 'Order saved. Arrival times are up to date.',
-    auto: 'Let the app choose',
-    autoDone: 'The app chooses the order again (the least driving).',
-    timesAfter: 'The new arrival times show once saved.',
-    none: 'No booked appointment in this route.',
     firstMenu: 'Put first',
-    firstMenuSub: 'This customer comes before the others of this block',
-    firstDone: '{name} comes first. Arrival times are up to date.',
-    live: { en_route: 'On the way', on_site: 'On site' },
-    /* « Vraies routes » on: the arrival times of the order built come from the server (stop_order_preview) */
-    pending: 'Arrival times: not worked out yet.',
-    serverTimes: 'The times shown are those of this new order, worked out by the server.',
-    late: 'Late',
-    lateServer: { one: 'With this order, {names} would be reached after the time the customer was told. Tell this customer if you save.', other: 'With this order, these customers would be reached after the time they were told: {names}. Tell them if you save.' }
+    firstMenuSub: 'Opens « Rearrange the day » with this customer first: nothing changes until « Save »'
   },
   menu: {
     title: 'More actions',
@@ -389,13 +371,7 @@ export const jobs: typeof fr = {
       help: 'The length lets the truck fit the stops in its day. If the job no longer fits, move it.'
     },
     order: {
-      firstMenuSub: 'This customer goes before the others of the day',
-      wholeDay: 'the whole day',
-      told: 'customer: {window}',
-      note: 'An order chosen by hand can make the truck arrive outside the window a customer was told. The app then shows « Outside the window ».',
-      breaks: { one: 'With this order, {names} would probably be reached outside their arrival window. Tell this customer if you save.', other: 'With this order, these customers would probably be reached outside their arrival window: {names}. Tell them if you save.' },
-      about: 'about {time}',
-      saveAnyway: 'Save anyway'
+      firstMenuSub: 'Opens « Rearrange the day » with this customer first: nothing changes until « Save »'
     },
     menu: {
       resendBookingSub: 'The day, the arrival window and the planned total',
@@ -542,6 +518,7 @@ export const jobs: typeof fr = {
     copyFail: 'The phone did not allow copying. Hold your finger on the text to copy it.',
     sentTo: 'Text sent to {name}.',
     already: 'This text was already sent.',
+    nothingNew: 'No text: the time {name} was told still holds, nothing new to tell them.',
     quiet: 'No text: this customer or this kind of text is turned off.',
     offline: 'No signal: the text cannot go. Try again when the signal is back.'
   }

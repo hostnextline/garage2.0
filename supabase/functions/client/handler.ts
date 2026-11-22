@@ -39,6 +39,20 @@ function shownCents(x: unknown): number | null {
   const n = Math.round(Number(x));
   return Number.isFinite(n) ? n : NaN;
 }
+/** Part 28 (R5c): the day and the hours the customer was told, as the page shows them. A block appointment told exactly its
+    block's hours (or another block's: moved, not told yet) keeps that block's word; told other hours (the block's hours
+    edited since, a window told before the switch back to blocks), the hours alone (no « Matin » beside other hours). A
+    'day' appointment (« Plages d’arrivée ») the window he was told, or « dans la journée » (flexible) */
+const DEFAULT_BLOCKS = [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }];
+function toldView(j: Row, s: Row) {
+  const day = String(j.told_day || j.day);
+  const num = (x: unknown) => (x === null || x === undefined || !Number.isFinite(Number(x)) ? null : Number(x));
+  const start = num(j.told_start), end = num(j.told_end);
+  const blocks = (Array.isArray(s.booking?.blocks) ? s.booking.blocks : DEFAULT_BLOCKS) as Row[];
+  const same = j.block !== 'day' && start !== null && end !== null ? blocks.find((b) => Number(b.start) === start && Number(b.end) === end) : null;
+  return { day, day_label_fr: longDay(day, 'fr'), day_label_en: longDay(day, 'en'), block: same ? String(same.key) : 'day',
+    start, end, flex: start === null && end === null };
+}
 async function view(l: Row) {
   const db = adminDb();
   const s = await settings();
@@ -76,6 +90,10 @@ async function view(l: Row) {
   // a block job: its block's hours; a 'day' job (« Plages d’arrivée »): the window promised, or « flexible » (no hours yet)
   const win = jobWindow(j as never);
   const block = j.block === 'day' ? (win ? { start: win[0], end: win[1] } : {}) : (s.booking?.blocks || []).find((b: Row) => b.key === j.block) || {};
+  // Part 28 (R5c): a coming appointment shows what the customer was TOLD (his last text, or what the team told him), never
+  // an hour nobody told him: the day changed or the window moved stays as he knows it until « Envoyer les heures aux
+  // clients » tells him. Never told, en route (the real trip), on site, done: as before
+  const told = j.status === 'booked' && j.told_at ? toldView(j, s) : null;
   const v = inv as Row | null;
   const issued = v && v.status !== 'draft';
   // the invoice being made (from the mechanic's arrival): its own lines, rebates and taxes are what is due
@@ -100,8 +118,8 @@ async function view(l: Row) {
   return {
     ok: true, kind: 'job', garage, lang: (cust as Row | null)?.lang || 'fr',
     customer: { first: first((cust as Row | null)?.first_name) },
-    job: { number: j.number, day: j.day, day_label_fr: longDay(j.day, 'fr'), day_label_en: longDay(j.day, 'en'), block: j.block,
-      start: block.start ?? null, end: block.end ?? null, flex: j.block === 'day' && !win, status: j.status, tracking: !!trip,
+    job: { number: j.number, ...(told || { day: j.day, day_label_fr: longDay(j.day, 'fr'), day_label_en: longDay(j.day, 'en'), block: j.block,
+      start: block.start ?? null, end: block.end ?? null, flex: j.block === 'day' && !win }), status: j.status, tracking: !!trip,
       vehicle: veh ? [(veh as Row).year, (veh as Row).make, (veh as Row).model].filter(Boolean).join(' ') : null, waiver_signed: !!j.waiver_signed_at },
     estimate: { signed_at: j.estimate_signed_at || null, signer: j.estimate_signer || null, cents: j.estimate_cents ?? null,
       changed, can_sign: open && !issued && planned.length > 0 && (!signed || changed) },

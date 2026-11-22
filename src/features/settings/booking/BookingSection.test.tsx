@@ -1,5 +1,6 @@
 /* Réglages → Réservations, « Plages d’arrivée de 4 heures »: the switch (owner, behind a question), the numbers and their
-   live example, « Heures de la journée » instead of the blocks, « Fixer les plages de demain ». (The server is pretended.) */
+   live example, « Heures de la journée » instead of the blocks, « Fixer les plages de demain » (Part 28: it texts no one
+   itself, it opens tomorrow's « Envoyer les heures aux clients »). (The server is pretended.) */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -8,6 +9,7 @@ const calls: { name: string; args: unknown[] }[] = [];
 const asked: { title: string; text?: string }[] = [];
 let sayYes = true;
 let lockAnswer: Record<string, unknown> = { ok: true, fixed: 2 };
+let lockFails = false;
 let switchAnswer: Record<string, unknown> = { ok: true, converted: 7 };
 const notifyAnswers: Record<string, Record<string, unknown>> = {};
 vi.mock('../../../data/api', async (orig) => {
@@ -15,7 +17,7 @@ vi.mock('../../../data/api', async (orig) => {
   return {
     ...real,
     windowsSwitch: async (on: boolean) => { calls.push({ name: 'windowsSwitch', args: [on] }); return switchAnswer; },
-    lockWindows: async (day: string) => { calls.push({ name: 'lockWindows', args: [day] }); return lockAnswer; },
+    lockWindows: async (day: string) => { calls.push({ name: 'lockWindows', args: [day] }); if (lockFails) throw new Error('Refusé par le serveur'); return lockAnswer; },
     notify: async (kind: string, id: string) => { calls.push({ name: 'notify', args: [kind, id] }); return notifyAnswers[id] ?? { ok: true, status: 'sent' }; },
     saveSettings: async (part: string, value: unknown) => { calls.push({ name: 'saveSettings', args: [part, value] }); }
   };
@@ -33,6 +35,8 @@ vi.mock('../../../data/roads', async (orig) => {
   const real = await orig<typeof import('../../../data/roads')>();
   return { ...real, roadsStatus: async () => ({ ok: true, key: true, on: false, left: 0, left0: 0, month: null, rows: { tomtom: 0, osrm: 0, none: 0 } }) };
 });
+// « Envoyer les heures aux clients »: the list that « Fixer les plages » opens (its own tests: TellSheet.test.tsx)
+vi.mock('../../../shared/jobs/TellHost', () => ({ openTell: (day: string) => { calls.push({ name: 'openTell', args: [day] }); } }));
 vi.mock('../../../shared/map/MapView', () => ({ MapView: () => null }));
 vi.mock('../../../shared/places/AddressField', () => ({ AddressField: () => null }));
 import { BookingSection } from './BookingSection';
@@ -61,7 +65,7 @@ const click = async (el: Element | undefined) => { expect(el).toBeTruthy(); awai
 const type = async (id: string, v: string) => { const el = q(id)[0] as HTMLInputElement; await act(async () => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }); };
 const show = async () => { await act(async () => { render(null, box); render(<BookingSection />, box); }); await wait(); };
 
-beforeEach(() => { lastBack.value = null; lang.value = 'fr'; calls.length = 0; asked.length = 0; sayYes = true; drafts.value = {}; toasts.value = []; lockAnswer = { ok: true, fixed: 2 }; switchAnswer = { ok: true, converted: 7 }; replaceLocal('jobs', []); replaceLocal('customers', []); });
+beforeEach(() => { lockFails = false; lastBack.value = null; lang.value = 'fr'; calls.length = 0; asked.length = 0; sayYes = true; drafts.value = {}; toasts.value = []; lockAnswer = { ok: true, fixed: 2 }; switchAnswer = { ok: true, converted: 7 }; replaceLocal('jobs', []); replaceLocal('customers', []); });
 
 describe('Réglages → Réservations : plages d’arrivée', () => {
   it('off: the panel explains, the blocks editor is there, nothing about windows is written when saving', async () => {
@@ -211,27 +215,23 @@ describe('Réglages → Réservations : plages d’arrivée', () => {
     expect(sp(box.textContent)).toContain('plus courte qu’une plage');
   });
 
-  it('« Fixer les plages »: every flexible customer with a window is texted; the ones not told are listed to text by hand', async () => {
+  it('« Fixer les plages » (Part 28, days F19): the windows are fixed, NO window text goes from here, tomorrow’s send list opens', async () => {
     seed({ windows_on: true }, ['office']);
     const tomorrow = addDays(today(), 1);
     const flex = (id: string, customer_id: string) => ({ id, number: 1, customer_id, day: tomorrow, block: 'day', status: 'booked', win_flex: true, win_start: 840, win_end: 1080 });
     replaceLocal('jobs', [flex('j1', 'c1'), flex('j2', 'c2')] as never);
     replaceLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'Roy' }, { id: 'c2', first_name: 'Karim', last_name: 'Haddad' }] as never);
     lockAnswer = { ok: true, fixed: 1, jobs: ['j1'], untold: ['j3'] };
-    notifyAnswers.j2 = { ok: false, status: 'off', message: 'Bonjour Karim…', phone: '5145551234' };
-    notifyAnswers.j3 = { ok: false, code: 'not_booked' };
     await show();
     await click(q('windows-lock')[0]);
     await wait(); await wait();
-    const told = calls.filter((c) => c.name === 'notify').map((c) => c.args[1]).sort();
-    expect(told).toEqual(['j1', 'j2', 'j3']);
-    const list = q('windows-untold')[0];
-    expect(list).toBeTruthy();
-    expect(sp(list.textContent)).toContain('Karim Haddad');
-    expect(sp(list.textContent)).not.toContain('Julie');
-    expect(list.querySelector('a')?.getAttribute('href')).toContain('sms:5145551234');
+    expect(calls.map((c) => c.name)).toEqual(['lockWindows', 'pull', 'openTell']);
+    expect(calls[2].args).toEqual([tomorrow]);
+    expect(calls.some((c) => c.name === 'notify')).toBe(false);
+    expect(q('windows-untold').length).toBe(0);
+    expect(sp(toasts.value[toasts.value.length - 1].text)).toContain('1 plage fixée');
   });
-  it('« Fixer les plages » pressed late: a window of today already over is not texted, one still ahead is (settings-team-st-2)', async () => {
+  it('« Fixer les plages » pressed late, nothing to fix: still no text from here; the list opened says who is left (tomorrow)', async () => {
     seed({ windows_on: true }, ['office']);
     const now = nowMinute();
     const flex = (id: string, end: number) => ({ id, number: 1, customer_id: null, day: today(), block: 'day', status: 'booked', win_flex: true, win_start: Math.max(0, end - 240), win_end: end });
@@ -240,7 +240,16 @@ describe('Réglages → Réservations : plages d’arrivée', () => {
     await show();
     await click(q('windows-lock')[0]);
     await wait(); await wait();
-    expect(calls.filter((c) => c.name === 'notify').map((c) => c.args[1])).toEqual(['ahead']);
+    expect(calls.filter((c) => c.name === 'notify')).toEqual([]);
+    expect(calls.filter((c) => c.name === 'openTell').map((c) => c.args[0])).toEqual([addDays(today(), 1)]);
+    expect(sp(toasts.value[toasts.value.length - 1].text)).toContain('Aucun rendez-vous flexible à fixer');
+  });
+  it('a refused « Fixer les plages » opens nothing', async () => {
+    seed({ windows_on: true }, ['office']);
+    lockFails = true;
+    await show();
+    await click(q('windows-lock')[0]);
+    expect(calls.map((c) => c.name)).toEqual(['lockWindows']);
   });
 });
 

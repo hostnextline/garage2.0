@@ -22,7 +22,7 @@ import { FakeServer, clientFor } from './testkit';
 import { startSync, stopSync, net, flush, syncOptions } from './sync';
 import { setNet } from './net';
 import { bookJob, moveJob, updateJob, changeJobCustomer, setTruckStart, saveSettings } from './api';
-import { resetRoads, roadsSwitch, movePreview, stopOrderPreview, warmRoads, type MovePreview, type StopEta } from './roads';
+import { resetRoads, roadsSwitch, movePreview, warmRoads, type MovePreview } from './roads';
 import { today, addDays } from '../lib/dates';
 
 let srv: FakeServer; let n = 0;
@@ -239,18 +239,6 @@ describe('the previews: nothing written, the action\'s right and refusals', () =
     expect(await movePreview('t1', '2026-12-01', 'am', ['a'])).toBeNull();
     srv.rpc('move_preview', () => { throw Object.assign(new Error('Non.'), { code: 'not_allowed' }); });
     await expect(movePreview('t1', '2026-12-01', 'am', ['a'])).rejects.toMatchObject({ kind: 'refusal', hint: 'not_allowed' });
-  });
-  it('stopOrderPreview: stop_order_preview { p_truck, p_day, p_block, p_jobs }; each stop\'s time, late, and whether it is measured', async () => {
-    srv.rpc('stop_order_preview', () => [{ id: 'a', eta: 540, late: false, measured: true }, { id: 'b', eta: null, late: true, measured: false }, { id: 'c', eta: 600, late: false }, { nope: 1 }]);
-    await start(true);
-    const p = await stopOrderPreview('t1', '2026-12-01', 'am', ['b', 'a']) as StopEta[];
-    expect(p).toEqual([{ id: 'a', eta: 540, late: false, measured: true }, { id: 'b', eta: null, late: true, measured: false }, { id: 'c', eta: 600, late: false }]);
-    expect(rpcCalls('stop_order_preview')[0].body).toEqual({ p_truck: 't1', p_day: '2026-12-01', p_block: 'am', p_jobs: ['b', 'a'] });
-    // switch off: the server sends measured null → not said
-    srv.rpc('stop_order_preview', () => [{ id: 'a', eta: 540, late: false, measured: null }]);
-    expect(await stopOrderPreview('t1', '2026-12-01', 'am', [])).toEqual([{ id: 'a', eta: 540, late: false }]);
-    srv.rpc('stop_order_preview', () => ({ not: 'a list' }));
-    expect(await stopOrderPreview('t1', '2026-12-01', 'am', [])).toBeNull();
   });
 });
 

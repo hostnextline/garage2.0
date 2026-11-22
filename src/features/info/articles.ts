@@ -330,7 +330,7 @@ export const ARTICLES: InfoArticle[] = [
         'Ouvre la job (pas encore commencée).',
         'Touche « Modifier » (aussi dans le menu « … », et d’un clic droit ou d’un appui long dans l’agenda).',
         'Change ce qu’il faut : un autre jour ou un autre bloc, un autre client (« Changer de client »), un service, un prix.',
-        'Enregistre. Si le jour ou le bloc change, l’app te demande « Texter … ? » : « Envoyer le texto » avertit le client, « Pas de texto » n’envoie rien.',
+        'Enregistre. Si le jour ou le bloc change, l’app te demande « Texter … ? » : « Envoyer le texto » avertit le client tout de suite ; « Pas maintenant » n’envoie rien, et sa nouvelle heure part plus tard avec « Envoyer les heures aux clients ».',
         'Seulement le camion à changer ? Menu « … » → « Changer de camion » : choisis un camion qui travaille ce bloc, ou « Laisser l’app choisir ». Le client n’est pas averti (même jour, même heure). Avec les plages d’arrivée, si l’autre camion ne peut pas être là à cette heure, l’app te le dit avant et te propose la première heure possible : sa nouvelle plage est dite, et l’app te demande ensuite s’il faut texter le client.'
       ],
       example: 'Amro ne peut plus samedi. Le bureau ouvre sa job → « Modifier » → lundi matin, puis enregistre. L’app demande « Texter Amro ? » : « Envoyer le texto », et Amro reçoit son nouveau moment.',
@@ -340,7 +340,7 @@ export const ARTICLES: InfoArticle[] = [
     en: {
       title: 'Edit or move an appointment',
       short: 'On the job, “Edit” changes everything in one place: the customer, the car, the address, the day and block, the truck, the services and prices, the problem and notes.',
-      steps: ['Open the job (not started yet).', 'Tap “Edit” (also in the “…” menu, and with a right click or a long press in the agenda).', 'Change what you need: another day or block, another customer (“Change the customer”), a service, a price.', 'Save. If the day or block changes, the app asks “Text …?”: “Send the text” tells the customer, “No text” sends nothing.', 'Only the truck to change? “…” menu → “Change truck”: pick a truck working that block, or “Let the app choose”. The customer is not told (same day, same time). With arrival windows, if the other truck can’t be there at that time, the app tells you first and offers the earliest time: its new window is shown, and then the app asks you whether to text the customer.'],
+      steps: ['Open the job (not started yet).', 'Tap “Edit” (also in the “…” menu, and with a right click or a long press in the agenda).', 'Change what you need: another day or block, another customer (“Change the customer”), a service, a price.', 'Save. If the day or block changes, the app asks “Text …?”: “Send the text” tells the customer right away; “Not now” sends nothing, and their new time goes later with “Send the times to customers”.', 'Only the truck to change? “…” menu → “Change truck”: pick a truck working that block, or “Let the app choose”. The customer is not told (same day, same time). With arrival windows, if the other truck can’t be there at that time, the app tells you first and offers the earliest time: its new window is shown, and then the app asks you whether to text the customer.'],
       example: 'Amro can’t make Saturday. The office opens his job → “Edit” → Monday morning → save. The app asks “Text Amro?”: “Send the text”, and Amro gets his new time.',
       tips: ['With arrival windows, you pick the new day and the time the mechanic arrives (to the quarter hour; in the agenda on a computer, drag the job to that time): the job arrives then, the customer’s window becomes the 4 hours around it, and the other stops keep their order and time. If someone would be late, the app tells you who before saving. “Flexible”: the app picks the time.', 'The wrong customer on the appointment? “Change the customer”: their links are removed, send the confirmation again to the right customer.', 'Without opening the job: on the Map (“Move” on the stop’s card), in Overview and in “The trucks” on Today, press and hold a stop (on a computer: right-click) → “Move”. The sheet opens right there; the stop leaves the list when it changes day.'],
       keys: 'edit move change date day reschedule block customer truck price service map stop stops overview trucks text sms'
@@ -390,7 +390,7 @@ export const ARTICLES: InfoArticle[] = [
         'L’app tient chaque plage promise quand elle réorganise une route : elle ne déplace un arrêt que si tout le monde reste dans sa plage.',
         'La plage est large exprès (1 h avant, 3 h après) : ça laisse de la place pour réorganiser.',
         'Les rendez-vous « Flexible » se placent n’importe quand dans la journée : ils aident à mettre plus de rendez-vous dans une journée.',
-        'Un arrêt mis à la main dans « Ordre des arrêts », ou réservé « quand même », peut sortir de sa plage.'
+        'Un arrêt réservé « quand même », ou placé par un mécano dans « Réorganiser la journée », peut sortir de sa plage.'
       ],
       keys: 'plage plages arrivee fenetre 4 heures entre flexible hors plage veille bloc blocs promesse'
     },
@@ -409,34 +409,34 @@ export const ARTICLES: InfoArticle[] = [
         'The app keeps every promised window when it reorders a route: it only moves a stop if everyone stays inside their window.',
         'The window is wide on purpose (1 h before, 3 h after): it leaves room to reorder.',
         '“Flexible” appointments fit anywhere in the day: they help fit more appointments in a day.',
-        'A stop ordered by hand in “Order of the stops”, or booked “anyway”, can end up outside its window.'
+        'A stop booked “anyway”, or placed by a mechanic in “Rearrange the day”, can end up outside its window.'
       ],
       keys: 'window windows arrival 4 hours between flexible outside day before block blocks promise'
     }
   },
   {
-    id: 'stop-order', topic: 'booking', roles: ['owner', 'office', 'mechanic'],
+    /* Part 28: « Réorganiser la journée » (« Ordre des arrêts » is retired into it; « Mettre en premier » opens it) */
+    id: 'day-order', topic: 'booking', roles: ['owner', 'office', 'mechanic'],
     fr: {
-      title: 'Changer l’ordre des clients (Mettre en premier)',
-      short: 'L’app choisit l’ordre qui roule le moins. Pour passer un client avant les autres : menu « … » de sa job → « Mettre en premier ». Ou « Ordre des arrêts » pour tout réordonner.',
+      title: 'Réorganiser la journée (changer l’ordre, Mettre en premier)',
+      short: 'Tous les arrêts de la journée dans une liste, camion par camion : glisse un arrêt plus haut, plus bas ou sur l’autre camion. Rien ne change avant « Enregistrer », et aucun texto ne part.',
       steps: [
-        'Ouvre la job du client.',
-        'Rapide : « … » → « Mettre en premier ». C’est fait.',
-        'Ou : « Ordre des arrêts » → flèches ⇈ (en premier), ↑, ↓ → « Enregistrer l’ordre ».',
-        'Les heures d’arrivée de tout le monde sont recalculées.',
-        'Pour revenir à l’ordre de l’app : « Ordre des arrêts » → « Laisser l’app choisir ».'
+        'Ouvre la journée (agenda, Carte ou Aujourd’hui) → « Réorganiser la journée ».',
+        'Appuie sur ≡ et glisse l’arrêt. Les heures se calculent quand tu le lâches.',
+        'Un client qui change d’heure est montré avant : rien ne lui est envoyé.',
+        '« Enregistrer ». Quand ta journée est prête : « Envoyer les heures aux clients ».'
       ],
-      example: 'Mahdi est urgent. Hassan ouvre sa job → « … » → « Mettre en premier ». Mahdi passe 1er vers 15 h 03, Amro passe 2e vers 16 h 08.',
-      tips: ['Ceux qui sont en route ou sur place restent toujours en premier.', 'Le propriétaire, le bureau et le mécano du camion peuvent le faire.', 'Avec les plages d’arrivée, l’ordre se choisit pour toute la journée du camion. Attention : un ordre choisi à la main peut faire arriver le camion en dehors de la plage dite à un client. L’app avertit avant d’enregistrer et marque l’arrêt « Hors plage ».'],
-      keys: 'ordre premier urgent prioriser avant changer ordre arrets route trier'
+      example: 'Mahdi est urgent. Hassan ouvre sa job → « … » → « Mettre en premier » : la journée s’ouvre avec Mahdi en premier. « Amro : 9 h à 13 h devient 13 h à 17 h » est montré avant. Hassan enregistre, puis touche « Envoyer les heures aux clients (1) » : Amro reçoit sa nouvelle heure.',
+      tips: ['Ceux qui sont en route ou sur place restent toujours en premier.', 'Touche un arrêt (sans le glisser) pour « Mettre en premier », « Monter », « Descendre » ou le mettre sur l’autre camion.', 'Le propriétaire et le bureau changent tous les camions ; le mécano, l’ordre de son camion seulement.', '« Laisser l’app choisir » propose l’ordre de l’app : rien n’est enregistré avant « Enregistrer ».'],
+      keys: 'reorganiser ordre arrets glisser camion journee envoyer heures clients textos premier urgent prioriser'
     },
     en: {
-      title: 'Change the order of customers (Put first)',
-      short: 'The app picks the order that drives the least. To put a customer first: their job’s “…” menu → “Put first”. Or “Order of the stops” to reorder everything.',
-      steps: ['Open the customer’s job.', 'Quick: “…” → “Put first”. Done.', 'Or: “Order of the stops” → arrows ⇈ (first), ↑, ↓ → “Save the order”.', 'Everybody’s arrival time is worked out again.', 'Back to the app’s order: “Order of the stops” → “Let the app choose”.'],
-      example: 'Mahdi is urgent. Hassan opens his job → “…” → “Put first”. Mahdi goes 1st around 3:03, Amro 2nd around 4:08.',
-      tips: ['Those on the way or on site always stay first.', 'The owner, the office and the truck’s mechanic can do it.', 'With arrival windows, the order is chosen for the truck’s whole day. Careful: an order chosen by hand can make the truck arrive outside the window a customer was told. The app warns before saving and marks the stop “Outside the window”.'],
-      keys: 'order first urgent priority before stops route sort'
+      title: 'Rearrange the day (change the order, Put first)',
+      short: 'Every stop of the day in a list, truck by truck: drag a stop higher, lower or onto the other truck. Nothing changes before “Save”, and no text goes out.',
+      steps: ['Open the day (agenda, Map or Today) → “Rearrange the day”.', 'Press ≡ and drag the stop. The times are worked out when you let go.', 'A customer whose time changes is shown first: nothing is sent to them.', '“Save”. When your day is ready: “Send the times to customers”.'],
+      example: 'Mahdi is urgent. Hassan opens his job → “…” → “Put first”: the day opens with Mahdi first. “Amro: 9 a.m. to 1 p.m. becomes 1 to 5 p.m.” is shown first. Hassan saves, then taps “Send the times to customers (1)”: Amro gets his new time.',
+      tips: ['Those on the way or on site always stay first.', 'Tap a stop (without dragging it) to “Put first”, “Move up”, “Move down” or put it on the other truck.', 'The owner and the office change every truck; the mechanic, the order of his own truck only.', '“Let the app choose” suggests the app’s order: nothing is saved before “Save”.'],
+      keys: 'rearrange order stops drag truck day send times customers texts first urgent priority'
     }
   },
   {

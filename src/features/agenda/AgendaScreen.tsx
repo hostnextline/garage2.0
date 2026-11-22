@@ -21,6 +21,7 @@ import { shiftWeek, weekTitle, sameWeek, weekOfDay } from './layout';
 import { dayPlan, activeCount, seesAll, workingTrucks } from './select';
 import { copiedJob, copiedRow, clearCopy } from './copy';
 import { MoveWindowHost } from './MoveWindowSheet';
+import { DayOrderHost } from '../../shared/jobs/DayOrderHost';
 import './agenda.css';
 
 /** redraw every minute (blocks start, the « now » line, midnight) and when the app comes back to the front */
@@ -101,6 +102,8 @@ export default function AgendaScreen({ params, query }: ScreenProps) {
         <DayView day={day} plan={plans[0]} onDay={(d) => go(d)} />
       )}
       <MoveWindowHost />
+      {/* « Réorganiser la journée » (the day bar, the week's block menu, a stop's menu): the sheet on the agenda */}
+      <DayOrderHost />
     </Page>
   );
 }

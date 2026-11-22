@@ -301,6 +301,9 @@ export const jobs = {
     pushedLine: '{name} : vers {eta} au lieu de {was}.',
     lateTitle: { one: 'Déplacer {who} à {time} met {name} en retard', other: 'Déplacer {who} à {time} met {n} clients en retard' },
     lateLine: '{name} : vers {eta}, {by} après sa plage ({from} à {to}).',
+    /* Part 28: the late customer's new window, said in the question (a day other than today, « les plages » allowed to
+       move, his sure arrival outside the window he was told); it leaves with the day's button, never by itself */
+    lateNew: 'Il aura {from} à {to} avec « Envoyer les heures aux clients ».',
     overHours: 'Le camion finirait sa journée {by} après ses heures.',
     lateOk: 'Déplacer quand même',
     other: 'Choisir une autre heure',
@@ -314,7 +317,10 @@ export const jobs = {
     offline: 'Pas de réseau : je ne peux pas vérifier si ce déplacement met quelqu’un en retard. Réessaie quand le réseau revient.',
     lost: 'Pas de réponse du serveur : le déplacement est peut-être fait. Regarde l’agenda dans un instant avant de réessayer.',
     done: 'Rendez-vous déplacé : {when} à {time}.',
-    doneLate: { one: 'Avertis {names} : servi après sa plage.', other: 'Avertis {names} : servis après leur plage.' },
+    /* the late customers after the move: on a day other than today their new window leaves with the day's button (Part 28);
+       today (or a window that does not move) they are to be told by the person: the words of before */
+    doneLate: { one: '{names} aura une nouvelle plage : elle part avec « Envoyer les heures aux clients ».', other: '{names} auront une nouvelle plage : elle part avec « Envoyer les heures aux clients ».' },
+    doneLateToday: { one: 'Avertis {names} : servi après sa plage.', other: 'Avertis {names} : servis après leur plage.' },
     notAt: 'Placé à {real} : le camion ne pouvait pas être là à {time}.',
     someone: 'un client',
     /* its own truck does not work that day: the vehicle the server offered at that time */
@@ -325,35 +331,16 @@ export const jobs = {
     title: 'Texter {name} ?',
     lead: 'Le texto lui dira le nouveau moment :',
     send: 'Envoyer le texto',
-    skip: 'Pas de texto'
+    skip: 'Pas maintenant',
+    /* under the moment: « Pas maintenant » loses nothing (Part 28) */
+    later: 'Pas maintenant : rien ne part, sa nouvelle heure partira avec « Envoyer les heures aux clients ».'
   },
   /* the « … » sheet */
   order: {
-    open: 'Ordre des arrêts',
-    openSub: 'Choisir qui passe avant qui dans la route de ce camion',
-    title: 'Ordre des arrêts',
-    lead: 'Mets les clients dans l’ordre voulu. Ceux en route ou sur place restent en premier. Les heures d’arrivée sont recalculées pour tout le monde.',
-    first: 'Mettre {name} en premier',
-    up: 'Monter {name}',
-    down: 'Descendre {name}',
-    eta: 'vers {time}',
-    /* « Vraies routes » on: a trip up to that stop not measured yet (stop_order_preview measured false) */
+    /* « Vraies routes » on: a trip up to that stop not measured yet (eta_measured false; day_order_preview measured false) */
     etaUnmeasured: 'heure : trajets pas encore mesurés',
-    save: 'Enregistrer l’ordre',
-    saved: 'Ordre enregistré. Les heures d’arrivée sont à jour.',
-    auto: 'Laisser l’app choisir',
-    autoDone: 'L’app choisit de nouveau l’ordre (le moins de route).',
-    timesAfter: 'Les nouvelles heures d’arrivée s’affichent après l’enregistrement.',
-    none: 'Aucun rendez-vous réservé dans cette route.',
     firstMenu: 'Mettre en premier',
-    firstMenuSub: 'Ce client passe avant les autres de ce bloc',
-    firstDone: '{name} passe en premier. Les heures d’arrivée sont à jour.',
-    live: { en_route: 'En route', on_site: 'Sur place' },
-    /* « Vraies routes » on: the arrival times of the order built come from the server (stop_order_preview) */
-    pending: 'Heures d’arrivée : pas encore calculées.',
-    serverTimes: 'Les heures montrées sont celles de ce nouvel ordre, calculées par le serveur.',
-    late: 'En retard',
-    lateServer: { one: 'Avec cet ordre, {names} serait servi après l’heure dite au client. Avertis ce client si tu enregistres.', other: 'Avec cet ordre, ces clients seraient servis après l’heure qui leur a été dite : {names}. Avertis-les si tu enregistres.' }
+    firstMenuSub: 'Ouvre « Réorganiser la journée » avec ce client en premier : rien ne change avant « Enregistrer »'
   },
   menu: {
     title: 'Plus d’actions',
@@ -413,13 +400,7 @@ export const jobs = {
       help: 'La durée sert au camion pour placer les arrêts dans sa journée. Si la job ne rentre plus, déplace-la.'
     },
     order: {
-      firstMenuSub: 'Ce client passe avant les autres de la journée',
-      wholeDay: 'toute la journée',
-      told: 'client : {window}',
-      note: 'Un ordre choisi à la main peut faire arriver le camion en dehors de la plage dite à un client. L’app l’indique alors « Hors plage ».',
-      breaks: { one: 'Avec cet ordre, {names} serait probablement servi en dehors de sa plage d’arrivée. Avertis ce client si tu enregistres.', other: 'Avec cet ordre, ces clients seraient probablement servis en dehors de leur plage d’arrivée : {names}. Avertis-les si tu enregistres.' },
-      about: 'environ {time}',
-      saveAnyway: 'Enregistrer quand même'
+      firstMenuSub: 'Ouvre « Réorganiser la journée » avec ce client en premier : rien ne change avant « Enregistrer »'
     },
     menu: {
       resendBookingSub: 'Le jour, la plage d’arrivée et le total prévu',
@@ -569,6 +550,7 @@ export const jobs = {
     copyFail: 'Le téléphone n’a pas permis de copier. Garde le doigt sur le texte pour le copier.',
     sentTo: 'Texto envoyé à {name}.',
     already: 'Ce texto a déjà été envoyé.',
+    nothingNew: 'Pas de texto : l’heure qu’on a dite à {name} tient toujours, rien de nouveau à lui dire.',
     quiet: 'Pas de texto : ce client ou ce type de texto est désactivé.',
     offline: 'Pas de réseau : le texto ne peut pas partir. Réessaie quand le réseau revient.'
   }

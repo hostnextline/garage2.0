@@ -896,7 +896,10 @@ test('the way back: after the six migrations, fonctions_avant.sql and the « Dé
   const bloc = rb.match(/\*\*Déclencheurs\*\*[\s\S]*?```sql\n([\s\S]*?)```/);
   assert.ok(requete && bloc, 'CUTOVER.md holds the query of fonctions_avant.sql and the « Déclencheurs » block');
   const migrations = readdirSync(join(ROOT, 'supabase/migrations')).filter((x) => x.endsWith('.sql')).sort();
-  const neuves = migrations.filter((f) => f >= '20261116');
+  // a later Part with its own runbook and its own way back (Part 28: ops/live/PARTIE28.md, « Le retour »: its migration stays,
+  // never DROP) is not CUTOVER's: left out, as ops/tests/fichiers.test.mjs does
+  const rb28 = existsSync(join(ROOT, 'ops/live/PARTIE28.md')) ? readFileSync(join(ROOT, 'ops/live/PARTIE28.md'), 'utf8') : '';
+  const neuves = migrations.filter((f) => f >= '20261116' && !rb28.includes(f));
   assert.ok(neuves.length >= 6);
   const nb = new pg.Pool({ host: '127.0.0.1', port: 54332, user: 'postgres', database: nom, max: 1 });
   nb.on('error', () => {});

@@ -236,7 +236,6 @@ export const settings = {
       lock: 'Fixer les plages de demain',
       locked: { one: '{n} plage fixée pour demain.', other: '{n} plages fixées pour demain.' },
       lockedNone: 'Aucun rendez-vous flexible à fixer pour demain.',
-      untoldTitle: { one: '{n} client n’a pas reçu sa plage : dis-la-lui toi-même.', other: '{n} clients n’ont pas reçu leur plage : dis-la-leur toi-même.' },
       untoldText: 'Texter',
       untoldNoPhone: 'Pas de numéro',
       backTitle: { one: '{n} client a reçu une plage qui n’est plus dans son bloc : appelle-le ou texte-lui.', other: '{n} clients ont reçu une plage qui n’est plus dans leur bloc : appelle-les ou texte-leur.' },
@@ -358,7 +357,7 @@ export const settings = {
     emptyEn: 'Ce texte anglais est vide : le client anglophone recevra le texte français.',
     kinds: {
       booking: { title: 'Rendez-vous confirmé', when: 'Quand un rendez-vous est réservé.' },
-      moved: { title: 'Rendez-vous changé', when: 'Quand un rendez-vous change de jour ou de bloc. L’app te demande d’abord s’il faut l’envoyer.' },
+      moved: { title: 'Rendez-vous changé', when: 'Quand un rendez-vous change de jour ou d’heure : l’app te demande d’abord s’il faut l’envoyer ; sinon, il part avec « Envoyer les heures aux clients ».' },
       en_route: { title: 'En route', when: 'Quand le mécano part vers le client, avec l’heure d’arrivée.' },
       en_route_no_eta: { title: 'En route, sans heure', when: 'Quand l’heure d’arrivée n’est pas connue.' },
       arrived: { title: 'Mécano arrivé (facture à payer)', when: 'Quand le mécano touche « Je suis arrivé » : la facture, à payer en ligne pendant les travaux.' },

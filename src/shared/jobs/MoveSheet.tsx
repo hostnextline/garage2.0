@@ -1,6 +1,7 @@
 /* « Déplacer »: another day and block (or arrival window), with the « garde-route » question when the moment puts too much
    road in the truck's day; then, when the « moved » text is on and what the customer was told changed, the question
-   « Texter … ? » (textAsk.tsx: Hassan, 2026-11-22, nothing goes by itself). The one sheet of the app:
+   « Texter … ? » (textAsk.tsx: Hassan, 2026-11-22, nothing goes by itself); none asked: the toast of the day the customer
+   was told when that day is today and the move changed it (Part 28, toldDayAfter). The one sheet of the app:
    the appointment's screen opens it (features/jobs/JobSheet.tsx), and so do the lists of a truck's stops, on their own
    screen (MoveHost: Carte, Vue d'ensemble, Aujourd'hui). Moved here from features/jobs, unchanged but for `onSent` and
    `fromList` (the lists of stops only; the appointment's screen passes neither and behaves as before).
@@ -24,7 +25,7 @@ import { moveTextGoes } from '../../domain/jobs/move';
 import { exactAtOf } from '../../domain/moment/exactAt';
 import { dropTells } from '../../domain/moment/moveRules';
 import { jobCustomer, dayInSentence, wt } from './select';
-import { askMovedText } from './textAsk';
+import { askMovedText, toldDayAfter } from './textAsk';
 import { moveAt, doneWords } from './exactMove';
 
 /** what moveJob gave: kept on the phone (`queued`), or the server's answer */
@@ -73,12 +74,14 @@ function MoveOpen(p: { job: Job; onClose: () => void; onSent?: (r: MoveSent) => 
     if (d.kind === 'stopped') return;
     if (d.kind === 'refused') { toast(errorMessage(d.error), { kind: 'bad' }); return; }
     const r = { queued: false, data: d.r.data };
-    if ((d.r.data as { unchanged?: boolean } | undefined)?.unchanged) toast(t('jobs.moment.same'));
+    const unchanged = !!(d.r.data as { unchanged?: boolean } | undefined)?.unchanged;
+    if (unchanged) toast(t('jobs.moment.same'));
     else said(doneWords(d, c.day));
     p.onSent?.(r);
     p.onClose();
-    // the question once this sheet gave back its history step (textAsk waits for it)
-    if (moveTextGoes(r, j, jobRow(j.id), textOn)) askMovedText(j, { via: 'jobs' });
+    // the question once this sheet gave back its history step (textAsk waits for it); none asked: the told day's toast
+    const asked = moveTextGoes(r, j, jobRow(j.id), textOn) && askMovedText(j, { via: 'jobs' });
+    if (!asked && !unchanged) toldDayAfter(j);
   };
   const move = async () => {
     if (!choice || busy) return;
@@ -98,8 +101,10 @@ function MoveOpen(p: { job: Job; onClose: () => void; onSent?: (r: MoveSent) => 
       p.onSent?.(r);
       p.onClose();
       // the question « Texter … ? » only when what the customer was told changed (the server's `tell`): a truck changed at
-      // the same moment, or the same window, says nothing new to them (R84); nothing goes without « Envoyer le texto »
-      if (moveTextGoes(r, j, jobRow(j.id), textOn)) askMovedText(j, { via: 'jobs' });
+      // the same moment, or the same window, says nothing new to them (R84); nothing goes without « Envoyer le texto ».
+      // None asked once it moved: the toast of the day he was told (a move kept on the phone: MoveHost, once it lands)
+      const asked = moveTextGoes(r, j, jobRow(j.id), textOn) && askMovedText(j, { via: 'jobs' });
+      if (!asked && !r.queued && !d?.unchanged) toldDayAfter(j);
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
     }

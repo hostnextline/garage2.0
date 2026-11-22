@@ -11,7 +11,7 @@ const sync = vi.hoisted(() => ({ outboxList: vi.fn(), whenDone: vi.fn() }));
 const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 const notify = vi.hoisted(() => ({ notifyCustomer: vi.fn(), wantsText: vi.fn() }));
 const rows = vi.hoisted(() => ({ job: vi.fn(), customer: vi.fn() }));
-const textAsk = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true) }));
+const textAsk = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true), toldDayAfter: vi.fn() }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 vi.mock('../../data/sync', async (orig) => ({ ...(await orig<object>()), ...sync }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ...ui }));
@@ -231,5 +231,75 @@ describe('« Beaucoup de route » asked once for one move (review TA-5)', () => 
     expect(api.suggestBlocks).toHaveBeenCalledTimes(1);
     expect(ui.ask).toHaveBeenCalledTimes(1);
     expect(api.moveJob).not.toHaveBeenCalled();
+  });
+});
+
+/* Part 28 (REARRANGE.md §3.6-2, U6): a move that asked nothing (nothing new for the customer, « Rendez-vous changé » off,
+   no cell) hands the job as it was to toldDayAfter (textAsk), which shows the TOLD day's toast when that day is today and
+   the move changed it; a move that asked leaves it to the question's « Pas maintenant »; a move that did not move: nothing. */
+describe('the told day’s toast after a move that asked nothing (Part 28)', () => {
+  const toasted = () => textAsk.toldDayAfter.mock.calls.map((c) => (c[0] as Job).id);
+  it('tell: false (nothing new for him): no question, the toast’s check with the job before the move', async () => {
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, tell: false, rows: { jobs: [julie({ win_start: 840, win_end: 1080 })] } } });
+    const before = julie();
+    expect(await moveToWindow(before, '2026-11-20', { start: 840 })).toBe(true);
+    expect(asked()).toEqual([]);
+    expect(textAsk.toldDayAfter).toHaveBeenCalledTimes(1);
+    expect(textAsk.toldDayAfter.mock.calls[0][0]).toBe(before);
+  });
+  it('« Rendez-vous changé » off or no cell (askMovedText answers false): the toast instead of the question', async () => {
+    textAsk.askMovedText.mockReturnValueOnce(false);
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, tell: true } });
+    await moveFlow(julie({ block: 'am', win_start: null, win_end: null }), { day: '2026-11-21', block: 'pm' });
+    expect(textAsk.askMovedText).toHaveBeenCalledTimes(1);
+    expect(toasted()).toEqual(['j1']);
+  });
+  it('the question asked: no toast from the move (the question’s « Pas maintenant » shows it)', async () => {
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, tell: true } });
+    await moveToWindow(julie(), '2026-11-20', { start: 840 });
+    expect(asked()).toEqual(['j1']);
+    expect(textAsk.toldDayAfter).not.toHaveBeenCalled();
+  });
+  it('nothing moved (« unchanged »): nothing', async () => {
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, unchanged: true } });
+    await moveToWindow(julie({ win_flex: true }), '2026-11-20', { flex: true });
+    expect(textAsk.toldDayAfter).not.toHaveBeenCalled();
+  });
+  it('the time grid (exact move) with tell: false: the toast', async () => {
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, tell: false, rows: { jobs: [julie({ eta_min: 900 })] } } });
+    expect(await moveToTime(julie(), '2026-11-20', null, 900)).toBe(true);
+    expect(asked()).toEqual([]);
+    expect(toasted()).toEqual(['j1']);
+  });
+  it('a move kept on the phone, no text wanted: the toast once it lands (never before), none when it is refused', async () => {
+    notify.wantsText.mockReturnValue(false);
+    let land: (d: unknown) => void = () => {};
+    api.moveJob.mockResolvedValue({ queued: true });
+    sync.outboxList.mockResolvedValue([{ op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } }]);
+    sync.whenDone.mockReturnValue(new Promise((r) => { land = r; }));
+    await moveToWindow(julie(), '2026-11-22', { start: 540 });
+    await flush();
+    expect(textAsk.toldDayAfter).not.toHaveBeenCalled();
+    land({ ok: true, changed: true, rows: { jobs: [julie({ day: '2026-11-22' })] } });
+    await flush(); await flush();
+    expect(toasted()).toEqual(['j1']);
+    expect(movesWaiting.value.has('j1')).toBe(false);
+    textAsk.toldDayAfter.mockClear();
+    sync.whenDone.mockReturnValue(Promise.reject(new Error('block_full')));
+    await moveToWindow(julie(), '2026-11-22', { start: 600 });
+    await flush(); await flush();
+    expect(textAsk.toldDayAfter).not.toHaveBeenCalled();
+    expect(movesWaiting.value.has('j1')).toBe(false);
+  });
+  it('a move kept on the phone that lands with nothing new to tell (tell: false): the toast, no question', async () => {
+    let land: (d: unknown) => void = () => {};
+    api.moveJob.mockResolvedValue({ queued: true });
+    sync.outboxList.mockResolvedValue([{ op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } }]);
+    sync.whenDone.mockReturnValue(new Promise((r) => { land = r; }));
+    await moveToWindow(julie(), '2026-11-22', { start: 540 });
+    land({ ok: true, tell: false, rows: { jobs: [julie({ day: '2026-11-22' })] } });
+    await flush(); await flush();
+    expect(asked()).toEqual([]);
+    expect(toasted()).toEqual(['j1']);
   });
 });

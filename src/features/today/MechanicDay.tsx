@@ -2,9 +2,11 @@
    office), the next stop with its red button, the other stops in order, the finished ones folded, the day in numbers,
    and the first stop of the next working day. A ticket of a stop on the way says the trip's real arrival or no time, never
    the plan's: JobTicket itself does it now (enRouteTicket; review-trip F1, F3), for every screen. The day's tickets have
-   the agenda's shortcut menu (right-click, long press), with its rights: « Déplacer » only with « Réserver » (StopTicket). */
+   the agenda's shortcut menu (right-click, long press), with its rights: « Déplacer » only with « Réserver » (StopTicket).
+   Part 28: before the next stop, a word when its customer does not have his new hours (ToldWarn: the « en route » text
+   then gives the time); under « Ensuite », « Réorganiser ma journée » (his trucks: set_stop_order's rule). */
 import { useState } from 'preact/hooks';
-import { ChevronDown, ChevronUp, MapPin } from 'lucide-preact';
+import { ChevronDown, ChevronUp, ListOrdered, MapPin } from 'lucide-preact';
 import { Panel, Button } from '../../ui';
 import { t } from '../../lib/i18n';
 import { addDays, duration } from '../../lib/dates';
@@ -20,6 +22,9 @@ import { NextStop } from './NextStop';
 import { RouteChoice } from './RouteChoice';
 import { OpenBefore } from './OpenBefore';
 import { StopTicket } from './StopTicket';
+import { openDayOrder } from '../../shared/jobs/DayOrderHost';
+import { ToldWarn } from '../../shared/jobs/ToldBits';
+import { mayOrderDay } from '../../domain/jobs/dayOrder';
 
 export function MechanicDay() {
   const day = useToday();
@@ -36,11 +41,17 @@ export function MechanicDay() {
       <div class="today-main">
         <OpenBefore day={day} mineOnly />
         <RouteChoice />
+        {next && next.status === 'booked' && <ToldWarn job={next} />}
         <NextStop day={day} list={list} />
         {then.length > 0 && (
           <section class="today-section" aria-labelledby="today-then">
             <h2 class="today-h" id="today-then">{t('today.then')}</h2>
             <div class="today-tickets">{then.map((j) => <StopTicket key={j.id} job={j} />)}</div>
+            {mayOrderDay(day) && (
+              <div class="row-wrap">
+                <Button size="sm" variant="secondary" icon={<ListOrdered size={16} />} onClick={() => openDayOrder(day)} data-testid="today-reorg-mine">{t('reorg.openMine')}</Button>
+              </div>
+            )}
           </section>
         )}
         {closed.length > 0 && (

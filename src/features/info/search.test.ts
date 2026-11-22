@@ -35,7 +35,8 @@ describe('Info: the search', () => {
     expect(top('famille amis')).toBe('coffre');
   });
   it('finds the right procedure from the words people type', () => {
-    expect(top('mettre en premier')).toBe('stop-order');
+    expect(top('mettre en premier')).toBe('day-order');
+    expect(top('reorganiser journee')).toBe('day-order');
     expect(top('client absent')).toBe('cancel');
     expect(top('monnaie comptant')).toBe('pay');
     expect(top('huile filtre')).toBe('car-first');

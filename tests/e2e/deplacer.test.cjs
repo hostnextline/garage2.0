@@ -39,9 +39,15 @@ const customer = (first, phone, pt) => {
   C[first] = { id, first, ...pt };
   return C[first];
 };
-/** a stop of the world, written as the planner leaves one (order, arrival, the window told) */
-const stopOf = (first, order, eta, ws) => h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order, eta_min, travel_min, win_start, win_end, win_flex, address, lat, lng)
-  values ('${C[first].id}', '${D}', 'day', 'booked', '${T.complet}', 45, ${order}, ${eta}, 10, ${ws}, ${ws + 240}, false, '${first} e2e, Montréal, QC', ${C[first].lat}, ${C[first].lng}) returning id`);
+/** a stop of the world, written as the planner leaves one (order, arrival, the window told) and as told: its booking
+    text went (Part 28: told_* = what told_install() writes for a booking already texted), so the day's line counts only
+    the clients a step leaves owed their new hour */
+const stopOf = (first, order, eta, ws) => h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order, eta_min, travel_min, win_start, win_end, win_flex, address, lat, lng,
+    confirm_sent_at, told_day, told_start, told_end, told_at, told_how)
+  values ('${C[first].id}', '${D}', 'day', 'booked', '${T.complet}', 45, ${order}, ${eta}, 10, ${ws}, ${ws + 240}, false, '${first} e2e, Montréal, QC', ${C[first].lat}, ${C[first].lng},
+    now(), '${D}', ${ws}, ${ws + 240}, now(), 'install') returning id`);
+/** the clients owed their hour on D, as the office's list says it (tell_list as Nadia): first names */
+const dueOn = async (day) => (await x.rpcAs(who.nadia.jwt, 'tell_list', { p_day: day })).filter((r) => r.state !== 'drift').map((r) => nameOf(r.id)).sort();
 const jobRow = (id) => x.json(`select row_to_json(j) from public.jobs j where id = '${id}'`);
 const nameOf = (id) => Object.keys(J).find((k) => J[k] === id) || id;
 /** the server's preview of a move to that minute (asked as the office, as the screen asks it): its answer, or its refusal */
@@ -74,9 +80,24 @@ async function textAskIf(page, changed, first) {
   const before = page.movedSent[first] || 0;
   assert.equal(movedAsked(page, first), before, `the server not asked to text ${first} before the answer`);
   assert.deepEqual(await d.textsTo(first, /a changé/), [], `nothing texted to ${first} before the answer`);
+  // Part 28 (REARRANGE.md §1.3, « Planned ≠ told while the state is 'ok' »): a sure arrival still inside the window he was
+  // TOLD that day leaves him nothing new to hear when it is a minute pointed (the exact move) or his planned window does
+  // not hold it; « Envoyer le texto » then goes under the server's lease, which answers `already` (why « told ») and
+  // texts nothing (the world is written as told: stopOf). A window chosen by hand that holds the arrival is a new one to
+  // tell him, even when the arrival is also inside the told one (review R0)
+  const row = jobRow(J[first]);
+  const inPlanned = row.win_start != null && row.eta_min >= row.win_start && row.eta_min <= row.win_end;
+  const insideTold = row.told_at != null && row.told_day === row.day && row.told_start != null && row.eta_min >= row.told_start && row.eta_min <= row.told_end
+    && (row.arrive_at != null || !inPlanned);
   const ta = await h.textAsk(page);
   page.movedSent[first] = before + 1;
   assert.equal(ta.title, `Texter ${first} ?`);
+  if (insideTold) {
+    await page.waitForTimeout(3000);
+    assert.equal(movedAsked(page, first), before + 1, `the server asked once to text ${first}, after « Envoyer le texto »`);
+    assert.deepEqual(await d.textsTo(first, /a changé/), [], `${first} arrives inside the window told (${row.told_start}–${row.told_end}): nothing new, no text`);
+    return { ...ta, sms: [], already: true };
+  }
   const sms = await until(() => d.textsTo(first, /a changé/), (v) => v.length > 0, 15000);
   assert.equal(sms.length, 1, `${first} told once, after « Envoyer le texto »`);
   assert.equal(movedAsked(page, first), before + 1, `the server asked once to text ${first}, after « Envoyer le texto »`);
@@ -197,8 +218,10 @@ step('1. The office, on a computer, drags the third stop of the day to 13 h 30 o
   const ta = await textAskIf(page, true, 'Chloe');
   t.diagnostic(`then: « ${ta.title} » — « ${ta.when} »`);
   assert.ok(ta.when.endsWith(`, entre ${clock(win[0])} et ${clock(win[1])}`), ta.when);
-  const sms = ta.sms;
-  assert.ok(sms[0].includes(`entre ${clock(win[0])} et ${clock(win[1])}`), sms[0]);
+  // 13 h 30 is inside the window she was told (10 h – 14 h): under Part 28 she has nothing new to hear (the server answers
+  // « already », §1.3), and she is owed nothing on D
+  assert.equal(ta.already, true, 'Chloe arrives inside what she was told');
+  assert.deepEqual(await dueOn(D), [], 'nobody owed on D');
   await h.shot(page, 'deplacer-1-moved');
   x.nothingLeft(r);
   x.noErrors(page);
@@ -225,6 +248,9 @@ step('2. The same drag to a time that makes the next customer late: the question
   t.diagnostic(`the question: « ${q.title} » — « ${q.text} » [${q.buttons.join(' | ')}]`);
   assert.match(q.title, /met Denis en retard/);
   assert.ok(q.text.includes(`Denis : vers ${clock(L.eta_after)}, ${duration(L.late_min)} après sa plage (${clock(L.win_start)} à ${clock(L.win_end)}).`), q.text);
+  // a day other than today (D = today + 3): his new window goes with the day's button (Part 28), said in the question
+  const w = d.winFor(L.eta_after);
+  assert.ok(q.text.includes(`Denis : vers ${clock(L.eta_after)}, ${duration(L.late_min)} après sa plage (${clock(L.win_start)} à ${clock(L.win_end)}). Il aura ${clock(w[0])} à ${clock(w[1])} avec « Envoyer les heures aux clients ».`), q.text);
   assert.ok(q.buttons.includes('Déplacer quand même') && q.buttons.includes('Choisir une autre heure'), q.buttons.join(' | '));
   // « Choisir une autre heure »: nothing written
   await q.no('Choisir une autre heure');
@@ -249,8 +275,8 @@ step('2. The same drag to a time that makes the next customer late: the question
   assert.equal(dn.eta - dn.we, L.late_min, `Denis is late by what was said (${L.late_min} min)`);
   assert.deepEqual(d.orderAndTimes(after2).slice(0, 2), ['Alice #1 510', 'Benoit #2 600'], 'the two first keep their order and times');
   assert.deepEqual(after2.map((s) => s.first), ['Alice', 'Benoit', 'Chloe', 'Denis']);
-  // the message names him, so he can be called
-  const toast = page.getByTestId('toast-ok').filter({ hasText: 'Avertis Denis' }).first();
+  // the message names him: his new window leaves with « Envoyer les heures aux clients » (a day other than today)
+  const toast = page.getByTestId('toast-ok').filter({ hasText: 'Denis aura une nouvelle plage : elle part avec « Envoyer les heures aux clients ».' }).first();
   await toast.waitFor({ timeout: 10000 });
   t.diagnostic(`the message: « ${flat(await toast.innerText())} »`);
   // A5: the moved customer is asked about (« Texter Chloe ? », the server's `tell`) and told her new window on « Envoyer le
@@ -259,7 +285,10 @@ step('2. The same drag to a time that makes the next customer late: the question
   assert.equal(told.length, 1, 'Chloe told once');
   await page.waitForTimeout(1500);
   assert.equal(await page.getByTestId('text-ask').count(), 0, 'one question only: none for Denis');
-  assert.deepEqual(await d.textsTo('Denis'), [], 'no text to Denis: the office calls him');
+  assert.deepEqual(await d.textsTo('Denis'), [], 'no text to Denis: his new window goes with the day’s button');
+  // Part 28: Denis is owed his new hour on D (the office's list), and his window is written only when he is told
+  assert.deepEqual(await dueOn(D), ['Denis'], 'the day’s list: Denis only (Chloe was texted from the question)');
+  assert.deepEqual([dn.ws, dn.we], [L.win_start, L.win_end], 'his window kept until he is told');
   await h.shot(page, 'deplacer-2-moved-late');
   x.nothingLeft(r);
   x.noErrors(page);
@@ -372,7 +401,7 @@ step('4. On a phone: « Déplacer » from the Carte’s stop card, the calendar�
   assert.deepEqual([c.eta, c.at], [AT, AT]);
   assert.equal(dn.eta - dn.we, L.late_min, 'Denis late by what was said');
   await sheet.waitFor({ state: 'detached', timeout: 15000 });
-  await page.getByTestId('toast-ok').filter({ hasText: 'Avertis Denis' }).first().waitFor({ timeout: 10000 });
+  await page.getByTestId('toast-ok').filter({ hasText: 'Denis aura une nouvelle plage' }).first().waitFor({ timeout: 10000 });
   // « Déplacer » from a list of stops (MoveHost, the job screens' send): « Texter Chloe ? » too, on the phone, then the text
   await page.getByTestId('text-ask').waitFor({ timeout: 20000 });
   await h.shot(page, 'deplacer-4-phone-text-ask');
@@ -529,8 +558,9 @@ step('7b. « Vraies routes » on, a stop whose trips are not measured (TomTom an
   x.noErrors(page);
 });
 
-step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me first »): a drag on the agenda, then « Déplacer » on a phone with the texts not connected; each time « Texter Chloe ? » with her new window, answered « Pas de texto » (then, after « Voir » of the move’s message took the phone to her job where the question rose again, closed with ✕): the server is never asked to text, the fake texting service gets nothing, no « text to send by hand » sheet', async (t) => {
-  const AT = 810;
+step('8. « Pas maintenant » (Hassan, 2026-11-22: « the system should ask me first »; Part 28: « put a button that will send for all clients »): a drag on the agenda, then « Déplacer » on a phone with the texts not connected; each time « Texter Chloe ? » with her new window, answered « Pas maintenant » (then, after « Voir » of the move’s message took the phone to her job where the question rose again, closed with ✕): the server is never asked to text, the fake texting service gets nothing, no « text to send by hand » sheet; then the day’s line counts Chloe and « Envoyer à 1 client » texts her the new hour once', async (t) => {
+  // 14 h 30: past the window she was told (10 h – 14 h), so she is owed her new one (Part 28); nobody else changes
+  const AT = 870;
   const win = d.winFor(AT);
   /** every request of the page to the server's texts (notify) */
   const textsAsked = (page) => { const l = []; page.on('request', (q) => { if (/\/functions\/v1\/notify/.test(q.url())) l.push(q.postData()); }); return l; };
@@ -550,8 +580,11 @@ step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me fir
   await until(() => jobRow(J.Chloe), (v) => v.eta_min === AT, 20000);
   await page.getByTestId('text-ask').waitFor({ timeout: 20000 });
   await h.shot(page, 'deplacer-8a-text-ask');
+  // the line under the moment: « Pas maintenant » leaves her for the day's button
+  assert.equal(flat(await page.getByTestId('text-ask-later').innerText()), 'Pas maintenant : rien ne part, sa nouvelle heure partira avec « Envoyer les heures aux clients ».');
+  assert.equal(flat(await page.getByTestId('text-ask-skip').innerText()), 'Pas maintenant');
   const ta = await h.textAsk(page, { send: false });
-  t.diagnostic(`the agenda: « ${ta.title} » — « ${ta.when} », answered « Pas de texto »`);
+  t.diagnostic(`the agenda: « ${ta.title} » — « ${ta.when} », answered « Pas maintenant »`);
   assert.equal(ta.title, 'Texter Chloe ?');
   assert.ok(ta.when.endsWith(`, entre ${clock(win[0])} et ${clock(win[1])}`), ta.when);
   await page.waitForTimeout(2500);
@@ -561,6 +594,32 @@ step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me fir
   assert.equal(await page.getByTestId('text-ask').count(), 0, 'asked once');
   assert.equal(await page.locator('.toast').filter({ hasText: /[Tt]exto/ }).count(), 0, 'no message about a text');
   await h.shot(page, 'deplacer-8a-no-text');
+  // Part 28: the day's line now counts Chloe (told 10 h à 14 h, now 13 h à 17 h); its button lists her and texts her once
+  assert.deepEqual(await dueOn(D), ['Chloe'], 'Chloe is owed her new hour on D');
+  await d.agendaDay(page, D);
+  const line = page.getByTestId('told-banner');
+  await line.waitFor({ timeout: 20000 });
+  assert.ok(flat(await line.innerText()).includes('1 client n’a pas sa nouvelle heure'), flat(await line.innerText()));
+  await line.getByTestId('told-banner-send').click();
+  const list = page.getByTestId('tell-sheet');
+  await list.waitFor({ timeout: 15000 });
+  const go = list.getByTestId('tell-go');
+  await until(async () => flat(await go.innerText()), (v) => v === 'Envoyer à 1 client', 15000);
+  assert.equal(flat(await go.innerText()), 'Envoyer à 1 client');
+  assert.ok(flat(await list.getByTestId('tell-reach').innerText()).includes('Chloe'), 'she is in « Ils reçoivent un texto »');
+  await h.shot(page, 'deplacer-8a-tell-list');
+  await go.click();
+  await list.getByTestId('tell-sent').waitFor({ timeout: 30000 });
+  const sms = await until(() => d.textsTo('Chloe', /a changé/), (v) => v.length > 0, 15000);
+  assert.equal(sms.length, 1, 'Chloe texted once, by the day’s button');
+  assert.ok(sms[0].includes(`entre ${clock(win[0])} et ${clock(win[1])}`), sms[0]);
+  assert.deepEqual(await dueOn(D), [], 'nobody owed on D any more');
+  // pressed again: nobody to text, nothing sent
+  await list.getByTestId('tell-close').click();
+  await list.waitFor({ state: 'detached', timeout: 10000 });
+  await until(async () => page.getByTestId('told-banner').count(), (v) => v === 0, 15000);
+  assert.equal(await page.getByTestId('told-banner').count(), 0, 'the line is gone');
+  assert.equal((await d.textsTo('Chloe')).length, 1, 'one text in all');
   x.nothingLeft(r);
   x.noErrors(page);
   await r.ctx.close();
@@ -616,7 +675,7 @@ step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me fir
   assert.equal(x.flat(await ask2.locator('h2').innerText()), 'Texter Chloe ?', 'the question again, on the job’s screen');
   assert.deepEqual(asked2, [], 'the « Voir » sent nothing');
   await h.shot(p2, 'deplacer-8b-phone-text-ask-on-job');
-  // closing the question (✕) is « Pas de texto »
+  // closing the question (✕) is « Pas maintenant »
   await p2.waitForTimeout(450);
   await ask2.locator('.sheet-x').click();
   await ask2.waitFor({ state: 'detached', timeout: 10000 });

@@ -78,6 +78,11 @@ export const errors = {
   arrive_late: 'Le camion ne peut pas être là à cette heure-là : choisis une heure plus tard.',
   late_changed: 'La journée a changé depuis la vérification : ce déplacement mettrait un autre client en retard. Déplace-le de nouveau pour voir qui.',
   pick_truck: 'Son camion ne travaille pas ce jour-là : choisis un camion qui travaille.',
+  // « Réorganiser la journée » (Part 28: day_order_preview, day_order_save)
+  day_changed: 'La journée a changé pendant que tu la réorganisais : je l’ai rechargée. Regarde, puis enregistre de nouveau.',
+  outcome_changed: 'Depuis la vérification, la journée donnerait d’autres heures. Regarde de nouveau avant d’enregistrer.',
+  truck_off: 'Ce camion ne travaille pas ce jour-là.',
+  truck_ends: 'Ce véhicule a fini sa journée avant cet arrêt.',
   quote_done: 'Cette estimation est déjà réservée : ouvre son rendez-vous.',
   no_truck: 'Choisis le véhicule : la voiture ou le camion.',
   no_position: 'Cette adresse n’est pas trouvée sur la carte. Choisis-la dans la liste.',

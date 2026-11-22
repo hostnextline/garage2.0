@@ -17,6 +17,10 @@
 // Stripe refuse the key (401, as for a key revoked or mistyped); ?stripe=ok puts it back.
 // GET /control?ghl_ms=N makes every GoHighLevel call answer after N ms (0: at once); a call the function gave up on (it closed
 // the connection) is logged with `aborted: true` and does nothing; meanwhile each call is logged `ghl-arrived` when it comes.
+// GET /control?ghl_msg_ms=N: only the text itself (POST /conversations/messages) answers after N ms (the contact at once):
+// a text GoHighLevel took whose answer comes too late (« peut-être parti »); logged `ghl-arrived` at once, like ghl_ms.
+// GET /control?ghl_fail=5145550101,4385550102: the texts to those numbers are refused (422 DND), the others go (a
+// customer who answered STOP among the day's clients); ?ghl_fail= clears it.
 // Stripe, as the real one behaves: a card page (Checkout session) is open, complete or expired (POST …/expire), and an
 // expired one cannot be paid; the same Idempotency-Key gives back the answer saved the first time (the page as it was
 // then), and with other parameters is refused (400 idempotency_error);
@@ -54,7 +58,7 @@ function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'gar
   const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
   return `${head}.${body}.${sig}`;
 }
-const state = { ghl: 'ok', ghlMs: 0, stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map(),
+const state = { ghl: 'ok', ghlMs: 0, ghlMsgMs: 0, ghlFail: [], stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map(),
   tomtom: 'ok', tomtomMs: 0, osrm: 'ok', osrmBackup: 'ok', noroad: [], ttIn: 0 };
 // ---- the made-up road of the map services ----
 /** km of road between two points (the straight line × 1.25, about Montréal's latitude) */
@@ -118,12 +122,14 @@ http.createServer(async (req, res) => {
     if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl');
     if (u.searchParams.get('stripe')) state.stripe = u.searchParams.get('stripe');
     if (u.searchParams.has('ghl_ms')) state.ghlMs = Math.max(0, Number(u.searchParams.get('ghl_ms')) || 0);
+    if (u.searchParams.has('ghl_msg_ms')) state.ghlMsgMs = Math.max(0, Number(u.searchParams.get('ghl_msg_ms')) || 0);
+    if (u.searchParams.has('ghl_fail')) state.ghlFail = (u.searchParams.get('ghl_fail') || '').split(',').map((x) => x.replace(/\D/g, '')).filter(Boolean);
     if (u.searchParams.get('tomtom')) state.tomtom = u.searchParams.get('tomtom');
     if (u.searchParams.get('osrm')) state.osrm = u.searchParams.get('osrm');
     if (u.searchParams.get('osrm_backup')) state.osrmBackup = u.searchParams.get('osrm_backup');
     if (u.searchParams.has('tomtom_ms')) state.tomtomMs = Math.max(0, Number(u.searchParams.get('tomtom_ms')) || 0);
     if (u.searchParams.has('noroad')) state.noroad = (u.searchParams.get('noroad') || '').split(';').filter(Boolean).map((x) => { const [lat, lng] = x.split(',').map(Number); return { lat, lng }; });
-    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe, tomtom: state.tomtom, tomtom_ms: state.tomtomMs, osrm: state.osrm, osrm_backup: state.osrmBackup, noroad: state.noroad });
+    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, ghl_msg_ms: state.ghlMsgMs, ghl_fail: state.ghlFail, stripe: state.stripe, tomtom: state.tomtom, tomtom_ms: state.tomtomMs, osrm: state.osrm, osrm_backup: state.osrmBackup, noroad: state.noroad });
   }
 
   // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
@@ -135,20 +141,22 @@ http.createServer(async (req, res) => {
   // ---- GoHighLevel ----
   if (p.startsWith('/ghl/')) {
     const body = raw ? JSON.parse(raw) : {};
-    if (state.ghlMs && p !== '/ghl/_reply') {
-      // a slow GoHighLevel: the answer comes after ghl_ms; a call given up meanwhile (connection closed) does nothing.
+    // a slow GoHighLevel: every call (ghl_ms), or only the text itself (ghl_msg_ms)
+    const wait = p === '/ghl/_reply' ? 0 : p === '/ghl/conversations/messages' && req.method === 'POST' && state.ghlMsgMs ? state.ghlMsgMs : state.ghlMs;
+    if (wait) {
+      // the answer comes after the wait; a call given up meanwhile (connection closed) does nothing.
       // What arrived is logged at once (`ghl-arrived`): a test sees which calls were started, even before they end
-      log.push({ svc: 'ghl-arrived', path: p.slice(4) });
+      log.push({ svc: 'ghl-arrived', path: p.slice(4), ...(p === '/ghl/conversations/messages' ? { contact: body.contactId } : {}) });
       let gone = false;
       res.on('close', () => { if (!res.writableEnded) gone = true; });
-      await new Promise((r) => setTimeout(r, state.ghlMs));
+      await new Promise((r) => setTimeout(r, wait));
       if (gone || res.destroyed) { log.push({ svc: 'ghl', path: p.slice(4), aborted: true, body }); return; }
     }
     log.push({ svc: 'ghl', path: p.slice(4), version: req.headers.version, auth: req.headers.authorization, body });
     if (!/^Bearer pit-/.test(req.headers.authorization || '')) return send(res, 401, { message: 'Invalid token' });
     if (p === '/ghl/contacts/upsert') return send(res, 200, { contact: { id: 'ct_' + (body.phone || body.email || 'x').replace(/\W/g, '') } });
     if (p === '/ghl/conversations/messages' && req.method === 'POST') {
-      if (state.ghl === 'fail') return send(res, 422, { message: 'Contact is in DND' });
+      if (state.ghl === 'fail' || state.ghlFail.some((d) => String(body.contactId || '').endsWith(d))) return send(res, 422, { message: 'Contact is in DND' });
       const id = 'msg_' + (++state.n);
       if (body.type === 'SMS') chat(body.contactId).push({ id, direction: 'outbound', body: body.message, messageType: 'TYPE_SMS', status: 'delivered', dateAdded: new Date(Date.now() + state.n).toISOString() });
       return send(res, 200, { messageId: id, conversationId: 'cv_' + body.contactId });

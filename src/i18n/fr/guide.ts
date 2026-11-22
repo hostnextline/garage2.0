@@ -158,7 +158,7 @@ export const guide = {
       qa: {
         book: {
           how: { a: 'Touche «\u00a0+\u00a0», puis «\u00a0Réserver un rendez-vous\u00a0». Choisis le client, son auto et les services, puis une des plages d’arrivée proposées. Touche «\u00a0Réserver\u00a0»\u00a0: le client reçoit sa confirmation par texto.' },
-          change: { a: 'Ouvre le rendez-vous depuis l’agenda et touche «\u00a0Modifier\u00a0»\u00a0: le client, l’auto, l’adresse, le jour et la plage d’arrivée, le camion, les services et les prix. Pour l’annuler\u00a0: menu «\u00a0…\u00a0», «\u00a0Annuler la job\u00a0», avec la raison. Si le jour ou la plage change, l’app te demande s’il faut texter le client.' }
+          change: { a: 'Ouvre le rendez-vous depuis l’agenda et touche «\u00a0Modifier\u00a0»\u00a0: le client, l’auto, l’adresse, le jour et la plage d’arrivée, le camion, les services et les prix. Pour l’annuler\u00a0: menu «\u00a0…\u00a0», «\u00a0Annuler la job\u00a0», avec la raison. Si le jour ou la plage change, l’app te demande s’il faut texter le client\u00a0; sinon, sa nouvelle heure part avec «\u00a0Envoyer les heures aux clients\u00a0».' }
         },
         blocks: {
           what: { q: 'C’est quoi, une plage d’arrivée\u00a0?', a: 'Quatre heures autour de l’heure où l’app pense arriver\u00a0: 1\u00a0heure avant, 3\u00a0heures après. Si l’app pense arriver à 15\u00a0h, le client entend «\u00a0entre 14\u00a0h et 18\u00a0h\u00a0». On promet une plage, pas une heure exacte.' },
@@ -178,7 +178,7 @@ export const guide = {
       book: {
         how: { q: 'Comment réserver un rendez-vous\u00a0?', a: 'Touche «\u00a0+\u00a0», puis «\u00a0Réserver un rendez-vous\u00a0». Choisis le client, son auto et les services, puis un des blocs proposés. Touche «\u00a0Réserver\u00a0»\u00a0: le client reçoit sa confirmation par texto.' },
         newCustomer: { q: 'Le client n’est pas encore dans l’app\u00a0?', a: 'Écris son nom ou son numéro dans le champ du client. S’il n’existe pas, crée sa fiche au même endroit\u00a0: nom, téléphone, adresse.' },
-        change: { q: 'Comment changer ou annuler un rendez-vous\u00a0?', a: 'Ouvre le rendez-vous depuis l’agenda et touche «\u00a0Modifier\u00a0»\u00a0: le client, l’auto, l’adresse, le jour et le bloc, le camion, les services et les prix. Pour l’annuler\u00a0: menu «\u00a0…\u00a0», «\u00a0Annuler la job\u00a0», avec la raison. Si le jour ou le bloc change, l’app te demande s’il faut texter le client.' },
+        change: { q: 'Comment changer ou annuler un rendez-vous\u00a0?', a: 'Ouvre le rendez-vous depuis l’agenda et touche «\u00a0Modifier\u00a0»\u00a0: le client, l’auto, l’adresse, le jour et le bloc, le camion, les services et les prix. Pour l’annuler\u00a0: menu «\u00a0…\u00a0», «\u00a0Annuler la job\u00a0», avec la raison. Si le jour ou le bloc change, l’app te demande s’il faut texter le client\u00a0; sinon, sa nouvelle heure part avec «\u00a0Envoyer les heures aux clients\u00a0».' },
         walkIn: { q: 'Un client sans rendez-vous\u00a0?', a: 'Touche «\u00a0+\u00a0», puis «\u00a0Client sans rendez-vous\u00a0»\u00a0: la job commence tout de suite, sur place.' }
       },
       blocks: {
@@ -194,7 +194,7 @@ export const guide = {
         refused: { q: 'Un changement a été refusé\u00a0?', a: 'Un bandeau rouge dit pourquoi. Corrige si besoin, puis touche «\u00a0Réessayer\u00a0», ou «\u00a0Retirer\u00a0» si ce n’est plus utile.' }
       },
       texts: {
-        which: { q: 'Quels textos reçoit le client\u00a0?', a: 'La confirmation du rendez-vous, un changement de rendez-vous (l’app te demande d’abord), «\u00a0en route\u00a0» avec le lien pour suivre le camion, les travaux en plus à accepter, et la facture.' },
+        which: { q: 'Quels textos reçoit le client\u00a0?', a: 'La confirmation du rendez-vous, un changement de rendez-vous (l’app te demande d’abord, sinon il part avec «\u00a0Envoyer les heures aux clients\u00a0»), «\u00a0en route\u00a0» avec le lien pour suivre le camion, les travaux en plus à accepter, et la facture.' },
         notSent: { q: 'Les textos ne partent pas\u00a0?', a: 'Ils passent par GoHighLevel, que le propriétaire branche dans les réglages. Sans ça, l’app te donne le message et le lien\u00a0: tu peux l’envoyer toi-même de ton téléphone.' },
         lang: { q: 'Le client parle anglais\u00a0?', a: 'Les textos, la page du client et la facture suivent la langue écrite dans sa fiche.' }
       },

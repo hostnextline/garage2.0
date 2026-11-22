@@ -39,6 +39,9 @@ import { unitOf } from './PlanNumbers';
 import { keptWords } from './backToBlocks';
 import { measureLoop, refusalOf, failWords, serviceNote, loopWords, lateRows, lateText, switchOutcome, rushBlockedNow,
   type LoopProgress, type LoopResult, type MeasureGoal, type RoadsOutcome } from './roadsModel';
+import { tellMark } from '../../../data/tell';
+import { refetch } from '../../../data/sync';
+import { tellCtx, tellNow, tellKind } from '../../../domain/jobs/told';
 import type { PartProps } from './BookingSection';
 
 /* ---------- what goes on while the person may leave the screen (per account, for the visit) ---------- */
@@ -337,10 +340,30 @@ function Progress(p: { run: Run }) {
   );
 }
 
+/** « Je l'ai averti » (Part 28, days F6): the customer was called; he is marked told the hours the phone says he must be
+    told now (tell_mark how 'call'), so « Envoyer les heures aux clients » does not text him again. True when marked. */
+async function toldByCall(id: string, name: string): Promise<boolean> {
+  const j = jobOf(id);
+  if (!j) return false;
+  const ctx = tellCtx();
+  const n = tellNow(j, ctx);
+  try {
+    const a = await tellMark([{ id, how: 'call', kind: tellKind(j, ctx) ?? 'moved', day: n.day, start: n.start, end: n.end }]);
+    void refetch('jobs', id);
+    if (a.marked.includes(id)) { toast(t('tell.marked', { n: 1, names: name }), { kind: 'ok' }); return true; }
+    toast(t(a.busy.includes(id) ? 'tell.busy' : 'tell.markChanged', { names: name }));
+    return false;
+  } catch (e) {
+    toast(isNetworkError(e) ? t('tell.offline') : errorMessage(e), { kind: 'bad' });
+    return false;
+  }
+}
+
 /** after the switch (or a measure with the switch on): the customers now later than the moment they were told */
 function LateList(p: { ids: string[]; onClose: () => void }) {
   const l = lang.value;
   const list = lateRows(p.ids, jobOf, customer, customerName, l);
+  const [told, setTold] = useState<Set<string>>(new Set());
   return (
     <Banner kind="warn" title={t('settings.booking.roads.lateTitle', { n: list.length })} data-testid="roads-late"
       action={<Button size="sm" variant="ghost" onClick={p.onClose} data-testid="roads-late-close">{t('common.close')}</Button>}>
@@ -358,6 +381,9 @@ function LateList(p: { ids: string[]; onClose: () => void }) {
                     <Button size="sm" icon={<MessageSquare size={16} />} href={smsHref(r.phone, lateText(r))}>{t('settings.booking.win.untoldText')}</Button>
                   </>
                 : <span class="small muted">{t('settings.booking.win.untoldNoPhone')}</span>}
+              {told.has(r.id)
+                ? <span class="small muted" data-testid="roads-late-told">{t('tell.already', { names: r.name })}</span>
+                : jobOf(r.id) && <Button size="sm" onClick={async () => { if (await toldByCall(r.id, r.name)) setTold((s) => new Set([...s, r.id])); }} data-testid="roads-late-mark">{t('tell.told')}</Button>}
             </li>
           );
         })}

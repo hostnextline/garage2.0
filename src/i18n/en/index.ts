@@ -29,5 +29,7 @@ import { info } from './info';
 import { hermes } from './hermes';
 import { oil } from './oil';
 import { timesheet } from './timesheet';
+import { reorg } from './reorg';
+import { tell } from './tell';
 
-export const en: typeof fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide, info, hermes, oil, timesheet };
+export const en: typeof fr = { common, errors, log, auth, shell, today, agenda, booking, hours, customers, vehicles, jobs, invoices, quotes, team, map, overview, coffre, conversation, settings, account, treasury, inventory, dashboard, client, guide, info, hermes, oil, timesheet, reorg, tell };

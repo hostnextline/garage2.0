@@ -230,7 +230,7 @@ step('a second and a third appointment the same day: the planner orders the stop
   await ph.ctx.close();
 });
 
-step('« Flexible »: Dina is booked for tomorrow without a window; « Fixer les plages de demain » gives her one and texts it, once', async (t) => {
+step('« Flexible »: Dina is booked for tomorrow without a window; « Fixer les plages de demain » gives her one, then opens tomorrow’s « Envoyer les heures aux clients »: « Envoyer » texts it, once', async (t) => {
   const { page, ctx } = await openW({ kind: 'desktop' });
   await h.signIn(page, who.nadia.email, PW);
   await bookStart(page, 'Dina', [SVC.oil]);
@@ -263,18 +263,36 @@ step('« Flexible »: Dina is booked for tomorrow without a window; « Fixer les
   assert.ok(j.eta_min >= j.win_start && j.eta_min <= j.win_end, `around her planned arrival: ${clock(j.eta_min)} in ${clock(j.win_start)} – ${clock(j.win_end)}`);
   assert.equal(Number(h.sql(`select count(*) from public.activity where entity_id = '${J.dina}' and action = 'window_fixed'`)), 1, 'noted once');
   J.dinaWin = [j.win_start, j.win_end];
+  // Part 28: « Fixer » texts nobody by itself; tomorrow's send list opens, Dina in « Ils reçoivent un texto » (her window)
+  assert.equal((await textsTo('Dina', /plage d’arrivée est confirmée/)).length, 0, 'nothing texted by « Fixer » itself');
+  const list = o.page.getByTestId('tell-sheet');
+  await list.waitFor({ timeout: 20000 });
+  const reach = list.getByTestId('tell-reach');
+  await reach.filter({ hasText: 'Dina' }).waitFor({ timeout: 15000 });
+  t.diagnostic(`tomorrow’s list: « ${(await reach.innerText()).replace(/\s+/g, ' ').trim()} »`);
+  await list.getByTestId('tell-go').click();
+  await list.getByTestId('tell-sent').waitFor({ timeout: 30000 });
   const fixed = await until2(() => textsTo('Dina', /plage d’arrivée est confirmée/), (l) => l.length >= 1, 20000);
   assert.equal(fixed.length, 1, 'her window is texted');
   assert.ok(fixed[0].includes(between(j.win_start, j.win_end)), `in words: ${fixed[0]}`);
   assert.equal(sentTo(J.dina, 'window').length, 1);
-  // a second tap: nothing new to fix; the app asks to tell Dina again (her window is fixed and she is « flexible »), the
-  // server answers that she already has it: nobody is texted twice
-  const told = o.page.waitForResponse((r) => /\/functions\/v1\/notify/.test(r.url()) && r.request().postData()?.includes(J.dina), { timeout: 20000 });
+  await list.getByTestId('tell-close').click();
+  await list.waitFor({ state: 'detached', timeout: 10000 });
+  // a second tap: nothing new to fix, no text asked of the server; the list opens again with nobody to text
+  const notified = [];
+  o.page.on('request', (q) => { if (/\/functions\/v1\/notify/.test(q.url())) notified.push(q.postData()); });
   await o.page.getByTestId('windows-lock').click();
-  const again = await (await told).json();
-  t.diagnostic(`second « Fixer »: notify answered ${JSON.stringify({ ok: again.ok, status: again.status })}`);
+  await list.waitFor({ timeout: 20000 });
+  const go = list.getByTestId('tell-go');
+  await until2(async () => (await go.innerText()).replace(/\s+/g, ' ').trim(), (v) => v === 'Personne à texter', 15000);
+  assert.equal((await go.innerText()).replace(/\s+/g, ' ').trim(), 'Personne à texter');
+  assert.equal(await go.isDisabled(), true);
+  await o.page.waitForTimeout(1500);
+  assert.deepEqual(notified, [], 'the second « Fixer » asks the server for no text');
   assert.equal((await textsTo('Dina', /plage d’arrivée est confirmée/)).length, 1, 'the same window is never texted twice');
   assert.equal(sentTo(J.dina, 'window').length, 1);
+  await list.getByTestId('tell-cancel').click();
+  await list.waitFor({ state: 'detached', timeout: 10000 });
   // the job screen now says her window
   await o.page.goto(h.APP + `#/job/${J.dina}`);
   await o.page.getByTestId('job-window').filter({ hasText: clock(j.win_start) }).waitFor({ timeout: 15000 });
@@ -322,8 +340,11 @@ step('« Déplacer »: Carla to another window the same day, then to another day
     assert.equal((await (await told).json()).status, 'sent');
     return ws;
   };
-  // the same day, another window
-  const ws1 = await move(D[2], (s) => s.find((w) => w !== before.win_start && w >= 780) ?? s.find((w) => w !== before.win_start));
+  // the same day, another window — one whose time lies past the window she was told at her booking. The grid's pick is
+  // an EXACT move (a minute pointed: « Rendez-vous déplacé : … à 13 h 30 »); a minute still inside what she was told
+  // leaves her nothing new to hear (REARRANGE.md §1.3, §3.5: « Envoyer le texto » answers `already`, why « told »)
+  const tS = before.told_start ?? before.win_start, tE = before.told_end ?? before.win_end;
+  const ws1 = await move(D[2], (s) => s.find((w) => w > tE) ?? s.find((w) => w + 240 <= tS) ?? s.find((w) => w !== before.win_start && w >= 780) ?? s.find((w) => w !== before.win_start));
   let j = await until(() => jobOf(J.carla), (v) => v.win_start === ws1, 15000);
   assert.deepEqual([j.day, j.win_start, j.win_end], [D[2], ws1, ws1 + 240]);
   let sms = await moved();

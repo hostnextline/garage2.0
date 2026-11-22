@@ -11,11 +11,11 @@ const pick = vi.hoisted(() => ({ next: null as unknown }));
 const api = vi.hoisted(() => ({ moveJob: vi.fn() }));
 const exact = vi.hoisted(() => ({ exactPreview: vi.fn() }));
 const ui = vi.hoisted(() => ({ ask: vi.fn() }));
-const asking = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true), sendText: vi.fn() }));
+const asking = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true), sendText: vi.fn(), toldDayAfter: vi.fn() }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 vi.mock('../../data/exact', async (orig) => ({ ...(await orig<object>()), ...exact }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ...ui }));
-vi.mock('./textAsk', async (orig) => ({ ...(await orig<object>()), askMovedText: asking.askMovedText }));
+vi.mock('./textAsk', async (orig) => ({ ...(await orig<object>()), askMovedText: asking.askMovedText, toldDayAfter: asking.toldDayAfter }));
 vi.mock('./texts', async (orig) => ({ ...(await orig<object>()), sendText: asking.sendText }));
 vi.mock('../moment/BlockPicker', async () => {
   const { h } = await import('preact');
@@ -174,5 +174,40 @@ describe('« Texter … ? » instead of the text (Hassan, 2026-11-22: « the sys
     await open({ day: '2030-01-11', block: 'day', win_flex: true });
     await click('move-ok');
     expect(asked()).toEqual([]);
+  });
+});
+
+/* Part 28 (REARRANGE.md §3.6-2, U6): a move that asked nothing hands the job as the sheet showed it (before the move) to
+   toldDayAfter, which shows the TOLD day's toast when that day is today and the move changed it; asked: nothing from here. */
+describe('the told day’s toast when « Déplacer » asked nothing (Part 28)', () => {
+  const toasted = () => asking.toldDayAfter.mock.calls.map((c) => (c[0] as Job).id);
+  it('a time shown, nothing new for him (tell false): no question, the toast’s check with the job of before', async () => {
+    textOn(true);
+    await open({ day: DAY, block: 'day', win_start: 540, win_end: 780, eta: 615 });
+    await click('move-ok');
+    expect(asked()).toEqual([]);
+    expect(toasted()).toEqual(['j1']);
+    expect(asking.toldDayAfter.mock.calls[0][0]).toMatchObject({ day: DAY, eta_min: 600, win_start: 540 });
+  });
+  it('« Rendez-vous changé » off (« Flexible », tell): no question, the toast', async () => {
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true, tell: true } });
+    await open({ day: '2030-01-12', block: 'day', win_flex: true });
+    await click('move-ok');
+    expect(asked()).toEqual([]);
+    expect(toasted()).toEqual(['j1']);
+  });
+  it('the question asked (tell, a cell): no toast from here; « unchanged » or kept on the phone: none either', async () => {
+    textOn(true);
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, exact: true, tell: true } });
+    await open({ day: '2030-01-11', block: 'day', win_start: 720, win_end: 960, eta: 795 });
+    await click('move-ok');
+    expect(asked()).toEqual(['j1']);
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, unchanged: true } });
+    await open({ day: '2030-01-11', block: 'day', win_flex: true });
+    await click('move-ok');
+    api.moveJob.mockResolvedValue({ queued: true });
+    await open({ day: '2030-01-12', block: 'day', win_flex: true });
+    await click('move-ok');
+    expect(asking.toldDayAfter).not.toHaveBeenCalled();
   });
 });

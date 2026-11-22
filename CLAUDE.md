@@ -36,7 +36,8 @@ and `docs/DESIGN.md` (the look and the writing rules) before changing anything. 
 | Database rules on a Mac | `bash tests/stack/mac/db-tests.sh [file or pattern]` (« Vraies routes »: `bash tests/stack/mac/db-tests.sh vraies-routes`); after any end-to-end run: `FRESH=1 bash tests/stack/mac/db-tests.sh` | the Mac stack (`tests/stack/mac/README.md`, `export HIS_STACK=…`); a browser run leaves rows the reconciliation tests then see: FRESH=1 starts from a new database |
 | Server functions on a Mac | `bash tests/stack/mac/api-tests.sh [file or pattern]` (« Vraies routes »: `drive`; the nightly job and the way back of CUTOVER.md: `bash tests/stack/mac/api-tests.sh ops/tests/sauvegardes.test.mjs`) | the Mac stack; fake TomTom (key `tt-test`) and OSRM on 8021 |
 | « Vraies routes » end to end (9 steps) | `bash tests/stack/mac/e2e-file.sh routes` (Mac) or `node --test tests/e2e/routes.test.cjs` (Linux) | its own production build WITH a fake browser TomTom key (`tt-browser-test`); every request to a host it does not fake fails the step; about 1 min |
-| « Déplacer à l'heure choisie » end to end (9 steps; the last: « Texter … ? » answered « Pas de texto ») | `bash tests/stack/mac/e2e-file.sh deplacer` (Mac) or `node --test tests/e2e/deplacer.test.cjs` (Linux) | window mode, the real server's `move_preview` / `move_job` with `p_exact`; « Vraies routes » on in its two last steps (the fake TomTom and OSRM); every request to a host it does not fake fails the step; about 30 s; then `FRESH=1` for the database tests |
+| « Déplacer à l'heure choisie » end to end (9 steps; the last: « Texter … ? » answered « Pas maintenant », then the day's button texts her once) | `bash tests/stack/mac/e2e-file.sh deplacer` (Mac) or `node --test tests/e2e/deplacer.test.cjs` (Linux) | window mode, the real server's `move_preview` / `move_job` with `p_exact`; « Vraies routes » on in its two last steps (the fake TomTom and OSRM); every request to a host it does not fake fails the step; about 30 s; then `FRESH=1` for the database tests |
+| « Réorganiser la journée » and « Envoyer les heures aux clients » end to end (Part 28, 9 steps) | `bash tests/stack/mac/e2e-file.sh reorganiser` (Mac) or `node --test tests/e2e/reorganiser.test.cjs` (Linux); NOT in `all.sh` nor CI | window mode, switch off; a real drag with the mouse (computer) and with a finger (a phone 390 × 844: the browser's own touch events through the DevTools protocol), the oracle = the server's `day_order_preview` asked as the same person, the proof = the rows and the fake GoHighLevel's log; about 2 min; then `FRESH=1` for the database tests |
 | The other browser files | `bash tests/stack/mac/e2e-file.sh plages` (window mode, switch off), `… argent`, `… mise-a-jour` (yesterday's app with its data updated to this build) | the Mac stack; `tests/stack/mac/all.sh` runs these three, `routes` and `deplacer` after `app.test.cjs`; GitHub's `tests-complets.yml` runs `app`, `plages` and `argent` (not `mise-a-jour`, `routes`, `deplacer`) |
 
 On a Mac, the rows with `tests/stack/mac/…` run the database, API and end-to-end suites (`bash tests/stack/mac/e2e.sh`
@@ -104,6 +105,12 @@ end $do$;
   the read-only checks it ran and the way back: `ops/live/PARTIE27.md`. NOT done: the TomTom keys, and the nightly script of
   the backups repository (`ops/sauvegardes` at `5e23639e`): it would send the coming stops' positions to OSRM's public demo
   server every night while there is no server key (CUTOVER 5 bis point 6: Hassan's call).
+- Part 28 « Réorganiser la journée » + « Envoyer les heures aux clients » is NOT on live (branch `reorganiser`): the
+  migration `20261122000100_reorganiser.sql` (needs Part 27 first), then the functions `notify`, `book`, `client` at its
+  commit, `told_install()` again, then the app. Its runbook, the read-only checks before it (`ops/live/partie28/avant.sql`:
+  what Hassan must hear first: « Rendez-vous changé » on or off, texting set up or not, the first press's N), its trial
+  (`essai-partie28.sql`, always undone) and the way back (`a-avertir.sql` first): `ops/live/PARTIE28.md`, beside
+  `ops/live/PARTIE27.md`; CUTOVER.md's top note points to it.
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
   since 2026-11-21 the twelve functions of the rebuild at `837c89d8`, except, since 2026-11-22 (Part 27), `drive` (new), `book`,
   `enroute` and `backup` at `5e23639e`. Before the
@@ -163,7 +170,9 @@ end $do$;
   « Vraies routes » on: the arrival times and « Hors plage » / « En retard » of the order built are the server's
   (`stop_order_preview`, asked 600 ms after the last change); a stop whose trips are not all measured has no time
   (« heure : trajets pas encore mesurés ») and is never said late; no answer: no time, « Heures d’arrivée : pas encore
-  calculées », saving still works.
+  calculées », saving still works. Part 28 retired its screen (StopOrderSheet) into « Réorganiser la journée » (below):
+  the app calls neither `set_stop_order` nor `stop_order_preview` any more; the server keeps both (Part 21 / 27, untouched:
+  a phone on an older app still uses them).
 - « Réserver en ligne » is **switched off since 2026-11-09** (live `settings.booking.web.on = false`: the page says « fermée », `book`
   refuses with `web_off`; the « Réservation en ligne » panel is hidden in Réglages) until Hassan and Claude rework it together.
 - « Réserver en ligne » (Part 23, `20261107000500_web_booking.sql`, applied on live 2026-11-07 from commit `7b1b86b` with the
@@ -430,9 +439,11 @@ end $do$;
   entre … et … . Les autres arrêts gardent leur heure. » (the grid always asks; a sheet's tap asks only when there is
   something to hear: someone pushed later inside their window is said); somebody late → « Déplacer Chloe à 15 h 30 met
   Denis en retard » with his time and by how much, « Choisir une autre heure » (nothing written) / « Déplacer quand même »
-  (the move names him in `late_ok`; the message « Avertis Denis : servi après sa plage. »: the app texts the late customers
-  nothing; for the moved customer, when the server's `tell` says what he was told changed, the app asks « Texter … ? »,
-  below); the truck cannot be there →
+  (the move names him in `late_ok`; the message, today or when his window will not move, « Avertis Denis : servi après sa
+  plage. »; another day, his window moves when he is told (Part 28): the question's line adds « Il aura 16 h à 20 h avec
+  « Envoyer les heures aux clients ». » and the message says « Denis aura une nouvelle plage : elle part avec « Envoyer les
+  heures aux clients ». »: the app texts the late customers nothing; for the moved customer, when the server's `tell` says
+  what he was told changed, the app asks « Texter … ? », below); the truck cannot be there →
   « Pas possible à 8 h … au plus tôt 8 h 06 », « Mettre à 8 h 06 » (asked again at that minute); not measured or no
   answer (6 s) → said plainly, « Déplacer quand même » / « Annuler ». Then « Garde-route » as before. The grid holds the
   block where it was let go while it is asked and sent (`grid-held-<id>`), so nothing jumps. A move to a time needs the
@@ -457,19 +468,76 @@ end $do$;
   told changed (`tell`), and the customer has a cell that takes texts, `wantsText`). The sheet `text-ask`: « Texter Julie ? »,
   the new moment as the text says it (`text-ask-when`: « Mercredi 25 novembre, entre 13 h et 17 h », a block « …,
   après-midi (12 h à 16 h) »), « Envoyer le texto » (`text-ask-send`: the very send of before with all its outcomes; the
-  job screens' send where their « text to send by hand » host is, else the agenda's, whose sheet shows on any screen) /
-  « Pas de texto » (`text-ask-skip`; ✕, Escape, back and the dimmed area too). A navigation never answers it (the
+  job screens' send where their « text to send by hand » host is, else the agenda's, whose sheet shows on any screen; since
+  Part 28 under the lease, and it writes what he was told) / « Pas maintenant » (`text-ask-skip`, « Pas de texto » before
+  Part 28; ✕, Escape, back and the dimmed area too): nothing goes, the line `text-ask-later` says « sa nouvelle heure
+  partira avec « Envoyer les heures aux clients » », the client stays owed his hour for the day's button; a client expected
+  TODAY (or tomorrow after 18 h) then gets the toast « {prénom} attendait aujourd’hui : sa nouvelle heure n’est pas partie. »
+  with that day's button (`toldDayToast`; a flow that asked nothing calls `toldDayAfter(before)`, which never shows it beside
+  an open question). A navigation never answers it (the
   « Voir » of the move's message): it rises again on the next screen (`Sheet` `onNavigate`). Two changes of the same
   appointment: one question, the latest moment (the row as it was right after the move when the phone no longer holds
   it); two appointments: one question each, the next once the send before answered and its hand-text sheet closed. It
   lives in its own root, so a move kept on the phone that lands asks wherever the person is (if the app is open). Not
-  asked (unchanged): the booking confirmation (at once), « Je pars », invoices and payments, « Fixer les plages », every
-  « Envoyer » button. Réglages → Textos says « Demande d’abord » beside « Rendez-vous changé » (off = never asked). A
+  asked (unchanged): the booking confirmation (at once), « Je pars », invoices and payments, every « Envoyer » button;
+  « Fixer les plages » texts nobody since Part 28 (it opens tomorrow's « Envoyer les heures aux clients »). Réglages → Textos says « Demande d’abord » beside « Rendez-vous changé » (off = never asked). A
   customer with no cell or who refuses texts gets no question (the job screens used to show « pas de numéro » with the
   message to share). Tests: `src/shared/jobs/textAsk.test.tsx`, each path's unit tests (agenda `move.test.ts`,
   `exact-move.test.tsx`, `MoveSheet-exact.test.tsx`, the three `stops-move-more.test.tsx`, `TruckSheet-exact.test.tsx`,
   `JobScreen.test.tsx`), `SettingsScreen.test.tsx`; end to end `deplacer` (step 8 and every move step: nothing asked of
   `notify` while the question is up), `app`, `plages`, `mise-a-jour`.
+- « Réorganiser la journée » and « Envoyer les heures aux clients » (Part 28, `20261122000100_reorganiser.sql`, NOT on live:
+  `ops/live/PARTIE28.md`; the contract REARRANGE.md of the work folder; Hassan, 2026-11-22: « i want to be able to easely
+  rearange a day » — he chose « Drag in a list » — and « dont send any text, put a button that will send for all
+  clients, ill press it when day is filled and im done re organizing »). ONE screen (`src/shared/jobs/DayOrderSheet.tsx`,
+  opened by `openDayOrder(day, { truck?, job?, first? })` of `DayOrderHost.tsx`, mounted by the agenda, Aujourd'hui, the
+  Carte, Vue d'ensemble and the job screen): every truck's booked stops of the day in a list (a phone: one under the
+  other with truck chips; a computer: side by side), a stop dragged by its grip ≡ (a finger) or its whole row (a mouse),
+  moved from its row's menu (a tap: « Mettre en premier », « Monter », « Descendre », « Mettre sur … », « Remettre à sa
+  place ») or by the keyboard; onto the other truck only with « Réserver » (a vehicle of the other kind asks first). The
+  arrival times are the SERVER's, asked 600 ms after the last change (`day_order_preview`, nothing written: POST,
+  `{ noOp, apply: false }`); who would get a new window, be late or early, lose a pinned minute, or a truck past its
+  hours is said; NOTHING changes until « Enregistrer » (`day_order_save`, the verdict shown first: « Enregistrer quand
+  même »; the save refuses any other outcome, `outcome_changed`; one retry on a deadlock with the same op; a lost answer
+  asked again with the same op), and no text goes. The windows move only at the save (a stop pushed out gets the window
+  of its arrival, « Nouvelle plage »; one back inside what he was told gets that back) or when the client is told; a
+  mechanic's save (no « Réserver ») re-cuts no window and marks those stops late / early for the office (`hand_at`).
+  No order by hand is kept (choice C1): a later automatic plan may reorder the day, keeping every window. « Laisser l'app
+  choisir » shows the planner's order as a draft (saved only by « Enregistrer »). Someone else saved the day meanwhile:
+  the screen takes that order for every stop not moved here, keeps this person's moves, names who saved
+  (`day_changed`, `by`). The draft is kept on the phone per account and day (`his.dayOrder.<staff>.<day>`) until saved or
+  left. « Ordre des arrêts » is retired into it (« Mettre en premier » opens it with the stop first). What a client was
+  told is kept on the job (`jobs.told_day / told_start / told_end / told_at / told_how / told_by`, `hand_at`; the server's
+  only; `tell_state` = new / changed / drift / ok, the phone's twin `src/domain/jobs/told.ts`, both read
+  `tests/fixtures/told-cases.json`); `told_install()` marked what live had already texted. « Envoyer les heures aux clients
+  (N) » (`openTell(day)`, `src/shared/jobs/TellSheet.tsx`; the day's line `ToldBanner` on the agenda's day and in the
+  sheet, `ToldDays` on Aujourd'hui, one button per coming day; the « Demain » panel replaced « À confirmer pour demain »;
+  the week's day heads count them; owner / « Réserver » only): the list first (who gets a text and which: the full
+  confirmation, the window, the new hour; who to tell yourself: no cell, refuses texts, that text switched off; today's
+  late-on-their-window apart: the « en route » text gives them the hour), then `notify { action: 'day', day, base, op,
+  only, again? }` texts each one once (3 at a time under a lease in `rate_limits` `tell:<job>`; « peut-être parti »
+  counts as told, « Renvoyer »; a text that failed: « Réessayer » / « Je l'ai averti » = `tell_mark` 'call'; texting not
+  connected: each message to send by hand, « C'est envoyé » = `tell_mark` 'hand'). The single booking / window / moved
+  texts take the same lease and write told (a client texted from « Texter … ? » is not counted again; `already` when
+  nothing new is owed, with `why: 'told'`: the app then says « Pas de texto : l'heure qu'on a dite à … tient toujours »,
+  never « déjà envoyé »; a client never told anything asked « a changé » gets his full confirmation instead). The told
+  window wins over the planned one only when the planned window does not hold his sure arrival, or the arrival is a
+  minute pointed (the exact move inside what he was told): « Déplacer » to the next window (the truck there at its start =
+  his told end) is a new window to tell him (fixer, review R0). A stop not dragged waits for its told start only when it
+  is EARLIER than its planned one (review R1). The day's button never waits for a row another action holds: `held`,
+  asked again in the same call, then `left` — `busy` is only another send holding the lease (review S4). told_install
+  trusts a « window » text only if the job's day, block, window and customer and the customer's number did not change
+  after it (review S1); « Fixer les plages » no longer texts (it opens tomorrow's list); the customer's page shows the
+  hours he was told while booked. Tests: unit (`src/domain/jobs/dayOrder.test.ts`, `told.test.ts`, `src/data/dayOrder.test.ts`,
+  `tell.test.ts`, `src/shared/jobs/{DayOrderSheet,DayOrderHost,listDrag,TellSheet,TellHost,ToldBanner,ToldBits}.test.*`,
+  `src/shared/moment/notify-told.test.tsx`, `src/dev/demo-{reorg,tell}.test.ts`, the paths of « Texter … ? »), database
+  `tests/db/reorganiser.test.mjs` (D1–D18), `tests/db/textos-journee.test.mjs` (T1–T8), API `tests/api/textos-journee.test.mjs`
+  (A1–A15, the fake GoHighLevel's `ghl_msg_ms` and `ghl_fail` knobs), ops `ops/tests/fichiers.test.mjs` (« Part 28 after
+  Part 27 »), end to end `tests/e2e/reorganiser.test.cjs` (« Tests » above) and the steps of `deplacer`, `plages`,
+  `routes` it changed. Not done (REARRANGE.md §8): no Réglages switch for « les plages ne bougent jamais » (the settings
+  key `booking.rewin` only), no move across days or blocks from this screen, no per-row switch in the send list, no text
+  on a cancel. Never proven: a real iPhone's finger in the home-screen app (one check by hand before « fini »), the real
+  GoHighLevel's late answers.
 - The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
   the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
   {soustotal} » = « 159,98 $ + tx » (`subtotalWords`; work by the hour: « …, plus le travail à l’heure »; nothing priced: « selon le

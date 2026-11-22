@@ -2,7 +2,9 @@
    window picked in the sheet (MoveWindowSheet). One flow for all three: « garde-route » (too much road that day),
    the question in words, move_job (the server checks the room and re-plans), then, when what the customer was told
    changed (moveRules.ts), the question « Texter … ? » (shared/jobs/textAsk: Hassan, 2026-11-22, nothing goes by itself).
-   A move kept on the phone asks it once the server has it.
+   A move kept on the phone asks it once the server has it. A move that asks nothing (nothing new for the customer, no
+   cell, « Rendez-vous changé » off) shows instead, when the day the customer was TOLD is today and the move changed it,
+   the toast of that day's « Envoyer les heures aux clients » (Part 28: textAsk's toldDayAfter).
    « exact move » (Hassan, 2026-11-21: « move exactly where I point, the rest stays the same »; STATE.md A1–A5): a time
    pointed (a unit of the grid, a window row that showed its arrival) goes through the one flow of shared/jobs/exactMove
    (the preview, ONE question, « garde-route », the move to that very minute, never kept on the phone); the block dropped
@@ -19,7 +21,7 @@ import { today, clock, type BlockKey, type Day } from '../../lib/dates';
 import { ask, toast } from '../../ui';
 import { farInfo, farLimits, farQuestion, momentsByKey } from '../../domain/moment/logic';
 import { wantsText } from '../../shared/moment/notify';
-import { askMovedText } from '../../shared/jobs/textAsk';
+import { askMovedText, toldDayAfter } from '../../shared/jobs/textAsk';
 import { jobPerson } from '../../domain/jobs/words';
 import { moveQuestion } from './layout';
 import { moveOutcome, textAfterMove, toldChanged, dropTruck, dropTells, type MoveOutcome } from '../../domain/moment/moveRules';
@@ -97,10 +99,12 @@ async function textWhenSent(before: Job) {
     if (s.kind === 'gone') {
       // already sent meanwhile: the phone's row is what the server wrote
       const after = jobRow(before.id);
-      if (after && toldChanged(before, after)) askMovedText(before, { via: 'notify' });
+      if (!(after && toldChanged(before, after) && askMovedText(before, { via: 'notify' }))) toldDayAfter(before);
     } else if (s.kind === 'done') {
       const o = moveOutcome({ queued: false, data: s.data }, before.id);
-      if (textGoes(o, s.data, before, o.kind === 'moved' ? o.after ?? jobRow(before.id) : null, true)) askMovedText(before, { via: 'notify', after: o.kind === 'moved' ? o.after : null });
+      const asked = textGoes(o, s.data, before, o.kind === 'moved' ? o.after ?? jobRow(before.id) : null, true)
+        && askMovedText(before, { via: 'notify', after: o.kind === 'moved' ? o.after : null });
+      if (!asked && o.kind === 'moved') toldDayAfter(before);
     }
     // refused: the frame's « refusé » list says so, and the customer has nothing new to hear
   } catch { /* nothing asked: the job sheet still offers the text */ } finally {
@@ -118,18 +122,23 @@ async function send(j: Job, call: () => Promise<{ queued: boolean; data?: unknow
   if (o.kind === 'queued') {
     toast(sms ? `${t('shell.queued')} ${t('agenda.move.textLater')}` : t('shell.queued'));
     waiting(j.id, true);
-    if (sms) void textWhenSent(j); else void waitOnly(j.id);
+    if (sms) void textWhenSent(j); else void waitOnly(j);
   } else if (o.kind === 'unchanged') {
     toast(t('agenda.move.unchanged'));
   } else {
     toast(t('agenda.move.done'), { kind: 'ok' });
-    if (textGoes(o, r.data, j, o.after ?? jobRow(j.id), sms)) askMovedText(j, { via: 'notify', after: o.after });
+    // nothing asked: the toast of the day he was told (when that day is today and the move changed it)
+    if (!(textGoes(o, r.data, j, o.after ?? jobRow(j.id), sms) && askMovedText(j, { via: 'notify', after: o.after }))) toldDayAfter(j);
   }
   return { ok: true };
 }
-/** no text to send: only the « waiting » mark, cleared once the move leaves the phone */
-async function waitOnly(id: string) {
-  try { await moveSettled(id); } finally { waiting(id, false); }
+/** no text to ask about: only the « waiting » mark, cleared once the move leaves the phone; once it moved, the toast of
+    the day he was told (when that day is today and the move changed it) */
+async function waitOnly(j: Job) {
+  try {
+    const s = await moveSettled(j.id);
+    if (s.kind === 'gone' || (s.kind === 'done' && moveOutcome({ queued: false, data: s.data }, j.id).kind === 'moved')) toldDayAfter(j);
+  } catch { /* refused or lost: the frame says it, nothing more to show */ } finally { waiting(j.id, false); }
 }
 
 /** what an exact move gave, said: the message (the late customers named: A5), the question « Texter … ? » when what the
@@ -143,7 +152,7 @@ function exactSaid(j: Job, day: Day, d: ExactDone, refused?: (e: unknown) => boo
   const o = moveOutcome(d.r, j.id);
   if (o.kind === 'unchanged') { toast(t('agenda.move.unchanged')); return true; }
   toast(doneWords(d, day), { kind: 'ok', ...(d.late.length || d.real != null ? { ms: 8000 } : {}) });
-  if (o.kind === 'moved' && textGoes(o, d.r.data, j, o.after ?? jobRow(j.id), wantsText('moved', j.id))) askMovedText(j, { via: 'notify', after: o.after });
+  if (o.kind === 'moved' && !(textGoes(o, d.r.data, j, o.after ?? jobRow(j.id), wantsText('moved', j.id)) && askMovedText(j, { via: 'notify', after: o.after }))) toldDayAfter(j);
   return true;
 }
 

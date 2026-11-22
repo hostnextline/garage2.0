@@ -3,7 +3,8 @@
 > **La refonte est EN LIGNE depuis le 2026-11-21** (les six migrations et les douze fonctions à `837c89d8` à 20 h 06, l'app
 > `d7b6c0d2` vers 23 h 10). Les sections 1 à 5 racontent cette nuit-là : elle est faite, ne pas la refaire. La Partie 27
 > seule, en partant d'aujourd'hui : **`ops/live/PARTIE27.md`**. Ce fichier reste la référence pour les clés de TomTom, la
-> mesure et l'interrupteur (5 bis) et pour le retour en arrière pièce par pièce (7).
+> mesure et l'interrupteur (5 bis) et pour le retour en arrière pièce par pièce (7). La Partie 28, après la 27 :
+> **`ops/live/PARTIE28.md`**.
 
 Le cahier de route du passage en ligne de la refonte, pièce par pièce : comment vérifier que chaque étape a marché, et
 comment revenir en arrière à chaque étape (et ce qui ne se défait pas). Rien de ce fichier ne se fait sans le **go du

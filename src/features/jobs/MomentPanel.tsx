@@ -1,6 +1,7 @@
 /* « Le rendez-vous » on the job sheet: the day, the block or the window told to the customer (with « Hors plage »), the
    stop and its planned arrival, the truck, the length (changed by 15 minutes before the visit), the times left / arrived /
-   finished, who booked it; « Déplacer » and « Ordre des arrêts ». */
+   finished, who booked it; « Déplacer » and « Réorganiser la journée » (Part 28: « Ordre des arrêts » retired into it), and
+   a muted line while the customer does not have this time yet (ToldJobLine). */
 import { useEffect, useState } from 'preact/hooks';
 import { CalendarClock, ListOrdered } from 'lucide-preact';
 import type { Job } from '../../data/types';
@@ -11,6 +12,8 @@ import { truckLabel, staffName } from '../../data/select';
 import { setJobDuration, errorMessage } from '../../data/api';
 import type { JobRights } from '../../domain/jobs/rights';
 import { bookedBy } from '../../shared/jobs/bookedBy';
+import { ToldJobLine } from '../../shared/jobs/ToldBits';
+import { mayOrderDay } from '../../domain/jobs/dayOrder';
 import { dayWord, blockRange, clockOf, isWindowJob, outsideWindow, wt, capFirst, etaUnsure } from '../../shared/jobs/select';
 
 function DurationEditor(p: { job: Job }) {
@@ -63,11 +66,12 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
           [t('jobs.moment.booked'), byWho ? <span data-testid="job-booked-by">{byWho}</span> : null]
         ]} />
         {late && <Banner kind="warn" data-testid="job-late">{t('jobs.win.lateText', { time: clock(j.eta_min!, l), window: blockRange(j) })}</Banner>}
+        {booked && <ToldJobLine job={j} />}
         {booked && rights.duration && <DurationEditor job={j} />}
         {booked && (rights.move || (rights.order && !!j.truck_id)) && (
           <div class="row-wrap">
             {rights.move && <Button icon={<CalendarClock />} onClick={p.onMove} data-testid="job-move">{t('jobs.moment.move')}</Button>}
-            {rights.order && !!j.truck_id && <Button icon={<ListOrdered />} onClick={p.onOrder} data-testid="job-order">{t('jobs.order.open')}</Button>}
+            {rights.order && !!j.truck_id && mayOrderDay(j.day) && <Button icon={<ListOrdered />} onClick={p.onOrder} data-testid="job-order">{t('reorg.open')}</Button>}
           </div>
         )}
       </div>

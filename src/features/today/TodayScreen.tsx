@@ -16,6 +16,7 @@ import { TextOutcomeHost } from '../../shared/jobs/TextOutcome';
 import { PartsHost } from '../../shared/jobs/PartsSheet';
 import { CarCheckHost } from '../../shared/jobs/CarCheckSheet';
 import { MoveHost } from '../../shared/jobs/MoveHost';
+import { DayOrderHost } from '../../shared/jobs/DayOrderHost';
 import { startPositionSharing } from '../../services/position';
 import { todayRole, hasTwoViews } from './select';
 import { dayView, setDayView } from './prefs';
@@ -46,6 +47,8 @@ export default function TodayScreen(_p: ScreenProps) {
       <CarCheckHost />
       {/* « Déplacer » from a stop's menu (« Les camions », « Ma journée »): the sheet on this screen */}
       <MoveHost />
+      {/* « Réorganiser la journée » / « Réorganiser ma journée » / « Réorganiser demain »: the sheet on this screen */}
+      <DayOrderHost />
     </Page>
   );
 }

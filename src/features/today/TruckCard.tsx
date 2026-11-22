@@ -2,7 +2,11 @@
    the window told to that customer, how old its position is. On the way, the arrival is the trip's real one (« Je pars »
    asked TomTom, else OSRM); without it no time is said, as on the map's legend. A tap on the card opens the job it
    speaks of. Under it, « Voir les N arrêts » lists the truck's stops of the day as tickets, each with the agenda's
-   shortcut menu (right-click, long press: « Déplacer » on this screen; Hassan, 2026-11-21). */
+   shortcut menu (right-click, long press: « Déplacer » on this screen; Hassan, 2026-11-21).
+   « Dit au client » (Part 28, R5a, REARRANGE.md §3.8) says what the customer was TOLD (told_*), else the planned window;
+   while he is due (new / changed: not when his sure arrival is still inside what he was told) it adds « nouvelle plage
+   … : pas encore envoyée »; never told anything: « Pas encore averti ». « Hors plage » keeps comparing the arrival with
+   the PLANNED window (what the truck must keep). */
 import { useState } from 'preact/hooks';
 import { ChevronDown, ChevronUp } from 'lucide-preact';
 import { Avatar, Pill, Button } from '../../ui';
@@ -10,11 +14,24 @@ import { t, lang } from '../../lib/i18n';
 import { clock } from '../../lib/dates';
 import { staff, staffName, truckColor, activeTrip } from '../../data/select';
 import { may } from '../../domain/rights';
-import { jobFirstName, blockRange, clockOf, minuteOf, isWindowJob, outsideWindow, plannedTime, etaUnsure } from '../../shared/jobs/select';
+import { jobFirstName, clockOf, minuteOf, isWindowJob, outsideWindow, plannedTime, etaUnsure } from '../../shared/jobs/select';
+import { tellCtx, tellNow, tellState, isDue, toldWindow } from '../../domain/jobs/told';
+import { windowWords } from '../../domain/moment/words';
+import type { Job } from '../../data/types';
 import { agoText } from '../../services/position';
 import type { TruckNow } from './select';
 import { arrivalOf } from './rules';
 import { StopTicket } from './StopTicket';
+
+/** « Dit au client : entre 9 h et 13 h » (+ « nouvelle plage … : pas encore envoyée » while due), or « Pas encore averti » */
+export function toldLine(j: Job, l = lang.value): { said: string; notSent: string | null } {
+  if (j.told_at == null) return { said: t('tell.neverTold'), notSent: null };
+  const said = t('today.win.told', { window: windowWords(toldWindow(j), l) });
+  const ctx = tellCtx();
+  if (!isDue(tellState(j, ctx))) return { said, notSent: null };
+  const n = tellNow(j, ctx);
+  return { said, notSent: t('tell.notSent', { window: windowWords(n.start != null && n.end != null ? [n.start, n.end] : null, l) }) };
+}
 
 function nowLine(x: TruckNow): string {
   const c = x.current;
@@ -43,6 +60,7 @@ export function TruckCard(p: { x: TruckNow; now: number; day: string }) {
     : '';
   // « Plages d'arrivée »: the window told to the next customer, beside the planned arrival
   const told = x.next && isWindowJob(x.next) ? x.next : null;
+  const said = told ? toldLine(told) : null;
   const inner = (
     <>
       <span class="today-truck-top">
@@ -64,9 +82,10 @@ export function TruckCard(p: { x: TruckNow; now: number; day: string }) {
           {next && <span class="ellipsis">{next}</span>}
         </span>
       )}
-      {told && (
+      {told && said && (
         <span class="small today-truck-win" data-testid="today-truck-window">
-          {t('today.win.told', { window: blockRange(told) })}
+          {said.said}
+          {said.notSent && <>, <span data-testid="today-truck-notsent">{said.notSent}</span></>}
           {outsideWindow(told) && <> <Pill tone="warn" data-testid="today-truck-late">{t('common.window.late')}</Pill></>}
         </span>
       )}

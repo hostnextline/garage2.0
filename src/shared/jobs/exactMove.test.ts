@@ -1,6 +1,6 @@
 /* « exact move », the one flow (STATE.md A2, A4, A5): the preview first, then ONE question by its four cases, then
    « Garde-route », then the move with the stops accepted late; never queued without signal. The server is pretended. */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Job } from '../../data/types';
 import type { ExactAnswer, ExactStop } from '../../data/exact';
 
@@ -20,7 +20,9 @@ vi.mock('../../data/select', async (orig) => ({ ...(await orig<object>()), ...ro
 import { setNet } from '../../data/net';
 import { lang } from '../../lib/i18n';
 import { errorMessage } from '../../lib/errors';
-import { moveAt, doneWords } from './exactMove';
+import { moveAt, doneWords, lateWindow } from './exactMove';
+import { replaceLocal, clearAll } from '../../data/store';
+import { today } from '../../lib/dates';
 
 const DAY = '2030-01-10';
 const julie = (o: Partial<Job> = {}): Job => ({ id: 'j1', number: 7, day: DAY, block: 'day', status: 'booked', win_start: 540, win_end: 780, win_flex: false, eta_min: 600,
@@ -276,5 +278,81 @@ describe('after the move', () => {
     expect(asked().title).toBe('Moving Julie to 1 p.m. makes Carla late');
     expect(asked().text.split('\n')[0]).toBe('Carla: around 4:40 p.m., 40 min after their window (12 p.m. to 4 p.m.).');
     lang.value = 'fr';
+  });
+});
+
+/* Part 28 (REARRANGE.md §3.6, §4.4; U6): a customer the move makes late, on a day other than today, with « les plages »
+   allowed to move and a sure arrival outside the window he was told, gets the window of that arrival with « Envoyer les
+   heures aux clients »: said in the question (« Il aura … ») and after the move (« … aura une nouvelle plage … »). Today such
+   a slip is the « en route » text's (days F11): the words of before, « Avertis … ». */
+describe('the late customer’s new window, said (Part 28)', () => {
+  const BOOKING = { windows_on: true, win_before_min: 60, win_after_min: 180, win_round_min: 60 };
+  const settingsWith = (o: Record<string, unknown> = {}) => replaceLocal('settings', [{ id: '1', booking: { ...BOOKING, ...o }, messages: { on: { moved: true } } }] as never);
+  const carla = (o: Partial<ExactStop> = {}) => stop({ id: 'c', etaBefore: 900, etaAfter: 1000, delay: 100, winStart: 720, winEnd: 960, late: true, lateMin: 40, ...o });
+  const moved = { queued: false, data: { ok: true, exact: true, stops: [{ id: 'j1', eta_after: 780 }, { id: 'c', eta_after: 1000, win_start: 720, win_end: 960, late: true, late_min: 40 }] } };
+  async function lateMove(day: string, c = carla()) {
+    exact.exactPreview.mockResolvedValue(answer({ stops: [stop({ id: 'j1', etaAfter: 780, day }), c] }));
+    api.moveJob.mockResolvedValue(moved);
+    const d = await moveAt({ job: julie({ day }), day, truck: null, at: 780, confirm: true });
+    return { line: asked().text.split('\n')[0], done: d.kind === 'moved' ? doneWords(d, day) : '' };
+  }
+  beforeEach(() => settingsWith());
+  afterEach(() => { clearAll(); lang.value = 'fr'; });
+
+  it('another day: « Il aura 16 h à 20 h avec « Envoyer les heures aux clients ». », then « Carla aura une nouvelle plage … »', async () => {
+    const r = await lateMove(DAY);
+    expect(r.line).toBe('Carla : vers 16 h 40, 40 min après sa plage (12 h à 16 h). Il aura 16 h à 20 h avec « Envoyer les heures aux clients ».');
+    expect(r.done).toMatch(/à 13 h\. Carla aura une nouvelle plage : elle part avec « Envoyer les heures aux clients »\.$/);
+    expect(r.done).not.toContain('Avertis');
+    expect(lateWindow(carla(), DAY)).toEqual([960, 1200]);
+  });
+  it('TODAY: such a slip is the « en route » text’s: no « Il aura », and « Avertis Carla » as before', async () => {
+    const r = await lateMove(today());
+    expect(r.line).toBe('Carla : vers 16 h 40, 40 min après sa plage (12 h à 16 h).');
+    expect(r.done).toMatch(/Avertis Carla : servi après sa plage\.$/);
+    expect(lateWindow(carla(), today())).toBeNull();
+  });
+  it('« les plages ne bougent jamais » (booking.rewin false, also written « false » or 0): nobody gets a new window, the words of before', async () => {
+    for (const rewin of [false, 'false', 0]) {
+      vi.clearAllMocks(); ui.ask.mockResolvedValue(true); roads.warmJobDay.mockResolvedValue({ ok: true, ready: true });
+      rows.customer.mockImplementation((id: string) => PEOPLE[id]);
+      rows.job.mockImplementation((id: string) => (JOBS[id] ? { id, ...JOBS[id] } : undefined));
+      settingsWith({ rewin });
+      const r = await lateMove(DAY);
+      expect(r.line).toBe('Carla : vers 16 h 40, 40 min après sa plage (12 h à 16 h).');
+      expect(r.done).toMatch(/Avertis Carla : servi après sa plage\.$/);
+    }
+  });
+  it('his arrival is inside the window he was TOLD that day (told ≠ planned, days F1): nothing new for him', async () => {
+    rows.job.mockImplementation((id: string) => (id === 'c' ? { id, customer_id: 'c-carla', told_day: DAY, told_start: 900, told_end: 1140, told_at: '2030-01-09T15:00:00.000000+00:00' } : JOBS[id] ? { id, ...JOBS[id] } : undefined));
+    const r = await lateMove(DAY);
+    expect(r.line).toBe('Carla : vers 16 h 40, 40 min après sa plage (12 h à 16 h).');
+    expect(r.done).toMatch(/Avertis Carla/);
+    expect(lateWindow(carla(), DAY)).toBeNull();
+  });
+  it('« Vraies routes » on: from a measured arrival (the server says late only from measured trips)', async () => {
+    settingsWith({ roads_on: true });
+    expect(lateWindow(carla({ measured: true }), DAY)).toEqual([960, 1200]);
+    expect(lateWindow(carla({ measured: false }), DAY)).toBeNull();
+    const r = await lateMove(DAY, carla({ measured: true }));
+    expect(r.line).toMatch(/Il aura 16 h à 20 h avec « Envoyer les heures aux clients »\.$/);
+  });
+  it('two late customers, one of them today’s rule only: each said by what will happen to him', async () => {
+    // Bob is inside the window he was told: « Avertis Bob »; Carla gets her new window
+    rows.job.mockImplementation((id: string) => (id === 'b' ? { id, customer_id: 'c-bob', told_day: DAY, told_start: 900, told_end: 1140, told_at: '2030-01-09T15:00:00.000000+00:00' } : JOBS[id] ? { id, ...JOBS[id] } : undefined));
+    const bob = stop({ id: 'b', etaBefore: 950, etaAfter: 1010, delay: 60, winStart: 720, winEnd: 960, late: true, lateMin: 50 });
+    exact.exactPreview.mockResolvedValue(answer({ stops: [stop({ id: 'j1', etaAfter: 780 }), carla(), bob] }));
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, exact: true, stops: [{ id: 'j1', eta_after: 780 }, { id: 'c', eta_after: 1000, win_start: 720, win_end: 960, late: true }, { id: 'b', eta_after: 1010, win_start: 720, win_end: 960, late: true }] } });
+    const d = await moveAt({ job: julie(), day: DAY, truck: null, at: 780, confirm: true });
+    const text = asked().text.split('\n');
+    expect(text[0]).toMatch(/^Carla : .* Il aura 16 h à 20 h avec « Envoyer les heures aux clients »\.$/);
+    expect(text[1]).toBe('Bob : vers 16 h 50, 50 min après sa plage (12 h à 16 h).');
+    expect(d.kind === 'moved' && doneWords(d, DAY)).toMatch(/à 13 h\. Carla aura une nouvelle plage : elle part avec « Envoyer les heures aux clients »\. Avertis Bob : servi après sa plage\.$/);
+  });
+  it('in English too', async () => {
+    lang.value = 'en';
+    const r = await lateMove(DAY);
+    expect(r.line).toBe('Carla: around 4:40 p.m., 40 min after their window (12 p.m. to 4 p.m.). They get 4 p.m. to 8 p.m. with “Send the times to customers”.');
+    expect(r.done).toMatch(/Carla gets a new window: it goes with “Send the times to customers”\.$/);
   });
 });

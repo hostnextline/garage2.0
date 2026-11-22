@@ -11,6 +11,12 @@ d'arrivée qui en dépend dit « heure : trajets pas encore mesurés » ; par pl
 qu'une fois la route mesurée). Les cartes ne tracent jamais de ligne droite entre deux arrêts : une vraie route, ou rien en attendant.
 Éteintes, l'app planifie et affiche comme avant (l'estimation).
 
+**Réorganiser la journée et Envoyer les heures aux clients** (Partie 28, pas encore en ligne) : un écran met les arrêts
+de chaque camion en liste ; on glisse un arrêt (≡) plus haut, plus bas ou sur l'autre camion, l'app redemande les heures
+d'arrivée au serveur et dit qui changerait de plage, rien ne change avant « Enregistrer » et aucun texto ne part. Un seul
+bouton, « Envoyer les heures aux clients (N) », texte ensuite les clients qui n'ont pas encore leur heure (jamais deux fois
+le même) ; après un déplacement, « Texter … ? » répond « Pas maintenant » et le client attend ce bouton.
+
 - L'app : **https://mecanique-mobile-his.vercel.app/** (hébergée sur Vercel, équipe NextLine — voir `ops/vercel/README.md`)
 - L'ancienne adresse https://hostnextline.github.io/garage2.0/ marche encore (liens déjà envoyés) et dit à l'équipe
   d'aller à la nouvelle

@@ -1,12 +1,12 @@
 /* What « Aujourd'hui » reads from the phone's copy (jobs-b-21): my stops of a day and the route I do, the next day with
-   work, my shifts, what each truck is doing, tomorrow's confirmations, the proposals waiting, today's payments.
+   work, my shifts, what each truck is doing, the proposals waiting, today's payments.
    Real store rows; every time is given with Montréal's offset, so the machine's zone never matters. */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { replaceLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
 import type { Access } from '../../data/types';
 import { setMyRoute } from './prefs';
-import { myJobsOn, currentRoute, nextWorkDay, shiftsOf, truckNow, trucksNow, unplacedOn, toConfirm, proposalsWaiting, paymentsOn, openBeforeFor } from './select';
+import { myJobsOn, currentRoute, nextWorkDay, shiftsOf, truckNow, trucksNow, unplacedOn, proposalsWaiting, paymentsOn, openBeforeFor } from './select';
 
 const TODAY = '2026-11-17';
 const saleh = { id: 'saleh', owner: false, roles: ['mechanic'], rights: {}, trucks: ['t1', 't2'] } as unknown as Access;
@@ -106,15 +106,12 @@ describe('the team’s day', () => {
     expect(trucksNow(TODAY)[0].state).toBe('not_started');
     expect(trucksNow(TODAY)[1].state).toBe('empty');
   });
-  it('tomorrow’s appointments without their confirmation text; the proposals waiting on open jobs only', () => {
+  // « À confirmer pour demain » (toConfirm) is gone with Part 28: tomorrow's customers to tell are told.ts' (TeamPanels.test.tsx)
+  it('the proposals waiting on open jobs only', () => {
     replaceLocal('jobs', [
-      job({ id: 'a', truck_id: 't1', day: '2026-11-18', confirm_sent_at: null }),
-      job({ id: 'b', truck_id: 't1', day: '2026-11-18', confirm_sent_at: '2026-11-16T10:00:00-05:00', number: 2 }),
-      job({ id: 'c', truck_id: 't1', day: '2026-11-18', status: 'cancelled', confirm_sent_at: null, number: 3 }),
       job({ id: 'd', truck_id: 't1', day: TODAY, status: 'on_site', number: 4 }),
       job({ id: 'e', truck_id: 't1', day: TODAY, status: 'done', number: 5 })
     ] as never);
-    expect(toConfirm().map((j) => j.id)).toEqual(['a']);
     replaceLocal('job_items', [
       { id: 'i1', job_id: 'd', status: 'proposed', deleted_at: null },
       { id: 'i2', job_id: 'e', status: 'proposed', deleted_at: null },
