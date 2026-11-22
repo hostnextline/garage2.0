@@ -23,18 +23,25 @@ essayé dans un bloc qui finit par `raise exception` ; une sauvegarde d'abord ; 
   nouvelle place (juste après l'arrêt d'avant, son trajet compris) et **la garde** : son heure est fixée (« Heure fixée »),
   comme un « Déplacer à l'heure choisie », et il reste sur le véhicule où il l'a mis.
 - Les arrêts qu'il ne touche pas **gardent leur heure** : jamais avancés ; repoussés seulement quand l'arrêt glissé prend
-  vraiment leur temps (dit avant d'enregistrer, comme aujourd'hui : « Enregistrer quand même »).
+  vraiment leur temps, et alors dit avant d'enregistrer (le nom dans le résumé, « avant : vers … » sur sa ligne) :
+  « Enregistrer quand même » — aussi quand il reste dans sa plage. Un arrêt déjà en retard qu'il ne glisse pas n'est
+  pas avancé non plus (il le glisse lui-même).
 - Jamais refusé pour un retard : l'ordre après « Enregistrer » est le sien.
 - La plage de l'arrêt glissé : la sienne si elle contient la nouvelle heure, sinon celle de la nouvelle heure (montrée
   avant, partira avec « Envoyer les heures aux clients » ; aucun texto tout seul). Un arrêt « dans la journée » qu'il
   glisse reçoit sa plage tout de suite (il a choisi son heure). Une « nouvelle plage » égale à celle qu'il a n'est plus
   dite (le cas « 16 h à 20 h devient 16 h à 20 h »).
 - Une heure fixée déjà dépassée de quelques minutes (un « Déplacer quand même ») n'est plus perdue à chaque
-  « Enregistrer » : elle est refixée à l'arrivée quand l'enregistrement ne la retarde pas.
-- Plus tard, une réservation, une annulation, un « Client absent » ou le verrou du soir peuvent encore déplacer les AUTRES
-  arrêts dans leur plage, **jamais un arrêt à heure fixée**. Sur une journée serrée (un camion après ses heures, un arrêt
-  en retard), où le planificateur cassait les heures fixées (un arrêt fixé à 14 h 20 envoyé à 22 h 27 dans l'essai), ces
-  re-planifications gardent maintenant la journée telle quelle (le garde-fou).
+  « Enregistrer » : elle est refixée à l'arrivée quand l'enregistrement ne la retarde pas, et c'est dit avant
+  (« Enregistrer quand même »).
+- Plus tard, une réservation, une annulation, un « Client absent » ou le verrou du soir peuvent encore changer l'heure
+  des AUTRES arrêts (sa règle du 21 nov. : « i disagree with first one »), un arrêt à heure fixée garde la sienne tant
+  que le camion peut y être. Sur une journée serrée (un camion après ses heures, un arrêt en retard), où le planificateur
+  cassait les heures fixées et les plages (un arrêt fixé à 14 h 20 envoyé à 22 h 27 dans l'essai ; AUSSI en ligne
+  aujourd'hui : une réservation sur une telle journée déplace les « Déplacer à l'heure choisie »), le camion serré
+  garde maintenant son ordre et ses heures pour TOUT ce qui replanifie la journée (une réservation, « Réserver quand
+  même » — à la fin de sa route —, une durée changée, les heures du camion, une annulation, les mesures) ; la
+  réservation va sur l'autre véhicule s'il a de la place, sinon « journée complète » (« Réserver quand même » reste).
 - « Laisser l'app choisir » oublie les heures fixées de la journée, comme aujourd'hui.
 - **À faire par Hassan après** (rien n'est changé pour lui tout seul) : les journées déjà enregistrées depuis 10 h 18
   (`avant.sql`, `jours_reorganises`) ont des arrêts glissés SANS heure fixée : rouvrir « Réorganiser la journée » sur
@@ -60,16 +67,19 @@ a. **L'ESSAI** : `ops/live/partie29/essai-partie29.sql` (remplacer `<C>` par C29
    `shasum -a 256 supabase/migrations/20261122000200_garder_ordre.sql` au commit C29). Il vérifie que la Partie 28 est là et
    pas la 29, télécharge le fichier au commit C29, vérifie son empreinte, met `lock_timeout` à 5 s, calcule le plan de
    chaque bloc des 14 prochains jours, applique la migration, recalcule et compare (la Partie 29 change l'enregistrement et
-   le garde-fou des re-planifications, jamais le planificateur : toutes les réponses doivent être les mêmes), compte les
-   clients, rendez-vous, factures et paiements avant / après, vérifie que les trois fonctions sont là et restent au serveur
-   seul, puis dit les blocs serrés que les re-planifications garderont tels quels et les heures fixées déjà dépassées —
+   le planificateur seulement là où son plan casserait la journée enregistrée : sur chaque bloc qui a de la place, les
+   réponses doivent être les MÊMES ; sur un bloc serré — le plan d'avant met en retard quelqu'un que la journée
+   enregistrée sert à l'heure — les véhicules qu'il cassait sont gelés, et le nouveau plan ne doit rien casser en dehors
+   d'eux), compte les clients, rendez-vous, factures et paiements avant / après, vérifie que les six fonctions sont là et
+   restent au serveur seul, puis dit les blocs serrés (et leurs véhicules gelés) et les heures fixées déjà dépassées —
    dans UNE transaction toujours défaite. Attendu : l'erreur « ESSAI OK : garder_ordre (rien n'est gardé) ; N réponses du
-   planificateur comparées, toutes les mêmes ; S blocs serrés que les re-plans garderont tels quels (…) ; M minutes
-   pointées déjà dépassées (…) ». Noter N, S, M et les dire à Hassan. « ARRÊT : … » ou toute autre erreur : on s'arrête,
-   rien n'a changé. Essayé sur le Mac (la copie locale, la Partie 29 défaite par `retour-partie29.sql` dans une transaction
-   défaite, une journée serrée dans 3 jours) : « ESSAI OK : garder_ordre (rien n'est gardé) ; 14 réponses du planificateur
-   comparées, toutes les mêmes ; 1 blocs serrés que les re-plans garderont tels quels (["2026-11-25 day"]) ; 0 minutes
-   pointées déjà dépassées (…) ». Pas mesuré : sa durée sur les vraies données.
+   planificateur comparées, les mêmes hors des blocs serrés ; S blocs serrés où les véhicules gelés gardent leur ordre
+   (bloc, véhicules : …) ; M minutes pointées déjà dépassées (…) ». Noter N, S, M et les dire à Hassan. « ARRÊT : … » ou
+   toute autre erreur : on s'arrête, rien n'a changé. Essayé sur le Mac (la copie locale, la Partie 29 défaite par
+   `retour-partie29.sql` dans une transaction défaite, une journée serrée dans 3 jours) : « ESSAI OK : garder_ordre (rien
+   n'est gardé) ; 14 réponses du planificateur comparées, les mêmes hors des blocs serrés ; 1 blocs serrés où les
+   véhicules gelés gardent leur ordre (bloc, véhicules : [["2026-11-25 day", ["…le Camion…"]]]) ; 0 minutes pointées
+   déjà dépassées (…) ». Pas mesuré : sa durée sur les vraies données (un bloc serré coûte 2 à 3 plans de plus).
 b. **POUR VRAI** : le bloc de CLAUDE.md, avec le fichier `20261122000200_garder_ordre.sql` au commit C29, son empreinte
    vérifiée, et `lock_timeout` à 5 s avant `execute body` :
    ```sql
@@ -90,9 +100,10 @@ b. **POUR VRAI** : le bloc de CLAUDE.md, avec le fichier `20261122000200_garder_
    ses heures fixées), et la ligne de l'arrêt glissé dit déjà « vers {heure} » et « Heure fixée {heure} ».
 c. **CONTRÔLE** (lecture seule) : `schema_migrations` montre `20261122000200` ; les nombres de CUTOVER 2c inchangés ;
    `select proname from pg_proc where pronamespace = 'public'::regnamespace and proname in ('day_order_core',
-   'replan_block_safe', 'roads_replan') and prosrc like '%Part 29%'` → les trois ; `select public.roads_on()` → faux. La
-   migration n'envoie aucun `DROP`, `DELETE` ni `TRUNCATE`, n'écrit aucune ligne, ne refait que ces trois fonctions avec
-   « create or replace » et peut être appliquée deux fois (test « the migration » de `tests/db/reorganiser-garde.test.mjs`).
+   'replan_block_safe', 'roads_replan', 'plan_route', 'plan_route_core', 'plan_breaks') and prosrc like '%Part 29%'` → les
+   six ; `select public.roads_on()` → faux. La migration n'envoie aucun `DROP`, `DELETE` ni `TRUNCATE`, n'écrit aucune
+   ligne, ne refait que ces cinq fonctions et n'ajoute que `plan_breaks`, avec « create or replace », et peut être
+   appliquée deux fois (test « the migration » de `tests/db/reorganiser-garde.test.mjs`).
 
 ## 2. Les fonctions du serveur
 
@@ -103,8 +114,11 @@ notify, book et client à `0b15944d`, drive, enroute et backup à `5e23639e`, le
 
 - Fusionner C29 dans `main` (avec `[important]` dans la première ligne), pousser `main` puis `main:construction-v2`. L'id
   du déploiement d'avant est noté (0.4).
-- Dès qu'elle est publiée : la ligne de l'arrêt glissé dit « Heure fixée {heure} : là où tu l'as mis », un arrêt repoussé
-  dit son heure d'avant, l'aide de l'écran dit la nouvelle règle (les mots : `src/i18n/fr/reorg.ts`, `src/i18n/en/reorg.ts`).
+- Dès qu'elle est publiée : la ligne de l'arrêt glissé dit « fixé à {heure} » (« avant : vers … »), un arrêt repoussé
+  dit son heure d'avant et demande « Enregistrer quand même », l'aide de l'écran et l'article disent la nouvelle règle
+  (les mots : `src/i18n/fr/reorg.ts`, `src/i18n/en/reorg.ts`, `src/features/info/articles.ts`). L'app d'avant, avec le
+  serveur de la Partie 29 : un arrêt repoussé dans sa plage s'enregistre d'un seul toucher (sans « quand même ») —
+  publier l'app juste après la migration.
 - Contrôle : un vrai chargement de l'app (Chromium) propre ; « Réorganiser la journée » s'ouvre sur un jour à venir.
 
 ## 4. Après, avec Hassan (lecture seule pour nous, ses gestes pour lui)
@@ -119,10 +133,11 @@ notify, book et client à `0b15944d`, drive, enroute et backup à `5e23639e`, le
 
 1. L'app : Vercel → promouvoir le déploiement noté en 0.4, ou `git revert -m 1 <fusion>` sur `main` avec `[important]`.
    Le serveur de la Partie 29 marche avec l'app d'avant (1 b) : ce retour seul suffit si c'est l'écran qui gêne.
-2. La migration : `ops/live/partie29/retour-partie29.sql` remet les trois fonctions telles qu'avant, octet pour octet
-   (`day_order_core` de la Partie 28, `replan_block_safe` et `roads_replan` de la Partie 27 ; `ops/tests` le vérifie), avec
-   leurs droits ; d'abord essayé avec `rollback;` à la place de son `commit;`, puis pour de vrai. Il finit par un contrôle :
-   plus aucune des trois ne dit « Part 29 ».
+2. La migration : `ops/live/partie29/retour-partie29.sql` remet les cinq fonctions telles qu'avant, octet pour octet
+   (`day_order_core` de la Partie 28, `replan_block_safe`, `roads_replan`, `plan_route_core` et `plan_route` de la
+   Partie 27 ; `ops/tests` le vérifie), avec leurs droits ; d'abord essayé avec `rollback;` à la place de son `commit;`, puis
+   pour de vrai. Il finit par un contrôle : plus aucune des cinq ne dit « Part 29 ». `plan_breaks` reste (jamais de DROP ;
+   plus rien ne l'appelle).
 3. Ce qui reste (sans danger) : la ligne `20261122000200` de `schema_migrations` (jamais effacée) ; les heures fixées que
    les enregistrements de la Partie 29 ont écrites (`arrive_at`, `truck_pinned` des arrêts glissés) : le planificateur de
    la Partie 27 les lit comme celles d'un « Déplacer à l'heure choisie », l'enregistrement de la Partie 28 les garde tant

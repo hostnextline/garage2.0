@@ -3,6 +3,9 @@
 // cases are run with today's functions, then the definitions of before (read from the migrations before 20261119000200) are
 // put back and the same cases run again; every answer and every row written must be the same. Road times are stored (absurd
 // ones) and the day of the week left set to anything (« garage.drive_dow »), so nothing of Part 27 may leak while it is off.
+// One exception, Part 29 (20261122000200_garder_ordre.sql): on a TIGHT window day (a plan would make late someone the
+// stored day serves on time, or a late minute later still) plan_route freezes that vehicle and the re-plans keep the stored
+// routes, switch off too; the cases here are blocks or days with room (tests/db/reorganiser-garde.test.mjs covers the rest).
 // Run: node --test tests/db/vraies-routes-off.test.mjs
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';

@@ -105,12 +105,18 @@ end $do$;
   the read-only checks it ran and the way back: `ops/live/PARTIE27.md`. NOT done: the TomTom keys, and the nightly script of
   the backups repository (`ops/sauvegardes` at `5e23639e`): it would send the coming stops' positions to OSRM's public demo
   server every night while there is no server key (CUTOVER 5 bis point 6: Hassan's call).
-- Part 28 « Réorganiser la journée » + « Envoyer les heures aux clients » is NOT on live (branch `reorganiser`): the
-  migration `20261122000100_reorganiser.sql` (needs Part 27 first), then the functions `notify`, `book`, `client` at its
-  commit, `told_install()` again, then the app. Its runbook, the read-only checks before it (`ops/live/partie28/avant.sql`:
-  what Hassan must hear first: « Rendez-vous changé » on or off, texting set up or not, the first press's N), its trial
-  (`essai-partie28.sql`, always undone) and the way back (`a-avertir.sql` first): `ops/live/PARTIE28.md`, beside
-  `ops/live/PARTIE27.md`; CUTOVER.md's top note points to it.
+- Part 28 « Réorganiser la journée » + « Envoyer les heures aux clients » IS LIVE since 2026-11-22 (Hassan: « GO LIVE NOW,
+  DAY HASNT STARTED »): the migration `20261122000100_reorganiser.sql` applied at 10:10 from commit `0b15944d` with the
+  sha256 check, after its trial; `told_install()` marked what live had texted; the functions `notify`, `book`, `client`
+  at `0b15944d`; the app `a34413e9` (`main`, published 10:17). Its runbook, the read-only checks before it
+  (`ops/live/partie28/avant.sql`), its trial (`essai-partie28.sql`, always undone) and the way back (`a-avertir.sql`
+  first): `ops/live/PARTIE28.md`, beside `ops/live/PARTIE27.md`; CUTOVER.md's top note points to it.
+- Part 29 « the stop dragged keeps the hour of its place » is NOT on live (branch `reorganiser`; Hassan's « yes » of
+  10:45: live as soon as it is green and the lead's gate is green): the migration `20261122000200_garder_ordre.sql` (needs
+  Part 28), NO server function to deploy, then the app with `[important]` right after (an app of before saves a push
+  inside its window in one tap). Its runbook, the read-only checks (`ops/live/partie29/avant.sql`), the trial
+  (`essai-partie29.sql`, always undone) and the way back (`retour-partie29.sql`: the five functions of before, byte for
+  byte; `plan_breaks` stays): `ops/live/PARTIE29.md`; CUTOVER.md's top note points to it.
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
   since 2026-11-21 the twelve functions of the rebuild at `837c89d8`, except, since 2026-11-22 (Part 27), `drive` (new), `book`,
   `enroute` and `backup` at `5e23639e`. Before the
@@ -502,7 +508,8 @@ end $do$;
   asked again with the same op), and no text goes. The windows move only at the save (a stop pushed out gets the window
   of its arrival, « Nouvelle plage »; one back inside what he was told gets that back) or when the client is told; a
   mechanic's save (no « Réserver ») re-cuts no window and marks those stops late / early for the office (`hand_at`).
-  No order by hand is kept (choice C1): a later automatic plan may reorder the day, keeping every window. « Laisser l'app
+  No order by hand is kept (choice C1): a later automatic plan may reorder the day, keeping every window (Part 29, below:
+  the stops dragged are pinned at their minute, and a tight vehicle keeps its order). « Laisser l'app
   choisir » shows the planner's order as a draft (saved only by « Enregistrer »). Someone else saved the day meanwhile:
   the screen takes that order for every stop not moved here, keeps this person's moves, names who saved
   (`day_changed`, `by`). The draft is kept on the phone per account and day (`his.dayOrder.<staff>.<day>`) until saved or
@@ -538,6 +545,34 @@ end $do$;
   key `booking.rewin` only), no move across days or blocks from this screen, no per-row switch in the send list, no text
   on a cancel. Never proven: a real iPhone's finger in the home-screen app (one check by hand before « fini »), the real
   GoHighLevel's late answers.
+- « Réorganiser » keeps the order and the hours (Part 29, `20261122000200_garder_ordre.sql`, NOT on live:
+  `ops/live/PARTIE29.md`; Hassan, 2026-11-22, on the live Part 28: « when re-arranging the day, if i move an appointement
+  down, i need it to change its hour, and accept the appointement where i put it without moving all the others
+  arround »; the lead's rule G1–G7, STATE.md 10:35). A stop he DRAGS (up, down, onto the other truck) takes the hour of
+  the place he put it (right after the stop before it: its end + the drive) and that minute is PINNED at the save
+  (`arrive_at` + `truck_pinned`, the exact move's pin: later plans hold it there); its row says « fixé à 15 h 29 » and
+  « avant : vers 9 h 29 »; its window: the one it has when that holds the new hour (decision D1, not ruled yet), else the
+  window of the new hour, shown first, owed on the day's button, no text by itself; a flexible stop he drags gets its
+  window at the save (D5). The stops he does NOT drag keep their order and their hour (held not before their arrival
+  before the save, nor their window start; a pinned one at its minute): never pulled earlier — a late one too; pushed
+  later only when a dragged stop truly takes their time, and then a WARNING (named in the summary, « avant : vers … » on
+  the row, « Enregistrer quand même »: `pushedOf` in `src/data/dayOrder.ts`); a pin already a few minutes late that the
+  save does not make later is pointed again at its arrival (D2), also a warning (`repinnedOf`). Never refused for
+  lateness (still refused: the other vehicle not working then, `truck_ends`). The answer: per stop `pin_new`, `pin_was`;
+  `accept.at` = { id: minute } (warn first: the same minute, or up to 5 later: today's clock); a not-measured arrival
+  (roads on) is pointed only inside its window. LATER PLANS: on a day with room the planner plans the OTHER stops around
+  the pins as always (his 11-21 rule); on a TIGHT day (someone late, the truck past its hours: what « Enregistrer quand
+  même » makes) `plan_route` FREEZES the vehicle whose stored day the plan would break (`plan_breaks`: a stop the stored
+  day serves on time made late, a late pin made later) — window mode, switch on or OFF —: its stops stay in their order,
+  walked again, nothing new on it but « Réserver quand même » (at its end), the other vehicle planned around; every plan
+  of the day goes through it (a booking, a move, a length, the hours, a cancel, the evening lock, the measures, the
+  suggestions); `replan_block_safe` / `roads_replan` also keep the stored routes when a plan still breaks it (`why:
+  'late'`). « Laisser l'app choisir » clears the day's pins (G6). Tests: database `tests/db/reorganiser-garde.test.mjs`
+  (G1–G6, F1 the tight day's booking / « quand même » / length / hours, F7, F8, the file, the way back, the trial), unit
+  `src/data/dayOrder.test.ts`, `src/shared/jobs/DayOrderSheet.test.tsx`, `src/dev/demo-reorg.test.ts`, end to end
+  `tests/e2e/reorganiser.test.cjs` (B1's G2 checks, B16 mouse, B17 finger). Not done: the lead's rulings D1, D2, D5, F2 (a
+  late stop not dragged stays late), F4 (the evening lock and a cancel on the other truck may still reorder the stops he
+  did not drag on a day with room: G4 as ruled).
 - The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
   the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
   {soustotal} » = « 159,98 $ + tx » (`subtotalWords`; work by the hour: « …, plus le travail à l’heure »; nothing priced: « selon le
@@ -653,7 +688,8 @@ end $do$;
   The switch is `settings.booking.roads_on`, flipped only by `roads_switch(op, on)` (owner; Réglages → Réservations → « Vraies
   routes » → « Compter les vraies routes »; trigger `settings_roads_guard`: a plain settings save never flips it, and only the
   owner changes the four numbers that decide what TomTom costs, `roads_month_tx`, `roads_web_tx`, `roads_keep_days`,
-  `roads_rush_min`; the server key stays free). INERT while it is off:
+  `roads_rush_min`; the server key stays free). INERT while it is off (except Part 29: on a TIGHT window day the
+  vehicle whose stored day a plan would break is frozen, and the re-plans keep the stored routes):
   the planner answers exactly as before (same numbers, same keys, same job and activity rows: `tests/db/vraies-routes-off.test.mjs`
   compares with the definitions of before, `book_job`, `move_job`, `lock_windows_core` and `log_activity` included), the
   phone's own estimates that mirror it stay (where a new stop goes, « Arrêt n sur N »), the

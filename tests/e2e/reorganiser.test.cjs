@@ -176,6 +176,16 @@ step('B1 + B3. The office, on a computer: the last stop dragged to the top with 
   t.diagnostic(`the summary: « ${sum} »`);
   assert.ok(sum.includes('Rien ne leur est envoyé maintenant.') || sum.includes('Rien ne lui est envoyé maintenant.'), sum);
   for (const f of changes) assert.ok(sum.includes(f), `${f} named in the summary: ${sum}`);
+  // Part 29, G2 (the reviews' S6): the stops he did not drag never come earlier; one the drag pushes later is named in the
+  // summary and its row says its hour before (the reviews' S1: a warning, « Enregistrer quand même »)
+  for (const f of CAMION.filter((g) => g !== 'Denis')) {
+    const o = v[J[f]];
+    assert.ok(o.eta >= o.eta_before, `${f} (not dragged) never earlier: ${clock(o.eta)} ≥ ${clock(o.eta_before)}`);
+    if (o.eta - o.eta_before > 4) {
+      if (!changes.includes(f)) assert.ok(/plus tard/.test(sum) && sum.includes(f), `${f}, pushed later, named: ${sum}`);
+      assert.ok((await R.notesOf(page, N[f])).includes(R.avant(o.eta_before)), `${f}: « ${R.avant(o.eta_before)} »`);
+    }
+  }
   await h.shot(page, 'reorganiser-b1-moved');
   // « Enregistrer » shows the verdict and becomes « Enregistrer quand même »; the second tap saves
   const btn = sheet.getByTestId('dayorder-save');

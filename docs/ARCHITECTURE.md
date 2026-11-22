@@ -412,7 +412,9 @@ REARRANGE.md of the work folder; CLAUDE.md « Things to know » says what it doe
   accept, op)` → `day_order_save(p_op, …, p_accept)` (`queue: false`: never kept on the phone), `dayAnswer` / `dayRefusal`
   (`day_changed` with `by: { name }`, `outcome_changed` whose detail is the whole answer, `changed`, `truck_off`,
   `truck_ends`, `needs_truck`, `not_allowed`), `isDeadlock` / `isLockBusy` / `isNoAnswer`, `keepDraft` / `keptDraft` /
-  `dropDraft` (`localStorage` `his.dayOrder.<staff>.<day>`, every access in a try), `DAY_ORDER_WAIT_MS` 600;
+  `dropDraft` (`localStorage` `his.dayOrder.<staff>.<day>`, every access in a try), `DAY_ORDER_WAIT_MS` 600; Part 29:
+  `needsConfirm(answer, { moved, auto })` also counts `pushedOf` (a stop not dragged pushed later by more than
+  `SHIFT_MIN`) and `repinnedOf` (a late minute moved to the arrival);
   `src/data/tell.ts` — `tellList(day)` (`tell_list`, read only), `sendDay(day, only, again?)` (notify `{ action: 'day', day,
   base, op, only, again? }`, a NEW op each call; 100 ids at most a call, the sheet sends longer lists in parts),
   `tellMark(marks)` (`tell_mark`, `queue: false`).
@@ -498,9 +500,13 @@ longer calls `stop_order_preview` nor `set_stop_order`: they stay for older phon
 '{}', p_was default null, p_auto default false)` (nothing written; `p_lists` null only with `p_auto`: the planner's lists)
 and `day_order_save(p_op, p_day, p_lists, p_moved, p_was, p_auto, p_accept)` → `{ ok, day, basis_ok, mode, roads, rewin,
 auto, lists: [{ truck, block, jobs }], stops: [{ id, truck_id, truck_before, block, order, order_before, eta, eta_before,
-measured, win, new_win, win_back, flex_fixed, flex_later, late_min, early_min, pin, pin_lost, pin_moved, over }], trucks:
-[{ id, block, hours_end, finish, over_min, drive_min, unmeasured }], accept: { windows, flex, late, early, pins, over },
-due_after }` (the save adds `saved: true` and `rows: { jobs }`; a basis that changed: preview `basis_ok: false` with `gone`,
+measured, win, new_win, win_back, flex_fixed, flex_later, late_min, early_min, pin, pin_lost, pin_moved, pin_new, pin_was,
+over }], trucks: [{ id, block, hours_end, finish, over_min, drive_min, unmeasured }], accept: { windows, flex, late, early,
+pins, over, at }, due_after }` (Part 29, `20261122000200_garder_ordre.sql`: `pin_new` = a stop dragged, pinned at the hour
+of its new place; `pin_was` = its minute before, for a stop whose minute this save points, else null; `pin` = the minute
+after the save; `accept.at` = { id: minute }, sent back raw: the save refuses `outcome_changed` unless each is the one shown
+or at most 5 minutes later; a « new window » equal to the window it has is no longer sent; activity `day_ordered` gains
+`pinned`) (the save adds `saved: true` and `rows: { jobs }`; a basis that changed: preview `basis_ok: false` with `gone`,
 `new`, `changed`, `by`; save `day_changed`); `p_was` = `{ job id: [truck_id, block, stop_order, win_start, win_end,
 arrive_at, status] }` of every booked / en route / on site job of the day on the listed trucks · `tell_list(p_day)` (owner /
 « Réserver ») → `[{ id, number, customer_id, state: new|changed|drift, kind: booking|window|moved|null, told, now: { day,
@@ -508,7 +514,10 @@ start, end, rewin }, phone_ok, sms_ok, kind_on }]` · `tell_mark(p_op, p_marks: 
 → `{ ok, marked, changed, busy, rows: { jobs } }` · the columns `jobs.told_day`, `told_start`, `told_end`, `told_at`,
 `told_how` (sms|maybe|call|hand|install), `told_by`, `hand_at` (the server's only; cleared when the customer or his phone
 changes). Service role only: `day_order_core`, `tell_now`, `tell_state`, `tell_take`, `tell_done`, `tell_release`,
-`told_install`, `day_rewin_on`, `told_hours`. With the switch on, the
+`told_install`, `day_rewin_on`, `told_hours`; Part 29's `plan_breaks(p_plan, p_xid)` → the vehicles whose stored day that
+plan breaks (window mode), read by `plan_route` (which then answers, switch off too, `frozen: [vehicle ids]` and `kept: []`
+for such a tight day: those vehicles keep their order), `replan_block_safe` (`{ skipped, kept, why: 'late' }`) and
+`roads_replan`. With the switch on, the
 suggestion rows (`suggest_blocks`, `suggest_windows`, the web ones) also carry `unmeasured`, `add_km` null when a trip is
 not measured, `day_km`, `rank` and `route` (exact in window mode only; null by blocks); `far` is said only from measured
 trips (`hop_known`; the day without its unmeasured legs), never by a guess; a row with `unmeasured` > 0 comes after every
