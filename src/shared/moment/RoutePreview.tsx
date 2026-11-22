@@ -16,20 +16,23 @@ import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { t, lang } from '../../lib/i18n';
-import { duration } from '../../lib/dates';
+import { duration, clock } from '../../lib/dates';
 import { Sheet, Button, Banner } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, UNPLACED_COLOR, type TruckRoute } from '../map/assemble';
 import { useRoads, roadOf, roadTotal, roadAdded } from '../map/useRoads';
 import { roadNote } from './roadNote';
-import { staffName, activeTrucks, roadsOn } from '../../data/select';
+import { staffName, activeTrucks, roadsOn, truckLabel } from '../../data/select';
 import { addsFromRow, dayFromRow, rowOfTruck } from '../../domain/moment/serverPlace';
 import { placeNewStop, placeOn, fmtKm, NEW_STOP, NEW_STOP_COLOR, type Spot } from './preview';
 import { dayOf } from './deviceDay';
 import { popPlace, POP, type Rect } from './place';
 import { bothKinds, kindOf } from './vehicles';
 
-export interface PreviewAsk extends Spot { when: string; exclude?: string | null }
+export interface PreviewAsk extends Spot { when: string; exclude?: string | null;
+  /** « Déplacer » to that very minute (`eta`, « exact move »): the appointment on `truckId` at that time, no place in the
+      route said (no number, no strip of stops), the exact move's own words (merge-main review M-1) */
+  exact?: boolean }
 /** a stop of the route the appointment joins, as the strip under the map says it */
 export interface StripStop { id: string; n: number | string; name: string; done: boolean; fresh: boolean }
 
@@ -46,12 +49,15 @@ function useRouteDay(a: PreviewAsk, when = false) {
   const l = lang.value;
   const on = roadsOn.value;
   const day = a.day;
+  // « Déplacer » to that very minute: on its truck, its place in the route not said (the server decides it at the move)
+  const exact = !!a.exact && a.eta != null;
   const placed = useMemo(() => {
     const d = dayOf(a.day, a.exclude);
+    if (exact) return placeOn(d, { ...a, row: null });
     if (on) return placeOn(d, a);
     const p = placeNewStop(d, a);
     return { before: p.before, after: p.after, truckId: p.truckId, rank: null };
-  }, [on, a.day, a.block, a.truckId, a.lat, a.lng, a.exclude, a.eta, rowSig(a)]);
+  }, [on, exact, a.day, a.block, a.truckId, a.lat, a.lng, a.exclude, a.eta, rowSig(a)]);
   const after = useMemo(() => assemble(placed.after, { nameOf: staffName }), [placed]);
   const before = useMemo(() => assemble(placed.before, { nameOf: staffName }), [placed]);
   const trA: TruckRoute | undefined = placed.truckId ? after.trucks.find((x) => x.id === placed.truckId) : undefined;
@@ -90,7 +96,7 @@ function useRouteDay(a: PreviewAsk, when = false) {
     // place is not known (no number); off, alone that day (« 1 »)
     const home = homeDrawn ? null : homeMk();
     if (home) markers.push(home);
-    markers.push(newMk(on ? '' : '1'));
+    markers.push(newMk(on || exact ? '' : '1'));
   }
 
   // the route is the car's or the truck's: no vehicle or mechanic name
@@ -101,7 +107,13 @@ function useRouteDay(a: PreviewAsk, when = false) {
 
   /* what is said */
   let stop = '', dayLine = '', adds = '', alone = false;
-  if (on) {
+  if (exact) {
+    // the exact move's words: that time, that truck, the others keep their order (who would arrive later is said by the
+    // move's own question, from the server's preview); nothing of a place, a day's road or what it adds
+    if (placed.truckId) stop = t('booking.preview.exactStop', { time: clock(a.eta!, l), truck: truckLabel(placed.truckId) });
+    else if (!after.trucks.length) alone = true;
+    else stop = t(both ? 'booking.preview.noVehicleYet' : 'booking.preview.noTruckYet');
+  } else if (on) {
     if (placed.rank) stop = t('booking.preview.stop', { n: placed.rank.n, total: placed.rank.total, truck: truckName });
     // the vehicle is known, not the place (blocks mode): which route, and that its place is chosen at the booking
     else if (placed.truckId) stop = t('booking.preview.stopLater', { truck: truckName });
@@ -120,13 +132,13 @@ function useRouteDay(a: PreviewAsk, when = false) {
   } else alone = true;
   // the stops of the route the appointment joins, in its order, numbered as on the map
   const strip: StripStop[] = trA && mine ? trA.stops.map((s) => ({ id: s.id, n: numberOf(s), name: s.id === NEW_STOP ? t('booking.preview.newLabel') : s.name, done: s.done, fresh: s.id === NEW_STOP })) : [];
-  return { markers, lines, stop, dayLine, adds, alone, note, on, color: trA?.color, strip };
+  return { markers, lines, stop, dayLine, adds, alone, note, on, exact, color: trA?.color, strip };
 }
 
 /** « Voir sur la carte » in a sheet (`onPick`: « Choisir ce moment », only for a moment that can be chosen) */
 export function RoutePreview(p: { ask: PreviewAsk; onClose?: () => void; onPick?: () => void }) {
   const a = p.ask;
-  const { markers, lines, stop, dayLine, adds, alone, note, on } = useRouteDay(a, true);
+  const { markers, lines, stop, dayLine, adds, alone, note, on, exact } = useRouteDay(a, true);
   const close = () => p.onClose?.();
   return (
     <Sheet open onClose={close} title={t('booking.preview.title')} sub={a.when} data-testid="route-preview"
@@ -141,10 +153,10 @@ export function RoutePreview(p: { ask: PreviewAsk; onClose?: () => void; onPick?
           <ul class="bp-preview-facts" data-testid="route-preview-facts">
             {stop && <li><b>{stop}</b></li>}
             {dayLine && <li data-testid="route-preview-day">{dayLine}</li>}
-            <li data-testid="route-preview-extra">{adds}</li>
+            {adds && <li data-testid="route-preview-extra">{adds}</li>}
           </ul>
         ) : <Banner kind="info">{t('booking.preview.noTruck')}</Banner>}
-        <p class="faint small" style={{ margin: 0 }}>{t(on ? 'booking.preview.noteRoads' : 'booking.preview.note')}</p>
+        <p class="faint small" style={{ margin: 0 }}>{t(exact ? 'booking.preview.noteExact' : on ? 'booking.preview.noteRoads' : 'booking.preview.note')}</p>
       </div>
     </Sheet>
   );

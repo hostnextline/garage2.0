@@ -19,7 +19,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { Check, RefreshCw } from 'lucide-preact';
 import { addDays, daysBetween, longDay, duration, clock } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { settings, job as jobRow, activeTrucks, daySpan, windowOf, roadsOn } from '../../data/select';
+import { settings, job as jobRow, activeTrucks, daySpan, windowOf, roadsOn, truckRanges } from '../../data/select';
 import { placeRoads, retryRoads } from '../../data/roads';
 import { net } from '../../data/sync';
 import { isOwner, hasRole } from '../../data/auth';
@@ -27,6 +27,7 @@ import { Banner, Button, ask, toast } from '../../ui';
 import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
 import { farLimits, isFar, momentsByKey, sameMoment, unmeasured } from '../../domain/moment/logic';
 import { serverRank } from '../../domain/moment/serverPlace';
+import { exactAtOf } from '../../domain/moment/exactAt';
 import { roomy } from '../../platform/media';
 import type { Suggestion } from '../../data/api';
 import { spanEnds } from '../../domain/moment/words';
@@ -212,8 +213,23 @@ export function WindowPicker(p: BlockPickerProps) {
     const w = winsOf(c.day);
     return (w.status === 'ok' ? rowsByStart(w.rows, windowOf).get(c.win_start) : undefined) ?? null;
   };
-  const askOf = (c: BlockChoice, when = choiceWords(c, l)): PreviewAsk => ({ day: c.day, block: 'day', truckId: p.truckId || c.truck || null, lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
-    when, exclude: p.excludeJob ?? null, eta: c.eta ?? null, row: rowOf(c) });
+  /* « Déplacer » (exact move, review M-1): a time chosen is where the appointment lands, on its own truck when that truck
+     works that day (else the vehicle offered there, the one the move then takes): its map says that, never the planner's
+     other vehicle nor its place in a route */
+  const exactJob = p.exactMove ? moving : undefined;
+  const exactTruck = (d: string, offered: string | null): string | null => {
+    const own = exactJob?.truck_id ?? null;
+    return own && trucks.some((tr) => tr.id === own) && truckRanges(own, d).length > 0 ? own : offered;
+  };
+  const askOf = (c: BlockChoice, when = choiceWords(c, l)): PreviewAsk => {
+    const at = exactJob ? exactAtOf(c, span, windowOf) : null;
+    if (at != null) {
+      return { day: c.day, block: 'day', truckId: p.truckId || exactTruck(c.day, c.truck ?? null), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
+        when, exclude: p.excludeJob ?? null, eta: at, row: null, exact: true };
+    }
+    return { day: c.day, block: 'day', truckId: p.truckId || c.truck || null, lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
+      when, exclude: p.excludeJob ?? null, eta: c.eta ?? null, row: rowOf(c) };
+  };
   const see = (c: BlockChoice) => setPreview({ choice: c, ask: askOf(c) });
   /* a right-click anywhere on a day of the calendar: « Voir sur la carte » (with the new stop at that time when the address
      is known and a time is under the pointer, else the day's routes as they are); « Choisir ce moment » on a possible time */
@@ -234,11 +250,12 @@ export function WindowPicker(p: BlockPickerProps) {
   };
 
   /* which stop of its route the appointment would be at each of the best moments: off, the phone's copy of the day; on,
-     only the server's row (rank, exact in window mode), never the phone's estimate */
+     only the server's row (rank, exact in window mode), never the phone's estimate. « Déplacer » to a time (exact move):
+     none, the row's place is the planner's, not where the move puts it (review M-1) */
   const onRoads = roadsOn.value;
-  const ranks = useMemo(() => best.map((s) => (!hasPos ? null : onRoads ? serverRank(s, p.truckId || s.truck)
+  const ranks = useMemo(() => best.map((s) => (!hasPos || exactJob ? null : onRoads ? serverRank(s, p.truckId || s.truck)
     : stopRank(dayOf(s.day, p.excludeJob), { day: s.day, block: 'day', truckId: p.truckId || s.truck, lat: p.lat!, lng: p.lng!, name: '', address: '', eta: s.eta ?? null }))),
-  [best, p.lat, p.lng, p.excludeJob, p.truckId, onRoads]);
+  [best, p.lat, p.lng, p.excludeJob, p.truckId, onRoads, !!exactJob]);
   /* « Vraies routes »: the address being measured, or it could not be (« Réessayer » measures again, then asks again) */
   const roads = hasPos ? placeRoads({ lat: p.lat!, lng: p.lng! }) : null;
   const roadsAgain = () => { void retryRoads({ lat: p.lat!, lng: p.lng! }); again(); };

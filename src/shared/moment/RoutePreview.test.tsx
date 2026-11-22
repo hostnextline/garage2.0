@@ -16,6 +16,7 @@ vi.mock('../map/useRoads', () => ({ useRoads: () => 0, roadOf: (leg: { points: u
 vi.mock('./deviceDay', () => ({ dayOf: () => seen.day }));
 
 import { lang } from '../../lib/i18n';
+import { replaceLocal } from '../../data/store';
 import { NEW_STOP, NEW_STOP_COLOR } from './preview';
 import { POP } from './place';
 import { RouteHover, MapHover, type PreviewAsk } from './RoutePreview';
@@ -86,6 +87,20 @@ describe('the map window of a moment (RouteHover)', () => {
     act(() => render(<RouteHover ask={{ ...ASK, eta: 721 }} at={ROW} group={PICKER} />, box));
     expect(pop()!.querySelector('[data-testid="route-hover-facts"]')!.textContent).toContain('Route ajoutée : pas encore calculée');
     expect(pop()!.textContent).not.toMatch(/vol d’oiseau|environ/);
+  });
+  it('« Déplacer » to that very minute (exact move): its truck and its time, no place in the route, no strip of stops (merge-main M-1)', () => {
+    replaceLocal('trucks', [{ id: 'T1', name: 'Camion Complet', active: true, sort: 0 }, { id: 'T2', name: 'Voiture', active: true, sort: 1 }] as never);
+    // the planner's row puts it first on the car: the exact move keeps it on the truck at 12 h, the others in their order
+    const row = { day: '2026-11-20', block: 'day', truck: 'T2', rank: 1, route: ['new', 'd', 'e'], stops: 2, eta: 700 } as never;
+    act(() => render(<RouteHover ask={{ ...ASK, row, exact: true }} at={ROW} group={PICKER} />, box));
+    expect(pop()!.querySelector('.bp-pop-stops')).toBeNull();
+    const facts = pop()!.querySelector('[data-testid="route-hover-facts"]')!.textContent;
+    expect(facts).toContain('Arrive à 12 h (Camion Complet). Les autres arrêts gardent leur ordre.');
+    expect(facts).not.toMatch(/Arrêt \d+ sur|ajoute|Route ajoutée/);
+    expect(map().markers.find((m) => m.id === NEW_STOP)?.number).toBe('');
+    // nobody renumbered around it: each route keeps its own numbers
+    expect(map().markers.filter((m) => m.kind === 'job' && m.id !== NEW_STOP).map((m) => `${m.id}:${m.number}`)).toEqual(['a:1', 'b:2', 'c:3', 'd:1', 'e:2']);
+    replaceLocal('trucks', []);
   });
   it('a title of its own (a time of the calendar) and the server’s words about the drive (blocks)', () => {
     act(() => render(<RouteHover ask={ASK} at={ROW} group={PICKER} title="Vendredi 20 novembre · Arrivée vers 12 h" road="12 min de route" far />, box));

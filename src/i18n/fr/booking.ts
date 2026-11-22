@@ -114,6 +114,9 @@ export const booking = {
     noTruckYet: 'Le camion n’est pas encore choisi',
     noVehicleYet: 'Le véhicule n’est pas encore choisi',
     stopLater: 'Sur {truck} ce jour-là : sa place dans la route est choisie quand tu réserves',
+    /* « Déplacer » à l'heure choisie (le déplacement exact) : le rendez-vous arrive à cette heure, sur son camion */
+    exactStop: 'Arrive à {time} ({truck}). Les autres arrêts gardent leur ordre.',
+    noteExact: 'Avant de déplacer, l’app vérifie et dit si un autre client arriverait plus tard.',
     noteRoads: 'Les temps viennent des vraies routes. L’app place le rendez-vous dans la route quand tu réserves.',
     noTruck: 'Aucun camion ne travaille ce jour-là pour l’instant : le rendez-vous est seul sur la carte.',
     note: 'Une estimation : l’app choisit l’ordre final des arrêts quand tu réserves.'

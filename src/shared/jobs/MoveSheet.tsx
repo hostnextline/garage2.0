@@ -107,7 +107,7 @@ function MoveOpen(p: { job: Job; onClose: () => void; onSent?: (r: MoveSent) => 
   return (
     <Sheet open onClose={p.onClose} title={t('jobs.moment.moveTitle')} sub={wt({ block: windowsOn.value ? 'day' : 'am' }, textOn ? 'jobs.moment.moveLeadText' : 'jobs.moment.moveLead')} wide data-testid="move-sheet"
       footer={<><Button onClick={p.onClose}>{t('common.cancel')}</Button><Button variant="primary" disabled={!choice || same} busy={busy} onClick={move} data-testid="move-ok">{t('jobs.moment.moveOk')}</Button></>}>
-      <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} address={j.address || c?.address || null} duration={j.duration_min} excludeJob={j.id} value={choice} onPick={setChoice} onFar={setFar} {...(p.fromList ? { openDay: j.day } : {})} />
+      <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} address={j.address || c?.address || null} duration={j.duration_min} excludeJob={j.id} exactMove value={choice} onPick={setChoice} onFar={setFar} {...(p.fromList ? { openDay: j.day } : {})} />
     </Sheet>
   );
 }

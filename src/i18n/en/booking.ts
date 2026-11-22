@@ -113,6 +113,9 @@ export const booking: typeof fr = {
     noTruckYet: 'The truck is not chosen yet',
     noVehicleYet: 'The vehicle is not chosen yet',
     stopLater: 'On {truck} that day: its place in the route is chosen when you book',
+    /* « Move » to the time chosen (the exact move): the appointment arrives at that time, on its truck */
+    exactStop: 'Arrives at {time} ({truck}). The other stops keep their order.',
+    noteExact: 'Before moving, the app checks and says if another customer would arrive later.',
     noteRoads: 'The times come from the real roads. The app puts the appointment in the route when you book.',
     noTruck: 'No truck works that day yet: the appointment is alone on the map.',
     note: 'An estimate: the app sets the final order of the stops when you book.'

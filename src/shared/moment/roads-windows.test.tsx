@@ -174,3 +174,64 @@ describe('the day map (DayRoute): the roads of that day, and the note while they
     expect(text('day-route-road')).toMatch(/en cours de calcul/i);
   });
 });
+
+/* « Déplacer » with arrival windows (« exact move »): a time chosen is where the appointment lands, on ITS truck, every
+   other stop keeping its order. The planner's row of that window may put it on the car, first of the car's route: the map
+   of that time must not say so (merge-main review M-1: main's big hover and its strip of stops, with our exact move) */
+describe('« Déplacer » to a time (exact move): the map shows the appointment on its own truck at that time, never the planner’s vehicle or place (M-1)', () => {
+  function MoveHost(p: { first?: BlockChoice | null }) {
+    const [v, setV] = useState<BlockChoice | null>(p.first ?? null);
+    return <BlockPicker lat={45.56} lng={-73.54} duration={60} excludeJob="M" exactMove value={v} onPick={(c) => setV(c)} onClear={() => setV(null)} layout="grid" />;
+  }
+  // the planner's row: the car V, first of its route
+  const onCar = (o: Record<string, unknown> = {}) => best({ truck: 'V', rank: 1, route: ['new', 'D'], stops: 1, ...o });
+  beforeEach(() => {
+    upsertLocal('trucks', [{ id: 'T1', name: 'Camion Complet', active: true, sort: 0, tire_machine: true }, { id: 'V', name: 'Voiture', active: true, sort: 1, tire_machine: false }], { force: true });
+    upsertLocal('truck_week', [0, 1, 2, 3, 4, 5, 6].flatMap((dow) => [{ id: `w${dow}`, truck_id: 'T1', dow, ranges: [[480, 1200]] }, { id: `v${dow}`, truck_id: 'V', dow, ranges: [[480, 1200]] }]), { force: true });
+    upsertLocal('jobs', [
+      { id: 'M', number: 7, day: tomorrow, block: 'day', status: 'booked', truck_id: 'T1', duration_min: 60, stop_order: 2, eta_min: 700, win_start: 600, win_end: 840, lat: 45.56, lng: -73.54 },
+      { id: 'D', number: 4, day: tomorrow, block: 'day', status: 'booked', truck_id: 'V', duration_min: 60, stop_order: 1, eta_min: 640, lat: 45.53, lng: -73.67 }
+    ] as never);
+    api.suggestBlocks.mockResolvedValue([onCar()]);
+    api.suggestWindows.mockImplementation(async (_a: unknown, _b: unknown, _c: unknown, day: string) => [onCar({ day })]);
+  });
+  it('switch ON: its truck named, its time, no « Arrêt n sur N », the new pin without a number; the best moment says no place either', async () => {
+    act(() => render(<MoveHost first={{ ...chosen, truck: 'V' }} />, box));
+    await wait();
+    expect(q('bp-sugg-order')).toBeNull();
+    act(() => { q('bp-see-map')!.click(); });
+    await wait(300);
+    expect(text('route-preview-facts')).toContain('Arrive à 15 h (Camion Complet). Les autres arrêts gardent leur ordre.');
+    expect(text('route-preview')).not.toMatch(/Arrêt \d+ sur \d+|Voiture/);
+    expect(pin('new-stop', 'route-preview-map')?.number).toBe('');
+    // the truck's own stops keep their numbers; the car's stop is not renumbered around the appointment
+    expect(['A', 'B'].map((id) => pin(id, 'route-preview-map')?.number)).toEqual([1, 2]);
+    expect(pin('D', 'route-preview-map')?.number).toBe(1);
+    expect(text('route-preview')).toContain('Avant de déplacer, l’app vérifie');
+  });
+  it('switch OFF: the same (the phone does not guess the place of an exact move either)', async () => {
+    settingsRow({ windows_on: true, roads_on: false });
+    act(() => render(<MoveHost first={{ ...chosen, truck: 'V' }} />, box));
+    await wait();
+    act(() => { q('bp-see-map')!.click(); });
+    await wait(300);
+    expect(text('route-preview-facts')).toContain('Arrive à 15 h (Camion Complet).');
+    expect(text('route-preview')).not.toMatch(/Arrêt \d+ sur \d+/);
+    expect(pin('new-stop', 'route-preview-map')?.number).toBe('');
+  });
+  it('its truck does not work that day: the vehicle offered there (the move takes it, and its question says so)', async () => {
+    upsertLocal('truck_days', [{ id: 'off', truck_id: 'T1', day: tomorrow, ranges: [] }] as never, { force: true });
+    act(() => render(<MoveHost first={{ ...chosen, truck: 'V' }} />, box));
+    await wait();
+    act(() => { q('bp-see-map')!.click(); });
+    await wait(300);
+    expect(text('route-preview-facts')).toContain('Arrive à 15 h (Voiture).');
+  });
+  it('the booking screen (no exactMove): the planner’s row as before', async () => {
+    act(() => render(<BlockPicker lat={45.56} lng={-73.54} duration={60} value={{ ...chosen, truck: 'V' }} onPick={() => {}} layout="grid" />, box));
+    await wait();
+    act(() => { q('bp-see-map')!.click(); });
+    await wait(300);
+    expect(text('route-preview-facts')).toContain('Arrêt 1 sur 2');
+  });
+});
