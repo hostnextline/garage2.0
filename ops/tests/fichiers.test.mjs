@@ -110,8 +110,9 @@ test('the cutover runbook is exact for this tree: the six migrations in order, t
   const rb = lire('ops/live/CUTOVER.md');
   // every migration added since the rebuild was cut (acf46c3 has up to 20261115000100), in the order of their names; one of
   // them, 20261119000100_heures, is already on live (aa1b4e6): the runbook names it as « not to apply ». The ones of a
-  // later Part with its own runbook (Part 28: ops/live/PARTIE28.md; Part 29: ops/live/PARTIE29.md) are that runbook's, not CUTOVER's
-  const rb28 = ['ops/live/PARTIE28.md', 'ops/live/PARTIE29.md'].map((f) => (existsSync(join(ROOT, f)) ? lire(f) : '')).join('\n');
+  // later Part with its own runbook (Part 28: ops/live/PARTIE28.md; Part 29: ops/live/PARTIE29.md; Part 30: ops/live/PARTIE30.md)
+  // are that runbook's, not CUTOVER's
+  const rb28 = ['ops/live/PARTIE28.md', 'ops/live/PARTIE29.md', 'ops/live/PARTIE30.md'].map((f) => (existsSync(join(ROOT, f)) ? lire(f) : '')).join('\n');
   const neuves = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261115000100_zzz' && !rb28.includes(f)).sort();
   assert.ok(neuves.length >= 6);
   let avant = -1;
@@ -146,9 +147,9 @@ test('Part 27 alone, from today\'s live (the rebuild went live 2026-11-21): its 
   // what runs today: the app d7b6c0d2, the functions and migrations at 837c89d8
   for (const x of ['d7b6c0d2', '837c89d8', '`20261119000200`', 'fonctions_avant_27.sql', 'ESSAI OK', 'lock_timeout', 'Le retour'])
     assert.ok(rb.includes(x), 'PARTIE27.md speaks of ' + x);
-  // the one migration Part 27 added to live's (and nothing else in supabase/migrations is newer, but Part 28's and Part 29's:
-  // ops/live/PARTIE28.md, ops/live/PARTIE29.md)
-  const rb28 = ['ops/live/PARTIE28.md', 'ops/live/PARTIE29.md'].map((f) => (existsSync(join(ROOT, f)) ? lire(f) : '')).join('\n');
+  // the one migration Part 27 added to live's (and nothing else in supabase/migrations is newer, but Part 28's, Part 29's and
+  // Part 30's: ops/live/PARTIE28.md, ops/live/PARTIE29.md, ops/live/PARTIE30.md)
+  const rb28 = ['ops/live/PARTIE28.md', 'ops/live/PARTIE29.md', 'ops/live/PARTIE30.md'].map((f) => (existsSync(join(ROOT, f)) ? lire(f) : '')).join('\n');
   const neuves = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261119000100_zzz' && !rb28.includes(f));
   assert.deepEqual(neuves, ['20261119000200_vraies_routes.sql']);
   // the four functions it redeploys exist, the order: drive first (it needs the migration)
@@ -171,9 +172,9 @@ test('Part 28 after Part 27 (REARRANGE.md §6.5, §7.3 b): its own runbook from 
   for (const x of ['`20261122000100_reorganiser.sql`', '`20261119000200`', 'ESSAI OK', 'lock_timeout', 'told_install', 'a-avertir.sql', 'Le retour',
     '5e23639e', '837c89d8', '6f91d6f9'])
     assert.ok(rb.includes(x), 'PARTIE28.md speaks of ' + x);
-  // Part 28's migration is the only one after Part 27's (but a later Part's own: Part 29, ops/live/PARTIE29.md), and Part 27's
-  // is named by its version only (it is live: not to apply)
-  const rb29 = existsSync(join(ROOT, 'ops/live/PARTIE29.md')) ? lire('ops/live/PARTIE29.md') : '';
+  // Part 28's migration is the only one after Part 27's (but a later Part's own: Part 29, ops/live/PARTIE29.md; Part 30,
+  // ops/live/PARTIE30.md), and Part 27's is named by its version only (it is live: not to apply)
+  const rb29 = ['ops/live/PARTIE29.md', 'ops/live/PARTIE30.md'].map((f) => (existsSync(join(ROOT, f)) ? lire(f) : '')).join('\n');
   const after27 = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261119000200_zzz' && !rb29.includes(f)).sort();
   assert.deepEqual(after27, ['20261122000100_reorganiser.sql']);
   assert.ok(!rb.includes('20261119000200_vraies_routes.sql'), 'Part 27 is not one of this runbook\'s migrations');
@@ -214,8 +215,10 @@ test('Part 29 after Part 28 (Hassan, 2026-11-22: the dragged stop keeps the hour
   for (const x of ['`20261122000200_garder_ordre.sql`', '`20261122000100`', 'ESSAI OK : garder_ordre', 'lock_timeout', 'Le retour', 'retour-partie29.sql', 'avant.sql',
     '0b15944d', '5e23639e', '837c89d8', 'a34413e9', '[important]', 'jours_reorganises'])
     assert.ok(rb.includes(x), 'PARTIE29.md speaks of ' + x);
-  // Part 29's migration is the only one after Part 28's; Part 28's is named by its version only (it is live: not to apply)
-  const after28 = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261122000100_zzz').sort();
+  // Part 29's migration is the only one after Part 28's (but a later Part's own: Part 30, ops/live/PARTIE30.md); Part 28's is
+  // named by its version only (it is live: not to apply)
+  const rb30 = existsSync(join(ROOT, 'ops/live/PARTIE30.md')) ? lire('ops/live/PARTIE30.md') : '';
+  const after28 = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261122000100_zzz' && !rb30.includes(f)).sort();
   assert.deepEqual(after28, ['20261122000200_garder_ordre.sql']);
   assert.ok(!rb.includes('20261122000100_reorganiser.sql') && !rb.includes('20261119000200_vraies_routes.sql'), 'Parts 27 and 28 are not this runbook\'s migrations');
   assert.match(lire('supabase/migrations/20261122000200_garder_ordre.sql').split('\n')[0], /^-- Part 29 — /);
@@ -253,6 +256,51 @@ test('Part 29 after Part 28 (Hassan, 2026-11-22: the dragged stop keeps the hour
   // CUTOVER.md's top note points to it
   const cut = lire('ops/live/CUTOVER.md');
   assert.ok(cut.indexOf('ops/live/PARTIE29.md') >= 0 && cut.indexOf('ops/live/PARTIE29.md') < cut.indexOf('## 0. '), 'CUTOVER.md points to PARTIE29.md at its top');
+});
+
+test('Part 30 after Part 29 (Hassan, 2026-11-22: book at the time chosen, warn first, then the new map): its own runbook from today\'s live names its migration, what runs, the try, no function to redeploy, the app after the migration, the way back; its read-only file only reads; the way back is Part 27\'s book_job byte for byte; CUTOVER.md points to it', () => {
+  const rb = lire('ops/live/PARTIE30.md');
+  for (const x of ['`20261122000300_reserver_heure.sql`', '`20261122000200`', 'ESSAI OK : reserver_heure', 'lock_timeout', 'Le retour', 'retour-partie30.sql', 'avant.sql',
+    '532b47c9', '0b15944d', '5e23639e', '837c89d8', '[important]', 'book_preview'])
+    assert.ok(rb.includes(x), 'PARTIE30.md speaks of ' + x);
+  // Part 30's migration is the only one after Part 29's; Parts 27, 28 and 29 are named by their versions only (live: not to apply)
+  const after29 = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261122000200_zzz').sort();
+  assert.deepEqual(after29, ['20261122000300_reserver_heure.sql']);
+  for (const f of ['20261122000200_garder_ordre.sql', '20261122000100_reorganiser.sql', '20261119000200_vraies_routes.sql'])
+    assert.ok(!rb.includes(f), f + ' is not one of this runbook\'s migrations');
+  assert.match(lire('supabase/migrations/20261122000300_reserver_heure.sql').split('\n')[0], /^-- Part 30 — /);
+  // before, the try before the real thing, then the functions (none), the app, after, the way back
+  let from = 0;
+  const at = ['## 0. ', '## 1. ', 'essai-partie30.sql', 'POUR VRAI', '## 2. ', '## 3. ', '## 4. ', '## 5. '].map((x) => (from = rb.indexOf(x, from)));
+  assert.ok(at.every((x) => x >= 0), 'before, the try, the migration, the functions, the app, after, the way back, in that order');
+  const s2 = rb.slice(rb.indexOf('## 2. '), rb.indexOf('## 3. '));
+  assert.match(s2, /Aucune fonction du serveur ne change/);
+  assert.match(rb, /git diff --stat 532b47c9 C30 -- supabase\/functions/, 'step 0 checks that no server function changes');
+  // the files it names are there; avant.sql only reads; the try ends by undoing everything and removes nothing
+  for (const f of ['ops/live/partie30/avant.sql', 'ops/live/partie30/essai-partie30.sql', 'ops/live/partie30/retour-partie30.sql'])
+    assert.ok(rb.includes(f.replace('ops/live/', '')) && existsSync(join(ROOT, f)), f);
+  const q = lire('ops/live/partie30/avant.sql').replace(/--.*$/gm, '');
+  assert.ok(!/\b(insert|update|delete|truncate|drop|alter|create|grant|revoke|do)\b\s/i.test(q), 'avant.sql only reads');
+  assert.ok(!/\b(nextval|setval|set_config)\s*\(/i.test(q), 'avant.sql calls nothing that changes something');
+  const essai = lire('ops/live/partie30/essai-partie30.sql');
+  assert.match(essai, /raise exception 'ESSAI OK : reserver_heure \(rien n''est gardé\)[^']*'/);
+  assert.match(essai, /20261122000300_reserver_heure\.sql/);
+  assert.match(essai, /set_config\('lock_timeout', '5s', true\)/);
+  assert.match(essai, /job_number_seq/, 'the try checks that no job number is spent');
+  assert.ok(!/\b(drop|truncate|delete from)\b/i.test(essai.replace(/--.*$/gm, '')), 'the try sends no DROP, TRUNCATE or DELETE');
+  // the way back: book_job of Part 27, byte for byte, and book_preview closed to the app; nothing removed
+  const back = lire('ops/live/partie30/retour-partie30.sql');
+  const code = back.replace(/--.*$/gm, '');
+  assert.ok(!/\b(drop|truncate|delete\s+from)\b/i.test(code), 'the way back removes nothing');
+  const head = "CREATE OR REPLACE FUNCTION public.book_job(p_op uuid, p_job jsonb, p_items jsonb DEFAULT '[]'::jsonb)";
+  const fnOf = (src) => { const i = src.indexOf(head); assert.ok(i >= 0, 'book_job'); return src.slice(i, src.indexOf('\nend $function$;\n', i) + '\nend $function$;\n'.length); };
+  assert.equal(fnOf(back), fnOf(lire('supabase/migrations/20261119000200_vraies_routes.sql')), 'book_job: Part 27\'s text');
+  assert.deepEqual([...back.matchAll(/^create or replace function public\.([a-z_]+)\(/gim)].map((m) => m[1]), ['book_job']);
+  assert.match(back, /revoke all on function public\.book_preview\(jsonb, jsonb\) from public, anon, authenticated;/);
+  assert.match(back, /^begin;$/m); assert.match(back, /^commit;$/m);
+  // CUTOVER.md's top note points to it
+  const cut = lire('ops/live/CUTOVER.md');
+  assert.ok(cut.indexOf('ops/live/PARTIE30.md') >= 0 && cut.indexOf('ops/live/PARTIE30.md') < cut.indexOf('## 0. '), 'CUTOVER.md points to PARTIE30.md at its top');
 });
 
 test('the full test workflow checks the types of the server functions (deno check), after the stack is installed (infra-15)', () => {

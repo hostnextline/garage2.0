@@ -4,7 +4,8 @@
 > `d7b6c0d2` vers 23 h 10). Les sections 1 à 5 racontent cette nuit-là : elle est faite, ne pas la refaire. La Partie 27
 > seule, en partant d'aujourd'hui : **`ops/live/PARTIE27.md`**. Ce fichier reste la référence pour les clés de TomTom, la
 > mesure et l'interrupteur (5 bis) et pour le retour en arrière pièce par pièce (7). La Partie 28, après la 27 :
-> **`ops/live/PARTIE28.md`**. La Partie 29, après la 28 : **`ops/live/PARTIE29.md`**.
+> **`ops/live/PARTIE28.md`**. La Partie 29, après la 28 : **`ops/live/PARTIE29.md`**. La Partie 30, après la 29 :
+> **`ops/live/PARTIE30.md`**.
 
 Le cahier de route du passage en ligne de la refonte, pièce par pièce : comment vérifier que chaque étape a marché, et
 comment revenir en arrière à chaque étape (et ce qui ne se défait pas). Rien de ce fichier ne se fait sans le **go du

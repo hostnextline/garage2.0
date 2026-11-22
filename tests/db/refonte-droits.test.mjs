@@ -43,7 +43,11 @@ const APP = [
   // clients » (the list and « Je l'ai averti » / « C'est envoyé »; owner / « Réserver », « C'est envoyé » also the job's
   // mechanic). Their helpers (tell_now, tell_state, day_order_core, tell_take, tell_done, tell_release, told_install, …) stay
   // the server's: tests/db/reorganiser.test.mjs, tests/db/textos-journee.test.mjs
-  'day_order_preview', 'day_order_save', 'tell_list', 'tell_mark'
+  'day_order_preview', 'day_order_save', 'tell_list', 'tell_mark',
+  // Part 30 (20261122000300_reserver_heure.sql): « Réserver à l'heure choisie », what the booking at that minute would do,
+  // said before it is done (book_job itself in a block always undone: book_job's own rights inside, no job number spent).
+  // Its helpers book_at, book_at_row, book_at_try stay the server's: tests/db/reserver-heure.test.mjs
+  'book_preview'
 ];
 /** what the row rules, the guards and the functions that run as the person (not security definer) call
  *  (hours_all: the read rule of shifts, 20261119000100_heures.sql) */

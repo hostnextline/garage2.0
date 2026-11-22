@@ -935,9 +935,10 @@ const FILE = MIG + '20261122000100_reorganiser.sql';
 test('D18 Part 27 untouched: no function its generator copies (nor the off test’s list) is written again here, no « alter function », no pg_get_functiondef; the generator still makes exactly the applied file', () => {
   const sql = readFileSync(FILE, 'utf8');
   assert.match(sql.split('\n')[0], /^-- Part 28 — Réorganiser la journée et Envoyer les heures aux clients/);
-  // after every migration but Part 29's (20261122000200_garder_ordre.sql, tests/db/reorganiser-garde.test.mjs), the one after it
+  // after every migration but Part 29's (20261122000200_garder_ordre.sql, tests/db/reorganiser-garde.test.mjs) and Part 30's
+  // (20261122000300_reserver_heure.sql, tests/db/reserver-heure.test.mjs), the ones after it
   const all = readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort();
-  assert.deepEqual(all.slice(all.indexOf('20261122000100_reorganiser.sql')), ['20261122000100_reorganiser.sql', '20261122000200_garder_ordre.sql'], 'Part 28, then only Part 29');
+  assert.deepEqual(all.slice(all.indexOf('20261122000100_reorganiser.sql')), ['20261122000100_reorganiser.sql', '20261122000200_garder_ordre.sql', '20261122000300_reserver_heure.sql'], 'Part 28, then only Parts 29 and 30');
   const copied = ['route_walk_in', 'route_cost', 'route_retime', 'plan_route', 'day_drive', 'suggest_core', 'suggest_windows_core', 'web_suggest', 'web_windows',
     'book_job', 'move_job', 'lock_windows_core', 'plan_late_new', 'plan_inputs', 'customers_replan_on_position', 'replan_block_safe', 'apply_plan', 'log_activity',
     'stop_order_one', 'windows_switch', 'drive_min', 'route_hold', 'route_mark', 'eta_known', 'exact_works', 'plan_block', 'win_for', 'roads_on', 'roads_no'];

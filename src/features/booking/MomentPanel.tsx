@@ -23,7 +23,7 @@ export const MomentPanel = memo(function MomentPanel(p: MomentPanelProps) {
     <div ref={p.anchor} class="book-block-anchor">
       <Panel title={p.title} sub={p.sub} data-tour="book-block">
         {p.error && <div style={{ marginBottom: 'var(--sp-3)' }}><Banner kind="bad">{p.error}</Banner></div>}
-        <BlockPicker lat={p.lat} lng={p.lng} address={p.address} duration={p.duration} truckId={p.truckId} value={p.value}
+        <BlockPicker exactBook lat={p.lat} lng={p.lng} address={p.address} duration={p.duration} truckId={p.truckId} value={p.value}
           need={p.need} kind={p.kind} onKind={(kind) => act({ t: 'kind', kind })}
           onPick={(choice) => act({ t: 'choice', choice })} onClear={() => act({ t: 'clearChoice' })} openDay={p.openDay} reload={p.reload}
           onFar={(far, seen) => act({ t: 'far', far, seen: seen ? { ...seen, ask } : null })} />

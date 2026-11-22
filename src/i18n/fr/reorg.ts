@@ -142,6 +142,14 @@ export const reorg = {
   autoKeep: 'Garder le mien',
   autoShown: 'Voici l’ordre de l’app. Rien n’est enregistré.',
   autoOver: 'L’app ne trouve pas de place pour {name} : il reste à la fin, en retard.',
+  /* the map of the day in this order (Partie 30 ; Hassan : « i want to be able to have the map open and showing me the
+     changements in real time ») */
+  mapShow: 'Carte',
+  mapHide: 'Masquer la carte',
+  mapLabel: 'Carte de la journée dans ton ordre',
+  mapDone: 'fait',
+  mapOnSite: 'sur place',
+  mapEnRoute: 'en route',
   /* the « ? » of a truck */
-  help: 'Glisse un arrêt par sa poignée ≡ : plus haut, plus bas, ou sur l’autre camion. L’arrêt glissé prend l’heure de sa nouvelle place et la garde ; les autres gardent leur heure. Rien ne change tant que tu n’as pas touché « Enregistrer », et aucun texto ne part. Un client qui arriverait en dehors de la plage qu’on lui a dite reçoit une nouvelle plage, montrée avant d’enregistrer. Plus tard, une réservation, une annulation ou une route mesurée (aussi la nuit) peut encore changer l’heure des autres arrêts ; un arrêt à heure fixée garde la sienne tant que le camion peut y être. Quand ta journée est prête : « Envoyer les heures aux clients ».'
+  help: 'Glisse un arrêt par sa poignée ≡ : plus haut, plus bas, ou sur l’autre camion. L’arrêt glissé prend l’heure de sa nouvelle place et la garde ; les autres gardent leur heure. Rien ne change tant que tu n’as pas touché « Enregistrer », et aucun texto ne part. Un client qui arriverait en dehors de la plage qu’on lui a dite reçoit une nouvelle plage, montrée avant d’enregistrer. Plus tard, une réservation, une annulation ou une route mesurée (aussi la nuit) peut encore changer l’heure des autres arrêts ; un arrêt à heure fixée garde la sienne tant que le camion peut y être. Quand ta journée est prête : « Envoyer les heures aux clients ». « Carte » montre la journée dans ton ordre, en direct : les numéros changent dès que tu poses un arrêt, la route par les rues suit dès qu’elle est calculée ; touche un numéro pour trouver son arrêt dans la liste.'
 };

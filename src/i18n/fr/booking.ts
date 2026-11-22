@@ -364,4 +364,55 @@ export const booking = {
     smsQuiet: 'Pas de texto : ce client ou ce type de texto est désactivé.'
   }
   // fin refonte:moment-pickers
+  ,
+  /* Part 30 « Réserver à l'heure choisie » (src/features/booking/atTime.ts, BookedMap.tsx): a time of the calendar books the
+     appointment AT that minute; no room → the warning first; then the new map of that day */
+  atTime: {
+    someone: 'un client',
+    question: 'Réserver {name} : {when} à {time} ?',
+    told: 'Plage de {name} : entre {from} et {to}.',
+    pushed: { one: 'Cet arrêt arrive un peu plus tard, toujours dans sa plage :', other: 'Ces arrêts arrivent un peu plus tard, toujours dans leur plage :' },
+    pushedLine: '{name} : vers {eta} au lieu de {was}.',
+    ok: 'Réserver',
+    other: 'Choisir une autre heure',
+    lateTitle: { one: 'Réserver {who} à {time} met {name} en retard', other: 'Réserver {who} à {time} met {n} clients en retard' },
+    overTitle: 'Réserver {who} à {time} : le camion finit après ses heures',
+    lateLine: '{name} : vers {eta}, {by} après sa plage ({from} à {to}).',
+    overHours: 'Le camion finirait sa journée {by} après ses heures.',
+    force: 'Réserver quand même à {time}',
+    notYou: 'Seuls le propriétaire et le bureau peuvent réserver quand même. Choisis une autre heure.',
+    unchecked: 'Je n’ai pas pu vérifier l’heure des autres clients.',
+    unmeasured: 'Les routes de cette journée ne sont pas toutes mesurées : je ne peux pas encore dire si quelqu’un sera en retard.',
+    anyway: 'Réserver quand même',
+    earlyTitle: 'Pas possible à {time}',
+    early: 'Le camion ne peut pas être chez {name} à {time} : au plus tôt {earliest}.',
+    earlyTold: 'À {earliest}, sa plage devient : entre {from} et {to}.',
+    earlyKeep: 'À {time}, aucun autre arrêt ne change d’heure.',
+    earlyOk: 'Mettre à {earliest}',
+    done: 'Réservé : {when} à {time}.',
+    doneForced: 'Réservé quand même : {when} à {time}.',
+    offline: 'Pas de réseau : la réservation n’est pas faite. Réessaie quand le réseau revient.',
+    lost: 'Pas de réponse du serveur : la réservation est peut-être faite. Regarde l’agenda dans un instant avant de réessayer.',
+    rounds: 'La journée change pendant qu’on vérifie : choisis l’heure de nouveau.',
+    /* a time the server does not offer, chosen anyway (owner, office) */
+    fullChosen: 'Complet à cette heure : avant de réserver, l’app te dit qui serait en retard.',
+    fullUnit: '{day}, {time} : complet (tu peux réserver quand même)',
+    fullTag: 'complet',
+    /* the new map, after the booking (K3) */
+    map: {
+      title: 'La nouvelle journée',
+      lead: 'Chaque véhicule dans son nouvel ordre, les routes par les rues.',
+      new: 'Nouveau',
+      pushed: 'plus tard : {eta}',
+      late: 'en retard de {by}',
+      stop: '{n}. {name}',
+      legendNew: 'le nouveau rendez-vous',
+      legendPushed: 'arrive plus tard',
+      legendLate: 'en retard',
+      none: 'Aucun arrêt avec une adresse ce jour-là.',
+      see: 'Voir le rendez-vous',
+      close: 'Fermer',
+      mapLabel: 'Carte de la nouvelle journée'
+    }
+  }
 };

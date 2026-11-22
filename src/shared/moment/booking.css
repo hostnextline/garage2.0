@@ -347,3 +347,29 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 /* the words of the time under the mouse, beside its column (the map itself: .bp-pop) */
 .bp-hover-map { position: fixed; z-index: 86; padding: var(--sp-3); border-radius: var(--r-lg); background: var(--solid); border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28); pointer-events: none; display: flex; flex-direction: column; gap: var(--sp-2); }
 .bp-hover-when { margin: 0; font-weight: 620; font-size: var(--t-sm); }
+
+/* Part 30 « Réserver à l'heure choisie »: a time the server does not offer, pickable by the owner and the office (marked
+   full) on the phone's list of times */
+.pl-time.is-no { border-style: dashed; border-color: color-mix(in srgb, var(--bad) 40%, transparent); background: repeating-linear-gradient(135deg, var(--sunken) 0 6px, var(--solid) 6px 12px); color: var(--ink-2); }
+.pl-time.is-no.is-on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+/* the new map after such a booking (BookedMap.tsx): each vehicle's stops in their new order, the marks */
+.bp-booked-truck { display: flex; flex-direction: column; gap: 6px; }
+.bp-booked-name { margin: 0; font-size: var(--t-sm); font-weight: 650; color: var(--ink-2); }
+.bp-booked-stops { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.bp-booked-stop { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 10px 3px 3px; border-radius: var(--r-pill); background: var(--sunken); border: 1px solid var(--line); font-size: var(--t-sm); font-weight: 560; line-height: 1.2; }
+.bp-booked-stop i { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--c); color: #fff; font-style: normal; font-size: 12px; font-weight: 700; }
+.bp-booked-stop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-booked-stop small { font-size: var(--t-xs); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.bp-booked-stop.is-done { opacity: 0.55; }
+.bp-booked-stop.is-new { background: #111827; border-color: #111827; color: #fff; }
+.bp-booked-stop.is-new i { background: #fff; color: #111827; }
+.bp-booked-stop.is-new small { color: #fff; }
+.bp-booked-stop.is-pushed { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 12%, var(--solid)); }
+.bp-booked-stop.is-late { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, var(--solid)); }
+.bp-booked-stop.is-late small { color: var(--bad); }
+.bp-booked-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: var(--t-xs); color: var(--ink-2); }
+.bp-booked-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.bp-booked-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); }
+.bp-booked-dot.is-new { background: #111827; border-color: #111827; }
+.bp-booked-dot.is-pushed { background: color-mix(in srgb, var(--warn) 40%, var(--solid)); border-color: var(--warn); }
+.bp-booked-dot.is-late { background: var(--bad); border-color: var(--bad); }

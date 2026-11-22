@@ -117,6 +117,12 @@ end $do$;
   inside its window in one tap). Its runbook, the read-only checks (`ops/live/partie29/avant.sql`), the trial
   (`essai-partie29.sql`, always undone) and the way back (`retour-partie29.sql`: the five functions of before, byte for
   byte; `plan_breaks` stays): `ops/live/PARTIE29.md`; CUTOVER.md's top note points to it.
+- Part 30 « Réserver à l'heure choisie » is NOT on live (branch `reorganiser`; live only with Hassan's yes at that time,
+  K5): the migration `20261122000300_reserver_heure.sql` (needs Part 29), NO server function to deploy, then the app with
+  `[important]` (the new app calls `book_preview`: the migration first). Its runbook, the read-only checks
+  (`ops/live/partie30/avant.sql`), the trial (`essai-partie30.sql`, always undone: the planner's answers of the next 14
+  days the same, no job number spent) and the way back (`retour-partie30.sql`: Part 27's book_job byte for byte):
+  `ops/live/PARTIE30.md`; CUTOVER.md's top note points to it.
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
   since 2026-11-21 the twelve functions of the rebuild at `837c89d8`, except, since 2026-11-22 (Part 27), `drive` (new), `book`,
   `enroute` and `backup` at `5e23639e`. Before the
@@ -574,6 +580,52 @@ end $do$;
   `src/data/dayOrder.test.ts`, `src/shared/jobs/DayOrderSheet.test.tsx`, `src/dev/demo-reorg.test.ts`, end to end
   `tests/e2e/reorganiser.test.cjs` (B1's G2 checks, B16 mouse, B17 finger). Not done: the lead's rulings D1, D2, D5 (built as the reproducer advised), F4 (the evening lock and a cancel on the other truck may still reorder the stops he
   did not drag on a day with room: G4 as ruled).
+- « Réserver à l'heure choisie » (Part 30, `20261122000300_reserver_heure.sql`, NOT on live: `ops/live/PARTIE30.md`;
+  Hassan, 2026-11-22: « hours can change, but i want to be able to decide so if i forcefully book someone at a specific
+  time, i want the system to show a warning if there is no place but still let me book it, then show me the new map »;
+  the lead's rules K1–K3, K5, STATE.md 13:00). Window mode only (blocks: unchanged, the minute is never read). In the
+  booking's time calendar (`BlockPicker exactBook`, set by `MomentPanel`: PickGrid on a computer, PickList on a phone; a
+  best moment's « Vers … » too, `exactAtOf`) a time picked books the appointment AT that minute, as the exact move moves
+  one: `book_job`'s `p_job.arrive_at` (+ `truck_id`, `late_ok`) → the server's `book_at` tries every vehicle that may take
+  it (the one asked, else each working that day that fits the work; best: the fewest made late — past the hours counts
+  as one —, then nobody's hour moved, then the car first, then the least delay) with the exact move's own placing
+  (`exact_place`: AT that minute, pinned `arrive_at` + `truck_pinned`, its window `win_for(minute)`, the other stops of
+  that vehicle in their order and held not before their arrival, pushed later only when the new stop truly takes their
+  time; the other vehicles untouched; a TIGHT day of Part 29 too: at its minute, never « at the end »). `jobs.forced`
+  stays false (Part 19's forced = at the end, not held to its window); the answer says `forced: true` and the activity
+  `booked_at` keeps who was made late. Refusals as the exact move: `arrive_late` { earliest, earliest_keep, truck_id },
+  `late_changed` { late, over_hours } (the late ones, and for the hours the new id itself, must be in `late_ok`);
+  forcing is the owner's and the office's only (`not_allowed`, the right of « Réserver quand même »). Before booking the
+  app asks `book_preview(p_job, p_items)` (book_job itself in a block always undone; a trial row takes a number below
+  zero, so a preview or a refusal spends NO job number; window mode + a minute only, else `{ ok, exact: false }`):
+  `truck_id`, `forced`, `may_force`, `late`, `stops`, `over_hours`, `earliest`. The flow (`src/features/booking/atTime.ts`,
+  the exact move's words and protocol: `src/data/bookAt.ts` holds the server's names): room, nobody moves → no question;
+  someone pushed inside their window → said; no room → the warning (« Réserver Julie à 14 h met Denis en retard », each
+  late one and by how much, « Le camion finirait sa journée … après ses heures », the pushed ones) with « Choisir une autre
+  heure » / « Réserver quand même à 14 h » (owner, office; anyone else reads « Seuls le propriétaire et le bureau peuvent
+  réserver quand même. » and gets only « Choisir une autre heure »); the truck cannot be there → « Pas possible à 8 h …
+  au plus tôt 8 h 06 », « Mettre à 8 h 06 »; no answer (6 s) → « Réserver quand même » / « Annuler »; `late_changed` at
+  the booking → asked again once; a lost answer is never « réessaie ». A time the server does not offer is pickable by
+  the owner and the office (`choice.full`: hatched on the grid, « complet » on the phone's list, « Complet à cette heure :
+  avant de réserver, l'app te dit qui serait en retard. »; never « gone »); a mechanic and « Déplacer » keep the rules
+  of before. The booking text goes at once as every booking (its window: the one of the final minute); the late ones
+  are texted nothing (named in the message: « Avertis Denis… », or his new window with « Envoyer les heures aux
+  clients »). Then (`atTimeSaid.ts`), when forced or somebody else's hour changed: the NEW MAP of that day over its
+  agenda (`src/shared/moment/BookedMap.tsx`, `openBookedMapOn('/agenda/<day>')`, its own root, opened once that screen
+  is in place): every vehicle in its new order from the phone's rows (book_job's rows just applied), numbered stops, the
+  new one in black « Nouveau 14 h », the late ones red « en retard de … », the pushed ones « plus tard : … », the roads
+  by the streets only when they come (`useRoads` / `roadOf`: never a straight line), « Voir le rendez-vous » / « Fermer »;
+  else the appointment opens as before. Booked as before (the window of that minute, kept on the phone): no signal, a
+  server without the preview, a visit of several cars. Demo: `?demo=owner&fenetres=1` fakes `book_preview` and
+  `book_job` with `arrive_at` (`src/dev/demo-windows.ts`). Tests: database `tests/db/reserver-heure.test.mjs` (11:
+  room, between two stops, no room refused until accepted then booked as previewed, past the hours, arrive_late, a tight
+  day of Part 29, rights, two vehicles, blocks mode, the same op twice, the file) and `reserver-heure-essai.test.mjs`
+  (the trial and the way back on this copy); unit `src/data/bookAt.test.ts`, `src/features/booking/{atTime,atTimeSaid,
+  BookScreen-atTime}.test.*`, `src/shared/moment/{WindowPicker-full,BookedMap}.test.tsx`, `src/dev/demo-reserver.test.ts`;
+  end to end `tests/e2e/reserver-heure.test.cjs` (`bash tests/stack/mac/e2e-file.sh reserver-heure`: room; no room →
+  warning → « Choisir une autre heure » writes nothing → « Réserver quand même » → booked as previewed → the new map;
+  a phone's full time at 8 h → « Mettre à … »; a mechanic). Not done: several cars at a minute; a hover map on a full
+  time of the grid; the « Vraies routes » ON path in a browser.
 - The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
   the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
   {soustotal} » = « 159,98 $ + tx » (`subtotalWords`; work by the hour: « …, plus le travail à l’heure »; nothing priced: « selon le

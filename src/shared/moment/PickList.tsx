@@ -18,6 +18,8 @@ export interface PickListProps {
   menuOf: (d: Day, m: number) => Record<string, unknown>;
   /** moving an appointment: its time now (on the day chosen) */
   currentM: number | null;
+  /** Part 30: the times the server does not offer are listed too, marked full (the owner, the office, booking at a minute) */
+  force?: boolean;
   canPrev: boolean; canNext: boolean; onPrev: () => void; onNext: () => void;
 }
 
@@ -25,6 +27,9 @@ export function PickList(p: PickListProps) {
   const l = lang.value;
   const wd = new Intl.DateTimeFormat(l === 'en' ? 'en-CA' : 'fr-CA', { weekday: 'short' });
   const d = p.days.find((x) => x.day === p.selDay) || null;
+  // the times listed: the possible ones; booking at a minute, for the owner and the office, the full ones too (Part 30)
+  const full = new Set(p.force && d ? d.no ?? [] : []);
+  const times = d ? [...d.open, ...full].sort((a, b) => a - b) : [];
   // the day chosen stays in view in the row of days
   const chips = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -49,20 +54,22 @@ export function PickList(p: PickListProps) {
         <button type="button" class="pk-nav" onClick={p.onNext} disabled={!p.canNext} aria-label={t('booking.win.grid.next')} data-testid="pick-next"><ChevronRight size={20} aria-hidden="true" /></button>
       </div>
       {d && d.kind === 'loading' && !d.open.length && <div aria-busy="true"><span class="sr-only">{t('booking.win.grid.state.loading')}</span><Skeleton h={48} lines={3} /></div>}
-      {d && d.open.length > 0 && (
+      {d && times.length > 0 && (
         <div class={`pl-times${d.stale ? ' is-stale' : ''}`} role="group" aria-label={t('booking.win.grid.times')} data-testid="pick-times">
-          {byHour(d.open).map((h) => (
+          {byHour(times).map((h) => (
             <div class="pl-hour" key={h.hour}>
               <span class="pl-hour-name" aria-hidden="true">{clock(h.hour, l)}</span>
               {[0, 15, 30, 45].map((q) => {
                 const m = h.hour + q;
                 if (!h.times.includes(m)) return <span key={q} class="pl-gap" aria-hidden="true" />;
                 const on = d.chosen === m;
+                const no = full.has(m);
                 return (
-                  <button key={q} type="button" class={`pl-time${on ? ' is-on' : ''}${d.best === m && !on ? ' is-best' : ''}${p.currentM === m ? ' is-current' : ''}`} aria-pressed={on} aria-label={p.unitLabel(d.day, m)}
-                    onClick={() => p.onTime(d.day, m)} {...p.menuOf(d.day, m)} data-testid={`pick-time-${m}`}>
+                  <button key={q} type="button" class={`pl-time${on ? ' is-on' : ''}${no ? ' is-no' : ''}${d.best === m && !on ? ' is-best' : ''}${p.currentM === m ? ' is-current' : ''}`} aria-pressed={on} aria-label={p.unitLabel(d.day, m)}
+                    onClick={() => p.onTime(d.day, m)} {...p.menuOf(d.day, m)} data-testid={`pick-time-${m}`} data-state={no ? 'no' : 'open'}>
                     <span>{clock(m, l)}</span>
                     {p.currentM === m && <small>{t('booking.win.grid.current')}</small>}
+                    {no && p.currentM !== m && <small>{t('booking.atTime.fullTag')}</small>}
                   </button>
                 );
               })}

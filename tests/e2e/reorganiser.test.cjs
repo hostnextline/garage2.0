@@ -727,3 +727,172 @@ step('B17. Part 29, a phone (390 × 844) with a real finger on the grip: the sam
   x.noErrors(page);
   await bookAndCheck(t, 'Hugo', 840, pin);
 });
+
+/* ---------- Part 30, K4 (Hassan, 2026-11-22: « when i am rearranging the appointements, i want to be able to have the map
+   open and showing me the changements in real time »; STATE.md 13:00): the map of the day beside the lists (computer) or
+   above them (phone, « Carte »), its pins in the DRAFT order, each truck's road by the streets only once it came ---------- */
+const CAMION_IDS = () => CAMION.map((f) => J[f]);
+
+step('B18. Part 30, a computer: the map open BESIDE the lists (the Carte’s colours); a real mouse drag (Denis to the top) → the pins renumbered at once (no road asked during the drag), the new legs drawn only when their road came; the server’s hour on the pin; then a stop dragged onto the Voiture: its pin there, in the Voiture’s colour', async (t) => {
+  const r = await R.openO({ kind: 'desktop' });
+  const { page } = r;
+  const previews = x.answersOf(page, 'day_order_preview');
+  await h.signIn(page, who.owner.email, PW);
+  // the Carte of that day: the colour of each truck
+  const [camionC, voitureC] = await R.carteColours(page, D, [J.Alice, J.Omar]);
+  t.diagnostic(`the Carte: Camion ${camionC}, Voiture ${voitureC}`);
+  assert.ok(camionC && voitureC && camionC !== voitureC, 'two colours on the Carte');
+  const sheet = await R.openSheet(page, D, previews);
+  // open by default on a computer, beside the lists (not over them), in the sheet's window
+  const map = page.getByTestId('dayorder-map');
+  await map.waitFor({ timeout: 10000 });
+  const mb = await map.boundingBox();
+  const lb = await sheet.getByTestId(`dayorder-truck-${T.complet}`).boundingBox();
+  t.diagnostic(`the map ${Math.round(mb.width)} × ${Math.round(mb.height)} at x ${Math.round(mb.x)}; the Camion’s list at x ${Math.round(lb.x)}–${Math.round(lb.x + lb.width)}`);
+  assert.ok(mb.x >= lb.x + lb.width, 'the map is beside the lists, on their right');
+  assert.ok(mb.width >= 360 && mb.height >= 400, `a big map: ${JSON.stringify(mb)}`);
+  assert.equal(await map.evaluate((el) => !!el.closest('.sheet-body')), false, 'not inside the scrolling lists');
+  await until(() => R.pinNumbers(page, CAMION_IDS()), (v) => v.join() === '1,2,3,4', 10000);
+  assert.deepEqual(await R.pinNumbers(page, CAMION_IDS()), [1, 2, 3, 4], 'the Camion’s pins in its order');
+  assert.deepEqual(await R.pinNumbers(page, [J.Omar, J.Paula]), [1, 2], 'the Voiture’s');
+  const pins0 = await R.mapPins(page);
+  assert.deepEqual([pins0[J.Alice].c, pins0[J.Omar].c], [camionC, voitureC], 'the Carte’s colour per truck');
+  assert.ok(pins0.home, 'the trucks’ start (« Départ des camions »)');
+  // each truck's road by the streets (the fake OSRM): 4 legs for the Camion, 2 for the Voiture, never two points
+  const roads0 = await until(() => R.mapRoads(page), (l) => l.length === 6, 15000);
+  assert.equal(roads0.length, 6, `6 roads: ${JSON.stringify(roads0)}`);
+  assert.ok(roads0.every((n) => n >= 3), `by the streets, never a straight line: ${JSON.stringify(roads0)}`);
+  await h.shot(page, 'reorganiser-b18-map');
+  // the drag: Denis's row to the top half of Alice's (the mouse)
+  const asked0 = r.world.osrm.length;
+  const dr = await R.mouseDrag(page, sheet.getByTestId(`dayorder-main-${N.Denis}`), sheet.getByTestId(`dayorder-row-${N.Alice}`), 'top');
+  const up = Date.now();
+  assert.ok(dr.ghost.ok, JSON.stringify(dr.ghost));
+  assert.equal(r.world.osrm.length, asked0, 'no road asked during the drag');
+  const after = await until(() => R.pinNumbers(page, CAMION_IDS()), (v) => v.join() === '2,3,4,1', 3000);
+  const roadsNow = await R.mapRoads(page);
+  const askedNow = r.world.osrm.length;
+  const ms = Date.now() - up;
+  t.diagnostic(`${ms} ms after the drop: pins ${after.join(',')}, ${roadsNow.length} roads, ${askedNow - asked0} asked`);
+  assert.deepEqual(after, [2, 3, 4, 1], 'Denis 1, Alice 2, Benoit 3, Chloe 4: the pins followed');
+  assert.deepEqual(await R.rowsShown(page, T.complet), [N.Denis, N.Alice, N.Benoit, N.Chloe], 'the list too');
+  const p1 = await R.mapPins(page);
+  assert.equal(p1[J.Denis].marked, true, 'the stop just put down is marked');
+  assert.equal(p1[J.Denis].label, 'Denis', 'with its name');
+  if (ms < 450) {
+    // right after the drop: the legs not known yet are not drawn (Centrale → Denis → Alice, …), nothing asked yet
+    assert.equal(askedNow, asked0, 'the road is asked a moment AFTER the drop, not at once');
+    assert.ok(roadsNow.length < 6, `the new legs wait for their road: ${roadsNow.length}`);
+    await h.shot(page, 'reorganiser-b18-dropped');
+  } else t.diagnostic('(the browser was slow: the « right after » checks skipped)');
+  assert.ok(roadsNow.every((n) => n >= 3), `never a straight line: ${JSON.stringify(roadsNow)}`);
+  // the road of the new order comes: asked once (the Camion only: the Voiture did not change)
+  const roads1 = await until(() => R.mapRoads(page), (l) => l.length === 6, 15000);
+  assert.equal(roads1.length, 6);
+  assert.ok(roads1.every((n) => n >= 3));
+  assert.equal(r.world.osrm.length - asked0, 1, `one road asked again: ${r.world.osrm.slice(asked0).join(' | ')}`);
+  // the mouse off the rows (a row under the mouse names its pin: its words, not only its hour)
+  await page.mouse.move(mb.x + mb.width - 20, mb.y + mb.height - 60, { steps: 4 });
+  // the server's hour for that draft on the pins (the oracle: the same question asked by the test)
+  const mine = await until(() => lastPreviewMoving(previews, J.Denis), Boolean, 20000);
+  const v = verdict(await x.rpcAs(who.owner.jwt, 'day_order_preview', mine.args));
+  await until(async () => (await R.mapPins(page))[J.Denis].sub, (s) => s === etaWords(v[J.Denis]), 10000);
+  const p2 = await R.mapPins(page);
+  assert.equal(p2[J.Denis].sub, etaWords(v[J.Denis]), `Denis: « ${etaWords(v[J.Denis])} » on his pin`);
+  for (const f of ['Alice', 'Benoit', 'Chloe']) assert.equal(p2[J[f]].sub, clock(v[J[f]].eta), `${f}: ${clock(v[J[f]].eta)} beside the pin`);
+  await h.shot(page, 'reorganiser-b18-roads');
+  // a tap on a pin shows its row
+  await page.locator(`[data-testid="dayorder-map"] [data-mk="${J.Benoit}"] .mv-num`).click({ force: true });
+  await sheet.locator(`[data-testid="dayorder-row-${N.Benoit}"].is-spot`).waitFor({ timeout: 5000 });
+  // onto the Voiture: Chloe's grip to the end of the Voiture's list, the lists back at their top (the pin's row was shown)
+  await page.locator('[data-testid="dayorder-sheet"] .sheet-body').evaluate((el) => { el.scrollTo({ top: 0, behavior: 'instant' }); });
+  await page.waitForTimeout(400);
+  const asked1 = r.world.osrm.length;
+  // (onto Paula's row, lower half: the Voiture's end. Not its head: with Denis's long row the list scrolls when Chloe's
+  // grip is brought into view, and the head then hides under the sticky band)
+  const dr2 = await R.mouseDrag(page, sheet.getByTestId(`dayorder-grip-${N.Chloe}`), sheet.getByTestId(`dayorder-row-${N.Paula}`), 'bottom');
+  t.diagnostic(`onto the Voiture: the ghost ${JSON.stringify(dr2.ghost)}`);
+  if (!(await d.noQuestion(page, 1500))) await (await d.question(page)).yes();
+  const vo = await until(() => R.rowsShown(page, T.voiture), (l) => l.includes(N.Chloe), 10000);
+  if (!vo.includes(N.Chloe)) await h.shot(page, 'reorganiser-b18-not-moved');
+  assert.ok(vo.includes(N.Chloe), `Chloe on the Voiture: ${vo.join(', ')} (toasts: ${flat(await page.locator('[data-testid^="toast"]').allInnerTexts().then((l) => l.join(' | ')).catch(() => ''))})`);
+  const p3 = await until(() => R.mapPins(page), (p) => p[J.Chloe] && p[J.Chloe].n === '3' && p[J.Chloe].c === voitureC, 5000);
+  assert.deepEqual([p3[J.Chloe].n, p3[J.Chloe].c, p3[J.Chloe].marked], ['3', voitureC, true], 'Chloe’s pin: the Voiture’s 3rd, in its colour, marked');
+  assert.deepEqual(await R.pinNumbers(page, [J.Denis, J.Alice, J.Benoit, J.Omar, J.Paula]), [1, 2, 3, 1, 2], 'both trucks numbered as their lists');
+  const roads2 = await until(() => R.mapRoads(page), (l) => l.length === 6 && r.world.osrm.length >= asked1 + 2, 15000);
+  assert.equal(roads2.length, 6, `the Camion 3 legs, the Voiture 3: ${JSON.stringify(roads2)}`);
+  assert.ok(roads2.every((n) => n >= 3));
+  await h.shot(page, 'reorganiser-b18-other-truck');
+  x.nothingLeft(r);
+  x.noErrors(page);
+});
+
+step('B19. Part 30, a phone (390 × 844): « Carte » opens the map ABOVE the list (about a third of the screen); a real finger drags Benoit under Chloe → the pins follow; the map stays put while dragging and while the list scrolls; remembered after a reload; « Masquer la carte » closes it', async (t) => {
+  const r = await R.openO({ kind: 'phone' });
+  const { page, ctx } = r;
+  await page.setViewportSize({ width: 390, height: 844 });
+  const previews = x.answersOf(page, 'day_order_preview');
+  await h.signIn(page, who.nadia.email, PW);
+  let sheet = await R.openSheet(page, D, previews);
+  assert.equal(await page.getByTestId('dayorder-map').count(), 0, 'a phone: closed until asked');
+  assert.equal(flat(await page.getByTestId('dayorder-map-toggle').innerText()), 'Carte');
+  await page.getByTestId('dayorder-map-toggle').click();
+  const map = page.getByTestId('dayorder-map');
+  await map.waitFor({ timeout: 10000 });
+  await page.waitForTimeout(300);
+  const mb = await map.boundingBox();
+  const band = await sheet.getByTestId('dayorder-band').boundingBox();
+  t.diagnostic(`the map: ${Math.round(mb.width)} × ${Math.round(mb.height)} at y ${Math.round(mb.y)}; the list’s band at y ${Math.round(band.y)}`);
+  assert.ok(mb.y + mb.height <= band.y + 1, 'above the list');
+  assert.ok(mb.height >= 0.25 * 844 && mb.height <= 0.45 * 844, `about a third of the screen: ${Math.round(mb.height)} px`);
+  assert.equal(await page.evaluate(() => localStorage.getItem('his.dayOrder.map.phone')), '1');
+  await until(() => R.pinNumbers(page, CAMION_IDS()), (v) => v.join() === '1,2,3,4', 10000);
+  assert.deepEqual(await R.pinNumbers(page, CAMION_IDS()), [1, 2, 3, 4]);
+  const roads0 = await until(() => R.mapRoads(page), (l) => l.length === 6, 15000);
+  assert.ok(roads0.length === 6 && roads0.every((n) => n >= 3), JSON.stringify(roads0));
+  await h.shot(page, 'reorganiser-b19-phone-map');
+  // Benoit's row right under the band (the room under the map), then the finger on his grip down under Chloe
+  const body = page.locator('[data-testid="dayorder-sheet"] .sheet-body');
+  await body.evaluate((el, n) => {
+    const row = el.querySelector(`[data-testid="dayorder-row-${n}"]`);
+    const b = el.querySelector('.dayord-sticky').getBoundingClientRect();
+    el.scrollTop += row.getBoundingClientRect().top - b.bottom - 8;
+  }, N.Benoit);
+  await page.waitForTimeout(200);
+  const cdp = await ctx.newCDPSession(page);
+  const f1 = await R.fingerDrag(page, cdp, sheet.getByTestId(`dayorder-grip-${N.Benoit}`), sheet.getByTestId(`dayorder-row-${N.Chloe}`), { where: 'bottom' });
+  assert.ok(f1.ghost && f1.ghost.ok, `the ghost under the finger: ${JSON.stringify(f1.ghost)}`);
+  await until(() => R.rowsShown(page, T.complet), (l) => l.join() === [N.Alice, N.Chloe, N.Benoit, N.Denis].join(), 5000);
+  assert.deepEqual(await R.rowsShown(page, T.complet), [N.Alice, N.Chloe, N.Benoit, N.Denis], 'Benoit under Chloe');
+  const after = await until(() => R.pinNumbers(page, CAMION_IDS()), (v) => v.join() === '1,3,2,4', 3000);
+  assert.deepEqual(after, [1, 3, 2, 4], 'the pins followed: Chloe 2, Benoit 3');
+  assert.equal((await R.mapPins(page))[J.Benoit].marked, true, 'Benoit marked');
+  assert.equal(await page.getByTestId('dayorder-menu').count(), 0, 'no row menu');
+  const mb2 = await map.boundingBox();
+  assert.ok(Math.abs(mb2.y - mb.y) < 1 && Math.abs(mb2.height - mb.height) < 1, `the map did not move: ${JSON.stringify([mb, mb2])}`);
+  // the list scrolled: the map stays where it is
+  await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await page.waitForTimeout(200);
+  const mb3 = await map.boundingBox();
+  assert.ok(Math.abs(mb3.y - mb.y) < 1, 'the map stays while the list scrolls');
+  const roads1 = await until(() => R.mapRoads(page), (l) => l.length === 6, 15000);
+  assert.ok(roads1.length === 6 && roads1.every((n) => n >= 3), JSON.stringify(roads1));
+  await body.evaluate((el, n) => { el.querySelector(`[data-testid="dayorder-row-${n}"]`).scrollIntoView({ block: 'center' }); }, N.Benoit);
+  await page.waitForTimeout(200);
+  await h.shot(page, 'reorganiser-b19-phone-dropped');
+  // remembered on this phone: after a reload, the sheet opens with the map (and the draft kept)
+  await page.waitForTimeout(800);
+  await page.reload();
+  await page.getByTestId('app').waitFor({ timeout: 20000 });
+  sheet = await R.openSheet(page, D, x.answersOf(page, 'day_order_preview'));
+  await page.getByTestId('dayorder-map').waitFor({ timeout: 10000 });
+  await until(() => R.pinNumbers(page, CAMION_IDS()), (v) => v.join() === '1,3,2,4', 10000);
+  assert.deepEqual(await R.pinNumbers(page, CAMION_IDS()), [1, 3, 2, 4], 'the draft kept, the map with it');
+  // « Masquer la carte »
+  assert.equal(flat(await page.getByTestId('dayorder-map-toggle').innerText()), 'Masquer la carte');
+  await page.getByTestId('dayorder-map-toggle').click();
+  await page.getByTestId('dayorder-map').waitFor({ state: 'detached', timeout: 5000 });
+  assert.equal(await page.evaluate(() => localStorage.getItem('his.dayOrder.map.phone')), '0');
+  x.nothingLeft(r);
+  x.noErrors(page);
+});

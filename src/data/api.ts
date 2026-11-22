@@ -55,6 +55,10 @@ export interface BookInput {
   /** « Plages d'arrivée » (block 'day'): the window chosen (its start, minutes of the day; the server keeps the stop inside it), or
       win_flex: any time that day, the window is fixed the evening before */
   win_start?: number | null; win_flex?: boolean;
+  /** « Réserver à l'heure choisie » (Part 30, window mode): the minute it arrives at (pinned there; its window is the one of
+      that minute), and the appointments accepted late after the warning (its own id: the truck past its hours). Such a
+      booking is never kept on the phone: it needs the network, like its preview (src/data/bookAt.ts) */
+  arrive_at?: number | null; late_ok?: string[];
 }
 export type ItemInput = Partial<JobItem> & { description: string };
 /** what the outbox says of a booking (the « en attente » and « refusé » lists, the stuck banner): whose and when, so a
@@ -76,7 +80,13 @@ export function bookingLabel(job: Pick<BookInput, 'customer_id' | 'day' | 'block
 export async function bookJob(job: BookInput, items: ItemInput[]) {
   guard();
   const id = job.id || uuid();
-  return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: bookingLabel(job) }).then((r) => ({ ...r, id }));
+  // Part 30: a booking at a minute is sent now or not at all (never kept for later: the day may change meanwhile)
+  const exact = job.arrive_at != null && job.block === 'day';
+  const r = await callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items },
+    { label: bookingLabel(job), ...(exact ? { queue: false } : {}) });
+  // sent straight (not through the outbox, whose sent hook does it): « Vraies routes » on, its place is measured
+  if (exact) warmJob(id, job.day, { customer_id: job.customer_id, lat: job.lat ?? null, lng: job.lng ?? null, day: job.day });
+  return { ...r, id };
 }
 /** `opts.queue: false`: a move that must happen now or not at all (never kept on the phone for later: R188).
     `win.at` (« exact move », STATE.md S2): the minute pointed; the appointment is planned to arrive at that very minute,

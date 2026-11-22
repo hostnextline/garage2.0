@@ -156,7 +156,8 @@ async function listAnswered(page, day, timeout = 60000) {
 }
 /** the times a day offers on screen (computer grid or phone list), each with the window its words tell the customer */
 async function offeredTimes(page, day, layout) {
-  const sel = layout === 'grid' ? `.pk-col[data-day="${day}"] button[data-state="open"]` : '[data-testid="pick-times"] button[data-testid^="pick-time-"]';
+  // (Part 30: the phone's list also shows the owner and the office the full times, « complet »: not offered)
+  const sel = layout === 'grid' ? `.pk-col[data-day="${day}"] button[data-state="open"]` : '[data-testid="pick-times"] button[data-testid^="pick-time-"]:not([data-state="no"])';
   const got = await page.$$eval(sel, (bs) => bs.map((b) => ({ m: Number(b.dataset.m ?? b.dataset.testid.replace('pick-time-', '')), label: b.getAttribute('aria-label') })));
   return got.map((x) => ({ m: x.m, win: windowOfLabel(x.label) }));
 }
@@ -174,6 +175,36 @@ async function pickWindow(page, day, ws, layout) {
   assert.ok(t, `the window ${clock(ws)} is offered on ${day}: ${offeredStarts(times).map(clock).join(', ')}`);
   await page.getByTestId(layout === 'grid' ? `pick-unit-${day}-${t.m}` : `pick-time-${t.m}`).click();
   return t;
+}
+
+/** Part 30 « Réserver à l'heure choisie »: « Réserver » with a time of the calendar books AT that minute, so the truck
+    may not be there at that very minute (« Pas possible à 8 h … », « Mettre à … ») or somebody's hour moves (said
+    first); each question is answered yes (« Mettre à … », « Réserver », « Réserver quand même »). Then the appointment
+    opens, or the new map of that day over its agenda (when somebody else's hour changed), left by « Voir le
+    rendez-vous »: either way the appointment's screen is open after it. Answers the questions' titles */
+async function reserveDone(page, { timeout = 20000 } = {}) {
+  const asked = [];
+  for (let i = 0; i < 4; i++) {
+    const seen = (id, tag) => page.getByTestId(id).first().waitFor({ timeout }).then(() => tag, () => null);
+    const hit = await Promise.race([seen('ask-ok', 'q'), seen('job-screen', 'job'), seen('booked-map', 'map')]);
+    if (hit === 'q') {
+      const ok = page.getByTestId('ask-ok');
+      const sheet = page.locator('[role=dialog]', { has: ok });
+      await page.waitForTimeout(450);
+      asked.push((await sheet.locator('h2, h3, [id$="-t"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim());
+      await ok.click();
+      await ok.waitFor({ state: 'detached', timeout: 10000 }).catch(() => undefined);
+      continue;
+    }
+    if (hit === 'map') {
+      await page.waitForTimeout(300);
+      await page.getByTestId('booked-map-see').click();
+      await page.getByTestId('job-screen').waitFor({ timeout });
+    }
+    break;
+  }
+  await page.getByTestId('job-screen').waitFor({ timeout });
+  return asked;
 }
 
 /* ---------- screens ---------- */
@@ -218,5 +249,5 @@ async function mapSays(page, day, truck) {
 module.exports = {
   PW, h, randomUUID, watch, onFail, appOnPhone, dismissSheets, openVin, noErrors, draw, until, until2, jwtOf, rpcAs, openW,
   minOf, clock, between, longDay, median, jobOf, stopsOf, sentTo, textsTo,
-  windowOfLabel, gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays
+  windowOfLabel, gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays, reserveDone
 };

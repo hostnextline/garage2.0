@@ -15,6 +15,9 @@ export interface BlockChoice {
   eta?: number | null;
   /** the vehicle the server would send at that moment (for the map only: the booking leaves the choice to the app) */
   truck?: string | null;
+  /** Part 30: a time of the calendar the server does not offer (no room), chosen anyway by the owner or the office: the
+      booking at that minute warns first (who would be late) */
+  full?: boolean;
 }
 export type VehicleKind = 'car' | 'truck' | null;
 export interface BlockPickerProps {
@@ -52,6 +55,10 @@ export interface BlockPickerProps {
       keeping its order. The maps of a time then show it so: that truck, and no place in the route (the server decides it at
       the move and says first who would arrive later), never the planner's other vehicle or order (merge-main review M-1) */
   exactMove?: boolean;
+  /** « Réserver à l'heure choisie » (Part 30, the booking screen): a time of the calendar is booked AT that minute (the
+      booking asks the server first); a time the server does not offer is pickable by the owner and the office, marked
+      full (the booking then warns who would be late) */
+  exactBook?: boolean;
 }
 
 /** how long a window is with the garage's settings (4 h: 1 h before the estimated arrival, 3 h after) */

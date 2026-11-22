@@ -3,9 +3,16 @@
 import { useRef, type MutableRef } from 'preact/hooks';
 import { navigate } from '../../platform/router';
 import { t } from '../../lib/i18n';
-import { vehicle as vehicleRow, customer as customerRow, settings } from '../../data/select';
+import { vehicle as vehicleRow, customer as customerRow, settings, daySpan, windowOf, job as jobRow } from '../../data/select';
 import { bookJob, walkIn, errorMessage, saveCustomer, saveVehicle, suggestBlocks, type Suggestion } from '../../data/api';
 import { net } from '../../data/sync';
+import { bookPreview } from '../../data/bookAt';
+import { exactAtOf } from '../../domain/moment/exactAt';
+import { jobPerson } from '../../domain/jobs/words';
+import { lateWindow } from '../../shared/jobs/exactMove';
+import { openBookedMapOn } from '../../shared/moment/BookedMap';
+import { bookAtTime, type AtTimeDone } from './atTime';
+import { atTimeSaid } from './atTimeSaid';
 import { farQuestion, farLimits } from '../../domain/moment/logic';
 import { choiceWords, type BlockChoice } from '../../domain/moment/choice';
 import { toast, ask, run } from '../../ui';
@@ -114,6 +121,19 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
       card_on_file: !!d.card, quote_id: d.bookedIds.length ? null : b.quote?.id ?? null, source: b.quote ? 'quote' : a.walkIn ? 'walk_in' : 'phone', vehicle_kind: kindFor(b.need, cars.length, d.kind)
     };
     const jobs = visitJobs(cars, base, { choice, taxes: settings.value.taxes, carOf });
+    /* « Réserver à l'heure choisie » (Part 30, K1–K3): a time of the calendar (or a best moment's « Vers … ») picked for
+       ONE car: booked AT that minute, the warning first when there is no room; then the new map of that day when somebody
+       else's hour changed. No signal or an older server: booked as before (the window of that minute) */
+    const minute = b.wm && choice && !a.walkIn && jobs.length === 1 ? exactAtOf(choice, daySpan.value, windowOf) : null;
+    if (minute != null) {
+      const v = jobs[0];
+      const name = customerRow(cid)?.first_name || d.caller.first || '';
+      const done = await bookAtTime({ job: v.job, lines: v.lines, at: minute, truck: b.effTruck || null, name, mayForce: b.mayForce }, {
+        preview: bookPreview, book: (job, lines) => bookJob(job, lines), ask, online: () => net.value.online,
+        nameOf: (id) => { const r = jobRow(id); return (r && jobPerson(r)) || t('booking.atTime.someone'); }, windowOf, lateWindow
+      });
+      if (done.kind !== 'fallback') { afterAtTime(done, v.job.day, cid, l); return; }
+    }
     const results = await sendVisit(jobs, { walkIn: a.walkIn, choice, mayForce: b.mayForce }, {
       book: bookJob, walkIn, message: errorMessage,
       askForce: (msg) => ask({ title: bt('force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: bt('force.cancel'), danger: true })
@@ -133,6 +153,33 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     // the texts are on, but this customer has no cell number: the office can ask for one
     const who = customerRow(cid);
     if (o.go && jobs.length === 1 && o.texts.length === 1 && !wantsText('booking', o.texts[0]) && settings.value.messages?.on?.booking && who && !who.phone) toast(t('booking.sms.noPhone'));
+  };
+
+  /** what follows a booking at a minute: the words, the booking text at once (as today), then where the eyes go — the new
+      map of that day over its agenda when somebody else's hour changed (K3), else the appointment as today */
+  const afterAtTime = (done: Exclude<AtTimeDone, { kind: 'fallback' }>, day: string, cid: string, l: 'fr' | 'en') => {
+    const b = live.current;
+    if (done.kind === 'refused') {
+      const msg = errorMessage(done.error);
+      toast(msg, { kind: 'bad' });
+      b.act({ t: 'refused', banner: msg, windowGone: false, again: true });
+      calmScroll(at.moment.current);
+      return;
+    }
+    if (done.kind === 'stopped') {
+      if (done.why === 'offline' || done.why === 'lost' || done.why === 'rounds') toast(t(`booking.atTime.${done.why}`), { kind: 'bad', ms: 8000 });
+      calmScroll(at.moment.current);
+      return;
+    }
+    const s = atTimeSaid(done, day, l, lateWindow);
+    toast(s.text, { kind: s.kind, ms: s.ms });
+    if (s.map) {
+      // the new map of that day, over its agenda (« Voir le rendez-vous » opens the appointment)
+      openBookedMapOn(`/agenda/${day}`, { day, jobId: done.id, at: done.at,
+        marks: (done.answer?.stops ?? []).map((x) => ({ id: x.id, late: x.late, lateMin: x.lateMin, delay: x.delay, etaAfter: x.etaAfter })) });
+    } else navigate(`/job/${done.id}`, { replace: true });
+    // the customer's confirmation at once, as every booking (its window: the one of the minute it went to)
+    if (wantsText('booking', done.id)) void notifyCustomer('booking', done.id, { customerId: cid, when: s.when });
   };
 
   return async () => {

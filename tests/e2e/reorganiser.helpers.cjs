@@ -190,4 +190,23 @@ async function allTexts() {
   return log.filter((l) => l.svc === 'ghl' && l.path === '/conversations/messages' && l.body && l.body.type === 'SMS').map((l) => l.body.message);
 }
 
-module.exports = { x, h, d, assert, openO, onFail, snapshot, putBack, endStep, dayRows, wasOf, openSheet, rowsShown, centre, ghostUnder, mouseDrag, fingerDrag, saveDay, rowMenu, vers, fixe, avant, notesOf, allTexts };
+/* ---------- the map of the sheet (Part 30, K4) ---------- */
+/** each pin of the sheet's map as drawn, by its id (a job id, 'home', 'start-<truck>'): its number, its colour (the
+    truck's), its label and its small line, done (the check), marked (bigger) */
+const mapPins = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-testid="dayorder-map"] [data-mk]')].map((e) => [e.getAttribute('data-mk'), {
+  n: e.querySelector('.mv-num') ? (e.querySelector('.mv-num').textContent || '').trim() : null, c: e.style.getPropertyValue('--c').trim(),
+  label: e.querySelector('.mv-label b') ? e.querySelector('.mv-label b').textContent : null, sub: e.querySelector('.mv-label small') ? e.querySelector('.mv-label small').textContent : null,
+  done: e.classList.contains('is-done'), marked: e.classList.contains('is-active') }])));
+/** the numbers of these jobs' pins, in that order (null: no pin) */
+const pinNumbers = async (page, ids) => { const p = await mapPins(page); return ids.map((id) => (p[id] ? Number(p[id].n) : null)); };
+/** the roads drawn on the sheet's map: for each line, its number of points (a road by the streets has more than two) */
+const mapRoads = (page) => page.evaluate(() => [...document.querySelectorAll('[data-testid="dayorder-map"] path.mv-line')].map((el) => (el.getAttribute('d') || '').split(/[ML]/).filter((v) => v.trim()).length));
+/** the pins of the team's Carte for that day (#/map?day=…): the colour of each job's pin */
+async function carteColours(page, day, ids) {
+  await page.goto(h.APP + `#/map?day=${day}`);
+  await page.locator(`[data-mk="${ids[0]}"]`).first().waitFor({ timeout: 20000 });
+  return page.evaluate((list) => list.map((id) => { const e = document.querySelector(`.mv [data-mk="${id}"]`); return e ? e.style.getPropertyValue('--c').trim() : null; }), ids);
+}
+
+module.exports = { x, h, d, assert, openO, onFail, snapshot, putBack, endStep, dayRows, wasOf, openSheet, rowsShown, centre, ghostUnder, mouseDrag, fingerDrag, saveDay, rowMenu, vers, fixe, avant, notesOf, allTexts,
+  mapPins, pinNumbers, mapRoads, carteColours };

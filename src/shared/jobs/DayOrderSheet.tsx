@@ -20,17 +20,25 @@
      every other stop keeps its order and its hour — while the server is asked they still show their hour (only the stops
      dragged say « calcul… »), and once it answers only one it truly pushes says « avant : vers … » (late or out of its
      window: said as before). After « Enregistrer » the list is exactly his order, the dragged ones « Heure fixée … ».
+   - Part 30 (Hassan, 2026-11-22: « when i am rearranging the appointements, i want to be able to have the map open and
+     showing me the changements in real time »): the map of that day that follows the draft (./DayOrderMap.tsx): beside
+     the lists on a computer (open by default), above them on a phone (« Carte », closed by default), « Masquer la carte »;
+     remembered on this device. Put inside the sheet's window next to its scrolling body (a portal), so the lists keep
+     their own scrolling box (the drag and its auto-scroll unchanged) and the map stays where it is while they scroll.
+     A pin tapped shows its row; a row hovered (mouse) or opened names its pin; the stop just put down is marked.
    The data: the phone's rows (jobsOn), never the Carte's team_map. The server's names: src/data/dayOrder.ts. The moves:
    src/domain/jobs/dayOrder.ts. The gesture: ./listDrag.ts. Opened by ./DayOrderHost.tsx (openDayOrder). */
 import { Fragment, type ComponentChildren } from 'preact';
+import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUp, CircleCheck, Send, Truck as TruckIcon, Undo2, Wand2 } from 'lucide-preact';
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUp, CircleCheck, EyeOff, Map as MapIcon, Send, Truck as TruckIcon, Undo2, Wand2 } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { t, lang } from '../../lib/i18n';
 import { addDays, clock, clockRange, dayOf, duration, longDay, minuteOf, nowMinute, tinyDay, today, type BlockKey } from '../../lib/dates';
 import { errorMessage } from '../../lib/errors';
 import { allJobs, blockOfKey, jobsOn, roadsOn, settings, trucks as allTrucks, truckLabel } from '../../data/select';
 import { me } from '../../data/auth';
+import { wide } from '../../platform/media';
 import { net, pendingOps, pull, uuid } from '../../data/sync';
 import { roadsTick, warmRoads } from '../../data/roads';
 import {
@@ -49,6 +57,8 @@ import { createListDrag, type DropAt } from './listDrag';
 import { PREVIEW_WAIT_MS } from './exactMove';
 import { openTell } from './TellHost';
 import { ToldBanner } from './ToldBanner';
+import { DayOrderMap } from './DayOrderMap';
+import { keepMapOpen, mapOpenPref } from './draftMap';
 import './jobs.css';
 import './dayorder.css';
 
@@ -103,6 +113,15 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
   const [picked, setPicked] = useState<{ id: string; before: Draft } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [said, setSaid] = useState('');
+  /* the map (Part 30): open or not on this device (a phone and a computer each keep their own choice), the stop just put
+     down, the stop whose pin was tapped (its row shown), the row the mouse is on (its pin named) */
+  const where = wide.value ? 'wide' : 'phone';
+  const [mapPref, setMapPref] = useState(() => ({ phone: mapOpenPref('phone'), wide: mapOpenPref('wide') }));
+  const mapOpen = mapPref[where];
+  const [marked, setMarked] = useState<string | null>(null);
+  const [mapSpot, setMapSpot] = useState<string | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const [win, setWin] = useState<HTMLElement | null>(null);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
   const dirty = changed(draft);
@@ -249,6 +268,8 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     if (next === draftRef.current) return;
     setDraft(next);
     setRefusal(null);
+    setMarked(id);
+    setMapSpot(null);
     const pl = placeOf(next, id);
     const list = pl ? listOf(next, pl.truck, pl.block) : undefined;
     const j = rowOf(id);
@@ -461,6 +482,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     setRefusal(null);
     setPreAuto(null);
     setNotice(null);
+    setMarked(null);
     setSaveState('idle');
     // the answer's rows are on the phone already (every block of the day): the sheet stays on the saved day
     const now = jobsOn(day);
@@ -489,6 +511,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
       if (!a) { toast(t('reorg.sumNoAnswer'), { kind: 'bad' }); return; }
       const next = withLists(d, a.lists);
       setPreAuto(d);
+      setMarked(null);
       shiftMs.current = 200;
       setDraft(next);
       take(keyOf(next, roadsTick.value), a);
@@ -500,10 +523,11 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
       if (alive.current) setSaveState('idle');
     }
   }
-  const autoBack = () => { if (preAuto) setDraft(preAuto); setPreAuto(null); setNotice(null); };
+  const autoBack = () => { if (preAuto) setDraft(preAuto); setPreAuto(null); setNotice(null); setMarked(null); };
   const forget = () => {
     dropDraft(staffId, day);
     setNotice(null);
+    setMarked(null);
     const now = jobsOn(day);
     setDraft(draftOf(now, trucksOf(day, now), day, blocksOf()));
   };
@@ -580,8 +604,30 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
   }
   const showRow = (id: string | null) => {
     if (!id) return;
-    (document.querySelector(`[data-dayord-row][data-id="${id}"]`) as HTMLElement | null)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    (document.querySelector(`[data-dayord-row][data-id="${id}"], [data-dayord-live][data-id="${id}"]`) as HTMLElement | null)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
   };
+
+  /* ---------- the map (Part 30) ---------- */
+  // the sheet's window, where the map goes beside (computer) or above (phone) the scrolling body
+  useLayoutEffect(() => { setWin((body.current?.parentElement as HTMLElement | null) ?? null); }, []);
+  // the window's own layout with the map (dayorder.css): a class on it, set before the drawing is shown
+  useLayoutEffect(() => { win?.classList.toggle('dayord-mapped', mapOpen); }, [win, mapOpen]);
+  // what the map calls: the same functions for the whole life of the sheet (the map is drawn again only when it changes)
+  const mapCb = useMemo(() => ({
+    pick: (id: string) => setMapSpot((x) => (x === id ? null : id)),
+    away: () => setMapSpot(null)
+  }), []);
+  useEffect(() => { if (mapSpot) showRow(mapSpot); }, [mapSpot]);
+  function toggleMap() {
+    const open = !mapOpen;
+    keepMapOpen(where, open);
+    setMapPref((x) => ({ ...x, [where]: open }));
+    if (!open) { setMapSpot(null); setHover(null); }
+  }
+  /** a mouse on a row (computer, the map open, no drag under way): its pin is named */
+  const onHover = mapOpen && where === 'wide'
+    ? (id: string, on: boolean) => { if (!drag.active()) setHover((x) => (on ? id : x === id ? null : x)); }
+    : null;
 
   const footer = (
     <>
@@ -619,10 +665,13 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
           <div class="dayord-status" data-testid="dayorder-status">
             {dragging && target?.refused
               ? <span class="grow dayord-warn" role="status" data-testid="dayorder-band-refused">{whyWords(target.refused, target.truck)}</span>
-              : dirty ? <span class="grow"><Pill tone="warn" data-testid="dayorder-unsaved">{t('reorg.unsaved')}</Pill></span> : <span class="grow" />}
+              : dirty ? <span class="grow dayord-unsaved"><Pill tone="warn" data-testid="dayorder-unsaved">{t('reorg.unsaved')}</Pill></span> : <span class="grow" />}
             {book && (draft.auto && preAuto
               ? <Button size="sm" variant="ghost" icon={<Undo2 size={16} />} onClick={autoBack} disabled={saving} data-testid="dayorder-auto-back">{t('reorg.autoBack')}</Button>
               : <Button size="sm" variant="ghost" icon={<Wand2 size={16} />} onClick={() => autoChoose()} disabled={saving || !online || !ready} data-testid="dayorder-auto">{t('reorg.auto')}</Button>)}
+            {/* « Carte » on the line that stays at the top of the lists (no line of its own: the lists keep their room);
+                open, « Masquer la carte » is on the map itself */}
+            {!mapOpen && <Button size="sm" variant="ghost" class="dayord-mapbtn" icon={<MapIcon size={18} />} onClick={toggleMap} data-testid="dayorder-map-toggle">{t('reorg.mapShow')}</Button>}
           </div>
           {dayTrucks.length > 1 && (
             <div class="dayord-chips" role="group" aria-label={t('reorg.open')}>
@@ -652,7 +701,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
           {dayTrucks.map((tr) => (
             <TruckPart key={tr} truck={tr} lists={draft.lists.filter((x) => x.truck === tr)} draft={draft} rows={rows} rowOf={rowOf} cur={cur} judge={dirty} dragged={dragged}
               changedHere={trucksChanged.has(tr)} asking={asking === 'none' || asking === 'refused' || !online ? asking : 'asking'} blocksMode={blocksMode} at={p.at} picked={picked?.id ?? null} refJobs={ref?.r.jobs ?? []}
-              refTruck={ref?.r.truck ?? null} dragging={dragging} target={target} drag={drag} onGripKey={onGripKey}
+              refTruck={ref?.r.truck ?? null} dragging={dragging} target={target} drag={drag} onGripKey={onGripKey} spot={mapOpen ? mapSpot : null} onHover={onHover}
               onTap={(id) => { if (!drag.justDragged()) setMenuFor(id); }} whyWords={whyWords} />
           ))}
         </div>
@@ -668,6 +717,14 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
           onMove={(delta) => put(moveBy(draftRef.current, menuFor, delta), menuFor)}
           onOn={(truck) => void placeOn(menuFor, truck, placeOf(draftRef.current, menuFor)?.block ?? 'day', END)}
           onBack={() => put(backToPlace(draftRef.current, menuFor), menuFor)} />
+      )}
+      {mapOpen && win && createPortal(
+        <div class={`dayord-map is-${where}`} data-testid="dayorder-map">
+          <DayOrderMap day={day} draft={draft} cur={cur} judge={dirty} marked={marked} spot={hover ?? menuFor ?? mapSpot} hold={!!dragging} wide={where === 'wide'}
+            onPick={mapCb.pick} onBackground={mapCb.away} />
+          <Button size="sm" class="dayord-map-hide" icon={<EyeOff size={16} />} onClick={toggleMap} data-testid="dayorder-map-toggle">{t('reorg.mapHide')}</Button>
+        </div>,
+        win
       )}
     </Sheet>
   );
@@ -685,6 +742,10 @@ interface TruckProps {
   changedHere: boolean; asking: AskState; blocksMode: boolean; at: DayOrderAt; picked: string | null; refJobs: string[]; refTruck: string | null;
   dragging: string | null; target: DropAt | null; drag: ReturnType<typeof createListDrag>;
   onGripKey: (e: KeyboardEvent, id: string) => void; onTap: (id: string) => void; whyWords: (why: string, truck: string) => string;
+  /** the stop whose pin was tapped on the map: its row stands out */
+  spot: string | null;
+  /** a mouse on a row (the map open on a computer): its pin is named; null: not followed */
+  onHover: ((id: string, on: boolean) => void) | null;
 }
 function TruckPart(p: TruckProps) {
   const l = lang.value;
@@ -732,7 +793,7 @@ function TruckPart(p: TruckProps) {
               const j = p.rowOf(id);
               if (!j) return null;
               return (
-                <div key={id} class="dayord-live" data-dayord-live data-truck={tr} data-block={x.block} data-testid={`dayorder-live-${j.number}`}>
+                <div key={id} class={`dayord-live${p.spot === id ? ' is-spot' : ''}`} data-dayord-live data-id={id} data-truck={tr} data-block={x.block} data-testid={`dayorder-live-${j.number}`}>
                   <span aria-hidden="true">•</span>
                   <span>{t(j.status === 'on_site' ? 'reorg.onSite' : 'reorg.enRoute', { name: jobName(j) })}</span>
                 </div>
@@ -747,7 +808,7 @@ function TruckPart(p: TruckProps) {
                   <StopRow job={j} pos={x.live.length + i + 1} index={i} truck={tr} block={x.block} s={verdictOf(p.cur ? p.cur.byId.get(id) ?? null : null, p.judge)} judge={p.judge}
                     known={!!p.cur || !p.changedHere || (!p.draft.auto && !p.dragged.has(id))} asking={p.asking === 'asking' && p.changedHere} draft={p.draft}
                     isThis={p.at.job === id} picked={p.picked === id} warn={p.refJobs.includes(id)} dragging={p.dragging === id}
-                    isNew={p.draft.news.includes(id)} drag={p.drag} onGripKey={p.onGripKey} onTap={p.onTap} />
+                    isNew={p.draft.news.includes(id)} drag={p.drag} onGripKey={p.onGripKey} onTap={p.onTap} spot={p.spot === id} onHover={p.onHover} />
                 </Fragment>
               );
             })}
@@ -776,6 +837,9 @@ interface RowProps {
       dragged while the server is asked: its hour until the answer says otherwise) */
   known: boolean; asking: boolean; draft: Draft; isThis: boolean; picked: boolean; warn: boolean; dragging: boolean; isNew: boolean;
   drag: ReturnType<typeof createListDrag>; onGripKey: (e: KeyboardEvent, id: string) => void; onTap: (id: string) => void;
+  /** its pin was tapped on the map */
+  spot: boolean;
+  onHover: ((id: string, on: boolean) => void) | null;
 }
 function StopRow(p: RowProps) {
   const l = lang.value;
@@ -798,8 +862,10 @@ function StopRow(p: RowProps) {
     && s.eta != null && s.etaBefore != null && s.eta - s.etaBefore > SHIFT_MIN;
   const words = hoursWords(j, s, l, p.judge, pushed);
   return (
-    <div class={`dayord-row${p.isThis ? ' is-this' : ''}${p.warn || words.warn ? ' is-warn' : ''}${p.dragging ? ' is-dragging' : ''}${p.picked ? ' is-picked' : ''}`}
-      data-dayord-row data-id={j.id} data-truck={p.truck} data-block={p.block} data-index={p.index} data-testid={`dayorder-row-${j.number}`}>
+    <div class={`dayord-row${p.isThis ? ' is-this' : ''}${p.warn || words.warn ? ' is-warn' : ''}${p.dragging ? ' is-dragging' : ''}${p.picked ? ' is-picked' : ''}${p.spot ? ' is-spot' : ''}`}
+      data-dayord-row data-id={j.id} data-truck={p.truck} data-block={p.block} data-index={p.index} data-testid={`dayorder-row-${j.number}`}
+      onPointerEnter={p.onHover ? (e) => { if (e.pointerType === 'mouse') p.onHover!(j.id, true); } : undefined}
+      onPointerLeave={p.onHover ? () => p.onHover!(j.id, false) : undefined}>
       {waiting ? <span class="dayord-nogrip" aria-hidden="true">≡</span> : (
         <button type="button" class="dayord-grip" aria-label={t('reorg.grip', { name })} aria-describedby="dayord-keys" aria-pressed={p.picked}
           data-dayord-grip={j.id} data-testid={`dayorder-grip-${j.number}`} {...p.drag.grip(j.id)}

@@ -363,4 +363,52 @@ export const booking: typeof fr = {
     smsQuiet: 'No text: this customer or this kind of text is turned off.'
   }
   // fin refonte:moment-pickers
+  ,
+  atTime: {
+    someone: 'a customer',
+    question: 'Book {name}: {when} at {time}?',
+    told: '{name}’s window: between {from} and {to}.',
+    pushed: { one: 'This stop arrives a little later, still inside its window:', other: 'These stops arrive a little later, still inside their window:' },
+    pushedLine: '{name}: around {eta} instead of {was}.',
+    ok: 'Book',
+    other: 'Pick another time',
+    lateTitle: { one: 'Booking {who} at {time} makes {name} late', other: 'Booking {who} at {time} makes {n} customers late' },
+    overTitle: 'Booking {who} at {time}: the truck ends after its hours',
+    lateLine: '{name}: around {eta}, {by} after their window ({from} to {to}).',
+    overHours: 'The truck would end its day {by} after its hours.',
+    force: 'Book anyway at {time}',
+    notYou: 'Only the owner and the office can book anyway. Pick another time.',
+    unchecked: 'I couldn’t check the other customers’ times.',
+    unmeasured: 'Not every road of that day is measured yet: I can’t tell yet whether someone will be late.',
+    anyway: 'Book anyway',
+    earlyTitle: 'Not possible at {time}',
+    early: 'The truck can’t be at {name}’s at {time}: {earliest} at the earliest.',
+    earlyTold: 'At {earliest}, their window becomes {from} to {to} instead.',
+    earlyKeep: 'At {time}, no other stop changes its time.',
+    earlyOk: 'Set to {earliest}',
+    /* no period after {time}: it ends with « a.m. » / « p.m. » */
+    done: 'Booked: {when} at {time}',
+    doneForced: 'Booked anyway: {when} at {time}',
+    offline: 'No signal: the booking is not made. Try again when the signal is back.',
+    lost: 'No answer from the server: the booking may have gone through. Check the agenda in a moment before trying again.',
+    rounds: 'The day keeps changing while we check: pick the time again.',
+    fullChosen: 'Full at this time: before booking, the app tells you who would be late.',
+    fullUnit: '{day}, {time}: full (you can book anyway)',
+    fullTag: 'full',
+    map: {
+      title: 'The new day',
+      lead: 'Each vehicle in its new order, the roads by the streets.',
+      new: 'New',
+      pushed: 'later: {eta}',
+      late: '{by} late',
+      stop: '{n}. {name}',
+      legendNew: 'the new appointment',
+      legendPushed: 'arrives later',
+      legendLate: 'late',
+      none: 'No stop with an address that day.',
+      see: 'See the appointment',
+      close: 'Close',
+      mapLabel: 'Map of the new day'
+    }
+  }
 };

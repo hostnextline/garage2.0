@@ -9,7 +9,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const x = require('./plages.helpers.cjs');
 const { h, PW, openW, appOnPhone, until, until2, jwtOf, rpcAs, noErrors, dismissSheets, clock, between, longDay, median, jobOf, stopsOf, sentTo, textsTo,
-  gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays, randomUUID } = x;
+  gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays, randomUUID, reserveDone } = x;
 
 // a failing step leaves a picture of every open page and what it asked the server (tests/out/fail-plages-*)
 const step = (name, fn) => test(name, async (t) => {
@@ -125,7 +125,8 @@ async function bookWindow(page, t, c, day, choose, services = [SVC.oil], duratio
   const ws = choose(screen);
   await pickWindow(page, day, ws, 'grid');
   await page.getByTestId('book-confirm').click();
-  await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  // Part 30: the time picked is booked AT that minute (« Pas possible à … Mettre à … », someone pushed: said first, yes)
+  await reserveDone(page);
   const id = h.sql(`select id from public.jobs where customer_id = '${c.id}' and day = '${day}' and status = 'booked' and deleted_at is null order by created_at desc limit 1`);
   assert.ok(id, `${c.first} is booked on ${day}`);
   t.diagnostic(`${c.first}: the screen showed the windows of ${day} ${(waited / 1000).toFixed(1)} s after the work was chosen`);
@@ -526,7 +527,7 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   await gridAnswered(p2.page, D[5]);
   await pickWindow(p2.page, D[5], ws, 'grid');
   await p2.page.getByTestId('book-confirm').click();
-  await p2.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  await reserveDone(p2.page);
   J.farah = h.sql(`select id from public.jobs where customer_id = '${C.Farah.id}' and status = 'booked'`);
   assert.equal(jobOf(J.farah).win_start, ws);
   await p2.ctx.close();
@@ -558,7 +559,7 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
   assert.ok(!again.includes(ws), `${clock(ws)} is no longer offered: ${again.map(clock).join(', ')}`);
   await pickWindow(p1.page, D[5], again[0], 'list');
   await p1.page.getByTestId('book-confirm').click();
-  await p1.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  await reserveDone(p1.page);
   J.ines = h.sql(`select id from public.jobs where customer_id = '${C.Ines.id}' and status = 'booked'`);
   assert.equal(jobOf(J.ines).win_start, again[0]);
   // the refused one is removed from the list by the office (« Retirer »)
@@ -611,7 +612,7 @@ step('the window chosen is taken by another phone while the office is still on t
   await gridAnswered(p2.page, day);
   await pickWindow(p2.page, day, ws, 'grid');
   await p2.page.getByTestId('book-confirm').click();
-  await p2.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  await reserveDone(p2.page);
   J.karl = h.sql(`select id from public.jobs where customer_id = '${C.Karl.id}' and status = 'booked'`);
   assert.equal(jobOf(J.karl).win_start, ws);
   await p2.ctx.close();
@@ -629,7 +630,7 @@ step('the window chosen is taken by another phone while the office is still on t
   await p1.page.getByTestId('customer-picked').waitFor();
   await pickWindow(p1.page, day, now[0], 'list');
   await p1.page.getByTestId('book-confirm').click();
-  await p1.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  await reserveDone(p1.page);
   assert.equal(Number(h.sql(`select count(*) from public.jobs where customer_id = '${C.Jade.id}' and deleted_at is null`)), 1, 'booked once');
   J.jade = h.sql(`select id from public.jobs where customer_id = '${C.Jade.id}'`);
   assert.equal(jobOf(J.jade).win_start, now[0]);
@@ -693,7 +694,7 @@ step('« Départ et heure »: Camion Complet starts at 13 h on one day; the wind
   assert.deepEqual(late.filter((ws) => !server.includes(ws)), [], 'nothing on screen the server would refuse');
   await pickWindow(b.page, day, late[0], 'grid');
   await b.page.getByTestId('book-confirm').click();
-  await b.page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  await reserveDone(b.page);
   J.lina = h.sql(`select id from public.jobs where customer_id = '${C.Lina.id}' and status = 'booked'`);
   const j = jobOf(J.lina);
   assert.ok(j.eta_min >= 780 && j.eta_min >= j.win_start && j.eta_min <= j.win_end, `after 13 h, inside the window: ${clock(j.eta_min)}`);

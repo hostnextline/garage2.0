@@ -19,6 +19,9 @@ export interface GridDay {
   states: UnitState[];
   /** the arrival times this booking can take, in order */
   open: number[];
+  /** Part 30: the worked times the server does not offer (no room), in order: pickable by the owner and the office when
+      booking at a minute (marked full) */
+  no?: number[];
   /** how many different windows those times give (what the customer may be told) */
   windows: number;
   jobs: GridJob[];
@@ -72,13 +75,14 @@ export function windowDay(i: DayInput): WindowDay {
   const possible = possibleUnits(span, ofTruck(w.rows, i.truckId), windowOf);
   const states = unitStates(span, { day: i.day, today: i.today, now: i.now, worked: i.worked, possible: known ? possible : null });
   const open = unitMinutes(span).filter((_m, k) => states[k] === 'open');
+  const no = unitMinutes(span).filter((_m, k) => states[k] === 'no');
   const kind: DayKind = states.every((s) => s === 'past') ? 'past' : !states.some((s) => s !== 'off' && s !== 'past') ? 'closed'
     : w.status === 'offline' || w.status === 'error' ? 'failed' : !known ? 'loading' : open.length ? 'open' : 'full';
   const mine = i.picked && i.picked.day === i.day && i.picked.win_start != null ? i.picked : null;
   const mv = i.moving;
   const nowAt = mv && mv.day === i.day && mv.block === 'day' ? mv.eta_min ?? (mv.win_start != null ? unitOfWindow(span, mv.win_start, null, windowOf) : null) : null;
   return {
-    day: i.day, status: w.status, stale: w.status === 'loading' && known, kind, states, open,
+    day: i.day, status: w.status, stale: w.status === 'loading' && known, kind, states, open, no,
     windows: new Set(open.map((m) => windowOf(m)[0])).size, jobs: i.jobs, possible,
     current: nowAt != null ? jobBox(span, nowAt, mv!.duration_min, 1) : null,
     currentM: nowAt != null ? unitMinute(span, unitIndex(span, nowAt)) : null,

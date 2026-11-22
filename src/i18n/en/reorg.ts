@@ -128,5 +128,11 @@ export const reorg: typeof fr = {
   autoKeep: 'Keep mine',
   autoShown: 'This is the app’s order. Nothing is saved.',
   autoOver: 'The app finds no room for {name}: they stay at the end, late.',
-  help: 'Drag a stop by its handle ≡: higher, lower, or onto the other truck. The stop you drag takes the time of its new place and keeps it; the others keep their time. Nothing changes until you tap “Save”, and no text goes out. A customer who would arrive outside the window they were told gets a new window, shown before saving. Later, a booking, a cancellation or a measured trip (also at night) may still change the other stops’ times; a stop with a set time keeps its own as long as the truck can be there. When your day is ready: “Send the times to customers”.'
+  mapShow: 'Map',
+  mapHide: 'Hide the map',
+  mapLabel: 'Map of the day in your order',
+  mapDone: 'done',
+  mapOnSite: 'on site',
+  mapEnRoute: 'on the way',
+  help: 'Drag a stop by its handle ≡: higher, lower, or onto the other truck. The stop you drag takes the time of its new place and keeps it; the others keep their time. Nothing changes until you tap “Save”, and no text goes out. A customer who would arrive outside the window they were told gets a new window, shown before saving. Later, a booking, a cancellation or a measured trip (also at night) may still change the other stops’ times; a stop with a set time keeps its own as long as the truck can be there. When your day is ready: “Send the times to customers”. “Map” shows the day in your order, live: the numbers change as soon as you put a stop down, the road by the streets follows once it is worked out; tap a number to find its stop in the list.'
 };

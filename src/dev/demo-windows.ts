@@ -10,7 +10,12 @@
    its order and is held « not before its stored arrival » (pushed later only when the truck cannot keep it: said), the
    day it left keeps its order and times; somebody late not accepted → late_changed; the truck cannot be there →
    arrive_late (the preview says the earliest). Later plans of the demo keep the pinned minute (S6: a window of one
-   minute); a move without p_exact, an order by hand and the windows switched off clear it (S7). */
+   minute); a move without p_exact, an order by hand and the windows switched off clear it (S7).
+   « Réserver à l'heure choisie » (Part 30, K1, K2): book_job with p_job.arrive_at (+ truck_id, late_ok) and
+   book_preview(p_job, p_items): the new appointment goes AT that minute on the vehicle asked (else the one where nobody is
+   made late, the car first), with the exact move's own placing (exactPlan); somebody late (or past the hours) not accepted →
+   late_changed; forcing is the owner's and the office's (not_allowed else); the truck cannot be there → arrive_late (the
+   preview throws it too, with the earliest minute). */
 import { registerRpc, rpcOf, put, find, table, rows, refuse, nowIso, type DemoRow } from './fake-server';
 import { addDays, today, nowMinute, windowFor } from '../lib/dates';
 import { rangesOf, renumber, km, pointOf, HOME } from './demo-extra/agenda';
@@ -296,6 +301,91 @@ function exactMove(a: Record<string, unknown>) {
   return { ok: true, job_id: j.id, changed: before.day !== day, tell, window_changed: before.win_start !== win[0], truck_changed: String(j.truck_id) !== truck, ...exactAnswer(p), rows: rows({ jobs: changed }) };
 }
 
+/* ---------- « Réserver à l'heure choisie » (Part 30) ---------- */
+interface AtPlan { truck: string; p: ExactPlan; late: number; delay: number }
+/** no vehicle can be there at that minute: the earliest it can (the exact move's arrive_late) */
+interface AtEarly { early: true; earliest: number | null; earliestKeep: number | null; truck: string }
+/** where a NEW appointment pointed at `at` goes: every vehicle that may take it tried (the one asked, else each that works
+    that day), the exact move's placing for each; kept: the fewest late (past the hours counts as one), then the least
+    delay, then the car first. Refused as the server: arrive_late (the earliest), pick_truck */
+function atPlan(j: DemoRow, day: string, wanted: string | null, at: number, kind: string | null): AtPlan | AtEarly {
+  const [d0, d1] = span();
+  if (!(at >= d0 && at < d1)) refuse('bad_window', 'Cette heure n’est pas dans les heures de la journée : choisis-en une autre.');
+  const trucks = table('trucks').filter((x) => x.active && !x.deleted_at && truckDay(x.id, day) && (!wanted || x.id === wanted)
+    && (!kind || (kind === 'truck') === (x.tire_machine !== false)));
+  if (!trucks.length) refuse(wanted ? 'pick_truck' : 'block_closed', wanted ? 'Ce camion ne travaille pas ce jour-là : choisis une autre journée, ou laisse l’app choisir le camion.' : 'Cette journée est fermée : aucun camion ne travaille.');
+  let best: AtPlan | null = null;
+  let early: number | null = null, keep: number | null = null;
+  const carFirst = (t: string) => (kind ? 0 : find('trucks', t)?.tire_machine !== false ? 1 : 0);
+  for (const tr of trucks) {
+    const p = exactPlan({ ...j, day, block: 'day', truck_id: tr.id }, day, tr.id, at);
+    if (!p.placed) {
+      if (p.earliest != null) early = early == null ? p.earliest : Math.min(early, p.earliest);
+      if (p.earliestKeep != null) keep = keep == null ? p.earliestKeep : Math.min(keep, p.earliestKeep);
+      continue;
+    }
+    const late = p.late.length + (p.overHours > 0 ? 1 : 0);
+    const delay = p.stops.reduce((m, s) => m + (s.id === j.id ? 0 : Number(s.delay_min) || 0), 0);
+    if (!best || late < best.late || (late === best.late && (delay < best.delay || (delay === best.delay && carFirst(tr.id) < carFirst(best.truck))))) best = { truck: tr.id, p, late, delay };
+  }
+  return best ?? { early: true, earliest: early, earliestKeep: keep, truck: trucks[0].id };
+}
+const atAnswer = (j: DemoRow, a: AtPlan, at: number, may: boolean) => {
+  const win = winOf(at);
+  const late = a.p.stops.filter((s) => s.id !== j.id && s.late).map((s) => ({ id: String(s.id), late_min: Number(s.late_min) || 0 }));
+  return { ok: true, exact: true, at, job_id: j.id, truck_id: a.truck, win_start: win[0], win_end: win[1], forced: a.late > 0, may_force: may, late,
+    stops: a.p.stops, over_hours: a.p.overHours, earliest: a.p.earliest, earliest_keep: a.p.earliestKeep };
+};
+const mayForceHere = () => roles().includes('owner') || roles().includes('office');
+/** book_preview(p_job, p_items) / book_job with arrive_at: the checks of a booking, then the plan at that minute */
+function atAsk(a: Record<string, unknown>) {
+  const j = a.p_job as DemoRow & { day: string; customer_id: string; truck_id?: string | null; duration_min?: number; arrive_at: number; vehicle_kind?: string | null; late_ok?: unknown };
+  if (!j.customer_id) refuse('no_customer', 'Choisis le client avant de réserver.');
+  if (!j.day || (j.block && j.block !== 'day')) refuse('bad_block', 'Choisis la journée et la plage d’arrivée.');
+  if (j.day < today()) refuse('block_started', 'Cette journée est finie : choisis une autre journée.');
+  const wanted = (j.truck_id as string) || null;
+  need(can('book') || (!!wanted && myTruckIds().includes(wanted)), 'Tu ne peux pas prendre de rendez-vous. Parle au propriétaire.');
+  if (j.id && find('jobs', j.id)) refuse('exists', 'Ce rendez-vous existe déjà.');
+  const items = (a.p_items as DemoRow[]) || [];
+  const dur = Number(j.duration_min) || items.reduce((m, i) => m + (Number(i.duration_min) || 0), 0) || 60;
+  const id = String(j.id || crypto.randomUUID());
+  const row: DemoRow = { id, duration_min: dur, travel_min: 18, status: 'booked', day: j.day, block: 'day', truck_id: wanted, stop_order: null, eta_min: null };
+  const kind = j.vehicle_kind === 'car' || j.vehicle_kind === 'truck' ? j.vehicle_kind : null;
+  return { j, row, items, dur, at: Number(j.arrive_at), plan: atPlan(row, j.day, wanted, Number(j.arrive_at), kind) };
+}
+function atPreview(a: Record<string, unknown>) {
+  if (!windowsOn() || typeof (a.p_job as DemoRow | null)?.arrive_at !== 'number') return { ok: true, exact: false, stops: [] };
+  const x = atAsk(a);
+  // the truck cannot be there: answered with its code and the earliest minute (as the exact move's demo preview)
+  if ('early' in x.plan) return { ok: false, code: 'arrive_late', exact: true, at: x.at, stops: [], over_hours: 0, earliest: x.plan.earliest, earliest_keep: x.plan.earliestKeep, truck_id: x.plan.truck };
+  return { preview: true, ...atAnswer(x.row, x.plan, x.at, mayForceHere()) };
+}
+function atBook(a: Record<string, unknown>) {
+  const x = atAsk(a);
+  if ('early' in x.plan) refuse('arrive_late', 'Le camion ne peut pas être là à cette heure-là : choisis une heure plus tard.');
+  const plan = x.plan;
+  const ans = atAnswer(x.row, plan, x.at, mayForceHere());
+  if (ans.forced && !mayForceHere()) refuse('not_allowed', 'Seuls le propriétaire et le bureau peuvent réserver à cette heure : elle met un autre client en retard, ou le camion après ses heures.');
+  const ok = new Set(Array.isArray(x.j.late_ok) ? (x.j.late_ok as unknown[]).map(String) : []);
+  if (ans.late.some((l) => !ok.has(l.id)) || (ans.over_hours > 0 && !ok.has(x.row.id))) refuse('late_changed', 'La journée a changé depuis la vérification : cette réservation mettrait un autre client en retard (ou le camion après ses heures). Vérifie de nouveau.');
+  const win = winOf(x.at);
+  const { late_ok: _l, arrive_at: _a, force: _f, ...rest } = x.j as DemoRow;
+  void _l; void _a; void _f;
+  const changed: DemoRow[] = [];
+  const job = put('jobs', {
+    vehicle_id: null, problem: null, notes: null, address: null, unit: null, postal_code: null, lat: null, lng: null,
+    card_on_file: false, lost_cents: null, lost_reason: null, started_at: null, arrived_at: null, finished_at: null, cancelled_at: null, pay_later: false, pay_later_reason: null,
+    waiver_signed_at: null, waiver_signer: null, waiver_version: null, waiver_attachment: null, confirm_sent_at: null, source: 'phone', quote_id: null, manual_order: null,
+    number: Math.max(200, ...table('jobs').map((y) => Number(y.number) || 0)) + 1, created_by: me(),
+    ...rest, id: x.row.id, status: 'booked', block: 'day', truck_id: plan.truck, truck_pinned: true, duration_min: x.dur, win_start: win[0], win_end: win[1], win_flex: false,
+    arrive_at: x.at, eta_min: x.at, forced: false, travel_min: 18
+  });
+  plan.p.order.forEach((o, i) => changed.push(put('jobs', o.id === x.row.id ? { id: job.id, stop_order: i + 1, eta_min: x.at } : { id: o.id, eta_min: plan.p.eta.get(o.id), stop_order: i + 1, manual_order: null })));
+  const its = x.items.map((it, i) => put('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', answered_at: null, answered_via: null, note: null, item_id: null, service_id: null, duration_min: null, sort: i + 1, ...it, id: String(it.id || crypto.randomUUID()), job_id: job.id }));
+  if (x.j.quote_id) { const q = find('quotes', x.j.quote_id); if (q) put('quotes', { id: q.id, status: 'converted', job_id: job.id }); }
+  return { ...ans, eta: x.at, win_flex: false, rows: rows({ jobs: [find('jobs', job.id)!, ...changed.filter((c) => c.id !== job.id)], job_items: its }) };
+}
+
 export function installWindows() {
   const before = { book: rpcOf('book_job'), move: rpcOf('move_job'), suggest: rpcOf('suggest_blocks'), stops: rpcOf('set_stop_order'), preview: rpcOf('move_preview') };
 
@@ -305,6 +395,8 @@ export function installWindows() {
       if (j.block === 'day') refuse('bad_block', 'Choisis la date et le bloc : matin, après-midi ou soir.');
       return before.book!(a);
     }
+    // Part 30: a minute said (not « flexible »): booked AT that minute
+    if (typeof j.arrive_at === 'number' && j.win_flex !== true) return atBook(a);
     if (!j.customer_id) refuse('no_customer', 'Choisis le client avant de réserver.');
     if (j.block !== 'day' || !j.day) refuse('bad_block', 'Choisis la journée et la plage d’arrivée.');
     if (find('jobs', j.id)) refuse('exists', 'Ce rendez-vous existe déjà.');
@@ -357,6 +449,9 @@ export function installWindows() {
     settle(j.id);
     return { ok: true, job_id: j.id, changed: true, rows: rows({ jobs: changed.length ? changed : [find('jobs', j.id)!] }) };
   });
+
+  // Part 30: what a booking at a minute would do, nothing written
+  registerRpc('book_preview', (a) => atPreview(a));
 
   // « exact move »: the new form of the preview (p_job, p_day, p_truck, p_at); the older form answers as before
   registerRpc('move_preview', (a) => (a.p_at != null && a.p_job != null ? exactPreview(a) : before.preview ? before.preview(a) : { ok: true }));

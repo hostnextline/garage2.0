@@ -138,12 +138,17 @@ export function WindowPicker(p: BlockPickerProps) {
     setSaid(t('booking.picker.chosen', { when: choiceWords(c, l) }));
   };
   const labelOf = (m: number) => { const w = windowOf(m); return t('booking.win.grid.label', { time: clock(m, l), from: clock(w[0], l), to: clock(w[1], l) }); };
-  /** an arrival time of the calendar: its window is the one told to the customer */
-  const unitChoice = (d: string, m: number): BlockChoice => {
+  /** an arrival time of the calendar: its window is the one told to the customer. `full` (Part 30): a time the server
+      does not offer, taken anyway by the owner or the office (the booking at that minute warns first) */
+  const unitChoice = (d: string, m: number, full = false): BlockChoice => {
     const w = windowOf(m);
-    return { day: d, block: 'day', win_start: w[0], win_end: w[1], eta: m, truck: modelOf(d)?.possible.get(m)?.truck ?? null };
+    return { day: d, block: 'day', win_start: w[0], win_end: w[1], eta: m, truck: modelOf(d)?.possible.get(m)?.truck ?? null, ...(full ? { full: true } : {}) };
   };
   const mayForce = isOwner() || hasRole('office');
+  /* « Réserver à l'heure choisie » (Part 30, K2): booking, a full time is pickable by the owner and the office (marked full;
+     « Réserver » then says who would be late and lets them book anyway at that minute) */
+  const fullPick = !!p.exactBook && !p.exactMove && mayForce;
+  const pickTime = (d: string, m: number) => pick(unitChoice(d, m, fullPick && !modelOf(d)?.possible.has(m)));
   /** a time the server refuses: the owner and the office may take the day anyway (the app gives the window) */
   const refused = async (d: string, m: number) => {
     const time = clock(m, l);
@@ -182,8 +187,9 @@ export function WindowPicker(p: BlockPickerProps) {
     else if (p.onClear) { p.onClear(); setSaid(t('booking.win.picker.nothing')); }
     else pick({ day: shown, block: 'day' });
   };
-  // a window chosen elsewhere (the agenda's grid, a paste) that the server no longer lists for this address
-  const gone = windowGone(picked, picked ? modelOf(picked.day) : null, picked ? winsOf(picked.day).rows : [], p.truckId, windowOf);
+  // a window chosen elsewhere (the agenda's grid, a paste) that the server no longer lists for this address (a full time
+  // taken anyway, Part 30, is full on purpose)
+  const gone = windowGone(picked && !picked.full ? picked : null, picked ? modelOf(picked.day) : null, picked ? winsOf(picked.day).rows : [], p.truckId, windowOf);
   // it is taken off (the screen has nothing chosen again), and said until another time is chosen
   const [lost, setLost] = useState(false);
   useEffect(() => { if (gone) { setLost(true); p.onClear?.(); } }, [gone]);
@@ -265,11 +271,13 @@ export function WindowPicker(p: BlockPickerProps) {
   const dayLabel = (d: GridDay) => t('booking.win.grid.day', { day: longDay(d.day, l), state: stateWord(d) }) + (d.far && d.kind === 'open' ? `, ${t('booking.far.cell')}` : '');
   const unitLabel = (d: string, m: number, st: string = 'open') => {
     const w = windowOf(m);
-    return st === 'no' ? t('booking.win.grid.unitNo', { day: longDay(d, l), time: clock(m, l) }) : t('booking.win.grid.unit', { day: longDay(d, l), time: clock(m, l), from: clock(w[0], l), to: clock(w[1], l) });
+    if (st === 'no') return t(fullPick ? 'booking.atTime.fullUnit' : 'booking.win.grid.unitNo', { day: longDay(d, l), time: clock(m, l) });
+    return t('booking.win.grid.unit', { day: longDay(d, l), time: clock(m, l), from: clock(w[0], l), to: clock(w[1], l) });
   };
   const nav = { canPrev: page > 0, canNext: page < lastPage(today, lastDay, per), onPrev: () => goTo(addDays(today, (page - 1) * per)), onNext: () => goTo(addDays(today, (page + 1) * per)) };
   const range = days.length ? t('booking.picker.range', spanEnds(days[0], days[days.length - 1], l, today)) : '';
-  const chosenSub = [picked?.eta != null ? cap(t('booking.win.grid.around', { time: clock(unitOfWindow(span, picked.win_start!, picked.eta, windowOf) ?? picked.eta, l) })) : '', t('booking.picker.duration', { d: duration(dur, l) })];
+  const chosenSub = [picked?.eta != null ? cap(t('booking.win.grid.around', { time: clock(unitOfWindow(span, picked.win_start!, picked.eta, windowOf) ?? picked.eta, l) })) : '', t('booking.picker.duration', { d: duration(dur, l) }),
+    picked?.full ? t('booking.atTime.fullChosen') : ''];
 
   return (
     <div class={`bp${list ? '' : ' bp-wide'}`} ref={root} data-pop-group data-testid="block-picker" data-mode="windows" data-layout={list ? 'list' : 'grid'}>
@@ -299,11 +307,11 @@ export function WindowPicker(p: BlockPickerProps) {
         )}
         {list && <p class="faint small bp-note">{t('booking.win.grid.hintPhone')}</p>}
         {list
-          ? <PickList days={models} today={today} selDay={shown} onDay={setDay} onTime={(d, m) => pick(unitChoice(d, m))} unitLabel={unitLabel} dayLabel={dayLabel}
+          ? <PickList days={models} today={today} selDay={shown} onDay={setDay} onTime={pickTime} unitLabel={(d, m) => unitLabel(d, m, modelOf(d)?.possible.has(m) ? 'open' : 'no')} dayLabel={dayLabel} force={fullPick}
               menuOf={(d, m) => ({ ...menuProps(unitChoice(d, m)), ...hov.props(`${d}|t${m}`, { c: unitChoice(d, m), when: `${cap(longDay(d, l))} · ${labelOf(m)}` }) })} currentM={sel?.currentM ?? null} {...nav} />
           : <PickGrid span={span} days={models} today={today} selDay={shown} onDay={setDay} labelOf={labelOf} unitLabel={unitLabel} dayLabel={dayLabel} winOf={(m) => windowOf(m) as Win}
               onDayMenu={dayMenu}
-              onUnit={(d, m, st) => { if (st === 'open') pick(unitChoice(d, m)); else if (st === 'no') void refused(d, m); }}
+              onUnit={(d, m, st) => { if (st === 'open') pick(unitChoice(d, m)); else if (st === 'no' && fullPick) pickTime(d, m); else if (st === 'no') void refused(d, m); }}
               askOf={(d, m) => (hasPos ? askOf(unitChoice(d, m), t('booking.win.grid.around', { time: clock(m, l) })) : null)}
               range={range} {...nav} goto={goto} openAt={openingMinute(models, { today, now, span })} pageKey={pageKey} hint={t('booking.win.grid.hint')} force={mayForce} />}
         {list && sel && sel.chosen != null && picked && (
