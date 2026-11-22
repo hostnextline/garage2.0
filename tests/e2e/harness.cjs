@@ -94,4 +94,19 @@ async function shot(page, name) { const f = path.join(OUT, `${name}.png`); await
 const mockLog = async () => (await fetch('http://127.0.0.1:8021/log')).json();
 const clearMock = () => fetch('http://127.0.0.1:8021/log/clear', { method: 'POST' });
 
-module.exports = { ROOT, API, APP, OUT, K, sql, saveDb, restoreDb, counts, rowCounts, buildApp, startApp, stopApp, makePerson, seed, open, closeAll, signIn, shot, mockLog, clearMock };
+/** « Texter … ? » (Hassan, 2026-11-22: « the system should ask me first »): after a change of an appointment the app asks
+    before the « moved » text (src/shared/jobs/textAsk.tsx). Waits for the question, reads it, then answers « Envoyer le
+    texto » (`send` true, the default) or « Pas de texto »; its buttons ignore taps for 400 ms after they appear.
+    Returns { title, when } as the sheet said them. */
+async function textAsk(page, { send = true, timeout = 20000 } = {}) {
+  const sheet = page.getByTestId('text-ask');
+  await sheet.waitFor({ timeout });
+  const title = (await sheet.locator('h2').first().innerText()).replace(/\s+/g, ' ').trim();
+  const when = (await sheet.getByTestId('text-ask-when').innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+  await page.waitForTimeout(450);
+  await sheet.getByTestId(send ? 'text-ask-send' : 'text-ask-skip').click();
+  await sheet.waitFor({ state: 'detached', timeout: 10000 });
+  return { title, when };
+}
+
+module.exports = { ROOT, API, APP, OUT, K, sql, saveDb, restoreDb, counts, rowCounts, buildApp, startApp, stopApp, makePerson, seed, open, closeAll, signIn, shot, mockLog, clearMock, textAsk };

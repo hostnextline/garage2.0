@@ -11,6 +11,9 @@ vi.mock('../../data/roads', async (orig) => ({ ...(await orig<object>()), movePr
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), moveJob: h.move }));
 vi.mock('../../data/exact', async (orig) => ({ ...(await orig<object>()), exactPreview: h.exact }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ask: h.ask }));
+const asking = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true), sendText: vi.fn() }));
+vi.mock('../../shared/jobs/textAsk', async (orig) => ({ ...(await orig<object>()), askMovedText: asking.askMovedText }));
+vi.mock('../../shared/jobs/texts', async (orig) => ({ ...(await orig<object>()), sendText: asking.sendText }));
 
 import { TruckSheet } from './TruckSheet';
 import { replaceLocal, clearAll } from '../../data/store';
@@ -47,7 +50,8 @@ beforeEach(() => {
   h.move.mockResolvedValue({ queued: false, data: { ok: true, exact: true, tell: false } });
   h.ask.mockResolvedValue(true);
 });
-afterEach(() => { render(null, box); clearAll(); });
+// Hassan, 2026-11-22 (« the system should ask me first »): « Changer de camion » never sends the « moved » text itself
+afterEach(() => { expect(asking.sendText).not.toHaveBeenCalled(); render(null, box); clearAll(); });
 
 describe('the other truck at the very time it has (A1)', () => {
   it('a tap: the preview of that minute on that truck, then the move there at that minute; the message says it kept its time', async () => {
@@ -66,7 +70,7 @@ describe('the other truck at the very time it has (A1)', () => {
     await show(J());
     await tap('truck-pick-t2');
     expect(h.ask).toHaveBeenCalledTimes(1);
-    expect((h.ask.mock.calls[0][0] as { text: string }).text).toContain('À 14 h, la plage dite au client devient : entre 13 h et 17 h.');
+    expect((h.ask.mock.calls[0][0] as { text: string }).text).toContain('À 14 h, sa plage devient : entre 13 h et 17 h.');
     expect(h.move.mock.calls[0]).toEqual(['j1', DAY, 'day', 't2', { start: 780, flex: false, at: 840, lateOk: [] }]);
     expect(toasts.value.map((x) => x.text).join(' | ')).toBe('Rendez-vous passé à Camion 2, maintenant à 14 h (au lieu de 13 h 15).');
   });
@@ -111,5 +115,28 @@ describe('switch « Vraies routes » ON: each truck said from the exact preview 
     expect(h.exact.mock.calls.map((c) => c[2]).sort()).toEqual(['t2', 't3']);
     expect(q('truck-pick-t2')!.textContent).toContain('Ne peut pas y être à 13 h 15 : au plus tôt 14 h');
     expect(q('truck-pick-t3')!.textContent).toContain('Garde son heure : arrivée à 13 h 15');
+  });
+});
+
+describe('« Texter … ? » instead of the text (Hassan, 2026-11-22: « the system should ask me first »)', () => {
+  const textOn = () => replaceLocal('settings', [{ id: '1', booking: { windows_on: true, win_before_min: 60, win_after_min: 180, win_round_min: 60, horizon_days: 120, unknown_min: 20, min_block_min: 45, roads_on: false,
+    blocks: [{ key: 'am', start: 480, end: 720 }, { key: 'pm', start: 720, end: 960 }, { key: 'eve', start: 960, end: 1200 }] }, messages: { on: { moved: true } } } as never]);
+  it('the time kept on the other truck, « Mettre à … » cut a new window (tell): the question, never the text by itself', async () => {
+    seed(false); textOn();
+    h.exact.mockResolvedValueOnce({ ...OK, refused: 'arrive_late', earliest: 840, earliestKeep: 840 }).mockResolvedValue(OK);
+    h.move.mockResolvedValue({ queued: false, data: { ok: true, exact: true, tell: true } });
+    await show(J());
+    await tap('truck-pick-t2');
+    expect(closed).toBe(1);
+    expect(asking.askMovedText).toHaveBeenCalledTimes(1);
+    expect(asking.askMovedText.mock.calls[0][1]).toEqual({ via: 'jobs' });
+    expect((asking.askMovedText.mock.calls[0][0] as Job).id).toBe('j1');
+  });
+  it('the same time on the other truck (tell false): nothing asked', async () => {
+    seed(false); textOn();
+    await show(J());
+    await tap('truck-pick-t2');
+    expect(h.move).toHaveBeenCalledTimes(1);
+    expect(asking.askMovedText).not.toHaveBeenCalled();
   });
 });

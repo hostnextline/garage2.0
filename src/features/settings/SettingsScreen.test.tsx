@@ -87,6 +87,23 @@ describe('Réglages → Textos: a text whose kind is hidden leaves the draft (se
   });
 });
 
+describe('Réglages → Textos: « Rendez-vous changé » asks first (Hassan, 2026-11-22; review M2)', () => {
+  it('its switch says the app asks before sending it, the help under the list too, never « tout seul » for it', async () => {
+    await show(<TextsSection />);
+    const sw = q('msg-on-moved')!;
+    expect(sw.getAttribute('aria-label')).toBe('Demander avant d’envoyer, Rendez-vous changé');
+    expect(q('msg-moved')!.textContent).toContain('Demande d’abord');
+    expect(box.textContent).toContain('« Rendez-vous changé » : allumé, l’app te demande avant de l’envoyer; éteint, jamais.');
+    // the other texts keep their « Envoyer tout seul »
+    expect(q('msg-on-booking')!.getAttribute('aria-label')).toBe('Envoyer tout seul, Rendez-vous confirmé');
+    lang.value = 'en';
+    await show(<TextsSection />);
+    expect(q('msg-on-moved')!.getAttribute('aria-label')).toBe('Ask before sending, Appointment changed');
+    expect(q('msg-moved')!.textContent).toContain('Asks first');
+    expect(box.textContent).toContain('« Appointment changed »: on, the app asks you before sending it; off, never.');
+  });
+});
+
 describe('Réglages: no form before the settings row (settings-team-03, st-6)', () => {
   it('no row: a placeholder with a short line, no field; the row arriving draws the form', async () => {
     replaceLocal('settings', []);

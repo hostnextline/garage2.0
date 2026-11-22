@@ -282,7 +282,7 @@ export const jobs = {
     move: 'Déplacer',
     moveTitle: 'Déplacer le rendez-vous',
     moveLead: 'Choisis un autre jour ou un autre bloc.',
-    moveLeadText: 'Choisis un autre jour ou un autre bloc. Le client reçoit un texto avec le nouveau moment.',
+    moveLeadText: 'Choisis un autre jour ou un autre bloc. Ensuite, l’app te demandera s’il faut texter le client.',
     moveOk: 'Déplacer ici',
     moved: 'Rendez-vous déplacé : {when}.',
     /* the message's button after a move from a list of stops: opens the appointment */
@@ -294,9 +294,9 @@ export const jobs = {
      move to a time pointed (shared/jobs/exactMove.ts), its four cases, and the message after it */
   exact: {
     question: 'Déplacer la job de {name} : {when} à {time} ?',
-    text: 'Dit au client : entre {from} et {to}. Les autres arrêts gardent leur heure.',
-    told: 'Dit au client : entre {from} et {to}.',
-    toldFor: 'Dit à {name} : entre {from} et {to}.',
+    text: 'Sa plage : entre {from} et {to}. Les autres arrêts gardent leur heure.',
+    told: 'Sa plage : entre {from} et {to}.',
+    toldFor: 'Plage de {name} : entre {from} et {to}.',
     pushed: { one: 'Cet arrêt arrive un peu plus tard, toujours dans sa plage :', other: 'Ces arrêts arrivent un peu plus tard, toujours dans leur plage :' },
     pushedLine: '{name} : vers {eta} au lieu de {was}.',
     lateTitle: { one: 'Déplacer {who} à {time} met {name} en retard', other: 'Déplacer {who} à {time} met {n} clients en retard' },
@@ -308,7 +308,7 @@ export const jobs = {
     early: 'Le camion ne peut pas être chez {name} à {time} : au plus tôt {earliest}.',
     earlyKeep: 'À {time}, aucun autre arrêt ne change d’heure.',
     earlyOk: 'Mettre à {earliest}',
-    earlyTold: 'À {earliest}, la plage dite au client devient : entre {from} et {to}.',
+    earlyTold: 'À {earliest}, sa plage devient : entre {from} et {to}.',
     unchecked: 'Je n’ai pas pu vérifier l’heure des autres clients.',
     unmeasured: 'Les routes de cette journée ne sont pas toutes mesurées : je ne peux pas encore dire si quelqu’un sera en retard.',
     offline: 'Pas de réseau : je ne peux pas vérifier si ce déplacement met quelqu’un en retard. Réessaie quand le réseau revient.',
@@ -319,6 +319,13 @@ export const jobs = {
     someone: 'un client',
     /* its own truck does not work that day: the vehicle the server offered at that time */
     otherTruck: 'Son camion ne travaille pas ce jour-là : la job va sur {truck}.'
+  },
+  /* after a change of an appointment: the « moved » text goes only when the person says so (shared/jobs/textAsk.tsx) */
+  textAsk: {
+    title: 'Texter {name} ?',
+    lead: 'Le texto lui dira le nouveau moment :',
+    send: 'Envoyer le texto',
+    skip: 'Pas de texto'
   },
   /* the « … » sheet */
   order: {
@@ -402,7 +409,7 @@ export const jobs = {
     work: { longerHint: 'Le camion garde le temps qu’il faut dans sa journée.' },
     moment: {
       moveLead: 'Choisis un autre jour ou une autre plage d’arrivée.',
-      moveLeadText: 'Choisis un autre jour ou une autre plage d’arrivée. Le client reçoit un texto avec le nouveau moment.',
+      moveLeadText: 'Choisis un autre jour ou une autre plage d’arrivée. Ensuite, l’app te demandera s’il faut texter le client.',
       help: 'La durée sert au camion pour placer les arrêts dans sa journée. Si la job ne rentre plus, déplace-la.'
     },
     order: {

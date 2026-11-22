@@ -1,7 +1,8 @@
 /* « Déplacer » from the trucks' stops on the Carte: what the first tests did not pin (the reviews of 2026-11-21).
-   - A move kept on the phone (no signal): the message says the customer's text follows; « En attente d'envoi » on the
-     stop's row and card; once the move reaches the server and its answer says the customer must be told (`tell`), the
-     « moved » text goes, once (rules F1, person F1).
+   - A move kept on the phone (no signal): the message says the question « Texter … ? » follows; « En attente d'envoi » on
+     the stop's row and card; once the move reaches the server and its answer says the customer must be told (`tell`),
+     the question is asked (nothing goes by itself: Hassan, 2026-11-22) and « Envoyer le texto » sends the « moved » text,
+     once (rules F1, person F1).
    - A move of it still in the outbox (the job screen's own « Déplacer », or one kept before the app was reopened):
      « Déplacer » is not offered and the mark says why (rules F2). A « Je pars » still waiting on the phone: no
      « Déplacer » either (rules F6).
@@ -60,6 +61,7 @@ import { today, addDays } from '../../lib/dates';
 import { forgetTeamMaps } from '../../shared/map/useTeamMap';
 import { movesWaiting } from '../../shared/jobs/moving';
 import { moveOpenFor } from '../../shared/jobs/MoveHost';
+import { clearTextAsks, TEXT_ASK_DEAD_MS } from '../../shared/jobs/textAsk';
 import type { Access } from '../../data/types';
 
 const TODAY = today();
@@ -90,6 +92,15 @@ const settle = () => act(async () => { for (let i = 0; i < 8; i++) await Promise
 const click = async (s: string) => { await act(async () => { q(s)!.click(); }); await settle(); };
 const rightClick = async (el: Element) => { await act(async () => { el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40, button: 2 })); }); };
 const said = () => toasts.value.map((x) => x.text).join(' | ');
+/** « Texter … ? » (Hassan, 2026-11-22: nothing goes by itself): the question is on screen; answered once it takes taps */
+async function answerTextAsk(send: boolean) {
+  // (it waits for the step back in the history of the sheet just closed: up to 700 ms when the browser never answers it)
+  for (let i = 0; i < 60 && !q('text-ask'); i++) await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  expect(q('text-ask')).not.toBeNull();
+  await act(async () => { await new Promise((r) => setTimeout(r, TEXT_ASK_DEAD_MS + 40)); });
+  await click(send ? 'text-ask-send' : 'text-ask-skip');
+  await settle();
+}
 let bump = 0;
 /** the outbox changed (the pending view of the job screens reads it again) */
 const outboxChanged = async () => { await act(async () => { setNet({ pending: ++bump }); }); await settle(); };
@@ -101,10 +112,10 @@ async function show(who: Access) {
 const closeMenu = () => act(() => { (document.querySelector('.agenda-menu-shade') as HTMLElement | null)?.click(); });
 
 beforeEach(() => { lang.value = 'fr'; wide.value = true; srv.textStatus = 'sent'; srv.tell = false; srv.moves = []; srv.queued = false; srv.notified = []; srv.outbox = []; srv.done = []; forgetTeamMaps(); toasts.value = []; location.hash = '#/map'; });
-afterEach(async () => { closeMenu(); act(() => render(null, box)); clearAll(); access.value = null; movesWaiting.value = new Set(); outbox.value = []; srv.outbox = []; await outboxChanged(); vi.useRealTimers(); });
+afterEach(async () => { act(() => { clearTextAsks(); }); closeMenu(); act(() => render(null, box)); clearAll(); access.value = null; movesWaiting.value = new Set(); outbox.value = []; srv.outbox = []; await outboxChanged(); vi.useRealTimers(); });
 
 describe('a move kept on the phone (no signal), from the card', () => {
-  it('says the text follows, shows « En attente d’envoi » on the row and the card, and texts once the server has it (tell)', async () => {
+  it('says the question follows, shows « En attente d’envoi » on the row and the card, and asks once the server has it (tell)', async () => {
     garage();
     srv.queued = true;
     srv.outbox = [pendingMove];
@@ -114,7 +125,7 @@ describe('a move kept on the phone (no signal), from the card', () => {
     await click('fake-pick');
     await click('move-ok');
     expect(said()).toContain('Gardé sur le téléphone');
-    expect(said()).toContain('Le texto au client partira quand le déplacement sera envoyé, si l’app reste ouverte.');
+    expect(said()).toContain('Quand le déplacement sera envoyé, l’app te demandera s’il faut texter le client (si l’app reste ouverte).');
     expect(q('move-wait-j1')?.textContent).toBe('En attente d’envoi');
     expect(q('stop-j1')!.textContent).toContain('En attente d’envoi');
     expect(q('map-card')!.textContent).toContain('En attente d’envoi');
@@ -124,9 +135,12 @@ describe('a move kept on the phone (no signal), from the card', () => {
     srv.outbox = [];
     await act(async () => { srv.done.forEach((r) => r({ ok: true, changed: true, tell: true })); });
     await settle(); await settle();
+    // asked, not sent
+    expect(srv.notified).toEqual([]);
+    expect(q('move-wait-j1')).toBeNull();
+    await answerTextAsk(true);
     expect(srv.notified.length).toBe(1);
     expect(srv.notified[0].slice(0, 2)).toEqual(['moved', 'j1']);
-    expect(q('move-wait-j1')).toBeNull();
   });
   it('the server answers that the customer has nothing new to hear (tell: false): no text', async () => {
     garage();
@@ -141,6 +155,7 @@ describe('a move kept on the phone (no signal), from the card', () => {
     await act(async () => { srv.done.forEach((r) => r({ ok: true, changed: false, tell: false })); });
     await settle(); await settle();
     expect(srv.notified).toEqual([]);
+    expect(q('text-ask')).toBeNull();
     expect(movesWaiting.value.has('j1')).toBe(false);
   });
   it('the « moved » text off: the message says nothing of a text, and none goes', async () => {
@@ -153,11 +168,12 @@ describe('a move kept on the phone (no signal), from the card', () => {
     await click('fake-pick');
     await click('move-ok');
     expect(said()).toContain('Gardé sur le téléphone');
-    expect(said()).not.toContain('texto');
+    expect(said()).not.toMatch(/texto|texter/);
     srv.outbox = [];
     await act(async () => { srv.done.forEach((r) => r({ ok: true, changed: true, tell: true })); });
     await settle(); await settle();
     expect(srv.notified).toEqual([]);
+    expect(q('text-ask')).toBeNull();
   });
 });
 
@@ -249,7 +265,7 @@ describe('the other rows, the message, the sheet left open', () => {
     await settle();
     expect(q('move-sheet')).toBeNull();
   });
-  it('moved, the texts not connected: the « text to send by hand » sheet rises on the map itself', async () => {
+  it('moved, the texts not connected: « Envoyer le texto », then the « text to send by hand » sheet rises on the map itself', async () => {
     garage();
     srv.tell = true;
     srv.textStatus = 'off';
@@ -259,7 +275,7 @@ describe('the other rows, the message, the sheet left open', () => {
     await click('fake-pick');
     srv.answer = answerWith([]);
     await click('move-ok');
-    await settle(); await new Promise((r) => setTimeout(r, 50)); await settle();
+    await answerTextAsk(true);
     expect(srv.notified.length).toBe(1);
     expect(q('text-outcome')).not.toBeNull();
     expect(q('text-outcome-message')?.textContent).toBe('Bonjour Julie, votre rendez-vous est déplacé.');

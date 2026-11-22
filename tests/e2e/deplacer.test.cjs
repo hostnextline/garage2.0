@@ -55,6 +55,33 @@ const moveExactByApi = (job, at, lateOk = []) => x.rpcAs(who.nadia.jwt, 'move_jo
   p_win_start: d.winFor(at)[0], p_win_flex: false, p_exact: { at, late_ok: lateOk } });
 /** what the screen sent to move_job last, and what the server answered */
 const lastMove = (answers) => answers.filter((a) => a.args && a.args.p_job).pop();
+/** « Texter … ? » (Hassan, 2026-11-22: « the system should ask me first »): after a move whose window told changed, the app
+    asks before the « moved » text and sends nothing before the answer. `changed` true: the question, and for 2 s with it
+    on screen the page asks the server for no « moved » text of that job (beyond those answered « Envoyer » before on this
+    page) and the fake GoHighLevel's log (cleared before the move) gets nothing; answered « Envoyer le texto »: told once.
+    `changed` false: no question at all. */
+const movedAsked = (page, first) => (page.notified || []).filter((n) => n.kind === 'moved' && n.job_id === J[first]).length;
+async function textAskIf(page, changed, first) {
+  if (!changed) {
+    await page.waitForTimeout(1500);
+    assert.equal(await page.getByTestId('text-ask').count(), 0, `no « Texter ${first} ? »: the window told did not change`);
+    return null;
+  }
+  await page.getByTestId('text-ask').waitFor({ timeout: 20000 });
+  // a send by itself racing the question would have reached the local server and its fake GoHighLevel by then (review L3)
+  await page.waitForTimeout(2000);
+  page.movedSent = page.movedSent || {};
+  const before = page.movedSent[first] || 0;
+  assert.equal(movedAsked(page, first), before, `the server not asked to text ${first} before the answer`);
+  assert.deepEqual(await d.textsTo(first, /a changé/), [], `nothing texted to ${first} before the answer`);
+  const ta = await h.textAsk(page);
+  page.movedSent[first] = before + 1;
+  assert.equal(ta.title, `Texter ${first} ?`);
+  const sms = await until(() => d.textsTo(first, /a changé/), (v) => v.length > 0, 15000);
+  assert.equal(sms.length, 1, `${first} told once, after « Envoyer le texto »`);
+  assert.equal(movedAsked(page, first), before + 1, `the server asked once to text ${first}, after « Envoyer le texto »`);
+  return { ...ta, sms };
+}
 
 before(async () => {
   originalCounts = h.rowCounts();
@@ -141,7 +168,7 @@ step('1. The office, on a computer, drags the third stop of the day to 13 h 30 o
   t.diagnostic(`the question: « ${q.title} » — « ${q.text} » [${q.buttons.join(' | ')}]`);
   assert.match(q.title, /Chloe/);
   assert.match(q.title, new RegExp(`à ${clock(AT)} \\?$`));
-  assert.ok(q.text.includes(`Dit au client : entre ${clock(win[0])} et ${clock(win[1])}.`), q.text);
+  assert.ok(q.text.includes(`Sa plage : entre ${clock(win[0])} et ${clock(win[1])}.`), q.text);
   assert.ok(q.text.includes('Les autres arrêts gardent leur heure.'), q.text);
   assert.equal(moves.length, 0, 'nothing sent before the yes');
   const asked = previews.filter((a) => a.args && a.args.p_at === AT);
@@ -163,9 +190,14 @@ step('1. The office, on a computer, drags the third stop of the day to 13 h 30 o
   assert.deepEqual([g.eta, g.win], [AT, win], `the grid: ${g.label}`);
   const unitTop = await page.evaluate(([dd, m, tr]) => { const u = document.querySelector(`[data-testid="grid-unit-${dd}-${m}-${tr}"]`); const col = u.closest('.agenda-grid-col'); return Math.round(u.getBoundingClientRect().top - col.getBoundingClientRect().top); }, [D, AT, T.complet]);
   assert.equal(await d.blockTop(page, J.Chloe), unitTop, 'the block sits on the unit it was let go on');
-  // her window changed (10 h – 14 h → 13 h – 17 h): she is told once
-  const sms = await until(() => d.textsTo('Chloe', /a changé/), (v) => v.length > 0, 15000);
-  assert.equal(sms.length, 1, 'told once');
+  // her window changed (10 h – 14 h → 13 h – 17 h): the app asks « Texter Chloe ? » with her new window (nothing sent
+  // before the answer); « Envoyer le texto »: she is told once
+  await page.getByTestId('text-ask').waitFor({ timeout: 20000 });
+  await h.shot(page, 'deplacer-1-text-ask');
+  const ta = await textAskIf(page, true, 'Chloe');
+  t.diagnostic(`then: « ${ta.title} » — « ${ta.when} »`);
+  assert.ok(ta.when.endsWith(`, entre ${clock(win[0])} et ${clock(win[1])}`), ta.when);
+  const sms = ta.sms;
   assert.ok(sms[0].includes(`entre ${clock(win[0])} et ${clock(win[1])}`), sms[0]);
   await h.shot(page, 'deplacer-1-moved');
   x.nothingLeft(r);
@@ -221,10 +253,12 @@ step('2. The same drag to a time that makes the next customer late: the question
   const toast = page.getByTestId('toast-ok').filter({ hasText: 'Avertis Denis' }).first();
   await toast.waitFor({ timeout: 10000 });
   t.diagnostic(`the message: « ${flat(await toast.innerText())} »`);
-  // A5: the moved customer is told her new window (the server's `tell`); the late one is named to the office, never texted
-  const told = await until(() => d.textsTo('Chloe', /a changé/), (v) => v.length > 0, 15000);
+  // A5: the moved customer is asked about (« Texter Chloe ? », the server's `tell`) and told her new window on « Envoyer le
+  // texto »; the late one is named to the office, never texted nor asked about
+  const told = (await textAskIf(page, true, 'Chloe')).sms;
   assert.equal(told.length, 1, 'Chloe told once');
   await page.waitForTimeout(1500);
+  assert.equal(await page.getByTestId('text-ask').count(), 0, 'one question only: none for Denis');
   assert.deepEqual(await d.textsTo('Denis'), [], 'no text to Denis: the office calls him');
   await h.shot(page, 'deplacer-2-moved-late');
   x.nothingLeft(r);
@@ -243,6 +277,7 @@ step('3. A time the truck cannot reach (8 h, when it leaves the garage): the ear
   const moves = x.answersOf(page, 'move_job');
   await h.signIn(page, who.nadia.email, PW);
   await d.agendaDay(page, D);
+  await h.clearMock();
   await d.dragTo(page, J.Chloe, D, AT, T.complet);
   const q = await d.question(page);
   await h.shot(page, 'deplacer-3-earliest');
@@ -276,6 +311,8 @@ step('3. A time the truck cannot reach (8 h, when it leaves the garage): the ear
     assert.equal(after3.find((y) => y.id === s.id).eta, s.eta_after);
   }
   t.diagnostic(`the day after: ${d.orderAndTimes(after3).join(', ')}`);
+  // « Texter Chloe ? » only when the window told changed (10 h – 14 h before)
+  await textAskIf(page, win[0] !== 600, 'Chloe');
   await h.shot(page, 'deplacer-3-moved');
   x.nothingLeft(r);
   x.noErrors(page);
@@ -314,6 +351,7 @@ step('4. On a phone: « Déplacer » from the Carte’s stop card, the calendar�
   assert.ok(offered.includes(AT), `${clock(AT)} is offered`);
   await page.getByTestId(`pick-time-${AT}`).click();
   await h.shot(page, 'deplacer-4-phone-hour');
+  await h.clearMock();
   await page.getByTestId('move-ok').click();
   const q = await d.question(page);
   await h.shot(page, 'deplacer-4-phone-question');
@@ -335,6 +373,10 @@ step('4. On a phone: « Déplacer » from the Carte’s stop card, the calendar�
   assert.equal(dn.eta - dn.we, L.late_min, 'Denis late by what was said');
   await sheet.waitFor({ state: 'detached', timeout: 15000 });
   await page.getByTestId('toast-ok').filter({ hasText: 'Avertis Denis' }).first().waitFor({ timeout: 10000 });
+  // « Déplacer » from a list of stops (MoveHost, the job screens' send): « Texter Chloe ? » too, on the phone, then the text
+  await page.getByTestId('text-ask').waitFor({ timeout: 20000 });
+  await h.shot(page, 'deplacer-4-phone-text-ask');
+  await textAskIf(page, true, 'Chloe');
   await h.shot(page, 'deplacer-4-phone-moved');
   x.nothingLeft(r);
   x.noErrors(page);
@@ -398,6 +440,8 @@ step('6. « Laisser l’app choisir » (Changer de camion) gives the day back to
   assert.deepEqual([c.arrive_at, c.truck_pinned, c.day, c.win_start, c.win_end], [null, false, D, pinned.win_start, pinned.win_end], 'given back to the planner, the window told kept');
   assert.ok(c.eta_min >= c.win_start && c.eta_min <= c.win_end, `planned inside its window: ${c.eta_min}`);
   t.diagnostic(`the planner put her at ${clock(c.eta_min)}; the day: ${d.orderAndTimes(d.dayOf(T.complet, D)).join(', ')}`);
+  // her window told is kept: nothing to tell her, no « Texter Chloe ? »
+  await textAskIf(page, false, 'Chloe');
   await h.shot(page, 'deplacer-6-auto');
   x.nothingLeft(r);
   x.noErrors(page);
@@ -422,6 +466,7 @@ step('7a. « Vraies routes » on, every trip measured: an exact move on the hour
   const drive = x.driveAnswersOf(page);
   await h.signIn(page, who.nadia.email, PW);
   await d.agendaDay(page, D);
+  await h.clearMock();
   await d.dragTo(page, J.Chloe, D, AT, T.complet);
   const q = await d.question(page);
   t.diagnostic(`the question: « ${q.title} » — « ${q.text} »`);
@@ -437,6 +482,8 @@ step('7a. « Vraies routes » on, every trip measured: an exact move on the hour
   const warms = drive.filter((a) => a.ask?.action === 'warm');
   t.diagnostic(`« drive » asked by the screen: ${JSON.stringify(drive.map((a) => [a.ask?.action, a.ask?.only || '', a.ask?.days || a.ask?.day || '', a.body?.ready]))}`);
   assert.ok(warms.length >= 1, 'A7: the move measured its place first');
+  // « Texter Chloe ? » when her window told changed
+  await textAskIf(page, c.win_start !== on.find((s) => s.id === J.Chloe).ws, 'Chloe');
   await h.shot(page, 'deplacer-7a-moved');
   x.nothingLeft(r);
   x.noErrors(page);
@@ -459,6 +506,7 @@ step('7b. « Vraies routes » on, a stop whose trips are not measured (TomTom an
   const moves = x.answersOf(page, 'move_job');
   await h.signIn(page, who.nadia.email, PW);
   await d.agendaDay(page, D);
+  await h.clearMock();
   await d.dragTo(page, J.Fanny, D, AT, T.complet);
   const q = await d.question(page, 30000);
   t.diagnostic(`the question: « ${q.title} » — « ${q.text} » [${q.buttons.join(' | ')}]`);
@@ -474,7 +522,111 @@ step('7b. « Vraies routes » on, a stop whose trips are not measured (TomTom an
   t.diagnostic(`Fanny after: eta ${c.eta_min}, arrive_at ${c.arrive_at}, measured ${c.eta_measured}, window ${c.win_start}–${c.win_end}`);
   assert.deepEqual([c.arrive_at, c.eta_min], [AT, AT], 'moved to that minute');
   assert.deepEqual([c.win_start, c.win_end], d.winFor(AT));
+  // « Texter Fanny ? » when her window told changed
+  await textAskIf(page, c.win_start !== f0.win_start, 'Fanny');
   await h.shot(page, 'deplacer-7b-moved');
   x.nothingLeft(r);
   x.noErrors(page);
+});
+
+step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me first »): a drag on the agenda, then « Déplacer » on a phone with the texts not connected; each time « Texter Chloe ? » with her new window, answered « Pas de texto » (then, after « Voir » of the move’s message took the phone to her job where the question rose again, closed with ✕): the server is never asked to text, the fake texting service gets nothing, no « text to send by hand » sheet', async (t) => {
+  const AT = 810;
+  const win = d.winFor(AT);
+  /** every request of the page to the server's texts (notify) */
+  const textsAsked = (page) => { const l = []; page.on('request', (q) => { if (/\/functions\/v1\/notify/.test(q.url())) l.push(q.postData()); }); return l; };
+  // A. the agenda's hour grid on a computer (the agenda's send), the texts connected (the fake GoHighLevel keeps them)
+  const r = await d.openD({ kind: 'desktop' });
+  const { page } = r;
+  const asked = textsAsked(page);
+  const moves = x.answersOf(page, 'move_job');
+  await h.signIn(page, who.nadia.email, PW);
+  await d.agendaDay(page, D);
+  await h.clearMock();
+  await d.dragTo(page, J.Chloe, D, AT, T.complet);
+  const q = await d.question(page);
+  await q.yes();
+  await until(() => moves.length, (v) => v > 0, 20000);
+  assert.equal(lastMove(moves).status, 200, JSON.stringify(lastMove(moves).body));
+  await until(() => jobRow(J.Chloe), (v) => v.eta_min === AT, 20000);
+  await page.getByTestId('text-ask').waitFor({ timeout: 20000 });
+  await h.shot(page, 'deplacer-8a-text-ask');
+  const ta = await h.textAsk(page, { send: false });
+  t.diagnostic(`the agenda: « ${ta.title} » — « ${ta.when} », answered « Pas de texto »`);
+  assert.equal(ta.title, 'Texter Chloe ?');
+  assert.ok(ta.when.endsWith(`, entre ${clock(win[0])} et ${clock(win[1])}`), ta.when);
+  await page.waitForTimeout(2500);
+  assert.deepEqual(asked, [], 'the server was never asked to text');
+  assert.deepEqual(await d.textsTo('Chloe'), [], 'the fake texting service got nothing');
+  assert.equal(await page.getByTestId('sms-sheet').count(), 0, 'no « texto à envoyer » sheet');
+  assert.equal(await page.getByTestId('text-ask').count(), 0, 'asked once');
+  assert.equal(await page.locator('.toast').filter({ hasText: /[Tt]exto/ }).count(), 0, 'no message about a text');
+  await h.shot(page, 'deplacer-8a-no-text');
+  x.nothingLeft(r);
+  x.noErrors(page);
+  await r.ctx.close();
+  // B. the world again, the texts NOT connected (a text would give the « text to send by hand » sheet): « Déplacer » from
+  // the Carte on a phone (the job screens' send), the question closed with ✕
+  d.putBack('world');
+  h.sql(`delete from public.secrets where key in ('ghl_token', 'ghl_location')`);
+  const r2 = await d.openD({ kind: 'phone' });
+  const p2 = r2.page;
+  const asked2 = textsAsked(p2);
+  const moves2 = x.answersOf(p2, 'move_job');
+  await h.signIn(p2, who.nadia.email, PW);
+  await p2.goto(h.APP + `#/map?day=${D}`);
+  const pull = p2.getByTestId('map-pull-handle');
+  await pull.waitFor({ timeout: 20000 });
+  if ((await pull.getAttribute('aria-expanded')) !== 'true') await pull.click();
+  const stop = p2.getByTestId(`stop-${J.Chloe}`);
+  await stop.waitFor({ timeout: 20000 });
+  await stop.scrollIntoViewIfNeeded();
+  await stop.click();
+  await p2.getByTestId('map-card').waitFor();
+  await p2.getByTestId('map-move').click();
+  const sheet = p2.getByTestId('move-sheet');
+  await sheet.waitFor({ timeout: 15000 });
+  await p2.getByTestId(`pick-daychip-${D}`).and(p2.locator('[aria-pressed="true"]')).waitFor({ timeout: 20000 });
+  await p2.getByTestId('pick-times').waitFor({ timeout: 30000 });
+  await p2.waitForFunction(() => !document.querySelector('[data-testid="pick-times"]')?.classList.contains('is-stale'), null, { timeout: 30000 });
+  const offered = await p2.$$eval('[data-testid^="pick-time-"]', (bs) => bs.map((b) => Number(b.dataset.testid.replace('pick-time-', ''))));
+  // a time whose window is not hers (10 h – 14 h): what she was told changes
+  const at2 = offered.includes(AT) ? AT : offered.find((m) => d.winFor(m)[0] !== 600);
+  assert.ok(at2 != null, `a time that changes her window: ${offered.map(clock).join(', ')}`);
+  const win2 = d.winFor(at2);
+  await p2.getByTestId(`pick-time-${at2}`).click();
+  await p2.getByTestId('move-ok').click();
+  // somebody later or late at that time: said first, answered yes (the move is not what is tested here)
+  for (let i = 0; i < 3 && !(await d.noQuestion(p2, 2500)); i++) await (await d.question(p2)).yes();
+  await until(() => moves2.length, (v) => v > 0, 20000);
+  assert.equal(lastMove(moves2).status, 200, JSON.stringify(lastMove(moves2).body));
+  await sheet.waitFor({ state: 'detached', timeout: 15000 });
+  const ask2 = p2.getByTestId('text-ask');
+  await ask2.waitFor({ timeout: 20000 });
+  assert.equal(x.flat(await ask2.locator('h2').innerText()), 'Texter Chloe ?');
+  assert.ok(x.flat(await p2.getByTestId('text-ask-when').innerText()).endsWith(`, entre ${clock(win2[0])} et ${clock(win2[1])}`));
+  await h.shot(p2, 'deplacer-8b-phone-text-ask');
+  // « Voir » of the move's message, above the question, tapped (review M1): a navigation never answers it; the job's
+  // screen opens and the question rises again there, nothing sent
+  const see = p2.locator('.toast').filter({ hasText: 'Rendez-vous déplacé' }).getByRole('button', { name: 'Voir', exact: true });
+  await see.waitFor({ timeout: 4000 });
+  await see.click();
+  await p2.waitForURL(new RegExp(`#/job/${J.Chloe}`), { timeout: 15000 });
+  await p2.getByTestId('job-screen').waitFor({ timeout: 15000 });
+  await ask2.waitFor({ timeout: 15000 });
+  assert.equal(x.flat(await ask2.locator('h2').innerText()), 'Texter Chloe ?', 'the question again, on the job’s screen');
+  assert.deepEqual(asked2, [], 'the « Voir » sent nothing');
+  await h.shot(p2, 'deplacer-8b-phone-text-ask-on-job');
+  // closing the question (✕) is « Pas de texto »
+  await p2.waitForTimeout(450);
+  await ask2.locator('.sheet-x').click();
+  await ask2.waitFor({ state: 'detached', timeout: 10000 });
+  await p2.waitForTimeout(2500);
+  assert.deepEqual(asked2, [], 'the server was never asked to text');
+  // (the texts are not connected here: the fake texting service could get nothing anyway; the page's own requests
+  // above and no « text to send by hand » sheet are the proof)
+  assert.equal(await p2.getByTestId('text-outcome').count(), 0, 'no « text to send by hand » sheet');
+  assert.match(p2.url(), new RegExp(`#/job/${J.Chloe}`), 'still on the job’s screen');
+  await h.shot(p2, 'deplacer-8b-no-text');
+  x.nothingLeft(r2);
+  x.noErrors(p2);
 });

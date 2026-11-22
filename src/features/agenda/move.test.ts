@@ -1,4 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/* The agenda's moves. Since Hassan's « the system should ask me first » (2026-11-22) a move NEVER sends the « moved » text
+   itself: where it used to (what the customer was told changed, the switch on), it asks « Texter … ? »
+   (shared/jobs/textAsk, pretended here: `asked()` lists the appointments asked about) and notifyCustomer is never called
+   by the move (checked after every test). */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Job } from '../../data/types';
 import { lang } from '../../lib/i18n';
 
@@ -7,17 +11,26 @@ const sync = vi.hoisted(() => ({ outboxList: vi.fn(), whenDone: vi.fn() }));
 const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 const notify = vi.hoisted(() => ({ notifyCustomer: vi.fn(), wantsText: vi.fn() }));
 const rows = vi.hoisted(() => ({ job: vi.fn(), customer: vi.fn() }));
+const textAsk = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true) }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 vi.mock('../../data/sync', async (orig) => ({ ...(await orig<object>()), ...sync }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ...ui }));
 vi.mock('../../shared/moment/notify', async (orig) => ({ ...(await orig<object>()), ...notify }));
 vi.mock('../../data/select', async (orig) => ({ ...(await orig<object>()), ...rows }));
+vi.mock('../../shared/jobs/textAsk', async (orig) => ({ ...(await orig<object>()), ...textAsk }));
 
 import { moveToWindow, moveFlow, moveToTime, movesWaiting, windowMove, moveSettled, farCheckDay } from './move';
 
 const julie = (o: Partial<Job> = {}): Job => ({ id: 'j1', number: 7, day: '2026-11-20', block: 'day', status: 'booked', win_start: 540, win_end: 780, win_flex: false,
   truck_id: 't1', truck_pinned: false, duration_min: 60, lat: 45.5, lng: -73.6, customer_id: null, needs_machine: false, vehicle_kind: null, ...o } as Job);
 const flush = () => new Promise((r) => setTimeout(r, 0));
+/** the appointments « Texter … ? » was asked for (the agenda's send: via 'notify') */
+const asked = () => textAsk.askMovedText.mock.calls.map((c) => {
+  expect(c[1]).toMatchObject({ via: 'notify' });
+  return typeof c[0] === 'string' ? c[0] : (c[0] as Job).id;
+});
+// nothing goes by itself: the move only asks
+afterEach(() => { expect(notify.notifyCustomer).not.toHaveBeenCalled(); });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -29,40 +42,39 @@ beforeEach(() => {
   windowMove.value = null;
 });
 
-describe('a move from the agenda texts the customer when what they were told changed (agenda-01)', () => {
-  it('a new window the same day: the server answers changed: false, the text still goes', async () => {
+describe('a move from the agenda asks « Texter … ? » when what the customer was told changed (agenda-01)', () => {
+  it('a new window the same day: the server answers changed: false, the question is still asked (no text by itself)', async () => {
     const after = julie({ win_start: 840, win_end: 1080 });
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, rows: { jobs: [after] } } });
     expect(await moveToWindow(julie(), '2026-11-20', { start: 840 })).toBe(true);
-    expect(notify.notifyCustomer).toHaveBeenCalledTimes(1);
-    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+    expect(asked()).toEqual(['j1']);
   });
-  it('the time grid, same day, another hour: texted too', async () => {
+  it('the time grid, same day, another hour: asked too', async () => {
     const after = julie({ win_start: 840, win_end: 1080 });
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, rows: { jobs: [after] } } });
     expect(await moveToTime(julie(), '2026-11-20', null, 900)).toBe(true);
-    expect(notify.notifyCustomer).toHaveBeenCalledTimes(1);
+    expect(asked()).toEqual(['j1']);
   });
-  it('« unchanged » (agenda-07): no text, and the toast says nothing changed', async () => {
+  it('« unchanged » (agenda-07): nothing asked, and the toast says nothing changed', async () => {
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, unchanged: true } });
     expect(await moveToWindow(julie({ win_flex: true }), '2026-11-20', { flex: true })).toBe(true);
-    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+    expect(asked()).toEqual([]);
     expect(ui.toast.mock.calls[0][0]).not.toBe('Job déplacée');
   });
 });
 
-describe('the server’s « tell » decides the text when it gives it (R85)', () => {
-  it('tell: true texts even when the answer has no row and the phone’s row is still as before', async () => {
+describe('the server’s « tell » decides the question when it gives it (R85)', () => {
+  it('tell: true asks even when the answer has no row and the phone’s row is still as before', async () => {
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, tell: true, window_changed: true } });
     rows.job.mockReturnValue(julie());
     expect(await moveToWindow(julie(), '2026-11-20', { start: 840 })).toBe(true);
-    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+    expect(asked()).toEqual(['j1']);
   });
-  it('tell: false sends nothing even when the phone’s old row differs from the answer’s', async () => {
+  it('tell: false asks nothing even when the phone’s old row differs from the answer’s', async () => {
     // the phone still held 9 h – 13 h; the server had 14 h – 18 h already (what the customer was told) and keeps it
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, tell: false, rows: { jobs: [julie({ win_start: 840, win_end: 1080 })] } } });
     expect(await moveToWindow(julie(), '2026-11-20', { start: 840 })).toBe(true);
-    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+    expect(asked()).toEqual([]);
   });
   it('a move kept on the phone follows the server’s « tell » once it lands', async () => {
     let land: (d: unknown) => void = () => {};
@@ -72,13 +84,13 @@ describe('the server’s « tell » decides the text when it gives it (R85)', ()
     await moveToWindow(julie(), '2026-11-22', { start: 540 });
     land({ ok: true, changed: true, tell: false, rows: { jobs: [julie({ day: '2026-11-22' })] } });
     await flush(); await flush();
-    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+    expect(asked()).toEqual([]);
   });
   it('a server without « tell » (the live one before the rebuild): the rows decide, as before', async () => {
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true } });
     rows.job.mockReturnValue(julie());
     expect(await moveToWindow(julie(), '2026-11-21', { start: 540 })).toBe(true);
-    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+    expect(asked()).toEqual(['j1']);
   });
 });
 
@@ -96,21 +108,21 @@ describe('a drop in the job’s own truck column (agenda-08)', () => {
 });
 
 describe('a move kept on the phone (agenda-02, agenda-14)', () => {
-  it('texts once the server has it, and is not dragged again meanwhile', async () => {
+  it('asks once the server has it (never before, never by itself), and is not dragged again meanwhile', async () => {
     let land: (d: unknown) => void = () => {};
     api.moveJob.mockResolvedValue({ queued: true });
     sync.outboxList.mockResolvedValue([{ op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } }]);
     sync.whenDone.mockReturnValue(new Promise((r) => { land = r; }));
     expect(await moveToWindow(julie(), '2026-11-22', { start: 540 })).toBe(true);
     await flush();
-    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+    expect(asked()).toEqual([]);
     expect(movesWaiting.value.has('j1')).toBe(true);
     land({ ok: true, changed: true, rows: { jobs: [julie({ day: '2026-11-22' })] } });
     await flush(); await flush();
-    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+    expect(asked()).toEqual(['j1']);
     expect(movesWaiting.value.has('j1')).toBe(false);
   });
-  it('promises the text only while the app stays open: the wait lives in memory (hors-ligne-03)', async () => {
+  it('says the question follows only while the app stays open: the wait lives in memory (hors-ligne-03); no text promised', async () => {
     api.moveJob.mockResolvedValue({ queued: true });
     sync.outboxList.mockResolvedValue([{ op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } }]);
     sync.whenDone.mockReturnValue(new Promise(() => {}));
@@ -118,19 +130,19 @@ describe('a move kept on the phone (agenda-02, agenda-14)', () => {
     try {
       lang.value = 'fr';
       await moveToWindow(julie(), '2026-11-22', { start: 540 });
-      expect(ui.toast.mock.calls[ui.toast.mock.calls.length - 1][0]).toContain('Le texto au client partira quand le déplacement sera envoyé, si l’app reste ouverte.');
+      expect(ui.toast.mock.calls[ui.toast.mock.calls.length - 1][0]).toContain('Quand le déplacement sera envoyé, l’app te demandera s’il faut texter le client (si l’app reste ouverte).');
       lang.value = 'en';
       await moveToWindow(julie(), '2026-11-22', { start: 540 });
-      expect(ui.toast.mock.calls[ui.toast.mock.calls.length - 1][0]).toContain('The text to the customer goes once the move is sent, if the app stays open.');
+      expect(ui.toast.mock.calls[ui.toast.mock.calls.length - 1][0]).toContain('Once the move is sent, the app will ask you whether to text the customer (if the app stays open).');
     } finally { lang.value = was; }
   });
-  it('sends no text when it is refused later', async () => {
+  it('asks nothing when it is refused later', async () => {
     api.moveJob.mockResolvedValue({ queued: true });
     sync.outboxList.mockResolvedValue([{ op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } }]);
     sync.whenDone.mockReturnValue(Promise.reject(new Error('block_full')));
     await moveToWindow(julie(), '2026-11-22', { start: 540 });
     await flush(); await flush();
-    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+    expect(asked()).toEqual([]);
     expect(movesWaiting.value.has('j1')).toBe(false);
   });
 });
@@ -174,14 +186,14 @@ describe('waiting for a move kept on the phone, without losing the answer (revie
     sync.whenDone.mockResolvedValue({ ok: true, changed: true });
     expect(await moveSettled('j1')).toEqual({ kind: 'done', data: { ok: true, changed: true } });
   });
-  it('the race: the move leaves the phone before the wait, the text still goes and the job can be dragged again', async () => {
+  it('the race: the move leaves the phone before the wait, the question is still asked and the job can be dragged again', async () => {
     api.moveJob.mockResolvedValue({ queued: true });
     rows.job.mockReturnValue(julie({ day: '2026-11-22' }));
     sync.outboxList.mockResolvedValueOnce([entry]).mockResolvedValueOnce([]);
     sync.whenDone.mockReturnValue(new Promise(() => {}));
     await moveToWindow(julie(), '2026-11-22', { start: 540 });
     await flush(); await flush();
-    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+    expect(asked()).toEqual(['j1']);
     expect(movesWaiting.value.has('j1')).toBe(false);
   });
   it('an unreadable outbox clears the « waiting » mark, with or without a text, and nothing is left unhandled', async () => {

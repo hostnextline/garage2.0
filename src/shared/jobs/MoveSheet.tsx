@@ -1,5 +1,6 @@
 /* « Déplacer »: another day and block (or arrival window), with the « garde-route » question when the moment puts too much
-   road in the truck's day; then, when the « moved » text is on, the customer gets it by itself. The one sheet of the app:
+   road in the truck's day; then, when the « moved » text is on and what the customer was told changed, the question
+   « Texter … ? » (textAsk.tsx: Hassan, 2026-11-22, nothing goes by itself). The one sheet of the app:
    the appointment's screen opens it (features/jobs/JobSheet.tsx), and so do the lists of a truck's stops, on their own
    screen (MoveHost: Carte, Vue d'ensemble, Aujourd'hui). Moved here from features/jobs, unchanged but for `onSent` and
    `fromList` (the lists of stops only; the appointment's screen passes neither and behaves as before).
@@ -10,7 +11,7 @@
    and the blocks move as before. */
 import { useState } from 'preact/hooks';
 import type { Job } from '../../data/types';
-import { Sheet, Button, toast, ask, whenHistorySettled } from '../../ui';
+import { Sheet, Button, toast, ask } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { settings, windowsOn, job as jobRow, daySpan, windowOf } from '../../data/select';
 import { navigate } from '../../platform/router';
@@ -23,19 +24,17 @@ import { moveTextGoes } from '../../domain/jobs/move';
 import { exactAtOf } from '../../domain/moment/exactAt';
 import { dropTells } from '../../domain/moment/moveRules';
 import { jobCustomer, dayInSentence, wt } from './select';
-import { sendText } from './texts';
+import { askMovedText } from './textAsk';
 import { moveAt, doneWords } from './exactMove';
 
 /** what moveJob gave: kept on the phone (`queued`), or the server's answer */
 export type MoveSent = { queued: boolean; data?: unknown };
 
-/** opens something after a closing sheet gave back its history step (else the step back would close the new one) */
-function afterSheet(fn: () => void) { setTimeout(() => whenHistorySettled(fn), 0); }
-
 /** `onSent`: told once the move went (moved, nothing to change, or kept on the phone), before the sheet closes.
     `fromList`: opened from a list of a truck's stops (MoveHost), where the stop leaves the list once moved: the message
-    stays 6 s with « Voir » (the appointment's screen), a move kept on the phone says its text follows once sent (MoveHost
-    sends it), and window mode opens the picker on the stop's own day (another hour the same day: one tap less). */
+    stays 6 s with « Voir » (the appointment's screen), a move kept on the phone says the question « Texter … ? » follows
+    once sent (MoveHost asks it), and window mode opens the picker on the stop's own day (another hour the same day: one
+    tap less). */
 export function MoveSheet(p: { job: Job; open: boolean; onClose: () => void; onSent?: (r: MoveSent) => void; fromList?: boolean }) {
   if (!p.open) return null;
   return <MoveOpen job={p.job} onClose={p.onClose} onSent={p.onSent} fromList={p.fromList} />;
@@ -67,7 +66,7 @@ function MoveOpen(p: { job: Job; onClose: () => void; onSent?: (r: MoveSent) => 
   };
   /** to that very minute (A1, A2): the flow asks what it has to, the sheet stays open when the person picks another time */
   const moveExact = async (c: BlockChoice, m: number) => {
-    // « Un texto avertira … » only when what the customer was told changes (another day or window)
+    // « L'app te demandera ensuite s'il faut texter … » only when what the customer was told changes (another day or window)
     const sms = textOn && wantsText('moved', j.id) && dropTells(j, c.day, windowOf(m)[0]);
     const d = await moveAt({ job: j, day: c.day, truck: null, at: m, confirm: false, sms, offered: c.truck ?? null,
       far: async () => farQuestion(far, c, 'move') });
@@ -78,7 +77,8 @@ function MoveOpen(p: { job: Job; onClose: () => void; onSent?: (r: MoveSent) => 
     else said(doneWords(d, c.day));
     p.onSent?.(r);
     p.onClose();
-    if (moveTextGoes(r, j, jobRow(j.id), textOn)) afterSheet(() => { void sendText('moved', j); });
+    // the question once this sheet gave back its history step (textAsk waits for it)
+    if (moveTextGoes(r, j, jobRow(j.id), textOn)) askMovedText(j, { via: 'jobs' });
   };
   const move = async () => {
     if (!choice || busy) return;
@@ -97,15 +97,15 @@ function MoveOpen(p: { job: Job; onClose: () => void; onSent?: (r: MoveSent) => 
       else said(t('jobs.moment.moved', { when: movedWhen(choice) }));
       p.onSent?.(r);
       p.onClose();
-      // the text only when what the customer was told changed (the server's `tell`): a truck changed at the same moment,
-      // or the same window, says nothing new to them (R84)
-      if (moveTextGoes(r, j, jobRow(j.id), textOn)) afterSheet(() => { void sendText('moved', j); });
+      // the question « Texter … ? » only when what the customer was told changed (the server's `tell`): a truck changed at
+      // the same moment, or the same window, says nothing new to them (R84); nothing goes without « Envoyer le texto »
+      if (moveTextGoes(r, j, jobRow(j.id), textOn)) askMovedText(j, { via: 'jobs' });
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
     }
   };
   return (
-    <Sheet open onClose={p.onClose} title={t('jobs.moment.moveTitle')} sub={wt({ block: windowsOn.value ? 'day' : 'am' }, textOn ? 'jobs.moment.moveLeadText' : 'jobs.moment.moveLead')} wide data-testid="move-sheet"
+    <Sheet open onClose={p.onClose} title={t('jobs.moment.moveTitle')} sub={wt({ block: windowsOn.value ? 'day' : 'am' }, textOn && wantsText('moved', j.id) ? 'jobs.moment.moveLeadText' : 'jobs.moment.moveLead')} wide data-testid="move-sheet"
       footer={<><Button onClick={p.onClose}>{t('common.cancel')}</Button><Button variant="primary" disabled={!choice || same} busy={busy} onClick={move} data-testid="move-ok">{t('jobs.moment.moveOk')}</Button></>}>
       <BlockPicker lat={j.lat ?? c?.lat ?? null} lng={j.lng ?? c?.lng ?? null} address={j.address || c?.address || null} duration={j.duration_min} excludeJob={j.id} exactMove value={choice} onPick={setChoice} onFar={setFar} {...(p.fromList ? { openDay: j.day } : {})} />
     </Sheet>

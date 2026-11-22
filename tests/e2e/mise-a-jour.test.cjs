@@ -514,7 +514,10 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   // « Beaucoup de route ce jour-là »: the office books it anyway
   await o.page.getByTestId('move-sheet').waitFor({ state: 'detached', timeout: 15000 }).catch(async () => { await o.page.locator('[role=dialog] button.btn-primary, [role=dialog] [data-testid$="-ok"]').last().click(); });
   assert.equal(await until(() => h.sql(`select day::text || '|' || block from public.jobs where id = '${X}'`), (v) => v === `${target}|pm`, 15000), `${target}|pm`, 'moved on the server');
-  // texts are not connected here: the message to Lina (« votre rendez-vous a changé ») is given to send by hand
+  // never by itself (Hassan, 2026-11-22): « Texter Lina ? », « Envoyer le texto »; texts are not connected here: the message
+  // to Lina (« votre rendez-vous a changé ») is given to send by hand
+  const ta = await h.textAsk(o.page);
+  assert.equal(ta.title, 'Texter Lina ?');
   await o.page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
   assert.match(await o.page.getByTestId('text-outcome-message').innerText(), /Lina/);
   await dismissSheets(o.page);

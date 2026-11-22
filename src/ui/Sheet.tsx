@@ -36,6 +36,9 @@ export interface SheetProps {
   children?: ComponentChildren;
   /** false: only the buttons close it (a signature in progress…) */
   dismissable?: boolean;
+  /** a navigation to another screen closes it: this instead of onClose (the owner may show it again on the next
+      screen: « Texter … ? », where closing means « Pas de texto ») */
+  onNavigate?: () => void;
   'data-tour'?: string;
   'data-testid'?: string;
 }
@@ -47,6 +50,8 @@ function SheetOpen(p: SheetProps) {
   const box = useRef<HTMLDivElement>(null);
   const closeRef = useRef(p.onClose);
   closeRef.current = p.onClose;
+  const navRef = useRef(p.onNavigate);
+  navRef.current = p.onNavigate;
   const dismissable = p.dismissable !== false;
   // read live: a signature started after the sheet opened makes it non-dismissable from then on
   const dismissableRef = useRef(dismissable);
@@ -58,7 +63,7 @@ function SheetOpen(p: SheetProps) {
     lockScroll(true);
     let alive = true;
     const layer = openLayer((why) => {
-      if (why === 'navigate') { closeRef.current(); return; }
+      if (why === 'navigate') { (navRef.current ?? closeRef.current)(); return; }
       // the phone's back: the sheet keeps its step and its owner is asked to close it, right after (R57). A sheet that
       // closes goes with its step, as after its ✕; one that stays open (« Quitter sans enregistrer ? » answered « non »,
       // a signature in progress) still has its step, so the next back asks again instead of leaving the screen

@@ -263,7 +263,7 @@ export const jobs: typeof fr = {
     move: 'Move',
     moveTitle: 'Move the appointment',
     moveLead: 'Pick another day or another block.',
-    moveLeadText: 'Pick another day or another block. The customer gets a text with the new time.',
+    moveLeadText: 'Pick another day or another block. Then the app will ask you whether to text the customer.',
     moveOk: 'Move here',
     moved: 'Appointment moved: {when}.',
     /* the message's button after a move from a list of stops: opens the appointment */
@@ -273,9 +273,9 @@ export const jobs: typeof fr = {
   },
   exact: {
     question: 'Move {name}’s job: {when} at {time}?',
-    text: 'The customer is told: between {from} and {to}. The other stops keep their time.',
-    told: 'The customer is told: between {from} and {to}.',
-    toldFor: '{name} is told: between {from} and {to}.',
+    text: 'Their window: between {from} and {to}. The other stops keep their time.',
+    told: 'Their window: between {from} and {to}.',
+    toldFor: '{name}’s window: between {from} and {to}.',
     pushed: { one: 'This stop arrives a little later, still inside its window:', other: 'These stops arrive a little later, still inside their window:' },
     pushedLine: '{name}: around {eta} instead of {was}.',
     lateTitle: { one: 'Moving {who} to {time} makes {name} late', other: 'Moving {who} to {time} makes {n} customers late' },
@@ -287,7 +287,7 @@ export const jobs: typeof fr = {
     early: 'The truck can’t be at {name}’s at {time}: {earliest} at the earliest.',
     earlyKeep: 'At {time}, no other stop changes its time.',
     earlyOk: 'Set to {earliest}',
-    earlyTold: 'At {earliest}, the window the customer is told becomes {from} to {to} instead.',
+    earlyTold: 'At {earliest}, their window becomes {from} to {to} instead.',
     unchecked: 'I couldn’t check the other customers’ times.',
     unmeasured: 'Not every road of that day is measured yet: I can’t tell yet whether someone will be late.',
     offline: 'No signal: I can’t check whether this move makes someone late. Try again when the signal is back.',
@@ -297,6 +297,12 @@ export const jobs: typeof fr = {
     notAt: 'Placed at {real}: the truck couldn’t be there at {time}.',
     someone: 'a customer',
     otherTruck: 'Its truck doesn’t work that day: the job goes on {truck}.'
+  },
+  textAsk: {
+    title: 'Text {name}?',
+    lead: 'The text will tell them the new time:',
+    send: 'Send the text',
+    skip: 'No text'
   },
   order: {
     open: 'Order of the stops',
@@ -379,7 +385,7 @@ export const jobs: typeof fr = {
     work: { longerHint: 'The truck keeps the time needed in its day.' },
     moment: {
       moveLead: 'Pick another day or another arrival window.',
-      moveLeadText: 'Pick another day or another arrival window. The customer gets a text with the new time.',
+      moveLeadText: 'Pick another day or another arrival window. Then the app will ask you whether to text the customer.',
       help: 'The length lets the truck fit the stops in its day. If the job no longer fits, move it.'
     },
     order: {
