@@ -1,0 +1,1 @@
+import{cg as t}from"./index-DnBXvJUI.js";import{s as r}from"./engineRef-BrEYI8OH.js";function c(e){if(!e)return null;const s=e.spec_key?t(e.spec_key):void 0;if(s)return{spec:s,linked:!0};const n=r(e),o=n?t(n):void 0;return o?{spec:o,linked:!1}:null}export{c as s};

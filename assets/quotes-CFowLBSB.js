@@ -1,0 +1,1 @@
+import{u as e}from"./preload-helper-Nq9T8Itq.js";import{t as o,a9 as s}from"./index-DnBXvJUI.js";const n={open:"draft",sent:"booked",accepted:"done",declined:"cancelled",converted:"on_site"};function u(t){return e(s,{tone:n[t.status]||"muted","data-testid":"quote-status",children:o(`quotes.status.${t.status}`)})}export{u as Q};

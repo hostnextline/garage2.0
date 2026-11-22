@@ -1,0 +1,1 @@
+import{y as e}from"./index-DnBXvJUI.js";const a=typeof window<"u"&&window.matchMedia?window.matchMedia("(min-width: 1200px)"):null,o=e(!!a?.matches);a?.addEventListener?.("change",n=>{o.value=n.matches});const d=e(!1);export{o as a,d as b};

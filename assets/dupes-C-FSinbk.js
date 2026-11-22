@@ -1,0 +1,1 @@
+import{z as s}from"./preload-helper-Nq9T8Itq.js";function r(n){const e=s(n);if(e)return e;const t=String(n||"").replace(/\D/g,"");return t.length>=10?t.slice(-10):null}function l(n){return(n.phone_digits&&n.phone_digits.length===10?n.phone_digits:null)||r(n.phone)}function d(n,e,t){const o=r(n);return o?e.filter(i=>!i.deleted_at&&i.id!==t&&l(i)===o):[]}export{d as p};

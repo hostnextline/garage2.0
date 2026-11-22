@@ -1,0 +1,1 @@
+import{y as n}from"./preload-helper-Nq9T8Itq.js";import{a as s}from"./photon-CgdYGDq-.js";const u={address:"",unit:null,postal_code:null,lat:null,lng:null,city:null};function i(l){const t=l.address.trim()||null;return{address:t,unit:l.unit?.trim()||null,postal_code:n(l.postal_code),lat:t?l.lat:null,lng:t?l.lng:null,city:l.city||s(t)}}export{u as E,i as p};
