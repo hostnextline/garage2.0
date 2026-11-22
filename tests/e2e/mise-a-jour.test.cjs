@@ -1,4 +1,4 @@
-// The update on a real phone: yesterday's app (the LIVE one, commit aa1b4e6) with its data and its waiting changes, then the
+// The update on a real phone: yesterday's app (the LIVE one, commit d7b6c0d2 since 2026-11-21) with its data and its waiting changes, then the
 // rebuilt app on the same phone; the way back (a rollback); and two phones at once on the rebuilt app.
 // Both apps are built for the local copy of the server and served one after the other at the SAME address, to browsers that
 // keep their profile on disk (IndexedDB « his-garage-<uid> », localStorage, the installed service worker): mise-a-jour.helpers.cjs.
@@ -230,8 +230,27 @@ step('yesterday’s app with no signal: Saleh arrives, types the VIN and the km,
 
 /** the labels of the changes the sync sheet lists as waiting (what the person reads) */
 const waitingLabels = (text) => text.split('\n').map((l) => l.trim()).filter(Boolean);
+/** yesterday's app says an important update is there: its toast (before the rebuild) or its banner (since the rebuild) */
+const importantNotice = (page) => page.getByTestId('toast-info').or(page.locator('.toast')).or(page.getByTestId('update-banner'))
+  .filter({ hasText: /Important app update|Mise à jour importante/ }).first();
 /** the page is (or becomes) the rebuilt app: it reloads by itself once the new version takes over */
 const becomes = (page, which, ms = 30000) => until2(async () => { try { return await m.whichApp(page); } catch { return 'loading'; } }, (v) => v === which, ms);
+/** yesterday's app finds the new version. The app of before the rebuild (aa1b4e6) says so in a toast (« Update now »).
+    The rebuilt one (d7b6c0d2, the phones' app since 2026-11-21: src/shared/app/pwa.ts, version.ts mayApplyNow) puts it in
+    place BY ITSELF when the app just opened and nothing can be lost (nothing touched, nothing typed, nothing being sent,
+    changes kept on the phone's disk), else says so in its banner « update-banner ». Answers how: 'notice' (with it),
+    'itself' (the page already runs the rebuilt app) or 'none'. */
+async function updateComes(page, ms = 30000) {
+  const notice = importantNotice(page);
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (await notice.isVisible().catch(() => false)) return { how: 'notice', notice };
+    let w; try { w = await m.whichApp(page); } catch { w = 'loading'; }
+    if (w === 'new') return { how: 'itself' };
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return { how: 'none' };
+}
 /** what the rebuilt app shows from the phone's copy, with no signal: the person, the day, the look, the work kept */
 async function sameAsYesterday(page) {
   await page.getByTestId('app').waitFor({ timeout: 20000 });
@@ -256,17 +275,19 @@ step('the update: the next morning the phones open the same address, now the reb
   assert.equal(await m.whichApp(page), 'old', 'no signal: yesterday’s app, from the phone');
   const hisKeys = () => page.evaluate(() => Object.keys(localStorage).filter((k) => /^his[.-]/.test(k)).sort());
   const keptBefore = await hisKeys();
-  // the files come: yesterday's app finds the new version when it opens, downloads it and says so
+  // the files come: yesterday's app finds the new version when it opens, downloads it and says so (or, since the rebuild,
+  // puts it in place by itself: nothing touched yet, the waiting changes are on the phone's disk): updateComes
   await p.ctx.setOffline(false);
   await page.reload();
-  const notice = page.getByTestId('toast-info').or(page.locator('.toast')).filter({ hasText: /Important app update|Mise à jour importante/ }).first();
-  await notice.waitFor({ timeout: 30000 });
-  const said = await notice.innerText();
-  show('yesterday’s app says', said);
-  await h.shot(page, 'maj-3-update-offered');
-  // « Update now »: the new version takes over and the page reloads by itself
-  await notice.getByRole('button', { name: /Update now|Mettre à jour/ }).click();
-  assert.equal(await becomes(page, 'new'), 'new', 'the rebuilt app runs after « Update now »');
+  const u = await updateComes(page);
+  assert.notEqual(u.how, 'none', 'yesterday’s app takes the new version: its notice, or by itself as it opens');
+  if (u.how === 'notice') {
+    show('yesterday’s app says', await u.notice.innerText());
+    await h.shot(page, 'maj-3-update-offered');
+    // « Update now »: the new version takes over and the page reloads by itself
+    await u.notice.getByRole('button', { name: /Update now|Mettre à jour/ }).click();
+  } else show('yesterday’s app', 'put the new version in place by itself as it opened (nothing could be lost)');
+  assert.equal(await becomes(page, 'new'), 'new', 'the rebuilt app runs after « Update now » (or by itself)');
   await p.ctx.setOffline(true);
   await sameAsYesterday(page);
   // what yesterday's app kept in the browser's small storage is all still there (the session, the language, the look, the photo…)
@@ -294,12 +315,14 @@ step('the update: the next morning the phones open the same address, now the reb
   assert.equal(await m.whichApp(p2.page), 'new', 'the rebuilt app opens with no signal');
   await sameAsYesterday(p2.page);
 
-  // the office: the notice is not tapped; the app is closed, then opened again
+  // the office: the notice is not tapped (or the rebuilt app took over by itself); the app is closed, then opened again
   const o = await m.phone('bureau');
   await o.page.goto(h.APP);
   await o.page.getByTestId('app').waitFor({ timeout: 20000 });
   assert.equal(await m.whichApp(o.page), 'old');
-  await o.page.getByTestId('toast-info').or(o.page.locator('.toast')).filter({ hasText: /Mise à jour importante|Important app update/ }).first().waitFor({ timeout: 30000 });
+  const ou = await updateComes(o.page);
+  assert.notEqual(ou.how, 'none', 'the office’s app takes the new version: its notice, or by itself as it opens');
+  show('the office’s app', ou.how);
   await m.putAway(o);
   const o2 = await m.phone('bureau', { offline: true });
   await o2.page.goto(h.APP);
