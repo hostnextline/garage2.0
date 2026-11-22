@@ -294,9 +294,9 @@ export const jobs = {
      move to a time pointed (shared/jobs/exactMove.ts), its four cases, and the message after it */
   exact: {
     question: 'Déplacer la job de {name} : {when} à {time} ?',
-    text: 'Dit au client : entre {from} et {to}. Les autres arrêts gardent leur heure.',
-    told: 'Dit au client : entre {from} et {to}.',
-    toldFor: 'Dit à {name} : entre {from} et {to}.',
+    text: 'Sa plage : entre {from} et {to}. Les autres arrêts gardent leur heure.',
+    told: 'Sa plage : entre {from} et {to}.',
+    toldFor: 'Plage de {name} : entre {from} et {to}.',
     pushed: { one: 'Cet arrêt arrive un peu plus tard, toujours dans sa plage :', other: 'Ces arrêts arrivent un peu plus tard, toujours dans leur plage :' },
     pushedLine: '{name} : vers {eta} au lieu de {was}.',
     lateTitle: { one: 'Déplacer {who} à {time} met {name} en retard', other: 'Déplacer {who} à {time} met {n} clients en retard' },
@@ -308,7 +308,7 @@ export const jobs = {
     early: 'Le camion ne peut pas être chez {name} à {time} : au plus tôt {earliest}.',
     earlyKeep: 'À {time}, aucun autre arrêt ne change d’heure.',
     earlyOk: 'Mettre à {earliest}',
-    earlyTold: 'À {earliest}, la plage dite au client devient : entre {from} et {to}.',
+    earlyTold: 'À {earliest}, sa plage devient : entre {from} et {to}.',
     unchecked: 'Je n’ai pas pu vérifier l’heure des autres clients.',
     unmeasured: 'Les routes de cette journée ne sont pas toutes mesurées : je ne peux pas encore dire si quelqu’un sera en retard.',
     offline: 'Pas de réseau : je ne peux pas vérifier si ce déplacement met quelqu’un en retard. Réessaie quand le réseau revient.',
@@ -323,7 +323,7 @@ export const jobs = {
   /* after a change of an appointment: the « moved » text goes only when the person says so (shared/jobs/textAsk.tsx) */
   textAsk: {
     title: 'Texter {name} ?',
-    lead: 'Son rendez-vous a changé. Le texto lui dira le nouveau moment :',
+    lead: 'Le texto lui dira le nouveau moment :',
     send: 'Envoyer le texto',
     skip: 'Pas de texto'
   },

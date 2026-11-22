@@ -3,6 +3,7 @@
    « Pas de texto » and closing send nothing; two changes of the same appointment: one question with the latest moment; two
    appointments: one question each, in turn. The server (notify) is pretended. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render } from 'preact';
 import { act } from 'preact/test-utils';
 
 const api = vi.hoisted(() => ({ notify: vi.fn() }));
@@ -12,8 +13,11 @@ vi.mock('../../data/sync', async (orig) => ({ ...(await orig<object>()), ...sync
 
 import { askMovedText, textAsksWaiting, clearTextAsks, movedWhen, TEXT_ASK_DEAD_MS } from './textAsk';
 import { outcome } from './texts';
+import { TextOutcomeHost } from './TextOutcome';
 import { toasts } from '../../ui/toast';
-import { replaceLocal, upsertLocal, clearAll, getRow } from '../../data/store';
+import { replaceLocal, upsertLocal, removeLocal, clearAll, getRow } from '../../data/store';
+import { whenHistorySettled, stackOf } from '../../platform/history';
+import { navigate } from '../../platform/router';
 import { lang } from '../../lib/i18n';
 import type { Job } from '../../data/types';
 
@@ -64,6 +68,9 @@ describe('the question « Texter … ? » (ask first)', () => {
   });
 
   it('« Envoyer le texto »: the very send of before, once (a second tap sends nothing more)', async () => {
+    // a job screen: its « text to send by hand » host is there, so the job screens' send (sendText)
+    const box = document.createElement('div'); document.body.appendChild(box);
+    await act(async () => { render(<TextOutcomeHost />, box); });
     askMovedText(job(), { via: 'jobs' });
     await settle(); await ripe();
     await act(async () => { q('text-ask-send')!.click(); q('text-ask-send')?.click(); });
@@ -72,6 +79,8 @@ describe('the question « Texter … ? » (ask first)', () => {
     expect(api.notify.mock.calls[0]).toEqual(['moved', 'j1', { op: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
     expect(q('text-ask')).toBeNull();
     expect(toasts.value.map((x) => x.text)).toContain('Texto envoyé à Julie.');
+    await act(async () => { render(null, box); });
+    box.remove();
   });
 
   it('the agenda’s send (notifyCustomer) and its outcomes: texting off → the text to send by hand', async () => {
@@ -85,12 +94,17 @@ describe('the question « Texter … ? » (ask first)', () => {
     expect(toasts.value.some((x) => !!x.action)).toBe(true);
   });
 
-  it('the job screens’ send: texting off → the « text to send by hand » sheet’s outcome', async () => {
+  it('the job screens’ send (their « text to send by hand » host is there): texting off → that sheet’s outcome', async () => {
+    const box = document.createElement('div'); document.body.appendChild(box);
+    await act(async () => { render(<TextOutcomeHost />, box); });
     api.notify.mockResolvedValue({ ok: true, status: 'off', message: 'Bonjour Julie', link: null, phone: '5145550141' });
     askMovedText(job(), { via: 'jobs' });
     await settle(); await ripe();
     await click('text-ask-send');
     expect(outcome.value).toMatchObject({ status: 'off', message: 'Bonjour Julie' });
+    expect(q('text-outcome')).not.toBeNull();
+    await act(async () => { outcome.value = null; render(null, box); });
+    box.remove();
   });
 
   it('« Pas de texto »: nothing is sent', async () => {
@@ -167,5 +181,154 @@ describe('the question « Texter … ? » (ask first)', () => {
     expect(q('text-ask')!.querySelector('h2')!.textContent).toBe('Text Julie?');
     expect(q('text-ask-send')!.textContent).toContain('Send the text');
     expect(q('text-ask-skip')!.textContent).toContain('No text');
+  });
+});
+
+/* The fixer's round (reviews ask-first-review-paths / -screen, 2026-11-22): what the person sees after « Envoyer le
+   texto » on any screen, the moment said when the row leaves the phone, a navigation, the back button, two questions. */
+describe('the question « Texter … ? »: the reviews’ findings', () => {
+  const tick = (ms = 30) => new Promise<void>((r) => setTimeout(r, ms));
+  const settled = () => new Promise<void>((r) => whenHistorySettled(() => setTimeout(r, 0)));
+  /** every timer and step back of the history landed */
+  async function calm() { for (let i = 0; i < 8; i++) await act(async () => { await tick(); await settled(); }); }
+  const steps = () => stackOf(history.state).length;
+  const back = async () => { await act(async () => { history.back(); }); await calm(); };
+  const fresh = async () => { await calm(); await act(() => tick(TEXT_ASK_DEAD_MS + 40)); };
+  const title = () => q('text-ask')?.querySelector('h2')?.textContent ?? null;
+  let box: HTMLDivElement | null = null;
+  /** a screen with the job screens' « text to send by hand » host (Aujourd'hui, a job, MoveHost) */
+  const withHost = async () => { box = document.createElement('div'); document.body.appendChild(box); await act(async () => { render(<TextOutcomeHost />, box!); }); };
+  beforeEach(async () => { await calm(); history.replaceState({ d: 0 }, '', '/#/map'); });
+  afterEach(async () => {
+    await act(async () => { clearTextAsks(); outcome.value = null; if (box) render(null, box); });
+    box?.remove(); box = null;
+    await calm();
+  });
+
+  it('F1 / L2: « Envoyer le texto » on a screen with no « text to send by hand » host (texting off): the agenda’s send, seen there (a toast with « Voir le texto »), nothing left to pop up later', async () => {
+    api.notify.mockResolvedValue({ ok: true, status: 'off', message: 'Bonjour Julie, votre rendez-vous a changé', link: null, phone: '5145550141' });
+    // a move kept on the Carte lands while the person is on the agenda (MoveHost asks via the job screens' send)
+    askMovedText(job(), { via: 'jobs' });
+    await fresh();
+    await act(async () => { q('text-ask-send')!.click(); });
+    await calm();
+    expect(api.notify).toHaveBeenCalledTimes(1);
+    expect(api.notify.mock.calls[0].slice(0, 2)).toEqual(['moved', 'j1']);
+    expect(toasts.value.some((x) => !!x.action)).toBe(true);
+    expect(outcome.value).toBeNull();
+    // later, on a screen that has the host: nothing stale rises
+    await withHost();
+    await calm();
+    expect(q('text-outcome')).toBeNull();
+  });
+
+  it('F1: texts connected, no host: « Texto envoyé » is said there too', async () => {
+    askMovedText(job(), { via: 'jobs' });
+    await fresh();
+    await act(async () => { q('text-ask-send')!.click(); });
+    await calm();
+    expect(api.notify).toHaveBeenCalledTimes(1);
+    expect(toasts.value.filter((x) => x.kind === 'ok').length).toBe(1);
+  });
+
+  it('F2 / M3: the phone stops holding the row while the question is up (another truck’s, a narrow copy): it still says the NEW moment', async () => {
+    const before = job();                              // Tuesday 13–17, as « Déplacer » / « Changer de camion » pass it
+    await act(async () => { upsertLocal('jobs', [{ ...JOB, day: LATER, win_start: 540, win_end: 780 }] as never, { force: true }); });
+    askMovedText(before, { via: 'jobs' });
+    await fresh();
+    expect(q('text-ask-when')!.textContent).toBe('Jeudi 17 janvier 2030, entre 9 h et 13 h');
+    await act(async () => { removeLocal('jobs', ['j1']); });
+    await calm();
+    expect(title()).toBe('Texter Julie ?');
+    expect(q('text-ask-when')!.textContent).toBe('Jeudi 17 janvier 2030, entre 9 h et 13 h');
+  });
+
+  it('F4: the customer changed meanwhile (« Changer de client » on another phone): the toast names the one texted', async () => {
+    await withHost();
+    askMovedText(job(), { via: 'jobs' });
+    await fresh();
+    await act(async () => { upsertLocal('jobs', [{ ...JOB, customer_id: 'c2' }] as never, { force: true }); });
+    await calm();
+    expect(title()).toBe('Texter Carla ?');
+    await act(async () => { q('text-ask-send')!.click(); });
+    await calm();
+    expect(toasts.value.map((x) => x.text)).toContain('Texto envoyé à Carla.');
+    expect(toasts.value.map((x) => x.text)).not.toContain('Texto envoyé à Julie.');
+  });
+
+  it('M1 / F3: a navigation (the « Voir » of the move’s message) never answers it: the question rises again on the next screen, with its own step', async () => {
+    askMovedText(job(), { via: 'jobs' });
+    await fresh();
+    expect(title()).toBe('Texter Julie ?');
+    await act(async () => { navigate('/job/j1'); });
+    await calm();
+    expect(location.hash).toBe('#/job/j1');
+    expect(textAsksWaiting()).toEqual(['j1']);
+    expect(title()).toBe('Texter Julie ?');
+    expect(steps()).toBe(1);
+    expect(api.notify).not.toHaveBeenCalled();
+    // then « Pas de texto » there: nothing sent, its step goes, the job screen stays
+    await act(() => tick(TEXT_ASK_DEAD_MS + 40));
+    await act(async () => { q('text-ask-skip')!.click(); });
+    await calm();
+    expect(q('text-ask')).toBeNull();
+    expect(steps()).toBe(0);
+    expect(location.hash).toBe('#/job/j1');
+    expect(api.notify).not.toHaveBeenCalled();
+  });
+
+  it('L3: the phone’s back button is « Pas de texto »: one question, then two in turn; the screen stays', async () => {
+    askMovedText(job(), { via: 'jobs' });
+    await fresh();
+    expect(steps()).toBe(1);
+    await back();
+    expect(q('text-ask')).toBeNull();
+    expect(steps()).toBe(0);
+    expect(location.hash).toBe('#/map');
+    askMovedText(job('j1'), { via: 'notify' });
+    askMovedText(job('j2'), { via: 'notify' });
+    await fresh();
+    expect(title()).toBe('Texter Julie ?');
+    await back();
+    expect(title()).toBe('Texter Carla ?');
+    expect(steps()).toBe(1);
+    await back();
+    expect(q('text-ask')).toBeNull();
+    expect(steps()).toBe(0);
+    expect(location.hash).toBe('#/map');
+    expect(api.notify).not.toHaveBeenCalled();
+  });
+
+  it('L1: two questions, the first sent with texting off: its « text to send by hand » sheet comes first, ALONE; the next question once it is closed', async () => {
+    await withHost();
+    api.notify.mockResolvedValue({ ok: true, status: 'off', message: 'Bonjour Julie', link: null, phone: '5145550141' });
+    askMovedText(job('j1'), { via: 'jobs' });
+    askMovedText(job('j2'), { via: 'jobs' });
+    await fresh();
+    await act(async () => { q('text-ask-send')!.click(); });
+    await calm();
+    expect(api.notify).toHaveBeenCalledTimes(1);
+    expect(q('text-outcome')).not.toBeNull();
+    expect(q('text-ask')).toBeNull();
+    expect(textAsksWaiting()).toEqual(['j2']);
+    // « Fermer » on the hand-text sheet: then Carla's question
+    await act(async () => { q('text-outcome')!.querySelector<HTMLElement>('.sheet-x')!.click(); });
+    await calm();
+    expect(q('text-outcome')).toBeNull();
+    expect(title()).toBe('Texter Carla ?');
+  });
+
+  it('L1: the next question waits for the first send’s answer (never over it while the network answers)', async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    api.notify.mockImplementationOnce(() => new Promise((r) => { answer = r; }));
+    askMovedText(job('j1'), { via: 'notify' });
+    askMovedText(job('j2'), { via: 'notify' });
+    await fresh();
+    await act(async () => { q('text-ask-send')!.click(); });
+    await calm();
+    expect(q('text-ask')).toBeNull();
+    await act(async () => { answer({ ok: true, status: 'sent', message: 'x', link: null, phone: '5145550141' }); });
+    await calm();
+    expect(title()).toBe('Texter Carla ?');
   });
 });

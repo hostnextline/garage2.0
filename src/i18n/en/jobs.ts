@@ -273,9 +273,9 @@ export const jobs: typeof fr = {
   },
   exact: {
     question: 'Move {name}’s job: {when} at {time}?',
-    text: 'The customer is told: between {from} and {to}. The other stops keep their time.',
-    told: 'The customer is told: between {from} and {to}.',
-    toldFor: '{name} is told: between {from} and {to}.',
+    text: 'Their window: between {from} and {to}. The other stops keep their time.',
+    told: 'Their window: between {from} and {to}.',
+    toldFor: '{name}’s window: between {from} and {to}.',
     pushed: { one: 'This stop arrives a little later, still inside its window:', other: 'These stops arrive a little later, still inside their window:' },
     pushedLine: '{name}: around {eta} instead of {was}.',
     lateTitle: { one: 'Moving {who} to {time} makes {name} late', other: 'Moving {who} to {time} makes {n} customers late' },
@@ -287,7 +287,7 @@ export const jobs: typeof fr = {
     early: 'The truck can’t be at {name}’s at {time}: {earliest} at the earliest.',
     earlyKeep: 'At {time}, no other stop changes its time.',
     earlyOk: 'Set to {earliest}',
-    earlyTold: 'At {earliest}, the window the customer is told becomes {from} to {to} instead.',
+    earlyTold: 'At {earliest}, their window becomes {from} to {to} instead.',
     unchecked: 'I couldn’t check the other customers’ times.',
     unmeasured: 'Not every road of that day is measured yet: I can’t tell yet whether someone will be late.',
     offline: 'No signal: I can’t check whether this move makes someone late. Try again when the signal is back.',
@@ -300,7 +300,7 @@ export const jobs: typeof fr = {
   },
   textAsk: {
     title: 'Text {name}?',
-    lead: 'The appointment changed. The text will tell them the new time:',
+    lead: 'The text will tell them the new time:',
     send: 'Send the text',
     skip: 'No text'
   },

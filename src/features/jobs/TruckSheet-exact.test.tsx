@@ -70,7 +70,7 @@ describe('the other truck at the very time it has (A1)', () => {
     await show(J());
     await tap('truck-pick-t2');
     expect(h.ask).toHaveBeenCalledTimes(1);
-    expect((h.ask.mock.calls[0][0] as { text: string }).text).toContain('À 14 h, la plage dite au client devient : entre 13 h et 17 h.');
+    expect((h.ask.mock.calls[0][0] as { text: string }).text).toContain('À 14 h, sa plage devient : entre 13 h et 17 h.');
     expect(h.move.mock.calls[0]).toEqual(['j1', DAY, 'day', 't2', { start: 780, flex: false, at: 840, lateOk: [] }]);
     expect(toasts.value.map((x) => x.text).join(' | ')).toBe('Rendez-vous passé à Camion 2, maintenant à 14 h (au lieu de 13 h 15).');
   });

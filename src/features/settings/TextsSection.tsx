@@ -47,8 +47,10 @@ export function TextsSection() {
                     <span class="small muted settings-msg-when">{t(`settings.texts.kinds.${k}.when`)}</span>
                   </span>
                   {sw === k
-                    ? <span class="settings-msg-switch">
-                        <button type="button" role="switch" class="switch" aria-checked={on} aria-label={`${t('settings.texts.auto')}, ${t(`settings.texts.kinds.${k}.title`)}`}
+                    ? <span class="settings-msg-switch" style={k === 'moved' ? { gap: 'var(--sp-2)' } : undefined}>
+                        {/* « Rendez-vous changé » never goes by itself: on, the app asks first (Hassan, 2026-11-22; textAsk.tsx) */}
+                        {k === 'moved' && <span class="small faint" aria-hidden="true">{t('settings.texts.askFirst')}</span>}
+                        <button type="button" role="switch" class="switch" aria-checked={on} aria-label={`${t(k === 'moved' ? 'settings.texts.askFirstLabel' : 'settings.texts.auto')}, ${t(`settings.texts.kinds.${k}.title`)}`}
                           data-testid={`msg-on-${k}`} onClick={() => set((x) => flipSwitch(x, k))} /></span>
                     : <span class="small faint settings-msg-follow">{t('settings.texts.follows', { name: t(`settings.texts.kinds.${sw}.title`) })}</span>}
                 </div>

@@ -18,6 +18,8 @@ function listOf(name: string): Signal<number[]> {
   if (!s) { s = signal<number[]>([]); mounted.set(name, s); }
   return s;
 }
+/** is a host of `name` on the screen now? (« Texter … ? » answered where none is: the send that shows its own sheet) */
+export function hostMounted(name: string): boolean { return listOf(name).peek().length > 0; }
 /** true for the one host of `name` that draws; `dropped` runs when no host of that name is left */
 export function useHostTurn(name: string, dropped: () => void): boolean {
   const [id] = useState(() => ++next);

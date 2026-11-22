@@ -62,7 +62,7 @@ describe('a job let go on the hour grid (A1)', () => {
     expect(ui.ask).toHaveBeenCalledTimes(1);
     const q = ui.ask.mock.calls[0][0] as { title: string; text: string };
     expect(q.title).toMatch(/^Déplacer la job de Julie : .* à 13 h 15 \?$/);
-    expect(q.text.split('\n')[0]).toBe('Dit au client : entre 12 h et 16 h. Les autres arrêts gardent leur heure.');
+    expect(q.text.split('\n')[0]).toBe('Sa plage : entre 12 h et 16 h. Les autres arrêts gardent leur heure.');
     expect(ui.toast.mock.calls.at(-1)?.[0]).toMatch(/^Rendez-vous déplacé : .* à 13 h 15\.$/);
     // the window changed: « Texter Julie ? » (nothing goes by itself)
     expect(asked()).toEqual(['j1']);

@@ -140,7 +140,7 @@ function earlyQuestion(a: { job: Job; day: Day; at: number }, c: { earliest: num
   const win = windowOf(c.earliest);
   const told = win[0] !== windowOf(a.at)[0]
     ? [t('jobs.exact.earlyTold', { earliest, from: clock(win[0], l), to: clock(win[1], l) }),
-      wantsText('moved', a.job.id) && dropTells(a.job, a.day, win[0]) ? t('agenda.move.textSms', { name }) : ''].filter(Boolean).join(' ')
+      wantsText('moved', a.job.id) && dropTells(a.job, a.day, win[0]) ? t('agenda.move.textSms', { name: jobPerson(a.job) || t('agenda.move.someone') }) : ''].filter(Boolean).join(' ')
     : '';
   return {
     title: t('jobs.exact.earlyTitle', { time }),

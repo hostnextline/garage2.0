@@ -24,7 +24,7 @@ vi.mock('../moment/BlockPicker', async () => {
 
 import { MoveSheet } from './MoveSheet';
 import { toasts } from '../../ui/toast';
-import { replaceLocal, clearAll, getRow } from '../../data/store';
+import { replaceLocal, upsertLocal, clearAll, getRow } from '../../data/store';
 import { access } from '../../data/auth';
 import { setNet } from '../../data/net';
 import { lang } from '../../lib/i18n';
@@ -153,6 +153,10 @@ describe('« Texter … ? » instead of the text (Hassan, 2026-11-22: « the sys
   it('« Flexible » (the move of before), tell: the question; the switch « Rendez-vous changé » off: nothing asked', async () => {
     textOn(true);
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true, tell: true } });
+    // no cell number on her file: no question will come, so none is promised (review L4)
+    await open({ day: '2030-01-11', block: 'day', win_flex: true });
+    expect(q('move-sheet')!.textContent).not.toMatch(/texto|texter/);
+    upsertLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'T', phone: '5145550141', sms_ok: true }] as never, { force: true });
     await open({ day: '2030-01-11', block: 'day', win_flex: true });
     expect(q('move-sheet')!.textContent).toContain('Ensuite, l’app te demandera s’il faut texter le client.');
     await click('move-ok');
