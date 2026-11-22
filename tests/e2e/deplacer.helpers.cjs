@@ -21,6 +21,13 @@ async function openD(o) {
   const page = r.page;
   pages.add(page); page.on('close', () => pages.delete(page));
   page.netlog = [];
+  // every request of the page to the server's texts (notify): { kind, job_id } (« Texter … ? »: nothing before the answer)
+  page.notified = [];
+  page.on('request', (q) => {
+    if (!/\/functions\/v1\/notify/.test(q.url())) return;
+    let b = {}; try { b = JSON.parse(q.postData() || '{}'); } catch { /* not json */ }
+    page.notified.push({ kind: b.kind, job_id: b.job_id });
+  });
   const t0 = Date.now();
   page.on('response', async (res) => {
     const u = new URL(res.url());

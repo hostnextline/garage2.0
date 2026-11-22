@@ -56,9 +56,11 @@ const moveExactByApi = (job, at, lateOk = []) => x.rpcAs(who.nadia.jwt, 'move_jo
 /** what the screen sent to move_job last, and what the server answered */
 const lastMove = (answers) => answers.filter((a) => a.args && a.args.p_job).pop();
 /** « Texter … ? » (Hassan, 2026-11-22: « the system should ask me first »): after a move whose window told changed, the app
-    asks before the « moved » text and sends nothing before the answer. `changed` true: the question, nothing texted yet;
-    answered « Envoyer le texto »: told once (the fake GoHighLevel's log, cleared before the move). `changed` false: no
-    question at all. */
+    asks before the « moved » text and sends nothing before the answer. `changed` true: the question, and for 2 s with it
+    on screen the page asks the server for no « moved » text of that job (beyond those answered « Envoyer » before on this
+    page) and the fake GoHighLevel's log (cleared before the move) gets nothing; answered « Envoyer le texto »: told once.
+    `changed` false: no question at all. */
+const movedAsked = (page, first) => (page.notified || []).filter((n) => n.kind === 'moved' && n.job_id === J[first]).length;
 async function textAskIf(page, changed, first) {
   if (!changed) {
     await page.waitForTimeout(1500);
@@ -66,11 +68,18 @@ async function textAskIf(page, changed, first) {
     return null;
   }
   await page.getByTestId('text-ask').waitFor({ timeout: 20000 });
+  // a send by itself racing the question would have reached the local server and its fake GoHighLevel by then (review L3)
+  await page.waitForTimeout(2000);
+  page.movedSent = page.movedSent || {};
+  const before = page.movedSent[first] || 0;
+  assert.equal(movedAsked(page, first), before, `the server not asked to text ${first} before the answer`);
   assert.deepEqual(await d.textsTo(first, /a changé/), [], `nothing texted to ${first} before the answer`);
   const ta = await h.textAsk(page);
+  page.movedSent[first] = before + 1;
   assert.equal(ta.title, `Texter ${first} ?`);
   const sms = await until(() => d.textsTo(first, /a changé/), (v) => v.length > 0, 15000);
   assert.equal(sms.length, 1, `${first} told once, after « Envoyer le texto »`);
+  assert.equal(movedAsked(page, first), before + 1, `the server asked once to text ${first}, after « Envoyer le texto »`);
   return { ...ta, sms };
 }
 
@@ -159,7 +168,7 @@ step('1. The office, on a computer, drags the third stop of the day to 13 h 30 o
   t.diagnostic(`the question: « ${q.title} » — « ${q.text} » [${q.buttons.join(' | ')}]`);
   assert.match(q.title, /Chloe/);
   assert.match(q.title, new RegExp(`à ${clock(AT)} \\?$`));
-  assert.ok(q.text.includes(`Dit au client : entre ${clock(win[0])} et ${clock(win[1])}.`), q.text);
+  assert.ok(q.text.includes(`Sa plage : entre ${clock(win[0])} et ${clock(win[1])}.`), q.text);
   assert.ok(q.text.includes('Les autres arrêts gardent leur heure.'), q.text);
   assert.equal(moves.length, 0, 'nothing sent before the yes');
   const asked = previews.filter((a) => a.args && a.args.p_at === AT);
@@ -520,7 +529,7 @@ step('7b. « Vraies routes » on, a stop whose trips are not measured (TomTom an
   x.noErrors(page);
 });
 
-step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me first »): a drag on the agenda, then « Déplacer » on a phone with the texts not connected; each time « Texter Chloe ? » with her new window, answered « Pas de texto » (then closed with ✕): the server is never asked to text, the fake texting service gets nothing, no « text to send by hand » sheet', async (t) => {
+step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me first »): a drag on the agenda, then « Déplacer » on a phone with the texts not connected; each time « Texter Chloe ? » with her new window, answered « Pas de texto » (then, after « Voir » of the move’s message took the phone to her job where the question rose again, closed with ✕): the server is never asked to text, the fake texting service gets nothing, no « text to send by hand » sheet', async (t) => {
   const AT = 810;
   const win = d.winFor(AT);
   /** every request of the page to the server's texts (notify) */
@@ -596,15 +605,27 @@ step('8. « Pas de texto » (Hassan, 2026-11-22: « the system should ask me fir
   assert.equal(x.flat(await ask2.locator('h2').innerText()), 'Texter Chloe ?');
   assert.ok(x.flat(await p2.getByTestId('text-ask-when').innerText()).endsWith(`, entre ${clock(win2[0])} et ${clock(win2[1])}`));
   await h.shot(p2, 'deplacer-8b-phone-text-ask');
+  // « Voir » of the move's message, above the question, tapped (review M1): a navigation never answers it; the job's
+  // screen opens and the question rises again there, nothing sent
+  const see = p2.locator('.toast').filter({ hasText: 'Rendez-vous déplacé' }).getByRole('button', { name: 'Voir', exact: true });
+  await see.waitFor({ timeout: 4000 });
+  await see.click();
+  await p2.waitForURL(new RegExp(`#/job/${J.Chloe}`), { timeout: 15000 });
+  await p2.getByTestId('job-screen').waitFor({ timeout: 15000 });
+  await ask2.waitFor({ timeout: 15000 });
+  assert.equal(x.flat(await ask2.locator('h2').innerText()), 'Texter Chloe ?', 'the question again, on the job’s screen');
+  assert.deepEqual(asked2, [], 'the « Voir » sent nothing');
+  await h.shot(p2, 'deplacer-8b-phone-text-ask-on-job');
   // closing the question (✕) is « Pas de texto »
   await p2.waitForTimeout(450);
   await ask2.locator('.sheet-x').click();
   await ask2.waitFor({ state: 'detached', timeout: 10000 });
   await p2.waitForTimeout(2500);
   assert.deepEqual(asked2, [], 'the server was never asked to text');
+  // (the texts are not connected here: the fake texting service could get nothing anyway; the page's own requests
+  // above and no « text to send by hand » sheet are the proof)
   assert.equal(await p2.getByTestId('text-outcome').count(), 0, 'no « text to send by hand » sheet');
-  assert.deepEqual(await d.textsTo('Chloe'), [], 'nothing reached the fake texting service');
-  assert.match(p2.url(), /#\/map\?day=/, 'still on the map');
+  assert.match(p2.url(), new RegExp(`#/job/${J.Chloe}`), 'still on the job’s screen');
   await h.shot(p2, 'deplacer-8b-no-text');
   x.nothingLeft(r2);
   x.noErrors(p2);
