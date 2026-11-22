@@ -277,6 +277,24 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   // first planner had not answered). TomTom and the first one down: the road still comes, by the streets, from the second.
   // All down: no road and no time, the trip and its link still made (« Vraies routes », Hassan's rule of 2026-11-19: a
   // real road time, or none; never a straight line); never an error for the mechanic.
+  // the path live runs until Hassan sets the server key TOMTOM_KEY (CUTOVER 5 bis): TomTom down or no key, the FIRST
+  // planner's road, asked in full, with its corner on the customer's map (main's first « Je pars » step, which the merge
+  // made TomTom's: merge-main F8)
+  await clearLog();
+  await fetch(`${MOCK}/control?tomtom=fail`);
+  try {
+    const first = await fn('enroute', { action: 'return', base: BASE, notify: false, pos: { lat: 45.50, lng: -73.66 } }, jwt);
+    assert.equal(first.ok, true, JSON.stringify(first));
+    assert.equal(first.route_source, 'osrm');
+    assert.ok(first.minutes > 0 && first.km > 0 && first.eta_at, 'a road time and an arrival time from the first planner');
+    assert.deepEqual((await mockLog()).filter((x) => x.kind === 'route').map((x) => [x.svc, x.representation ?? x.overview]), [['tomtom', 'polyline'], ['osrm', 'full']],
+      'TomTom asked first, then the first planner, for the road in full; the second planner not asked');
+    assert.deepEqual((await rpc('public_track', { p_token: tokenOf(first.link) }, K.anon)).route, [[45.5, -73.66], [45.5, -73.65446], [45.53129, -73.65446]],
+      'the first planner’s road, with its corner, on the map');
+  } finally {
+    await fetch(`${MOCK}/control?tomtom=ok`);
+  }
+  assert.equal((await fn('enroute', { action: 'return_end', base: BASE }, jwt)).ok, true);
   await clearLog();
   await fetch(`${MOCK}/control?tomtom=fail&osrm=fail`);
   try {
