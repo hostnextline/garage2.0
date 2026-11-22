@@ -1291,9 +1291,24 @@ begin
                                          public.drive_measured(coalesce(j.lat, c.lat), coalesce(j.lng, c.lng), p_lat, p_lng)) <= v_nearmin, false)
            else public.km_between(p_lat, p_lng, coalesce(j.lat, c.lat), coalesce(j.lng, c.lng)) <= v_near end;
   -- Part 26: the windows offered are exactly the ones win_for cuts for an arrival on the day's quarter hours (the app asks
-  -- for windowOf(T) of each quarter hour T), whatever « avant », the rounding and the day's first hour: one lattice
-  v_starts := array(select distinct w.win_start from generate_series(sp.start_min, sp.end_min, 15) t(m) cross join lateral public.win_for(t.m) w
-                    where w.win_start is not null order by 1);
+  -- for windowOf(T) of each quarter hour T), whatever « avant », the rounding and the day's first hour: one lattice.
+  -- Round 3 (S38, e2e-plages-02): only the quarter hours the calendar can offer, i.e. those a vehicle able to take the
+  -- job works (its hours of that day, else its usual week: the rule of the screen's « fermé ») and, today, those not
+  -- already behind us. A truck that starts at 13 h no longer gets 10 h – 14 h (an arrival at 13 h 05 is inside it, but
+  -- no time of the calendar gives it: the screen and the online page offered what the other one could not). The quarter
+  -- hours are the calendar's units (unitMinutes: from the day's first hour, each one starting before its last hour).
+  -- The vehicles are the planner's for this job: the machine or « Camion » → with the machine, « Voiture » → without.
+  -- Only which windows are listed changes, not what a row says: yesterday's app reads the answer as before.
+  v_starts := array(
+    with rg as (select (hr.r->>0)::int a, (hr.r->>1)::int z
+                from public.trucks tr cross join lateral jsonb_array_elements(public.truck_ranges(tr.id, p_day)) hr(r)
+                where tr.active and tr.deleted_at is null
+                  and case when v_need or v_kind = 'truck' then tr.tire_machine when v_kind = 'car' then not tr.tire_machine else true end)
+    select distinct w.win_start from generate_series(sp.start_min, sp.end_min - 1, 15) t(m) cross join lateral public.win_for(t.m) w
+    where w.win_start is not null
+      and exists (select 1 from rg where rg.a < t.m + 15 and rg.z > t.m)
+      and not (p_day = public.local_today() and t.m + 15 <= public.now_min())
+    order by 1);
   foreach v_ws in array v_starts loop
     exit when k >= 100;
     k := k + 1;
@@ -2552,7 +2567,8 @@ begin
   return v;
 end $$;
 
-drop function if exists public.roads_replan(date[]);   -- (it answered a number in the first draft of this Part)
+-- (no « drop function » for the number it answered in a first draft of this Part: that form never left the test copies,
+-- and no DROP is ever sent to live, the owner's rule O-43 / S120)
 create or replace function public.roads_replan(p_days date[]) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare d date; bk record; tk record; p jsonb; n integer := 0; v_kept jsonb := '[]'::jsonb; v_before jsonb; v_late jsonb;
@@ -2632,8 +2648,8 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists settings_roads_guard on public.settings;
-create trigger settings_roads_guard before update of booking on public.settings for each row execute function public.settings_roads_guard();
+-- « create or replace trigger »: no DROP is ever sent to live (the owner's rule O-43 / S120), and applied twice it keeps one
+create or replace trigger settings_roads_guard before update of booking on public.settings for each row execute function public.settings_roads_guard();
 
 -- roads_switch(op, on): owner only. ON is refused while a usual-hours trip of the coming horizon_days has no time at all
 -- (roads_cold, with how many: drive_wanted's total0; the app asks the function « drive » for them, then tries again). An
@@ -2696,7 +2712,8 @@ end $$;
 --     the switch off: never an estimate of km), unmeasured: the trips of that day not measured (roads on; null off) }
 -- The locks: the windows switch's (shared, as every booking), then every block the list touches, in the order every planner
 -- takes them (day, then morning → evening), before the first move: never a deadlock with roads_replan (verify-on F10)
-drop function if exists public.move_preview(uuid, date, text, uuid[]);
+-- (no « drop function » for the 4-argument form of a first draft of this Part: it never left the test copies, and no DROP
+-- is ever sent to live, the owner's rule O-43 / S120)
 create or replace function public.move_preview(p_truck uuid, p_day date, p_block text, p_jobs uuid[], p_as_told boolean default false) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare j public.jobs; v_id uuid; v_refused jsonb := '[]'::jsonb; v_why jsonb := '{}'::jsonb; v_out jsonb; v_done boolean := false; v_hint text;

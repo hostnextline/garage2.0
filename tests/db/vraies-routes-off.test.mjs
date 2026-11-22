@@ -192,6 +192,28 @@ async function windowCases(h, w) {
     out[`suggest day ${dow}`] = await val(h, `select public.suggest_core($1, $2, 45, $3::date, 4, null, 50, false, null) v`, [...PTS[2], w.tue]);
     out[`web_windows ${dow}`] = await val(h, `select public.web_windows($1, $2, $3::uuid[], $4::date) v`, [...PTS[0], [w.svc], w.fri]);
   }
+  // merge-main (2026-11-21): main changed suggest_windows_core before it went live (S38, aba05811: only the quarter hours a
+  // vehicle able to take the job works, its hours of THAT day first; today none behind us). « Before » is now main's text;
+  // these cases make that rule matter: the tire truck leaves at 13 h on the Saturday, the car works 8 h – 12 h; today at 11 h
+  await h.c.query('savepoint s38');
+  await server(h, `insert into public.truck_days (truck_id, day, ranges) values ($1, $3, '[[780, 1200]]'), ($2, $3, '[[480, 720]]')`, [...w.trucks, w.sat]);
+  await server(h, `create or replace function public.now_min() returns integer language sql stable set search_path = public, extensions as $$ select 660 $$`);
+  const today = await val(h, `select public.local_today()::text v`);
+  const starts = (rows) => [...new Set((rows ?? []).map((x) => x.win_start))].sort((a, b) => a - b);
+  for (const dow of ['', '6']) {
+    await server(h, `select set_config('garage.drive_dow', $1, true)`, [dow]);
+    for (const d of [w.sat, today]) for (const [need, kind] of [[false, null], [true, null], [false, 'truck'], [false, 'car']]) {
+      out[`s38 ${dow} ${d} ${need} ${kind}`] = await val(h, `select public.suggest_windows_core($1, $2, 45, $3::date, null, $4, $5) v`, [...PTS[9], d, need, kind]);
+    }
+    out[`s38 web ${dow}`] = await val(h, `select public.web_windows($1, $2, $3::uuid[], $4::date) v`, [...PTS[0], [w.svc], w.sat]);
+    // main's rule holds (whichever definition runs): tire work from 13 h → no window before 12 h – 16 h; the car → the morning;
+    // today at 11 h → nothing before 10 h – 14 h
+    const tire = starts(out[`s38 ${dow} ${w.sat} true null`]), car = starts(out[`s38 ${dow} ${w.sat} false car`]), now = starts(out[`s38 ${dow} ${today} false truck`]);
+    assert.ok(tire.length > 0 && tire[0] >= 720, `the truck from 13 h: ${tire}`);
+    assert.ok(car.every((s) => s <= 660), `the car works only the morning (its morning may be full already): ${car}`);
+    assert.ok(now.length > 0 && now[0] >= 600, `today at 11 h: ${now}`);
+  }
+  await h.c.query('rollback to savepoint s38');
   await h.c.query('savepoint w');
   out['book window'] = await book(h, 200, w.cs[1], w.fri, 'day', 45, { win_start: 600 }).then((r) => [r.ok, r.win_start, r.eta]);
   out['book window rows'] = await server(h, `select id, truck_id, stop_order, eta_min, win_start, win_end, win_flex, eta_measured from public.jobs where day >= public.local_today() order by id`);

@@ -20,7 +20,8 @@
 --     the switch off: never an estimate of km), unmeasured: the trips of that day not measured (roads on; null off) }
 -- The locks: the windows switch's (shared, as every booking), then every block the list touches, in the order every planner
 -- takes them (day, then morning → evening), before the first move: never a deadlock with roads_replan (verify-on F10)
-drop function if exists public.move_preview(uuid, date, text, uuid[]);
+-- (no « drop function » for the 4-argument form of a first draft of this Part: it never left the test copies, and no DROP
+-- is ever sent to live, the owner's rule O-43 / S120)
 create or replace function public.move_preview(p_truck uuid, p_day date, p_block text, p_jobs uuid[], p_as_told boolean default false) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare j public.jobs; v_id uuid; v_refused jsonb := '[]'::jsonb; v_why jsonb := '{}'::jsonb; v_out jsonb; v_done boolean := false; v_hint text;

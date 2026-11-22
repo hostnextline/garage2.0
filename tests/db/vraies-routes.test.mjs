@@ -2,6 +2,7 @@
 // never a straight line. Run: node --test tests/db/vraies-routes.test.mjs
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { tx, pool, futureDay, uuid } from './helpers.mjs';
 
 after(() => pool.end());
@@ -211,4 +212,31 @@ test('roads on: the moments offered count the real driving of the day (« Garde-
   assert.equal(am.far, 'hop', 'over the 35 minutes of « Garde-route »: far, though 300 m away as the crow flies');
   assert.equal(Number(am.add_km), 28, 'the km of the road: start → address 4, address → Jean 30, Jean → start 6, less the 12 of the day before it');
   void owner;
+}));
+
+// merge-main (2026-11-21): main's owner rule O-43 / S120 (refonte-argent and refonte-terrain « S120 » check main's files):
+// no migration ever sends a DROP, a DELETE or a TRUNCATE to the live database. Part 27 goes to live too: it makes its trigger
+// with « create or replace » and drops nothing; and it can be applied again (twice) with the same trigger, still guarding.
+test('Part 27 sends no DROP, DELETE or TRUNCATE to the live database, and applied again (twice) it keeps its one trigger, still on (S120)', () => tx(async (h) => {
+  const sql = readFileSync(new URL('../../supabase/migrations/20261119000200_vraies_routes.sql', import.meta.url), 'utf8');
+  // what the migration itself runs: the bodies of its functions ($$ … $$) are only stored, its comments are words
+  const sent = sql.replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').replace(/'(?:[^']|'')*'/g, "''");
+  assert.doesNotMatch(sent, /\b(drop|truncate|delete)\b/i, 'no statement that removes something');
+  assert.doesNotMatch(sent, /\bcreate\s+trigger\b/i, 'a trigger is made with « create or replace » (a plain create needs a drop first)');
+  assert.equal(sent.match(/\bcreate\s+or\s+replace\s+trigger\b/gi)?.length, 1);
+  await h.as(null); await h.c.query('reset role');
+  const triggers = () => h.q(`select t.tgname as name, t.tgenabled as on, pg_get_triggerdef(t.oid) as def from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where not t.tgisinternal and c.relnamespace = 'public'::regnamespace and c.relname = 'settings' order by 1`);
+  const forms = () => h.q(`select p.oid::regprocedure::text as sig from pg_proc p where p.pronamespace = 'public'::regnamespace
+    and p.proname in ('move_preview', 'roads_replan', 'move_job', 'drive_min') order by 1`);
+  const built = await triggers(), sigs = await forms();
+  assert.match(built.find((t) => t.name === 'settings_roads_guard')?.def ?? '', /BEFORE UPDATE OF booking ON public\.settings FOR EACH ROW EXECUTE FUNCTION settings_roads_guard\(\)/);
+  await h.c.query(sql);
+  assert.deepEqual(await triggers(), built, 'applied a second time');
+  await h.c.query(sql);
+  assert.deepEqual(await triggers(), built, 'and a third');
+  assert.deepEqual(await forms(), sigs, 'the same forms of the functions, none more');
+  // and the guard still holds: a plain save of the settings never flips the switch
+  await h.c.query(`update public.settings set booking = jsonb_set(coalesce(booking, '{}'::jsonb), '{roads_on}', 'true') where id = 1`);
+  assert.equal((await h.one(`select coalesce((booking->>'roads_on')::boolean, false) v from public.settings where id = 1`)).v, false);
 }));

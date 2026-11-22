@@ -425,7 +425,8 @@ begin
   return v;
 end $$;
 
-drop function if exists public.roads_replan(date[]);   -- (it answered a number in the first draft of this Part)
+-- (no « drop function » for the number it answered in a first draft of this Part: that form never left the test copies,
+-- and no DROP is ever sent to live, the owner's rule O-43 / S120)
 create or replace function public.roads_replan(p_days date[]) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare d date; bk record; tk record; p jsonb; n integer := 0; v_kept jsonb := '[]'::jsonb; v_before jsonb; v_late jsonb;
@@ -505,8 +506,8 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists settings_roads_guard on public.settings;
-create trigger settings_roads_guard before update of booking on public.settings for each row execute function public.settings_roads_guard();
+-- « create or replace trigger »: no DROP is ever sent to live (the owner's rule O-43 / S120), and applied twice it keeps one
+create or replace trigger settings_roads_guard before update of booking on public.settings for each row execute function public.settings_roads_guard();
 
 -- roads_switch(op, on): owner only. ON is refused while a usual-hours trip of the coming horizon_days has no time at all
 -- (roads_cold, with how many: drive_wanted's total0; the app asks the function « drive » for them, then tries again). An
