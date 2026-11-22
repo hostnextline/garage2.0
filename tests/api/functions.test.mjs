@@ -523,7 +523,14 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
   await q(`insert into public.truck_week (truck_id, dow, ranges) values ($1, $2, '[[480,1200]]')`, [truck, dow]);
   const oil = (await q(`insert into public.services (name_fr, name_en, price_cents, duration_min) values ('Huile web', 'Oil web', 8000, 45) returning id`))[0].id;
   const off = (await q(`insert into public.services (name_fr, price_cents, duration_min, active) values ('Hors ligne', 1000, 30, false) returning id`))[0].id;
-  const phone = `514 555-${String(Math.floor(1000 + Math.random() * 8999))}`;
+  // a number no customer of this database has yet (the browser files leave customers with 514 555-XXXX numbers: a random
+  // one matched one of them on 2026-11-22 and the « nothing is kept » count read 1)
+  let phone = '';
+  for (let i = 0; i < 50 && !phone; i++) {
+    const p = `514 555-${String(Math.floor(1000 + Math.random() * 8999))}`;
+    if ((await q(`select count(*)::int n from public.customers where phone_digits = $1`, [p.replace(/\D/g, '')]))[0].n === 0) phone = p;
+  }
+  assert.ok(phone, 'a free test number');
   try {
     const info = await fn('book', { action: 'info' });
     assert.equal(info.ok, true, JSON.stringify(info));
