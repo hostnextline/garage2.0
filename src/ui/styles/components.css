@@ -181,6 +181,8 @@ html.is-locked .toasts { bottom: auto; top: calc(env(safe-area-inset-top) + 12px
 .toast { pointer-events: auto; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); font-size: var(--t-sm); font-weight: 480;
   background: var(--ink); color: var(--solid); box-shadow: 0 12px 30px -12px rgba(0,0,0,0.5); animation: rise 200ms var(--ease); }
 .toast-bad { background: var(--bad); color: #fff; }
+.toast-body { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+.toast-text { flex: 1 1 9em; min-width: 0; }
 .toast .btn { min-height: 34px; --b-bg: transparent; --b-ink: inherit; --b-edge: color-mix(in srgb, currentColor 40%, transparent); }
 
 /* ---------- help bubble ---------- */

@@ -381,7 +381,7 @@ step('3b. Booked while TomTom and OSRM are down: the ticket says « heure : traj
   x.noErrors(page);
 });
 
-step('4a. « Ordre des arrêts » with the switch on: the times shown are the server’s (the measured ones); another order is previewed by the server, and saved it gives those very times', async () => {
+step('4a. « Réorganiser la journée » (Part 28; it replaced « Ordre des arrêts ») with the switch on: the times shown are the server’s (the measured ones); another order is previewed by the server, and saved it gives those very times', async () => {
   await x.roadsOnByApi(who.owner.jwt);
   assert.deepEqual(x.walkMismatches(W, true), []);
   const list = x.stopsOf(T.complet, W, 'pm');
@@ -389,33 +389,47 @@ step('4a. « Ordre des arrêts » with the switch on: the times shown are the se
   const [one, two] = list;
   const r = await x.openR({ kind: 'desktop' });
   const { page } = r;
-  const previews = x.answersOf(page, 'stop_order_preview');
+  const previews = x.answersOf(page, 'day_order_preview');
+  const saves = x.answersOf(page, 'day_order_save');
   await h.signIn(page, who.owner.email, PW);
   await page.goto(h.APP + `#/job/${one.id}`);
   await page.getByTestId('job-order').click();
-  const sheet = page.getByTestId('stop-order-sheet');
+  const sheet = page.getByTestId('dayorder-sheet');
   await sheet.waitFor({ timeout: 15000 });
+  // the day as it is: the server's first answer, the times it wrote
+  await until(() => previews.filter((a) => a.status === 200 && a.body && a.body.basis_ok).length, (v) => v > 0, 20000);
   for (const s of list) {
-    const text = flat(await sheet.getByTestId(`stop-order-${s.number}`).innerText());
-    assert.ok(text.includes(`#${s.number}, `) && vers(s.eta_min).test(text), `#${s.number}: the time written by the server (${clock(s.eta_min)}): ${text}`);
+    const eta = sheet.getByTestId(`dayorder-eta-${s.number}`);
+    await eta.filter({ hasText: vers(s.eta_min) }).waitFor({ timeout: 10000 });
   }
-  // the second first: the server's times for that order
-  await sheet.getByTestId(`stop-first-${two.number}`).click();
-  await sheet.getByTestId('stop-order-server').waitFor({ timeout: 15000 });
-  const mine = await x.rpcAs(who.owner.jwt, 'stop_order_preview', { p_truck: T.complet, p_day: W, p_block: 'pm', p_jobs: [two.id, one.id] });
-  const byId = Object.fromEntries(mine.map((s) => [s.id, s]));
+  // the second first (its row's menu, « Mettre en premier »): the server's times for that order
+  await sheet.getByTestId(`dayorder-main-${two.number}`).click();
+  await page.getByTestId('dayorder-menu').waitFor({ timeout: 10000 });
+  await page.getByTestId('dayorder-menu-first').click();
+  const mine = await until(() => previews.filter((a) => a.status === 200 && a.args && (a.args.p_moved || []).includes(two.id)).pop(), Boolean, 20000);
+  assert.ok(mine, 'the sheet asked the server for that order');
+  const pm = (mine.args.p_lists || []).find((l) => l.truck === T.complet && l.block === 'pm');
+  assert.deepEqual(pm && pm.jobs, [two.id, one.id], 'the order asked: #2 then #1');
+  // the oracle: the same question asked by the test as the same person
+  const oracle = await x.rpcAs(who.owner.jwt, 'day_order_preview', mine.args);
+  const byId = Object.fromEntries(oracle.stops.map((s) => [s.id, s]));
   const walked = x.walk(T.complet, W, 'pm', [two, one], true);
   for (const s of [two, one]) {
     assert.equal(byId[s.id].eta, walked[s.id].eta, `#${s.number}: the server's preview is the measured walk`);
-    assert.notEqual(byId[s.id].measured, false);
-    await sheet.getByTestId(`stop-order-${s.number}`).filter({ hasText: vers(byId[s.id].eta) }).waitFor({ timeout: 10000 });
+    assert.equal(byId[s.id].measured, true, `#${s.number}: measured`);
+    await sheet.getByTestId(`dayorder-eta-${s.number}`).filter({ hasText: vers(byId[s.id].eta) }).waitFor({ timeout: 10000 });
   }
-  assert.ok(previews.some((p) => Array.isArray(p.body)), 'the sheet asked the server');
   await h.shot(page, 'routes-4a-order');
-  await sheet.getByTestId('stop-order-save').click();
-  await sheet.waitFor({ state: 'detached', timeout: 15000 });
+  // « Enregistrer » (once more, « Enregistrer quand même », when the server says someone changes)
+  const save = sheet.getByTestId('dayorder-save');
+  await save.click();
+  await until(async () => saves.length || /quand même/.test(await save.innerText().catch(() => '')), Boolean, 20000);
+  if (!saves.length) await save.click();
+  await until(() => saves.length, (v) => v > 0, 20000);
+  assert.equal(saves[saves.length - 1].status, 200, JSON.stringify(saves[saves.length - 1].body));
   const saved = await until(() => x.stopsOf(T.complet, W, 'pm'), (v) => v[0]?.id === two.id && v.every((s) => s.eta_min === byId[s.id].eta), 20000);
   assert.deepEqual(saved.map((s) => [s.id, s.eta_min]), [[two.id, byId[two.id].eta], [one.id, byId[one.id].eta]], 'saved: the very times previewed');
+  assert.deepEqual(h.sql(`select coalesce(string_agg(coalesce(manual_order::text, 'null'), ','), '') from public.jobs where id in ('${one.id}', '${two.id}')`), 'null,null', 'no order by hand written (C1)');
   x.nothingLeft(r);
   x.noErrors(page);
 });

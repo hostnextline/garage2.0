@@ -32,9 +32,9 @@ report in `$HIS_STACK/logs/`.
 |---|---|---|
 | `bash M/up.sh [source folder]` | Copies the source folder, makes a NEW database from its migrations, starts every service again | 5 s |
 | `bash M/db-tests.sh [file or pattern]` | `tests/db/*.test.mjs` | 2 s |
-| `bash M/api-tests.sh [file or pattern]` | `tests/api/*.test.mjs` (also any test file given by its path: `bash M/api-tests.sh ops/tests/sauvegardes.test.mjs`) | 5 s |
+| `bash M/api-tests.sh [file or pattern]` | `tests/api/*.test.mjs` (also any test file given by its path: `bash M/api-tests.sh ops/tests/sauvegardes.test.mjs`); `textos-journee` (Part 28, « Envoyer les heures aux clients »: 16 tests, about 85 s, three of them with a slow fake GoHighLevel: the knobs `ghl_msg_ms` (only the text call waits) and `ghl_fail=<numbers>` (only those numbers refused) of `tests/stack/mocks.mjs`) | 5 s (the whole suite: about 3 min) |
 | `bash M/e2e.sh [test name pattern]` | `tests/e2e/app.test.cjs` (production build, Playwright 1.55.0, `TZ=America/Toronto`) | 2 min |
-| `bash M/e2e.sh <file> [pattern]` | another end-to-end file: `plages`, `argent`, `mise-a-jour`, `routes` (« Vraies routes », 9 steps, its own build WITH a fake browser TomTom key), `deplacer` (« Déplacer à l'heure choisie », 8 steps) (or its path, or `all` for every `tests/e2e/*.test.cjs`) | 1 to 4 min each |
+| `bash M/e2e.sh <file> [pattern]` | another end-to-end file: `plages`, `argent`, `mise-a-jour`, `routes` (« Vraies routes », 9 steps, its own build WITH a fake browser TomTom key), `deplacer` (« Déplacer à l'heure choisie », 9 steps), `reorganiser` (« Réorganiser la journée » and « Envoyer les heures aux clients », Part 28, 9 steps; not in `all.sh`) (or its path, or `all` for every `tests/e2e/*.test.cjs`) | 1 to 4 min each |
 | `bash M/e2e-file.sh <file> [test name pattern]` | the same as `e2e.sh <file>` (written beside it on the « Vraies routes » branch before `e2e.sh` took a file; the same lock, the same preparation, the copy's `lib/common.sh`); `SRC=`, `NOSYNC=1`, `FRESH=1` as below | 1 to 3 min |
 | `bash M/all.sh [source folder]` | The four above in GitHub's order on a new database, then `plages`, `argent`, `mise-a-jour`, `routes` and `deplacer` each alone; one table at the end | about 12 min |
 | `bash M/down.sh` | Stops everything this stack started (and nothing else) | 1 s |

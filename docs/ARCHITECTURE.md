@@ -174,8 +174,9 @@ the planner (`suggestBlocks` and `suggestWindows` await it when the switch is on
 screen waits 3.5 s at most, never a refusal; one request per place and page of 14 days, remembered 10 minutes; the rest
 asked behind), `placeRoads` / `retryRoads` / `roadsTick` for the screens (« mesure en cours », « Réessayer », ask again
 when a measure lands), `measureRoads` (the sweep, one at a time on a device) / `roadsStatus` / `roadsSwitch(on, op?)` for
-the settings panel, `movePreview(truck, day, block, jobs, { asTold })` / `stopOrderPreview(…)` (POST, never offline: they
-run the action on the server and undo it), and `warmAfterSent` / `warmJob` / `warmPlace` (a booking, a move, « Changer
+the settings panel, `movePreview(truck, day, block, jobs, { asTold })` (POST, never offline: it runs the action on the
+server and undoes it; `stopOrderPreview` went with « Ordre des arrêts » in Part 28, « Réorganiser la journée » asks its own
+`day_order_preview` through `src/data/dayOrder.ts`), and `warmAfterSent` / `warmJob` / `warmPlace` (a booking, a move, « Changer
 de client », a new position that reached the server: its place measured in the background), `warmStart(point)` (a new
 « Départ de ce camion » / « Départ des camions » that reached the server: that start measured at once for today + 14 days;
 `homeWarmed` keeps one warm per start, cleared by `resetRoads`). `src/services/roadsSweep.ts`
@@ -290,6 +291,9 @@ Paths under `src/`. Owner: the package that owns the folder (`app-shell` is the 
 | `shared/invoices/InvoicePanel` | invoices | `{ jobId }` |
 | `shared/invoices/PaySheet` | invoices | `{ open, onClose, invoiceId, onPaid? }` |
 | `shared/guide/GuideCard` | comms-guide | `()` → the next first step, or null |
+| `shared/jobs/DayOrderHost` (Part 28) | jobs | `openDayOrder(day, { truck?, job?, first? })`, `DayOrderHost({ onSaved? })` (mounted by the agenda, Aujourd'hui, the Carte, Vue d'ensemble, the job screen); `mayOrderDay(day)` in `domain/jobs/dayOrder` |
+| `shared/jobs/TellHost` (Part 28) | jobs | `openTell(day)` — mounts its own root on first use (no screen mounts it): the send list « Envoyer les heures aux clients » |
+| `shared/jobs/ToldBanner` / `ToldBits` (Part 28) | jobs | `ToldBanner({ day })`, `ToldDays()` (nothing when N = 0 or not owner / « Réserver »); `ToldJobLine({ job })`, `ToldWarn({ job })`, `toldDayToast(before)`; the rule in `domain/jobs/told` (`tellState`, `toldWindow`, `clientsDue`, `dueOn`, `dueDays`, `tellCtx`) |
 
 Keep the exported names and props exactly; you may add optional props.
 
@@ -347,7 +351,10 @@ on the map); end to end: the step « « Déplacer » from the map … » of `app
 
 Hassan, 2026-11-21: « when i move an appointement, i want it to move exactly where i point it to move, but the rest stays
 the same » (STATE.md 20:00 S1–S9 / A1–A6 and 20:25: S6 corrected, A7). Window mode only (« Plages d'arrivée » on); blocks
-mode and « Flexible », the day alone, « Ordre des arrêts », « Coller ici » move as before.
+mode and « Flexible », the day alone, « Réorganiser la journée », « Coller ici » move as before. Part 28: a late other
+customer on a day other than today gets his new window when he is told (`lateWindow` in `exactMove.ts`: « Il aura … avec
+« Envoyer les heures aux clients » », the done words `jobs.exact.doneLate`; today, or his window will not move:
+`jobs.exact.doneLateToday`, « Avertis … »).
 - Data (`src/data/exact.ts`, the ONE place that names the server's keys): `exactArgs(at, lateOk)` → `p_exact: { at, late_ok }`
   (move_job's 8th argument, sent by `api.ts` `moveJob` when `win.at` is given: never queued, A4); `exactPreview(job, day,
   truck, at)` → `move_preview(p_job, p_day, p_truck, p_at)` (its trial `rows` are never applied: `callRpc(…, { apply: false })`);
@@ -372,7 +379,8 @@ mode and « Flexible », the day alone, « Ordre des arrêts », « Coller ici �
   `src/dev/demo-windows.test.ts` (A6), `src/ui/sheetFoot.test.tsx` (the two long answers fit a phone); database
   `tests/db/exact-move*.test.mjs`; end to end `tests/e2e/deplacer.test.cjs` (9 steps, the real server: the grid's drop at
   13 h 30, somebody late, a time the truck cannot reach, the phone from the Carte, a booking after the move, « Laisser
-  l'app choisir », « Vraies routes » on measured and not measured, « Texter … ? » answered « Pas de texto »).
+  l'app choisir », « Vraies routes » on measured and not measured, « Texter … ? » answered « Pas maintenant » then the
+day's button).
 
 ## « Texter … ? » (ask first: no « moved » text goes by itself)
 
@@ -383,12 +391,76 @@ by every path that used to send (agenda `move.ts` send / exactSaid / textWhenSen
 « Envoyer le texto » = notifyCustomer('moved') for 'notify', and for 'jobs' sendText('moved') where a `text-outcome` host is
 mounted (`hostMounted` in `hosts.ts`), else notifyCustomer. A navigation closes it through `Sheet`'s `onNavigate`: it
 rises again on the next screen. The next question waits for the send and its hand-text sheet (`outcomeClosed`).
-- Test ids: `text-ask` (the sheet), `text-ask-when` (the moment), `text-ask-send`, `text-ask-skip`; Réglages → Textos
+Part 28: « Pas maintenant » (was « Pas de texto ») sends nothing and leaves the client owed his hour for « Envoyer les heures
+aux clients »; then E4's `toldDayToast(before)` (a client expected today, or tomorrow after 18 h: a toast with that day's
+button); a flow that asked nothing calls `toldDayAfter(before)` (held while a question is open, never after « Envoyer le
+texto »). « Envoyer le texto » goes under the server's lease and writes what the client was told.
+- Test ids: `text-ask` (the sheet), `text-ask-when` (the moment), `text-ask-later` (« Pas maintenant : rien ne part … »), `text-ask-send`, `text-ask-skip`; Réglages → Textos
   `msg-on-moved` (aria-label « Demander avant d’envoyer, Rendez-vous changé »).
 - Tests: `src/shared/jobs/textAsk.test.tsx` (the question, its sends and outcomes, a screen without a host, the row
   leaving the phone, a navigation, the back button, two questions), the paths' unit tests, `SettingsScreen.test.tsx`; end
   to end `tests/e2e/harness.cjs` `textAsk(page, { send })`, `deplacer.test.cjs` (`textAskIf`: 2 s with the question up,
-  no `notify` request; step 8: « Pas de texto », ✕, « Voir »), `app.test.cjs`, `plages.test.cjs`, `mise-a-jour.test.cjs`.
+  no `notify` request; step 8: « Pas maintenant », ✕, « Voir », then the day's button), `app.test.cjs`, `plages.test.cjs`, `mise-a-jour.test.cjs`.
+
+## « Réorganiser la journée » and « Envoyer les heures aux clients » (Part 28)
+
+Hassan, 2026-11-22: « i want to be able to easely rearange a day » (he chose « Drag in a list ») and « dont send any text,
+put a button that will send for all clients, ill press it when day is filled and im done re organizing ». The contract is
+REARRANGE.md of the work folder; CLAUDE.md « Things to know » says what it does.
+- Data (one file each, the only ones that name the server's keys): `src/data/dayOrder.ts` — `dayOrderPreview(ask)` →
+  `day_order_preview(p_day, p_lists, p_moved, p_was, p_auto)` (POST `{ noOp: true, apply: false }`), `dayOrderSave(ask,
+  accept, op)` → `day_order_save(p_op, …, p_accept)` (`queue: false`: never kept on the phone), `dayAnswer` / `dayRefusal`
+  (`day_changed` with `by: { name }`, `outcome_changed` whose detail is the whole answer, `changed`, `truck_off`,
+  `truck_ends`, `needs_truck`, `not_allowed`), `isDeadlock` / `isLockBusy` / `isNoAnswer`, `keepDraft` / `keptDraft` /
+  `dropDraft` (`localStorage` `his.dayOrder.<staff>.<day>`, every access in a try), `DAY_ORDER_WAIT_MS` 600;
+  `src/data/tell.ts` — `tellList(day)` (`tell_list`, read only), `sendDay(day, only, again?)` (notify `{ action: 'day', day,
+  base, op, only, again? }`, a NEW op each call; 100 ids at most a call, the sheet sends longer lists in parts),
+  `tellMark(marks)` (`tell_mark`, `queue: false`).
+- The rules (pure, `src/domain/jobs/`): `dayOrder.ts` (`draftOf`, `moveTo`, `moveBy`, `putFirst`, `putOn`, `backToPlace`,
+  `canDrop` → `machine` / `off` / `right` / `block` / `kind`, `changed`, `rebase`, `wasOf`, `listsOf`, `movedOf`,
+  `mayOrderDay`); `told.ts` (`tellState` = the server's `tell_state`, both checked on `tests/fixtures/told-cases.json`;
+  `toldWindow`, `clientsDue`, `dueOn`, `dueDays`, `tellRows`, `tellCtx`).
+- The screens (`src/shared/jobs/`): `DayOrderSheet.tsx` + `DayOrderHost.tsx` + `listDrag.ts` (Pointer Events, no package:
+  a finger by the grip only, `touch-action: none` there; a mouse by the whole row; the ghost on `document.body`; a chip
+  held 400 ms; auto-scroll of `.sheet-body`) + `dayorder.css` (`dayord-*`); `TellSheet.tsx` + `TellHost.tsx` (`openTell`);
+  `ToldBanner.tsx` (`ToldBanner`, `ToldDays`); `ToldBits.tsx` (`ToldJobLine`, `ToldWarn`, `toldDayToast`). Mounted:
+  the agenda's day bar (`DayView`: the button + `ToldBanner`), the week's block menu (computer), Aujourd'hui (`TeamDay`:
+  the button, `ToldDays`, `TomorrowPanel` in `TeamPanels.tsx` with « Réorganiser demain »; `MechanicDay`: « Réorganiser
+  ma journée », `ToldWarn`), the Carte, Vue d'ensemble, any stop's menu (`shortcuts.tsx`), the job screen (`MomentPanel`:
+  `reorg.open` + `ToldJobLine`; `MenuSheet`: « Mettre en premier » opens the sheet with the stop first). « Fixer les
+  plages » (`WindowsPanel`) opens tomorrow's list; the late list of « Vraies routes » (`RoadsPanel`) has « Je l'ai
+  averti »; `TruckCard` says what the customer was told (`toldWindow`); the week's day heads (`WeekParts`) count the due.
+  « C'est envoyé » on the two « send by hand » sheets (`TextOutcome.tsx`, `shared/moment/notify.tsx`) when the answer
+  carries `told` → `tell_mark` 'hand'. Retired: `StopOrderSheet.tsx`, `useOrderPreview`, `stopOrderPreview`,
+  `windowTexts.ts`, `select.ts` `toConfirm`, `ConfirmPanel`.
+- Words: `src/i18n/{fr,en}/reorg.ts`, `tell.ts`; errors `day_changed`, `outcome_changed`, `truck_off`, `truck_ends`.
+- Test ids — the sheet: `dayorder-sheet`, `dayorder-status`, `dayorder-unsaved`, `dayorder-auto` / `dayorder-auto-back`,
+  chips `dayorder-chip-<truck id>` (phone), trucks `dayorder-truck-<truck id>`, heads `dayorder-head-<truck id>` (a drop
+  target: its end), `dayorder-headline-<id>`, `dayorder-over-<id>`, `dayorder-refused-<id>`, `dayorder-unmeasured-<id>`;
+  rows `dayorder-row-<job number>` (`data-dayord-row data-id data-truck data-block data-index`), grip `dayorder-grip-<n>`,
+  main `dayorder-main-<n>` (a tap = the row's menu), `dayorder-eta-<n>`, `dayorder-hours-<n>`, `dayorder-pill-<n>`,
+  `dayorder-note-<n>`, under way `dayorder-live-<n>`; end slot `dayorder-end-<truck>` (`-<block>` in blocks mode), drop
+  line `dayorder-line`, ghost `dayorder-ghost`; summary `dayorder-summary` (`dayorder-summary-go`, `dayorder-retry`);
+  buttons `dayorder-save`, `dayorder-cancel`, `dayorder-close`, `dayorder-send`; notices `dayorder-offline`,
+  `dayorder-measuring`, `dayorder-waitmove`, `dayorder-changed`, `dayorder-draft-back` (`dayorder-forget`),
+  `dayorder-auto-shown`, `dayorder-auto-lost`, `dayorder-outcome`; the row's menu `dayorder-menu`,
+  `dayorder-menu-first|up|down|back`, `dayorder-menu-on-<truck>`; `dayorder-live` (aria-live), `dayorder-unplaced`.
+  Entry points: `agenda-reorg` (in `agenda-daybar`), `menu-reorg-day`, `map-reorg`, `today-reorg`, `today-reorg-mine`,
+  `today-tomorrow-order` (« Réorganiser demain »), `overview-reorg`, `menu-reorg`, `job-order`, `menu-order`, `menu-first`. The texts: `told-banner`
+  (`told-banner-send`), `told-days` (`told-day-<day>`), `today-tomorrow` (`today-tomorrow-line`, `today-tomorrow-send`,
+  `today-tomorrow-row`, `today-tomorrow-none`), `told-job-line`, `told-warn`; the list `tell-sheet`, `tell-reach`
+  (`tell-row`, `tell-row-line`), `tell-self` (`tell-self-row`, `tell-mark-<id>`), `tell-drift` (`tell-drift-row`),
+  `tell-unmeasured` (`tell-measure`), `tell-go`, `tell-cancel`, `tell-progress`; the result `tell-result`, `tell-sent`,
+  `tell-maybe` (`tell-resend`), `tell-failed` (`tell-retry-<id>`), `tell-busy`, `tell-already`, `tell-tocall`
+  (`tell-tocall-row`), `tell-byhand` (`tell-byhand-row`, `tell-open-<id>`, `tell-handed-<id>`, `tell-all-sent`),
+  `tell-left` (`tell-go-left`), `tell-all`, `tell-close`, `tell-refreshed`, `tell-failure`, `tell-right`.
+- Tests: unit `src/domain/jobs/{dayOrder,told}.test.ts`, `src/data/{dayOrder,tell}.test.ts`,
+  `src/shared/jobs/{DayOrderSheet,DayOrderHost,TellSheet,TellHost,ToldBanner,ToldBits}.test.tsx`, `listDrag.test.ts`,
+  `src/shared/moment/notify-told.test.tsx`, `src/features/today/TeamPanels.test.tsx`, `src/features/agenda/WeekParts-told.test.tsx`,
+  `src/dev/demo-{reorg,tell}.test.ts`; database `tests/db/reorganiser.test.mjs`, `tests/db/textos-journee.test.mjs`; API
+  `tests/api/textos-journee.test.mjs`; end to end `tests/e2e/reorganiser.test.cjs` (+ `reorganiser.helpers.cjs`: a mouse
+  drag, a finger through the DevTools protocol, the save, the oracle) and the steps it changed in `deplacer`, `plages`,
+  `routes` (4a).
 
 ## Server reference (read the migrations for the exact rules)
 
@@ -420,7 +492,23 @@ minute (placed late and said late — activity `window_late` `why: 'pin'` — ra
 always; cleared by a move without `p_exact` (« Laisser l'app choisir », the old app), an « Ordre des arrêts » that lists
 it, the windows switched off ·
 `stop_order_preview(p_truck, p_day, p_block, p_jobs)` → `[{ id, eta, late, measured (null off) }]` (both run `move_job` /
-`set_stop_order` and undo them: the action's own rights, nothing written; call them with POST). With the switch on, the
+`set_stop_order` and undo them: the action's own rights, nothing written; call them with POST; since Part 28 the app no
+longer calls `stop_order_preview` nor `set_stop_order`: they stay for older phones).
+« Réorganiser la journée » (Part 28, `20261122000100_reorganiser.sql`): `day_order_preview(p_day, p_lists, p_moved default
+'{}', p_was default null, p_auto default false)` (nothing written; `p_lists` null only with `p_auto`: the planner's lists)
+and `day_order_save(p_op, p_day, p_lists, p_moved, p_was, p_auto, p_accept)` → `{ ok, day, basis_ok, mode, roads, rewin,
+auto, lists: [{ truck, block, jobs }], stops: [{ id, truck_id, truck_before, block, order, order_before, eta, eta_before,
+measured, win, new_win, win_back, flex_fixed, flex_later, late_min, early_min, pin, pin_lost, pin_moved, over }], trucks:
+[{ id, block, hours_end, finish, over_min, drive_min, unmeasured }], accept: { windows, flex, late, early, pins, over },
+due_after }` (the save adds `saved: true` and `rows: { jobs }`; a basis that changed: preview `basis_ok: false` with `gone`,
+`new`, `changed`, `by`; save `day_changed`); `p_was` = `{ job id: [truck_id, block, stop_order, win_start, win_end,
+arrive_at, status] }` of every booked / en route / on site job of the day on the listed trucks · `tell_list(p_day)` (owner /
+« Réserver ») → `[{ id, number, customer_id, state: new|changed|drift, kind: booking|window|moved|null, told, now: { day,
+start, end, rewin }, phone_ok, sms_ok, kind_on }]` · `tell_mark(p_op, p_marks: [{ id, how: call|hand, kind, day, start, end }])`
+→ `{ ok, marked, changed, busy, rows: { jobs } }` · the columns `jobs.told_day`, `told_start`, `told_end`, `told_at`,
+`told_how` (sms|maybe|call|hand|install), `told_by`, `hand_at` (the server's only; cleared when the customer or his phone
+changes). Service role only: `day_order_core`, `tell_now`, `tell_state`, `tell_take`, `tell_done`, `tell_release`,
+`told_install`, `day_rewin_on`, `told_hours`. With the switch on, the
 suggestion rows (`suggest_blocks`, `suggest_windows`, the web ones) also carry `unmeasured`, `add_km` null when a trip is
 not measured, `day_km`, `rank` and `route` (exact in window mode only; null by blocks); `far` is said only from measured
 trips (`hop_known`; the day without its unmeasured legs), never by a guess; a row with `unmeasured` > 0 comes after every
@@ -434,9 +522,15 @@ older is asked again; owner only), `roads_month_tx` (10 000: TomTom Matrix trans
 only), `roads_web_tx` (1 000: the online booking page's share of it; owner only), `near_min` (10: « proche » in minutes of
 measured driving while on). `roads_rush_min` and `roads_keep_days` are not on a screen (the server's defaults); the guard
 keeps all four « owner only » numbers for anybody else's save.
-Server functions (`callFn` / helpers in api.ts): `notify { kind: booking|moved|arrived|extras|invoice|payment_reminder, job_id, resend? }` →
+Server functions (`callFn` / helpers in api.ts): `notify { kind: booking|window|moved|arrived|extras|invoice|payment_reminder, job_id, resend? }` →
 `{ status: sent|off|no_phone|error|already, message, link, phone }` (texts go through GoHighLevel; when it is not connected the
-answer gives the message and the link so the person can send it from their own phone) · `enroute { action: start|refresh|end, job_id, pos?, notify? }` ·
+answer gives the message and the link so the person can send it from their own phone; Part 28: booking / window / moved go
+under the lease `tell:<job>` and write what the client was told; `already` when nothing new is owed or another send holds
+him; their `off` / `error` answers carry `told: { day, start, end }`, `kind`, `job_id`, and `maybe: true` when the text may
+have gone) · `notify { action: 'day', day, base, op, only: [job ids ≤ 100], again?: [job ids] }` (owner / « Réserver »; Part
+28) → `{ ok, status: 'done', day, sent, maybe, already, busy, gone, quiet: [{ id, phone, why }], no_phone, failed: [{ id,
+error, phone, told, kind }], by_hand: [{ id, phone, message, link, told, kind }], left }` (call again with `left` and a NEW
+op) · `enroute { action: start|refresh|end, job_id, pos?, notify? }` ·
 `vin { vin }` · `team { action: list|invite|reset-link|invite-cancel|remove|secrets|secrets-set|sms-test|leave|forgot|invite-info|invite-accept }` ·
 `drive { action: warm, point: { lat, lng }, from?, days?: 1…14, only?: 'point' }` (any member; without `point`: owner / office)
 · `drive { action: sweep }` (owner / office, or the nightly job's GitHub ticket) → `{ ok, ready, left, left0, stored,
