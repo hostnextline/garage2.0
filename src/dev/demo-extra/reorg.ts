@@ -7,8 +7,15 @@
      pin, status); changed meanwhile: the preview answers basis_ok false, the save refuses day_changed;
    - the coverage of the lists (changed), the vehicle that cannot do tire work (needs_truck), a truck that does not work
      that day (truck_off), a stop put on another vehicle past its hours (truck_ends);
-   - the walk: the stops under way first, then the lists in order; a stop moved never waits, the others wait for their
-     pinned minute, else the window they were told that day, else their window;
+   - the walk: the stops under way first, then the lists in order; a stop moved never waits (it takes the hour of its new
+     place: right after the stop before it); Part 29 (Hassan, 2026-11-22: « accept the appointement where i put it without
+     moving all the others arround », drag-keeps-spec.md §4.2): the others keep their hour — each waits for its pinned
+     minute, else for its arrival now (never before its window); « Laisser l'app choisir »: Part 28's wait (the pinned
+     minutes cleared, the window he was told when it starts earlier, else the window);
+   - Part 29's pins: a stop moved is pinned at its new hour (window mode: `pin_new`, `pin_was`, accept.at, written
+     arrive_at + truck_pinned); a pin not moved, already late and not made later: pinned again at its arrival (D2); made
+     later: lost (warned, as before); a « new window » equal to the window it has is none (F4); a flexible stop moved
+     gets its window at the save (D5);
    - the judge: back to what he was told (win_back), a new window from the arrival (owner / « Réserver », switch
      « les plages ne bougent jamais » off), late / early otherwise, flexible ones given their window only when that day's
      evening lock is due, the pins that go, the trucks past their hours; warn first (p_accept) at the save;
@@ -45,7 +52,7 @@ function hoursOf(truck: string, day: string, block: string): Win | null {
   return b > a ? [day === today() ? Math.max(a, nowMinute()) : a, b] : null;
 }
 const lockDue = (day: string) => day === today() || (day === addDays(today(), 1) && nowMinute() >= num(booking().win_lock_min, 1080));
-const empty = () => ({ windows: {} as Record<string, number>, flex: {} as Record<string, number>, late: {} as Record<string, number>, early: {} as Record<string, number>, pins: {} as Record<string, number>, over: {} as Record<string, number> });
+const empty = () => ({ windows: {} as Record<string, number>, flex: {} as Record<string, number>, late: {} as Record<string, number>, early: {} as Record<string, number>, pins: {} as Record<string, number>, over: {} as Record<string, number>, at: {} as Record<string, number> });
 
 function core(a: Record<string, unknown>, save: boolean) {
   const day = typeof a.p_day === 'string' ? a.p_day : '';
@@ -99,6 +106,23 @@ function core(a: Record<string, unknown>, save: boolean) {
     if (j.needs_machine === true && tr?.tire_machine === false) refuse('needs_truck', 'Ce travail demande le camion (montage ou balancement des pneus) : la voiture ne peut pas le faire.');
   }
   const moved = new Set(Array.isArray(a.p_moved) ? (a.p_moved as string[]) : []);
+  // « its arrival now » (the server's v_before: what its route_hold last wrote): the demo's stored eta_min are not always
+  // walked (renumber puts them 75 min apart whatever the durations), so the stored order is walked here first, each stop
+  // held to its pinned minute, else not before its stored arrival nor its window (what a save wrote stays as it is)
+  const now = new Map<string, number>();
+  for (const tr of new Set(all.filter((j) => j.truck_id && j.status === 'booked').map((j) => String(j.truck_id)))) {
+    for (const block of new Set(all.filter((j) => j.truck_id === tr).map((j) => String(j.block)))) {
+      const hrs = hoursOf(tr, day, block) || (block === 'day' ? span() : BLOCKS[block] || span());
+      let t = hrs[0];
+      for (const j of all.filter((x) => x.truck_id === tr && x.block === block && LIVE.includes(String(x.status)))) t = Math.max(t, num(j.eta_min, t) + num(j.duration_min, 60));
+      for (const j of booked(tr, block)) {
+        const hold = wm && j.arrive_at != null ? Number(j.arrive_at) : Math.max(num(j.eta_min, 0), wm && j.win_start != null ? Number(j.win_start) : 0) || null;
+        const eta = Math.max(t + num(j.travel_min, 18), hold ?? 0);
+        now.set(j.id, eta);
+        t = eta + num(j.duration_min, 60);
+      }
+    }
+  }
   // the walk and the judge
   const acc = empty();
   const stops: Record<string, unknown>[] = [];
@@ -114,8 +138,15 @@ function core(a: Record<string, unknown>, save: boolean) {
       const travel = num(j.travel_min, 18);
       const ws = j.win_start == null ? null : Number(j.win_start), we = j.win_end == null ? null : Number(j.win_end);
       const told: Win | null = j.told_at && j.told_day === day && j.told_start != null && j.told_end != null ? [Number(j.told_start), Number(j.told_end)] : null;
-      // held to what he was told only when it starts earlier than his planned window (never a later start: review R1)
-      const hold = moved.has(id) ? null : j.arrive_at != null ? Number(j.arrive_at) : told && rewin && ws != null && told[0] < ws ? told[0] : ws;
+      const before = now.get(id) ?? (j.eta_min == null ? null : Number(j.eta_min));
+      const pinWas = j.arrive_at == null ? null : Number(j.arrive_at);
+      // a stop moved waits for nothing; « Laisser l'app choisir » (its pins cleared): Part 28's wait — what he was told only
+      // when it starts earlier than his planned window (review R1), else the window; else (Part 29, G2) its pinned minute,
+      // else its arrival now, never before its window
+      const hold = moved.has(id) ? null
+        : auto ? (told && rewin && ws != null && told[0] < ws ? told[0] : ws)
+          : pinWas != null && wm ? pinWas
+            : Math.max(before ?? 0, wm && ws != null ? ws : 0) || null;
       let eta = t + travel;
       if (hold != null && eta < hold) eta = hold;
       t = Math.max(t, eta + num(j.duration_min, 60));
@@ -125,28 +156,46 @@ function core(a: Record<string, unknown>, save: boolean) {
         if (ws != null && we != null) {
           if (rewin) {
             if (told && eta >= told[0] && eta <= told[1]) { if (told[0] !== ws || told[1] !== we) { newWin = told; back = true; } }
-            else if (eta < ws || eta > we) { newWin = winOf(eta); back = !!told && newWin[0] === told[0] && newWin[1] === told[1]; if (!back) acc.windows[id] = newWin[0]; }
+            else if (eta < ws || eta > we) {
+              newWin = winOf(eta);
+              if (newWin[0] === ws && newWin[1] === we) { newWin = null; if (eta > we) late = eta - we; else early = ws - eta; }   // F4: the same window is none
+              else { back = !!told && newWin[0] === told[0] && newWin[1] === told[1]; if (!back) acc.windows[id] = newWin[0]; }
+            }
           } else if (eta > we) late = eta - we; else if (eta < ws) early = ws - eta;
         } else if (rewin) {
-          if (lockDue(day)) { newWin = winOf(eta); flexFixed = true; acc.flex[id] = newWin[0]; } else flexLater = true;
+          // D5: a flexible stop he dragged gets the window of the hour he chose, whatever the day
+          if (lockDue(day) || moved.has(id)) { newWin = winOf(eta); flexFixed = true; acc.flex[id] = newWin[0]; } else flexLater = true;
         }
       } else if (BLOCKS[l.block] && eta > BLOCKS[l.block][1]) late = eta - BLOCKS[l.block][1];
       if (late) acc.late[id] = late;
       if (early) acc.early[id] = early;
-      if (j.arrive_at != null && (moved.has(id) || eta > Number(j.arrive_at))) { pinLost = Number(j.arrive_at); acc.pins[id] = pinLost; }
+      // the pins (window mode): the stop moved is pinned at its new hour (G1); a pin not moved that the arrival passes is
+      // pinned again at its arrival when this order does not make it later than it was (D2), else it is lost
+      // (« Laisser l'app choisir » forgets the day's pins: a stop dragged after it is pinned like any drag)
+      let pin: number | null = pinWas, pinNew = false;
+      const wmDay = wm && l.block === 'day';
+      // (a minute holds only a stop that has a window, or gets one now: a flexible one left flexible — a mechanic's save —
+      // loses its minute as before)
+      if (moved.has(id) && wmDay && (ws != null || newWin != null)) { pin = eta; pinNew = true; acc.at[id] = eta; }
+      else if (auto) pin = null;
+      else if (pinWas != null && (moved.has(id) || eta > pinWas)) {
+        if (wmDay && !moved.has(id) && before != null && eta <= before) { pin = eta; acc.at[id] = eta; }
+        else { pinLost = pinWas; pin = null; acc.pins[id] = pinLost; }
+      }
       // another vehicle past its hours: refused (its kind holds for every later plan)
       if (j.truck_id !== l.truck && eta + num(j.duration_min, 60) > hrs[1]) {
         const tr = find('trucks', l.truck);
         refuse('truck_ends', `${tr?.name ?? 'Ce véhicule'} finit à ${Math.floor(hrs[1] / 60)} h ce jour-là : ${String(find('customers', j.customer_id)?.first_name ?? `#${String(j.number)}`)} n’y entre pas.`);
       }
       stops.push({
-        id, truck_id: l.truck, truck_before: j.truck_id, block: l.block, order: i + 1, order_before: j.stop_order ?? null, eta, eta_before: j.eta_min ?? null,
+        id, truck_id: l.truck, truck_before: j.truck_id, block: l.block, order: i + 1, order_before: j.stop_order ?? null, eta, eta_before: before,
         measured: null, win: ws != null && we != null ? [ws, we] : null, new_win: newWin, win_back: back, flex_fixed: flexFixed, flex_later: flexLater,
-        late_min: late || null, early_min: early || null, pin: pinLost == null ? j.arrive_at ?? null : null, pin_lost: pinLost, pin_moved: pinLost != null && moved.has(id)
+        late_min: late || null, early_min: early || null, pin, pin_lost: pinLost, pin_moved: pinLost != null && moved.has(id), pin_new: pinNew, pin_was: pinWas
       });
       writes.push({ id, patch: {
         truck_id: l.truck, ...(j.truck_id !== l.truck ? { truck_pinned: !auto } : {}), stop_order: i + 1, manual_order: null, eta_min: eta, travel_min: travel,
-        ...(moved.has(id) ? { arrive_at: null, forced: false } : pinLost != null ? { arrive_at: null } : {}),
+        ...(auto ? { arrive_at: null, truck_pinned: false } : {}),
+        ...(pinNew ? { arrive_at: eta, forced: false, truck_pinned: true } : moved.has(id) ? { arrive_at: null, forced: false } : id in acc.at ? { arrive_at: eta } : pinLost != null ? { arrive_at: null } : {}),
         ...(newWin ? { win_start: newWin[0], win_end: newWin[1] } : {}),
         ...(!rewin && (late || early) ? { hand_at: nowIso() } : {})
       } });
@@ -159,9 +208,9 @@ function core(a: Record<string, unknown>, save: boolean) {
   if (!save) return answer;
   // warn first: every new window, flex window and pin as shown; late, early, past-hours shown and at most 5 min worse
   const got = (a.p_accept && typeof a.p_accept === 'object' ? a.p_accept : {}) as Record<string, Record<string, number> | undefined>;
-  const same = (k: 'windows' | 'flex' | 'pins') => Object.entries(acc[k]).every(([id, v]) => got[k]?.[id] === v);
+  const same = (k: 'windows' | 'flex' | 'pins' | 'at') => Object.entries(acc[k]).every(([id, v]) => got[k]?.[id] === v);
   const within = (k: 'late' | 'early' | 'over') => Object.entries(acc[k]).every(([id, v]) => got[k]?.[id] != null && v <= Number(got[k]![id]) + 5);
-  if (!(same('windows') && same('flex') && same('pins') && within('late') && within('early') && within('over'))) {
+  if (!(same('windows') && same('flex') && same('pins') && same('at') && within('late') && within('early') && within('over'))) {
     refuse('outcome_changed', 'Depuis la vérification, la journée donnerait d’autres heures. Regarde de nouveau avant d’enregistrer.');
   }
   const out = writes.map((w) => put('jobs', { id: w.id, ...w.patch }));

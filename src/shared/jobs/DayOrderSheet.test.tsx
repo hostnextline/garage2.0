@@ -30,7 +30,7 @@ import { AskHost } from '../../ui/ask';
 import { ContextMenuHost } from '../../ui/ContextMenu';
 import { toasts } from '../../ui/toast';
 import { lang } from '../../lib/i18n';
-import { addDays, today } from '../../lib/dates';
+import { addDays, clock, today } from '../../lib/dates';
 import { movesWaiting } from './moving';
 import type { Access, Job } from '../../data/types';
 
@@ -557,3 +557,137 @@ describe('« Laisser l\'app choisir », and who sees what', () => {
     expect(h.save).not.toHaveBeenCalled();
   });
 });
+
+describe('Part 29: the stop dragged takes the hour of its new place and keeps it; the others keep theirs (drag-keeps-spec.md §5)', () => {
+  // the day as it is: Benoit 10 h, Chloe 11 h, Denis 12 h (the stored arrivals), each 8 h – 12 h
+  const NOW = () => RAW([STOP('a', { eta: 600, eta_before: 600 }), STOP('b', { eta: 660, eta_before: 660 }), STOP('c', { eta: 720, eta_before: 720 }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })]);
+  const notes = (n: number) => [...document.querySelectorAll(`[data-testid="dayorder-note-${n}"]`)].map((x) => x.textContent);
+  const order = () => [...document.querySelectorAll('[data-dayord-truck="A"] [data-dayord-row]')].map((r) => (r as HTMLElement).dataset.id);
+  async function openNow() {
+    h.preview.mockImplementation(async () => answer(NOW()));
+    await open();
+  }
+  /** Benoit dragged DOWN to the end (after Denis): the server's answer for that order */
+  async function benoitDown(raw: unknown) {
+    await openNow();
+    h.preview.mockImplementation(async () => answer(raw));
+    await keyMove(11, ['ArrowDown', 'ArrowDown']);
+    await wait(60); await settle();
+  }
+  const DOWN = (o: { win?: [number, number] | null; accept?: Record<string, unknown> } = {}) => RAW([
+    STOP('b', { eta: 660, eta_before: 660 }), STOP('c', { eta: 720, eta_before: 720 }),
+    STOP('a', { eta: 800, eta_before: 600, pin: 800, pin_new: true, pin_was: null, new_win: o.win === undefined ? [720, 960] : o.win }),
+    STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })
+  ], { accept: o.accept ?? { ...ACCEPT, windows: { a: 720 }, at: { a: 800 } } });
+
+  it('dragged DOWN: its row says its new hour « fixé à 13 h 20 » and its hour before; the others keep their hour (no note); the summary says it; its new window as before', async () => {
+    await benoitDown(DOWN());
+    expect(order()).toEqual(['b', 'c', 'a']);
+    expect(text('dayorder-eta-11')).toBe('fixé à 13 h 20');
+    expect(notes(11)).toEqual(['avant : vers 10 h']);
+    expect(text('dayorder-pill-11')).toBe('Nouvelle plage');
+    expect(text('dayorder-hours-11')).toBe('8 h à 12 h devient 12 h à 16 h');
+    expect([text('dayorder-eta-12'), text('dayorder-eta-13')]).toEqual(['vers 11 h', 'vers 12 h']);
+    expect([notes(12), notes(13)]).toEqual([[], []]);
+    expect(text('dayorder-summary')).toBe('Benoit à 13 h 20 : fixé là où tu l’as mis. Les autres gardent leur heure. 1 client changera d’heure : Benoit. Rien ne lui est envoyé maintenant.');
+    expect(text('dayorder-save')).toBe('Enregistrer quand même');
+    h.save.mockImplementation(async () => answer({ ...DOWN(), saved: true }));
+    await click('dayorder-save');
+    expect(h.save.mock.calls[0][1]).toEqual({ ...ACCEPT, windows: { a: 720 }, at: { a: 800 } });
+  });
+  it('its window holds its new hour (D1): no « Nouvelle plage »; the minute pinned is no warning: ONE tap on « Enregistrer » saves, accept.at sent back as the preview gave it', async () => {
+    await benoitDown(RAW([
+      STOP('b', { eta: 600, eta_before: 660 }), STOP('a', { eta: 700, eta_before: 600, pin: 700, pin_new: true }), STOP('c', { eta: 720, eta_before: 720 }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })
+    ], { accept: { ...ACCEPT, at: { a: 700 } } }));
+    expect(text('dayorder-eta-11')).toBe('fixé à 11 h 40');
+    expect(q('dayorder-pill-11')).toBeNull();
+    expect(text('dayorder-hours-11')).toBe('plage 8 h à 12 h');
+    expect(text('dayorder-summary')).toBe('Benoit à 11 h 40 : fixé là où tu l’as mis.');                // Chloe's hour changed (an older rule): « les autres gardent » is not said
+    expect(text('dayorder-save')).toBe('Enregistrer');
+    h.save.mockImplementation(async () => answer({ ...RAW(), saved: true }));
+    await click('dayorder-save');
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][1]).toEqual({ ...ACCEPT, at: { a: 700 } });
+  });
+  it('while the server is asked: only the stop dragged says « calcul… »; every other stop keeps showing its hour', async () => {
+    await openNow();
+    h.preview.mockImplementation(() => new Promise(() => undefined));
+    await keyMove(11, ['ArrowDown', 'ArrowDown']);
+    await wait(60);
+    expect(text('dayorder-eta-11')).toBe('calcul…');
+    expect([text('dayorder-eta-12'), text('dayorder-eta-13')]).toEqual(['vers 11 h', 'vers 12 h']);
+    expect(text('dayorder-headline-A')).toBe('calcul…');
+  });
+  it('a drag that truly takes the others\' time: the one pushed inside its window says its hour before and is named; one pushed out gets its new window as before', async () => {
+    await openNow();
+    h.preview.mockImplementation(async () => answer(RAW([
+      STOP('c', { eta: 600, eta_before: 720, pin: 600, pin_new: true }), STOP('a', { eta: 680, eta_before: 600 }),
+      STOP('b', { eta: 760, eta_before: 660, new_win: [720, 960] }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })
+    ], { accept: { ...ACCEPT, windows: { b: 720 }, at: { c: 600 } } })));
+    await keyMove(13, ['ArrowUp', 'ArrowUp']);
+    await wait(60); await settle();
+    expect(order()).toEqual(['c', 'a', 'b']);
+    expect(text('dayorder-eta-13')).toBe('fixé à 10 h');
+    expect(text('dayorder-eta-11')).toBe('vers 11 h 20');
+    expect(notes(11)).toEqual(['avant : vers 10 h']);
+    expect(text('dayorder-pill-12')).toBe('Nouvelle plage');
+    expect(notes(12)).toEqual(['avant : vers 11 h']);
+    expect(text('dayorder-summary')).toBe('Denis à 10 h : fixé là où tu l’as mis. 1 arrêt passe plus tard dans sa plage : Benoit. 1 client changera d’heure : Chloe. Rien ne lui est envoyé maintenant.');
+  });
+  it('a stop dragged that had a pinned minute: its new minute replaces it (no « part : tu l\'as déplacé »); a late pin pinned again at its arrival (D2) says so', async () => {
+    seed([J('a', 11, 'Benoit', 2, { arrive_at: 590 }), J('b', 12, 'Chloe', 3, { arrive_at: 650 }), J('c', 13, 'Denis', 4), world()[4]]);
+    await benoitDown(RAW([
+      STOP('b', { eta: 668, eta_before: 668, pin: 668, pin_was: 650 }), STOP('c', { eta: 720, eta_before: 720 }),
+      STOP('a', { eta: 800, eta_before: 600, pin: 800, pin_new: true, pin_was: 590, new_win: [720, 960] }), STOP('d', { truck_id: 'B', truck_before: 'B' })
+    ], { accept: { ...ACCEPT, windows: { a: 720 }, at: { a: 800, b: 668 } } }));
+    expect(text('dayorder-eta-11')).toBe('fixé à 13 h 20');
+    expect(notes(11)).toEqual(['avant : vers 10 h']);
+    expect(notes(12)).toEqual(['Heure fixée 10 h 50 → 11 h 08 : il arrivait déjà à cette heure']);
+    expect(text('dayorder-summary')).not.toContain('heure fixée ne tient plus');
+  });
+  it('nothing changed: a late pin the save WOULD pin again still shows the pin it has (nothing is saved)', async () => {
+    seed([J('a', 11, 'Benoit', 2, { arrive_at: 590 }), J('b', 12, 'Chloe', 3), J('c', 13, 'Denis', 4), world()[4]]);
+    h.preview.mockImplementation(async () => answer(RAW([STOP('a', { eta: 600, eta_before: 600, pin: 600, pin_was: 590 }), STOP('b'), STOP('c'), STOP('d', { truck_id: 'B', truck_before: 'B' })], { accept: { ...ACCEPT, at: { a: 600 } } })));
+    await open();
+    expect(notes(11)).toEqual(['Heure fixée 9 h 50']);
+  });
+  it('a « new window » equal to the one it has (F4: an arrival past the day\'s end) is no new window: no pill, not counted, no « Enregistrer quand même » for it', async () => {
+    await benoitDown(DOWN({ win: [480, 720], accept: { ...ACCEPT, windows: { a: 480 }, at: { a: 800 } } }));
+    expect(q('dayorder-pill-11')).toBeNull();
+    expect(text('dayorder-hours-11')).toBe('plage 8 h à 12 h');
+    expect(text('dayorder-summary')).toBe('Benoit à 13 h 20 : fixé là où tu l’as mis. Les autres gardent leur heure.');
+    expect(text('dayorder-save')).toBe('Enregistrer');
+  });
+  it('after « Enregistrer » the list is exactly his order, the stop dragged « Heure fixée » at its minute', async () => {
+    await benoitDown(DOWN({ win: null, accept: { ...ACCEPT, at: { a: 800 } } }));
+    const AFTER = RAW([STOP('b', { eta: 660, eta_before: 660 }), STOP('c', { eta: 720, eta_before: 720 }), STOP('a', { eta: 800, eta_before: 800, pin: 800 }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })]);
+    h.save.mockImplementation(async () => {
+      // the save's rows land on the phone (src/data/dayOrder.ts: the answer's rows applied)
+      upsertLocal('jobs', [{ ...world()[2], stop_order: 2, updated_at: '2030-01-01T00:00:00Z' }, { ...world()[3], stop_order: 3, updated_at: '2030-01-01T00:00:00Z' },
+        { ...world()[1], stop_order: 4, eta_min: 800, arrive_at: 800, truck_pinned: true, updated_at: '2030-01-01T00:00:00Z' }] as never);
+      return answer({ ...AFTER, saved: true });
+    });
+    h.preview.mockImplementation(async () => answer(AFTER));
+    await click('dayorder-save');
+    await wait(10); await settle();
+    expect(order()).toEqual(['b', 'c', 'a']);
+    expect(q('dayorder-unsaved')).toBeNull();
+    expect(text('dayorder-eta-11')).toBe('vers 13 h 20');
+    expect(notes(11)).toEqual(['Heure fixée 13 h 20']);
+    expect([text('dayorder-eta-12'), text('dayorder-eta-13')]).toEqual(['vers 11 h', 'vers 12 h']);
+  });
+  it('in English: « set at … », « was around … », the summary', async () => {
+    lang.value = 'en';
+    await benoitDown(DOWN({ win: null, accept: { ...ACCEPT, at: { a: 800 } } }));
+    expect(text('dayorder-eta-11')).toBe(`set at ${clock(800, 'en')}`);
+    expect(notes(11)).toEqual([`was around ${clock(600, 'en')}`]);
+    expect(text('dayorder-summary')).toBe(`Benoit at ${clock(800, 'en')}: set where you put it. The others keep their time.`);
+  });
+  it('an older server (no pin_new): the rows read as before (« vers … »), the summary says nobody changes when nobody does', async () => {
+    await benoitDown(RAW([STOP('b', { eta: 660, eta_before: 660 }), STOP('c', { eta: 720, eta_before: 720 }), STOP('a', { eta: 800, eta_before: 600 }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })]));
+    expect(text('dayorder-eta-11')).toBe('vers 13 h 20');
+    expect(notes(11)).toEqual(['avant : vers 10 h']);
+    expect(text('dayorder-summary')).toBe('Personne ne change d’heure.');
+  });
+});
+

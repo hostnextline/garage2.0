@@ -65,8 +65,11 @@ async function saveByApi(jwt, lists, moved) {
 }
 /** the last preview the page received for a draft that moved that stop */
 const lastPreviewMoving = (previews, id) => previews.filter((a) => a.status === 200 && a.args && (a.args.p_moved || []).includes(id) && a.body && a.body.basis_ok).pop();
-/** the times and windows of an answer, by stop: what the screen and the database are compared with */
-const verdict = (a) => Object.fromEntries(a.stops.map((s) => [s.id, { truck: s.truck_id, eta: s.eta, new_win: s.new_win, win_back: s.win_back, late: s.late_min, early: s.early_min }]));
+/** the times and windows of an answer, by stop: what the screen and the database are compared with (Part 29: the minute
+    pinned, pin_new for a stop dragged) */
+const verdict = (a) => Object.fromEntries(a.stops.map((s) => [s.id, { truck: s.truck_id, eta: s.eta, eta_before: s.eta_before, new_win: s.new_win, win_back: s.win_back, late: s.late_min, early: s.early_min, pin: s.pin, pin_new: s.pin_new === true }]));
+/** what the sheet prints as a stop's hour for an answer: « fixé à … » for a stop dragged (Part 29), else « vers … » */
+const etaWords = (s) => (s.pin_new ? R.fixe(s.pin) : R.vers(s.eta));
 
 before(async () => {
   originalCounts = h.rowCounts();
@@ -159,8 +162,10 @@ step('B1 + B3. The office, on a computer: the last stop dragged to the top with 
   const oracle = await x.rpcAs(who.nadia.jwt, 'day_order_preview', mine.args);
   const v = verdict(oracle);
   assert.deepEqual(verdict(mine.body), v, 'the page’s answer is the server’s');
+  // Part 29: Denis, dragged, at the hour of his new place (« fixé à … »); the others at the server's hour
+  assert.equal(v[J.Denis].pin_new, true, 'Denis, dragged, is pinned at the hour of his new place');
   for (const f of CAMION) {
-    await sheet.getByTestId(`dayorder-eta-${N[f]}`).filter({ hasText: R.vers(v[J[f]].eta) }).waitFor({ timeout: 10000 });
+    await sheet.getByTestId(`dayorder-eta-${N[f]}`).filter({ hasText: etaWords(v[J[f]]) }).waitFor({ timeout: 10000 });
   }
   const changes = CAMION.filter((f) => v[J[f]].new_win && !v[J[f]].win_back);
   t.diagnostic(`the server: ${CAMION.map((f) => `${f} ${clock(v[J[f]].eta)}${v[J[f]].new_win ? ` → ${clock(v[J[f]].new_win[0])}–${clock(v[J[f]].new_win[1])}${v[J[f]].win_back ? ' (back)' : ''}` : ''}`).join(', ')}`);
@@ -190,6 +195,7 @@ step('B1 + B3. The office, on a computer: the last stop dragged to the top with 
     assert.deepEqual([s.ws, s.we], w, `${s.first}: the window previewed`);
     assert.equal(s.manual, null, `${s.first}: no order by hand (C1)`);
     assert.equal(s.told_how, 'install', `${s.first}: what he was told is untouched`);
+    assert.equal(s.at, o.pin, `${s.first}: the minute pinned as previewed (Part 29: Denis at his new hour, the others none)`);
   }
   assert.deepEqual(await R.allTexts(), [], 'no text went');
   // the sheet stays on the saved day: « Envoyer les heures aux clients (N) », N = the clients now owed their hour
@@ -221,13 +227,15 @@ step('B2. A stop dragged by its grip onto the other truck’s column (computer):
   const oracle = await x.rpcAs(who.nadia.jwt, 'day_order_preview', mine.args);
   const v = verdict(oracle);
   assert.equal(v[J.Chloe].truck, T.voiture);
-  await sheet.getByTestId(`dayorder-eta-${N.Chloe}`).filter({ hasText: R.vers(v[J.Chloe].eta) }).waitFor({ timeout: 10000 });
+  // Part 29: dragged onto the Voiture, she is pinned at the hour of her new place there
+  assert.equal(v[J.Chloe].pin_new, true);
+  await sheet.getByTestId(`dayorder-eta-${N.Chloe}`).filter({ hasText: R.fixe(v[J.Chloe].pin) }).waitFor({ timeout: 10000 });
   await h.shot(page, 'reorganiser-b2-other-truck');
   const sv = await R.saveDay(page, saves);
   assert.equal(sv.status, 200, JSON.stringify(sv.body));
   const c = R.dayRows(T.voiture, D).find((s) => s.first === 'Chloe');
   assert.ok(c, 'Chloe is on the Voiture');
-  assert.deepEqual([c.truck, c.pinned, c.eta], [T.voiture, true, v[J.Chloe].eta], JSON.stringify(c));
+  assert.deepEqual([c.truck, c.pinned, c.eta, c.at], [T.voiture, true, v[J.Chloe].eta, v[J.Chloe].pin], JSON.stringify(c));
   assert.equal(R.dayRows(T.complet, D).some((s) => s.first === 'Chloe'), false);
   assert.deepEqual(await R.allTexts(), [], 'no text went');
   x.nothingLeft(r);
@@ -591,4 +599,121 @@ step('B15. A draft kept on the phone: three moves, the page reloaded (an iPhone 
   assert.deepEqual(firsts(R.dayRows(T.complet, D)), ['Denis', 'Benoit', 'Chloe', 'Alice']);
   x.nothingLeft(r);
   x.noErrors(page);
+});
+
+/* ---------- Part 29 (Hassan, 2026-11-22: « when re-arranging the day, if i move an appointement down, i need it to change
+   its hour, and accept the appointement where i put it without moving all the others arround »; STATE.md 10:35 G1–G7,
+   drag-keeps-spec.md §6.3) ---------- */
+const OTHERS = ['Alice', 'Chloe', 'Denis'];
+/** the drag DOWN of B16 / B17 seen on the screen and in the database: Benoit under Chloe takes the hour of his new place
+    (« fixé à … », « avant : vers 10 h »), Alice, Chloe and Denis keep theirs; saved: his order, Benoit pinned at that
+    minute; then a booking of that day by API (the planner plans the whole day again): Benoit still at his minute */
+async function dragDownChecked(t, page, sheet, previews, saves, at0, tag) {
+  assert.deepEqual(await R.rowsShown(page, T.complet), [N.Alice, N.Chloe, N.Benoit, N.Denis], 'Benoit under Chloe, nothing saved');
+  // right after the drop: the others still show their hour (only the stop dragged is worked out)
+  for (const f of OTHERS) assert.equal(flat(await sheet.getByTestId(`dayorder-eta-${N[f]}`).innerText()), R.vers(at0[f]), `${f}: its hour right after the drop`);
+  const mine = await until(() => lastPreviewMoving(previews, J.Benoit), Boolean, 20000);
+  assert.deepEqual(mine.args.p_moved, [J.Benoit], 'the stop moved');
+  const oracle = await x.rpcAs(who.nadia.jwt, 'day_order_preview', mine.args);
+  const v = verdict(oracle);
+  assert.deepEqual(verdict(mine.body), v, 'the page’s answer is the server’s');
+  const b = v[J.Benoit];
+  t.diagnostic(`the server: ${['Alice', 'Chloe', 'Benoit', 'Denis'].map((f) => `${f} ${clock(at0[f])} → ${clock(v[J[f]].eta)}${v[J[f]].pin_new ? ` (fixé ${clock(v[J[f]].pin)})` : ''}${v[J[f]].new_win ? ` [${clock(v[J[f]].new_win[0])}–${clock(v[J[f]].new_win[1])}]` : ''}`).join(', ')}`);
+  assert.equal(b.pin_new, true, 'Benoit is pinned at the hour of his new place (G1)');
+  assert.equal(b.pin, b.eta);
+  assert.ok(b.eta >= at0.Chloe + 50, `Benoit after Chloe’s end (${clock(at0.Chloe)} + 45 min + 5): ${clock(b.eta)}`);
+  assert.equal(b.eta_before, at0.Benoit);
+  for (const f of OTHERS) assert.equal(v[J[f]].eta, at0[f], `${f} keeps its hour (G2)`);
+  // the screen: his hour changed, the others not
+  await sheet.getByTestId(`dayorder-eta-${N.Benoit}`).filter({ hasText: R.fixe(b.pin) }).waitFor({ timeout: 10000 });
+  assert.ok((await R.notesOf(page, N.Benoit)).includes(R.avant(at0.Benoit)), JSON.stringify(await R.notesOf(page, N.Benoit)));
+  for (const f of OTHERS) {
+    assert.equal(flat(await sheet.getByTestId(`dayorder-eta-${N[f]}`).innerText()), R.vers(at0[f]), `${f}: the same hour`);
+    assert.deepEqual(await R.notesOf(page, N[f]), [], `${f}: nothing said`);
+  }
+  const sum = flat(await page.getByTestId('dayorder-summary').innerText());
+  t.diagnostic(`the summary: « ${sum} »`);
+  assert.ok(sum.startsWith(`Benoit à ${clock(b.pin)} : fixé là où tu l’as mis. Les autres gardent leur heure.`), sum);
+  await h.shot(page, `reorganiser-${tag}-dropped`);
+  const sv = await R.saveDay(page, saves);
+  assert.equal(sv.status, 200, JSON.stringify(sv.body));
+  assert.deepEqual(sv.args.p_accept, oracle.accept, 'the save carries what the screen showed');
+  assert.deepEqual(oracle.accept.at, { [J.Benoit]: b.pin }, 'the one minute pinned: Benoit’s');
+  const after = R.dayRows(T.complet, D);
+  assert.deepEqual(firsts(after), ['Alice', 'Chloe', 'Benoit', 'Denis'], 'saved in his order (G3)');
+  const bs = after.find((s) => s.first === 'Benoit');
+  assert.deepEqual([bs.at, bs.eta, bs.pinned, bs.manual], [b.pin, b.pin, true, null], `Benoit pinned at his minute, on his truck: ${JSON.stringify(bs)}`);
+  for (const f of OTHERS) {
+    const s = after.find((y) => y.first === f);
+    assert.deepEqual([s.eta, s.at], [at0[f], null], `${f}: its hour, no minute pinned`);
+  }
+  assert.deepEqual(await R.allTexts(), [], 'no text went');
+  // the sheet stays on the saved day: his order, Benoit « Heure fixée »
+  await until(() => R.rowsShown(page, T.complet), (l) => l.join() === [N.Alice, N.Chloe, N.Benoit, N.Denis].join(), 10000);
+  await sheet.getByTestId(`dayorder-eta-${N.Benoit}`).filter({ hasText: R.vers(b.pin) }).waitFor({ timeout: 10000 });
+  assert.ok((await R.notesOf(page, N.Benoit)).includes(`Heure fixée ${clock(b.pin)}`), JSON.stringify(await R.notesOf(page, N.Benoit)));
+  for (const f of OTHERS) await sheet.getByTestId(`dayorder-eta-${N[f]}`).filter({ hasText: R.vers(at0[f]) }).waitFor({ timeout: 10000 });
+  await h.shot(page, `reorganiser-${tag}-saved`);
+  return b.pin;
+}
+/** a booking of day D by API on the Camion (book_job plans the whole day again, apply_plan_keep): the stop dragged is still
+    at its minute, on its truck; every stop of the Camion inside its window (G4: the others may be planned around him) */
+async function bookAndCheck(t, first, ws, pin) {
+  customer(first, `514 555-07${first === 'Gael' ? 50 : 51}`, near(0.008, -0.016));
+  const bk = await x.rpcAs(who.nadia.jwt, 'book_job', { p_op: randomUUID(), p_job: { customer_id: C[first].id, day: D, block: 'day', win_start: ws, truck_id: T.complet, duration_min: 45 }, p_items: [] });
+  assert.ok(bk && bk.job_id, `booked: ${JSON.stringify(bk).slice(0, 300)}`);
+  const camion = R.dayRows(T.complet, D);
+  t.diagnostic(`after the booking: ${camion.map((s) => `${s.first} ${clock(s.eta)}${s.at != null ? ` (fixé ${clock(s.at)})` : ''}`).join(', ')}`);
+  assert.ok(camion.some((s) => s.first === first), `${first} is on the Camion`);
+  const b = camion.find((s) => s.first === 'Benoit');
+  assert.deepEqual([b.at, b.eta, b.truck, b.pinned], [pin, pin, T.complet, true], `Benoit still at his minute after the plan (G4): ${JSON.stringify(b)}`);
+  for (const s of camion) assert.ok(s.eta >= s.ws && s.eta <= s.we, `${s.first} inside its window: ${clock(s.eta)} in ${clock(s.ws)}–${clock(s.we)}`);
+}
+
+step('B16. Part 29, a computer: Benoit dragged DOWN under Chloe with the mouse → his row says the hour of his new place « fixé à … » (« avant : vers 10 h »), Alice, Chloe and Denis keep their hour (right after the drop too); « Enregistrer »: his order, Benoit pinned at that minute; then a booking of that day by API (an automatic plan of the day): Benoit still at his minute', async (t) => {
+  const at0 = Object.fromEntries(R.dayRows(T.complet, D).map((s) => [s.first, s.eta]));
+  const r = await R.openO({ kind: 'desktop' });
+  const { page } = r;
+  const previews = x.answersOf(page, 'day_order_preview');
+  const saves = x.answersOf(page, 'day_order_save');
+  await h.signIn(page, who.nadia.email, PW);
+  await h.clearMock();
+  const sheet = await R.openSheet(page, D, previews);
+  for (const f of CAMION) await sheet.getByTestId(`dayorder-eta-${N[f]}`).filter({ hasText: R.vers(at0[f]) }).waitFor({ timeout: 10000 });
+  // the mouse drags Benoit's whole row to the lower half of Chloe's
+  const dr = await R.mouseDrag(page, sheet.getByTestId(`dayorder-main-${N.Benoit}`), sheet.getByTestId(`dayorder-row-${N.Chloe}`), 'bottom');
+  assert.ok(dr.ghost.ok, `the ghost under the pointer: ${JSON.stringify(dr.ghost)}`);
+  assert.equal(await page.getByTestId('dayorder-menu').count(), 0, 'a drag opens no row menu');
+  const pin = await dragDownChecked(t, page, sheet, previews, saves, at0, 'b16');
+  // reopened: the same hours
+  await sheet.getByTestId('dayorder-close').click();
+  await sheet.waitFor({ state: 'detached', timeout: 10000 });
+  const again = await R.openSheet(page, D, previews);
+  assert.deepEqual(await R.rowsShown(page, T.complet), [N.Alice, N.Chloe, N.Benoit, N.Denis], 'reopened: his order');
+  await again.getByTestId(`dayorder-eta-${N.Benoit}`).filter({ hasText: R.vers(pin) }).waitFor({ timeout: 10000 });
+  x.nothingLeft(r);
+  x.noErrors(page);
+  await bookAndCheck(t, 'Gael', 600, pin);
+});
+
+step('B17. Part 29, a phone (390 × 844) with a real finger on the grip: the same drag DOWN (Benoit under Chloe) → the same hours shown, before and after « Enregistrer »; then a booking of that day by API: Benoit still at his minute', async (t) => {
+  const at0 = Object.fromEntries(R.dayRows(T.complet, D).map((s) => [s.first, s.eta]));
+  const r = await R.openO({ kind: 'phone' });
+  const { page, ctx } = r;
+  await page.setViewportSize({ width: 390, height: 844 });
+  const previews = x.answersOf(page, 'day_order_preview');
+  const saves = x.answersOf(page, 'day_order_save');
+  await h.signIn(page, who.nadia.email, PW);
+  await h.clearMock();
+  const sheet = await R.openSheet(page, D, previews);
+  for (const f of CAMION) await sheet.getByTestId(`dayorder-eta-${N[f]}`).filter({ hasText: R.vers(at0[f]) }).waitFor({ timeout: 10000 });
+  const cdp = await ctx.newCDPSession(page);
+  const f1 = await R.fingerDrag(page, cdp, sheet.getByTestId(`dayorder-grip-${N.Benoit}`), sheet.getByTestId(`dayorder-row-${N.Chloe}`), { where: 'bottom' });
+  assert.ok(f1.ghost && f1.ghost.ok, `the ghost under the finger: ${JSON.stringify(f1.ghost)}`);
+  await until(() => R.rowsShown(page, T.complet), (l) => l[2] === N.Benoit, 5000);
+  assert.equal(await page.getByTestId('dayorder-menu').count(), 0, 'no row menu');
+  const pin = await dragDownChecked(t, page, sheet, previews, saves, at0, 'b17');
+  x.nothingLeft(r);
+  x.noErrors(page);
+  await bookAndCheck(t, 'Hugo', 840, pin);
 });

@@ -19,7 +19,9 @@ def latest(name):
     written only at the end, so a run that stops never leaves the other agents without the migration"""
     out = None
     for f in sorted(glob.glob(ROOT + '/*.sql')):
-        if f == OUT:
+        # Part 29 (20261122000200) makes replan_block_safe and roads_replan again AFTER this migration: only the files
+        # before it are read (« before this migration »), so the generator still makes exactly the applied file
+        if f >= OUT:
             continue
         s = open(f).read()
         for m in re.finditer(r'(?im)^create or replace function public\.' + re.escape(name) + r'\s*\(', s):
@@ -39,7 +41,7 @@ def later_patches(name, f, end):
     lose that change: the generator stops instead. Looked for after the definition copied (Part 27 left out)."""
     found = []
     for g in sorted(glob.glob(ROOT + '/*.sql')):
-        if g == OUT or g < f:
+        if g >= OUT or g < f:
             continue
         s = open(g).read().lower()
         if g == f:

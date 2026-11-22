@@ -14,10 +14,11 @@ after(() => pool.end());
 
 const MIG = fileURLToPath(new URL('../../supabase/migrations/', import.meta.url));
 const PART27 = '20261119000200';
-/** the latest definition of public.<name> in the migrations before Part 27 (what tools/fn.py reads, Part 27 left out) */
+/** the latest definition of public.<name> in the migrations before Part 27 (what tools/fn.py reads, Part 27 left out; and
+ *  every later one too: Part 29, 20261122000200, makes replan_block_safe and roads_replan again) */
 function before(name) {
   let out = null;
-  for (const f of readdirSync(MIG).filter((x) => x.endsWith('.sql') && !x.startsWith(PART27)).sort()) {
+  for (const f of readdirSync(MIG).filter((x) => x.endsWith('.sql') && x < PART27).sort()) {
     const s = readFileSync(MIG + f, 'utf8');
     const re = new RegExp(`^create or replace function public\\.${name}\\s*\\(`, 'gim');
     for (const m of s.matchAll(re)) {
