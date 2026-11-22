@@ -102,14 +102,15 @@ src/
     jobs/ (6)           JobTicket, CarFirst, CarCheckSheet, CarHistory, PartsSheet, StepButton, TextOutcome, flow, parts,
                         select, bookedBy, carWords, vinStep, jobs.css; « Déplacer »: MoveSheet (the one move sheet: the job
                         screen's, and in place through MoveHost: openMove(id), mounted by the Carte, Vue d'ensemble and
-                        Aujourd'hui; `fromList`: the message 6 s with « Voir », a move kept on the phone texts once sent,
+                        Aujourd'hui; `fromList`: the message 6 s with « Voir », a move kept on the phone asks « Texter … ? » once sent,
                         window mode opens on the stop's day), moving (mayMove: booked + « Réserver » + no move waiting;
                         moveWaiting = movesWaiting OR a move_job pending in the outbox; moveSettled, waitForMove;
                         noteMoved / movedLately: moved from a list a moment ago), MoveWaiting (« En attente d'envoi »);
                         shortcuts (an appointment's shortcut menu: jobActions, jobMenu, jobPress, menuProps;
                         option onMove = the sheet in place), copy (« Copier / Coller »); the agenda re-exports them;
                         exactMove (« Déplacer à l'heure choisie »: moveAt, the ONE flow of every move to a time shown,
-                        and doneWords; see the section of that name below)
+                        and doneWords; see the section of that name below); textAsk (« Texter … ? »: askMovedText, the
+                        ONE question before the « moved » text of every change of an appointment; nothing goes by itself)
     invoices/ (7)       InvoicePanel, PaySheet, Lines, send, share, pdf, usePdf, useDraft, select, invoices.css; the Coffre
                         sheet (CoffreHost, CoffreSheet, coffre.css)
     guide/ (8)          GuideCard, TourOverlay, tour, tour-steps, checklist, guide-data, words, guide.css
@@ -337,8 +338,8 @@ ones). A move kept on the phone: `move-wait-<job id>` (« En attente d'envoi »,
 row, Aujourd'hui's ticket). Unit tests: `src/shared/jobs/shortcuts.test.tsx` (the rule, onMove), `src/features/map/stops-move.test.tsx`,
 `src/features/overview/stops-move.test.tsx`, `src/features/today/stops-move.test.tsx` (each screen: shown for who may, not
 for a mechanic without « Réserver », an appointment under way or done, a move waiting; the sheet in place; moved, the list
-follows), and the three `stops-move-more.test.tsx` (map, overview, today: a move kept on the phone texts once sent with
-`tell`, the mark, a move_job in the outbox or a « Je pars » waiting hides « Déplacer », « À placer », « Ma journée »'s next
+follows), and the three `stops-move-more.test.tsx` (map, overview, today: a move kept on the phone asks « Texter … ? » once
+sent with `tell`, the mark, a move_job in the outbox or a « Je pars » waiting hides « Déplacer », « À placer », « Ma journée »'s next
 stop, the long press, « Voir », the sheet closing when the stop goes under way, the words per right, the hand-text sheet
 on the map); end to end: the step « « Déplacer » from the map … » of `app.test.cjs` (the hand-text sheet asserted on the map).
 
@@ -369,9 +370,25 @@ mode and « Flexible », the day alone, « Ordre des arrêts », « Coller ici �
 - Tests: unit `src/data/exact*.test.ts`, `src/domain/jobs/exact.test.ts`, `src/shared/jobs/exactMove.test.ts`,
   `MoveSheet-exact.test.tsx`, `src/features/agenda/exact-move.test.tsx`, `src/features/jobs/TruckSheet-exact.test.tsx`,
   `src/dev/demo-windows.test.ts` (A6), `src/ui/sheetFoot.test.tsx` (the two long answers fit a phone); database
-  `tests/db/exact-move*.test.mjs`; end to end `tests/e2e/deplacer.test.cjs` (8 steps, the real server: the grid's drop at
+  `tests/db/exact-move*.test.mjs`; end to end `tests/e2e/deplacer.test.cjs` (9 steps, the real server: the grid's drop at
   13 h 30, somebody late, a time the truck cannot reach, the phone from the Carte, a booking after the move, « Laisser
-  l'app choisir », « Vraies routes » on measured and not measured).
+  l'app choisir », « Vraies routes » on measured and not measured, « Texter … ? » answered « Pas de texto »).
+
+## « Texter … ? » (ask first: no « moved » text goes by itself)
+
+Hassan, 2026-11-22: « i do not want them to receive a text automatically when i change their appointement. the system
+should ask me first ». `src/shared/jobs/textAsk.tsx`: `askMovedText(job | id, { via: 'notify' | 'jobs', after? })` is called
+by every path that used to send (agenda `move.ts` send / exactSaid / textWhenSent: `via: 'notify'`; `MoveSheet`, `MoveHost`,
+`TruckSheet`: `via: 'jobs'`); it asks nothing unless `wantsText('moved', id)`. Its own root (`data-owner="text-ask"`).
+« Envoyer le texto » = notifyCustomer('moved') for 'notify', and for 'jobs' sendText('moved') where a `text-outcome` host is
+mounted (`hostMounted` in `hosts.ts`), else notifyCustomer. A navigation closes it through `Sheet`'s `onNavigate`: it
+rises again on the next screen. The next question waits for the send and its hand-text sheet (`outcomeClosed`).
+- Test ids: `text-ask` (the sheet), `text-ask-when` (the moment), `text-ask-send`, `text-ask-skip`; Réglages → Textos
+  `msg-on-moved` (aria-label « Demander avant d’envoyer, Rendez-vous changé »).
+- Tests: `src/shared/jobs/textAsk.test.tsx` (the question, its sends and outcomes, a screen without a host, the row
+  leaving the phone, a navigation, the back button, two questions), the paths' unit tests, `SettingsScreen.test.tsx`; end
+  to end `tests/e2e/harness.cjs` `textAsk(page, { send })`, `deplacer.test.cjs` (`textAskIf`: 2 s with the question up,
+  no `notify` request; step 8: « Pas de texto », ✕, « Voir »), `app.test.cjs`, `plages.test.cjs`, `mise-a-jour.test.cjs`.
 
 ## Server reference (read the migrations for the exact rules)
 
