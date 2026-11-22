@@ -35,7 +35,7 @@ import { net, pendingOps, pull, uuid } from '../../data/sync';
 import { roadsTick, warmRoads } from '../../data/roads';
 import {
   DAY_ORDER_DEADLOCK_RETRY_MS, DAY_ORDER_LOCK_RETRY_MS, DAY_ORDER_WAIT_MS, dayAnswer, dayOrderPreview, dayOrderSave, dayRefusal, dropDraft,
-  isDeadlock, isLockBusy, isNoAnswer, keepDraft, keptDraft, needsConfirm, newWinOf, newWindows, type DayAnswer, type DayOrderAsk, type DayRefusal, type DayStop
+  isDeadlock, isLockBusy, isNoAnswer, keepDraft, keptDraft, needsConfirm, newWinOf, newWindows, pushedOf, repinnedOf, SHIFT_MIN, type DayAnswer, type DayOrderAsk, type DayRefusal, type DayStop
 } from '../../data/dayOrder';
 import {
   backToPlace, blocksOf, canDrop, changed, changedTrucks, draftOf, dropIndex, kindOfTruck, listOf, listsOf, moveBy, moveTo, movedOf,
@@ -66,7 +66,6 @@ const keyOf = (d: Draft, tick: number) => JSON.stringify([listsOf(d), movedOf(d)
 const names = (xs: string[]) => xs.filter(Boolean).join(', ');
 /** a stop whose arrival moves by more than this (minutes) says its hour before (« avant : vers 9 h 29 »); less is the
     walk's rounding (today: from now, rounded to 5) */
-const SHIFT_MIN = 4;
 /** the arrival this answer gives a stop differs from the one it has (dragged, or pushed by a drag) */
 const shifted = (s: DayStop): boolean => s.measured !== false && s.eta != null && s.etaBefore != null && Math.abs(s.eta - s.etaBefore) > SHIFT_MIN;
 /** the minute of the evening lock (settings.booking.win_lock_min, 18 h by default) */
@@ -383,7 +382,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
 
   /* ---------- « Enregistrer » ---------- */
   const saving = saveState === 'saving' || saveState === 'checking';
-  const confirm = !!cur && needsConfirm(cur);
+  const confirm = !!cur && needsConfirm(cur, { moved: movedOf(draft), auto: draft.auto });
   const canSave = dirty && online && !waitMove && !ref && !saving && !picked && !dragging && ready;
   async function save(anyway: boolean): Promise<void> {
     if (busy.current) return;
@@ -405,8 +404,8 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
           if (r && (r.code === 'changed' || r.code === 'day_changed')) { setSaveState('idle'); void rebaseNow(r.by ?? undefined); return; }
           if (r) { setRefusal({ key: k, r, words: refusalWords(r, e) }); setAsking('refused'); setSaveState('idle'); return; }
         }
-        if (a && needsConfirm(a)) { setSaveState('idle'); return; }          // the verdict is shown: one more tap
-      } else if (needsConfirm(a) && !anyway) { setSaveState('idle'); return; }
+        if (a && needsConfirm(a, { moved: movedOf(d), auto: d.auto })) { setSaveState('idle'); return; }          // the verdict is shown: one more tap
+      } else if (needsConfirm(a, { moved: movedOf(d), auto: d.auto }) && !anyway) { setSaveState('idle'); return; }
       setSaveState('saving');
       const op = uuid();
       const accept = a ? a.acceptRaw : {};
@@ -545,19 +544,29 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     const w = newWindows(cur), lt = first(cur.accept.late), er = first(cur.accept.early), pn = first(cur.accept.pins), ov = first(cur.accept.over);
     // Part 29: the stops dragged, at the hour of their place; then whether the others keep theirs
     const fixed = cur.stops.filter((s) => s.pinNew && (s.pin ?? s.eta) != null);
-    let pushedInside = 0;
+    let pushed: string[] = [];
+    const repinned = repinnedOf(cur).map((s) => s.id);
     if (fixed.length) {
       const list = fixed.map((s) => { const j = rowOf(s.id); return t('reorg.sumFixedOne', { name: j ? jobFirstName(j) : '', time: clock((s.pin ?? s.eta)!, l) }); }).join(', ');
       out.push(t('reorg.sumFixed', { n: fixed.length, list }));
+    } else if (!draft.auto) {
+      // no minute pointed (an older server, blocks mode): the stops dragged whose hour changes are named (the reviews' S5)
+      const moved = cur.stops.filter((s) => dragged.has(s.id) && shifted(s)).map((s) => s.id);
+      if (moved.length) out.push(t('reorg.sumNewTime', { n: moved.length, names: fn(moved) }));
     }
     if (!draft.auto) {
       const others = cur.stops.filter((s) => !s.pinNew && !dragged.has(s.id) && shifted(s));
       const said = new Set([...w, ...lt, ...er, ...pn]);
-      const pushed = others.filter((s) => s.eta! > s.etaBefore! && !said.has(s.id)).map((s) => s.id);
+      // pushed later by a drag: a warning (the lead's G2 « warn first »; the reviews' S1); a flexible stop has no window
+      // (the reviews' S3)
+      const later = pushedOf(cur, { moved: dragged, auto: draft.auto }).filter((s) => !said.has(s.id));
+      pushed = later.map((s) => s.id);
+      const inWin = later.filter((s) => s.win).map((s) => s.id), flex = later.filter((s) => !s.win).map((s) => s.id);
       if (fixed.length && !others.length) out.push(t('reorg.sumKept'));
-      if (pushed.length) out.push(t('reorg.sumPushed', { n: pushed.length, names: fn(pushed) }));
-      pushedInside = pushed.length;
+      if (inWin.length) out.push(t('reorg.sumPushed', { n: inWin.length, names: fn(inWin) }));
+      if (flex.length) out.push(t('reorg.sumPushedFlex', { n: flex.length, names: fn(flex) }));
     }
+    if (repinned.length) out.push(t('reorg.sumRepinned', { n: repinned.length, names: fn(repinned) }));
     if (w.length) out.push(t('reorg.sumChanges', { n: w.length, names: fn(w) }));
     if (lt.length) out.push(t('reorg.sumLate', { n: lt.length, names: fn(lt) }));
     if (er.length) out.push(t('reorg.sumEarly', { n: er.length, names: fn(er) }));
@@ -566,7 +575,8 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     const un = cur.stops.filter((s) => s.measured === false && trucksChanged.has(s.truckId || '')).length;
     if (un) out.push(t('reorg.sumUnmeasured', { n: un }));
     if (!out.length) return { tone: 'ok', text: t('reorg.sumNone'), first: null };
-    return { tone: w.length || lt.length || er.length || pn.length || ov.length ? 'warn' : un || pushedInside ? 'muted' : 'ok', text: out.join(' '), first: [...w, ...lt, ...er, ...pn][0] ?? null };
+    return { tone: w.length || lt.length || er.length || pn.length || ov.length || pushed.length || repinned.length ? 'warn' : un ? 'muted' : 'ok', text: out.join(' '),
+      first: [...w, ...lt, ...er, ...pn, ...pushed, ...repinned][0] ?? null };
   }
   const showRow = (id: string | null) => {
     if (!id) return;
@@ -777,11 +787,16 @@ function StopRow(p: RowProps) {
   // Part 29: the stop dragged here is pinned at the hour of its place: « fixé à 15 h 29 » (a guess of a trip not measured
   // too: the place is his; never called late from it)
   const pinned = s && s.pinNew ? (s.pin ?? s.eta) : null;
+  // (the reviews' S4) a time counted with a trip not measured is never printed: « heure : trajets pas encore mesurés »
+  // wins over « fixé à … » (its note says it is set where he put it)
   const eta = waiting ? t('reorg.waiting')
-    : s ? (pinned != null ? t('reorg.atFixed', { time: clock(pinned, l) }) : s.measured === false ? t('jobs.order.etaUnmeasured') : s.eta != null ? t('reorg.at', { time: clock(s.eta, l) }) : '')
+    : s ? (s.measured === false ? t('jobs.order.etaUnmeasured') : pinned != null ? t('reorg.atFixed', { time: clock(pinned, l) }) : s.eta != null ? t('reorg.at', { time: clock(s.eta, l) }) : '')
       : p.known ? (etaUnsure(j) ? t('jobs.order.etaUnmeasured') : j.eta_min != null ? t('reorg.at', { time: clock(j.eta_min, l) }) : '')
         : p.asking ? t('reorg.asking') : '';
-  const words = hoursWords(j, s, l, p.judge);
+  // (the reviews' S1) a stop he did not drag that the drag pushes later: its « avant : vers … » is a warning
+  const pushed = !!s && p.judge && !p.draft.auto && !s.pinNew && !movedOf(p.draft).includes(j.id) && s.measured !== false
+    && s.eta != null && s.etaBefore != null && s.eta - s.etaBefore > SHIFT_MIN;
+  const words = hoursWords(j, s, l, p.judge, pushed);
   return (
     <div class={`dayord-row${p.isThis ? ' is-this' : ''}${p.warn || words.warn ? ' is-warn' : ''}${p.dragging ? ' is-dragging' : ''}${p.picked ? ' is-picked' : ''}`}
       data-dayord-row data-id={j.id} data-truck={p.truck} data-block={p.block} data-index={p.index} data-testid={`dayorder-row-${j.number}`}>
@@ -821,7 +836,7 @@ function verdictOf(s: DayStop | null, judge: boolean): DayStop | null {
   return { ...s, newWin: null, winBack: false, flexFixed: false, lateMin: 0, earlyMin: 0, pin, pinLost: null, pinMoved: false, pinNew: false, pinWas: null, over: false };
 }
 /** the hours part of a row, and what it says beyond (§2.5) */
-function hoursWords(j: Job, s: DayStop | null, l: string, judge: boolean): { hours: ComponentChildren; pill: string | null; notes: { tone: 'warn' | 'ok' | 'muted'; text: string }[]; warn: boolean } {
+function hoursWords(j: Job, s: DayStop | null, l: string, judge: boolean, pushed = false): { hours: ComponentChildren; pill: string | null; notes: { tone: 'warn' | 'ok' | 'muted'; text: string }[]; warn: boolean } {
   const notes: { tone: 'warn' | 'ok' | 'muted'; text: string }[] = [];
   let pill: string | null = null;
   let hours: ComponentChildren = null;
@@ -854,12 +869,13 @@ function hoursWords(j: Job, s: DayStop | null, l: string, judge: boolean): { hou
   if (s && s.lateMin > 0) notes.push({ tone: 'warn', text: t('reorg.lateRow', { by: duration(s.lateMin, l) }) });
   if (s && s.earlyMin > 0) notes.push({ tone: 'warn', text: t('reorg.earlyRow', { by: duration(s.earlyMin, l) }) });
   if (s?.pinLost != null) notes.push({ tone: 'warn', text: s.pinMoved ? t('reorg.pinDropped', { time: clock(s.pinLost, l) }) : t('reorg.pinLost', { time: clock(s.pinLost, l), eta: s.eta != null ? clock(s.eta, l) : '' }) });
-  else if (s?.pinNew) { /* its row's hour says « fixé à … » */ }
-  else if (s && s.pinWas != null && s.pin != null && s.pin !== s.pinWas) notes.push({ tone: 'muted', text: t('reorg.pinMovedTo', { from: clock(s.pinWas, l), to: clock(s.pin, l) }) });
+  else if (s?.pinNew) { if (s.measured === false) notes.push({ tone: 'muted', text: t('reorg.atFixedUnmeasured') }); /* else its row's hour says « fixé à … » */ }
+  // (the reviews' F6) his minute moves to the arrival: shown first, « Enregistrer quand même »
+  else if (s && s.pinWas != null && s.pin != null && s.pin !== s.pinWas) notes.push({ tone: 'warn', text: t('reorg.pinMovedTo', { from: clock(s.pinWas, l), to: clock(s.pin, l) }) });
   else if ((s ? s.pin : j.arrive_at) != null) notes.push({ tone: 'muted', text: t('reorg.pinKept', { time: clock((s ? s.pin : j.arrive_at)!, l) }) });
   // its hour before this draft, when the answer moves it (the stop dragged: « i need it to change its hour »; another one
   // only when a drag truly takes its time)
-  if (judge && s && shifted(s)) notes.push({ tone: 'muted', text: t('reorg.wasAt', { time: clock(s.etaBefore!, l) }) });
+  if (judge && s && shifted(s)) notes.push({ tone: pushed ? 'warn' : 'muted', text: t('reorg.wasAt', { time: clock(s.etaBefore!, l) }) });
   if (s?.over) notes.push({ tone: 'warn', text: t('reorg.autoOver', { name: jobFirstName(j) }) });
   return { hours, pill, notes, warn: notes.some((x) => x.tone === 'warn') };
 }

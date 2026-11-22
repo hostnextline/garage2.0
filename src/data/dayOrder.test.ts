@@ -5,7 +5,7 @@ import { FakeServer, clientFor } from './testkit';
 import { startSync, stopSync, net, syncOptions } from './sync';
 import { setNet } from './net';
 import { getRow } from './store';
-import { dayAnswer, dayOrderPreview, dayOrderSave, dayRefusal, dropDraft, isDeadlock, isLockBusy, isNoAnswer, keepDraft, keptDraft, needsConfirm, newWinOf, newWindows, type DayAnswer } from './dayOrder';
+import { dayAnswer, dayOrderPreview, dayOrderSave, dayRefusal, dropDraft, isDeadlock, isLockBusy, isNoAnswer, keepDraft, keptDraft, needsConfirm, newWinOf, newWindows, pushedOf, repinnedOf, type DayAnswer } from './dayOrder';
 
 let srv: FakeServer;
 let n = 0;
@@ -116,13 +116,30 @@ describe('Part 29: the stop dragged keeps the hour of its new place (drag-keeps-
     const a = dayAnswer(P29) as DayAnswer;
     expect(newWinOf(a.byId.get('B')!)).toBeNull();
     expect(newWindows(a)).toEqual([]);
-    expect(needsConfirm(a)).toBe(false);
+    // B alone (dragged, pinned): no warning
+    const alone = dayAnswer({ ...P29, stops: P29.stops.filter((x) => x.id === 'B'), accept: { ...P29.accept, at: { B: 929 } } }) as DayAnswer;
+    expect(needsConfirm(alone, { moved: ['B'] })).toBe(false);
     const real = dayAnswer({ ...P29, stops: P29.stops.map((x) => (x.id === 'B' ? { ...x, win: [480, 720] } : x)) }) as DayAnswer;
     expect(newWinOf(real.byId.get('B')!)).toEqual([870, 1110]);
     expect(newWindows(real)).toEqual(['B']);
     expect(needsConfirm(real)).toBe(true);
     // a window entry for a stop the answer does not list is kept (said, warned)
     expect(newWindows(dayAnswer({ ...P29, accept: { ...P29.accept, windows: { Z: 500 } } }) as DayAnswer)).toEqual(['Z']);
+  });
+  it('a stop NOT dragged pushed later (the lead\'s G2 « warn first », the reviews\' S1), or a late minute moved to its arrival (D2, F6), IS a warning; one dragged, one pushed by 4 min or less, an earlier one, a trip not measured or « Laisser l\'app choisir » is not', () => {
+    const a = dayAnswer(P29) as DayAnswer;
+    expect(pushedOf(a, { moved: ['B'] }).map((s) => s.id)).toEqual(['F']);
+    expect(repinnedOf(a).map((s) => s.id)).toEqual(['E']);
+    expect(needsConfirm(a, { moved: ['B'] })).toBe(true);
+    const of = (stops: Record<string, unknown>[]) => dayAnswer({ ...P29, stops, accept: { ...P29.accept, at: { B: 929 } } }) as DayAnswer;
+    const B = P29.stops[0], F = P29.stops[2];
+    expect(needsConfirm(of([B, F]), { moved: ['B'] })).toBe(true);
+    expect(needsConfirm(of([B, F]), { moved: ['B', 'F'] })).toBe(false);                 // he dragged F too
+    expect(needsConfirm(of([B, { ...F, eta: F.eta_before + 4 }]), { moved: ['B'] })).toBe(false);
+    expect(needsConfirm(of([B, { ...F, eta: F.eta_before - 30 }]), { moved: ['B'] })).toBe(false);
+    expect(needsConfirm(of([B, { ...F, measured: false }]), { moved: ['B'] })).toBe(false);
+    expect(needsConfirm(of([B, F]), { moved: [], auto: true })).toBe(false);
+    expect(needsConfirm(of([B, { ...P29.stops[1] }]), { moved: ['B'] })).toBe(true);    // E: 875 → 878
   });
   it('the save sends accept.at back exactly as the preview gave it', async () => {
     const got: Record<string, unknown>[] = [];

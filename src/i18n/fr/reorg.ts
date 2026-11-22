@@ -63,6 +63,7 @@ export const reorg = {
   /* Part 29 (Hassan : « accept the appointement where i put it without moving all the others arround ») : l’arrêt glissé
      prend l’heure de sa nouvelle place et la garde ; les autres gardent la leur */
   atFixed: 'fixé à {time}',
+  atFixedUnmeasured: 'Fixé là où tu l’as mis',
   wasAt: 'avant : vers {time}',
   pinMovedTo: 'Heure fixée {from} → {to} : il arrivait déjà à cette heure',
   /* a drop onto the other kind of vehicle */
@@ -89,6 +90,9 @@ export const reorg = {
   sumFixedOne: '{name} à {time}',
   sumKept: 'Les autres gardent leur heure.',
   sumPushed: { one: '1 arrêt passe plus tard dans sa plage : {names}.', other: '{n} arrêts passent plus tard dans leur plage : {names}.' },
+  sumPushedFlex: { one: '1 arrêt passe plus tard dans la journée : {names}.', other: '{n} arrêts passent plus tard dans la journée : {names}.' },
+  sumRepinned: { one: 'L’heure fixée de {names} passe à son arrivée.', other: 'Les heures fixées de {names} passent à leur arrivée.' },
+  sumNewTime: { one: 'Nouvelle heure pour {names}.', other: 'Nouvelle heure pour {names}.' },
   sumNoAnswer: 'Heures d’arrivée : pas encore calculées.',
   sumChanges: {
     one: '1 client changera d’heure : {names}. Rien ne lui est envoyé maintenant.',
@@ -139,5 +143,5 @@ export const reorg = {
   autoShown: 'Voici l’ordre de l’app. Rien n’est enregistré.',
   autoOver: 'L’app ne trouve pas de place pour {name} : il reste à la fin, en retard.',
   /* the « ? » of a truck */
-  help: 'Glisse un arrêt par sa poignée ≡ : plus haut, plus bas, ou sur l’autre camion. L’arrêt glissé prend l’heure de sa nouvelle place et la garde ; les autres gardent leur heure. Rien ne change tant que tu n’as pas touché « Enregistrer », et aucun texto ne part. Un client qui arriverait en dehors de la plage qu’on lui a dite reçoit une nouvelle plage, montrée avant d’enregistrer. Plus tard, une réservation, une annulation ou une route mesurée (aussi la nuit) peut encore déplacer les autres arrêts dans leur plage, jamais un arrêt à heure fixée. Quand ta journée est prête : « Envoyer les heures aux clients ».'
+  help: 'Glisse un arrêt par sa poignée ≡ : plus haut, plus bas, ou sur l’autre camion. L’arrêt glissé prend l’heure de sa nouvelle place et la garde ; les autres gardent leur heure. Rien ne change tant que tu n’as pas touché « Enregistrer », et aucun texto ne part. Un client qui arriverait en dehors de la plage qu’on lui a dite reçoit une nouvelle plage, montrée avant d’enregistrer. Plus tard, une réservation, une annulation ou une route mesurée (aussi la nuit) peut encore changer l’heure des autres arrêts ; un arrêt à heure fixée garde la sienne tant que le camion peut y être. Quand ta journée est prête : « Envoyer les heures aux clients ».'
 };

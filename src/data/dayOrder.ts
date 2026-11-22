@@ -12,8 +12,10 @@
      takes the hour of its new place and that minute is PINNED at the save: `pin_new` true, `pin` = that minute,
      `pin_was` = its pin before (or null), and `accept.at` = { id: minute } (sent back raw; never a warning on its own:
      needsConfirm does not read it). A stop NOT dragged whose pin was already late and is not made later is pinned again
-     at its arrival (`pin_new` false, `pin_was` the old minute, `accept.at` too). An older server sends none of these:
-     everything reads as before (pinNew false, pinWas null, at {}).
+     at its arrival (`pin_new` false, `pin_was` the old minute, `accept.at` too): that one IS a warning (the reviews' F6:
+     his minute changes), and so is a stop NOT dragged that the drag pushes later (the reviews' S1, the lead's G2: « pushed
+     later only when the dragged one truly takes their time: warn first, « Enregistrer quand même » accepts »). An older
+     server sends none of these: everything reads as before (pinNew false, pinWas null, at {}).
    - the refusals: raise … hint = code, detail = JSON (truck_off, truck_ends, needs_truck, changed, day_changed,
      outcome_changed with the whole answer in detail, bad_list, past, bad_block, not_allowed).
    The draft kept on the phone while it is not saved (days F12): localStorage `his.dayOrder.<staff id>.<day>`, every read
@@ -154,12 +156,29 @@ export function newWinOf(s: Pick<DayStop, 'win' | 'newWin'>): Win | null {
 export function newWindows(a: DayAnswer): string[] {
   return Object.keys(a.accept.windows).filter((id) => { const s = a.byId.get(id); return !s || !!newWinOf(s); });
 }
+/** an hour that moves by more than this is « another hour » on the screen (« avant : vers … », a push) */
+export const SHIFT_MIN = 4;
+/** what the draft is (the stops dragged; « Laisser l'app choisir »): needed to tell a stop pushed from one dragged */
+export interface DraftOf { moved?: Iterable<string>; auto?: boolean }
+/** Part 29 (the reviews' S1; G2): the stops he did NOT drag that this draft pushes later (by more than SHIFT_MIN, from a
+    sure arrival). None in « Laisser l'app choisir » (the app's order: every hour is the planner's) */
+export function pushedOf(a: DayAnswer, o: DraftOf = {}): DayStop[] {
+  if (o.auto) return [];
+  const moved = new Set(o.moved ?? []);
+  return a.stops.filter((s) => !s.pinNew && !moved.has(s.id) && s.measured !== false && s.eta != null && s.etaBefore != null && s.eta - s.etaBefore > SHIFT_MIN);
+}
+/** Part 29 (the reviews' F6, D2): a stop he did NOT drag whose minute pointed moves to its arrival (it was already past it) */
+export function repinnedOf(a: DayAnswer): DayStop[] {
+  return a.stops.filter((s) => !s.pinNew && s.pinWas != null && s.pin != null && s.pin !== s.pinWas);
+}
 /** the verdict must be SHOWN before the save (« Enregistrer quand même »): a new window, someone late or early, a pin
-    that goes, a truck past its hours. A flexible stop given its window is not a warning, nor a minute pinned (Part 29:
-    the stop he dragged keeps the hour of its place, `accept.at`). */
-export function needsConfirm(a: DayAnswer): boolean {
+    that goes, a truck past its hours; Part 29: a stop not dragged pushed later, a minute pointed moved to its arrival. A
+    flexible stop given its window is not a warning, nor the minute of the stop he dragged (`accept.at`: the hour of the
+    place he put it). */
+export function needsConfirm(a: DayAnswer, o: DraftOf = {}): boolean {
   const any = (m: Record<string, number>) => Object.keys(m).length > 0;
-  return newWindows(a).length > 0 || any(a.accept.late) || any(a.accept.early) || any(a.accept.pins) || any(a.accept.over);
+  return newWindows(a).length > 0 || any(a.accept.late) || any(a.accept.early) || any(a.accept.pins) || any(a.accept.over)
+    || pushedOf(a, o).length > 0 || repinnedOf(a).length > 0;
 }
 
 /* ---------- the calls ---------- */

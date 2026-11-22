@@ -54,6 +54,7 @@ export const reorg: typeof fr = {
   pinLost: 'The set time ({time}) no longer holds: around {eta}',
   pinDropped: 'The set time ({time}) goes: you moved it',
   atFixed: 'set at {time}',
+  atFixedUnmeasured: 'Set where you put it',
   wasAt: 'was around {time}',
   pinMovedTo: 'Time set {from} → {to}: it was already arriving then',
   kindToCar: '{name} will go with the car: the app won’t put them back on the truck.',
@@ -77,6 +78,9 @@ export const reorg: typeof fr = {
   sumFixedOne: '{name} at {time}',
   sumKept: 'The others keep their time.',
   sumPushed: { one: '1 stop moves later inside its window: {names}.', other: '{n} stops move later inside their window: {names}.' },
+  sumPushedFlex: { one: '1 stop moves later in the day: {names}.', other: '{n} stops move later in the day: {names}.' },
+  sumRepinned: { one: 'The set time of {names} moves to their arrival.', other: 'The set times of {names} move to their arrival.' },
+  sumNewTime: { one: 'New time for {names}.', other: 'New time for {names}.' },
   sumNoAnswer: 'Arrival times: not worked out yet.',
   sumChanges: {
     one: '1 customer will get a new time: {names}. Nothing is sent now.',
@@ -124,5 +128,5 @@ export const reorg: typeof fr = {
   autoKeep: 'Keep mine',
   autoShown: 'This is the app’s order. Nothing is saved.',
   autoOver: 'The app finds no room for {name}: they stay at the end, late.',
-  help: 'Drag a stop by its handle ≡: higher, lower, or onto the other truck. The stop you drag takes the time of its new place and keeps it; the others keep their time. Nothing changes until you tap “Save”, and no text goes out. A customer who would arrive outside the window they were told gets a new window, shown before saving. Later, a booking, a cancellation or a measured trip (also at night) may still move the other stops inside their window, never a stop with a set time. When your day is ready: “Send the times to customers”.'
+  help: 'Drag a stop by its handle ≡: higher, lower, or onto the other truck. The stop you drag takes the time of its new place and keeps it; the others keep their time. Nothing changes until you tap “Save”, and no text goes out. A customer who would arrive outside the window they were told gets a new window, shown before saving. Later, a booking, a cancellation or a measured trip (also at night) may still change the other stops’ times; a stop with a set time keeps its own as long as the truck can be there. When your day is ready: “Send the times to customers”.'
 };

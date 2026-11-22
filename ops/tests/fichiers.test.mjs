@@ -236,16 +236,19 @@ test('Part 29 after Part 28 (Hassan, 2026-11-22: the dragged stop keeps the hour
   assert.match(essai, /20261122000200_garder_ordre\.sql/);
   assert.match(essai, /set_config\('lock_timeout', '5s', true\)/);
   assert.ok(!/\b(drop|truncate|delete from)\b/i.test(essai.replace(/--.*$/gm, '')), 'the try sends no DROP, TRUNCATE or DELETE');
-  // the way back: « create or replace » of the three functions only, each the very text of the file before Part 29
+  // the way back: « create or replace » of the five functions only, each the very text of the file before Part 29
   const back = lire('ops/live/partie29/retour-partie29.sql');
   const code = back.replace(/--.*$/gm, '');
   assert.ok(!/\b(drop|truncate|delete\s+from)\b/i.test(code), 'the way back removes nothing');
-  const fnOf = (src, name) => { const m = new RegExp(`^create or replace function public\\.${name}\\(`, 'm').exec(src); assert.ok(m, name); return src.slice(m.index, src.indexOf('\nend $$;\n', m.index) + 9); };
+  const fnOf = (src, name, end = '\nend $$;\n') => { const m = new RegExp(`^create or replace function public\\.${name}\\(`, 'm').exec(src); assert.ok(m, name); return src.slice(m.index, src.indexOf(end, m.index) + end.length); };
   const p27 = lire('supabase/migrations/20261119000200_vraies_routes.sql'), p28 = lire('supabase/migrations/20261122000100_reorganiser.sql');
   assert.equal(fnOf(back, 'day_order_core'), fnOf(p28, 'day_order_core'), 'day_order_core: Part 28\'s text');
   assert.equal(fnOf(back, 'replan_block_safe'), fnOf(p27, 'replan_block_safe'), 'replan_block_safe: Part 27\'s text');
   assert.equal(fnOf(back, 'roads_replan'), fnOf(p27, 'roads_replan'), 'roads_replan: Part 27\'s text');
-  assert.deepEqual([...back.matchAll(/^create or replace function public\.([a-z_]+)\(/gm)].map((m) => m[1]).sort(), ['day_order_core', 'replan_block_safe', 'roads_replan']);
+  // the reviews' F1 (plan_route freezes a vehicle whose stored day a plan would break): Part 27's two planner texts
+  assert.equal(fnOf(back, 'plan_route_core', '\nend $function$;\n'), fnOf(p27, 'plan_route_core', '\nend $function$;\n'), 'plan_route_core: Part 27\'s text');
+  assert.equal(fnOf(back, 'plan_route'), fnOf(p27, 'plan_route'), 'plan_route: Part 27\'s text');
+  assert.deepEqual([...back.matchAll(/^create or replace function public\.([a-z_]+)\(/gm)].map((m) => m[1]).sort(), ['day_order_core', 'plan_route', 'plan_route_core', 'replan_block_safe', 'roads_replan']);
   assert.match(back, /^begin;$/m); assert.match(back, /^commit;$/m);
   // CUTOVER.md's top note points to it
   const cut = lire('ops/live/CUTOVER.md');

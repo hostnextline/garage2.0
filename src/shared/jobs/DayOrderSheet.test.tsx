@@ -683,11 +683,60 @@ describe('Part 29: the stop dragged takes the hour of its new place and keeps it
     expect(notes(11)).toEqual([`was around ${clock(600, 'en')}`]);
     expect(text('dayorder-summary')).toBe(`Benoit at ${clock(800, 'en')}: set where you put it. The others keep their time.`);
   });
-  it('an older server (no pin_new): the rows read as before (« vers … »), the summary says nobody changes when nobody does', async () => {
+  it('an older server (no pin_new): the rows read as before (« vers … »); the summary names the stop dragged whose hour changes (the reviews\' S5: never « Personne ne change d’heure » then)', async () => {
     await benoitDown(RAW([STOP('b', { eta: 660, eta_before: 660 }), STOP('c', { eta: 720, eta_before: 720 }), STOP('a', { eta: 800, eta_before: 600 }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })]));
     expect(text('dayorder-eta-11')).toBe('vers 13 h 20');
     expect(notes(11)).toEqual(['avant : vers 10 h']);
-    expect(text('dayorder-summary')).toBe('Personne ne change d’heure.');
+    expect(text('dayorder-summary')).toBe('Nouvelle heure pour Benoit.');
+    expect(text('dayorder-save')).toBe('Enregistrer');
+  });
+  const tone = (n: number) => [...document.querySelectorAll(`[data-testid="dayorder-note-${n}"]`)].map((x) => (x.className.match(/is-(\w+)/) ?? [])[1]);
+  it('a drag that pushes others later INSIDE their window is a warning (the lead\'s G2 « warn first »; the reviews\' S1): named in the summary, « avant : vers … » in the warning tone, « Enregistrer quand même »', async () => {
+    await openNow();
+    h.preview.mockImplementation(async () => answer(RAW([
+      STOP('c', { eta: 600, eta_before: 720, pin: 600, pin_new: true }), STOP('a', { eta: 680, eta_before: 600 }),
+      STOP('b', { eta: 700, eta_before: 660 }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })
+    ], { accept: { ...ACCEPT, at: { c: 600 } } })));
+    await keyMove(13, ['ArrowUp', 'ArrowUp']);
+    await wait(60); await settle();
+    expect(text('dayorder-summary')).toBe('Denis à 10 h : fixé là où tu l’as mis. 2 arrêts passent plus tard dans leur plage : Benoit, Chloe.');
+    expect(q('dayorder-summary')!.className).toContain('is-warn');
+    expect([notes(11), tone(11)]).toEqual([['avant : vers 10 h'], ['warn']]);
+    expect(tone(13)).toEqual(['muted']);                                           // the stop dragged: its hour before, not a warning
+    expect(text('dayorder-save')).toBe('Enregistrer quand même');
+    h.save.mockImplementation(async () => answer({ ...RAW(), saved: true }));
+    await click('dayorder-save');
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][1]).toEqual({ ...ACCEPT, at: { c: 600 } });
+  });
+  it('a flexible stop pushed later is said « plus tard dans la journée », not « dans sa plage » (the reviews\' S3)', async () => {
+    await openNow();
+    h.preview.mockImplementation(async () => answer(RAW([
+      STOP('c', { eta: 600, eta_before: 720, pin: 600, pin_new: true }), STOP('a', { eta: 680, eta_before: 600, win: null }),
+      STOP('b', { eta: 660, eta_before: 660 }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })
+    ], { accept: { ...ACCEPT, at: { c: 600 } } })));
+    await keyMove(13, ['ArrowUp', 'ArrowUp']);
+    await wait(60); await settle();
+    expect(text('dayorder-summary')).toBe('Denis à 10 h : fixé là où tu l’as mis. 1 arrêt passe plus tard dans la journée : Benoit.');
+    expect(text('dayorder-save')).toBe('Enregistrer quand même');
+  });
+  it('a minute pointed moved to the arrival (D2) is a warning (the reviews\' F6): its note in the warning tone, the summary says it, « Enregistrer quand même »', async () => {
+    seed([J('a', 11, 'Benoit', 2), J('b', 12, 'Chloe', 3, { arrive_at: 650 }), J('c', 13, 'Denis', 4), world()[4]]);
+    await benoitDown(RAW([
+      STOP('b', { eta: 668, eta_before: 668, pin: 668, pin_was: 650 }), STOP('c', { eta: 720, eta_before: 720 }),
+      STOP('a', { eta: 700, eta_before: 600, pin: 700, pin_new: true }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540 })
+    ], { accept: { ...ACCEPT, at: { a: 700, b: 668 } } }));
+    expect([notes(12), tone(12)]).toEqual([['Heure fixée 10 h 50 → 11 h 08 : il arrivait déjà à cette heure'], ['warn']]);
+    expect(text('dayorder-summary')).toBe('Benoit à 11 h 40 : fixé là où tu l’as mis. Les autres gardent leur heure. L’heure fixée de Chloe passe à son arrivée.');
+    expect(text('dayorder-save')).toBe('Enregistrer quand même');
+  });
+  it('« Vraies routes » on, a trip not measured: the stop dragged says « heure : trajets pas encore mesurés », never a minute counted from a guess (the reviews\' S4), and that it is set where he put it', async () => {
+    await benoitDown(RAW([
+      STOP('b', { eta: 660, eta_before: 660, measured: true }), STOP('c', { eta: 720, eta_before: 720, measured: true }),
+      STOP('a', { eta: 700, eta_before: 600, pin: 700, pin_new: true, measured: false }), STOP('d', { truck_id: 'B', truck_before: 'B', eta: 540, eta_before: 540, measured: true })
+    ], { roads: true, accept: { ...ACCEPT, at: { a: 700 } } }));
+    expect(text('dayorder-eta-11')).toBe('heure : trajets pas encore mesurés');
+    expect(notes(11)).toEqual(['Fixé là où tu l’as mis']);
   });
 });
 

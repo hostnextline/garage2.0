@@ -206,11 +206,13 @@ function core(a: Record<string, unknown>, save: boolean) {
   }
   const answer = { ok: true, day, basis_ok: true, mode: wm ? 'windows' : 'blocks', roads: false, rewin, auto, lists, stops, trucks: sums, accept: acc, due_after: 0 };
   if (!save) return answer;
-  // warn first: every new window, flex window and pin as shown; late, early, past-hours shown and at most 5 min worse
+  // warn first: every new window, flex window and pin as shown; a minute pointed as shown or at most 5 min later (the
+  // server's Part 29, the reviews' F7: today's clock); late, early, past-hours shown and at most 5 min worse
   const got = (a.p_accept && typeof a.p_accept === 'object' ? a.p_accept : {}) as Record<string, Record<string, number> | undefined>;
-  const same = (k: 'windows' | 'flex' | 'pins' | 'at') => Object.entries(acc[k]).every(([id, v]) => got[k]?.[id] === v);
+  const same = (k: 'windows' | 'flex' | 'pins') => Object.entries(acc[k]).every(([id, v]) => got[k]?.[id] === v);
   const within = (k: 'late' | 'early' | 'over') => Object.entries(acc[k]).every(([id, v]) => got[k]?.[id] != null && v <= Number(got[k]![id]) + 5);
-  if (!(same('windows') && same('flex') && same('pins') && same('at') && within('late') && within('early') && within('over'))) {
+  const atOk = Object.entries(acc.at).every(([id, v]) => got.at?.[id] != null && v >= Number(got.at[id]) && v <= Number(got.at[id]) + 5);
+  if (!(same('windows') && same('flex') && same('pins') && atOk && within('late') && within('early') && within('over'))) {
     refuse('outcome_changed', 'Depuis la vérification, la journée donnerait d’autres heures. Regarde de nouveau avant d’enregistrer.');
   }
   const out = writes.map((w) => put('jobs', { id: w.id, ...w.patch }));
