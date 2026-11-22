@@ -554,7 +554,9 @@ end $do$;
   « avant : vers 9 h 29 »; its window: the one it has when that holds the new hour (decision D1, not ruled yet), else the
   window of the new hour, shown first, owed on the day's button, no text by itself; a flexible stop he drags gets its
   window at the save (D5). The stops he does NOT drag keep their order and their hour (held not before their arrival
-  before the save, nor their window start; a pinned one at its minute): never pulled earlier — a late one too; pushed
+  before the save, nor their window start; a pinned one at its minute): never pulled earlier, except a stop already LATE
+  (past the window it was told that day, else its window): the room a drag frees brings it back, never before its
+  window start (the lead's ruling on review F2, 2026-11-22; `tests/db/reorganiser-garde.test.mjs` « F2 »); pushed
   later only when a dragged stop truly takes their time, and then a WARNING (named in the summary, « avant : vers … » on
   the row, « Enregistrer quand même »: `pushedOf` in `src/data/dayOrder.ts`); a pin already a few minutes late that the
   save does not make later is pointed again at its arrival (D2), also a warning (`repinnedOf`). Never refused for

@@ -152,6 +152,8 @@ function neverEarlier(w, p, moved) {
     if (moved.includes(s.id) || s.eta_before == null) continue;
     const pinWas = s.pin_lost ?? s.pin_was ?? s.pin;
     if (pinWas != null) assert.ok(s.eta >= pinWas, `${w.name[s.id]}: not before its minute (${s.eta} ≥ ${pinWas})`);
+    // a stop already late before the save may come back, never before its window (review F2)
+    else if (s.win && s.eta_before > s.win[1]) assert.ok(s.eta >= s.win[0], `${w.name[s.id]}: late before, back no earlier than its window (${s.eta} ≥ ${s.win[0]})`);
     else assert.ok(s.eta >= s.eta_before, `${w.name[s.id]}: not before its arrival before the save (${s.eta} ≥ ${s.eta_before})`);
   }
 }
@@ -832,4 +834,34 @@ test('the try (essai-partie29.sql) on this copy, Part 29 undone first and the do
   try { await h.c.query(local); } catch (e) { msg = e.message; }
   await h.c.query('rollback to savepoint e2');
   assert.match(msg ?? '', /^ARRÊT : la Partie 29 \(20261122000200\) est déjà en ligne/);
+}));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   F2 (the lead's ruling, 2026-11-22) — a stop already LATE that he does not drag comes back when a drag frees the room
+   ------------------------------------------------------------------------------------------------------------------ */
+
+test('F2 today 10 h 20: F already LATE (past its window 14 h – 18 h, told so; no minute pointed); Hassan drags E onto the Voiture to make room → F comes back inside its window (no new window, nothing owed), never before 14 h; the others keep their hours', () => tx(async (h) => {
+  const day = await h.val(`select public.local_today()::text`);
+  const w = await hassanDay(h, { day, today: { now: 620, enRoute: true }, pins: [] });
+  await set(h, w.ids.E, { duration_min: 120 });
+  await set(h, w.ids.F, { duration_min: 150, win_start: 840, win_end: 1080, told_day: day, told_start: 840, told_end: 1080, told_at: new Date().toISOString(), told_how: 'sms' });
+  for (const t of [w.tk, w.tk2]) await sval(h, `select public.route_hold($1::uuid, $2::date, 'day', '{}'::jsonb)::text v`, [t, w.day]);
+  const d0 = await dayOf(h, w);
+  assert.ok(d0.F.eta > 1080, `F is late before the save (${d0.F.eta} > 1080)`);
+  const b = await basis(h, w);
+  const lists = moveIn(b.lists, w.ids.E, w.tk2, -1);
+  const moved = [w.ids.E];
+  const p = await preview(h, w.day, lists, { moved, was: b.was });
+  const f = stopOf(p, w.ids.F);
+  assert.ok(f.eta >= 840 && f.eta <= 1080, `F back inside its window 14 h – 18 h (${f.eta})`);
+  assert.ok(f.eta < d0.F.eta, 'F earlier than its late hour');
+  assert.equal(f.new_win ?? null, null, 'F: no new window');
+  assert.equal(p.accept.windows?.[w.ids.F], undefined, 'F: nothing owed for a new window');
+  for (const k of ['B', 'C', 'D']) assert.equal(stopOf(p, w.ids[k]).eta, d0[k].eta, `${k} keeps its hour`);
+  neverEarlier(w, p, moved);
+  assert.equal((await save(h, w.day, lists, { moved, was: b.was, accept: p.accept })).saved, true);
+  await sameAsPreview(h, p, 'F2');
+  const d1 = await dayOf(h, w);
+  assert.equal(d1.F.eta, f.eta);
+  assert.deepEqual(d1.F.win, [840, 1080]);
 }));

@@ -22,7 +22,8 @@ essayé dans un bloc qui finit par `raise exception` ; une sauvegarde d'abord ; 
 - Dans « Réorganiser la journée », l'arrêt qu'il glisse (plus haut, plus bas, sur l'autre camion) prend l'heure de sa
   nouvelle place (juste après l'arrêt d'avant, son trajet compris) et **la garde** : son heure est fixée (« Heure fixée »),
   comme un « Déplacer à l'heure choisie », et il reste sur le véhicule où il l'a mis.
-- Les arrêts qu'il ne touche pas **gardent leur heure** : jamais avancés ; repoussés seulement quand l'arrêt glissé prend
+- Les arrêts qu'il ne touche pas **gardent leur heure** : jamais avancés (sauf un arrêt déjà EN RETARD : la place libérée
+  le ramène, jamais avant sa plage) ; repoussés seulement quand l'arrêt glissé prend
   vraiment leur temps, et alors dit avant d'enregistrer (le nom dans le résumé, « avant : vers … » sur sa ligne) :
   « Enregistrer quand même » — aussi quand il reste dans sa plage. Un arrêt déjà en retard qu'il ne glisse pas n'est
   pas avancé non plus (il le glisse lui-même).

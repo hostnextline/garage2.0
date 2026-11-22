@@ -305,7 +305,8 @@ begin
   --     nothing: it takes the hour of the place he put it (right after the stop before it, its end + the drive). A stop he
   --     did NOT move keeps its hour: held to its minute pointed (back to it when the drag frees the time), else never
   --     before its arrival now (step 6) nor before its window — « quand même » ones too, flexible ones too, both modes.
-  --     Pushed later only when a dragged stop truly takes its time; never pulled earlier (Part 28's pull-back to the
+  --     Pushed later only when a dragged stop truly takes its time; never pulled earlier, except a stop already LATE,
+  --     which may come back as far as its window (review F2) (Part 28's pull-back to the
   --     window he was TOLD, days F1, is gone: he stays owed that window, for the day's button). « Laisser l'app choisir »
   --     (an auto draft): the app's order, Part 28's hold as it was (minute, else the told start when earlier, else the
   --     window). A stop with neither an arrival nor a window (never walked, flexible): route_hold's own rule
@@ -320,6 +321,12 @@ begin
                                  j.win_start) end
                     when v_wm and j.arrive_at is not null then j.arrive_at
                     when (v_before->(j.id::text)->>'eta') is null and not (v_wm and j.win_start is not null) then null
+                    -- a stop already LATE (its arrival past the window it was told that day, else its window) is not held
+                    -- at that late hour: room a drag frees brings it back, never before its window (the lead's ruling on
+                    -- review F2, 2026-11-22: live's 1073 at 22 h 52 must come back when Hassan makes room before it)
+                    when v_wm and j.win_start is not null and (v_before->(j.id::text)->>'eta') is not null
+                         and (v_before->(j.id::text)->>'eta')::int > coalesce(case when j.told_day = p_day then j.told_end end, j.win_end)
+                      then j.win_start
                     else greatest(coalesce((v_before->(j.id::text)->>'eta')::int, 0),
                                   case when v_wm and j.win_start is not null then j.win_start else 0 end) end h
         from public.jobs j where j.day = p_day and j.truck_id = any(v_trucks) and j.status = 'booked' and j.deleted_at is null) q;
