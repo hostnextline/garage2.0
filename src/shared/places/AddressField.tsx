@@ -1,6 +1,6 @@
-/* An address with suggestions as you type (Photon, OpenStreetMap); gives back the address, the unit, the postal code
-   and the position (lat/lng) used by the planner and the map. With no signal or no answer, the address is kept as
-   typed (lat/lng null) and the field says so. Shared with booking and estimates.
+/* An address with suggestions as you type (TomTom with the app's key, and Photon, OpenStreetMap: places.ts); gives back
+   the address, the unit, the postal code and the position (lat/lng) used by the planner and the map. With no signal or
+   no answer, the address is kept as typed (lat/lng null) and the field says so. Shared with booking and estimates.
    This file only draws: the rules are in addressEdit.ts and addressState.ts, the work over time in useAddressField.ts. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';

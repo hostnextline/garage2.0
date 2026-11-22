@@ -6,7 +6,8 @@ import { act } from 'preact/test-utils';
 
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<typeof import('../../data/api')>()), rpcNow: () => Promise.reject(new Error('offline')) }));
 vi.mock('../../shared/map/MapView', () => ({ MapView: () => null }));
-vi.mock('../../shared/map/useRoads', () => ({ useRoads: () => 0, roadOf: () => [] }));
+const roads = vi.hoisted(() => ({ state: 'known' as string, asked: [] as unknown[] }));
+vi.mock('../../shared/map/useRoads', () => ({ useRoads: () => 0, roadOf: () => [], roadState: (_tr: unknown, day: unknown) => { roads.asked.push(day); return roads.state; } }));
 
 import OverviewScreen from './OverviewScreen';
 import { replaceLocal, clearAll } from '../../data/store';
@@ -68,5 +69,31 @@ describe('« Vue d’ensemble » on screen (agenda-15)', () => {
     await flush();
     expect(q('overview-screen')).not.toBeNull();
     expect(box.querySelector('[data-testid^="overview-job-"]')).toBeNull();
+  });
+});
+
+/* the integrator (2026-11-20): a map whose lines may be missing says why under it (the road notes, like « Carte » and the
+   pickers): nothing is drawn between two stops until a real road comes */
+describe('« Vue d’ensemble »: the words under the map while a road is not drawn', () => {
+  it('« Route en cours de calcul… » / « Route indisponible pour l’instant » / « Route impossible à tracer », for today; nothing once drawn', async () => {
+    garage(false);
+    replaceLocal('settings', [{ id: '1', booking: { windows_on: false, min_block_min: 45, unknown_min: 20, home: { label: 'Centrale', address: 'x', lat: 45.53, lng: -73.65 } } } as never]);
+    replaceLocal('jobs', [
+      { id: 'a', number: 1, customer_id: null, truck_id: 't1', day: TODAY, block: 'am', status: 'booked', stop_order: 1, duration_min: 60, eta_min: 540, lat: 45.5, lng: -73.6 }
+    ] as never);
+    const words: Record<string, string> = { asking: 'Route en cours de calcul…', down: 'Route indisponible pour l’instant', never: 'Route impossible à tracer' };
+    for (const [state, text] of Object.entries(words)) {
+      roads.state = state; roads.asked.length = 0;
+      act(() => render(<OverviewScreen params={{}} query={new URLSearchParams()} />, box));
+      await flush();
+      expect(q('overview-road')?.textContent).toBe(text);
+      expect(roads.asked.length).toBeGreaterThan(0);
+      expect(roads.asked.every((d) => d === TODAY)).toBe(true);
+      act(() => render(null, box));
+    }
+    roads.state = 'known';
+    act(() => render(<OverviewScreen params={{}} query={new URLSearchParams()} />, box));
+    await flush();
+    expect(q('overview-road')).toBeNull();
   });
 });

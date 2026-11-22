@@ -42,9 +42,10 @@ function envFor(version, builtAt, importantSince) {
 }
 /** the live app: copied without its packages (they are linked one by one, so that Vite's temporary files stay in the copy).
     Without the reference folder (another computer), the same commit is taken from a repository's history (MAJ_OLD_REPO).
-    The live app is aa1b4e6 since 2026-11-19 (« Heures travaillées », Part 26; ops/live/CUTOVER.md: AVANT = aa1b4e6); it was
-    acf46c3 when this test was written. */
-const OLD_COMMIT = process.env.MAJ_OLD_COMMIT || 'aa1b4e6';
+    The live app is d7b6c0d2 since 2026-11-21 (the rebuild, published about 23:10); it was aa1b4e6 from 2026-11-19
+    (« Heures travaillées », Part 26) and acf46c3 when this test was written. MAJ_OLD_COMMIT=aa1b4e6 still works (the
+    update notice of before the rebuild is a toast: mise-a-jour.test.cjs updateComes). */
+const OLD_COMMIT = process.env.MAJ_OLD_COMMIT || 'd7b6c0d2';
 function buildOld() {
   const folder = !!OLD_SRC && fs.existsSync(path.join(OLD_SRC, 'package.json'));
   const repo = process.env.MAJ_OLD_REPO || (folder ? OLD_SRC : h.ROOT);

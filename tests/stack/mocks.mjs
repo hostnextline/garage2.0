@@ -1,5 +1,17 @@
-// Fake outside services for the tests (port 8021): GoHighLevel, Stripe, OSRM, NHTSA vPIC, Hermes. They answer like the real ones
-// and keep a log of every call (GET /log, POST /log/clear) so the tests can check what would have been sent.
+// Fake outside services for the tests (port 8021): GoHighLevel, Stripe, TomTom, OSRM, NHTSA vPIC, Hermes. They answer like the real
+// ones and keep a log of every call (GET /log, POST /log/clear) so the tests can check what would have been sent.
+// Maps (« Vraies routes »): TomTom's routing (« Je pars ») and Matrix v2 (the planner's times: POST /tomtom/routing/matrix/2,
+// at most 100 cells, HTTP 200 even when a cell fails, each cell its own `detailedError`), OSRM's route and table. Their times
+// follow one made-up road (roadKm below) and differ on purpose from the planner's straight-line estimate, between TomTom's
+// three hours (11 h 30, 8 h ×1.5, 17 h ×1.8: read in `departAt`), and between the two directions of a trip (+2 min going
+// north), so a test can tell which one was used. Each Matrix request is logged { svc: 'tomtom', kind: 'matrix', origins,
+// destinations, cells, departAt, traffic, inflight (requests being answered at that moment, this one included) }; each OSRM
+// table { svc: 'osrm', kind: 'table', points, sources, destinations, cells }.
+// GET /control?tomtom=ok|fail|refuse|busy|noroad|cells: TomTom answers, or 503, 403 (the key refused), 429, « no road » for
+// every cell (HTTP 200, NO_ROUTE_FOUND), or every Matrix cell failed with TomTom's own trouble (HTTP 200,
+// COMPUTATION_TIMEOUT: not « no road », nothing usable). ?osrm=ok|fail (503). ?tomtom_ms=N: each TomTom answer after N ms.
+// ?noroad=lat,lng[;lat,lng…]: no road to or from those places (100 m), for TomTom AND OSRM (an island); ?noroad= clears.
+// A TomTom key other than « tt-test » is refused (403), like a key revoked.
 // GET /control?ghl=fail makes GoHighLevel refuse the next messages; ?ghl=ok puts it back.
 // GET /control?stripe=refunds makes Stripe's list of refunds answer 500, ?stripe=all every Stripe call; ?stripe=refuse makes
 // Stripe refuse the key (401, as for a key revoked or mistyped); ?stripe=ok puts it back.
@@ -42,7 +54,23 @@ function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'gar
   const sig = createSign('RSA-SHA256').update(`${head}.${body}`).sign(gh.privateKey).toString('base64url');
   return `${head}.${body}.${sig}`;
 }
-const state = { ghl: 'ok', ghlMs: 0, stripe: 'ok', osrm: 'ok', osrmBackup: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map() };
+const state = { ghl: 'ok', ghlMs: 0, stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map(),
+  tomtom: 'ok', tomtomMs: 0, osrm: 'ok', osrmBackup: 'ok', noroad: [], ttIn: 0 };
+// ---- the made-up road of the map services ----
+/** km of road between two points (the straight line × 1.25, about Montréal's latitude) */
+const roadKm = (a, b) => Math.hypot((b.lng - a.lng) * 78, (b.lat - a.lat) * 111) * 1.25;
+/** TomTom's seconds: 4 min to get going + 110 s a km, +2 min going north; × 1.5 at 8 h, × 1.8 at 17 h */
+const ttSeconds = (a, b, at = '') => Math.round((240 + roadKm(a, b) * 110 + (b.lat > a.lat ? 120 : 0)) * (/T08:/.test(at) ? 1.5 : /T17:/.test(at) ? 1.8 : 1));
+/** OSRM's seconds: 32 km/h, no traffic (the same as its /route answer) */
+const osrmSeconds = (a, b) => (roadKm(a, b) / 32) * 3600;
+const near = (p, q) => Math.abs(p.lat - q.lat) < 0.001 && Math.abs(p.lng - q.lng) < 0.001;
+const island = (a, b) => state.noroad.some((x) => near(x, a) || near(x, b));
+/** a road by the streets from (x1, y1) to (x2, y2) ([lng, lat]), without its first point: along the first street (east or
+    west) to the corner, then along the second (north or south), a point every 1/40 of each street */
+const streets = (x1, y1, x2, y2) => {
+  const along = (ax, ay, bx, by) => Array.from({ length: 40 }, (_, i) => [ax + ((bx - ax) * (i + 1)) / 40, ay + ((by - ay) * (i + 1)) / 40]);
+  return [...along(x1, y1, x2, y1), ...along(x2, y1, x2, y2)];
+};
 const chat = (cid) => { if (!state.chats.has(cid)) state.chats.set(cid, []); return state.chats.get(cid); };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
@@ -90,9 +118,12 @@ http.createServer(async (req, res) => {
     if (u.searchParams.get('ghl')) state.ghl = u.searchParams.get('ghl');
     if (u.searchParams.get('stripe')) state.stripe = u.searchParams.get('stripe');
     if (u.searchParams.has('ghl_ms')) state.ghlMs = Math.max(0, Number(u.searchParams.get('ghl_ms')) || 0);
+    if (u.searchParams.get('tomtom')) state.tomtom = u.searchParams.get('tomtom');
     if (u.searchParams.get('osrm')) state.osrm = u.searchParams.get('osrm');
     if (u.searchParams.get('osrm_backup')) state.osrmBackup = u.searchParams.get('osrm_backup');
-    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe, osrm: state.osrm, osrm_backup: state.osrmBackup });
+    if (u.searchParams.has('tomtom_ms')) state.tomtomMs = Math.max(0, Number(u.searchParams.get('tomtom_ms')) || 0);
+    if (u.searchParams.has('noroad')) state.noroad = (u.searchParams.get('noroad') || '').split(';').filter(Boolean).map((x) => { const [lat, lng] = x.split(',').map(Number); return { lat, lng }; });
+    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe, tomtom: state.tomtom, tomtom_ms: state.tomtomMs, osrm: state.osrm, osrm_backup: state.osrmBackup, noroad: state.noroad });
   }
 
   // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
@@ -266,9 +297,57 @@ http.createServer(async (req, res) => {
   if (p === '/github/jwks') return send(res, 200, { keys: [ghJwk] });
   if (p === '/github/token') { const o = Object.fromEntries(u.searchParams); if (o.audience) o.aud = o.audience; delete o.audience; return send(res, 200, { value: ghToken(o) }); }
 
+  // ---- TomTom (the server's key « tt-test ») ----
+  if (p.startsWith('/tomtom/')) {
+    const refuse = u.searchParams.get('key') !== 'tt-test' || state.tomtom === 'refuse';
+    // the routing of « Je pars »: GET /tomtom/routing/1/calculateRoute/<lat,lng:lat,lng>/json
+    const rm = /^\/tomtom\/routing\/1\/calculateRoute\/([^/]+)\/json$/.exec(p);
+    if (rm) {
+      const [a, b] = rm[1].split(':').map((x) => { const [lat, lng] = x.split(',').map(Number); return { lat, lng }; });
+      log.push({ svc: 'tomtom', kind: 'route', pts: [[a.lat, a.lng], [b.lat, b.lng]], departAt: u.searchParams.get('departAt'), representation: u.searchParams.get('routeRepresentation') });
+      if (refuse) return send(res, 403, { detailedError: { code: 'Forbidden', message: 'You are not allowed to access this endpoint' } });
+      if (state.tomtom === 'fail') return send(res, 503, { detailedError: { code: 'ServiceUnavailable' } });
+      if (state.tomtom === 'busy') return send(res, 429, { detailedError: { code: 'TooManyRequests' } });
+      if (state.tomtom === 'noroad' || island(a, b)) return send(res, 400, { detailedError: { code: 'NO_ROUTE_FOUND', message: 'No route found.' } });
+      const km = roadKm(a, b);
+      // the road in full, as TomTom's polyline gives it: by the streets, like OSRM's full road below (east or west
+      // first, a corner, then north or south), a point every 1/40 of each street
+      const points = [[a.lat, a.lng], ...streets(a.lng, a.lat, b.lng, b.lat).map(([x, y]) => [y, x])].map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
+      return send(res, 200, { routes: [{ summary: { lengthInMeters: Math.round(km * 1000), travelTimeInSeconds: ttSeconds(a, b) }, legs: [{ points }] }] });
+    }
+    // Matrix v2, synchronous: POST /tomtom/routing/matrix/2 { origins, destinations, options }
+    if (p === '/tomtom/routing/matrix/2' && req.method === 'POST') {
+      state.ttIn++;
+      try {
+        let body = {};
+        try { body = JSON.parse(raw || '{}'); } catch { /* checked below */ }
+        const pt = (x) => ({ lat: Number(x?.point?.latitude), lng: Number(x?.point?.longitude) });
+        const os = Array.isArray(body.origins) ? body.origins.map(pt) : [], ds = Array.isArray(body.destinations) ? body.destinations.map(pt) : [];
+        const o = body.options || {};
+        log.push({ svc: 'tomtom', kind: 'matrix', origins: os.length, destinations: ds.length, cells: os.length * ds.length, departAt: o.departAt, traffic: o.traffic,
+          inflight: state.ttIn, from: os.map((x) => [x.lat, x.lng]), to: ds.map((x) => [x.lat, x.lng]) });
+        if (state.tomtomMs) await new Promise((r) => setTimeout(r, state.tomtomMs));
+        if (refuse) return send(res, 403, { detailedError: { code: 'Forbidden', message: 'You are not allowed to access this endpoint' } });
+        if (state.tomtom === 'fail') return send(res, 503, { detailedError: { code: 'ServiceUnavailable' } });
+        if (state.tomtom === 'busy') return send(res, 429, { detailedError: { code: 'TooManyRequests' } });
+        // as TomTom: no cell, more than 100 cells, a departure with an offset, or no historical traffic → 400
+        if (!os.length || !ds.length || os.length * ds.length > 100 || [...os, ...ds].some((x) => !Number.isFinite(x.lat) || !Number.isFinite(x.lng))) return send(res, 400, { detailedError: { code: 'BAD_REQUEST', message: 'origins × destinations: 1 to 100 cells' } });
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(String(o.departAt || '')) || o.traffic !== 'historical') return send(res, 400, { detailedError: { code: 'BAD_REQUEST', message: 'departAt / traffic' } });
+        const data = [];
+        os.forEach((a, oi) => ds.forEach((b, di) => {
+          if (state.tomtom === 'cells') data.push({ originIndex: oi, destinationIndex: di, detailedError: { code: 'COMPUTATION_TIMEOUT', message: 'Computation timed out.' } });
+          else if (state.tomtom === 'noroad' || island(a, b)) data.push({ originIndex: oi, destinationIndex: di, detailedError: { code: 'NO_ROUTE_FOUND', message: 'No route found.' } });
+          else data.push({ originIndex: oi, destinationIndex: di, routeSummary: { lengthInMeters: Math.round(roadKm(a, b) * 1000), travelTimeInSeconds: ttSeconds(a, b, o.departAt),
+            trafficDelayInSeconds: 0, departureTime: o.departAt, arrivalTime: o.departAt } });
+        }));
+        return send(res, 200, { data, statistics: { totalCount: data.length, successes: data.filter((x) => x.routeSummary).length, failures: data.filter((x) => !x.routeSummary).length } });
+      } finally { state.ttIn--; }
+    }
+    return send(res, 404, { detailedError: { code: 'NOT_FOUND' } });
+  }
   // ---- OSRM, and its second server (« <OSRM_BASE>-backup »: the FOSSGIS copy on live) ----
-  // GET /control?osrm=fail makes the first planner answer 503 (a page that is not JSON), ?osrm_backup=fail the second;
-  // =ok puts each back.
+  // GET /control?osrm=fail makes the first planner answer 503 (a page that is not JSON; its table too, for « drive »),
+  // ?osrm_backup=fail the second; =ok puts each back. An address of ?noroad=: no road (code NoRoute).
   for (const [prefix, svc, key] of [['/osrm/route/v1/driving/', 'osrm', 'osrm'], ['/osrm-backup/route/v1/driving/', 'osrm-backup', 'osrmBackup']]) {
     if (!p.startsWith(prefix)) continue;
     const pts = p.split('/').pop().split(';').map((x) => x.split(',').map(Number));
@@ -276,13 +355,24 @@ http.createServer(async (req, res) => {
     const km = Math.hypot((x2 - x1) * 78, (y2 - y1) * 111) * 1.25;
     const overview = u.searchParams.get('overview') || 'simplified';
     const failed = state[key] === 'fail';
-    log.push({ svc, pts, overview, ...(failed ? { failed: true } : {}) });
+    log.push({ svc, kind: 'route', pts, overview, ...(failed ? { failed: true } : {}) });
     if (failed) { res.writeHead(503, { 'content-type': 'text/html' }); return res.end('<html><body>503 Service Unavailable</body></html>'); }
+    if (island({ lat: y1, lng: x1 }, { lat: y2, lng: x2 })) return send(res, 200, { code: 'NoRoute', routes: [] });
     // the road in full, as the real planner gives it: by the streets (east or west first, a corner, then north or
     // south), a point every 1/40 of each street. « simplified »: the planner's rough line, which cuts the corner.
-    const along = (ax, ay, bx, by) => Array.from({ length: 40 }, (_, i) => [ax + ((bx - ax) * (i + 1)) / 40, ay + ((by - ay) * (i + 1)) / 40]);
-    const coordinates = overview === 'full' ? [[x1, y1], ...along(x1, y1, x2, y1), ...along(x2, y1, x2, y2)] : [[x1, y1], [(x1 + x2) / 2, (y1 + y2) / 2], [x2, y2]];
+    const coordinates = overview === 'full' ? [[x1, y1], ...streets(x1, y1, x2, y2)] : [[x1, y1], [(x1 + x2) / 2, (y1 + y2) / 2], [x2, y2]];
     return send(res, 200, { code: 'Ok', routes: [{ distance: km * 1000, duration: (km / 32) * 3600, geometry: { coordinates } }] });
+  }
+  // the table: GET /osrm/table/v1/driving/<lng,lat;…>?sources=i;j&destinations=k;l&annotations=duration,distance
+  if (p.startsWith('/osrm/table/v1/driving/')) {
+    const points = decodeURIComponent(p.split('/').pop()).split(';').map((x) => { const [lng, lat] = x.split(',').map(Number); return { lat, lng }; });
+    const idx = (name) => (u.searchParams.get(name) ? u.searchParams.get(name).split(';').map(Number) : points.map((_, i) => i));
+    const src = idx('sources'), dst = idx('destinations');
+    log.push({ svc: 'osrm', kind: 'table', points: points.length, sources: src.length, destinations: dst.length, cells: src.length * dst.length });
+    if (state.osrm === 'fail') return send(res, 503, { code: 'Error', message: 'down' });
+    if (points.length > 100 || [...src, ...dst].some((i) => !points[i])) return send(res, 400, { code: 'TooBig', message: 'Too many table coordinates' });
+    const cell = (f) => src.map((i) => dst.map((j) => (island(points[i], points[j]) ? null : f(points[i], points[j]))));
+    return send(res, 200, { code: 'Ok', durations: cell(osrmSeconds), distances: cell((a, b) => roadKm(a, b) * 1000) });
   }
   // ---- Hermes (the owner's assistant, OpenAI-compatible): answers « Réponse à : <the last question> » ----
   if (p === '/hermes/v1/chat/completions' && req.method === 'POST') {

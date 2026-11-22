@@ -11,13 +11,15 @@
 //   2. the workflow keeps the copy (git commit, git push)
 //   3. node sauvegarde.mjs --fin [dossier]   tells the garage that this night is kept (backup { action: 'done' }), then
 //      asks for the daily reconciliation (recon { action: 'run' }); RED when its status is « bad »: GitHub then
-//      e-mails the owner. A server that does not know « done » or « recon » yet (404, « action »), or whose function is
-//      published before its migration (503 « not_ready »): a warning, never a failure.
+//      e-mails the owner. Last, the road times of the coming days (« Vraies routes »: drive { action: 'sweep' }, the same
+//      ticket), asked again while the answer says « more », 10 calls at most (the rest the next night; the app of the
+//      owner and the office measures too). A server that does not know « done », « recon » or « drive » yet (404,
+//      « action »), or whose function is published before its migration (503 « not_ready »): a warning, never a failure.
 // Step 3 comes after step 2 on purpose: whatever the reconciliation says, the night's copy is already kept.
 // A night that FAILS is told to the garage too (backup { action: 'done', ok: false, tables, rows }: the tables read so
 // far): by step 1 itself when the copy is not whole, by « node sauvegarde.mjs --echec [dossier] » when the push is
 // refused. Best effort: the night stays red whatever the server answers.
-// Run by hand (tests): FONCTION=… CLE=… TICKET_URL=… [RECON=…] [COMMIT=…] node sauvegarde.mjs [--fin | --echec] [dossier]
+// Run by hand (tests): FONCTION=… CLE=… TICKET_URL=… [RECON=…] [DRIVE=…] [COMMIT=…] node sauvegarde.mjs [--fin | --echec] [dossier]
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, statSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -26,6 +28,9 @@ import { fileURLToPath } from 'node:url';
 
 const FONCTION = process.env.FONCTION || 'https://wyxvizxabqgvsiiemvfw.supabase.co/functions/v1/backup';
 const RECON = process.env.RECON || FONCTION.replace(/\/backup\/?$/, '/recon');
+const DRIVE = process.env.DRIVE || FONCTION.replace(/\/backup\/?$/, '/drive');
+/** the night's sweeps of the road times: at most this many calls (each stops by itself after ~40 s and says « more ») */
+const ROUTES_MAX = 10;
 const CLE = process.env.CLE || 'sb_publishable_Pzvp2qqc8Y52meAZkczSSg_trH2ZTTA';
 const args = process.argv.slice(2);
 const FIN = args.includes('--fin');
@@ -234,6 +239,42 @@ async function finir() {
   } catch (e) {
     rouge = 1;
     dire(`ERREUR : le rapprochement n'a pas pu se faire (${e.message}). La sauvegarde de cette nuit est gardée.`);
+  }
+  // 3. the road times of the coming days (« Vraies routes »), last: what the planner counts once the real roads are on.
+  //    The function measures what is missing (never what the caller says) and stops by itself (~40 s, « more »)
+  try {
+    let d = null, appels = 0, mesures = 0;
+    // (final-critic W2) the appointments a sweep made late (their arrival now after the window or block told to the
+    // customer): named in the morning's summary until a screen lists them (the job's number and day, never a name)
+    const retard = new Map();
+    for (;;) {
+      d = await call({ action: 'sweep' }, await frais(), { url: DRIVE, pasEncore: true });
+      appels++;
+      if (d.pasEncore) break;
+      mesures += Number(d.stored) || 0;
+      for (const id of Array.isArray(d.late) ? d.late : []) if (!retard.has(String(id))) retard.set(String(id), null);
+      for (const j of Array.isArray(d.late_jobs) ? d.late_jobs : []) if (j && j.id) retard.set(String(j.id), j);
+      if (d.more !== true || appels >= ROUTES_MAX) break;
+    }
+    if (d.pasEncore) avis('Le serveur ne connaît pas encore la mesure des routes (fonction « drive ») : rien n’a été mesuré cette nuit.');
+    else {
+      const reste = Number(d.left) || 0, sans = Number(d.left0) || 0;
+      const s = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+      dire(`Routes : ${s(mesures, 'trajet mesuré', 'trajets mesurés')} en ${s(appels, 'appel', 'appels')}. ` + (reste === 0 ? 'Il n’en reste aucun.'
+        : `Il en reste ${reste} (dont ${sans} sans aucun temps) : ${d.more === true ? 'la suite la nuit prochaine.' : 'rien de plus à mesurer maintenant.'}`));
+      if (d.tomtom === 'refused') avis('TomTom a refusé la clé du serveur (TOMTOM_KEY) : cette nuit, les routes ont été mesurées par OSRM seulement (sans les heures de pointe).');
+      if (retard.size) {
+        const noms = [...retard.values()].map((j) => (j ? `n° ${j.number ?? '?'} (${j.day}${j.block && j.block !== 'day' ? `, ${j.block}` : ''})` : null));
+        const dits = noms.filter(Boolean), autres = noms.length - dits.length;
+        const msg = `${s(retard.size, 'rendez-vous arrive', 'rendez-vous arrivent')} maintenant après l’heure dite au client (les vraies routes de cette nuit) : à rappeler. `
+          + (dits.length ? dits.join(', ') : '') + (autres ? `${dits.length ? ', et ' : ''}${s(autres, 'autre', 'autres')}` : '') + '.';
+        dire(msg);
+        avis(msg);
+      }
+    }
+  } catch (e) {
+    rouge = 1;
+    dire(`ERREUR : les routes n'ont pas pu être mesurées (${e.message}). La sauvegarde de cette nuit est gardée.`);
   }
   if (process.env.GITHUB_STEP_SUMMARY && lignes.length) { try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, lignes.join('\n\n') + '\n'); } catch { /* the summary is a comfort */ } }
   return rouge;

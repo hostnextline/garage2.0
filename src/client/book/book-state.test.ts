@@ -3,8 +3,11 @@ import { chosenTotal, toggle, contactErrors, years, stepOfError, errorKey, nextF
   EMPTY_CONTACT, windowMode, dayOffers, flexSlot, slotWindow, slotKey, bookWhen, afterPage, pastHorizon, whenWords, bookedWhen, type WebService, type WebSlot } from './book-state';
 import { parseLink } from '../link';
 import { ct } from '../i18n';
-import { onTypedStreet } from './book-state';
+import { onTypedStreet, placeOf, streetNotTyped, worthAskingAgain } from './book-state';
 import type { Suggestion } from '../../shared/places/photon';
+import { suggestionsOf } from '../../shared/places/photon';
+import { tomtomSuggestions } from '../../shared/places/tomtom';
+import { mergePlaces } from '../../shared/places/match';
 
 const place = (label: string, street: string, lat: number | null = 45.5): Suggestion => ({ place: { address: label, unit: null, postal_code: null, lat, lng: lat == null ? null : -73.6 },
   label, sub: '', exact: true, key: label, house: '1250', street, areas: [] });
@@ -98,6 +101,57 @@ describe('Réserver en ligne: the address', () => {
     expect(onTypedStreet([bell], '1250 rue Graham').map((s) => s.label)).toEqual(['1250 rue Graham-Bell']);   // no town typed: offered, the customer sees the town
     expect(onTypedStreet([{ ...place('144 58e Avenue', '58e Avenue'), areas: ['Laval'] }], '144 58e av., Laval')).toHaveLength(1);
     expect(onTypedStreet([place('4521 rue Fabre', 'Rue Fabre', null)], '4521 rue Fabre')).toEqual([]);   // no position: not offered
+  });
+});
+
+describe('Réserver en ligne: the address while it is being typed (review-places R4)', () => {
+  const door = { ...place('8200 av. Mountain Sights', 'Avenue Mountain Sights'), house: '8200', areas: ['Montréal'] };
+  const street = place('8200 av. Mountain Sights', 'Avenue Mountain Sights', null);   // TomTom's street: no position
+  it('the last word begun (« … sig »): the door on that street is offered already', () => {
+    expect(onTypedStreet([door], '8200 av mountain sig')).toHaveLength(1);
+    expect(onTypedStreet([door], '8200 av mountain sights')).toHaveLength(1);
+    expect(onTypedStreet([door], '8200 av mountian')).toEqual([]);              // not a word of that street
+    expect(onTypedStreet([door], '8200 av sig mountain')).toEqual([]);          // only the LAST word may be begun
+  });
+  it('no word of the street yet (« 8200 av », « 1250 rue de la »): nothing could be offered, so nothing is asked', () => {
+    expect(streetNotTyped('8200 av')).toBe(true);
+    expect(streetNotTyped('1250 rue de la')).toBe(true);
+    expect(streetNotTyped('8200 av mountain')).toBe(false);
+    expect(streetNotTyped('Centrale')).toBe(false);
+    expect(streetNotTyped('H4P 2B5')).toBe(false);                              // no street at all: not this rule
+  });
+  it('asked again the careful way only when the street is typed in whole words', () => {
+    expect(worthAskingAgain([street], '8200 av mountain sig')).toBe(false);    // still typing « sights »
+    expect(worthAskingAgain([street], '8200 av mountain sights')).toBe(true);
+    expect(worthAskingAgain([], '8200 av mountain sights')).toBe(true);
+    expect(worthAskingAgain([], '8200 av')).toBe(false);
+  });
+});
+
+describe('Réserver en ligne: the address chosen and its postal code (review F4)', () => {
+  const tt = (r: object, q: string) => tomtomSuggestions({ results: [r] }, q)[0];
+  const RANGE = { type: 'Address Range', address: { streetNumber: '1401', streetName: 'Rue Légendre Est', municipality: 'Montréal', countrySubdivisionCode: 'QC', postalCode: 'H2M', countryCode: 'CA' }, position: { lat: 45.5606, lon: -73.6365 } };
+  const DOOR = { type: 'Point Address', address: { streetNumber: '8255', streetName: 'Avenue Mountain Sights', municipality: 'Montréal', countrySubdivisionCode: 'QC', postalCode: 'H4P', extendedPostalCode: 'H4P 2B5', countryCode: 'CA' }, position: { lat: 45.5005053, lon: -73.6577429 } };
+  it('a door placed along its block (TomTom « Address Range ») carries only the area « H2M »: no postal code is sent', () => {
+    const s = tt(RANGE, '1401 legendre est');
+    expect(s.place.postal_code).toBe('H2M');
+    expect(placeOf(s)).toMatchObject({ address: '1401 rue Légendre Est, Montréal, QC', lat: 45.5606, postal_code: null });
+  });
+  it('a whole valid code is sent; the one the customer typed wins, written the Canada Post way', () => {
+    expect(placeOf(tt(DOOR, '8255 av mountain sights'))?.postal_code).toBe('H4P 2B5');
+    expect(placeOf(tt(RANGE, '1401 legendre est'), '1401 rue Légendre Est h2m1a1')?.postal_code).toBe('H2M 1A1');
+    expect(placeOf(tt(DOOR, '8255'), '8255 av. Mountain Sights, H4P 2B6')?.postal_code).toBe('H4P 2B6');
+    expect(placeOf({ ...tt(DOOR, '8255'), place: { ...tt(DOOR, '8255').place, postal_code: 'H4P 2B' } })?.postal_code).toBeNull();
+    expect(placeOf(tt(RANGE, '1401'), '1401 legendre H2M')?.postal_code).toBeNull();   // 3 characters typed: not a code
+  });
+  it('TomTom knows only the street, Photon the door: the customer has one place to choose, with its position (review F1)', () => {
+    const typed = '8200 av mountain sights';
+    const street = tomtomSuggestions({ results: [{ type: 'Street', address: { streetName: 'Avenue Mountain Sights', municipality: 'Montréal', countrySubdivisionCode: 'QC', postalCode: 'H4P', countryCode: 'CA' }, position: { lat: 45.4974, lon: -73.6538 } }] }, typed);
+    const door = suggestionsOf({ features: [{ geometry: { coordinates: [-73.6577, 45.5005] }, properties: { housenumber: '8200', street: 'Avenue Mountain Sights', city: 'Montréal', state: 'Québec', countrycode: 'CA', postcode: 'H4P 2B5', osm_key: 'building', type: 'house' } }] }, typed);
+    expect(onTypedStreet(street, typed)).toEqual([]);              // TomTom alone: nothing the customer can choose
+    const offered = onTypedStreet(mergePlaces(street, door), typed);
+    expect(offered).toHaveLength(1);
+    expect(placeOf(offered[0])).toMatchObject({ address: '8200 av. Mountain Sights, Montréal, QC', lat: 45.5005, lng: -73.6577, exact: true });
   });
 });
 

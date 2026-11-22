@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldSend, metersBetween, currentJobId, agoText, RULES, myRoute, setMyRoute, refreshMyRoute, type Fix, type Sent } from './position';
+import { shouldSend, metersBetween, currentJobId, agoText, RULES, myRoute, setMyRoute, refreshMyRoute, lastReading, quickPosition, type Fix, type Sent } from './position';
 import { lang } from '../lib/i18n';
 
 const T0 = Date.UTC(2026, 10, 4, 15, 0, 0);
@@ -130,5 +130,24 @@ describe('the route I do (« La route que je fais »), changed during the day', 
     localStorage.removeItem('his.myRoute');
     expect(refreshMyRoute()).toBeNull();
     expect(myRoute.value).toBeNull();
+  });
+});
+
+describe('the last reading (the trip refresh reads its accuracy: tripRefresh.ts)', () => {
+  it('is the one quickPosition got from the phone, with its accuracy and time', async () => {
+    const at = Date.now();
+    const geo = {
+      getCurrentPosition: (ok: PositionCallback) => ok({ coords: { latitude: HOME.lat, longitude: HOME.lng, accuracy: 12, heading: null, speed: null }, timestamp: at } as unknown as GeolocationPosition)
+    };
+    Object.defineProperty(navigator, 'geolocation', { value: geo, configurable: true });
+    try {
+      await expect(quickPosition(1000)).resolves.toEqual(HOME);
+      expect(lastReading()).toEqual({ ...HOME, accuracy: 12, heading: null, speed: null, at });
+      // fresh: given again without asking the phone
+      Object.defineProperty(navigator, 'geolocation', { value: undefined, configurable: true });
+      await expect(quickPosition(1000)).resolves.toEqual(HOME);
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).geolocation;
+    }
   });
 });

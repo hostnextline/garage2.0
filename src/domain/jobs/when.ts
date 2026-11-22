@@ -81,9 +81,21 @@ export function wt(j: Pick<Job, 'block'>, key: string, vars?: Record<string, str
 }
 /** « Hors plage »: the planned arrival of a coming stop falls outside the window promised (ordered by hand, booked « quand même »).
     Stops on the way or there are not judged: the planner no longer moves them. */
-export function outsideWindow(j: Moment & Pick<Job, 'status' | 'eta_min'>): boolean {
+export function outsideWindow(j: Moment & Pick<Job, 'status' | 'eta_min' | 'eta_measured'>): boolean {
   const w = promisedWindow(j);
-  return !!w && j.status === 'booked' && j.eta_min != null && (j.eta_min < w[0] || j.eta_min > w[1]);
+  const eta = plannedTime(j);
+  return !!w && j.status === 'booked' && eta != null && (eta < w[0] || eta > w[1]);
+}
+/** the plan's arrival that may be SAID as a time (or judged « Hors plage »): null while the server says a trip before
+    that stop counts the fixed « Trajet inconnu » time (`jobs.eta_measured` false, « Vraies routes » on; final-guess G1).
+    No flag (switch off, or a server without the column): the plan's time, as before. */
+export function plannedTime(j: Pick<Job, 'eta_min' | 'eta_measured'>): number | null {
+  return j.eta_measured === false ? null : j.eta_min ?? null;
+}
+/** the plan has a time for that stop but it is not sure (a trip before it not measured yet): the screens then say
+    « heure : trajets pas encore mesurés » (jobs.order.etaUnmeasured) instead of a time */
+export function etaUnsure(j: Pick<Job, 'eta_min' | 'eta_measured'>): boolean {
+  return j.eta_measured === false && j.eta_min != null;
 }
 /** « Aujourd’hui, 12 h à 16 h, arrêt 2 » / « Aujourd’hui, entre 14 h et 18 h, arrêt 2 » */
 export function whenLine(j: Job, l = lang.value): string {
@@ -105,4 +117,16 @@ export function minuteOf(iso: string | null | undefined): number | null {
 export function clockOf(iso: string | null | undefined, l = lang.value): string {
   const m = minuteOf(iso);
   return m == null ? '' : clock(m, l);
+}
+
+/** the job as a ticket says its time (« vers 10 h 40 »): a stop on the way (`status` as this phone sees it, « Je pars »
+    still waiting on it included) says the trip's real arrival (`tripEtaAt`, the server's TomTom / OSRM time) or no time,
+    never the plan's time said as an arrival (the same rule as the map legend and TruckCard). A plan's time that is not sure
+    (`eta_measured` false: a trip before it counts the fixed unknown time) is not said either (eta_min null, the flag
+    kept so the screen can say why; final-guess G1). Anything else: the job as it is (the same object). Used by « Ma
+    journée », « Pas terminé » and the job screen's « Ensuite » (fix-sheets L4). */
+export function enRouteTicket<J extends Pick<Job, 'eta_min'> & { eta_measured?: boolean | null }>(j: J, status: string, tripEtaAt: string | null | undefined): J {
+  // on the way the time said is the trip's (real), so the plan's flag no longer applies to it
+  if (status === 'en_route') return { ...j, eta_min: minuteOf(tripEtaAt), ...(j.eta_measured === false ? { eta_measured: null } : {}) };
+  return j.eta_measured === false && j.eta_min != null ? { ...j, eta_min: null } : j;
 }

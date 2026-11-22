@@ -303,6 +303,17 @@ step('« Déplacer »: Carla to another window the same day, then to another day
     // the « moved » text leaves by itself once the sheet is closed: its answer says it went
     const told = page.waitForResponse((r) => /\/functions\/v1\/notify/.test(r.url()) && /"moved"/.test(r.request().postData() || ''), { timeout: 20000 });
     await page.getByTestId('move-ok').click();
+    // « exact move » (2026-11-21): the time picked is where she lands; the window's first quarter hour may be one the truck
+    // cannot keep (8 h, when it leaves the garage at 8 h): the app then asks first (« Pas possible à 8 h », « Mettre à … »,
+    // the same window told). Answered yes; a time it can keep asks nothing (tests/e2e/deplacer.test.cjs proves the questions)
+    const which = await Promise.race([
+      sheet.waitFor({ state: 'detached', timeout: 20000 }).then(() => 'moved', () => 'none'),
+      page.getByTestId('ask-ok').waitFor({ timeout: 20000 }).then(() => 'asked', () => 'none')
+    ]);
+    if (which === 'asked') {
+      await page.waitForTimeout(450);
+      await page.getByTestId('ask-ok').click();
+    }
     await sheet.waitFor({ state: 'detached', timeout: 20000 });
     assert.equal((await (await told).json()).status, 'sent');
     return ws;
@@ -344,6 +355,14 @@ step('« Déplacer » to the window the customer was already told: nothing new f
   await pickWindow(page, D[1], ws, 'grid');
   const answer = page.waitForResponse((r) => /\/rpc\/move_job/.test(r.url()), { timeout: 20000 });
   await page.getByTestId('move-ok').click();
+  // « exact move » (merge with tomtom): the window's first quarter hour (8 h) is one the truck cannot keep when it leaves
+  // the garage at 8 h: the app asks first (« Pas possible à 8 h », « Mettre à 8 h 05 »: the same window told). Answered yes
+  const which = await Promise.race([answer.then(() => 'moved', () => 'none'),
+    page.getByTestId('ask-ok').waitFor({ timeout: 20000 }).then(() => 'asked', () => 'none')]);
+  if (which === 'asked') {
+    await page.waitForTimeout(450);
+    await page.getByTestId('ask-ok').click();
+  }
   const body = await (await answer).json();
   assert.equal(body.tell, false, `the server says there is nothing to tell: ${JSON.stringify({ changed: body.changed, tell: body.tell, unchanged: body.unchanged })}`);
   const j = jobOf(J.dina);

@@ -51,8 +51,9 @@ describe('the answer of move_job and the « moved » text (agenda-01, agenda-07,
 });
 
 describe('a drop on the time grid (agenda-08)', () => {
-  it('does not keep the truck for good when the job only changes its time in its own column', () => {
-    expect(dropTruck(j({}), 't1')).toBe(null);
+  // « exact move » (STATE.md A1, S2): « it stays on its truck unless he picks another »: its own column is its truck
+  it('keeps its truck when the job only changes its time in its own column', () => {
+    expect(dropTruck(j({}), 't1')).toBe('t1');
     expect(dropTruck(j({ truck_pinned: true }), 't1')).toBe('t1');
   });
   it('asks for the column’s truck when it is another one; the week’s column is a day, not a truck', () => {

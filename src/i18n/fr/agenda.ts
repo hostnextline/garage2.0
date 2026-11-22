@@ -49,6 +49,9 @@ export const agenda = {
     clear: 'Oublier la copie',
     hint: 'Clic droit (sur le téléphone : appui long) sur une job pour la copier, puis sur un bloc pour la coller.',
     copiedDay: 'Rendez-vous de {name} copié. Clic droit (ou appui long) sur une journée, ou « Coller ici ».',
+    /* copied from a list of a truck's stops (Carte, Vue d'ensemble, Aujourd'hui): it is pasted in the agenda */
+    copiedList: 'Rendez-vous de {name} copié. Dans l’agenda : appui long (à l’ordi : clic droit) sur un bloc, ou « Coller ici ».',
+    copiedListDay: 'Rendez-vous de {name} copié. Dans l’agenda : appui long (à l’ordi : clic droit) sur une journée, ou « Coller ici ».',
     bannerTextDay: 'Clic droit (ou appui long) sur une journée, ou touche « Coller ici », pour en faire un nouveau rendez-vous. Tu vérifies tout avant de réserver.',
     hintDay: 'Clic droit (sur le téléphone : appui long) sur une job pour la copier, puis sur une journée pour la coller.'
   },
@@ -140,10 +143,10 @@ export const agenda = {
     winBest: 'Meilleur choix',
     winCurrent: 'Plage actuelle',
     winFlexText: 'Le client est libre toute la journée : la plage de 4 heures est confirmée la veille.',
-    timeQuestion: 'Déplacer la job de {name} : {when} ?',
-    timeText: 'L’app place l’arrêt dans cette plage et choisit l’heure exacte d’arrivée selon la route.',
     timeFull: 'Ça ne rentre pas à cette heure-là. Choisis parmi les plages encore possibles.',
-    sameWin: '{name} a déjà cette plage ({win}). L’heure exacte d’arrivée, c’est l’app qui la choisit selon la route.',
+    /* « exact move »: let go where it already arrives (the question and the words of a move to a time pointed:
+       jobs.exact, shared/jobs/exactMove.ts) */
+    sameTime: '{name} arrive déjà à {time}.',
     pastTime: 'Cette heure est déjà passée : choisis une heure à venir.',
     waiting: 'En attente d’envoi',
     waitingText: 'Le déplacement est gardé sur le téléphone : il partira dès que le réseau revient.'

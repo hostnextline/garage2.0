@@ -3,6 +3,7 @@
 import { allJobs, customer, customerName, vehicle, vehicleLabel, itemsOf, jobTotals, truckLabel, invoicesList, lowStock, coffreStock, activeTrucks, garageName, blockOfKey, expensesList } from '../../data/select';
 import { today, addDays } from '../../lib/dates';
 import type { Job } from '../../data/types';
+import { plannedTime, etaUnsure } from '../../domain/jobs/when';
 import { can, isOwner } from '../../data/auth';
 import { contextText, type ContextJob, type ContextRights } from './contextText';
 
@@ -13,7 +14,7 @@ function contextJob(j: Job): ContextJob {
   const c = customer(j.customer_id);
   return {
     number: j.number, day: j.day, status: j.status, stopOrder: j.stop_order ?? null,
-    block: j.block, blockStart: b?.start ?? null, blockEnd: b?.end ?? null, winStart: j.win_start ?? null, winEnd: j.win_end ?? null, eta: j.eta_min ?? null,
+    block: j.block, blockStart: b?.start ?? null, blockEnd: b?.end ?? null, winStart: j.win_start ?? null, winEnd: j.win_end ?? null, eta: plannedTime(j), etaUnsure: etaUnsure(j),
     truck: truckLabel(j.truck_id) || null, customer: c ? customerName(c) : null, vehicle: vehicleLabel(vehicle(j.vehicle_id)) || null,
     items: itemsOf(j.id).filter((i) => !['declined', 'removed'].includes(i.status))
       .map((i) => ({ description: i.description, qty: Number(i.qty), cents: i.unit_cents, proposed: i.status === 'proposed' })),

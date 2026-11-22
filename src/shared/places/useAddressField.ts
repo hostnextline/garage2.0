@@ -62,7 +62,8 @@ export function useAddressField(value: PlaceValue, onValue: (v: PlaceValue) => v
     dispatch({ type: 'busy' });
     const r = await searchPlaces(text);
     if (n !== searchRun.current) return;
-    dispatch({ type: 'suggestions', places: r.places, offline: !!r.error, asked });
+    // `partial`: TomTom answered, Photon did not (review-places R6): the network works, so not « Pas de réseau »
+    dispatch({ type: 'suggestions', places: r.places, offline: !!r.error && !r.partial, asked });
   };
   // suggestions as you type, 300 ms after the last key
   useEffect(() => {
@@ -108,7 +109,9 @@ export function useAddressField(value: PlaceValue, onValue: (v: PlaceValue) => v
       anchor.current = now.address;
       emit(located(now, r.place));
     } else {
-      dispatch({ type: 'notLocated', status: r.status, choices: r.status === 'choose' ? r.choices : undefined });
+      // Photon down while TomTom works (`partial`): « not found now », never « Pas de réseau » (review-places R6)
+      const status = r.status === 'offline' && r.partial ? 'none' : r.status;
+      dispatch({ type: 'notLocated', status, choices: r.status === 'choose' ? r.choices : undefined });
     }
   };
 

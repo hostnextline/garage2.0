@@ -6,6 +6,7 @@ import { duration } from '../../lib/dates';
 import { Button, Pill } from '../../ui';
 import type { BlockChoice, BlockPickerProps } from '../../domain/moment/choice';
 import { choiceWords } from '../../domain/moment/choice';
+import { unmeasured } from '../../domain/moment/logic';
 import { KindSwitch, KindTag, SuggNotes, staleClick } from './parts';
 import { rowChoice, type DayRow } from './moments';
 import type { SuggState } from './hooks';
@@ -49,14 +50,15 @@ export function WindowSuggestions(p: WindowSuggestionsProps) {
             const on = p.isPicked(c);
             const rank = p.ranks[i];
             const bits = [
-              p.hasPos ? cap(s.drive_min <= 2 ? t('booking.picker.noDrive') : t('booking.picker.drive', { d: duration(s.drive_min, l) })) : '',
+              // « Vraies routes »: a trip of that day not measured yet → no time (it would be the « unknown » 20 min)
+              p.hasPos ? cap(unmeasured(s) ? t('booking.picker.unmeasured') : s.drive_min <= 2 ? t('booking.picker.noDrive') : t('booking.picker.drive', { d: duration(s.drive_min, l) })) : '',
               rank ? (rank.total === 1 ? t('booking.picker.orderOnly') : t('booking.picker.order', { n: rank.n, total: rank.total })) : ''
             ].filter(Boolean);
             return (
               <button key={`${s.day}|${s.win[0]}`} type="button" class={`bp-best-row${on ? ' is-on' : ''}`} aria-pressed={on} aria-disabled={stale || undefined}
                 onClick={staleClick(stale, () => p.onPick(s))} {...p.rowProps(c)} data-testid={`win-sugg-${i}`} data-day={s.day} data-win={s.win[0]}>
                 <span class="bp-sugg-title">
-                  {p.isCurrent(s) ? <Pill tone="muted" dot={false}>{t('booking.win.picker.current')}</Pill> : i === 0 && <span class="bp-best-star" title={t('booking.picker.best')}>★<span class="sr-only">{t('booking.picker.best')} : </span></span>}
+                  {p.isCurrent(s) ? <Pill tone="muted" dot={false}>{t('booking.win.picker.current')}</Pill> : i === 0 && !unmeasured(s) && <span class="bp-best-star" title={t('booking.picker.best')}>★<span class="sr-only">{t('booking.picker.best')} : </span></span>}
                   {choiceWords(c, l)}
                   {on && <Check size={18} class="bp-best-tick" aria-hidden="true" />}
                 </span>

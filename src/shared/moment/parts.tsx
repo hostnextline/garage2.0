@@ -1,12 +1,14 @@
 /* The pieces both moment pickers draw the same way: the moment chosen said plainly, the switch « Peu importe / Voiture /
    Camion », the tag « Avec la voiture / le camion », the garde-route warning with its « Plutôt … » buttons, the notes
-   under the best moments, and the menu of a moment (right-click, long press). */
-import { CalendarCheck, Car, Check, Map as MapIcon, MapPin, Truck } from 'lucide-preact';
+   under the best moments, the « Vraies routes » banner (the address being measured), and the menu of a moment
+   (right-click, long press). */
+import { CalendarCheck, Car, Check, Map as MapIcon, MapPin, RefreshCw, Truck } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { Banner, Button, Seg, Skeleton } from '../../ui';
 import type { MenuAction } from '../../ui/ContextMenu';
 import type { VehicleKind } from '../../domain/moment/choice';
 import type { SuggStatus } from './hooks';
+import type { PlaceRoads } from '../../data/roads';
 import type { Kind } from './vehicles';
 
 /** what is chosen, said plainly, with « Voir sur la carte » once there is a moment and an address */
@@ -54,6 +56,20 @@ export function FarBanner(p: { text: string; better: { key: string; text: string
           {p.better.map((b) => <Button key={b.key} size="sm" onClick={b.onPick} data-testid="bp-far-better">{b.text}</Button>)}
         </span>
       )}
+    </Banner>
+  );
+}
+
+/** « Vraies routes » (switch on only: `roads` is null off): the trips of this address are being measured (the
+    suggestions update by themselves), or they could not be (« Réessayer »; booking stays possible). Nothing once
+    measured, nor offline (the pickers already say so). */
+export function RoadsBanner(p: { roads: PlaceRoads | null; online: boolean; onRetry: () => void }) {
+  if (!p.roads || !p.online || p.roads.state === 'measured') return null;
+  if (p.roads.state === 'measuring') return <Banner kind="info" data-testid="roads-measuring">{t('booking.picker.roadsMeasuring')}</Banner>;
+  return (
+    <Banner kind="warn" data-testid="roads-failed"
+      action={<Button size="sm" variant="ghost" icon={<RefreshCw />} onClick={p.onRetry} data-testid="roads-retry">{t('booking.picker.retry')}</Button>}>
+      {t('booking.picker.roadsFailed')}
     </Banner>
   );
 }

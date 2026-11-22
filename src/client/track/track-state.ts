@@ -4,6 +4,7 @@
 import type { TrackAnswer, Garage } from '../api';
 import { ct, isLang, type CLang } from '../i18n';
 import { localMinuteOf, nbClock } from '../format';
+import { isRoadLine } from '../../lib/tomtom';
 // the haversine the client page already has (the address search of « Réserver en ligne »): nothing more to load
 import { metres } from '../../shared/places/photon';
 
@@ -18,6 +19,7 @@ export interface TrackView {
   lang: CLang | null;
   dest: LatLng | null;
   pos: (LatLng & { at: string }) | null;
+  /** the server's road to the customer (3 points or more), or none: never a straight line */
   route: [number, number][];
   /** the expected arrival: Montréal clock minute, and minutes left by the server's clock (not the phone's) */
   eta: { minute: number; left: number } | null;
@@ -40,6 +42,12 @@ function cleanRoute(r: unknown): [number, number][] {
     ? r.filter((p) => Array.isArray(p) && okPt({ lat: Number(p[0]), lng: Number(p[1]) })).map((p) => [Number(p[0]), Number(p[1])] as [number, number])
     : [];
 }
+/** the server's road: its good points when they make a road, 3 points or more; else none. Two points are the old
+    server's straight line (written when no planner answered): never drawn, and no arrival is counted along it */
+function roadOf(r: unknown): [number, number][] {
+  const line = cleanRoute(r);
+  return isRoadLine(line) ? line : [];
+}
 
 /** fetchedAt: when the answer arrived (phone clock); nowMs: the moment shown (the page redraws between answers);
     live: the live arrival kept calm by useTrack (liveEta + calm). Without it (or when the position cannot be trusted),
@@ -50,7 +58,7 @@ export function trackView(a: TrackAnswer | null | undefined, fetchedAt: number, 
   const garage: Garage = { name: a?.garage?.name || null, phone: a?.garage?.phone || null };
   const dest = kind === 'active' && okPt(a?.dest) ? { lat: a!.dest!.lat, lng: a!.dest!.lng } : null;
   const pos = kind === 'active' && okPt(a?.pos) ? { lat: a!.pos!.lat, lng: a!.pos!.lng, at: a!.pos!.at } : null;
-  const route = kind === 'active' ? cleanRoute(a?.route) : [];
+  const route = kind === 'active' ? roadOf(a?.route) : [];
   let eta: TrackView['eta'] = null;
   if (kind === 'active' && live && Number.isFinite(live.left) && Number.isFinite(live.arrive)) {
     // the minutes kept since the last answer, counted down only when answers stop coming (they come every 5 s); the
@@ -146,13 +154,13 @@ export const OLD_POS_MS = 2 * 60000;
 export const OFF_ROUTE_M = 400;
 /** the live arrival of an answer: minutes left from the answer's « now » (not rounded) and the arrival moment (server's
     clock, ms). null — the page keeps the server's eta_at — when: not on the way, no position, a position more than
-    2 minutes old or more than 400 m from the route, no route (under 2 points), no planned minutes */
+    2 minutes old or more than 400 m from the route, no road (under 3 points: roadOf), no planned minutes */
 export interface LiveEta { left: number; arrive: number }
 export function liveEta(a: TrackAnswer | null | undefined, fetchedAt: number): LiveEta | null {
   if (!a || a.status !== 'active' || !okPt(a.pos)) return null;
   const planned = Number(a.minutes);
   if (a.minutes == null || !Number.isFinite(planned) || planned <= 0) return null;
-  const r = routeOf(cleanRoute(a.route));
+  const r = routeOf(roadOf(a.route));
   if (!r) return null;
   const serverNow = Date.parse(String(a.now));
   const now = Number.isFinite(serverNow) ? serverNow : fetchedAt;

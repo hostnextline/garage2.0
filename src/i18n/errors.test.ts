@@ -101,7 +101,9 @@ const COMING = [
   'numbered', 'refund_first', 'refund_too_much', 'too_much', 'unbilled',
   'quote_done', 'bad_finding',
   'amount_changed', 'event', 'pay_unavailable',
-  'bad_day', 'bad_op', 'bad_run', 'no_email', 'not_ready', 'op_reused', 'stripe_down', 'stripe_refused', 'test_number'
+  'bad_day', 'bad_op', 'bad_run', 'no_email', 'not_ready', 'op_reused', 'stripe_down', 'stripe_refused', 'test_number',
+  // « exact move » (STATE.md S4, 2026-11-21): move_job's 8th argument and the new move_preview, built beside this app
+  'arrive_late', 'late_changed', 'pick_truck'
 ];
 
 describe('server refusals: every code has words in French and in English', () => {

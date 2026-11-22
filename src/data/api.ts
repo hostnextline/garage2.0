@@ -6,7 +6,9 @@ import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
 import { ask } from './client';
 import { REQUEST_MS } from './send';
-import { itemsOf, settings, customerName, invoiceNumber } from './select';
+import { itemsOf, settings, customerName, invoiceNumber, roadsOn } from './select';
+import { warmRoads, warmAfterSent, warmJob, warmPlace, WARM_MS } from './roads';
+import { exactArgs } from './exact';
 import { t, tMaybe, lang } from '../lib/i18n';
 import { money } from '../lib/money';
 import type { Customer, CustomerNote, Vehicle, EngineSpec, Job, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Invoice, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
@@ -31,6 +33,10 @@ async function upsert(table: TableName, obj: Record<string, unknown>, defaults: 
 /* a customer's file made, or its name / number changed, once it is on the server: its GoHighLevel contact is made or
    completed (the name on a number already there). In the background; a failure changes nothing in the app. */
 sentHooks.customer = (id) => { void callFn('conversation', { action: 'contact', customer_id: id }, 20000).catch(() => undefined); };
+/* « Vraies routes » on: a booking, a move or an appointment's new position that reached the server (also one replayed
+   from the outbox) has its place measured for its day, in the background (roads.ts) */
+sentHooks.rpc = warmAfterSent;
+sentHooks.update = warmAfterSent;
 export async function saveCustomer(c: Partial<Customer>): Promise<string> { guard(); return upsert('customers', c, { lang: 'fr' }, t('log.customer')); }
 export async function deleteCustomer(id: string) { guard(); await deleteRow('customers', id); }
 export async function saveNote(n: Partial<CustomerNote> & { customer_id: string }) { guard(); return upsert('customer_notes', n); }
@@ -72,13 +78,24 @@ export async function bookJob(job: BookInput, items: ItemInput[]) {
   const id = job.id || uuid();
   return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: bookingLabel(job) }).then((r) => ({ ...r, id }));
 }
-/** `opts.queue: false`: a move that must happen now or not at all (never kept on the phone for later: R188) */
-export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null, opts: { queue?: false } = {}) {
+/** `opts.queue: false`: a move that must happen now or not at all (never kept on the phone for later: R188).
+    `win.at` (« exact move », STATE.md S2): the minute pointed; the appointment is planned to arrive at that very minute,
+    the other stops keep their order and times, `win.lateOk` lists the appointments the person accepted late after the
+    warning. Such a move is never kept on the phone (A4): it needs the network, like its preview. */
+export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean; at?: number | null; lateOk?: readonly string[] } | null = null, opts: { queue?: false } = {}) {
   guard();
-  const o = { label: t('log.move'), ...(opts.queue === false ? { queue: false } : {}) };
+  const exact = !!win && win.at != null && block === 'day';
+  const o = { label: t('log.move'), ...(opts.queue === false || exact ? { queue: false } : {}) };
   // « Plages d'arrivée »: the new window (or flexible) goes with the move; the old call stays as it was for the blocks
-  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, o);
-  return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, o);
+  const r = win
+    ? await callRpc<{ ok: boolean; changed: boolean }>('move_job', {
+      p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true,
+      ...(exact ? exactArgs(win.at!, win.lateOk) : {})
+    }, o)
+    : await callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, o);
+  // a move sent straight (not through the outbox, whose sent hook does it): « Vraies routes » on, its place is measured
+  if (opts.queue === false || exact) warmJob(jobId, day);
+  return r;
 }
 export async function setJobDuration(jobId: string, minutes: number) {
   guard();
@@ -91,7 +108,11 @@ export async function updateJob(jobId: string, patch: Partial<Record<'problem' |
 /** « Modifier le rendez-vous »: booked with the wrong customer (Part 24 nonies): the right one, their car, their address */
 export async function changeJobCustomer(jobId: string, customerId: string, vehicleId: string | null = null) {
   guard();
-  return callRpc<{ ok: boolean; vehicle_id: string | null }>('job_customer', { p_job: jobId, p_customer: customerId, p_vehicle: vehicleId }, { label: t('log.job'), queue: false });
+  const r = await callRpc<{ ok: boolean; vehicle_id: string | null }>('job_customer', { p_job: jobId, p_customer: customerId, p_vehicle: vehicleId }, { label: t('log.job'), queue: false });
+  // sent straight (never through the outbox): « Vraies routes » on, the new customer's address is measured for that day
+  const c = getRow<Customer>('customers', customerId);
+  warmPlace(c && c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng } : null, getRow<Job>('jobs', jobId)?.day ?? null);
+  return r;
 }
 export type StepAction = 'leave' | 'arrive' | 'finish' | 'cancel' | 'no_show' | 'reopen' | 'back' | 'waiver';
 export async function jobStep(jobId: string, action: StepAction, data: Record<string, unknown> = {}) {
@@ -347,19 +368,33 @@ export async function reportPosition(lat: number, lng: number, accuracy: number 
 }
 
 /* ---------- needs the network (each request stops at its limit; the error says no signal, server unwell or refused) ---------- */
-export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
+/** `waitMs` (« Vraies routes » on only): how long the measure of this address may hold the ask back (WARM_MS, counted from
+    the start of that measure; 0 = not at all: the far checks before a booking or a move read only `far`, which the server
+    leaves null while a trip is not measured: review-data M4) */
+export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null, waitMs: number = WARM_MS) {
+  // « Vraies routes » on: this address's trips are measured first (3.5 s at most, never a refusal; off: nothing waits)
+  if (roadsOn.peek()) await warmRoads(lat != null && lng != null ? { lat, lng } : null, from, days, waitMs);
   const data = await ask((s) => sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 60, p_need: need, p_kind: kind }).abortSignal(s), REQUEST_MS);
   /* every moment of the page, the best first. « Garde-route » (optional: an older server does not send them): what the
      job adds to the truck's whole day (add_min, add_km), the day's driving with it (day_min), the longest drive to a
      neighbouring customer that day (hop_min, null without another stop), the truck's other stops (stops), and
-     far = 'hop' | 'day' when a limit of the settings is passed (null = fine) */
+     far = 'hop' | 'day' when a limit of the settings is passed (null = fine). « Vraies routes » on: unmeasured, day_km, rank,
+     route too (see Suggestion) */
   return (data || []) as Suggestion[];
 }
 /** a moment offered. With « Plages d'arrivée »: block 'day', the estimated arrival and the window to tell the customer */
 export interface Suggestion { day: string; block: BlockKey; drive_min: number; near: number; truck: string | null; left: number; eta?: number | null; win_start?: number | null; win_end?: number | null;
-  pos?: number; add_min?: number; add_km?: number; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null }
+  pos?: number; add_min?: number; add_km?: number | null; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null;
+  /** « Vraies routes » on (Part 27; absent when off): the trips of the vehicle's day with this stop that are not measured yet
+      (> 0: « pas encore mesuré »; far and add_km are then null, never guessed: add_km is `number | null`, like
+      domain/moment Moment's, and every reader says no km for null); the vehicle's km that day (null while a
+      trip is not measured); the place of the new stop in the vehicle's day (rank, 1 = first); that day's stops in driving
+      order (route: job ids, 'new' = this appointment) */
+  unmeasured?: number; day_km?: number | null; rank?: number | null; route?: string[] | null }
 /** « Plages d'arrivée »: every window still possible on one day (the best first), for « Autres heures ce jour-là » */
-export async function suggestWindows(lat: number | null, lng: number | null, duration: number, day: string, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
+export async function suggestWindows(lat: number | null, lng: number | null, duration: number, day: string, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null, waitMs: number = WARM_MS) {
+  // « Vraies routes » on: measured first, shared with the other days and the 14 days asked for the same address (roads.ts)
+  if (roadsOn.peek()) await warmRoads(lat != null && lng != null ? { lat, lng } : null, day, 1, waitMs);
   const data = await ask((s) => sb.rpc('suggest_windows', { p_lat: lat, p_lng: lng, p_duration: duration, p_day: day, p_exclude: exclude, p_need: need, p_kind: kind }).abortSignal(s), REQUEST_MS);
   return (data || []) as Suggestion[];
 }

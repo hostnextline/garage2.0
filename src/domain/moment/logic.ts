@@ -130,7 +130,8 @@ export function sameMoment(c: BlockChoice, j: Pick<Job, 'day' | 'block' | 'win_s
   return c.win_start != null && c.win_start === j.win_start;
 }
 /* ---------- how a block looks in the picker ---------- */
-export type CellState = 'ok' | 'tight' | 'full' | 'closed' | 'started';
+/** unknown (« Vraies routes » on only): the server has not answered for that block yet; pickable, said « À vérifier » */
+export type CellState = 'ok' | 'tight' | 'full' | 'closed' | 'started' | 'unknown';
 export interface LoadLike {
   trucks: { truck: { id: string }; cap: number; used: number; left: number; jobs: Pick<Job, 'id' | 'duration_min' | 'travel_min' | 'status'>[] }[];
   open: boolean; started: boolean;
@@ -155,6 +156,19 @@ export function cellState(load: LoadLike, duration: number, drive: number, opts:
   if (!Number.isFinite(left)) left = 0;
   const state: CellState = left >= duration + drive ? 'ok' : left >= duration ? 'tight' : 'full';
   return { state, left: Math.max(0, left) };
+}
+
+/** « Vraies routes » on: a block of the calendar as the server's answer says it (PE-09), never from a fixed drive time.
+    `phone`: the cell from the phone's copy (cellState); `answered`: the server answered for that page; `row`: its moment
+    for that block (it fits: the planner offers only blocks where the job fits), `other`: a moment of that block for
+    ANOTHER vehicle than the one chosen by hand (says nothing of this one). Closed and started stay the phone's (the hours);
+    a row → room (ok); answered and no row at all → full; not answered: no room at all even before driving (phone « full »)
+    stays full, else unknown. Never « tight » (« ça passe si la route est courte » is a guess). */
+export function cellFromRows(phone: { state: CellState; left: number }, answered: boolean, row: Moment | null | undefined, other = false): { state: CellState; left: number } {
+  if (phone.state === 'closed' || phone.state === 'started') return phone;
+  if (row) return { state: 'ok', left: phone.left };
+  if ((answered && !other) || phone.state === 'full') return { state: 'full', left: phone.left };
+  return { state: 'unknown', left: phone.left };
 }
 
 /** a booking refused because of the block: the person should pick another block */
@@ -182,7 +196,12 @@ export function carDraftLabel(d: { year: string; make: string; model: string; vi
 /** what the server says of a bookable moment (suggest_blocks); the score is absent with an older server: never far then */
 export interface Moment {
   day: string; block: BlockKey;
-  add_min?: number; add_km?: number; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null;
+  /** add_km: null while a trip of that day is not measured (« Vraies routes » on: never a km guessed), or when a measured
+      trip has no km; a reader says no km then (never « 0 km », never NaN: build-data L3) */
+  add_min?: number; add_km?: number | null; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null;
+  /** « Vraies routes » on (Part 27; absent when off): the trips of the vehicle's day with this stop that are not measured
+      yet (> 0: its minutes count the server's « unknown » time, so no time or km of it is said, and it is never far) */
+  unmeasured?: number;
 }
 export interface FarLimits { hop: number; day: number }
 /** the moment chosen is far: which one, why, and the warning in plain words */
@@ -191,7 +210,10 @@ export interface FarInfo { day: string; block: BlockKey; kind: 'hop' | 'day'; te
     landed (ms). A picker that does not say it leaves the screen to ask the server again before booking (m2) */
 export interface FarSeen { day: string; block: BlockKey; at: number }
 
-export const isFar = (m: Pick<Moment, 'far'> | null | undefined): boolean => m?.far === 'hop' || m?.far === 'day';
+/** a moment whose trips are not all measured is never far (the server sends far null then; nothing is guessed here) */
+export const isFar = (m: Pick<Moment, 'far' | 'unmeasured'> | null | undefined): boolean => (m?.far === 'hop' || m?.far === 'day') && !unmeasured(m);
+/** « Vraies routes »: some trip of this moment's day is not measured yet (its minutes are the server's « unknown » time) */
+export const unmeasured = (m: { unmeasured?: number | null } | null | undefined): boolean => (Number(m?.unmeasured) || 0) > 0;
 /** the two limits of the settings (a settings row saved before them has none: 35 and 105 min) */
 export function farLimits(b: { max_hop_min?: number | null; max_day_drive_min?: number | null } | null | undefined): FarLimits {
   return { hop: Number(b?.max_hop_min) || 35, day: Number(b?.max_day_drive_min) || 105 };
@@ -217,10 +239,12 @@ export function farInfo(m: Moment | null | undefined, lim: FarLimits, l: Lang): 
   return m && isFar(m) ? { day: m.day, block: m.block, kind: m.far as 'hop' | 'day', text: farText(m, lim, l) } : null;
 }
 /** up to `n` better moments than the far one chosen: the best that are not far, with the minutes of road saved
-    (null when it cannot be said, or when nothing is saved) */
+    (null when it cannot be said, when nothing is saved, or when a trip of either is not measured yet: its minutes are
+    the « unknown » time, not a real road) */
 export function betterMoments<M extends Moment>(picked: Moment, list: M[], n = 2): { moment: M; saved: number | null }[] {
-  return list.filter((m) => !isFar(m) && !(m.day === picked.day && m.block === picked.block)).slice(0, n).map((m) => {
-    const saved = picked.add_min != null && m.add_min != null ? Math.round(picked.add_min - m.add_min) : null;
+  // never « Plutôt … » a moment whose trips are not all measured: « better » would be a guess (final-guess G2)
+  return list.filter((m) => !isFar(m) && !unmeasured(m) && !(m.day === picked.day && m.block === picked.block)).slice(0, n).map((m) => {
+    const saved = picked.add_min != null && m.add_min != null && !unmeasured(m) && !unmeasured(picked) ? Math.round(picked.add_min - m.add_min) : null;
     return { moment: m, saved: saved != null && saved > 0 ? saved : null };
   });
 }
@@ -235,12 +259,15 @@ export function farQuestion(far: FarInfo | null | undefined, choice: { day: stri
   if (!far || !choice || far.day !== choice.day || far.block !== choice.block) return null;
   return { title: t('booking.far.title', undefined, l), text: far.text, ok: t(mode === 'move' ? 'booking.far.okMove' : 'booking.far.ok', undefined, l), cancel: t('booking.far.cancel', undefined, l), danger: true };
 }
-/** « 13 min de route (4,2 km) » of a suggestion: what the job adds to the whole day when the server says it, else the drive to it */
-export function roadWords(m: { drive_min: number; add_min?: number; add_km?: number }, l: Lang): string {
+/** « 13 min de route (4,2 km) » of a suggestion: what the job adds to the whole day when the server says it, else the drive
+    to it; « route pas encore mesurée » while a trip of that day is not measured (« Vraies routes »: never a number then) */
+export function roadWords(m: { drive_min: number; add_min?: number; add_km?: number | null; unmeasured?: number }, l: Lang): string {
+  if (unmeasured(m)) return t('booking.picker.unmeasured', undefined, l);
   const min = m.add_min ?? m.drive_min;
   if (min <= 2) return t('booking.picker.noDrive', undefined, l);
   const d = duration(min, l);
-  if (m.add_min == null || m.add_km == null) return t('booking.picker.drive', { d }, l);
+  // no km (null: not measured, or a trip with no km), or not a number: the minutes only, never « 0 km » / « NaN km »
+  if (m.add_min == null || m.add_km == null || !Number.isFinite(m.add_km)) return t('booking.picker.drive', { d }, l);
   return t('booking.picker.driveKm', { d, km: m.add_km.toLocaleString(l === 'en' ? 'en-CA' : 'fr-CA', { maximumFractionDigits: 1 }) }, l);
 }
 

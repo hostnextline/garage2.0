@@ -21,7 +21,7 @@ const COFFRE_WAITING = 'coffre-waiting';
 
 export {
   dayWord, dayInSentence, shortDayWord, capFirst, isWindowJob, promisedWindow, blockRange, momentWord, momentShort, keepWindow, wt,
-  outsideWindow, whenLine, etaWord, minuteOf, clockOf, type Moment
+  outsideWindow, whenLine, etaWord, minuteOf, clockOf, plannedTime, etaUnsure, type Moment
 } from '../../domain/jobs/when';
 
 /* ---------- steps kept on the phone (no signal) ----------

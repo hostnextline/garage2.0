@@ -108,6 +108,8 @@
 .bp-cell.is-ok { background: color-mix(in srgb, var(--ok) 15%, var(--solid)); border-color: color-mix(in srgb, var(--ok) 32%, transparent); }
 .bp-cell.is-tight { background: color-mix(in srgb, var(--warn) 17%, var(--solid)); border-color: color-mix(in srgb, var(--warn) 38%, transparent); }
 .bp-cell.is-full { background: color-mix(in srgb, var(--bad) 9%, var(--solid)); border-color: color-mix(in srgb, var(--bad) 28%, transparent); color: var(--bad); }
+/* « Vraies routes » on: the server has not answered for that block yet (« À vérifier »): neutral, dotted, still pickable */
+.bp-cell.is-unknown { background: var(--solid); border-style: dotted; border-color: var(--ink-3); color: var(--ink-2); }
 .bp-cell.is-closed { background: repeating-linear-gradient(135deg, var(--sunken) 0 6px, transparent 6px 12px); border-color: var(--line); color: var(--ink-3); font-weight: 500; cursor: not-allowed; }
 .bp-cell.is-started { background: transparent; border-color: var(--line); color: var(--ink-3); opacity: 0.6; font-weight: 500; cursor: not-allowed; }
 .bp-cell:not([aria-disabled='true']):hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 25%, transparent); }
@@ -132,6 +134,7 @@ tr.is-today .bp-day-name { color: var(--accent-ink); }
 .bp-swatch.is-ok { background: color-mix(in srgb, var(--ok) 30%, var(--solid)); }
 .bp-swatch.is-tight { background: color-mix(in srgb, var(--warn) 34%, var(--solid)); }
 .bp-swatch.is-full { background: color-mix(in srgb, var(--bad) 24%, var(--solid)); }
+.bp-swatch.is-unknown { background: var(--solid); border: 1px dotted var(--ink-3); }
 .bp-swatch.is-closed { background: repeating-linear-gradient(135deg, var(--sunken) 0 3px, transparent 3px 6px); }
 @media (max-width: 380px) {
   .bp-table thead th:first-child, .bp-table tbody th { width: 52px; }

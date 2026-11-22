@@ -54,9 +54,15 @@ describe('the tracking page', () => {
   });
   it('drops broken points', () => {
     const at = Date.parse(NOW);
-    const v = trackView(active({ route: [[45.5, -73.6], [999, 1], [0, 0], [45.6, -73.7]] as [number, number][], dest: { lat: NaN, lng: 2 } }), at, at);
-    expect(v.route).toEqual([[45.5, -73.6], [45.6, -73.7]]);
+    const v = trackView(active({ route: [[45.5, -73.6], [999, 1], [0, 0], [45.55, -73.65], [45.6, -73.7]] as [number, number][], dest: { lat: NaN, lng: 2 } }), at, at);
+    expect(v.route).toEqual([[45.5, -73.6], [45.55, -73.65], [45.6, -73.7]]);
     expect(v.dest).toBeNull();
+  });
+  it('a « road » of two points is the old server’s straight line: no route (never drawn); what is left of a broken one too', () => {
+    const at = Date.parse(NOW);
+    expect(trackView(active({ route: [[45.5005, -73.6577], [45.5307, -73.6702]] }), at, at).route).toEqual([]);
+    expect(trackView(active({ route: [[45.5, -73.6], [999, 1], [45.6, -73.7]] as [number, number][] }), at, at).route).toEqual([]);
+    expect(trackView(active({ route: null }), at, at).route).toEqual([]);
   });
   it('maps the end of the trip to plain words', () => {
     const at = Date.parse(NOW);

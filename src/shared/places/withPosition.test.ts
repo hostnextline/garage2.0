@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+const real = vi.hoisted(() => ({ locate: vi.fn() }));
+vi.mock('./locate', () => ({ locate: real.locate }));
 import { withPosition } from './withPosition';
 import type { locate } from './locate';
 import type { Suggestion } from './photon';
@@ -24,6 +26,11 @@ describe('the position at the moment of saving (customers-a-05)', () => {
   it('several places or nothing: saved as typed', async () => {
     const find = vi.fn(async () => ({ status: 'choose', choices: [] })) as unknown as typeof locate;
     expect(await withPosition(typed, 2500, find)).toBe(typed);
+  });
+  it('without its own lookup: locate, in a hurry (TomTom and Photon at once, places.ts; review F6)', async () => {
+    real.locate.mockResolvedValueOnce(found);
+    expect(await withPosition(typed)).toEqual({ ...typed, lat: 45.52, lng: -73.64, city: 'Mont-Royal' });
+    expect(real.locate).toHaveBeenCalledWith('1250 rue Graham', { postal: 'H3P 2C9', hurry: true });
   });
   it('without signal, already placed, or empty: nothing asked', async () => {
     const find = vi.fn(async () => found) as unknown as typeof locate;

@@ -5,14 +5,14 @@ import { hm, parseHm } from '../../lib/dates';
 import { fmtNum, parseNum } from './checks';
 
 /** a number with its unit (« 35 km/h »); an empty field gives null, a wrong one NaN (the section says what to fix) */
-export function NumInput(p: { value: number | null | undefined; onValue: (v: number | null) => void; unit?: string; decimals?: boolean; invalid?: boolean; id?: string; 'aria-label'?: string; placeholder?: string; 'data-testid'?: string }) {
+export function NumInput(p: { value: number | null | undefined; onValue: (v: number | null) => void; unit?: string; decimals?: boolean; invalid?: boolean; disabled?: boolean; id?: string; 'aria-label'?: string; placeholder?: string; 'data-testid'?: string }) {
   const [text, setText] = useState(() => fmtNum(p.value, lang.value));
   const focused = useRef(false);
   // the stored value changed while the field is not being typed in: show it (never under the person's fingers)
   useEffect(() => { if (!focused.current) setText(fmtNum(p.value, lang.value)); }, [p.value, lang.value]);
   return (
     <span class="input-wrap settings-num">
-      <input class="input" inputMode={p.decimals ? 'decimal' : 'numeric'} id={p.id} aria-label={p['aria-label']} placeholder={p.placeholder} data-testid={p['data-testid']}
+      <input class="input" inputMode={p.decimals ? 'decimal' : 'numeric'} id={p.id} aria-label={p['aria-label']} placeholder={p.placeholder} data-testid={p['data-testid']} disabled={p.disabled}
         aria-invalid={p.invalid || (text.trim() !== '' && Number.isNaN(parseNum(text))) || undefined} value={text}
         style={p.unit ? { paddingRight: `${18 + p.unit.length * 9}px` } : undefined}
         onFocus={() => { focused.current = true; }}

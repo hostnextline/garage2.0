@@ -2,24 +2,33 @@
    in a strip, a map that is always there, and the three blocks of the day chosen.
    « Tous les jours »: every coming appointment of the page around the new address. A day: that day's routes by the
    streets with the new appointment in its place for the block highlighted. Tapping a block picks it (the same choice
-   as a calendar cell). From the phone's copy of the days; the scores are the server's (BlockPicker keeps them). */
+   as a calendar cell). From the phone's copy of the days; the scores are the server's (BlockPicker keeps them).
+   « Vraies routes » OFF (the rollback state): the new stop where the phone's estimate puts it (placeNewStop: the place
+   and the number only, never a km of it); what a block adds is the server's row, else, for the block highlighted, what
+   the map's own roads say (roadAdded: one planner for both totals), else nothing.
+   ON: the phone decides nothing by straight line: the vehicle, the place and the order come from the server's row
+   (placeOn; blocks mode says nothing of the order, so the new stop is a pin without a number), what it adds is the row's
+   (blockAdds: « route pas encore mesurée » while a trip is not measured). The roads are asked for the day shown and the
+   words under the map say when they are not drawn yet (roadNote). */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Check, Route, ListOrdered } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { tinyDay, longDay, duration, clockRange, type BlockKey } from '../../lib/dates';
 import { wide } from '../../platform/media';
-import { allJobs, jobsBetween, customer, settings, activeTrucks, truckColor, staffName } from '../../data/select';
+import { allJobs, jobsBetween, customer, settings, activeTrucks, truckColor, staffName, roadsOn } from '../../data/select';
 import { Pill } from '../../ui';
 import { MapView, type MapMarker, type MapLine } from '../map/MapView';
 import { assemble, UNPLACED_COLOR, type TruckRoute } from '../map/assemble';
-import { useRoads, roadOf, roadTotal } from '../map/useRoads';
-import { placeNewStop, fmtKm, NEW_STOP, NEW_STOP_COLOR } from './preview';
+import { useRoads, roadOf, roadTotal, roadAdded } from '../map/useRoads';
+import { placeNewStop, placeOn, fmtKm, NEW_STOP, NEW_STOP_COLOR, type PlacedOn } from './preview';
 import { dayOf } from './deviceDay';
 import { MapHover } from './RoutePreview';
+import { roadNote } from './roadNote';
 import { groupBox } from './hooks';
 import { bothKinds, kindOf as kindOfTruck } from './vehicles';
 import { KindTag } from './parts';
 import { isFar, momentsByKey, roadWords, type CellState, type Moment } from '../../domain/moment/logic';
+import { blockAdds, dayFromRow, rowOfTruck, serverRank, type ServerPlace } from '../../domain/moment/serverPlace';
 import { dayChips, defaultBlock, dayCounts, overviewPins } from '../../domain/moment/days';
 
 export interface MomentMapProps {
@@ -27,7 +36,7 @@ export interface MomentMapProps {
   /** the days of the calendar page, each with its blocks as the calendar shows them */
   cells: { day: string; blocks: { key: BlockKey; start: number; end: number; state: CellState; left: number }[] }[];
   /** every moment the server scored, the best first (none without the network) */
-  list: (Moment & { drive_min: number; truck?: string | null })[];
+  list: (Moment & ServerPlace & { drive_min: number; truck?: string | null })[];
   value: { day: string; block: BlockKey } | null;
   onPick: (day: string, block: BlockKey) => void;
   /** moving a job: it is not drawn at its old place */
@@ -40,8 +49,11 @@ export interface MomentMapProps {
 }
 
 
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
 export function MomentMap(p: MomentMapProps) {
   const l = lang.value;
+  const onRoads = roadsOn.value;
   const days = p.cells.map((c) => c.day);
   const moments = useMemo(() => momentsByKey(p.list), [p.list]);
 
@@ -70,27 +82,39 @@ export function MomentMap(p: MomentMapProps) {
 
   /* ---------- a day: its routes, the new stop in each block ---------- */
   const truckOf = (block: BlockKey) => p.truckId || (day ? moments.get(`${day}|${block}`)?.truck : null) || null;
+  /** the server's row of a block of the day shown (none: offline, or a block it did not offer) */
+  const rowOf = (block: BlockKey) => (day ? moments.get(`${day}|${block}`) ?? null : null);
   const base = useMemo(() => (day ? dayOf(day, p.excludeJob) : null), [day, p.excludeJob, jobs]);
-  const placedOf = (block: BlockKey) => placeNewStop(base!, { day: day!, block, truckId: truckOf(block), lat: p.lat, lng: p.lng, name: '', address: p.address });
+  const placedOf = (block: BlockKey): PlacedOn => {
+    const spot = { day: day!, block, truckId: truckOf(block), lat: p.lat, lng: p.lng, name: '', address: p.address, row: rowOf(block) };
+    if (onRoads) return placeOn(base!, spot);
+    const pl = placeNewStop(base!, spot);
+    return { before: pl.before, after: pl.after, truckId: pl.truckId, rank: null };
+  };
+  /* « Arrêt n sur N » of each block: off, the phone's estimate (as before); on, only the server's (window mode: never here) */
   const perBlock = useMemo(() => {
-    const out = {} as Record<string, { n: number; total: number; extraKm: number } | null>;
+    const out = {} as Record<string, { n: number; total: number } | null>;
     if (!base || !row) return out;
     for (const c of row.blocks) {
       if (c.state === 'closed' || c.state === 'started') { out[c.key] = null; continue; }
-      const pl = placedOf(c.key);
+      if (onRoads) { out[c.key] = serverRank(rowOf(c.key), truckOf(c.key)); continue; }
+      const pl = placeNewStop(base, { day: day!, block: c.key, truckId: truckOf(c.key), lat: p.lat, lng: p.lng, name: '', address: p.address });
       const mine = pl.after.jobs.filter((j) => j.truck_id === pl.truckId);
       const n = mine.find((j) => j.id === NEW_STOP)?.order;
-      out[c.key] = pl.truckId && n ? { n, total: mine.length, extraKm: pl.extraKm } : null;
+      out[c.key] = pl.truckId && n ? { n, total: mine.length } : null;
     }
     return out;
-  }, [base, row?.blocks.map((c) => c.key + c.state).join('|'), p.lat, p.lng, p.truckId, moments]);
-  const placed = useMemo(() => (base && hi ? placedOf(hi) : null), [base, hi, p.lat, p.lng, p.truckId, moments]);
+  }, [base, row?.blocks.map((c) => c.key + c.state).join('|'), p.lat, p.lng, p.truckId, moments, onRoads]);
+  const placed = useMemo(() => (base && hi ? placedOf(hi) : null), [base, hi, p.lat, p.lng, p.truckId, moments, onRoads]);
   const after = useMemo(() => (base ? assemble(placed ? placed.after : base, { nameOf: staffName }) : null), [base, placed]);
   const before = useMemo(() => (placed ? assemble(placed.before, { nameOf: staffName }) : null), [placed]);
-  const trA: TruckRoute | undefined = placed ? after?.trucks.find((x) => x.id === placed.truckId) : undefined;
-  const trB: TruckRoute | undefined = placed ? before?.trucks.find((x) => x.id === placed.truckId) : undefined;
-  // the streets: only for a day (the overview has no lines)
-  useRoads(day && after && !p.pop ? [...after.trucks, ...(trB ? [trB] : [])] : []);
+  const trA: TruckRoute | undefined = placed && placed.truckId ? after?.trucks.find((x) => x.id === placed.truckId) : undefined;
+  const trB: TruckRoute | undefined = placed && placed.truckId ? before?.trucks.find((x) => x.id === placed.truckId) : undefined;
+  /* the streets, for the day shown (its usual hours: build-maps « For the lead »); only for a day (the overview has no
+     lines). Off: the day without the stop too, for what it adds (the same planner for both totals, roadAdded) */
+  const drawn = day && after && !p.pop ? after.trucks : [];
+  useRoads(day && after && !p.pop ? [...after.trucks, ...(trB && !onRoads ? [trB] : [])] : [], day);
+  const note = day ? roadNote(drawn.filter((tr) => tr.stops.some((s) => s.hasPos)), day) : '';
 
   /* ---------- what the map draws ---------- */
   const markers: MapMarker[] = [];
@@ -125,27 +149,35 @@ export function MomentMap(p: MomentMapProps) {
       if (!tr.stops.length) continue;
       if (tr.from && tr.start) markers.push({ id: `start-${tr.id}`, kind: 'customer', lat: tr.from[0], lng: tr.from[1], color: tr.color, label: tr.start.label || t('booking.preview.start'), title: tr.start.address });
       else if (tr.from && !homeDrawn) { homeDrawn = true; markers.push({ id: 'home', kind: 'home', lat: tr.from[0], lng: tr.from[1], label: after.home?.label || t('booking.preview.start'), title: after.home?.address || '' }); }
+      // switch on with the server's order (window mode): each stop keeps its place in the server's route
+      const numberOf = (x: TruckRoute['stops'][number]): number | string => (onRoads && placed?.rank && tr.id === placed.truckId ? x.order ?? '' : x.n);
       for (const s of tr.stops) {
         if (!s.hasPos) continue;
-        if (s.id === NEW_STOP) markers.push(newPin(s.n, blockName(s.block)));
-        else markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: tr.color, number: s.n, done: s.done, label: s.name || undefined, sub: blockName(s.block), title: `${s.n}. ${s.name}` });
+        if (s.id === NEW_STOP) markers.push(newPin(onRoads && placed?.rank ? placed.rank.n : s.n, blockName(s.block)));
+        else { const n = numberOf(s); markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: tr.color, number: n, done: s.done, label: s.name || undefined, sub: blockName(s.block), title: n === '' ? s.name : `${n}. ${s.name}` }); }
       }
-      for (const leg of tr.legs) lines.push({ points: roadOf(leg), color: tr.color, weight: 4, opacity: leg.kind === 'done' ? 0.32 : 0.85 });
+      for (const leg of tr.legs) lines.push({ points: roadOf(leg, day), color: tr.color, weight: 4, opacity: leg.kind === 'done' ? 0.32 : 0.85 });
     }
     for (const s of after.unplaced) if (s.hasPos && s.id !== NEW_STOP) markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: UNPLACED_COLOR, number: '', label: s.name || undefined, sub: blockName(s.block), title: s.name });
     if (!markers.some((m) => m.id === NEW_STOP)) {
       if (!homeDrawn && home && home.lat != null && home.lng != null) markers.push({ id: 'home', kind: 'home', lat: home.lat, lng: home.lng, label: home.label || t('booking.preview.start'), title: home.address || '' });
-      markers.push(newPin(hi ? '1' : null, hi ? blockName(hi) : undefined));
+      // switch on: its place is not known (no number); off, alone that day (« 1 »)
+      markers.push(newPin(hi ? (onRoads ? '' : '1') : null, hi ? blockName(hi) : undefined));
     }
   }
 
   /* ---------- the facts of the moment highlighted (as « Voir sur la carte » says them) ---------- */
-  const roadA = trA ? roadTotal(trA) : null;
+  const roadA = trA ? roadTotal(trA, day) : null;
   const mine = trA?.stops.find((s) => s.id === NEW_STOP);
+  /* off, a block the server said nothing of: what the stop adds by the streets, for the block highlighted only (the map
+     has its roads), from two totals of the same planner (never a straight-line km) */
+  const addedHi = !onRoads && trA && mine ? roadAdded(trA, trB, day) : null;
   // the route is the car's or the truck's: never a vehicle's or a mechanic's name
   const both = bothKinds(activeTrucks.value);
   const kindOf = (id: string | null | undefined) => kindOfTruck(activeTrucks.value, id);
   const truckName = both ? t(kindOf(placed?.truckId) === 'car' ? 'booking.kind.ofCar' : 'booking.kind.ofTruck') : t('booking.kind.ofRoute');
+  // on: the day of the vehicle drawn with this appointment, from its own row (never another vehicle's: L1)
+  const hiDay = onRoads && hi && placed ? dayFromRow(rowOfTruck(rowOf(hi), placed.truckId || p.truckId), l) : '';
 
   const dayWords = day ? longDay(day, l) : '';
   // a day under the mouse: the window shows its best moment
@@ -173,7 +205,8 @@ export function MomentMap(p: MomentMapProps) {
             <span class="mm-day-sub">{t('booking.mm.jobs', { n: c.jobs })}</span>
             {!c.open ? <span class="mm-day-sub">{t(`booking.picker.state.${c.shut === 'full' ? 'full' : 'closed'}`)}</span>
               : c.far ? <span class="mm-day-far"><Route size={13} aria-hidden="true" />{t('booking.mm.far')}</span>
-              : c.add != null ? <span class="mm-day-add">{t('booking.mm.adds', { d: duration(c.add, l) })}</span> : null}
+              : c.add != null ? <span class="mm-day-add">{t('booking.mm.adds', { d: duration(c.add, l) })}</span>
+              : c.unmeasured ? <span class="mm-day-add" data-testid="mm-day-unmeasured">{t('booking.mm.unmeasured')}</span> : null}
             {c.best && <span class="mm-day-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
           </button>
         ))}
@@ -194,7 +227,14 @@ export function MomentMap(p: MomentMapProps) {
           {/* the moment highlighted, in a few facts */}
           {day && placed && (
             <ul class="bp-preview-facts" data-testid="mm-facts">
-              {trA && mine ? (
+              {onRoads ? (
+                <>
+                  <li><b>{placed.rank ? t('booking.preview.stop', { n: placed.rank.n, total: placed.rank.total, truck: truckName })
+                    : placed.truckId ? t('booking.preview.stopLater', { truck: truckName })
+                    : after?.trucks.length ? t(both ? 'booking.preview.noVehicleYet' : 'booking.preview.noTruckYet') : t('booking.preview.noTruck')}</b></li>
+                  {hiDay && <li data-testid="mm-facts-day">{hiDay}</li>}
+                </>
+              ) : trA && mine ? (
                 <>
                   <li><b>{t('booking.preview.stop', { n: mine.n, total: trA.total, truck: truckName })}</b></li>
                   {roadA && <li>{t('booking.preview.day', { km: fmtKm(roadA.km, l), d: duration(roadA.minutes, l) })}</li>}
@@ -202,6 +242,7 @@ export function MomentMap(p: MomentMapProps) {
               ) : <li>{t('booking.preview.noTruck')}</li>}
             </ul>
           )}
+          {day && note && <p class="faint small mm-hint" data-testid="mm-road">{note}</p>}
         </>
       )}
 
@@ -214,10 +255,14 @@ export function MomentMap(p: MomentMapProps) {
             const m = moments.get(`${day}|${c.key}`);
             const rank = perBlock[c.key];
             const tr = truckOf(c.key);
+            // on: the row of this block's own vehicle, never a number while a trip is not measured (blockAdds)
+            const mr = onRoads ? rowOfTruck(m, tr) : null;
             const road = off || c.state === 'full' ? ''
-              : m && m.add_min != null ? (m.add_km != null ? t('booking.mm.addsKm', { d: duration(m.add_min, l), km: fmtKm(m.add_km, l) }) : t('booking.mm.adds', { d: duration(m.add_min, l) }))
-              : m ? roadWords(m, l).replace(/^./, (ch) => ch.toUpperCase())
-              : rank ? t('booking.mm.addsLine', { km: fmtKm(rank.extraKm, l) }) : '';
+              : onRoads ? (mr ? cap(blockAdds(mr, l) || roadWords(mr, l)) : '')
+              : m && m.add_min != null ? (m.add_km != null && Number.isFinite(m.add_km) ? t('booking.mm.addsKm', { d: duration(m.add_min, l), km: fmtKm(m.add_km, l) }) : t('booking.mm.adds', { d: duration(m.add_min, l) }))
+              : m ? cap(roadWords(m, l))
+              // off, no row: only the block highlighted, by the map's own roads (one planner), else nothing
+              : c.key === hi && addedHi ? t('booking.mm.addsKm', { d: duration(addedHi.minutes, l), km: fmtKm(addedHi.km, l) }) : '';
             return (
               <button key={c.key} type="button" class={`bp-sugg-row mm-block${on ? ' is-on' : ''}${hi === c.key ? ' is-hi' : ''}`} aria-pressed={on} disabled={off}
                 onClick={() => p.onPick(day, c.key)} data-testid={`mm-block-${c.key}`} {...(p.pop && p.hoverProps && !off ? p.hoverProps(day, c.key) : {})}>

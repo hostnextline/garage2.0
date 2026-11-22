@@ -223,7 +223,7 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   assert.equal(r.sms, 'sent');
   assert.match(r.message, /^Hello Marie, Adam from Mécanique Mobile H\.I\.S is on the way to you: arriving around .+ \(about \d+ min\)\. Follow the trip live: http.+client\.html#suivi=.+&l=en$/);
   assert.ok(r.minutes > 0 && r.km > 0);
-  assert.equal(r.route_source, 'osrm');
+  assert.equal(r.route_source, 'tomtom', 'TomTom first (the server has its key: tt-test, the fake TomTom)');
   assert.equal((await q(`select status from public.jobs where id = $1`, [job]))[0].status, 'en_route');
   // the customer's tracking page (no account)
   const t = await rpc('public_track', { p_token: tokenOf(r.link) }, K.anon);
@@ -236,10 +236,12 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   assert.equal(t.mechanic, 'Adam');
   assert.ok(t.pos, 'the truck is on the map');
   assert.ok(Array.isArray(t.route) && t.route.length >= 2);
-  // the road the customer sees is the real one, by the streets: the planner was asked for it in FULL (the stand-in
-  // answers 81 points: west along the first street, a corner, north along the second), and the trip keeps the points
-  // that shape it: where the truck is, the corner, the customer's door. Never the « simplified » line that cuts the corner.
-  assert.deepEqual((await mockLog()).filter((x) => x.svc === 'osrm').map((x) => x.overview), ['full'], 'the road is asked in full');
+  // the road the customer sees is the real one, by the streets: the planner was asked for it in FULL (TomTom first: its
+  // polyline is every point of the road; the stand-in answers 81 points: west along the first street, a corner, north
+  // along the second), and the trip keeps the points that shape it: where the truck is, the corner, the customer's door.
+  // Never the « simplified » line that cuts the corner.
+  assert.deepEqual((await mockLog()).filter((x) => x.kind === 'route').map((x) => [x.svc, x.representation ?? x.overview]), [['tomtom', 'polyline']],
+    'the road is asked in full, of TomTom; OSRM not asked');
   assert.deepEqual(t.route, [[45.5, -73.66], [45.5, -73.61], [45.53, -73.61]], 'the corner of the two streets is on the customer’s map: ' + JSON.stringify(t.route));
   // arriving ends the tracking
   await rpc('job_step', { p_op: randomUUID(), p_job: job, p_action: 'arrive', p_data: {} }, jwt);
@@ -272,10 +274,29 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   assert.equal((await fn('enroute', { action: 'return_end', base: BASE }, jwt)).ok, true);
   assert.equal((await rpc('public_track', { p_token: tokenOf(back2.link) }, K.anon)).status, 'arrived');
   // the second road planner (Hassan, 2026-11-21: « add it just in case »: on live, 3 trips of 39 had no road because the
-  // first planner had not answered). The first one down: the road still comes, by the streets, from the second.
-  // Both down: a straight line and an estimate, as before; never an error for the mechanic.
+  // first planner had not answered). TomTom and the first one down: the road still comes, by the streets, from the second.
+  // All down: no road and no time, the trip and its link still made (« Vraies routes », Hassan's rule of 2026-11-19: a
+  // real road time, or none; never a straight line); never an error for the mechanic.
+  // the path live runs until Hassan sets the server key TOMTOM_KEY (CUTOVER 5 bis): TomTom down or no key, the FIRST
+  // planner's road, asked in full, with its corner on the customer's map (main's first « Je pars » step, which the merge
+  // made TomTom's: merge-main F8)
   await clearLog();
-  await fetch(`${MOCK}/control?osrm=fail`);
+  await fetch(`${MOCK}/control?tomtom=fail`);
+  try {
+    const first = await fn('enroute', { action: 'return', base: BASE, notify: false, pos: { lat: 45.50, lng: -73.66 } }, jwt);
+    assert.equal(first.ok, true, JSON.stringify(first));
+    assert.equal(first.route_source, 'osrm');
+    assert.ok(first.minutes > 0 && first.km > 0 && first.eta_at, 'a road time and an arrival time from the first planner');
+    assert.deepEqual((await mockLog()).filter((x) => x.kind === 'route').map((x) => [x.svc, x.representation ?? x.overview]), [['tomtom', 'polyline'], ['osrm', 'full']],
+      'TomTom asked first, then the first planner, for the road in full; the second planner not asked');
+    assert.deepEqual((await rpc('public_track', { p_token: tokenOf(first.link) }, K.anon)).route, [[45.5, -73.66], [45.5, -73.65446], [45.53129, -73.65446]],
+      'the first planner’s road, with its corner, on the map');
+  } finally {
+    await fetch(`${MOCK}/control?tomtom=ok`);
+  }
+  assert.equal((await fn('enroute', { action: 'return_end', base: BASE }, jwt)).ok, true);
+  await clearLog();
+  await fetch(`${MOCK}/control?tomtom=fail&osrm=fail`);
   try {
     const second = await fn('enroute', { action: 'return', base: BASE, notify: false, pos: { lat: 45.50, lng: -73.66 } }, jwt);
     assert.equal(second.ok, true, JSON.stringify(second));
@@ -283,18 +304,18 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
     assert.ok(second.minutes > 0 && second.km > 0 && second.eta_at, 'a road time and an arrival time from the second planner');
     assert.deepEqual((await mockLog()).filter((x) => /^osrm/.test(x.svc)).map((x) => [x.svc, x.overview, !!x.failed]),
       [['osrm', 'full', true], ['osrm-backup', 'full', false]], 'the first is asked first, then the second, both for the road in full');
+    assert.deepEqual((await mockLog()).filter((x) => x.kind === 'route').map((x) => x.svc), ['tomtom', 'osrm', 'osrm-backup'], 'TomTom first, then the two planners');
     assert.deepEqual((await rpc('public_track', { p_token: tokenOf(second.link) }, K.anon)).route, [[45.5, -73.66], [45.5, -73.65446], [45.53129, -73.65446]],
       'the second planner’s road, with its corner, on the map');
     await fetch(`${MOCK}/control?osrm_backup=fail`);
     await clearLog();
     const none = await fn('enroute', { action: 'return', base: BASE, notify: false, pos: { lat: 45.50, lng: -73.66 } }, jwt);
     assert.equal(none.ok, true, JSON.stringify(none));
-    assert.equal(none.route_source, 'line');
-    assert.ok(none.minutes >= 2 && none.km > 0 && none.eta_at, 'an estimate all the same');
+    assert.deepEqual([none.route_source, none.minutes, none.km, none.eta_at], [null, null, null, null], 'no road, no time: never a straight-line estimate');
     assert.deepEqual((await mockLog()).filter((x) => /^osrm/.test(x.svc)).map((x) => x.svc), ['osrm', 'osrm-backup'], 'each planner is asked once, no more');
-    assert.deepEqual((await rpc('public_track', { p_token: tokenOf(none.link) }, K.anon)).route, [[45.5, -73.66], [45.5312898, -73.6544639]]);
+    assert.equal((await rpc('public_track', { p_token: tokenOf(none.link) }, K.anon)).route ?? null, null, 'no line on the map');
   } finally {
-    await fetch(`${MOCK}/control?osrm=ok&osrm_backup=ok`);
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok&osrm_backup=ok`);
   }
   assert.equal((await fn('enroute', { action: 'return_end', base: BASE }, jwt)).ok, true);
   // ending the day while heading back = arrived (not cancelled)
@@ -495,6 +516,7 @@ test('the conversation with a customer: the texts both ways from GoHighLevel, an
 });
 
 test('« Réserver en ligne »: the services, the best moments near a truck, booked at once with the text; a new customer, then the same phone again', async () => {
+  const slice0 = Math.floor(Date.now() / 600_000); // the 10-minute slice of the clock this test starts in (the brake's count)
   const dow = (await q(`select extract(dow from $1::date)::int d`, [day]))[0].d;
   const truck = randomUUID(); made.trucks.push(truck);
   await q(`insert into public.trucks (id, name, active) values ($1, 'Camion web', true)`, [truck]);
@@ -564,11 +586,14 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
     assert.equal((await fn('book', { action: 'info' })).on, false);
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code, 'web_off');
     await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
-    // the brake on the public « slots » (Part 24): 20 asks per 10 minutes for one visitor, then « busy »
+    // the brake on the public « slots » (Part 24): 20 asks per 10 minutes for one visitor, then « busy ». The server counts
+    // per 10-minute slice of the clock (rate_hit: floor(epoch / 600)): a run that crosses xx:x0:00 starts a new count in the
+    // middle (seen on 2026-11-22 at 00:40:00: 30 asks, never « busy »), so up to 21 more asks are given, and « the earlier
+    // asks count too » is only checked when the whole test stayed in one slice
     let code = null, asks = 0;
-    for (; asks < 30 && code !== 'busy'; asks++) code = (await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code;
+    for (; asks < 45 && code !== 'busy'; asks++) code = (await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code;
     assert.equal(code, 'busy', 'too many asks → busy (after ' + asks + ')');
-    assert.ok(asks <= 20, 'the earlier asks of this test count too');
+    if (Math.floor(Date.now() / 600_000) === slice0) assert.ok(asks <= 20, 'the earlier asks of this test count too');
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).status, 429);
     await q(`delete from public.rate_limits`);
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).ok, true, 'a new window: allowed again');

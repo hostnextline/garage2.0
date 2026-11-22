@@ -1,6 +1,8 @@
 /* « Ma journée »: the jobs left open on a past day first, the shift (start, end, time worked, the position shared with the
    office), the next stop with its red button, the other stops in order, the finished ones folded, the day in numbers,
-   and the first stop of the next working day. */
+   and the first stop of the next working day. A ticket of a stop on the way says the trip's real arrival or no time, never
+   the plan's: JobTicket itself does it now (enRouteTicket; review-trip F1, F3), for every screen. The day's tickets have
+   the agenda's shortcut menu (right-click, long press), with its rights: « Déplacer » only with « Réserver » (StopTicket). */
 import { useState } from 'preact/hooks';
 import { ChevronDown, ChevronUp, MapPin } from 'lucide-preact';
 import { Panel, Button } from '../../ui';
@@ -10,12 +12,14 @@ import { JobTicket } from '../../shared/jobs/JobTicket';
 import { PRESSABLE } from '../../shared/jobs/StepButton';
 import { stepOf, dayWord, seen } from '../../shared/jobs/select';
 import { myJobsOn, nextWorkDay } from './select';
-import { OPEN, nextStopOf, summaryOf } from './rules';
+import { OPEN, nextStopOf, summaryOf, driveUnsure } from './rules';
+import { roadsOn } from '../../data/select';
 import { useToday } from './hooks';
 import { ShiftCard } from './ShiftCard';
 import { NextStop } from './NextStop';
 import { RouteChoice } from './RouteChoice';
 import { OpenBefore } from './OpenBefore';
+import { StopTicket } from './StopTicket';
 
 export function MechanicDay() {
   const day = useToday();
@@ -36,7 +40,7 @@ export function MechanicDay() {
         {then.length > 0 && (
           <section class="today-section" aria-labelledby="today-then">
             <h2 class="today-h" id="today-then">{t('today.then')}</h2>
-            <div class="today-tickets">{then.map((j) => <JobTicket key={j.id} job={j} />)}</div>
+            <div class="today-tickets">{then.map((j) => <StopTicket key={j.id} job={j} />)}</div>
           </section>
         )}
         {closed.length > 0 && (
@@ -44,17 +48,17 @@ export function MechanicDay() {
             <Button variant="ghost" class="today-fold" icon={showClosed ? <ChevronUp /> : <ChevronDown />} onClick={() => setShowClosed(!showClosed)} data-testid="today-closed-toggle">
               {showClosed ? t('today.closed.hide') : t('today.closed.show', { n: closed.length })}
             </Button>
-            {showClosed && <div class="today-tickets">{closed.map((j) => <JobTicket key={j.id} job={j} />)}</div>}
+            {showClosed && <div class="today-tickets">{closed.map((j) => <StopTicket key={j.id} job={j} />)}</div>}
           </section>
         )}
       </div>
       {list.length > 0 && (
         <div class="today-side">
-          <Panel title={t('today.summary.title')} help={t('today.summary.help')} data-testid="today-summary">
+          <Panel title={t('today.summary.title')} help={roadsOn.value ? t('today.summary.helpRoads') : t('today.summary.help')} data-testid="today-summary">
             <div class="today-stats">
               <div class="stat"><b>{sum.stops}</b><span>{t('today.summary.stops', { n: sum.stops })}</span></div>
               {/* big figures stay short in both languages: « 1 h 21 » */}
-              <div class="stat"><b>{duration(sum.drive, 'fr')}</b><span>{t('today.summary.drive')}</span></div>
+              <div class="stat"><b>{duration(sum.drive, 'fr')}</b><span>{driveUnsure(list) ? t('today.summary.driveUnsure') : t('today.summary.drive')}</span></div>
               <div class="stat"><b>{duration(sum.work, 'fr')}</b><span>{t('today.summary.work')}</span></div>
             </div>
           </Panel>

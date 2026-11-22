@@ -87,6 +87,13 @@ l'app (marche hors ligne). Le logo est écrit en lettres larges ; l'app reprend 
    « Réduire la transparence » le remplace par du plein (et suit le réglage du téléphone).
 6. Mouvement : seulement en réponse à un geste (feuille qui monte, tampon qui se pose).
    « Réduire les animations » est respecté.
+7. Une route dessinée est une vraie route (règle de Hassan, nov. 2026) : jamais de ligne droite entre deux arrêts sur
+   une carte (rien en attendant la vraie route, avec une petite note : « Route en cours de calcul… »), jamais « à vol
+   d'oiseau » dans un texte. Avec les vraies routes allumées, un temps ou des km affichés sont mesurés : ce qui n'est pas
+   encore mesuré le dit (« pas encore mesuré », « heure : trajets pas encore mesurés ») au lieu d'un chiffre deviné, et
+   n'est jamais montré comme « le meilleur ». Éteintes, les écrans gardent les chiffres d'aujourd'hui (l'estimation du
+   serveur), comme l'app en ligne : c'est le chemin du retour (décision du 2026-11-21). Les cartes gardent toujours un
+   fond : celles de TomTom, sinon celles d'OpenStreetMap, jamais une carte blanche.
 
 ## Revue contre les clichés
 - Fond crème + sérif + terracotta : non (acier froid ou noir logo).

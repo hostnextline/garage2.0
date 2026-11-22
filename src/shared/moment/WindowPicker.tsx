@@ -11,18 +11,25 @@
    calendar, for the day chosen: « Flexible », and the day alone when it has no window to offer (WindowDayPanel).
    « Garde-route » as in blocks mode: a far day is marked, never offered, warned with « Plutôt … », and `onFar` lets the
    screen ask before booking or moving.
-   Same props as the block picker: the booking screen and « Déplacer » use it through BlockPicker. */
+   Same props as the block picker: the booking screen and « Déplacer » use it through BlockPicker.
+   « Vraies routes » ON: « Arrêt n sur N » only from the server's row (window mode: exact), never the phone's estimate;
+   « Voir sur la carte » gets the row of the window shown (its place, its order, what it adds); a banner while the
+   address is measured, or when it could not be, with « Réessayer »; the days are asked again when a measure lands. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Check, RefreshCw } from 'lucide-preact';
 import { addDays, daysBetween, longDay, duration, clock } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { settings, job as jobRow, activeTrucks, daySpan, windowOf } from '../../data/select';
+import { settings, job as jobRow, activeTrucks, daySpan, windowOf, roadsOn, truckRanges } from '../../data/select';
+import { placeRoads, retryRoads } from '../../data/roads';
 import { net } from '../../data/sync';
 import { isOwner, hasRole } from '../../data/auth';
 import { Banner, Button, ask, toast } from '../../ui';
 import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
-import { farLimits, isFar, momentsByKey, sameMoment } from '../../domain/moment/logic';
+import { farLimits, isFar, momentsByKey, sameMoment, unmeasured } from '../../domain/moment/logic';
+import { serverRank } from '../../domain/moment/serverPlace';
+import { exactAtOf } from '../../domain/moment/exactAt';
 import { roomy } from '../../platform/media';
+import type { Suggestion } from '../../data/api';
 import { spanEnds } from '../../domain/moment/words';
 import { choiceWords, winLen, type BlockChoice, type BlockPickerProps } from '../../domain/moment/choice';
 import { rowsByStart, unitOfWindow, pageDays, pageOf, lastPage, type Win } from '../../domain/moment/units';
@@ -36,7 +43,7 @@ import { listDay, openingMinute, windowGone, type GridDay } from './windowDays';
 import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer, answers, HOVER_MS } from './hooks';
 import { askedKind, bothKinds, fitsJob, kindOf } from './vehicles';
 import { bestWindows, betterThan, betterWindowText, dayRows, dayScores, rowChoice, windowFar, type DayRow } from './moments';
-import { ChosenBar, FarBanner, momentActions } from './parts';
+import { ChosenBar, FarBanner, RoadsBanner, momentActions } from './parts';
 import { WindowSuggestions } from './WindowSuggestions';
 import { WindowDayPanel } from './WindowDayPanel';
 import { PickGrid } from './PickGrid';
@@ -114,7 +121,7 @@ export function WindowPicker(p: BlockPickerProps) {
   const picked = p.value && p.value.block === 'day' && !p.value.win_flex && p.value.win_start != null ? p.value : null;
   const models = useWindowModels({
     days, today, now, span, len, windowOf, l, winsOf, trucks: trucks.filter((tr) => fitsJob(tr, p)), truckId: p.truckId ?? null,
-    picked, moving, exclude: p.excludeJob ?? null, bestOf: (d) => best.find((s) => s.day === d), farOf: (d) => isFar(scoreOf(d))
+    picked, moving, exclude: p.excludeJob ?? null, bestOf: (d) => best.find((s) => s.day === d && !unmeasured(s)), farOf: (d) => isFar(scoreOf(d))
   });
   const modelOf = (d: string | null) => models.find((x) => x.day === d) || null;
 
@@ -194,8 +201,35 @@ export function WindowPicker(p: BlockPickerProps) {
   /* ---------- « Voir sur la carte »: the button under the moment chosen, a right-click or a long press on a moment ---------- */
   // `choice` null: a time that cannot be chosen (refused, closed, past) is only seen, never chosen from the map
   const [preview, setPreview] = useState<{ ask: PreviewAsk; choice: BlockChoice | null } | null>(null);
-  const askOf = (c: BlockChoice, when = choiceWords(c, l)): PreviewAsk => ({ day: c.day, block: 'day', truckId: p.truckId || c.truck || null, lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
-    when, exclude: p.excludeJob ?? null, eta: c.eta ?? null });
+  /* the server's row of a window shown (switch on: its vehicle, its place and the day's order, what it adds; review-moments
+     M1): a time of the calendar → the row behind that time; a best moment → its row; else the row of that window that
+     day. « Flexible » and the day alone have none (their place is decided later). */
+  const rowOf = (c: BlockChoice): Suggestion | null => {
+    if (c.block !== 'day' || c.win_start == null) return null;
+    const unit = c.eta != null ? modelOf(c.day)?.possible.get(c.eta) : undefined;
+    if (unit && windowOf(c.eta!)[0] === c.win_start) return unit;
+    const b = best.find((s) => s.day === c.day && s.win[0] === c.win_start);
+    if (b) return b;
+    const w = winsOf(c.day);
+    return (w.status === 'ok' ? rowsByStart(w.rows, windowOf).get(c.win_start) : undefined) ?? null;
+  };
+  /* « Déplacer » (exact move, review M-1): a time chosen is where the appointment lands, on its own truck when that truck
+     works that day (else the vehicle offered there, the one the move then takes): its map says that, never the planner's
+     other vehicle nor its place in a route */
+  const exactJob = p.exactMove ? moving : undefined;
+  const exactTruck = (d: string, offered: string | null): string | null => {
+    const own = exactJob?.truck_id ?? null;
+    return own && trucks.some((tr) => tr.id === own) && truckRanges(own, d).length > 0 ? own : offered;
+  };
+  const askOf = (c: BlockChoice, when = choiceWords(c, l)): PreviewAsk => {
+    const at = exactJob ? exactAtOf(c, span, windowOf) : null;
+    if (at != null) {
+      return { day: c.day, block: 'day', truckId: p.truckId || exactTruck(c.day, c.truck ?? null), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
+        when, exclude: p.excludeJob ?? null, eta: at, row: null, exact: true };
+    }
+    return { day: c.day, block: 'day', truckId: p.truckId || c.truck || null, lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
+      when, exclude: p.excludeJob ?? null, eta: c.eta ?? null, row: rowOf(c) };
+  };
   const see = (c: BlockChoice) => setPreview({ choice: c, ask: askOf(c) });
   /* a right-click anywhere on a day of the calendar: « Voir sur la carte » (with the new stop at that time when the address
      is known and a time is under the pointer, else the day's routes as they are); « Choisir ce moment » on a possible time */
@@ -215,10 +249,16 @@ export function WindowPicker(p: BlockPickerProps) {
     return { onContextMenu: (e: MouseEvent) => { hov.off(); openMenu(e, actions(), choiceWords(c, l)); }, ...pressProps((x, y) => { hov.off(); openMenuAt(x, y, actions(), choiceWords(c, l)); }) };
   };
 
-  /* which stop of its route the appointment would be at each of the best moments (the phone's copy of the day) */
-  const ranks = useMemo(() => best.map((s) => (hasPos
-    ? stopRank(dayOf(s.day, p.excludeJob), { day: s.day, block: 'day', truckId: p.truckId || s.truck, lat: p.lat!, lng: p.lng!, name: '', address: '', eta: s.eta ?? null }) : null)),
-  [best, p.lat, p.lng, p.excludeJob, p.truckId]);
+  /* which stop of its route the appointment would be at each of the best moments: off, the phone's copy of the day; on,
+     only the server's row (rank, exact in window mode), never the phone's estimate. « Déplacer » to a time (exact move):
+     none, the row's place is the planner's, not where the move puts it (review M-1) */
+  const onRoads = roadsOn.value;
+  const ranks = useMemo(() => best.map((s) => (!hasPos || exactJob ? null : onRoads ? serverRank(s, p.truckId || s.truck)
+    : stopRank(dayOf(s.day, p.excludeJob), { day: s.day, block: 'day', truckId: p.truckId || s.truck, lat: p.lat!, lng: p.lng!, name: '', address: '', eta: s.eta ?? null }))),
+  [best, p.lat, p.lng, p.excludeJob, p.truckId, onRoads, !!exactJob]);
+  /* « Vraies routes »: the address being measured, or it could not be (« Réessayer » measures again, then asks again) */
+  const roads = hasPos ? placeRoads({ lat: p.lat!, lng: p.lng! }) : null;
+  const roadsAgain = () => { void retryRoads({ lat: p.lat!, lng: p.lng! }); again(); };
 
   /* ---------- words ---------- */
   const stateWord = (d: GridDay) => (d.kind === 'open' ? t('booking.win.grid.count', { n: d.windows }) : t(`booking.win.grid.state.${d.kind}`));
@@ -243,6 +283,7 @@ export function WindowPicker(p: BlockPickerProps) {
       {auto && modelOf(p.value!.day)?.kind === 'full' && <Banner kind="warn">{t('booking.win.picker.fullWarn')}</Banner>}
       {auto && modelOf(p.value!.day)?.kind !== 'full' && <Banner kind="info" data-testid="win-auto">{t('booking.win.autoNote')}</Banner>}
       {far && <FarBanner text={far.text} better={better.map((b) => ({ key: `${b.moment.day}|${b.moment.win[0]}`, text: betterWindowText(b, today, l), onPick: () => pickSugg(b.moment) }))} />}
+      <RoadsBanner roads={roads} online={online} onRetry={roadsAgain} />
 
       <WindowSuggestions sugg={sugg} rows={best} dur={dur} hasPos={hasPos} online={online} kinds={kinds} kindOf={(id) => kindOf(trucks, id)}
         need={p.need} kind={p.kind} onKind={p.onKind} isPicked={isPicked} isCurrent={isCurrent} ranks={ranks} onPick={pickSugg} onRetry={again}

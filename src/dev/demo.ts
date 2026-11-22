@@ -1,13 +1,17 @@
 /* DEV ONLY — the demo: npm run dev, then open http://localhost:5173/?demo (owner), ?demo=mechanic (Saleh),
-   ?demo=adam, ?demo=office, ?demo=treasurer. &fenetres=1 for « Plages d'arrivée » already switched on (demo-windows.ts);
-   the language is the browser's (Réglages → Langue). The whole data layer runs as usual against the pretend server in
-   fake-server.ts (changes made in the demo are lost when the page reloads); the person on screen reads only the rows
-   and does only what the database would let them (demo-rules.ts). */
+   ?demo=adam, ?demo=office, ?demo=treasurer. &fenetres=1 for « Plages d'arrivée » already switched on (demo-windows.ts),
+   &routes=1 for « Vraies routes » already on, &tomtom=nokey|refuse|busy|over|down|missing for what the pretend function
+   « drive » answers (demo-extra/roads.ts); the language is the browser's (Réglages → Langue). TomTom is never asked from
+   the demo: the app has no TomTom key there (config.ts) and the pretend server answers api.tomtom.com itself
+   (fake-server.ts). The whole data layer runs as usual against the pretend server in fake-server.ts (changes made in the
+   demo are lost when the page reloads); the person on screen reads only the rows and does only what the database would
+   let them (demo-rules.ts). */
 import { AuthSessionMissingError } from '@supabase/supabase-js';
 import { installFakeServer, db, registerRpc, resetOps, find } from './fake-server';
 import { loadDemoData, ME } from './demo-data';
 import './demo-rpc';
 import { installWindows } from './demo-windows';
+import { installRoads } from './demo-extra/roads';
 import { can, isOwner, myTruckIds } from './demo-rules';
 import { sb, access, authState, session } from '../data/auth';
 import { startSync, syncOptions } from '../data/sync';
@@ -47,6 +51,8 @@ export function loadDemo(id: string) {
   for (const m of Object.values(extras)) m.load?.();
   // « Plages d'arrivée »: wraps the booking operations registered above (the block demo is unchanged while the mode is off)
   try { installWindows(); } catch (e) { console.warn('demo: fenêtres', e); }
+  // « Vraies routes »: wraps the suggestions (blocks and windows) so they carry the real-road fields while it is on
+  try { installRoads(); } catch (e) { console.warn('demo: vraies routes', e); }
   registerRpc('my_access', () => accessOf(id));
   // « Voir l'app comme… »: the owner only, like the database
   registerRpc('access_of', (a) => (isOwner() && find('staff', a.p_staff) ? accessOf(String(a.p_staff)) : null));

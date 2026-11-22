@@ -1,5 +1,7 @@
 /* « Voir sur la carte » of a day of the booking calendar when there is no address yet to place a new stop: the routes of
-   that day as they are (every vehicle, its stops in order, by the streets). From the phone's copy of the day. */
+   that day as they are (every vehicle, its stops in order, by the streets). From the phone's copy of the day. The roads
+   are asked for that day (its usual hours, not the traffic of now) and the words under the map say when they are not
+   drawn yet (roadNote). */
 import { useMemo } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
 import { longDay } from '../../lib/dates';
@@ -9,12 +11,14 @@ import { assemble } from '../map/assemble';
 import { useRoads, roadOf } from '../map/useRoads';
 import { staffName } from '../../data/select';
 import { dayOf } from './deviceDay';
+import { roadNote } from './roadNote';
 
 export function DayRoute(p: { day: string; exclude?: string | null; onClose: () => void }) {
   const l = lang.value;
   const view = useMemo(() => assemble(dayOf(p.day, p.exclude), { nameOf: staffName }), [p.day, p.exclude]);
   const routes = view.trucks.filter((tr) => tr.stops.some((s) => s.hasPos));
-  useRoads(routes);
+  useRoads(routes, p.day);
+  const note = roadNote(routes, p.day);
   const markers: MapMarker[] = [];
   const lines: MapLine[] = [];
   const seen = new Set<string>();
@@ -31,7 +35,7 @@ export function DayRoute(p: { day: string; exclude?: string | null; onClose: () 
       if (!s.hasPos) continue;
       markers.push({ id: s.id, kind: 'job', lat: s.lat!, lng: s.lng!, color: tr.color, number: s.n, done: s.done, title: `${s.n}. ${s.name}` });
     }
-    for (const leg of tr.legs) lines.push({ points: roadOf(leg), color: tr.color, weight: 4, opacity: leg.kind === 'done' ? 0.32 : 0.85 });
+    for (const leg of tr.legs) lines.push({ points: roadOf(leg, p.day), color: tr.color, weight: 4, opacity: leg.kind === 'done' ? 0.32 : 0.85 });
   }
   if (!markers.length && view.home && view.home.lat != null && view.home.lng != null) {
     markers.push({ id: 'home', kind: 'home', lat: view.home.lat, lng: view.home.lng, label: view.home.label || t('booking.preview.start'), title: view.home.address || '' });
@@ -46,6 +50,7 @@ export function DayRoute(p: { day: string; exclude?: string | null; onClose: () 
         {stops
           ? <p class="small" style={{ margin: 0 }} data-testid="day-route-facts">{t('booking.win.dayMap.stops', { n: stops })}</p>
           : <Banner kind="info">{t('booking.win.dayMap.none')}</Banner>}
+        {note && <p class="faint small" style={{ margin: 0 }} data-testid="day-route-road">{note}</p>}
         <p class="faint small" style={{ margin: 0 }}>{t('booking.win.dayMap.note')}</p>
       </div>
     </Sheet>

@@ -2,7 +2,8 @@
    - viewOf: the stored `booking` part as the form shows it (the detour as a percent, the start as a name + a place);
    - patchOf: ONLY what the person changed, as stored keys (a key nobody touched is never written back from this copy);
    - check: what must be fixed before saving;
-   - planOf: what the planner counts (a change re-plans the coming appointments on the server, Part 17). */
+   - planOf: what the planner counts (a change re-plans the coming appointments on the server, Part 17); with the real roads
+     on (Part 27) the speed and the detour are not counted any more and the rush hours are. */
 import { t } from '../../../lib/i18n';
 import { DEFAULT_BLOCKS, type BlockKey } from '../../../lib/dates';
 import type { Settings } from '../../../data/types';
@@ -25,20 +26,36 @@ export interface BookingView {
   shared_routes: boolean;
   /** « Plages d'arrivée »: minutes before / after the estimated arrival, and the rounding (15, 30 or 60) */
   win_before_min: number | null; win_after_min: number | null; win_round_min: number | null;
+  /** « Vraies routes » (Part 27): the rush-hour times too (false: the usual-hours time all day), the month's ceiling of TomTom
+      Matrix transactions, the public booking page's own allowance of them (roads_web_tx: the function « book »; owner
+      only, like the ceiling), « proche » in minutes of real driving (used while the switch is on; off: near_km) */
+  roads_rush: boolean; roads_month_tx: number | null; roads_web_tx: number | null; near_min: number | null;
 }
-export type NumKey = 'horizon_days' | 'speed_kmh' | 'detour_pct' | 'stop_min' | 'unknown_min' | 'min_block_min' | 'near_km' | 'max_hop_min' | 'max_day_drive_min';
-export interface NumDef { k: NumKey; min: number; max: number; unit: 'days' | 'kmh' | 'pct' | 'min' | 'km'; decimals?: boolean; label: string; /** 0 switches it off */ zeroOff?: boolean }
+export type NumKey = 'horizon_days' | 'speed_kmh' | 'detour_pct' | 'stop_min' | 'unknown_min' | 'min_block_min' | 'near_km' | 'max_hop_min' | 'max_day_drive_min'
+  | 'roads_month_tx' | 'roads_web_tx' | 'near_min';
+export interface NumDef { k: NumKey; min: number; max: number; unit: 'days' | 'kmh' | 'pct' | 'min' | 'km' | 'tx'; decimals?: boolean; label: string; /** 0 switches it off */ zeroOff?: boolean;
+  /** used only while the real roads are off (the server ignores it when on: drive_min, drive_km, suggest_core) */ estimate?: boolean }
 export const NUMS: NumDef[] = [
   { k: 'horizon_days', min: 7, max: 365, unit: 'days', label: 'horizon' },
-  { k: 'speed_kmh', min: 10, max: 110, unit: 'kmh', label: 'speed' },
-  { k: 'detour_pct', min: 0, max: 100, unit: 'pct', label: 'detour' },
+  { k: 'speed_kmh', min: 10, max: 110, unit: 'kmh', label: 'speed', estimate: true },
+  { k: 'detour_pct', min: 0, max: 100, unit: 'pct', label: 'detour', estimate: true },
   { k: 'stop_min', min: 0, max: 60, unit: 'min', label: 'stop' },
   { k: 'unknown_min', min: 5, max: 120, unit: 'min', label: 'unknown' },
   { k: 'min_block_min', min: 15, max: 240, unit: 'min', label: 'minBlock' },
-  { k: 'near_km', min: 1, max: 50, unit: 'km', decimals: true, label: 'near' },
+  { k: 'near_km', min: 1, max: 50, unit: 'km', decimals: true, label: 'near', estimate: true },
   { k: 'max_hop_min', min: 10, max: 120, unit: 'min', label: 'maxHop', zeroOff: true },
   { k: 'max_day_drive_min', min: 30, max: 480, unit: 'min', label: 'maxDay', zeroOff: true }
 ];
+/** the numbers of the « Vraies routes » panel (labels under settings.booking.roads); near_min is shown only while it is on.
+    The ceiling may be 0: TomTom is then never asked (OSRM only, no rush times); the public page's allowance too (0: never
+    TomTom for the page). */
+export const ROAD_NUMS: NumDef[] = [
+  { k: 'roads_month_tx', min: 0, max: 1000000, unit: 'tx', label: 'roads.monthTx' },
+  { k: 'roads_web_tx', min: 0, max: 1000000, unit: 'tx', label: 'roads.webTx' },
+  { k: 'near_min', min: 1, max: 60, unit: 'min', label: 'roads.nearMin' }
+];
+/** the usual values (CONTRACT §1), the same as the server's bset() defaults; roads_web_tx: the function « book »'s (1 000) */
+export const ROAD_DEFAULTS = { roads_month_tx: 10000, roads_web_tx: 1000, near_min: 10 } as const;
 const KEYS: BlockKey[] = ['am', 'pm', 'eve'];
 /** a stored number, or the usual one when missing (a stored 0 stays 0: it switches a garde-route limit off) */
 const num = (v: unknown, d: number) => (v == null || v === '' || !Number.isFinite(Number(v)) ? d : Number(v));
@@ -54,7 +71,9 @@ export function viewOf(b: Stored): BookingView {
     place: { address: b.home?.address || '', lat: b.home?.lat ?? null, lng: b.home?.lng ?? null },
     return_phone: b.return_phone || '',
     shared_routes: !!(b as { shared_routes?: boolean }).shared_routes,
-    win_before_min: b.win_before_min ?? WIN_DEFAULTS.before, win_after_min: b.win_after_min ?? WIN_DEFAULTS.after, win_round_min: winRound(b.win_round_min)
+    win_before_min: b.win_before_min ?? WIN_DEFAULTS.before, win_after_min: b.win_after_min ?? WIN_DEFAULTS.after, win_round_min: winRound(b.win_round_min),
+    roads_rush: b.roads_rush !== false, roads_month_tx: num(b.roads_month_tx, ROAD_DEFAULTS.roads_month_tx),
+    roads_web_tx: num(b.roads_web_tx, ROAD_DEFAULTS.roads_web_tx), near_min: num(b.near_min, ROAD_DEFAULTS.near_min)
   };
 }
 
@@ -78,6 +97,13 @@ export function patchOf(changes: Partial<BookingView>, b: Stored, winOn: boolean
   }
   if ('return_phone' in c) out.return_phone = String(c.return_phone).trim() || null;
   if ('shared_routes' in c) out.shared_routes = c.shared_routes;
+  // « Vraies routes »: only what was touched (roads_on itself is never written from here: roads_switch, guard trigger)
+  if ('roads_rush' in c) out.roads_rush = c.roads_rush === true;
+  if ('roads_month_tx' in c) out.roads_month_tx = round(c.roads_month_tx!);
+  if ('roads_web_tx' in c) out.roads_web_tx = round(c.roads_web_tx!);
+  // « proche » is checked only while the switch is on: an empty field (switch turned off before saving) writes nothing,
+  // never 0 (review R7)
+  if ('near_min' in c && c.near_min != null && Number.isFinite(Number(c.near_min))) out.near_min = round(c.near_min);
   // the numbers of the windows are written only once the garage books by windows (nothing new in the settings before)
   if (winOn) {
     if ('win_before_min' in c) out.win_before_min = round(c.win_before_min!);
@@ -98,9 +124,13 @@ export function blockError(blocks: BlockHours[], i: number): string | null {
 export type BookingErrors = Partial<Record<NumKey | 'win_before_min' | 'win_after_min' | 'day' | 'place', string | null>>;
 /** every field to fix before saving; `placeChanged`: a start typed without its position (it is refused: the server would
     plan from a built-in address, settings-team-04). An old start without position does not block other changes. */
-export function check(v: BookingView, o: { winOn: boolean; placeChanged: boolean }): { errors: BookingErrors; blocks: boolean } {
+export function check(v: BookingView, o: { winOn: boolean; placeChanged: boolean; roadsOn?: boolean }): { errors: BookingErrors; blocks: boolean } {
   const e: BookingErrors = {};
-  for (const n of NUMS) e[n.k] = n.zeroOff ? limitError(v[n.k], n.min, n.max) : rangeError(v[n.k], n.min, n.max);
+  // near_min is on the screen only while the real roads are on: never an error the person cannot see
+  for (const n of [...NUMS, ...ROAD_NUMS]) {
+    if (n.k === 'near_min' && !o.roadsOn) continue;
+    e[n.k] = n.zeroOff ? limitError(v[n.k], n.min, n.max) : rangeError(v[n.k], n.min, n.max);
+  }
   if (o.winOn) {
     e.win_before_min = rangeError(v.win_before_min, WIN_LIMITS.before[0], WIN_LIMITS.before[1]);
     e.win_after_min = rangeError(v.win_after_min, WIN_LIMITS.after[0], WIN_LIMITS.after[1]);
@@ -112,6 +142,7 @@ export function check(v: BookingView, o: { winOn: boolean; placeChanged: boolean
   return { errors, blocks: v.blocks.some((_, i) => !!blockError(v.blocks, i)) };
 }
 
-/** what the planner counts: when one of these changes, the coming appointments are planned again */
-export const planOf = (x: BookingView) =>
-  JSON.stringify([x.place.lat, x.place.lng, x.speed_kmh, x.detour_pct, x.stop_min, x.unknown_min, x.min_block_min, x.blocks.map((b) => [b.key, b.start, b.end])]);
+/** what the planner counts: when one of these changes, the coming appointments are planned again (the server's
+    plan_inputs: with the real roads on, the speed and the detour are not used and the rush hours are; off, as before) */
+export const planOf = (x: BookingView, roadsOn = false) =>
+  JSON.stringify([x.place.lat, x.place.lng, ...(roadsOn ? [x.roads_rush] : [x.speed_kmh, x.detour_pct]), x.stop_min, x.unknown_min, x.min_block_min, x.blocks.map((b) => [b.key, b.start, b.end])]);

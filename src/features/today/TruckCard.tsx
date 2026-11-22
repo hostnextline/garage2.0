@@ -1,19 +1,26 @@
 /* « La journée »: one truck now: where it is (on the way, there, waiting), its progress, the next stop and its arrival,
-   the window told to that customer, how old its position is. */
-import { Avatar, Pill } from '../../ui';
+   the window told to that customer, how old its position is. On the way, the arrival is the trip's real one (« Je pars »
+   asked TomTom, else OSRM); without it no time is said, as on the map's legend. A tap on the card opens the job it
+   speaks of. Under it, « Voir les N arrêts » lists the truck's stops of the day as tickets, each with the agenda's
+   shortcut menu (right-click, long press: « Déplacer » on this screen; Hassan, 2026-11-21). */
+import { useState } from 'preact/hooks';
+import { ChevronDown, ChevronUp } from 'lucide-preact';
+import { Avatar, Pill, Button } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { clock } from '../../lib/dates';
 import { staff, staffName, truckColor, activeTrip } from '../../data/select';
 import { may } from '../../domain/rights';
-import { jobFirstName, blockRange, clockOf, minuteOf, isWindowJob, outsideWindow } from '../../shared/jobs/select';
+import { jobFirstName, blockRange, clockOf, minuteOf, isWindowJob, outsideWindow, plannedTime, etaUnsure } from '../../shared/jobs/select';
 import { agoText } from '../../services/position';
 import type { TruckNow } from './select';
+import { arrivalOf } from './rules';
+import { StopTicket } from './StopTicket';
 
 function nowLine(x: TruckNow): string {
   const c = x.current;
   if (c && x.state === 'en_route') {
-    const trip = activeTrip(c.id);
-    const eta = minuteOf(trip?.eta_at) ?? c.eta_min;
+    // on the way: the trip's real arrival, or no time (never the plan's time said as an arrival: F10)
+    const eta = arrivalOf(c, minuteOf(activeTrip(c.id)?.eta_at));
     return eta != null ? t('today.trucks.enRouteEta', { name: jobFirstName(c), time: clock(eta, lang.value) }) : t('today.trucks.enRoute', { name: jobFirstName(c) });
   }
   if (c && x.state === 'on_site') return c.arrived_at ? t('today.trucks.onSiteSince', { name: jobFirstName(c), time: clockOf(c.arrived_at) }) : t('today.trucks.onSite', { name: jobFirstName(c) });
@@ -29,7 +36,10 @@ export function TruckCard(p: { x: TruckNow; now: number; day: string }) {
   const target = x.current || x.next;
   const href = target ? `#/job/${target.id}` : may.agenda() ? `#/agenda/${p.day}` : undefined;
   const next = x.next && x.next.id !== x.current?.id
-    ? (x.next.eta_min != null ? t('today.trucks.next', { name: jobFirstName(x.next), time: clock(x.next.eta_min, lang.value) }) : t('today.trucks.nextNoTime', { name: jobFirstName(x.next) }))
+    ? (plannedTime(x.next) != null ? t('today.trucks.next', { name: jobFirstName(x.next), time: clock(plannedTime(x.next)!, lang.value) })
+      // « Vraies routes » on, a trip before that stop not measured yet: no time, and it says why (final-guess G1)
+      : x.next.status === 'booked' && etaUnsure(x.next) ? `${t('today.trucks.nextNoTime', { name: jobFirstName(x.next) })}, ${t('jobs.order.etaUnmeasured')}`
+      : t('today.trucks.nextNoTime', { name: jobFirstName(x.next) }))
     : '';
   // « Plages d'arrivée »: the window told to the next customer, beside the planned arrival
   const told = x.next && isWindowJob(x.next) ? x.next : null;
@@ -63,7 +73,29 @@ export function TruckCard(p: { x: TruckNow; now: number; day: string }) {
       <span class="small faint">{x.posAt ? t('today.trucks.position', { ago: agoText(x.posAt, p.now) }) : x.shiftOpen ? t('today.trucks.noPosition') : ''}</span>
     </>
   );
-  return href
-    ? <a class="today-truck" href={href} data-testid="today-truck">{inner}</a>
-    : <div class="today-truck" data-testid="today-truck">{inner}</div>;
+  return (
+    <div class="today-truck" data-testid="today-truck">
+      {href ? <a class="today-truck-link" href={href}>{inner}</a> : <div class="today-truck-link">{inner}</div>}
+      {x.total > 0 && <TruckStops x={x} />}
+    </div>
+  );
+}
+
+/** the truck's stops of the day, folded at first (the screen stays calm); each one the app's ticket with its menu */
+function TruckStops(p: { x: TruckNow }) {
+  const [open, setOpen] = useState(false);
+  const id = p.x.truck.id;
+  return (
+    <div class="today-truck-stops">
+      <Button variant="ghost" class="today-fold" icon={open ? <ChevronUp /> : <ChevronDown />} onClick={() => setOpen(!open)} data-testid={`today-truck-stops-${id}`}>
+        {open ? t('today.trucks.stopsHide') : t('today.trucks.stopsShow', { n: p.x.total })}
+      </Button>
+      {open && (
+        <div class="today-tickets" data-testid={`today-truck-list-${id}`}>
+          {p.x.jobs.map((j) => <StopTicket key={j.id} job={j} />)}
+          <p class="small faint today-truck-hint">{t(may.book() ? 'today.trucks.stopsHintMove' : 'today.trucks.stopsHint')}</p>
+        </div>
+      )}
+    </div>
+  );
 }

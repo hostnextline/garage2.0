@@ -7,13 +7,14 @@ import { addDays, clock } from '../../lib/dates';
 import { myTrucks } from '../../data/auth';
 import { may } from '../../domain/rights';
 import type { Job } from '../../data/types';
-import { JobTicket } from '../../shared/jobs/JobTicket';
 import { CarFirst } from '../../shared/jobs/CarFirst';
 import { StepButton, PRESSABLE } from '../../shared/jobs/StepButton';
 import { stepOf, outsideWindow, blockRange } from '../../shared/jobs/select';
 import { jobRights } from '../../domain/jobs/rights';
 import { nextStopOf } from './rules';
 import { ReturnCard } from './ReturnCard';
+import { ticketJob } from './select';
+import { StopTicket } from './StopTicket';
 
 export function NextStop(p: { day: string; list: Job[] }) {
   const next = nextStopOf(p.list);
@@ -38,7 +39,8 @@ export function NextStop(p: { day: string; list: Job[] }) {
       <div class="panel-head"><h2 class="panel-title">{now ? t('today.next.now') : t('today.next.title')}</h2></div>
       <div class="stack">
         <CarFirst job={next} compact />
-        <JobTicket job={next} />
+        {/* the ticket says the trip's real arrival; its menu (« Déplacer »…) reads the appointment itself */}
+        <StopTicket job={next} shown={ticketJob(next)} />
         {/* « Plages d'arrivée »: the planned arrival is outside the window told to this customer */}
         {outsideWindow(next) && <Banner kind="warn" data-testid="today-next-late">{t('jobs.win.lateText', { time: clock(next.eta_min!, lang.value), window: blockRange(next) })}</Banner>}
         {PRESSABLE.includes(step.kind)

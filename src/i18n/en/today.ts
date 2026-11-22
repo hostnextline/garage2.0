@@ -79,8 +79,10 @@ export const today: typeof fr = {
     title: 'Your day at a glance',
     stops: { one: 'stop', other: 'stops' },
     drive: 'driving',
+    driveUnsure: 'driving (some drives not measured yet)',
     work: 'of work',
-    help: 'Driving is estimated by the office from the addresses (by car, without traffic).'
+    help: 'Driving is estimated by the office from the addresses (by car, without traffic).',
+    helpRoads: 'Driving comes from the real roads (the usual traffic of the hour). A drive not measured yet counts a fixed time.'
   },
   tomorrow: {
     title: 'Tomorrow',
@@ -117,7 +119,13 @@ export const today: typeof fr = {
     noPosition: 'No position shared',
     unplaced: { one: '{n} job without a truck today: place it in the schedule.', other: '{n} jobs without a truck today: place them in the schedule.' },
     none: 'No active truck.',
-    noneText: 'Add a truck and its driver in Hours or Team.'
+    noneText: 'Add a truck and its driver in Hours or Team.',
+    /* the truck's stops, listed on demand; each one has the agenda's shortcut menu (“Move”…) */
+    stopsShow: { one: 'See the stop', other: 'See the {n} stops' },
+    stopsHide: 'Hide the stops',
+    /* phone first; “Move” named only to who may move (stopsHintMove) */
+    stopsHint: 'Press and hold a stop (on a computer: right-click): “Call”, “Directions”…',
+    stopsHintMove: 'Press and hold a stop (on a computer: right-click): “Move”, “Call”, “Directions”…'
   },
   collect: {
     title: 'To collect',

@@ -16,11 +16,12 @@ import { staffName, job as jobRow } from '../../data/select';
 import { locateMissing } from '../../shared/customers/locator';
 import { Page, Seg, Banner, Empty, Button, IconButton, run, toast } from '../../ui';
 import { MapView } from '../../shared/map/MapView';
-import { assemble, minuteOf, UNPLACED_COLOR, type Assembled } from '../../shared/map/assemble';
+import { assemble, minuteOf, UNPLACED_COLOR, type Assembled, type Leg, type TruckRoute } from '../../shared/map/assemble';
 import { forDay } from '../../shared/map/teamMapData';
 import { useTeamMap } from '../../shared/map/useTeamMap';
 import { teamMarkers, teamLines, fitIds } from '../../shared/map/layers';
-import { useRoads, roadOf, roadTotal } from '../../shared/map/useRoads';
+import { useRoads, roadOf, roadTotal, roadState } from '../../shared/map/useRoads';
+import { MoveHost } from '../../shared/jobs/MoveHost';
 import { MapDay } from './MapDay';
 import { Stage, PullUp } from './MapStage';
 import { Legend } from './MapLegend';
@@ -50,10 +51,11 @@ export default function MapScreen({ query }: ScreenProps) {
   // the ages of the positions (« il y a 3 min ») follow each answer
   useEffect(() => { setNow(Date.now()); }, [tm.at, tm.status, tm.busy]);
 
-  const m: Assembled = useMemo(() => forDay(assemble(tm.data, { nameOf: staffName }), live), [tm.data, live]);
+  const m: Assembled = useMemo(() => forDay(assemble(tm.data, { nameOf: staffName, measuredOf: (id) => jobRow(id)?.eta_measured }), live), [tm.data, live]);
 
-  /* the road route of each truck (its start → stops, in order) and of a live trip without one: asked once, then kept */
-  useRoads(m.trucks);
+  /* the road route of each truck (its start → stops, in order) and of a live trip without one: asked once for THIS day
+     (today with the traffic of now, another day for its usual hours), then kept */
+  useRoads(m.trucks, day);
 
   const truckOf = (id: string | null) => m.trucks.find((tr) => tr.id === id) || null;
   const allStops: ChosenStop[] = [
@@ -75,7 +77,9 @@ export default function MapScreen({ query }: ScreenProps) {
   const recenter = () => { setPan(null); setFocus(null); setSelected(null); setFitKey((k) => k + 1); };
   const closeCard = () => setSelected(null);
 
-  const ui = { selected, focus, pan, now, onChoose: (id: string) => choose(id, false), road: roadOf };
+  const ui = { selected, focus, pan, now, onChoose: (id: string) => choose(id, false), road: (leg: Leg) => roadOf(leg, day) };
+  const totalOf = (tr: TruckRoute) => roadTotal(tr, day);
+  const stateOf = (tr: TruckRoute) => roadState(tr, day);
   const markers = teamMarkers(m, ui);
   const lines = teamLines(m, ui);
 
@@ -135,7 +139,7 @@ export default function MapScreen({ query }: ScreenProps) {
   const spin = tm.busy ? 'spin-slow' : '';
 
   return (
-    <Page title={t('map.title')} sub={longDay(day, lang.value)} help={t('map.help')} data-testid="map-screen"
+    <Page title={t('map.title')} sub={longDay(day, lang.value)} help={t(may.book() ? 'map.helpMove' : 'map.help')} data-testid="map-screen"
       actions={isWide ? <div class="row">{daySwitch}<IconButton icon={<RefreshCw class={spin} />} label={t('map.refresh')} onClick={() => tm.refresh()} data-testid="map-refresh" /></div> : undefined}>
       <Stage wide={isWide}>
         <div class="map-canvas">
@@ -158,14 +162,14 @@ export default function MapScreen({ query }: ScreenProps) {
             <p class={`small map-line ${warnLine ? 'map-warn' : 'muted'}`} aria-live="polite" data-testid="map-status">{line}</p>
             {notices}
             {sel && <StopCard stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} />}
-            <Legend m={m} day={day} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
+            <Legend m={m} day={day} focus={focus} onFocus={toggleFocus} roadOf={totalOf} roadState={stateOf} />
             {m.count === 0 ? <div class="panel glass map-empty">{empty}</div> : <StopList m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
           </aside>
         ) : (
           <PullUp open={open} onOpen={setOpen} summary={summary} status={line} warn={warnLine}
             card={sel ? <StopCard plain stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} /> : null}>
             {notices}
-            <Legend plain m={m} day={day} focus={focus} onFocus={toggleFocus} roadOf={roadTotal} />
+            <Legend plain m={m} day={day} focus={focus} onFocus={toggleFocus} roadOf={totalOf} roadState={stateOf} />
             {m.count === 0 ? empty : <StopList plain m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
             <div class="map-status small muted">
               <span>{updated}</span>
@@ -174,6 +178,9 @@ export default function MapScreen({ query }: ScreenProps) {
           </PullUp>
         )}
       </Stage>
+      {/* « Déplacer » from a stop (its card, its menu): the sheet on the map; moved, the server's day is asked again so the
+          stop leaves it at once (the list is the server's answer, asked every 30 s otherwise) */}
+      <MoveHost onMoved={() => { void tm.refresh(); }} />
     </Page>
   );
 }

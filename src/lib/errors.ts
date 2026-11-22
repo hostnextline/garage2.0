@@ -101,6 +101,12 @@ function wordsOf(own: string, at: string | undefined): string | undefined {
   return (at ? tMaybe(`errors.at.${at}.${own}`) : undefined) ?? (dayMode ? tMaybe(`errors.day.${own}`) : undefined) ?? tMaybe(`errors.${own}`);
 }
 
+/** the words of a refusal code alone, as the operation `at` says it (a preview that answers only the code: move_preview's
+    refused_why → the words of move_job's refusals); undefined when the code has no words of its own */
+export function codeWords(code: string, at?: string): string | undefined {
+  return /^[a-z][a-z_]*$/.test(code) ? wordsOf(code, sourceOf(at)) : undefined;
+}
+
 /** the message to show a person for an error (the server's own words, translated when we know the case) */
 export function errorMessage(e: unknown): string {
   if (!e) return t('common.genericError', { msg: '' }).replace(/\s*:\s*$/, '');

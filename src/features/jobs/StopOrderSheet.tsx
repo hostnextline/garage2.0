@@ -3,17 +3,24 @@
    order wanted (« Mahdi d'abord »). The ones on the way or there stay first. « Laisser l'app choisir » gives the order
    back to the planner. The server plans the block again at once: new arrival times for everyone.
    « Plages d'arrivée »: each stop shows the window told to the customer; an order that would probably reach one outside
-   its window is said before saving (a guess from the times shown), and a stop already outside is marked « Hors plage ». */
+   its window is said before saving (a guess from the times shown), and a stop already outside is marked « Hors plage ».
+   « Vraies routes » on: no guess. The arrival times of the order built, and who would be late (after the window, else
+   the block, told), are the server's (stop_order_preview: set_stop_order run and undone), asked a short moment after the
+   last change (previews.ts); until it answers, or when it does not: no time, no warning, « Heures d'arrivée : pas encore
+   calculées », and « Enregistrer » still works. A stop whose trips are not all measured (the server's `measured` false):
+   « heure : trajets pas encore mesurés », no time, no « late » (domain/jobs/stopOrder.ts serverOrder). */
 import { useEffect, useState } from 'preact/hooks';
 import { ArrowUp, ArrowDown, ChevronsUp, Wand2 } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clock } from '../../lib/dates';
-import { allJobs, truckLabel, settings } from '../../data/select';
+import { allJobs, truckLabel, settings, roadsOn } from '../../data/select';
 import { setStopOrder } from '../../data/api';
 import type { Job } from '../../data/types';
 import { Sheet, Button, IconButton, Banner, Pill, run } from '../../ui';
-import { jobName, isWindowJob, blockRange, momentWord, outsideWindow } from '../../shared/jobs/select';
-import { routeOf, putFirst, moveBy, isManual, sameOrder, brokenWindows } from '../../domain/jobs/stopOrder';
+import { jobName, isWindowJob, blockRange, momentWord, outsideWindow, etaUnsure } from '../../shared/jobs/select';
+import { promisedWindow } from '../../domain/jobs/when';
+import { routeOf, putFirst, moveBy, isManual, sameOrder, brokenWindows, serverOrder } from '../../domain/jobs/stopOrder';
+import { useOrderPreview } from './previews';
 import '../../shared/jobs/jobs.css';
 
 /** « Mettre en premier »: straight away, without the list */
@@ -46,9 +53,14 @@ function Open(p: { job: Job; onClose: () => void }) {
   };
   const win = isWindowJob(p.job);
   const sub = `${truckLabel(p.job.truck_id)}, ${win ? t('jobs.win.order.wholeDay') : momentWord(p.job)}`;
-  // the new order, guessed from the times shown: who would be reached after their window
-  const broken = win && changed ? brokenWindows(ids, route.booked, settings.value.booking.unknown_min) : null;
-  const late = new Map((broken || []).map((x) => [x.job.id, x.eta]));
+  const on = roadsOn.value;
+  // switch on: the server's times for the order on screen (only once it differs from the planner's)
+  const asked = useOrderPreview(on && changed, p.job.truck_id, p.job.day, p.job.block, ids);
+  const server = asked.kind === 'done' ? serverOrder(asked.answer, ids) : null;
+  // switch off: the new order, guessed from the times shown: who would be reached after their window
+  const broken = !on && win && changed ? brokenWindows(ids, route.booked, settings.value.booking.unknown_min) : null;
+  const late = on ? new Map((server?.late || []).map((id) => [id, server!.byId.get(id)!.eta])) : new Map((broken || []).map((x) => [x.job.id, x.eta]));
+  const lateNames = on ? (server?.late || []).map((id) => jobName(byId.get(id)!)).filter(Boolean) : (broken || []).map((x) => jobName(x.job));
   return (
     <Sheet open onClose={p.onClose} title={t('jobs.order.title')} sub={sub} data-testid="stop-order-sheet"
       footer={<>
@@ -68,13 +80,23 @@ function Open(p: { job: Job; onClose: () => void }) {
           {ids.map((id, i) => {
             const j = byId.get(id);
             if (!j) return null;
-            const eta = !changed && j.eta_min != null ? t('jobs.order.eta', { time: clock(j.eta_min, l) }) : late.has(id) ? t('jobs.win.order.about', { time: clock(late.get(id)!, l) }) : '';
+            const said = on && changed ? server?.byId.get(id)?.eta ?? null : null;
+            // a stop whose trips are not all measured: no arrival time (and never « late » from a guess)
+            const unsure = on && changed && server?.byId.get(id)?.unmeasured === true;
+            // the order as it is: the plan's time, or no time while a trip before that stop is not measured (final-guess G1)
+            const eta = !changed && etaUnsure(j) ? t('jobs.order.etaUnmeasured')
+              : !changed && j.eta_min != null ? t('jobs.order.eta', { time: clock(j.eta_min, l) })
+              : on ? (unsure ? t('jobs.order.etaUnmeasured') : said != null ? t('jobs.order.eta', { time: clock(said, l) }) : '')
+                : late.has(id) ? t('jobs.win.order.about', { time: clock(late.get(id)!, l) }) : '';
             const told = isWindowJob(j) ? t('jobs.win.order.told', { window: blockRange(j, l) }) : '';
             const out = late.has(id) || (!changed && outsideWindow(j));
+            // the server says late for a block job too (after the block told), or for a window job with no window told yet
+            // (« flexible », late after the day): « En retard »; a window told and missed: « Hors plage »
+            const outWord = promisedWindow(j) ? t('common.window.late') : t('jobs.order.late');
             return (
               <li key={id} class={`jobs-order-row${id === p.job.id ? ' is-this' : ''}`} data-testid={`stop-order-${j.number}`}>
                 <span class="jobs-order-n">{route.live.length + i + 1}</span>
-                <span class="jobs-order-name"><b>{jobName(j)}</b><span class="small muted">{[`#${j.number}`, eta, told].filter(Boolean).join(', ')}</span>{out && <Pill tone="warn" data-testid={`stop-late-${j.number}`}>{t('common.window.late')}</Pill>}</span>
+                <span class="jobs-order-name"><b>{jobName(j)}</b><span class="small muted">{[`#${j.number}`, eta, told].filter(Boolean).join(', ')}</span>{out && <Pill tone="warn" data-testid={`stop-late-${j.number}`}>{outWord}</Pill>}</span>
                 <span class="jobs-order-btns">
                   <IconButton icon={<ChevronsUp />} label={t('jobs.order.first', { name: jobName(j) })} disabled={i === 0} onClick={() => setIds(putFirst(ids, id))} data-testid={`stop-first-${j.number}`} />
                   <IconButton icon={<ArrowUp />} label={t('jobs.order.up', { name: jobName(j) })} disabled={i === 0} onClick={() => setIds(moveBy(ids, id, -1))} />
@@ -85,9 +107,12 @@ function Open(p: { job: Job; onClose: () => void }) {
           })}
         </ol>
         {!ids.length && <p class="muted" style={{ margin: 0 }}>{t('jobs.order.none')}</p>}
-        {changed && <Banner kind="info">{t('jobs.order.timesAfter')}</Banner>}
-        {late.size > 0 && <Banner kind="warn" data-testid="stop-order-late">{t('jobs.win.order.breaks', { n: late.size, names: broken!.map((x) => jobName(x.job)).join(', ') })}</Banner>}
-        {win && !late.size && (!changed || broken == null) && <p class="small muted" style={{ margin: 0 }} data-testid="stop-order-note">{t('jobs.win.order.note')}</p>}
+        {/* switch on: one line says the times are not worked out yet (the pending line below), not two */}
+        {changed && !on && <Banner kind="info">{t('jobs.order.timesAfter')}</Banner>}
+        {on && changed && !server && <p class="small muted" style={{ margin: 0 }} data-testid="stop-order-pending">{t('jobs.order.pending')}</p>}
+        {on && changed && server && <p class="small muted" style={{ margin: 0 }} data-testid="stop-order-server">{t('jobs.order.serverTimes')}</p>}
+        {late.size > 0 && <Banner kind="warn" data-testid="stop-order-late">{on ? t('jobs.order.lateServer', { n: late.size, names: lateNames.join(', ') }) : t('jobs.win.order.breaks', { n: late.size, names: lateNames.join(', ') })}</Banner>}
+        {win && !late.size && (on || !changed || broken == null) && <p class="small muted" style={{ margin: 0 }} data-testid="stop-order-note">{t('jobs.win.order.note')}</p>}
       </div>
     </Sheet>
   );

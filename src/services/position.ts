@@ -224,6 +224,10 @@ export function retryPosition() {
   if (a && openShift(a.id) && visible.value && !preview.value) start();
 }
 
+/** the phone's last reading (from the sharing's watch or the last quickPosition), with its accuracy and time; null before
+    the first one. For the trip's refresh (tripRefresh.ts): a vague reading never counts as having moved. */
+export function lastReading(): Fix | null { return lastFix; }
+
 /** the position now, if the phone gives it quickly (for « Je pars »: the arrival time is worked out from it) */
 export function quickPosition(ms = 3500): Promise<{ lat: number; lng: number } | undefined> {
   if (lastFix && Date.now() - lastFix.at < 60_000) return Promise.resolve({ lat: lastFix.lat, lng: lastFix.lng });

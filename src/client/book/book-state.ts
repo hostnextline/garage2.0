@@ -1,10 +1,11 @@
 /* « Réserver en ligne »: the pure part (what is chosen, the total, the checks of the form, the answers of the server). */
-import { phoneDigits } from '../../lib/text';
+import { phoneDigits, postalCode, findPostal } from '../../lib/text';
 import { totals } from '../../lib/money';
 import { ct, type CLang } from '../i18n';
 import { montrealToday, slotText } from '../format';
 import type { Suggestion } from '../../shared/places/photon';
 import { wantedOf, sameStreet, sameTown, streetWords } from '../../shared/places/locate';
+import { streetBegun } from '../../shared/places/match';
 
 export interface WebService {
   id: string; name_fr: string; name_en: string; category: string; price_cents: number | null; taxable?: boolean; duration_min: number;
@@ -21,10 +22,14 @@ export interface Booked { ok: true; link: string | null; day: string; block: str
 
 /** the address chosen in the list: the position comes with it (the mechanic needs it, the moments are counted from it) */
 export interface Place { address: string; unit: string; postal_code: string | null; city: string | null; lat: number; lng: number; exact: boolean }
-/** a suggestion of the address search as a place to book (null without a position: it cannot be chosen) */
-export function placeOf(s: Suggestion): Place | null {
+/** a suggestion of the address search as a place to book (null without a position: it cannot be chosen). The postal
+    code sent with it (saved on the new customer and the appointment, printed on the invoices): the one the customer
+    typed (`typed`, the text of the search) when it is a whole code, else the suggestion's when it is a whole valid
+    code; never the 3-character area a street or a door range carries (TomTom « H2M », review F4) */
+export function placeOf(s: Suggestion, typed = ''): Place | null {
   if (s.place.lat == null || s.place.lng == null) return null;
-  return { address: [s.label, s.sub].filter(Boolean).join(', '), unit: s.place.unit || '', postal_code: s.place.postal_code, city: s.place.city ?? null,
+  return { address: [s.label, s.sub].filter(Boolean).join(', '), unit: s.place.unit || '',
+    postal_code: findPostal(typed) || postalCode(s.place.postal_code), city: s.place.city ?? null,
     lat: s.place.lat, lng: s.place.lng, exact: s.exact };
 }
 
@@ -142,16 +147,33 @@ export function bookWhen(s: WebSlot): { day: string; block: string; win_start?: 
 }
 
 /** only the places on the street typed, with a position (Photon may answer another street with the same number:
-    « 1250 rue Graham » → « 1250 rue Jean-Talon »; the mechanic must never go there) */
+    « 1250 rue Graham » → « 1250 rue Jean-Talon »; the mechanic must never go there). The last word may still be being
+    typed: « 8200 av mountain sig » already offers the door of « Avenue Mountain Sights » (review-places R4) */
 export function onTypedStreet(list: Suggestion[], typed: string): Suggestion[] {
   const w = wantedOf(typed);
-  let out = list.filter((s) => s.place.lat != null && s.place.lng != null && (!w.street || sameStreet(w.street, s.street || s.label)));
+  let out = list.filter((s) => s.place.lat != null && s.place.lng != null && (!w.street || streetBegun(w.street, s.street || s.label)));
   // a town or a postal code typed: one of them must agree
   if (w.city || w.fsa) out = out.filter((s) => (!!w.city && s.areas.some((a) => sameTown(a, w.city))) || (!!w.fsa && (s.place.postal_code || '').toUpperCase().startsWith(w.fsa)));
   // the street exactly as typed wins over a longer name (« Graham » before « Graham-Bell »)
   const key = streetWords(w.street).join(' ');
   const exact = out.filter((s) => streetWords(s.street || s.label).join(' ') === key);
   return exact.length ? exact : out;
+}
+
+/** a street typed with no word of its own yet (« 8200 av », « 1250 rue de la »): onTypedStreet could offer nothing, so
+    the page does not ask the map services yet (review-places R4: each pause costs a TomTom lookup) */
+export function streetNotTyped(typed: string): boolean {
+  const w = wantedOf(typed);
+  return !!w.street && !streetWords(w.street).length;
+}
+
+/** nothing to offer on the street typed: is it worth asking again the careful way (locate: the short words written out,
+    without the town: up to 2 more lookups)? Not before the street has a word, and not while its last word is still being
+    typed: a place of the answer has a street that begins with it but is not it (review-places R4) */
+export function worthAskingAgain(list: Suggestion[], typed: string): boolean {
+  const w = wantedOf(typed);
+  if (!w.street || !streetWords(w.street).length) return false;
+  return !list.some((s) => { const st = s.street || s.label; return streetBegun(w.street, st) && !sameStreet(w.street, st); });
 }
 
 /** the hours of a moment: « Entre 12 h et 16 h » (a block's hours or a window), « Dans la journée » (flexible) */

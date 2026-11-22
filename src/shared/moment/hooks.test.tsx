@@ -185,6 +185,31 @@ describe('the clock', () => {
   });
 });
 
+describe('the switch « Vraies routes » flipped while a picker is open (final-off L5)', () => {
+  const setRoads = (on: boolean) => act(() => { upsertLocal('settings', [{ id: '1', booking: { roads_on: on } } as never], { force: true }); });
+  it('the best moments and the windows of a day are asked again: the rows of « on » are not kept after OFF', async () => {
+    setRoads(true);
+    api.suggestBlocks.mockResolvedValue([{ ...win(540), unmeasured: 2 }]);
+    act(() => render(<Sugg from="2026-12-01" />, box));
+    await wait();
+    expect(api.suggestBlocks).toHaveBeenCalledTimes(1);
+    api.suggestBlocks.mockResolvedValue([win(540)]);
+    setRoads(false);
+    await wait();
+    expect(api.suggestBlocks).toHaveBeenCalledTimes(2);
+    expect(state?.list[0].unmeasured).toBeUndefined();
+    act(() => render(null, box));
+    setRoads(true);
+    api.suggestWindows.mockResolvedValue([win(540)]);
+    act(() => render(<Days bump={0} />, box));
+    await wait();
+    const n = api.suggestWindows.mock.calls.length;
+    setRoads(false);
+    await wait();
+    expect(api.suggestWindows.mock.calls.length).toBe(n + 1);
+  });
+});
+
 describe('the moment under the mouse (useHover)', () => {
   let now: { key: string; item: string; group: DOMRect | null } | null = null;
   let offNow: () => void = () => {};

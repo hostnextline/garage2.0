@@ -57,7 +57,17 @@ export const hours = {
     donePart: '{n} rendez-vous sur {total} déplacés vers {to}. Les autres sont dans « À placer » de l’agenda.',
     /* a move refused or not answered: nothing is closed (map-hours-01, -07) */
     refused: { zero: 'Le déplacement est refusé : {reason} Rien n’est fermé.', one: '{n} rendez-vous déplacé, puis un refus : {reason} Rien n’est fermé.', other: '{n} rendez-vous déplacés, puis un refus : {reason} Rien n’est fermé.' },
-    waiting: 'Pas de réponse du serveur pour le déplacement : rien n’est fermé. Réessaie quand le réseau revient.'
+    waiting: 'Pas de réponse du serveur pour le déplacement : rien n’est fermé. Réessaie quand le réseau revient.',
+    /* « Vraies routes » on: the new route of the other vehicle is the server's (move_preview), never the phone's guess */
+    refusedHere: 'Ne peut pas aller sur {to}',
+    at: 'arrêt {n}, vers {time}',
+    atNoTime: 'arrêt {n}',
+    /* an answer that says a trip of that day is not measured: its arrival counts a fixed time, so it is not said */
+    atUnmeasured: 'arrêt {n}, heure : trajets pas encore mesurés',
+    pending: 'Ordre et route : pas encore calculés.',
+    roadUnmeasured: { one: 'Route de la journée : pas encore mesurée ({n} trajet à mesurer).', other: 'Route de la journée : pas encore mesurée ({n} trajets à mesurer).' },
+    refusedSome: { one: 'Le serveur refuse d’y mettre {n} de ces rendez-vous.', other: 'Le serveur refuse d’y mettre {n} de ces rendez-vous.' },
+    serverNote: 'L’ordre, les numéros et la route de la journée viennent du planificateur, avec les vraies routes.'
   },
   apply: {
     title: 'Appliquer',

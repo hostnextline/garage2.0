@@ -1,11 +1,17 @@
-/* The stops of the day, one panel per truck (and « À placer »), in route order; a tap chooses the stop (its card opens). */
+/* The stops of the day, one panel per truck (and « À placer »), in route order; a tap chooses the stop (its card opens).
+   A right-click (computer) or a long press (phone) on a stop: the agenda's shortcut menu of that appointment, its
+   « Déplacer » opening the move sheet on the map (Hassan, 2026-11-21); a stop this phone does not hold has none. */
 import { Check } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { job as jobRow } from '../../data/select';
 import type { JobStatus } from '../../data/types';
 import { StatusPill, Pill } from '../../ui';
 import { UNPLACED_COLOR, type Assembled, type Stop } from '../../shared/map/assemble';
+import { menuProps } from '../../shared/jobs/shortcuts';
+import { openMove } from '../../shared/jobs/MoveHost';
+import { MoveWaiting } from '../../shared/jobs/MoveWaiting';
 import { whenOf, lateStop } from './stopWords';
+import { stopJob } from './stopJob';
 
 export function StopList(p: { m: Assembled; focus: string | null; selected: string | null; onChoose: (id: string) => void; plain?: boolean }) {
   const groups: { id: string; name: string; color: string; stops: Stop[] }[] = [
@@ -21,11 +27,12 @@ export function StopList(p: { m: Assembled; focus: string | null; selected: stri
             {g.stops.map((s) => {
               const row = jobRow(s.id);
               return (
-                <button key={s.id} type="button" role="listitem" class={`row-item map-stop${p.selected === s.id ? ' is-selected' : ''}${s.done ? ' is-done' : ''}`} onClick={() => p.onChoose(s.id)} data-testid={`stop-${s.id}`}>
+                <button key={s.id} type="button" role="listitem" class={`row-item map-stop${p.selected === s.id ? ' is-selected' : ''}${s.done ? ' is-done' : ''}`} onClick={() => p.onChoose(s.id)} {...menuProps(stopJob(s), { onMove: openMove })} data-testid={`stop-${s.id}`}>
                   <span class="map-n" style={{ '--c': g.color }} aria-label={t('map.stop.number', { n: s.n })}>{s.done ? <Check size={16} strokeWidth={3} /> : g.id === 'unplaced' ? '?' : s.n}</span>
                   <span class="row-main">
                     <span class="row-title">{s.name}</span>
                     <span class="row-sub">{s.hasPos ? whenOf(s, row) : t('map.stops.noPos')}{lateStop(s, row) && <> <Pill tone="warn" data-testid={`stop-late-${s.id}`}>{t('common.window.late')}</Pill></>}</span>
+                    <MoveWaiting id={s.id} />
                   </span>
                   <span class="row-end"><StatusPill status={s.status as JobStatus} /></span>
                 </button>

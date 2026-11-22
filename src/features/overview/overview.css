@@ -3,10 +3,15 @@
 .overview-side { position: sticky; top: var(--sp-4); }
 .overview-map { margin: 0; border-radius: var(--r-lg); overflow: hidden; }
 .overview-map figcaption { display: flex; justify-content: flex-end; padding: var(--sp-2); }
+/* a road not drawn yet: said under the map */
+.overview-road { margin: 0; padding: var(--sp-2) var(--sp-3) 0; }
 .overview-n { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--c); color: #fff; font-weight: 600; }
 .overview-time { margin-right: var(--sp-1); }
 .overview-what { display: block; }
 .overview-truck { display: block; color: var(--ink-2); }
+.overview-unsure { display: block; color: var(--ink-2); }
 .overview-row.is-on { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-md); }
+/* a long press opens the appointment's shortcut menu (« Déplacer »…): no link preview, no text selection under the finger */
+.overview-row, .overview-row a { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 /* « Plages d'arrivée »: the window told to the customer */
 .overview-window { display: block; color: var(--ink-2); }

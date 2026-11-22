@@ -47,6 +47,11 @@ export interface BlockPickerProps {
   /** « Plages d'arrivée »: the calendar as a time grid (a computer) or as a list of times (a phone); by default the
       screen's width decides (≥ 760 px: the grid) */
   layout?: 'grid' | 'list';
+  /** « Déplacer » with arrival windows (« exact move », MoveSheet): a time chosen is where THIS appointment (`excludeJob`)
+      lands, on its own truck (the vehicle offered there only when its truck does not work that day), every other stop
+      keeping its order. The maps of a time then show it so: that truck, and no place in the route (the server decides it at
+      the move and says first who would arrive later), never the planner's other vehicle or order (merge-main review M-1) */
+  exactMove?: boolean;
 }
 
 /** how long a window is with the garage's settings (4 h: 1 h before the estimated arrival, 3 h after) */

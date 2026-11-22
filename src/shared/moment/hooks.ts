@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { today as todayOf, nowMinute, type Day } from '../../lib/dates';
 import { suggestBlocks, type Suggestion } from '../../data/api';
+import { roadsTick } from '../../data/roads';
+import { roadsOn } from '../../data/select';
 import { isNetworkError } from '../../data/sync';
 import { keptRows } from './moments';
 import type { Kind } from './vehicles';
@@ -21,12 +23,14 @@ export interface SuggQuery {
 const IDLE: SuggState = { status: 'ok', list: [], key: '' };
 const keyOf = (q: SuggQuery) => [baseKey(q), q.from, q.days].join('|');
 /** the question without its days: the same place, work, vehicle and job left out */
-const baseKey = (q: Omit<SuggQuery, 'from' | 'days'>) => [q.lat, q.lng, q.duration, q.exclude, q.need, q.kind, q.truckId ?? ''].join('|');
+// « Vraies routes » on or off is part of the question: a picker open while the owner flips it asks again (final-off L5)
+const baseKey = (q: Omit<SuggQuery, 'from' | 'days'>) => [q.lat, q.lng, q.duration, q.exclude, q.need, q.kind, q.truckId ?? '', roadsOn.value ? 'roads' : ''].join('|');
 
 /** the moments of `days` days from `from`, the best first. Asked 350 ms after the last change (each service ticked
     changes the duration); an answer of an older question is dropped; while a new one is awaited the last list stays
     (dimmed by the picker). `again`: a new number asks again (« Réessayer », a refusal of the server). `q` null: nothing
-    to ask (status ok, empty list). */
+    to ask (status ok, empty list). « Vraies routes »: asked again when a measure the screen stopped waiting for lands
+    (roadsTick goes up), so the « unknown » times give way to the real ones without a tap (review-moments M3). */
 export function useSuggestions(q: SuggQuery | null, online: boolean, again: number): SuggState {
   const [s, setS] = useState<SuggState>(() => (q ? { status: 'loading', list: [], key: '' } : IDLE));
   const key = q ? keyOf(q) : '';
@@ -37,16 +41,30 @@ export function useSuggestions(q: SuggQuery | null, online: boolean, again: numb
     if (!x) { setS(IDLE); return; }
     if (!online) { setS({ status: 'offline', list: [], key }); return; }
     let alive = true;
-    setS((old) => ({ ...old, status: 'loading' }));
-    const tm = setTimeout(async () => {
-      try {
-        const got = await suggestBlocks(x.lat, x.lng, x.duration, x.from, x.days, x.exclude, x.need, x.need ? null : x.kind);
-        if (alive) setS({ status: 'ok', list: keptRows(got, x.truckId), key });
-      } catch (e) {
-        if (alive) setS({ status: isNetworkError(e) ? 'offline' : 'error', list: [], key });
-      }
-    }, 350);
-    return () => { alive = false; clearTimeout(tm); };
+    let tm: ReturnType<typeof setTimeout> | undefined;
+    /* a re-ask after a measure while the first ask still waits: the first answer is shown when it lands, the newer one
+       replaces it; an older answer landing after a newer one is dropped */
+    let seq = 0, shown = 0;
+    const take = (mine: number) => { if (!alive || mine < shown) return false; shown = mine; return true; };
+    const go = () => {
+      const mine = ++seq;
+      setS((old) => ({ ...old, status: 'loading' }));
+      clearTimeout(tm);
+      tm = setTimeout(async () => {
+        try {
+          const got = await suggestBlocks(x.lat, x.lng, x.duration, x.from, x.days, x.exclude, x.need, x.need ? null : x.kind);
+          if (take(mine)) setS({ status: mine < seq ? 'loading' : 'ok', list: keptRows(got, x.truckId), key });
+        } catch (e) {
+          if (mine === seq && take(mine)) setS({ status: isNetworkError(e) ? 'offline' : 'error', list: [], key });
+        }
+      }, 350);
+    };
+    go();
+    /* « Vraies routes »: a measure the screen stopped waiting for landed (roadsTick): asked again at once, without waiting
+       for a new drawing (never with the switch off: nothing is measured then) */
+    const t0 = roadsTick.peek();
+    const unsub = roadsTick.subscribe((v) => { if (alive && v !== t0) go(); });
+    return () => { alive = false; clearTimeout(tm); unsub(); };
   }, [key, online, again]);
   return s;
 }
@@ -62,6 +80,11 @@ export const answers = (s: SuggState, q: SuggQuery): boolean => s.status === 'ok
     so a far moment chosen on a later page is still warned about from another page. Offline, or when the server failed,
     there are none (as for the first two weeks: old scores would mark cells and warn from an answer that may be stale) */
 export function useLaterScores(base: Omit<SuggQuery, 'from' | 'days'>, from: Day | null, days: number, online: boolean, again: number): Suggestion[] {
+  return useLaterAnswers(base, from, days, online, again).list;
+}
+/** the same, and whether the page that starts at `from` is answered (« Vraies routes » on: an answered page with no row
+    for a block = it does not fit, PE-09) */
+export function useLaterAnswers(base: Omit<SuggQuery, 'from' | 'days'>, from: Day | null, days: number, online: boolean, again: number): { list: Suggestion[]; answered: (from: Day) => boolean } {
   const s = useSuggestions(from ? { ...base, from, days } : null, online, again);
   const bk = baseKey(base);
   const kept = useRef<{ base: string; byFrom: Map<string, Suggestion[]> }>({ base: bk, byFrom: new Map() });
@@ -69,7 +92,9 @@ export function useLaterScores(base: Omit<SuggQuery, 'from' | 'days'>, from: Day
   // only an answer to the question of now (the state can still hold the previous page's for one drawing)
   if (from && s.status === 'ok' && s.key === keyOf({ ...base, from, days })) kept.current.byFrom.set(from, s.list);
   const none = !online || s.status === 'offline' || s.status === 'error';
-  return useMemo(() => (none ? [] : [...kept.current.byFrom.values()].flat()), [bk, s.key, s.status, none]);
+  const list = useMemo(() => (none ? [] : [...kept.current.byFrom.values()].flat()), [bk, s.key, s.status, none]);
+  const byFrom = kept.current.byFrom;
+  return { list, answered: (f: Day) => !none && byFrom.has(f) };
 }
 
 /* ---------- the clock ---------- */

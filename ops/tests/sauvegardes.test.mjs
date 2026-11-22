@@ -252,14 +252,17 @@ function nuitFaite(nom) {
 }
 const COMMIT = 'c0ffee1234567890c0ffee1234567890c0ffee12';
 
-test('the end of the night: « done » says what was kept (tables, rows, commit), then the reconciliation runs; all is well = green', async () => {
-  const s = await faux((quoi, b) => (quoi === 'backup' && b.action === 'done' ? [200, { ok: true }] : quoi === 'recon' && b.action === 'run' ? [200, { ok: true, status: 'ok' }] : [400, { ok: false, code: 'action', error: 'Action inconnue.' }]));
+test('the end of the night: « done » says what was kept (tables, rows, commit), then the reconciliation runs, then the road times are measured; all is well = green', async () => {
+  const s = await faux((quoi, b) => (quoi === 'backup' && b.action === 'done' ? [200, { ok: true }] : quoi === 'recon' && b.action === 'run' ? [200, { ok: true, status: 'ok' }]
+    : quoi === 'drive' && b.action === 'sweep' ? [200, { ok: true, ready: true, left: 0, left0: 0, stored: 0, more: false, tomtom: 'unused', osrm: 'unused' }]
+    : [400, { ok: false, code: 'action', error: 'Action inconnue.' }]));
   const r = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('fin-ok')], { ...s.env, COMMIT });
   assert.equal(r.code, 0, r.out + r.err);
-  assert.deepEqual(s.vus.map((v) => [v.quoi, v.body.action]), [['backup', 'done'], ['recon', 'run']], '« done » first, then the reconciliation');
+  assert.deepEqual(s.vus.map((v) => [v.quoi, v.body.action]), [['backup', 'done'], ['recon', 'run'], ['drive', 'sweep']], '« done » first, then the reconciliation, then the roads');
   assert.deepEqual(s.vus[0].body, { action: 'done', tables: { customers: 120, jobs: 45, invoices: 30 }, rows: 195, commit: COMMIT });
   assert.deepEqual(s.vus[1].body, { action: 'run' });
-  assert.ok(s.vus.every((v) => v.ticket === 'ticket-de-test'), 'both calls carry the GitHub ticket');
+  assert.deepEqual(s.vus[2].body, { action: 'sweep' });
+  assert.ok(s.vus.every((v) => v.ticket === 'ticket-de-test'), 'every call carries the GitHub ticket');
   assert.match(r.out, /Sauvegarde notée au garage : 3 tables, 195 lignes, commit c0ffee1/);
   assert.match(r.out, /Rapprochement : tout balance/);
   await s.fermer();
@@ -272,7 +275,8 @@ test('the end of the night on a server that does not know « done » nor « reco
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.out, /ATTENTION : Le serveur ne connaît pas encore « backup done »/);
   assert.match(r.out, /ATTENTION : Le serveur ne connaît pas encore le rapprochement/);
-  assert.equal(s.vus.length, 2, 'asked once each: an unknown action is not tried again');
+  assert.match(r.out, /ATTENTION : Le serveur ne connaît pas encore la mesure des routes/);
+  assert.equal(s.vus.length, 3, 'asked once each: an unknown action is not tried again');
   await s.fermer();
   // the same with a « recon » function that exists but does not know « run »
   const s2 = await faux(() => [400, { ok: false, code: 'action', error: 'Action inconnue.' }]);
@@ -285,7 +289,7 @@ test('the end of the night on a server that does not know « done » nor « reco
   assert.equal(r3.code, 0, 'not_ready is « not yet », never a red night: ' + r3.out + r3.err);
   assert.match(r3.out, /ATTENTION : Le serveur ne connaît pas encore « backup done »/);
   assert.match(r3.out, /ATTENTION : Le serveur ne connaît pas encore le rapprochement/);
-  assert.equal(s3.vus.length, 2, 'not tried again');
+  assert.equal(s3.vus.length, 3, 'not tried again');
   await s3.fermer();
 });
 
@@ -338,7 +342,7 @@ test('the end of the night: a reconciliation that says « bad » ends RED (GitHu
   const s = await faux((quoi, b) => (b.action === 'done' ? [200, { ok: true }] : [200, { ok: true, status: 'bad', findings: [{ severity: 'bad', message_fr: 'Facture 1042 : payé 120,00 $ mais les paiements font 100,00 $' }] }]));
   const r = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('fin-bad')], { ...s.env, COMMIT });
   assert.equal(r.code, 1, 'red');
-  assert.deepEqual(s.vus.map((v) => v.body.action), ['done', 'run']);
+  assert.deepEqual(s.vus.map((v) => v.body.action), ['done', 'run', 'sweep'], 'the roads are measured even after a « bad » reconciliation');
   assert.match(r.out, /RAPPROCHEMENT : des écarts à regarder \(statut « bad », 1 écart\)\. La sauvegarde de cette nuit est gardée/);
   assert.match(r.out, /\[bad\] Facture 1042/);
   await s.fermer();
@@ -360,7 +364,7 @@ test('the end of the night: a reconciliation that cannot run, or a « done » th
   const r2 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('fin-403')], { ...s2.env, COMMIT });
   assert.equal(r2.code, 1);
   assert.match(r2.out, /ERREUR : la sauvegarde est gardée, mais le garage n'a pas pu la noter \(not_allowed/);
-  assert.deepEqual(s2.vus.map((v) => v.body.action), ['done', 'run'], 'the reconciliation still ran');
+  assert.deepEqual(s2.vus.map((v) => v.body.action), ['done', 'run', 'sweep'], 'the reconciliation still ran, and the roads');
   await s2.fermer();
   // no copy to tell about (step 1 did not finish): red, nothing is called
   const s3 = await faux(() => [200, { ok: true }]);
@@ -371,12 +375,67 @@ test('the end of the night: a reconciliation that cannot run, or a « done » th
   await s3.fermer();
 });
 
+test('the end of the night, last: the road times of the coming days (drive sweep, the same GitHub ticket), asked again while the answer says « more », 10 calls at most; a server that does not know « drive » is a warning, never a red night; a sweep that fails is red and says the copy is kept', async () => {
+  const fin = (quoi, b) => (b.action === 'done' ? [200, { ok: true }] : quoi === 'recon' ? [200, { ok: true, status: 'ok' }] : null);
+  const sweep = (more, stored = 2) => [200, { ok: true, ready: !more, left: more ? 40 : 0, left0: more ? 12 : 0, stored, planned: 0, kept: [], late: [], no_road: 0, tomtom: 'ok', osrm: 'unused', spent: { month: '2026-11-01', tx: 10, cap: 10000 }, more }];
+  // « more » twice, then done: three calls, after « done » and the reconciliation
+  const s = await faux((quoi, b, vus) => fin(quoi, b) ?? sweep(vus.filter((v) => v.quoi === 'drive').length < 3));
+  const r = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('routes-ok')], { ...s.env, COMMIT });
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(s.vus.map((v) => [v.quoi, v.body.action]), [['backup', 'done'], ['recon', 'run'], ['drive', 'sweep'], ['drive', 'sweep'], ['drive', 'sweep']]);
+  assert.ok(s.vus.every((v) => v.ticket === 'ticket-de-test' && v.cle === 'cle-test'), 'the same ticket as « recon »');
+  assert.match(r.out, /Routes : 6 trajets mesurés en 3 appels\. Il n’en reste aucun\./);
+  assert.doesNotMatch(r.out, /après l’heure dite/, 'nobody late: nothing said');
+  await s.fermer();
+  // (final-critic W2) a sweep that made appointments late: the morning's summary names them (number and day), as a warning
+  const late = (vus) => { const n = vus.filter((v) => v.quoi === 'drive').length;
+    return [200, { ...sweep(n < 2)[1], late: n === 1 ? ['j-1', 'j-2'] : ['j-2'], late_jobs: n === 1 ? [{ id: 'j-1', number: 1234, day: '2026-11-24', block: 'am' }] : [] }]; };
+  const s6 = await faux((quoi, b, vus) => fin(quoi, b) ?? late(vus));
+  const r6 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('routes-late')], { ...s6.env, COMMIT });
+  assert.equal(r6.code, 0, r6.out + r6.err);
+  assert.match(r6.out, /2 rendez-vous arrivent maintenant après l’heure dite au client \(les vraies routes de cette nuit\) : à rappeler\. n° 1234 \(2026-11-24, am\), et 1 autre\./);
+  assert.match(r6.out, /ATTENTION : 2 rendez-vous arrivent/);
+  await s6.fermer();
+  // always « more »: 10 calls, then the night ends (the rest the next night, or the app's own measuring)
+  const s2 = await faux((quoi, b) => fin(quoi, b) ?? sweep(true));
+  const r2 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('routes-10')], { ...s2.env, COMMIT });
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.equal(s2.vus.filter((v) => v.quoi === 'drive').length, 10);
+  assert.match(r2.out, /Routes : 20 trajets mesurés en 10 appels\. Il en reste 40 \(dont 12 sans aucun temps\) : la suite la nuit prochaine\./);
+  await s2.fermer();
+  // a server without « drive » (404), or a « drive » of before (« action »): a warning, never red, asked once
+  for (const [status, data] of [[404, { code: 'NOT_FOUND', message: 'Requested function was not found' }], [400, { ok: false, code: 'action', error: 'Action inconnue.' }]]) {
+    const s3 = await faux((quoi, b) => fin(quoi, b) ?? [status, data]);
+    const r3 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite(`routes-${status}`)], { ...s3.env, COMMIT });
+    assert.equal(r3.code, 0, r3.out + r3.err);
+    assert.match(r3.out, /ATTENTION : Le serveur ne connaît pas encore la mesure des routes \(fonction « drive »\)/);
+    assert.equal(s3.vus.filter((v) => v.quoi === 'drive').length, 1, 'not tried again');
+    await s3.fermer();
+  }
+  // a sweep that cannot run (the server fails, tried again, then still): red, and the copy is said kept
+  const s4 = await faux((quoi, b) => fin(quoi, b) ?? [500, { ok: false, code: 'server', error: 'Le serveur a eu un problème.' }]);
+  const r4 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('routes-500')], { ...s4.env, COMMIT });
+  assert.equal(r4.code, 1, r4.out + r4.err);
+  assert.match(r4.out, /ERREUR : les routes n'ont pas pu être mesurées \(server : .*\)\. La sauvegarde de cette nuit est gardée/);
+  await s4.fermer();
+  // TomTom refuses the server's key: said (the night stays green: OSRM measured the usual hours)
+  const s5 = await faux((quoi, b) => fin(quoi, b) ?? [200, { ...sweep(false)[1], tomtom: 'refused', osrm: 'ok' }]);
+  const r5 = await lancer('sauvegarde.mjs', ['--fin', nuitFaite('routes-refuse')], { ...s5.env, COMMIT });
+  assert.equal(r5.code, 0, r5.out + r5.err);
+  assert.match(r5.out, /ATTENTION : TomTom a refusé la clé du serveur/);
+  await s5.fermer();
+});
+
 test('the end of the night against the functions of this copy: « done » and the reconciliation are accepted, or the server says it does not know them yet', async () => {
   // what the tables of the reconciliation hold before (they exist once its migration is merged): put back after
   const ops = (await q(`select c.relname t, (select a.attname from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = i.indkey[0] where i.indrelid = c.oid and i.indisprimary) k
                           from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and c.relname like 'ops\\_%'`)).filter((x) => x.k);
   const avant = {};
   for (const { t, k } of ops) avant[t] = (await q(`select to_jsonb(x) ->> $1 as k from public.${t} x`, [k])).map((x) => x.k);
+  // the road times the night's sweep measures on this copy (« drive », its fake TomTom): put back as they were after
+  const roads = (await q(`select to_regclass('public.drive_times') is not null as la`))[0].la;
+  const t0 = (await q(`select now() t`))[0].t;
+  const spend = roads ? await q(`select month, tx, requests from public.drive_spend`) : [];
   // a copy of its own (never the one another test left): step 1 of the night against this copy's « backup » function
   const dos = join(dir, 'nuit-vraie', 'donnees');
   const copie = await lancer('sauvegarde.mjs', [dos], VRAI);
@@ -385,10 +444,19 @@ test('the end of the night against the functions of this copy: « done » and th
   try {
     assert.ok(/Sauvegarde notée au garage/.test(r.out) || /ne connaît pas encore « backup done »/.test(r.out), 'the « backup » function of this copy took « done » { tables, rows, commit } or does not know it: ' + r.out + r.err);
     assert.ok(/[Rr]approchement : |RAPPROCHEMENT : |ne connaît pas encore le rapprochement/.test(r.out), 'the « recon » function of this copy answered « run », or does not exist yet: ' + r.out + r.err);
+    // the night's last step: the road times (the GitHub ticket of the night, accepted by « drive » as by « recon »)
+    assert.ok(/Routes : \d+ trajets? mesurés? en \d+ appels?\./.test(r.out) || (!roads && /ne connaît pas encore la mesure des routes/.test(r.out)),
+      'the « drive » function of this copy took the sweep with the night’s ticket: ' + r.out + r.err);
     assert.ok(!/ERREUR/.test(r.out + r.err), 'no call was refused: ' + r.out + r.err);
     assert.equal(r.code, /RAPPROCHEMENT : des écarts/.test(r.out) ? 1 : 0);
   } finally {
     for (const { t, k } of [...ops].reverse()) await q(`delete from public.${t} x where not ((to_jsonb(x) ->> $1) = any($2))`, [k, avant[t]]).catch(() => {});
+    if (roads) {
+      await q(`delete from public.drive_times where at >= $1`, [t0]);
+      await q(`delete from public.drive_spend`);
+      for (const x of spend) await q(`insert into public.drive_spend (month, tx, requests) values ($1, $2, $3)`, [x.month, x.tx, x.requests]);
+      await q(`delete from public.rate_limits where key like 'drive:claim:%'`);
+    }
   }
 });
 
@@ -458,7 +526,8 @@ test('restore --remplacer of the settings: the night\'s values come back, but th
   const avant = (await q(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
   try {
     // that night: booking open, another home; today: the owner closed the booking page
-    const nuit = { ...avant, booking: { ...(avant.booking || {}), home: { label: 'Centrale (sauvegarde)' }, web: { ...((avant.booking || {}).web || {}), on: true } } };
+    // (and the switch « Vraies routes » on that night: a restore never turns it on, final-security F4)
+    const nuit = { ...avant, booking: { ...(avant.booking || {}), home: { label: 'Centrale (sauvegarde)' }, web: { ...((avant.booking || {}).web || {}), on: true }, roads_on: true } };
     await q(`update public.settings set booking = jsonb_set(booking, '{web}', coalesce(booking->'web', '{}'::jsonb) || '{"on": false}') where id = 1`);
     const dos = dossier('web-on', { settings: [nuit] });
     const r = await restaurer(dos, ['--tables', 'settings', '--remplacer']);
@@ -467,12 +536,29 @@ test('restore --remplacer of the settings: the night\'s values come back, but th
     const b = (await q(`select booking from public.settings where id = 1`))[0].booking;
     assert.equal(b.home.label, 'Centrale (sauvegarde)', 'the night\'s settings are back');
     assert.equal(b.web.on, false, 'the booking page stays closed: only the owner opens it (web_switch)');
+    assert.equal(b.roads_on ?? false, false, '« Vraies routes »: not turned on by a restore (final-security F4)');
     // and the other way: open today, closed that night
     await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
     const r2 = await restaurer(dossier('web-on-2', { settings: [{ ...nuit, booking: { ...nuit.booking, web: { ...nuit.booking.web, on: false } } }] }), ['--tables', 'settings', '--remplacer']);
     assert.equal(r2.sql, '', 'the SQL ran: ' + r2.sql);
     assert.equal((await q(`select booking->'web'->'on' v from public.settings where id = 1`))[0].v, true);
+    // the switch on today, off that night: it stays on (only roads_switch turns it off, with its re-plan)
+    const c = await db.connect();
+    try {
+      await c.query('begin'); await c.query(`select set_config('garage.roads', 'on', true)`);
+      await c.query(`update public.settings set booking = jsonb_set(booking, '{roads_on}', 'true') where id = 1`); await c.query('commit');
+    } finally { c.release(); }
+    const r3 = await restaurer(dossier('roads-off', { settings: [{ ...nuit, booking: { ...nuit.booking, roads_on: false } }] }), ['--tables', 'settings', '--remplacer']);
+    assert.equal(r3.sql, '', 'the SQL ran: ' + r3.sql);
+    assert.equal((await q(`select booking->'roads_on' v from public.settings where id = 1`))[0].v, true);
   } finally {
+    // the switch put back as it was (past the guard that keeps it for roads_switch)
+    const c = await db.connect();
+    try {
+      await c.query('begin'); await c.query(`select set_config('garage.roads', 'on', true)`);
+      await c.query(`update public.settings set booking = case when ($1::jsonb)->'booking' ? 'roads_on' then jsonb_set(booking, '{roads_on}', ($1::jsonb)->'booking'->'roads_on') else booking - 'roads_on' end where id = 1`, [avant]);
+      await c.query('commit');
+    } finally { c.release(); }
     await q(`update public.settings s set booking = ($1::jsonb)->'booking' where id = 1`, [avant]);
   }
 });
@@ -758,6 +844,9 @@ test('a lost project: a whole night restored with --neuve into a NEW database ma
     const defaut = await ecrit([]);
     assert.throws(() => P(['-f', defaut]), (e) => /c'est un projet neuf\. Refais le fichier avec --neuve/.test(String(e.stderr)));
     assert.equal((await nq(`select count(*)::int n from public.customers`))[0].n, 0, 'nothing was written');
+    // (final-security F4) that night the switch « Vraies routes » was on: a new project comes back with it OFF (its road
+    // times are never in a backup: measure them, then switch on in the app)
+    writeFileSync(join(dos, 'settings.json'), JSON.stringify(lire(dos, 'settings.json').map((x) => ({ ...x, booking: { ...(x.booking || {}), roads_on: true } }))));
     // --neuve: everything
     const tout = await ecrit(['--neuve']);
     P(['-f', tout]);
@@ -771,7 +860,9 @@ test('a lost project: a whole night restored with --neuve into a NEW database ma
       assert.ok(ici >= n);
     }
     const la = (await nq(`select to_jsonb(s) j from public.settings s where id = 1`))[0].j;
-    assert.deepEqual(la, ici, 'the garage\'s settings, as they were (company, invoice prefix, booking, web.on, rights…)');
+    const sans = (x) => { const { roads_on: _r, ...b } = x.booking || {}; return { ...x, booking: b }; };
+    assert.equal(la.booking.roads_on, false, '« Vraies routes » off in the new project, though on that night');
+    assert.deepEqual(sans(la), sans(ici), 'the garage\'s settings, as they were (company, invoice prefix, booking, web.on, rights…)');
     assert.equal(la.booking.web.on, false, 'online booking stays closed as the owner left it (the migration opens it)');
     assert.deepEqual(await nq(`select name, next_value from public.counters order by name`), await q(`select name, next_value from public.counters order by name`), 'the invoice counter');
     const maxJob = (await nq(`select coalesce(max(number), 0)::bigint m from public.jobs`))[0].m;

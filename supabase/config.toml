@@ -14,6 +14,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.conversation]
 verify_jwt = false
+[functions.drive]
+verify_jwt = false
 [functions.enroute]
 verify_jwt = false
 [functions.hermes]

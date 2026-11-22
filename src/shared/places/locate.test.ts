@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+// Photon alone here, whatever key the shell has (TomTom with Photon: places.test.ts)
+vi.mock('../../lib/config', async (orig) => ({ ...(await orig<typeof import('../../lib/config')>()), TOMTOM_KEY: '' }));
 import { streetWords, sameStreet, sameTown, wantedOf, bestPlace, longWords, locate } from './locate';
 import { suggestionsOf } from './photon';
 import { forgetPlaces } from './places';
@@ -164,5 +166,21 @@ describe('a side of the street the person did not type (customers-a-12)', () => 
   });
   it('a street without a side is taken as before', () => {
     expect(bestPlace(suggestionsOf({ features: [KHALIL_160] }, '160 khalil gibran'), wantedOf('160 khalil gibran')).quality).toBe('door');
+  });
+});
+
+describe('Photon alone: two DIFFERENT places whose names differ by a hyphen (final-off L2)', () => {
+  const f = (name: string, lat: number, lng: number) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: { housenumber: '1250', street: name, city: 'Montréal', state: 'Québec', countrycode: 'CA', postcode: 'H2R 1W3', osm_key: 'place', osm_value: 'house', type: 'house' } });
+  it('2.3 km apart: both kept and the person is asked (« Laquelle est la bonne ? »), as before; 50 m apart: one door', () => {
+    const q = '1250 rue Jean-Talon Est';
+    const two = suggestionsOf({ features: [f('Rue Jean-Talon Est', 45.5450, -73.6050), f('Rue Jean Talon Est', 45.5600, -73.5800)] }, q);
+    expect(two).toHaveLength(2);
+    expect(new Set(two.map((s) => s.key)).size).toBe(2);
+    const b = bestPlace(two, wantedOf(q));
+    expect(b.place).toBeNull();
+    expect(b.choices).toHaveLength(2);
+    const one = suggestionsOf({ features: [f('Rue Jean-Talon Est', 45.5450, -73.6050), f('Rue Jean Talon Est', 45.5453, -73.6052)] }, q);
+    expect(one).toHaveLength(1);
   });
 });

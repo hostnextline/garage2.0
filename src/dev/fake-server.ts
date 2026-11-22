@@ -180,12 +180,21 @@ export async function handle(url: URL, init: RequestInit): Promise<Response> {
   }
 }
 
-/** routes the app's calls to the pretend server (other addresses, like map tiles, go out as usual) */
+/** TomTom is never asked from the demo (it would spend the garage's transactions): the demo has no TomTom key
+    (config.ts), and should anything still ask, it gets « 503 » here without leaving the page */
+export const NEVER_ASKED = /(^|\.)tomtom\.com$/i;
+export function neverAsked(url: URL): Response | null {
+  return NEVER_ASKED.test(url.hostname) ? reply(503, { error: 'demo: TomTom is never asked from the demo' }) : null;
+}
+
+/** routes the app's calls to the pretend server (other addresses, like map tiles, go out as usual; TomTom never) */
 export function installFakeServer() {
   const real = window.fetch.bind(window);
   const base = new URL(SUPABASE_URL).origin;
   window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
+    const no = neverAsked(url);
+    if (no) return no;
     if (url.origin !== base) return real(input as RequestInfo, init);
     if (input instanceof Request) {
       init = { method: input.method, headers: input.headers, body: input.method === 'GET' ? undefined : await input.clone().text(), ...init };

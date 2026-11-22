@@ -1,6 +1,7 @@
 #!/bin/bash
 # The whole suite in GitHub's order, on a new database: up, database tests, API tests, end-to-end (app.test.cjs, then
-# plages.test.cjs, argent.test.cjs and mise-a-jour.test.cjs, each file alone). One table at the end.
+# plages.test.cjs, argent.test.cjs, mise-a-jour.test.cjs, routes.test.cjs and deplacer.test.cjs, each file alone). One
+# table at the end.
 #   bash all.sh [source folder]
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 pick_src "${1:-}"; SRC=$SRC_DIR; export SRC
@@ -17,7 +18,7 @@ run database bash "$H/db-tests.sh" || bad=1
 run api bash "$H/api-tests.sh" || bad=1
 run end-to-end bash "$H/e2e.sh" || bad=1
 # the other end-to-end files, one at a time (each puts the database back by itself), as tests-complets.yml
-for f in plages argent mise-a-jour; do run "e2e-$f" bash "$H/e2e.sh" "$f" || bad=1; done
+for f in plages argent mise-a-jour routes deplacer; do run "e2e-$f" bash "$H/e2e.sh" "$f" || bad=1; done
 echo; echo "== $(src_label "$SRC")"; printf '%s\n' "${res[@]}"
 [ $bad = 0 ] && echo "ALL: PASS in $(took)" || echo "ALL: FAIL in $(took)  (details: $LOGS/all-*.out and the *.last.log files)"
 exit $bad

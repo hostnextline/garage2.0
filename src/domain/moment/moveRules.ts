@@ -33,13 +33,11 @@ export function textAfterMove(o: MoveOutcome, before: Told, after: Told | null |
   return !o.after && o.changed === true;
 }
 
-/** the truck a drop on the time grid asks for. A truck passed to move_job is kept for good (truck_pinned), and none
-    passed lets the app choose again: a job dropped in its own truck's column only changes its time, so its truck is
-    asked only when it was already kept there by hand. A column of the week is a day, not a truck: the app chooses. */
-export function dropTruck(j: Pick<Job, 'truck_id' | 'truck_pinned'>, column: string | null): string | null {
-  if (column == null) return null;
-  if (column !== j.truck_id) return column;
-  return j.truck_pinned ? column : null;
+/** the truck a drop on the time grid asks for: « exact move » (STATE.md A1, S2), the COLUMN'S truck, its own column
+    included (« it stays on its truck unless he picks another »: the server keeps it there). A column of the week is a
+    day, not a truck: null, and the server keeps the job on its own truck. */
+export function dropTruck(_j: Pick<Job, 'truck_id' | 'truck_pinned'>, column: string | null): string | null {
+  return column;
 }
 /** a drop on the time grid tells the customer something new: another day, another window, or a flexible job given one
     (another truck at the same window changes nothing for them, so no text is promised) */

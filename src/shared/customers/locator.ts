@@ -71,7 +71,9 @@ export function locateMissing(opts: { only?: { jobs?: string[]; customers?: stri
       const t = tasks[i];
       if (i) await wait(1100);                                 // gently with the free map service
       const r = await locate(t.address, { postal: t.postal, city: t.city, fresh: opts.force });
-      if (r.status === 'offline') { run.offline = true; break; }
+      // « not now » (`partial`: TomTom answered, Photon, needed, did not): the next address is asked, and this one is NOT
+      // marked as tried (asked again at the next round, not in 6 hours); only no network at all stops the round (R6)
+      if (r.status === 'offline') { if (r.partial) continue; run.offline = true; break; }
       if (r.status !== 'found') { markTried(t.key); continue; } // the map service does not know it: not again soon
       const pl = r.place.place;
       // what may still take it, read now: the address may have been corrected during the run

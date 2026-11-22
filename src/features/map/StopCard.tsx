@@ -1,13 +1,18 @@
 /* The stop chosen: name, address, status, truck and stop number, when it is planned (or the live trip's arrival and km),
-   « Hors plage », « Ouvrir la job » and « Itinéraire » (Google Maps). */
-import { Navigation, Check, X } from 'lucide-preact';
+   « Hors plage », « Ouvrir la job », « Déplacer » (the move sheet on the map, for who may move it now) and « Itinéraire »
+   (Google Maps). */
+import { Navigation, Check, X, CalendarClock } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clock } from '../../lib/dates';
 import { job as jobRow } from '../../data/select';
 import type { JobStatus } from '../../data/types';
 import { Button, IconButton, StatusPill, Pill } from '../../ui';
 import { minuteOf, type Stop, type TruckRoute } from '../../shared/map/assemble';
+import { mayMove } from '../../shared/jobs/moving';
+import { openMove } from '../../shared/jobs/MoveHost';
+import { MoveWaiting } from '../../shared/jobs/MoveWaiting';
 import { whenOf, lateStop, fmtKm } from './stopWords';
+import { stopJob } from './stopJob';
 
 export type ChosenStop = Stop & { color: string; truckName: string };
 
@@ -18,6 +23,9 @@ export function StopCard(p: { stop: ChosenStop; truck: TruckRoute | null; onClos
   const trip = p.truck?.trip && p.truck.trip.jobId === s.id && !s.done ? p.truck.trip : null;
   const etaMin = trip ? minuteOf(trip.etaAt) : null;
   const dest = s.hasPos ? `${s.lat},${s.lng}` : s.address;
+  // « Déplacer » (Hassan, 2026-11-21): booked, « Réserver », no move of it waiting on the phone (the agenda's rule)
+  const moving = stopJob(s);
+  const canMove = mayMove(moving);
   return (
     <section class={`panel ${p.plain ? 'panel-plain' : 'glass'} map-card`} aria-live="polite" data-testid="map-card">
       <div class="row" style={{ alignItems: 'flex-start' }}>
@@ -30,6 +38,7 @@ export function StopCard(p: { stop: ChosenStop; truck: TruckRoute | null; onClos
       </div>
       <div class="row-wrap map-card-meta">
         <StatusPill status={s.status as JobStatus} />
+        <MoveWaiting id={s.id} />
         <span class="small">{p.truck ? `${p.truck.name}, ${t('map.stop.number', { n: s.n }).toLowerCase()}` : t('map.stop.unplaced')}</span>
       </div>
       <p class="small" style={{ margin: 0 }}>
@@ -40,6 +49,7 @@ export function StopCard(p: { stop: ChosenStop; truck: TruckRoute | null; onClos
       </p>
       <div class="row-wrap">
         <Button variant="primary" href={`#/job/${encodeURIComponent(s.id)}`} data-testid="map-open-job">{t('map.stop.open')}</Button>
+        {canMove && <Button icon={<CalendarClock size={18} />} onClick={() => openMove(s.id)} data-testid="map-move">{t('jobs.moment.move')}</Button>}
         {dest && <Button icon={<Navigation size={18} />} href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`} target="_blank">{t('map.stop.directions')}</Button>}
       </div>
     </section>

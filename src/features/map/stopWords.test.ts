@@ -55,3 +55,14 @@ describe('« Trouver » failed (mh-8)', () => {
     expect(findFailed(new Error('Photon a répondu 500 ?'))).toContain('Photon');
   });
 });
+
+describe('« Vraies routes » on, a stop whose trips are not all measured (jobs.eta_measured false: decision 2, final-guess G1)', () => {
+  it('its words: the block (or window) and « heure : trajets pas encore mesurés », never a time, never « Hors plage »', () => {
+    expect(whenOf(stop({ etaMin: null, unsure: true }), null, 'fr')).toBe('Matin, heure : trajets pas encore mesurés');
+    expect(whenOf(stop({ block: 'day', win: [540, 780], etaMin: null, unsure: true }), null, 'fr')).toBe('Entre 9 h et 13 h, heure : trajets pas encore mesurés');
+    expect(whenOf(stop({ etaMin: null, unsure: true }), null, 'en')).toBe('Morning, time: trips not measured yet');
+    expect(lateStop(stop({ block: 'day', win: [540, 580], etaMin: null, unsure: true }))).toBe(false);
+    // on the way or done: not « booked », nothing to say about the plan
+    expect(whenOf(stop({ etaMin: null, unsure: true, status: 'done' }), null, 'fr')).toBe('Matin');
+  });
+});

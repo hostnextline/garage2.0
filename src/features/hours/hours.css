@@ -90,4 +90,6 @@
 .hours-closing-list, .hours-closing-list ul { list-style: none; margin: 0; padding: 0; }
 .hours-closing-list > li + li { margin-top: var(--sp-3); }
 .hours-closing-list ul li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) 0; border-bottom: 1px solid var(--line); }
+/* the moved one's place in the new route: its own line under the address and the pill (not a third item spread between) */
+.hours-closing-list .hours-closing-place { flex-basis: 100%; margin-top: calc(-1 * var(--sp-1)); }
 .hours-closing-h { margin: var(--sp-2) 0 0; font-size: var(--t-md); }

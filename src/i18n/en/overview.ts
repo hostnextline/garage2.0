@@ -1,7 +1,9 @@
 import type { overview as fr } from '../fr/overview';
 export const overview: typeof fr = {
   title: 'Overview',
-  help: 'Today’s appointments and the map. The numbers are the same as on the map, in the truck’s colour. Tap a stop on the map to find it in the list; tap an appointment to open it.',
+  help: 'Today’s appointments and the map. The numbers are the same as on the map, in the truck’s colour. Tap a stop on the map to find it in the list; tap an appointment to open it. Press and hold an appointment (on a computer: right-click): “Call”, “Directions”…',
+  /* the same for who may move appointments (“Book”): “Move” named */
+  helpMove: 'Today’s appointments and the map. The numbers are the same as on the map, in the truck’s colour. Tap a stop on the map to find it in the list; tap an appointment to open it. Press and hold an appointment (on a computer: right-click): “Move”, “Call”, “Directions”…',
   counts: '{booked} to do, {live} under way, {done} done',
   inBlock: { one: '{n} appointment', other: '{n} appointments' },
   stop: 'Stop {n}',

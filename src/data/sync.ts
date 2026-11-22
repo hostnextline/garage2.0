@@ -24,8 +24,10 @@ export { net, outbox, uuid, type NetState };
 /** realtime can be switched off (the demo has no realtime server); storage 'memory' keeps nothing on the device */
 export const syncOptions: { realtime: boolean; storage?: 'idb' | 'memory' } = { realtime: REALTIME };
 
-/** told once a row has reached the server (api.ts: a new or renamed customer goes to GoHighLevel) */
-export const sentHooks: { customer?: (id: string) => void } = {};
+/** told once a row has reached the server (api.ts: a new or renamed customer goes to GoHighLevel), once an operation
+    has (`rpc`) and once a change of a row has (`update`) (api.ts: « Vraies routes », the place of a booking, a move or an
+    appointment's new position is measured). A hook never holds back the queue. */
+export const sentHooks: { customer?: (id: string) => void; rpc?: (e: OutboxEntry) => void; update?: (e: OutboxEntry) => void } = {};
 /** set by auth.ts: nothing may be changed during « Voir l'app comme… »; this person sees only part of the jobs */
 export const accessHooks: { guard?: () => void; narrow?: () => boolean } = {};
 
@@ -50,6 +52,8 @@ export async function startSync(client: SupabaseClient, userId: string) {
     storage: syncOptions.storage ?? 'idb',
     notify: (t, rows) => { for (const fn of listeners) fn(t, rows); },
     sent: (x) => {
+      if (x.kind === 'rpc') { try { sentHooks.rpc?.(x); } catch { /* never holds back the queue */ } }
+      if (x.kind === 'update') { try { sentHooks.update?.(x); } catch { /* never holds back the queue */ } }
       if (x.table !== 'customers' || !x.id) return;
       if (x.kind === 'insert' || (x.values && ['first_name', 'last_name', 'phone'].some((k) => k in x.values!))) sentHooks.customer?.(x.id);
     },
@@ -97,7 +101,7 @@ export function deleteRow(t: TableName, id: string, opts: MutateOpts = {}) {
   return updateRow(t, id, { deleted_at: new Date().toISOString() }, opts);
 }
 /** a server operation (booking, invoice number, payment…). Waits for the answer when online; queued when not. */
-export async function callRpc<T = unknown>(name: string, args: Record<string, unknown>, opts: MutateOpts & { queue?: boolean; noOp?: boolean } = {}): Promise<RpcAnswer<T>> {
+export async function callRpc<T = unknown>(name: string, args: Record<string, unknown>, opts: MutateOpts & { queue?: boolean; noOp?: boolean; /** false: a preview's rows are never kept (they are the trial's) */ apply?: boolean } = {}): Promise<RpcAnswer<T>> {
   return live().send.callRpc<T>(name, args, opts);
 }
 /** a change of the person's own account (language, phone, switches): sent now; without signal it is kept and sent later;

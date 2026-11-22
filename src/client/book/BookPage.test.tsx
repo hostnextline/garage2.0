@@ -203,3 +203,26 @@ describe('Réserver en ligne, when something goes wrong', () => {
     expect(calls.some((c) => c.action === 'book')).toBe(false);
   });
 });
+
+describe('« Vraies routes » on, an address whose trips could not be measured (decision 6, critic W1)', () => {
+  it('no moment offered and the server says some were left out (unmeasured): its own sentence, never « Aucun moment libre »', async () => {
+    answer = (a) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [], unmeasured: 4 } : {};
+    await toSlots();
+    const said = sp(q('book-none')[0]?.textContent);
+    expect(said).toBe('On ne peut pas proposer de moment en ligne pour cette adresse en ce moment : appelez-nous.');
+    expect(said).not.toContain('Aucun moment libre');
+  });
+  it('nothing left out (switch off, or nothing free): « Aucun moment libre » as before', async () => {
+    answer = (a) => a === 'info' ? info(false) : a === 'slots' ? { ok: true, from: null, days: 14, slots: [] } : {};
+    await toSlots();
+    expect(sp(q('book-none')[0]?.textContent)).toBe('Aucun moment libre dans ces jours-là.');
+  });
+  it('« Voir d’autres dates » on a page that could not be measured: the sentence, and no later fortnight asked', async () => {
+    let n = 0;
+    answer = (a) => a === 'info' ? info(false) : a === 'slots' ? (n++ === 0 ? { ok: true, from: null, days: 14, slots: [{ day: D(2), block: 'pm', near: true }] } : { ok: true, days: 14, slots: [], unmeasured: 2 }) : {};
+    await toSlots();
+    await click(q('book-more')[0]);
+    expect(calls.filter((c) => c.action === 'slots')).toHaveLength(2);
+    expect(sp(q('book-none-new')[0]?.textContent)).toBe('On ne peut pas proposer de moment en ligne pour cette adresse en ce moment : appelez-nous.');
+  });
+});

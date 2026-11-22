@@ -1,7 +1,9 @@
 /* Vue d'ensemble : la journée sur un seul écran (les rendez-vous et la carte). */
 export const overview = {
   title: 'Vue d’ensemble',
-  help: 'Les rendez-vous d’aujourd’hui et la carte. Les numéros sont les mêmes que sur la carte, dans la couleur du camion. Touche un arrêt sur la carte pour le retrouver dans la liste ; touche un rendez-vous pour l’ouvrir.',
+  help: 'Les rendez-vous d’aujourd’hui et la carte. Les numéros sont les mêmes que sur la carte, dans la couleur du camion. Touche un arrêt sur la carte pour le retrouver dans la liste ; touche un rendez-vous pour l’ouvrir. Appui long sur un rendez-vous (à l’ordi : clic droit) : « Appeler », « Itinéraire »…',
+  /* the same for who may move appointments (« Réserver »): « Déplacer » named */
+  helpMove: 'Les rendez-vous d’aujourd’hui et la carte. Les numéros sont les mêmes que sur la carte, dans la couleur du camion. Touche un arrêt sur la carte pour le retrouver dans la liste ; touche un rendez-vous pour l’ouvrir. Appui long sur un rendez-vous (à l’ordi : clic droit) : « Déplacer », « Appeler », « Itinéraire »…',
   counts: '{booked} à faire, {live} en cours, {done} terminés',
   inBlock: { one: '{n} rendez-vous', other: '{n} rendez-vous' },
   stop: 'Arrêt {n}',

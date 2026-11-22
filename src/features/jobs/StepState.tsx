@@ -1,16 +1,17 @@
 /* What takes the red button's place when there is nothing to press: done (time, « paiera plus tard », what is left to
-   collect, the truck's next job for its mechanic), closed (stamp, reason, « Rouvrir »), later (the day), or « C'est X qui
+   collect, the truck's next job for its mechanic: on the way, the trip's arrival or no time, never the plan's), closed (stamp, reason, « Rouvrir »), later (the day), or « C'est X qui
    fait cette job ». */
 import { CalendarClock, RotateCcw, CircleCheckBig } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { Button, Stamp } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { invoiceOf, jobsOn } from '../../data/select';
+import { invoiceOf, jobsOn, activeTrip } from '../../data/select';
+import { enRouteTicket } from '../../domain/jobs/when';
 import type { NextStep } from '../../domain/jobs/steps';
 import { isOpen } from '../../domain/jobs/billing';
 import type { JobRights } from '../../domain/jobs/rights';
-import { dayInSentence, blockRange, clockOf, driverName, capFirst } from '../../shared/jobs/select';
+import { dayInSentence, blockRange, clockOf, driverName, capFirst, seen } from '../../shared/jobs/select';
 import { doReopen } from '../../shared/jobs/actions';
 import { JobTicket } from '../../shared/jobs/JobTicket';
 
@@ -32,7 +33,7 @@ export function StepState(p: { job: Job; step: NextStep; rights: JobRights; onCo
           </div>
           {!!s.due && p.rights.invoice && inv?.status === 'issued' && <Button onClick={p.onCollect} data-testid="job-collect">{t('jobs.done.collect')}</Button>}
         </section>
-        {next && <div class="stack jobs-next"><h3 class="jobs-h">{t('jobs.done.next')}</h3><JobTicket job={next} /></div>}
+        {next && <div class="stack jobs-next"><h3 class="jobs-h">{t('jobs.done.next')}</h3><JobTicket job={enRouteTicket(next, seen(next).status, activeTrip(next.id)?.eta_at)} /></div>}
       </div>
     );
   }

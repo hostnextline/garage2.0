@@ -47,7 +47,7 @@ export function provinceCode(state: string | null | undefined, postal?: string |
 }
 
 /* the street type the Québec way: lower case, the usual short forms (rue Graham, boul. Décarie, ch. de la Côte-des-Neiges) */
-const GENERIC: Record<string, string> = {
+export const GENERIC: Record<string, string> = {
   rue: 'rue', avenue: 'av.', boulevard: 'boul.', chemin: 'ch.', place: 'place', route: 'route', rang: 'rang', montee: 'montée',
   cote: 'côte', croissant: 'croissant', allee: 'allée', impasse: 'impasse', terrasse: 'terrasse', promenade: 'promenade',
   carre: 'carré', square: 'square', autoroute: 'autoroute', cours: 'cours', voie: 'voie', passage: 'passage', sentier: 'sentier',
@@ -67,6 +67,17 @@ export function metres(lat1: number, lng1: number, lat2: number, lng2: number): 
   const r = Math.PI / 180;
   const a = Math.sin(((lat2 - lat1) * r) / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lng2 - lng1) * r) / 2) ** 2;
   return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+/** two answers with the same key that are not one place: both have a position, 250 m apart or more (locate.ts `near`).
+    They both stay, so « Laquelle est la bonne ? » is asked as before (final-off L2); the second one's key gets « ~n » */
+export const apart = (a: Suggestion, b: Suggestion): boolean => a.place.lat != null && a.place.lng != null && b.place.lat != null && b.place.lng != null
+  && metres(a.place.lat, a.place.lng, b.place.lat, b.place.lng) >= 250;
+/** the key of an address (`Suggestion.key`): its first line and its town, folded; an apostrophe (’ or ') and a hyphen
+    count as a space, so TomTom's « Rue de l'Église », « Jean Talon Est » and Photon's « Rue de l’Église »,
+    « Jean-Talon Est » are the same door once (review-places R8). Used by tomtom.ts too */
+export function placeKey(line: string, city: string | null | undefined): string {
+  const k = (s: string | null | undefined) => fold(s).replace(/['’`´‘\-‐‑–—]/g, ' ').replace(/\s+/g, ' ').trim();
+  return `${k(line)}|${k(city)}`;
 }
 /** a street short enough for its middle to stand for any door on it (the planner counts driving time) */
 const SHORT_STREET_M = 1500;
@@ -94,7 +105,8 @@ export function suggestionOf(f: PhotonFeature, typedCivic: string | null = null)
   const prov = provinceCode(str(p.state), pc);
   const line = civic ? `${civic} ${street}` : street;
   // OpenStreetMap's postal codes are often wrong in Canada (the last 3 characters above all): the code is never written in
-  // the address nor proposed; it only helps to recognise the area (`place.postal_code`, read by locate.ts, never saved)
+  // the address nor proposed; it helps to recognise the area (`place.postal_code`, read by locate.ts). The team app never
+  // saves it (addressEdit.ts picked); the customer's booking page sends a whole code only (book-state.ts placeOf)
   const tail = [city, prov].filter(Boolean).join(', ');
   let exact = !!house;
   let pos = lat != null && lng != null ? { lat, lng } : null;
@@ -110,7 +122,7 @@ export function suggestionOf(f: PhotonFeature, typedCivic: string | null = null)
     label: name || line,
     sub: name ? [line, tail].filter(Boolean).join(', ') : tail,
     exact,
-    key: `${fold(line)}|${fold(city || '')}`,
+    key: placeKey(line, city),
     house,
     street,
     areas: [str(p.city), str(p.district), str(p.locality), str(p.county)].filter(Boolean)
@@ -125,8 +137,13 @@ export function suggestionsOf(json: unknown, query: string): Suggestion[] {
   const all = feats.map((f) => suggestionOf(f, civic)).filter((s): s is Suggestion => !!s);
   // the exact door first, then the streets; the same door in the same city only once
   all.sort((a, b) => Number(b.exact) - Number(a.exact));
-  const seen = new Set<string>();
-  return all.filter((s) => (seen.has(s.key) ? false : (seen.add(s.key), true)));
+  const out: Suggestion[] = [];
+  for (const s of all) {
+    const twins = out.filter((x) => x.key.split('~')[0] === s.key);
+    if (twins.some((x) => !apart(x, s))) continue;
+    out.push(twins.length ? { ...s, key: `${s.key}~${twins.length}` } : s);
+  }
+  return out;
 }
 
 /** what is sent to Photon: the street line (no unit, no postal code, which it reads badly) */

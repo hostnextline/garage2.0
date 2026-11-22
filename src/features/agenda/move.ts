@@ -1,35 +1,39 @@
 /* Moving a booked job from the agenda: dropped on another block (the week), on a time of the grid, or on a day and a
    window picked in the sheet (MoveWindowSheet). One flow for all three: « garde-route » (too much road that day),
    the question in words, move_job (the server checks the room and re-plans), then the customer's text when what they
-   were told changed (moveRules.ts). A move kept on the phone texts once the server has it. */
+   were told changed (moveRules.ts). A move kept on the phone texts once the server has it.
+   « exact move » (Hassan, 2026-11-21: « move exactly where I point, the rest stays the same »; STATE.md A1–A5): a time
+   pointed (a unit of the grid, a window row that showed its arrival) goes through the one flow of shared/jobs/exactMove
+   (the preview, ONE question, « garde-route », the move to that very minute, never kept on the phone); the block dropped
+   on the grid stays where it was let go meanwhile (`landings`, drawn by TimeGrid) and the server's rows then leave it
+   there. A block of the week, « Flexible » and a window row without an arrival move as before. */
 import { signal } from '@preact/signals';
 import { moveJob, suggestBlocks, suggestWindows, errorMessage, type Suggestion } from '../../data/api';
-import { customer as customerRow, job as jobRow, settings, windowOf } from '../../data/select';
-import { outboxList, whenDone } from '../../data/sync';
+import { PICK_TRUCK } from '../../data/exact';
+import { customer as customerRow, job as jobRow, settings, windowOf, roadsOn, daySpan } from '../../data/select';
+import { WARM_MS } from '../../data/roads';
 import type { Job } from '../../data/types';
 import { t, lang } from '../../lib/i18n';
-import { today, type BlockKey, type Day } from '../../lib/dates';
+import { today, clock, type BlockKey, type Day } from '../../lib/dates';
 import { ask, toast } from '../../ui';
-import { windowPhrase } from '../../domain/moment/words';
 import { farInfo, farLimits, farQuestion, momentsByKey } from '../../domain/moment/logic';
 import { notifyCustomer, wantsText } from '../../shared/moment/notify';
 import { jobPerson } from '../../domain/jobs/words';
-import { moveQuestion, winShort } from './layout';
+import { moveQuestion } from './layout';
 import { moveOutcome, textAfterMove, toldChanged, dropTruck, dropTells, type MoveOutcome } from '../../domain/moment/moveRules';
+import { movesWaiting, setWaiting as waiting, moveSettled } from '../../shared/jobs/moving';
+import { moveAt, doneWords, type ExactDone } from '../../shared/jobs/exactMove';
+import { windowRowAt } from '../../domain/moment/exactAt';
+
+/* the moves kept on the phone and their end: shared with the lists of a truck's stops (shared/jobs/moving.ts), read
+   from here by the agenda as before */
+export { movesWaiting, moveSettled };
+export type { Settled } from '../../shared/jobs/moving';
 
 /** the job waiting for its new window (the sheet is open), or null. Only its id: the sheet reads the live row.
     `farDone`: the « garde-route » question was already asked for that day (a drop on the time grid that did not fit):
     the sheet does not ask it a second time. */
 export const windowMove = signal<{ jobId: string; day: Day; farDone?: true } | null>(null);
-/** the jobs whose move waits on this phone for the network: not dragged again meanwhile (a second, a third move would
-    be queued behind it) */
-export const movesWaiting = signal<ReadonlySet<string>>(new Set());
-function waiting(id: string, on: boolean) {
-  const next = new Set(movesWaiting.value);
-  if (on) next.add(id); else next.delete(id);
-  movesWaiting.value = next;
-}
-
 /** the windows still possible for this job on that day, the best first (the job's own place left out of the count) */
 export function windowsFor(j: Job, day: Day): Promise<Suggestion[]> {
   const c = customerRow(j.customer_id);
@@ -44,44 +48,36 @@ export type FarAsk = ReturnType<typeof farQuestion>;
     pick does not start the wait); never rejects (no answer: no warning, the same as an older server, which sends no
     score). The few seconds' wait starts at the pick (moveToWindow). */
 export function farCheckDay(j: Job, day: Day): Promise<FarAsk> { return farAsked(j, day, 'day'); }
+/** when each question was asked of the server (« Vraies routes »: its wait also counts the address's measure) */
+const askedAt = new WeakMap<Promise<FarAsk>, number>();
 function farAsked(j: Job, day: Day, block: BlockKey): Promise<FarAsk> {
   const c = customerRow(j.customer_id);
   const lat = j.lat ?? c?.lat ?? null, lng = j.lng ?? c?.lng ?? null;
   if (lat == null || lng == null) return Promise.resolve(null);
   const need = !!j.needs_machine;
-  return suggestBlocks(lat, lng, j.duration_min, day, 1, j.id, need, need ? null : j.vehicle_kind ?? null)
+  const p = suggestBlocks(lat, lng, j.duration_min, day, 1, j.id, need, need ? null : j.vehicle_kind ?? null)
     .then((list) => farQuestion(farInfo(momentsByKey(list).get(`${day}|${block}`), farLimits(settings.value.booking), lang.value), { day, block }, 'move'))
     .catch(() => null);
+  askedAt.set(p, Date.now());
+  return p;
 }
-/** the answer, or null when it does not come within a few seconds */
-const farWait = (asked: Promise<FarAsk>): Promise<FarAsk> => Promise.race([asked, new Promise<null>((r) => setTimeout(() => r(null), FAR_WAIT_MS))]);
-/** the question to ask when the place puts too much road in the truck's day (null: nothing to ask). Asked of the
-    server while the person reads the first question; with no answer in a few seconds (no signal, slow), the move goes
-    on as before: the server refuses nothing on that ground. */
+/** the answer, or null when it does not come within a few seconds. The wait starts NOW (after the person answered the
+    first question, never before it: request-flows risk 2, review-moments H4). « Vraies routes » on: the address is
+    measured before the planner is asked (up to WARM_MS from the ask), so the planner still gets its few seconds after
+    that wait: the question never vanishes because the measure took most of them. */
+function farWait(asked: Promise<FarAsk>): Promise<FarAsk> {
+  const now = Date.now();
+  const at = askedAt.get(asked);
+  const until = Math.max(now + FAR_WAIT_MS, roadsOn.peek() && at != null ? at + WARM_MS + FAR_WAIT_MS : 0);
+  let tm: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([asked, new Promise<null>((r) => { tm = setTimeout(() => r(null), until - now); })]).finally(() => clearTimeout(tm));
+}
+/** the question to ask when the place puts too much road in the truck's day (null: nothing to ask), asked now; with no
+    answer in a few seconds (no signal, slow), the move goes on as before: the server refuses nothing on that ground. */
 function farCheck(j: Job, day: Day, block: BlockKey): Promise<FarAsk> { return farWait(farAsked(j, day, block)); }
 
 /* ---------- the move itself ---------- */
-/** how a move kept on the phone ended: answered by the server (`done`, its answer), refused, or already gone from the
-    outbox before anyone could wait for it (`gone`: the phone's row is then what the server wrote) */
-export type Settled = { kind: 'done'; data: unknown } | { kind: 'refused' } | { kind: 'gone' };
-const pendingMove = (list: { op: string; kind: string; rpc?: string; state?: string; args?: Record<string, unknown> }[], id: string) =>
-  list.filter((e) => e.kind === 'rpc' && e.rpc === 'move_job' && e.state === 'pending' && e.args?.p_job === id).pop();
-/** waits for the move of this job kept on the phone to leave it. The send may finish between reading the outbox and
-    starting to wait (then the wait would never be answered): the outbox is read again once the wait is set, and an
-    entry gone (sent) or refused meanwhile ends it at once. Never rejects: an unreadable outbox counts as « gone ». */
-export async function moveSettled(id: string): Promise<Settled> {
-  try {
-    const entry = pendingMove(await outboxList(), id);
-    if (!entry) return { kind: 'gone' };
-    const answer = whenDone(entry.op).then((data): Settled => ({ kind: 'done', data }), (): Settled => ({ kind: 'refused' }));
-    const again = (await outboxList()).find((e) => e.op === entry.op);
-    if (!again) return { kind: 'gone' };
-    if (again.state === 'failed') return { kind: 'refused' };
-    return await answer;
-  } catch {
-    return { kind: 'gone' };
-  }
-}
+/* (« Settled » and moveSettled, the end of a move kept on the phone: shared/jobs/moving.ts, re-exported above) */
 /** does the « moved » text go? move_job's own `tell` (« what the customer was told is no longer true »: day, block or
     window, read on the server's row) decides when the answer has it (R85); a server without it (the live one before
     the rebuild) leaves it to the rows, as before (textAfterMove) */
@@ -134,14 +130,38 @@ async function waitOnly(id: string) {
   try { await moveSettled(id); } finally { waiting(id, false); }
 }
 
+/** what an exact move gave, said: the message (the late customers named: A5), the customer's text when what they were
+    told changed (the server's `tell`), or the refusal (null: it is the caller's to say). True when it moved. */
+function exactSaid(j: Job, day: Day, d: ExactDone, refused?: (e: unknown) => boolean): boolean {
+  if (d.kind === 'stopped') return false;
+  if (d.kind === 'refused') {
+    if (!refused?.(d.error)) toast(errorMessage(d.error), { kind: 'bad' });
+    return false;
+  }
+  const o = moveOutcome(d.r, j.id);
+  if (o.kind === 'unchanged') { toast(t('agenda.move.unchanged')); return true; }
+  toast(doneWords(d, day), { kind: 'ok', ...(d.late.length || d.real != null ? { ms: 8000 } : {}) });
+  if (o.kind === 'moved' && textGoes(o, d.r.data, j, o.after ?? jobRow(j.id), wantsText('moved', j.id))) void notifyCustomer('moved', j.id);
+  return true;
+}
+
 /** moves to a day with the window chosen (or flexible), texts; true when the sheet can close (moved, nothing to
-    change, or kept on the phone) */
-export async function moveToWindow(j: Job, day: Day, win: { start: number } | { flex: true }, farAsk?: Promise<FarAsk> | null): Promise<boolean> {
+    change, or kept on the phone). A row that showed its arrival (`at`, A1) goes there exactly, through the one flow
+    (its own truck; `truck`: the vehicle the server offered for that window, taken only when its own does not work) */
+export async function moveToWindow(j: Job, day: Day, win: { start: number; at?: number | null; truck?: string | null } | { flex: true }, farAsk?: Promise<FarAsk> | null): Promise<boolean> {
   // `farAsk`: the « garde-route » question asked when the sheet opened (null: already asked before the sheet opened);
   // not given: asked now
+  // the minute sent gives the row's window (review F1: never another window told than the row tapped)
+  const at = 'start' in win ? windowRowAt(win.start, win.at, daySpan.peek(), windowOf) : null;
+  if ('start' in win && at != null) {
+    const sms = wantsText('moved', j.id) && dropTells(j, day, windowOf(at)[0]);
+    const d = await moveAt({ job: j, day, truck: null, at, confirm: false, sms, offered: win.truck ?? null,
+      far: () => (farAsk === undefined ? farCheck(j, day, 'day') : farAsk ? farWait(farAsk) : Promise.resolve(null)) });
+    return exactSaid(j, day, d);
+  }
   const far = farAsk === undefined ? await farCheck(j, day, 'day') : farAsk && await farWait(farAsk);
   if (far && !(await ask(far))) return false;
-  const r = await send(j, () => moveJob(j.id, day, 'day', null, win));
+  const r = await send(j, () => moveJob(j.id, day, 'day', null, 'flex' in win ? win : { start: win.start }));
   if (!r.ok) toast(errorMessage(r.error), { kind: 'bad' });
   return r.ok;
 }
@@ -151,14 +171,15 @@ export async function moveFlow(j: Job, to: { day: Day; block: BlockKey }): Promi
   if (to.block === 'day') { windowMove.value = { jobId: j.id, day: to.day }; return false; }
   const name = jobPerson(j);
   const sms = wantsText('moved', j.id);
-  const far = farCheck(j, to.day, to.block);
+  // asked of the server while the person reads the first question; its few seconds' wait starts after the answer
+  const far = farAsked(j, to.day, to.block);
   const ok = await ask({
     title: moveQuestion(name, { day: j.day, block: j.block }, to, today(), lang.value),
     text: [t('agenda.move.text'), sms ? t('agenda.move.textSms', { name: name || t('agenda.move.someone') }) : ''].filter(Boolean).join(' '),
     ok: t('agenda.move.ok')
   });
   if (!ok) return false;
-  const farAsk = await far;
+  const farAsk = await farWait(far);
   if (farAsk && !(await ask(farAsk))) return false;
   const r = await send(j, () => moveJob(j.id, to.day, to.block));
   if (!r.ok) toast(errorMessage(r.error), { kind: 'bad' });
@@ -173,40 +194,57 @@ export function refusalCode(e: unknown): string {
   const err = (e || {}) as { hint?: string; code?: string };
   return String(err.hint || err.code || '');
 }
-/** is the job already there? (the same day, the same window, and no other truck asked: nothing to move, the exact
-    arrival is the planner's) */
-export function sameWindowPlace(j: Pick<Job, 'day' | 'block' | 'win_start' | 'truck_id'>, to: { day: Day; truck: string | null; start: number }): boolean {
-  return j.block === 'day' && j.day === to.day && j.win_start === to.start && (to.truck == null || to.truck === j.truck_id);
+/** is the job already there? The same day, the same planned arrival (a new quarter hour inside the same window IS a
+    move now: « exact move », A3) and no other truck asked */
+export function samePlace(j: Pick<Job, 'day' | 'block' | 'eta_min' | 'truck_id'>, to: { day: Day; truck: string | null; at: number }): boolean {
+  return j.block === 'day' && j.day === to.day && j.eta_min === to.at && (to.truck == null || to.truck === j.truck_id);
 }
-/** a booked job let go on a unit of the grid: asks, then moves it to that day with the window that goes with that
-    arrival time (on the column's truck when it is another one: dropTruck), texts when the customer has something new
-    to hear. When the server answers that it does not fit there, the sheet of the windows still possible that day
-    opens. True when the job moved. */
+/** A3: the job let go on the grid, held where it was dropped through the question, the preview and the send (the grid
+    draws it there and dims the job at its old place); gone once the server's rows are in (they put it at that very
+    minute) or the move stopped. `column`: the column's truck (the day view), null (the week). One per job (review F2: a
+    second job let go while the first one's move is still asked or sent, with no question on screen, must not let the
+    first one go, nor make it draggable again): each held until ITS flow ends. */
+export interface Landing { jobId: string; day: Day; column: string | null; minute: number; duration: number }
+export const landings = signal<ReadonlyMap<string, Landing>>(new Map());
+/** the job held where it was let go (null: not held) */
+export const landingOf = (jobId: string): Landing | null => landings.value.get(jobId) ?? null;
+function hold(h: Landing) { const m = new Map(landings.peek()); m.set(h.jobId, h); landings.value = m; }
+/** lets the job go, only when it is still held by this flow (`h`: the very landing it put there) */
+function letGo(h: Landing) {
+  if (landings.peek().get(h.jobId) !== h) return;
+  const m = new Map(landings.peek()); m.delete(h.jobId); landings.value = m;
+}
+/** a booked job let go on a unit of the grid: moved to arrive at THAT minute (« exact move »), on the column's truck
+    (the day view; the week: its own), with ONE question (shared/jobs/exactMove: the preview first; somebody late, the
+    truck cannot be there, not measured…), « garde-route », the move, the message (the late customers named) and the
+    customer's text when the window or the day changed. When the server answers that it does not fit there (or its
+    truck does not work that day), the sheet of the windows still possible that day opens. True when the job moved. */
 export async function moveToTime(j: Job, day: Day, column: string | null, minute: number): Promise<boolean> {
   const l = lang.value;
-  const win = windowOf(minute);
   const name = jobPerson(j);
   const who = name || t('agenda.move.someone');
-  if (sameWindowPlace(j, { day, truck: column, start: win[0] })) {
-    toast(t('agenda.move.sameWin', { name: who.charAt(0).toUpperCase() + who.slice(1), win: winShort(win, l) }));
+  if (samePlace(j, { day, truck: column, at: minute })) {
+    toast(t('agenda.move.sameTime', { name: who.charAt(0).toUpperCase() + who.slice(1), time: clock(minute, l) }));
     return false;
   }
-  const sms = wantsText('moved', j.id) && dropTells(j, day, win[0]);
-  const when = windowPhrase(day, win, today(), l);
-  const far = farCheck(j, day, 'day');
-  const ok = await ask({
-    title: t('agenda.move.timeQuestion', { name: who, when: l === 'en' && !/^(Today|Tomorrow|Yesterday)\b/.test(when) ? when : when.charAt(0).toLowerCase() + when.slice(1) }),
-    text: [t('agenda.move.timeText'), sms ? t('agenda.move.textSms', { name: who }) : ''].filter(Boolean).join(' '),
-    ok: t('agenda.move.ok')
-  });
-  if (!ok) return false;
-  const farAsk = await far;
-  if (farAsk && !(await ask(farAsk))) return false;
-  const r = await send(j, () => moveJob(j.id, day, 'day', dropTruck(j, column), { start: win[0] }));
-  if (r.ok) return true;
-  if (FULL_CODES.includes(refusalCode(r.error))) {
-    toast(t('agenda.move.timeFull'));
-    windowMove.value = { jobId: j.id, day, farDone: true };
-  } else toast(errorMessage(r.error), { kind: 'bad' });
-  return false;
+  const sms = wantsText('moved', j.id) && dropTells(j, day, windowOf(minute)[0]);
+  // asked of the server while the person reads the first question; its few seconds' wait starts after the answer
+  const far = farAsked(j, day, 'day');
+  let held: Landing = { jobId: j.id, day, column, minute, duration: j.duration_min };
+  hold(held);
+  try {
+    const d = await moveAt({ job: j, day, truck: dropTruck(j, column), at: minute, confirm: true, sms, far: () => farWait(far),
+      // « Mettre à … »: the held block goes to the minute the truck can keep
+      onAt: (m) => { if (landings.peek().get(j.id) === held) { held = { ...held, minute: m }; hold(held); } } });
+    return exactSaid(j, day, d, (e) => {
+      const code = refusalCode(e);
+      if (!FULL_CODES.includes(code) && code !== PICK_TRUCK) return false;
+      toast(code === PICK_TRUCK ? errorMessage(e) : t('agenda.move.timeFull'));
+      windowMove.value = { jobId: j.id, day, farDone: true };
+      return true;
+    });
+  } finally {
+    // the server's rows are in (or nothing moved): the block is drawn where it really is
+    letGo(held);
+  }
 }

@@ -49,6 +49,9 @@ export const agenda: typeof fr = {
     clear: 'Forget the copy',
     hint: 'Right-click (on a phone: press and hold) a job to copy it, then a block to paste it.',
     copiedDay: '{name}’s appointment copied. Right-click (or press and hold) a day, or “Paste here”.',
+    /* copied from a list of a truck's stops (Map, Overview, Today): it is pasted in the agenda */
+    copiedList: '{name}’s appointment copied. In the agenda: press and hold (on a computer: right-click) a block, or “Paste here”.',
+    copiedListDay: '{name}’s appointment copied. In the agenda: press and hold (on a computer: right-click) a day, or “Paste here”.',
     bannerTextDay: 'Right-click (or press and hold) a day, or tap “Paste here”, to make it a new appointment. You check everything before booking.',
     hintDay: 'Right-click (on a phone: press and hold) a job to copy it, then a day to paste it.'
   },
@@ -140,10 +143,8 @@ export const agenda: typeof fr = {
     winBest: 'Best choice',
     winCurrent: 'Current window',
     winFlexText: 'The customer is free all day: the 4-hour window is confirmed the evening before.',
-    timeQuestion: 'Move {name}’s job: {when}?',
-    timeText: 'The app puts the stop in this window and picks the exact arrival time from the route.',
     timeFull: 'It does not fit at that time. Pick one of the windows still possible.',
-    sameWin: '{name} already has this window ({win}). The app picks the exact arrival time from the route.',
+    sameTime: '{name} already arrives at {time}.',
     pastTime: 'That time has already passed: pick a time to come.',
     waiting: 'Waiting to be sent',
     waitingText: 'The move is kept on the phone: it goes as soon as the network is back.'

@@ -11,7 +11,7 @@ import { truckLabel, staffName } from '../../data/select';
 import { setJobDuration, errorMessage } from '../../data/api';
 import type { JobRights } from '../../domain/jobs/rights';
 import { bookedBy } from '../../shared/jobs/bookedBy';
-import { dayWord, blockRange, clockOf, isWindowJob, outsideWindow, wt, capFirst } from '../../shared/jobs/select';
+import { dayWord, blockRange, clockOf, isWindowJob, outsideWindow, wt, capFirst, etaUnsure } from '../../shared/jobs/select';
 
 function DurationEditor(p: { job: Job }) {
   const { job: j } = p;
@@ -43,7 +43,8 @@ export function MomentPanel(p: { job: Job; rights: JobRights; onMove: () => void
   const booked = j.status === 'booked';
   const byWho = bookedBy(j, staffName(j.created_by), l);
   const stop = j.stop_order != null && j.status !== 'cancelled' && j.status !== 'no_show'
-    ? (j.eta_min != null && booked ? t('jobs.moment.stopValue', { n: j.stop_order, time: clock(j.eta_min, l) }) : String(j.stop_order)) : null;
+    ? (booked && etaUnsure(j) ? t('jobs.moment.stopValueUnsure', { n: j.stop_order })
+      : j.eta_min != null && booked ? t('jobs.moment.stopValue', { n: j.stop_order, time: clock(j.eta_min, l) }) : String(j.stop_order)) : null;
   const late = outsideWindow(j);
   return (
     <Panel title={t('jobs.moment.title')} help={booked && rights.duration ? wt(j, 'jobs.moment.help') : undefined} class="jobs-moment" data-testid="job-moment">

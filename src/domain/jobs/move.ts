@@ -18,3 +18,23 @@ export function moveTextGoes(r: { queued: boolean; data?: unknown }, before: Tol
   const o = moveOutcome(r, before.id);
   return textAfterMove(o, before, o.kind === 'moved' ? o.after ?? deviceAfter : null, wanted);
 }
+
+/** an answer of move_preview says every trip of that day is measured (unmeasured = 0). With a trip not measured the
+    server counts a fixed time (booking.unknown_min) for it, so its arrival times are not said as facts (CONTRACT §0,
+    review-sheets M1); null (the server's switch off, an older server): not said either. */
+export function timesMeasured(answer: { unmeasured: number | null }): boolean { return answer.unmeasured === 0; }
+
+/** « Changer de camion » with the real roads on: what the server says of this appointment on that truck (move_preview
+    with only it: the very move_job, undone): it fits, with its arrival there (null when the answer has none, or while a
+    trip of that day is not measured: `unmeasured` true then, so the sheet says why), or the move would be refused (full,
+    the wrong vehicle for the work, a moment started…). null answer (an older server): nothing said. */
+export function fitOf(answer: { refused: readonly string[]; eta: Readonly<Record<string, number | null>>; unmeasured: number | null; refused_why?: Readonly<Record<string, string>> } | null, jobId: string): { fits: boolean; eta: number | null; unmeasured: boolean; why?: string } | null {
+  if (!answer) return null;
+  if (answer.refused.includes(jobId)) {
+    // why (when the server says it: refused_why): move_job's refusal code (truck_full, needs_truck, block_started…)
+    const why = answer.refused_why?.[jobId];
+    return { fits: false, eta: null, unmeasured: false, ...(why ? { why } : {}) };
+  }
+  if (!timesMeasured(answer)) return { fits: true, eta: null, unmeasured: (answer.unmeasured ?? 0) > 0 };
+  return { fits: true, eta: answer.eta[jobId] ?? null, unmeasured: false };
+}

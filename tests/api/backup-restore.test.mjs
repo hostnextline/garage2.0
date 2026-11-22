@@ -34,9 +34,14 @@ test('backup at night, a mistake in the day, the restore brings back what was lo
   assert.ok(!readFileSync(join(dir, 'donnees', '_resume.json'), 'utf8').includes('secrets'));
   // every table of the garage is in the backup (the Coffre too, Part 24), except the ones that must never be
   const resume = JSON.parse(readFileSync(join(dir, 'donnees', '_resume.json'), 'utf8'));
-  const never = ['secrets', 'rate_limits', 'local_migrations', 'incoming_calls', 'incoming_texts', 'push_subs'];
+  // (drive_times: the road times « drive » measured, a cache asked again; drive_spend: this month's TomTom count, a counter)
+  const never = ['secrets', 'rate_limits', 'local_migrations', 'incoming_calls', 'incoming_texts', 'push_subs', 'drive_times', 'drive_spend'];
   const all = (await q(`select table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'`)).map((r) => r.table_name);
   assert.deepEqual(Object.keys(resume.tables).sort(), all.filter((t) => !never.includes(t)).sort(), 'a new table must be added to TABLES (backup) and ORDRE (restaurer.mjs), or to « never »');
+  // « never » is the function's NOT_BACKED_UP (+ the harness's own local_migrations), said with its reason there
+  const fnText = readFileSync(new URL('../../supabase/functions/backup/handler.ts', import.meta.url), 'utf8');
+  const notBacked = JSON.parse(/export const NOT_BACKED_UP = (\[[^\]]*\])/.exec(fnText)[1].replace(/'/g, '"'));
+  assert.deepEqual([...notBacked, 'local_migrations'].sort(), [...never].sort(), 'backup/handler.ts NOT_BACKED_UP and this list say the same');
   // the day after: a customer deleted for good, another one changed, a new one added
   await q(`delete from public.vehicles where customer_id = $1`, [ids[0]]);
   await q(`delete from public.customers where id = $1`, [ids[0]]);

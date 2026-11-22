@@ -1504,6 +1504,64 @@ step('La carte, n’importe quel jour: ‹ › and the calendar plan the routes 
   await ctx.close();
 });
 
+step('« Déplacer » from the map: the office taps a stop, « Déplacer », another moment; the stop leaves that day’s list, the agenda has it on the new day', async () => {
+  // Hassan (2026-11-21): « stops of the camions, I want to be able to move apts time from here ». A coming weekday Camion
+  // Complet works (no hours of its own written by an earlier step), Julie's appointment in its morning
+  const day = h.sql(`select d::date::text from generate_series(public.local_today() + 2, public.local_today() + 12, interval '1 day') d
+    where extract(dow from d) between 1 and 5
+      and exists (select 1 from public.truck_week w where w.truck_id = '${T.complet}' and w.dow = extract(dow from d) and jsonb_array_length(w.ranges) > 0)
+      and not exists (select 1 from public.truck_days x where x.truck_id = '${T.complet}' and x.day = d::date) limit 1`);
+  assert.ok(day, 'a coming day Camion Complet works');
+  const job = h.sql(`insert into public.jobs (customer_id, day, block, status, truck_id, duration_min, stop_order, address, lat, lng)
+    values ('${julie}', '${day}', 'am', 'booked', '${T.complet}', 45, 1, '1250 rue Graham, Mont-Royal, QC', 45.5205, -73.6489) returning id`);
+  const { page, ctx } = await h.openW({ kind: 'desktop' });
+  await h.signIn(page, who.nadia.email, PW);
+  await page.goto(h.APP + `#/map?day=${day}`);
+  const stop = page.getByTestId(`stop-${job}`);
+  await stop.waitFor({ timeout: 20000 });
+  // a plain tap still chooses the stop: its card, now with « Déplacer » beside « Ouvrir la job »
+  await stop.click();
+  await page.getByTestId('map-card').waitFor();
+  await page.getByTestId('map-move').click();
+  const sheet = page.getByTestId('move-sheet');
+  await sheet.waitFor({ timeout: 15000 });
+  assert.match(page.url(), /#\/map\?day=/, 'the sheet opened on the map, not on the appointment’s screen');
+  assert.equal(await page.getByTestId('job-screen').count(), 0);
+  // another moment: the first block with room on another day (not one marked « loin »)
+  const cell = await until2(() => page.evaluate((d) => {
+    const c = [...document.querySelectorAll('[data-testid^="bp-cell-"].is-ok:not(.is-far):not([aria-disabled])')].find((el) => !el.getAttribute('data-testid').startsWith(`bp-cell-${d}-`));
+    return c ? c.getAttribute('data-testid') : '';
+  }, day), Boolean, 20000);
+  assert.ok(cell, 'a block with room on another day');
+  const [, newDay, newBlock] = /^bp-cell-(\d{4}-\d{2}-\d{2})-(am|pm|eve)$/.exec(cell);
+  await page.getByTestId(cell).click();
+  await h.shot(page, 'e2e-stop-move-sheet');
+  await page.getByTestId('move-ok').click();
+  // « Beaucoup de route ce jour-là »: yes (the move is what is tested here)
+  if (await page.getByTestId('ask-ok').isVisible().catch(() => false)) await page.getByTestId('ask-ok').click();
+  await sheet.waitFor({ state: 'detached', timeout: 20000 });
+  // the short message says where it went
+  assert.match(await page.getByTestId('toast-ok').filter({ hasText: 'Rendez-vous déplacé' }).first().innerText({ timeout: 10000 }), /^Rendez-vous déplacé : /);
+  assert.equal(await until(() => h.sql(`select day || '|' || block from public.jobs where id = '${job}'`), (v) => v === `${newDay}|${newBlock}`, 15000), `${newDay}|${newBlock}`, 'moved by the server');
+  // the stop leaves that day's list by itself; still on the map
+  await stop.waitFor({ state: 'detached', timeout: 15000 });
+  assert.match(page.url(), /#\/map\?day=/);
+  // the « moved » text: texts not connected here, so the message to send by hand rises ON THE MAP (MoveHost has its host;
+  // the map had none before)
+  await page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('text-outcome-message').innerText(), /Julie/);
+  assert.match(page.url(), /#\/map\?day=/, 'the hand-text sheet is on the map');
+  await h.shot(page, 'e2e-stop-move-text');
+  await dismissSheets(page);
+  await h.shot(page, 'e2e-stop-moved');
+  // the agenda has it on the new day
+  await page.goto(h.APP + `#/agenda/${newDay}`);
+  await page.getByTestId(`chip-${job}`).waitFor({ timeout: 15000 });
+  noErrors(page);
+  await ctx.close();
+  h.sql(`update public.jobs set status = 'cancelled', cancelled_at = now() where id = '${job}'`);
+});
+
 step('« Modifier le rendez-vous »: booked with the wrong customer → the right one (her car comes too), then another address; nothing deleted, nothing booked again', async () => {
   const jobId = h.sql(`select id from public.jobs where customer_id = '${julie}' and status = 'booked' and deleted_at is null order by day desc limit 1`);
   assert.ok(jobId, 'a booked appointment of Julie');

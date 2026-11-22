@@ -32,6 +32,9 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
   // « Voir d’autres dates » found nothing in the weeks it looked at (and the horizon is still ahead): said, so the tap is
   // not met with silence (client-r7)
   const [nothingNew, setNothingNew] = useState(false);
+  /** « Vraies routes » on: moments left out because the address's trips could not be measured (decision 6, critic W1):
+      never « Aucun moment libre » then, its own sentence */
+  const [notMeasured, setNotMeasured] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -41,7 +44,7 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
     const today = montrealToday();
     let at = f;
     for (let skipped = 0; ; skipped++) {
-      const r = await attemptCall(() => callBook<{ slots: WebSlot[] }>('slots', { lat: p.place.lat, lng: p.place.lng, services: p.ids, from: at, days: PAGE_DAYS }));
+      const r = await attemptCall(() => callBook<{ slots: WebSlot[]; unmeasured?: number }>('slots', { lat: p.place.lat, lng: p.place.lng, services: p.ids, from: at, days: PAGE_DAYS }));
       if (!alive.current) return;
       if (!r.ok) {
         // a refusal that belongs to another step (address too far, no service) goes back there; anything else is said
@@ -52,11 +55,14 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
         return;
       }
       const got = r.value.slots || [];
+      const hidden = Number(r.value.unmeasured) > 0;
       const page = afterPage(at, got.length, today, info.horizon_days, skipped, MAX_SKIPS);
-      if (page.again) { at = page.next; continue; }
+      // a page whose moments could not be measured is not skipped: later ones would not be measured either
+      if (page.again && !hidden) { at = page.next; continue; }
       setSlots((cur) => (f && cur ? mergeSlots(cur, got) : got));
       setFrom(page.next);
       setNothingNew(!!f && got.length === 0 && !page.end);
+      setNotMeasured(got.length === 0 && hidden);
       if (page.end) setEnd(true);
       setBusy(false);
       return;
@@ -83,7 +89,7 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
         ) : <p class="cl-muted" role="status">{ct(l, 'book.slots.loading')}</p>
       ) : (
         <>
-          {slots.length === 0 && !busy && <div class="cl-stack"><Note kind="info">{ct(l, from && !end ? 'book.slots.none' : 'book.slots.noneMore')}</Note></div>}
+          {slots.length === 0 && !busy && <div class="cl-stack"><Note kind="info" data-testid="book-none">{ct(l, notMeasured ? 'book.slots.notMeasured' : from && !end ? 'book.slots.none' : 'book.slots.noneMore')}</Note></div>}
           {windows && offers.length > 0 && (
             <label class={`bk-flex${flex ? ' is-on' : ''}`}>
               <input type="checkbox" checked={flex} onChange={(e) => { setFlex((e.currentTarget as HTMLInputElement).checked); setOpen(null); }} data-testid="book-flex" />
@@ -148,7 +154,7 @@ export function SlotsStep(p: { l: CLang; info: WebInfo; ids: string[]; place: Pl
           {failed}
           {end && slots.length > 0 && <Note kind="info">{ct(l, 'book.slots.noneMore')}</Note>}
           {(end || (slots.length === 0 && !busy)) && <CallUs garage={p.garage} l={l} primary={false} />}
-          {nothingNew && slots.length > 0 && <Note kind="info" data-testid="book-none-new">{ct(l, 'book.slots.none')}</Note>}
+          {nothingNew && slots.length > 0 && <Note kind="info" data-testid="book-none-new">{ct(l, notMeasured ? 'book.slots.notMeasured' : 'book.slots.none')}</Note>}
           {!end && from && <Button block busy={busy} onClick={() => ask(from)} data-testid="book-more">{ct(l, 'book.slots.more')}</Button>}
         </>
       )}
