@@ -263,7 +263,7 @@ export const jobs: typeof fr = {
     move: 'Move',
     moveTitle: 'Move the appointment',
     moveLead: 'Pick another day or another block.',
-    moveLeadText: 'Pick another day or another block. The customer gets a text with the new time.',
+    moveLeadText: 'Pick another day or another block. Then the app will ask you whether to text the customer.',
     moveOk: 'Move here',
     moved: 'Appointment moved: {when}.',
     /* the message's button after a move from a list of stops: opens the appointment */
@@ -297,6 +297,12 @@ export const jobs: typeof fr = {
     notAt: 'Placed at {real}: the truck couldn’t be there at {time}.',
     someone: 'a customer',
     otherTruck: 'Its truck doesn’t work that day: the job goes on {truck}.'
+  },
+  textAsk: {
+    title: 'Text {name}?',
+    lead: 'The appointment changed. The text will tell them the new time:',
+    send: 'Send the text',
+    skip: 'No text'
   },
   order: {
     open: 'Order of the stops',
@@ -379,7 +385,7 @@ export const jobs: typeof fr = {
     work: { longerHint: 'The truck keeps the time needed in its day.' },
     moment: {
       moveLead: 'Pick another day or another arrival window.',
-      moveLeadText: 'Pick another day or another arrival window. The customer gets a text with the new time.',
+      moveLeadText: 'Pick another day or another arrival window. Then the app will ask you whether to text the customer.',
       help: 'The length lets the truck fit the stops in its day. If the job no longer fits, move it.'
     },
     order: {

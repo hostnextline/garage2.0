@@ -2,8 +2,9 @@
    - « Les camions »: the card still opens the appointment it speaks of (person F5, M15); the hint is phone first and
      names « Déplacer » only for who may move (person F7).
    - « Ma journée »: the NEXT stop has the menu too (person F5, M7).
-   - A move kept on the phone: the message says the text follows, the ticket says « En attente d'envoi », and once the
-     server has it with `tell` the customer's text goes (rules F1, person F1).
+   - A move kept on the phone: the message says the question « Texter … ? » follows, the ticket says « En attente d'envoi »,
+     and once the server has it with `tell` the question is asked (nothing goes by itself: Hassan, 2026-11-22);
+     « Envoyer le texto » sends the customer's text (rules F1, person F1).
    - A move still in the outbox, or a « Je pars » still waiting on the phone: no « Déplacer » (rules F2, F6, M12).
    - The phone's gesture: a long press on a ticket opens the menu (person F5, M5).
    The server (move_job, notify), the outbox and the moment picker are pretended. */
@@ -48,6 +49,7 @@ import { access } from '../../data/auth';
 import { lang } from '../../lib/i18n';
 import { today, addDays } from '../../lib/dates';
 import { movesWaiting } from '../../shared/jobs/moving';
+import { clearTextAsks, TEXT_ASK_DEAD_MS } from '../../shared/jobs/textAsk';
 import type { Access } from '../../data/types';
 
 const DAY = today();
@@ -74,6 +76,15 @@ const click = async (s: string) => { await act(async () => { q(s)!.click(); }); 
 const rightClick = async (el: Element) => { await act(async () => { el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40, button: 2 })); }); };
 const touchEv = (type: string, at: [number, number] | null) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, 'touches', { value: at ? [{ clientX: at[0], clientY: at[1] }] : [] }); return e; };
 const said = () => toasts.value.map((x) => x.text).join(' | ');
+/** « Texter … ? » (Hassan, 2026-11-22: nothing goes by itself): the question is on screen; answered once it takes taps */
+async function answerTextAsk(send: boolean) {
+  // (it waits for the step back in the history of the sheet just closed: up to 700 ms when the browser never answers it)
+  for (let i = 0; i < 60 && !q('text-ask'); i++) await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  expect(q('text-ask')).not.toBeNull();
+  await act(async () => { await new Promise((r) => setTimeout(r, TEXT_ASK_DEAD_MS + 40)); });
+  await click(send ? 'text-ask-send' : 'text-ask-skip');
+  await settle();
+}
 let bump = 0;
 const outboxChanged = async () => { await act(async () => { setNet({ pending: ++bump }); }); await settle(); };
 async function show(who: Access) {
@@ -84,7 +95,7 @@ async function show(who: Access) {
 const closeMenu = () => act(() => { (document.querySelector('.agenda-menu-shade') as HTMLElement | null)?.click(); });
 
 beforeEach(() => { clearAll(); lang.value = 'fr'; srv.moves = []; srv.queued = false; srv.notified = []; srv.outbox = []; srv.done = []; toasts.value = []; location.hash = '#/'; });
-afterEach(async () => { vi.useRealTimers(); closeMenu(); act(() => render(null, box)); clearAll(); access.value = null; movesWaiting.value = new Set(); outbox.value = []; srv.outbox = []; await outboxChanged(); });
+afterEach(async () => { vi.useRealTimers(); act(() => { clearTextAsks(); }); closeMenu(); act(() => render(null, box)); clearAll(); access.value = null; movesWaiting.value = new Set(); outbox.value = []; srv.outbox = []; await outboxChanged(); });
 
 describe('« Les camions »', () => {
   it('the card still opens the appointment it speaks of (its next stop)', async () => {
@@ -114,7 +125,7 @@ describe('« Les camions »', () => {
     await click('today-truck-stops-t1');
     expect(q('today-truck-list-t1')!.querySelector('.today-truck-hint')!.textContent).toBe('Press and hold a stop (on a computer: right-click): “Move”, “Call”, “Directions”…');
   });
-  it('a move kept on the phone: the message says the text follows, the ticket « En attente d’envoi », the text once it is sent', async () => {
+  it('a move kept on the phone: the message says the question « Texter … ? » follows, the ticket « En attente d’envoi », the question once it is sent', async () => {
     garage();
     srv.queued = true;
     srv.outbox = [pendingMove];
@@ -124,14 +135,17 @@ describe('« Les camions »', () => {
     await click('menu-move');
     await click('fake-pick');
     await click('move-ok');
-    expect(said()).toContain('Le texto au client partira quand le déplacement sera envoyé, si l’app reste ouverte.');
+    expect(said()).toContain('Quand le déplacement sera envoyé, l’app te demandera s’il faut texter le client (si l’app reste ouverte).');
     expect(q('today-stop-j1')!.textContent).toContain('En attente d’envoi');
     srv.outbox = [];
     await act(async () => { srv.done.forEach((r) => r({ ok: true, changed: true, tell: true })); });
     await settle(); await settle();
+    expect(q('today-stop-j1')!.textContent).not.toContain('En attente d’envoi');
+    // asked, never sent by itself; « Envoyer le texto »: the text, once
+    expect(srv.notified).toEqual([]);
+    await answerTextAsk(true);
     expect(srv.notified.length).toBe(1);
     expect(srv.notified[0].slice(0, 2)).toEqual(['moved', 'j1']);
-    expect(q('today-stop-j1')!.textContent).not.toContain('En attente d’envoi');
   });
   it('a move still in the outbox (no screen marked it): no « Déplacer », the ticket says why', async () => {
     garage();

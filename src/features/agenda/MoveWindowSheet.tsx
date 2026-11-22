@@ -1,6 +1,7 @@
 /* « Plages d'arrivée »: a booked job dropped on a day (the week grid). The sheet asks the server which 4-hour windows
    are still possible that day (the best first), and offers « Flexible » (no window yet: fixed the evening before).
-   One tap on a window is the move; the customer gets the usual text when the garage sends one for a change. A row that
+   One tap on a window is the move; then the question « Texter … ? » when the garage texts changes (nothing goes by
+   itself: shared/jobs/textAsk). A row that
    says « Arrivée vers 13 h 07 » moves the appointment to arrive at 13 h 07 exactly (« exact move », move.ts).
    It reads the job's live row (another phone may have moved it meanwhile) and closes when the agenda goes away. */
 import { useEffect, useRef, useState } from 'preact/hooks';

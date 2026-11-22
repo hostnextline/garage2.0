@@ -120,7 +120,7 @@ describe('the one question (A2)', () => {
     expect(exact.exactPreview).toHaveBeenCalledWith('j1', DAY, 't1', 780);
     expect(ui.ask).toHaveBeenCalledTimes(1);
     expect(asked().title).toMatch(/^Déplacer la job de Julie : .* à 13 h \?$/);
-    expect(asked().text).toBe('Dit au client : entre 12 h et 16 h. Les autres arrêts gardent leur heure.\nUn texto avertira Julie du changement.');
+    expect(asked().text).toBe('Dit au client : entre 12 h et 16 h. Les autres arrêts gardent leur heure.\nL’app te demandera ensuite s’il faut texter Julie.');
     expect(far).toHaveBeenCalledTimes(1);
     expect(sent()).toEqual(['j1', DAY, 'day', 't1', { start: 720, flex: false, at: 780, lateOk: [] }]);
     expect(d).toMatchObject({ kind: 'moved', at: 780, late: [], real: null });
@@ -179,14 +179,14 @@ describe('the one question (A2)', () => {
     exact.exactPreview.mockResolvedValueOnce(answer({ refused: 'arrive_late', stops: [], earliest: 840, earliestKeep: 840 })).mockResolvedValueOnce(answer({ stops: [stop({ id: 'j1', etaAfter: 840 })] }));
     const d = await moveAt({ job: julie({ win_start: 720, win_end: 960, eta_min: 795 }), day: DAY, truck: 't2', at: 795, confirm: false });
     expect(ui.ask).toHaveBeenCalledTimes(1);
-    expect(asked().text).toBe('Le camion ne peut pas être chez Julie à 13 h 15 : au plus tôt 14 h.\nÀ 14 h, la plage dite au client devient : entre 13 h et 17 h. Un texto avertira Julie du changement.');
+    expect(asked().text).toBe('Le camion ne peut pas être chez Julie à 13 h 15 : au plus tôt 14 h.\nÀ 14 h, la plage dite au client devient : entre 13 h et 17 h. L’app te demandera ensuite s’il faut texter Julie.');
     expect(sent()[4]).toMatchObject({ start: 780, at: 840 });
     expect(d.kind).toBe('moved');
     // the same window (10 h → 10 h 22 inside 9 h – 13 h): nothing more to say, as before
     lang.value = 'en';
     exact.exactPreview.mockResolvedValueOnce(answer({ refused: 'arrive_late', stops: [], earliest: 840, earliestKeep: null })).mockResolvedValueOnce(answer());
     await moveAt({ job: julie({ win_start: 720, win_end: 960, eta_min: 795 }), day: DAY, truck: 't2', at: 795, confirm: false });
-    expect(asked(1).text).toBe('The truck can’t be at Julie’s at 1:15 p.m.: 2 p.m. at the earliest.\nAt 2 p.m., the window the customer is told becomes 1 p.m. to 5 p.m. instead. A text will let Julie know about the change.');
+    expect(asked(1).text).toBe('The truck can’t be at Julie’s at 1:15 p.m.: 2 p.m. at the earliest.\nAt 2 p.m., the window the customer is told becomes 1 p.m. to 5 p.m. instead. The app will then ask you whether to text Julie.');
     lang.value = 'fr';
   });
   it('the truck cannot be there, thrown with no minute: the refusal’s words, nothing moved', async () => {

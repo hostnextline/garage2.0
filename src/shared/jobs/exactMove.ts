@@ -13,8 +13,8 @@
       « Choisir une autre heure »; not measured or no answer → said plainly, « Déplacer quand même » / « Annuler ».
    4. « Garde-route » as before (the caller's question, after this one).
    5. The move, with the stops accepted late; « the day changed since » (late_changed) → the preview again, once.
-   The caller says the result (doneWords: the late customers NAMED, so they can be called; the app texts them nothing) and
-   sends the moved customer's text by today's rule (the server's `tell`). */
+   The caller says the result (doneWords: the late customers NAMED, so they can be called; the app texts them nothing) and,
+   by today's rule (the server's `tell`), asks « Texter … ? » for the moved customer (textAsk.tsx: nothing goes by itself). */
 import { net, refetch, pull } from '../../data/sync';
 import { moveJob } from '../../data/api';
 import { exactPreview, exactAnswer, exactRefusal, ARRIVE_LATE, LATE_CHANGED, PICK_TRUCK, type ExactStop } from '../../data/exact';
@@ -40,7 +40,7 @@ export interface ExactAsk {
   at: number;
   /** a drop on the grid asks its confirm; a sheet's tap is already the choice (false) */
   confirm: boolean;
-  /** the confirm adds « Un texto avertira … du changement. » */
+  /** the confirm adds « L'app te demandera ensuite s'il faut texter … » (the question « Texter … ? » after the move) */
   sms?: boolean;
   /** « Garde-route »: the caller's question (null: nothing to ask), asked once, after this flow's question */
   far?: () => Promise<Question | null>;

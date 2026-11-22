@@ -356,7 +356,7 @@ export const settings: typeof fr = {
     emptyEn: 'This English text is empty: English-speaking customers will get the French text.',
     kinds: {
       booking: { title: 'Appointment confirmed', when: 'When an appointment is booked.' },
-      moved: { title: 'Appointment changed', when: 'When an appointment changes day or block.' },
+      moved: { title: 'Appointment changed', when: 'When an appointment changes day or block. The app asks you first whether to send it.' },
       en_route: { title: 'On the way', when: 'When the mechanic leaves for the customer, with the arrival time.' },
       en_route_no_eta: { title: 'On the way, no time', when: 'When the arrival time is not known.' },
       arrived: { title: 'Mechanic arrived (invoice to pay)', when: 'When the mechanic taps « I have arrived »: the invoice, to pay online during the work.' },

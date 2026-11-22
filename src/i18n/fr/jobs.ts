@@ -282,7 +282,7 @@ export const jobs = {
     move: 'Déplacer',
     moveTitle: 'Déplacer le rendez-vous',
     moveLead: 'Choisis un autre jour ou un autre bloc.',
-    moveLeadText: 'Choisis un autre jour ou un autre bloc. Le client reçoit un texto avec le nouveau moment.',
+    moveLeadText: 'Choisis un autre jour ou un autre bloc. Ensuite, l’app te demandera s’il faut texter le client.',
     moveOk: 'Déplacer ici',
     moved: 'Rendez-vous déplacé : {when}.',
     /* the message's button after a move from a list of stops: opens the appointment */
@@ -319,6 +319,13 @@ export const jobs = {
     someone: 'un client',
     /* its own truck does not work that day: the vehicle the server offered at that time */
     otherTruck: 'Son camion ne travaille pas ce jour-là : la job va sur {truck}.'
+  },
+  /* after a change of an appointment: the « moved » text goes only when the person says so (shared/jobs/textAsk.tsx) */
+  textAsk: {
+    title: 'Texter {name} ?',
+    lead: 'Son rendez-vous a changé. Le texto lui dira le nouveau moment :',
+    send: 'Envoyer le texto',
+    skip: 'Pas de texto'
   },
   /* the « … » sheet */
   order: {
@@ -402,7 +409,7 @@ export const jobs = {
     work: { longerHint: 'Le camion garde le temps qu’il faut dans sa journée.' },
     moment: {
       moveLead: 'Choisis un autre jour ou une autre plage d’arrivée.',
-      moveLeadText: 'Choisis un autre jour ou une autre plage d’arrivée. Le client reçoit un texto avec le nouveau moment.',
+      moveLeadText: 'Choisis un autre jour ou une autre plage d’arrivée. Ensuite, l’app te demandera s’il faut texter le client.',
       help: 'La durée sert au camion pour placer les arrêts dans sa journée. Si la job ne rentre plus, déplace-la.'
     },
     order: {

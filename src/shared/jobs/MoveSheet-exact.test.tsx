@@ -11,9 +11,12 @@ const pick = vi.hoisted(() => ({ next: null as unknown }));
 const api = vi.hoisted(() => ({ moveJob: vi.fn() }));
 const exact = vi.hoisted(() => ({ exactPreview: vi.fn() }));
 const ui = vi.hoisted(() => ({ ask: vi.fn() }));
+const asking = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true), sendText: vi.fn() }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 vi.mock('../../data/exact', async (orig) => ({ ...(await orig<object>()), ...exact }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ...ui }));
+vi.mock('./textAsk', async (orig) => ({ ...(await orig<object>()), askMovedText: asking.askMovedText }));
+vi.mock('./texts', async (orig) => ({ ...(await orig<object>()), sendText: asking.sendText }));
 vi.mock('../moment/BlockPicker', async () => {
   const { h } = await import('preact');
   return { BlockPicker: (p: { onPick: (c: unknown) => void }) => h('button', { type: 'button', 'data-testid': 'fake-pick', onClick: () => p.onPick(pick.next) }, 'pick') };
@@ -56,7 +59,10 @@ beforeEach(() => {
   exact.exactPreview.mockResolvedValue(okAnswer);
   api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, exact: true, tell: false } });
 });
-afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; });
+// Hassan, 2026-11-22 (« the system should ask me first »): « Déplacer » never sends the « moved » text itself
+afterEach(() => { expect(asking.sendText).not.toHaveBeenCalled(); act(() => render(null, box)); clearAll(); access.value = null; });
+const textOn = (on: boolean) => replaceLocal('settings', [{ ...getRow<{ id: string } & Record<string, unknown>>('settings', '1')!, messages: { on: { moved: on } } }] as never);
+const asked = () => asking.askMovedText.mock.calls.map((c) => { expect(c[1]).toEqual({ via: 'jobs' }); return (c[0] as Job).id; });
 
 describe('« Déplacer » sends the time it showed (A1)', () => {
   it('a quarter hour of the calendar: that very minute, its own truck, no second question when nobody is later', async () => {
@@ -125,5 +131,44 @@ describe('no signal (A4) and what points no time', () => {
     await click('move-ok');
     expect(exact.exactPreview).not.toHaveBeenCalled();
     expect(api.moveJob.mock.calls[0]).toEqual(['j1', '2030-01-11', 'day', null, { start: null, flex: true }]);
+  });
+});
+
+describe('« Texter … ? » instead of the text (Hassan, 2026-11-22: « the system should ask me first »)', () => {
+  it('a time shown, the window changed (tell): the question, never the text by itself', async () => {
+    textOn(true);
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, exact: true, tell: true } });
+    await open({ day: '2030-01-11', block: 'day', win_start: 720, win_end: 960, eta: 795 });
+    await click('move-ok');
+    expect(closed).toBe(1);
+    expect(asked()).toEqual(['j1']);
+  });
+  it('a time shown, the customer told nothing new (tell false): nothing asked', async () => {
+    textOn(true);
+    await open({ day: DAY, block: 'day', win_start: 540, win_end: 780, eta: 615 });
+    await click('move-ok');
+    expect(api.moveJob).toHaveBeenCalledTimes(1);
+    expect(asked()).toEqual([]);
+  });
+  it('« Flexible » (the move of before), tell: the question; the switch « Rendez-vous changé » off: nothing asked', async () => {
+    textOn(true);
+    api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: true, tell: true } });
+    await open({ day: '2030-01-11', block: 'day', win_flex: true });
+    expect(q('move-sheet')!.textContent).toContain('Ensuite, l’app te demandera s’il faut texter le client.');
+    await click('move-ok');
+    expect(asked()).toEqual(['j1']);
+    asking.askMovedText.mockClear();
+    textOn(false);
+    await open({ day: '2030-01-12', block: 'day', win_flex: true });
+    expect(q('move-sheet')!.textContent).not.toMatch(/texto|texter/);
+    await click('move-ok');
+    expect(asked()).toEqual([]);
+  });
+  it('a move kept on the phone (no signal) asks nothing now: its question waits for the server (MoveHost, the agenda)', async () => {
+    textOn(true);
+    api.moveJob.mockResolvedValue({ queued: true });
+    await open({ day: '2030-01-11', block: 'day', win_flex: true });
+    await click('move-ok');
+    expect(asked()).toEqual([]);
   });
 });

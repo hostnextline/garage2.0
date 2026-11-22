@@ -12,10 +12,12 @@ const api = vi.hoisted(() => ({ moveJob: vi.fn(), suggestBlocks: vi.fn(), sugges
 const exact = vi.hoisted(() => ({ exactPreview: vi.fn() }));
 const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
 const notify = vi.hoisted(() => ({ notifyCustomer: vi.fn(), wantsText: vi.fn() }));
+const textAsk = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true) }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 vi.mock('../../data/exact', async (orig) => ({ ...(await orig<object>()), ...exact }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ...ui }));
 vi.mock('../../shared/moment/notify', async (orig) => ({ ...(await orig<object>()), ...notify }));
+vi.mock('../../shared/jobs/textAsk', async (orig) => ({ ...(await orig<object>()), ...textAsk }));
 
 import { replaceLocal, clearAll } from '../../data/store';
 import { access } from '../../data/auth';
@@ -46,7 +48,9 @@ beforeEach(() => {
   landings.value = new Map();
   windowMove.value = null;
 });
-afterEach(() => { clearAll(); access.value = null; landings.value = new Map(); });
+// Hassan, 2026-11-22 (« the system should ask me first »): a move never texts by itself, it asks « Texter … ? »
+afterEach(() => { expect(notify.notifyCustomer).not.toHaveBeenCalled(); clearAll(); access.value = null; landings.value = new Map(); });
+const asked = () => textAsk.askMovedText.mock.calls.map((c) => { expect(c[1]).toMatchObject({ via: 'notify' }); return (c[0] as Job).id; });
 
 describe('a job let go on the hour grid (A1)', () => {
   it('asks the preview of THAT minute on the column’s truck (its own column too), then moves it there exactly, never kept on the phone', async () => {
@@ -60,8 +64,8 @@ describe('a job let go on the hour grid (A1)', () => {
     expect(q.title).toMatch(/^Déplacer la job de Julie : .* à 13 h 15 \?$/);
     expect(q.text.split('\n')[0]).toBe('Dit au client : entre 12 h et 16 h. Les autres arrêts gardent leur heure.');
     expect(ui.toast.mock.calls.at(-1)?.[0]).toMatch(/^Rendez-vous déplacé : .* à 13 h 15\.$/);
-    // the window changed: the customer's text, as today
-    expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
+    // the window changed: « Texter Julie ? » (nothing goes by itself)
+    expect(asked()).toEqual(['j1']);
   });
   it('the week’s column is a day: no truck sent, the server keeps its own', async () => {
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true } });
@@ -74,7 +78,7 @@ describe('a job let go on the hour grid (A1)', () => {
     // 10 h → 10 h 15: the same window 9 h – 13 h for the customer, but a move (and no text: they were told nothing new)
     expect(await moveToTime(julie(), DAY, 't1', 615)).toBe(true);
     expect(api.moveJob).toHaveBeenCalledTimes(1);
-    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+    expect(asked()).toEqual([]);
     const q = ui.ask.mock.calls[0][0] as { text: string };
     expect(q.text).not.toMatch(/texto/i);
     api.moveJob.mockClear(); ui.ask.mockClear();
@@ -237,7 +241,7 @@ describe('the late customers named; the refusals (A2, A5)', () => {
     expect((ui.ask.mock.calls[0][0] as { title: string }).title).toBe('Déplacer Julie à 13 h met Carla en retard');
     expect(api.moveJob.mock.calls[0][4]).toMatchObject({ lateOk: ['j2'] });
     expect(ui.toast.mock.calls.at(-1)?.[0]).toMatch(/Avertis Carla : servi après sa plage\.$/);
-    expect(notify.notifyCustomer).not.toHaveBeenCalled();
+    expect(asked()).toEqual([]);
   });
   it('« ça ne rentre pas » or its truck does not work that day: the windows still possible open, as before', async () => {
     api.moveJob.mockRejectedValue(Object.assign(new Error('Plein'), { hint: 'window_full' }));
