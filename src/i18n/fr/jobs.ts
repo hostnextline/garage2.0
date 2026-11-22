@@ -301,6 +301,9 @@ export const jobs = {
     pushedLine: '{name} : vers {eta} au lieu de {was}.',
     lateTitle: { one: 'Déplacer {who} à {time} met {name} en retard', other: 'Déplacer {who} à {time} met {n} clients en retard' },
     lateLine: '{name} : vers {eta}, {by} après sa plage ({from} à {to}).',
+    /* Part 28: the late customer's new window, said in the question (a day other than today, « les plages » allowed to
+       move, his sure arrival outside the window he was told); it leaves with the day's button, never by itself */
+    lateNew: 'Il aura {from} à {to} avec « Envoyer les heures aux clients ».',
     overHours: 'Le camion finirait sa journée {by} après ses heures.',
     lateOk: 'Déplacer quand même',
     other: 'Choisir une autre heure',
@@ -314,7 +317,10 @@ export const jobs = {
     offline: 'Pas de réseau : je ne peux pas vérifier si ce déplacement met quelqu’un en retard. Réessaie quand le réseau revient.',
     lost: 'Pas de réponse du serveur : le déplacement est peut-être fait. Regarde l’agenda dans un instant avant de réessayer.',
     done: 'Rendez-vous déplacé : {when} à {time}.',
-    doneLate: { one: 'Avertis {names} : servi après sa plage.', other: 'Avertis {names} : servis après leur plage.' },
+    /* the late customers after the move: on a day other than today their new window leaves with the day's button (Part 28);
+       today (or a window that does not move) they are to be told by the person: the words of before */
+    doneLate: { one: '{names} aura une nouvelle plage : elle part avec « Envoyer les heures aux clients ».', other: '{names} auront une nouvelle plage : elle part avec « Envoyer les heures aux clients ».' },
+    doneLateToday: { one: 'Avertis {names} : servi après sa plage.', other: 'Avertis {names} : servis après leur plage.' },
     notAt: 'Placé à {real} : le camion ne pouvait pas être là à {time}.',
     someone: 'un client',
     /* its own truck does not work that day: the vehicle the server offered at that time */
@@ -325,7 +331,9 @@ export const jobs = {
     title: 'Texter {name} ?',
     lead: 'Le texto lui dira le nouveau moment :',
     send: 'Envoyer le texto',
-    skip: 'Pas de texto'
+    skip: 'Pas maintenant',
+    /* under the moment: « Pas maintenant » loses nothing (Part 28) */
+    later: 'Pas maintenant : rien ne part, sa nouvelle heure partira avec « Envoyer les heures aux clients ».'
   },
   /* the « … » sheet */
   order: {

@@ -100,7 +100,6 @@ export const today = {
   /* « Plages d’arrivée »: the same without the word « bloc », and the window told to the customer */
   win: {
     bookSub: 'Un client au téléphone : trouve-lui une plage d’arrivée',
-    confirmHelp: 'Les rendez-vous de demain dont le client n’a pas reçu le texto de confirmation (le jour, la plage d’arrivée et le total prévu).',
     told: 'Dit au client : {window}'
   },
   agenda: 'Agenda',
@@ -145,14 +144,6 @@ export const today = {
     title: 'Propositions en attente',
     help: 'Le travail proposé sur place que le client n’a pas encore accepté ou refusé.',
     none: 'Aucune proposition en attente.'
-  },
-  confirm: {
-    title: 'À confirmer pour demain',
-    help: 'Les rendez-vous de demain dont le client n’a pas reçu le texto de confirmation (le jour, le bloc et le total prévu).',
-    none: 'Les rendez-vous de demain sont tous confirmés.',
-    send: 'Envoyer',
-    sendLabel: 'Envoyer la confirmation à {name}',
-    noPhone: 'Pas de numéro'
   },
   /* the treasurer */
   payments: {

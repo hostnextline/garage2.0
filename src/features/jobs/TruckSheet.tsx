@@ -1,6 +1,7 @@
 /* « Changer de camion »: the same day and block (or arrival window), another truck (booked by mistake on the wrong one).
    No text to the customer: the day and the hours do not change (unless the server says they did: `tell`, R84; then the
-   question « Texter … ? », shared/jobs/textAsk: nothing goes by itself).
+   question « Texter … ? », shared/jobs/textAsk: nothing goes by itself; none asked, the toast of the day he was told
+   when that day is today and the move changed it: Part 28, toldDayAfter).
    Each truck says how much room it has. Switch « Vraies routes » OFF, as before: its free time in that block from the
    phone's copy (blockLoad: the hours less the jobs and the server's drive times, a drive not timed yet counted
    unknown_min), « Peut-être trop juste » when that is less than the job. Switch ON that number is a guess (the job left
@@ -26,7 +27,7 @@ import { moveTextGoes } from '../../domain/jobs/move';
 import { keptTimeOf } from '../../domain/jobs/exact';
 import { moveAt, doneWords } from '../../shared/jobs/exactMove';
 import { dayInSentence, momentWord, wt, etaUnsure } from '../../shared/jobs/select';
-import { askMovedText } from '../../shared/jobs/textAsk';
+import { askMovedText, toldDayAfter } from '../../shared/jobs/textAsk';
 import { useTruckFits, type Fit } from './previews';
 
 /** switch on: what the server said of one truck (never a free time worked out by the phone). An arrival only when every
@@ -74,12 +75,13 @@ function TruckOpen(p: { job: Job; onClose: () => void }) {
     if (d.kind === 'stopped') return;
     if (d.kind === 'refused') { toast(errorMessage(d.error), { kind: 'bad' }); return; }
     const r = { queued: false, data: d.r.data };
-    if ((d.r.data as { unchanged?: boolean } | undefined)?.unchanged) toast(t('jobs.truck.same'));
+    const unchanged = !!(d.r.data as { unchanged?: boolean } | undefined)?.unchanged;
+    if (unchanged) toast(t('jobs.truck.same'));
     // « Mettre à … » changed the time (the truck could not be there at the one it had): said, never « toujours à » (review F5)
     else toast(doneWords(d, j.day, d.at === at ? t('jobs.truck.doneKept', { truck: truckLabel(truckId), time: clock(d.at, l) })
       : t('jobs.truck.doneAt', { truck: truckLabel(truckId), time: clock(d.at, l), was: clock(at, l) })), { kind: 'ok', ...(d.late.length || d.at !== at ? { ms: 8000 } : {}) });
     p.onClose();
-    if (moveTextGoes(r, j, jobRow(j.id), !!settings.value.messages?.on?.moved)) askMovedText(j, { via: 'jobs' });
+    if (!(moveTextGoes(r, j, jobRow(j.id), !!settings.value.messages?.on?.moved) && askMovedText(j, { via: 'jobs' })) && !unchanged) toldDayAfter(j);
   };
   const pick = async (truckId: string | null) => {
     setBusy(truckId || 'auto');
@@ -98,7 +100,8 @@ function TruckOpen(p: { job: Job; onClose: () => void }) {
       p.onClose();
       // the day and the hours stay: no text. Only when the server says what the customer was told changed anyway (a job
       // of the other mode converted, its window cut again: `tell`) is « Texter … ? » asked, as from « Déplacer » (R84)
-      if (moveTextGoes(r, j, jobRow(j.id), !!settings.value.messages?.on?.moved)) askMovedText(j, { via: 'jobs' });
+      const asked = moveTextGoes(r, j, jobRow(j.id), !!settings.value.messages?.on?.moved) && askMovedText(j, { via: 'jobs' });
+      if (!asked && !r.queued && !d?.unchanged) toldDayAfter(j);
     } catch (e) {
       toast(errorMessage(e), { kind: 'bad' });
     } finally { setBusy(null); }

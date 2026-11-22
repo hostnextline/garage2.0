@@ -1,11 +1,15 @@
 /* After a booking or a move: the customer's text (confirmation, change). When the texts are not connected (or fail),
    the person gets the message and the link to send it from their own phone. The sheet lives in its own little root
-   so it stays open when the screen changes (after « Réserver », the app goes to the job). */
+   so it stays open when the screen changes (after « Réserver », the app goes to the job).
+   Part 28 (REARRANGE.md §3.3-5, days F6): when the server's answer says the hours that text told (`told`), the sheet
+   offers « C'est envoyé »: the customer is marked told by hand (tell_mark how 'hand'), so « Envoyer les heures aux
+   clients » never texts him a second time what was sent from this phone. */
 import { render } from 'preact';
 import { signal } from '@preact/signals';
-import { MessageSquare, Copy, Share2 } from 'lucide-preact';
+import { MessageSquare, Copy, Share2, CheckCheck } from 'lucide-preact';
 import { notify, errorMessage } from '../../data/api';
-import { uuid } from '../../data/sync';
+import { tellMark, type TellKindName } from '../../data/tell';
+import { uuid, refetch } from '../../data/sync';
 import { isNetworkError } from '../../lib/errors';
 import { job as jobRow, customer as customerRow, settings } from '../../data/select';
 import { choiceWords } from '../../domain/moment/choice';
@@ -18,7 +22,11 @@ import './notify.css';
 export type NotifyKind = 'booking' | 'moved';
 /** `when`: « Plages d'arrivée »: the window the customer was told (« Demain, entre 14 h et 18 h »), said above the text so
     the person sending it by hand sees the two agree */
-interface Msg { name: string; phone: string | null; message: string; link: string | null; when?: string | null }
+interface Msg {
+  name: string; phone: string | null; message: string; link: string | null; when?: string | null;
+  /** the hours this text told, its kind and appointment (Part 28): « C'est envoyé » */
+  told?: { day: string; start: number | null; end: number | null } | null; kind?: string | null; jobId?: string | null;
+}
 const msg = signal<Msg | null>(null);
 let host: HTMLElement | null = null;
 function ensureHost() {
@@ -74,7 +82,8 @@ export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { cu
     const r = await sendOnce(kind, jobId);
     const status = String(r?.status || (r?.ok === false ? 'error' : ''));
     // the window as the server has it now (the job's row), else the one just chosen on the screen
-    const open = () => openMessage({ name, phone: r?.phone ?? c?.phone ?? null, message: r?.message || '', link: r?.link || null, when: windowSaid(jobRow(jobId)) ?? opts.when ?? null });
+    const open = () => openMessage({ name, phone: r?.phone ?? c?.phone ?? null, message: r?.message || '', link: r?.link || null, when: windowSaid(jobRow(jobId)) ?? opts.when ?? null,
+      ...(r?.told ? { told: r.told, kind: r.kind ?? kind, jobId: r.job_id ?? jobId } : {}) });
     if (status === 'sent') toast(t(`booking.sms.sent.${kind}`), { kind: 'ok' });
     else if (status === 'already') toast(t('booking.sms.already'));
     else if (status === 'no_phone') toast(t('booking.sms.noPhone'));
@@ -94,6 +103,23 @@ export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { cu
 
 function openMessage(m: Msg) { ensureHost(); msg.value = m; }
 
+const KINDS: readonly string[] = ['booking', 'window', 'moved'];
+/** « C'est envoyé »: marked told by hand with the hours that text said (only while they are still the ones to tell) */
+async function handed(m: Msg): Promise<boolean> {
+  if (!m.told || !m.jobId) return false;
+  const kind = (m.kind && KINDS.includes(m.kind) ? m.kind : null) as TellKindName | null;
+  try {
+    const a = await tellMark([{ id: m.jobId, how: 'hand', kind, day: m.told.day, start: m.told.start, end: m.told.end }]);
+    void refetch('jobs', m.jobId);
+    if (a.marked.includes(m.jobId)) { toast(t('tell.marked', { n: 1, names: m.name }), { kind: 'ok' }); return true; }
+    toast(t(a.busy.includes(m.jobId) ? 'tell.busy' : 'tell.markChanged', { names: m.name }));
+    return false;
+  } catch (e) {
+    toast(isNetworkError(e) ? t('tell.offline') : errorMessage(e), { kind: 'bad' });
+    return false;
+  }
+}
+
 function MessageHost() {
   const m = msg.value;
   const close = () => { msg.value = null; };
@@ -108,7 +134,10 @@ function MessageHost() {
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
   return (
     <Sheet open onClose={close} title={t('booking.sms.title', { name: m.name || '' }).trim()} sub={t('booking.sms.lead')} data-testid="sms-sheet"
-      footer={<Button variant="primary" block icon={<MessageSquare />} href={smsHref}>{t('booking.sms.open')}</Button>}>
+      footer={<>
+        <Button variant="primary" block icon={<MessageSquare />} href={smsHref}>{t('booking.sms.open')}</Button>
+        {m.told && m.jobId && <Button block icon={<CheckCheck />} onClick={async () => { if (await handed(m)) close(); }} data-testid="sms-handed">{t('tell.sentByHand')}</Button>}
+      </>}>
       <div class="stack">
         {m.when && <p class="small muted" style={{ margin: 0 }} data-testid="sms-when">{t('booking.win.smsWhen', { when: m.when })}</p>}
         <p class="sms-bubble" data-testid="sms-text">{body}</p>

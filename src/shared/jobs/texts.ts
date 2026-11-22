@@ -17,7 +17,12 @@ import { jobFirstName, clockOf } from './select';
 import { rememberLink } from './links';
 
 /* ---------- a text that did not go: the message and the link, to send by hand ---------- */
-export interface TextOutcome { status: string; message?: string | null; link?: string | null; phone?: string | null; error?: string | null }
+export interface TextOutcome {
+  status: string; message?: string | null; link?: string | null; phone?: string | null; error?: string | null;
+  /** Part 28: the hours this text said, its kind and appointment (booking / window / moved that could not go): « C'est
+      envoyé » marks him told by hand */
+  told?: { day: string; start: number | null; end: number | null } | null; kind?: string | null; jobId?: string | null
+}
 export const outcome = signal<TextOutcome | null>(null);
 /** jobs whose « en route » text went out (or is going out) from this phone; the trip row comes with the next refresh */
 export const trackingSent = signal<Set<string>>(new Set());
@@ -46,7 +51,8 @@ export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived',
     rememberLink(j, r.link);
     // no status: the server refused (not booked any more, no template…)
     if (!r.status) { toast(errorMessage(r), { kind: 'bad' }); return false; }
-    textResult({ status: r.status, message: r.message, link: r.link, phone: r.phone, error: r.error }, jobFirstName(j), opts.okText);
+    textResult({ status: r.status, message: r.message, link: r.link, phone: r.phone, error: r.error,
+      ...(r.told ? { told: r.told, kind: r.kind ?? kind, jobId: r.job_id ?? j.id } : {}) }, jobFirstName(j), opts.okText);
     void refetch('jobs', j.id);
     if (kind === 'arrived') { void pull('invoices'); void pull('payments'); }
     void pull('messages');

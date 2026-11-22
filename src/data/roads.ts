@@ -16,7 +16,8 @@
      for « Réessayer » (it also replaces a request a screen already gave up on); roadsTick goes up when a measure ends
      that a screen may have stopped waiting for.
    - measureRoads (the sweep: ONE request at a time on this device, shared: review-data H1), roadsStatus, roadsSwitch
-     (owner, live, a new op each tap), movePreview, stopOrderPreview.
+     (owner, live, a new op each tap), movePreview. (stopOrderPreview went with « Ordre des arrêts », Part 28: the
+     day's order is src/data/dayOrder.ts.)
    - warmAfterSent / warmJob / warmPlace: a booking, a move, a change of customer or of an appointment's position that
      reached the server (also one replayed from the outbox later) has its place measured for its day, in the background;
      a failure remembered for that place is not reused then (review-data M3). */
@@ -67,11 +68,6 @@ export interface MovePreview {
   order: string[]; eta: Record<string, number | null>; refused: string[]; day_min: number | null; day_km: number | null; unmeasured: number | null;
   refused_why?: Record<string, string>;
 }
-/** stop_order_preview: the arrival each stop would get with that order; late = after the window (or block) told.
-    measured (decided 2026-11-20, the server's name: reports/fix-sql.md « C »; only when the server says it): every trip of
-    the day up to that stop is measured, so its time is a real one (false: a trip counts the « unknown » time; absent: the
-    server did not say — switch off (it sends null) or an older server). */
-export interface StopEta { id: string; eta: number | null; late: boolean; measured?: boolean }
 
 const num = (x: unknown, d = 0): number => (typeof x === 'number' && Number.isFinite(x) ? x : d);
 const numOrNull = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
@@ -466,14 +462,6 @@ export async function movePreview(truckId: string, day: string, block: BlockKey 
   }
   if (Object.keys(why).length || (r.refused_why && typeof r.refused_why === 'object')) out.refused_why = why;
   return out;
-}
-/** the arrival each booked stop of that block would get with this order (an empty list: the planner's order). null: no
-    preview from the server. Throws set_stop_order's refusal, or no signal. */
-export async function stopOrderPreview(truckId: string, day: string, block: BlockKey, jobIds: string[]): Promise<StopEta[] | null> {
-  const d = (await callRpc<StopEta[]>('stop_order_preview', { p_truck: truckId, p_day: day, p_block: block, p_jobs: jobIds }, { noOp: true })).data;
-  if (!Array.isArray(d)) return null;
-  return d.filter((x) => !!x && typeof x === 'object' && typeof x.id === 'string')
-    .map((x) => ({ id: x.id, eta: numOrNull(x.eta), late: x.late === true, ...(typeof x.measured === 'boolean' ? { measured: x.measured } : {}) }));
 }
 
 /** tests only: forget every request remembered and every state */

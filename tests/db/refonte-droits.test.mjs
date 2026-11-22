@@ -35,9 +35,15 @@ const APP = [
   // « Vraies routes » (Part 27): what « La voiture ferme » and « Ordre des arrêts » would do, said before it is done (the app
   // shows them with the real roads instead of a phone's guess). Each runs the action itself (move_job, set_stop_order) in a
   // block that is always undone, so it checks the very right of that action and writes nothing (vraies-routes-apercu.test.mjs)
-  'move_preview', 'stop_order_preview'
+  'move_preview', 'stop_order_preview',
   // (« exact move », STATE.md 2026-11-21: move_job's 8-argument form and move_preview's form (p_job, p_day, p_truck, p_at) are
   // these same names; their helpers exact_* and route_hold stay closed: tests/db/exact-move.test.mjs)
+  // Part 28 (20261122000100_reorganiser.sql): « Réorganiser la journée » (the preview, always undone, and the save; each
+  // checks the right of set_stop_order inside, owner / « Réserver » to change a stop's truck) and « Envoyer les heures aux
+  // clients » (the list and « Je l'ai averti » / « C'est envoyé »; owner / « Réserver », « C'est envoyé » also the job's
+  // mechanic). Their helpers (tell_now, tell_state, day_order_core, tell_take, tell_done, tell_release, told_install, …) stay
+  // the server's: tests/db/reorganiser.test.mjs, tests/db/textos-journee.test.mjs
+  'day_order_preview', 'day_order_save', 'tell_list', 'tell_mark'
 ];
 /** what the row rules, the guards and the functions that run as the person (not security definer) call
  *  (hours_all: the read rule of shifts, 20261119000100_heures.sql) */

@@ -1,7 +1,9 @@
 /* « Texter … ? » (Hassan, 2026-11-22: « the system should ask me first »): after a change of an appointment the « moved »
    text never goes by itself. The question says the new moment; « Envoyer le texto » is the very send of before (once),
-   « Pas de texto » and closing send nothing; two changes of the same appointment: one question with the latest moment; two
-   appointments: one question each, in turn. The server (notify) is pretended. */
+   « Pas maintenant » and closing send nothing; two changes of the same appointment: one question with the latest moment; two
+   appointments: one question each, in turn. Part 28 (REARRANGE.md §3.6, U6): « Pas maintenant » says his new time goes
+   with « Envoyer les heures aux clients » and then shows the told day's toast (toldDayToast, pretended here); never after
+   « Envoyer le texto », never beside a question. The server (notify) is pretended. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -10,8 +12,11 @@ const api = vi.hoisted(() => ({ notify: vi.fn() }));
 const sync = vi.hoisted(() => ({ pull: vi.fn(() => Promise.resolve()), refetch: vi.fn(() => Promise.resolve()) }));
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 vi.mock('../../data/sync', async (orig) => ({ ...(await orig<object>()), ...sync }));
+// E4's toast of the day the customer was TOLD (its own rule decides whether it shows): only its calls are looked at here
+const told = vi.hoisted(() => ({ toldDayToast: vi.fn() }));
+vi.mock('./ToldBits', () => told);
 
-import { askMovedText, textAsksWaiting, clearTextAsks, movedWhen, TEXT_ASK_DEAD_MS } from './textAsk';
+import { askMovedText, textAsksWaiting, clearTextAsks, movedWhen, toldDayAfter, TEXT_ASK_DEAD_MS } from './textAsk';
 import { outcome } from './texts';
 import { TextOutcomeHost } from './TextOutcome';
 import { toasts } from '../../ui/toast';
@@ -57,7 +62,8 @@ describe('the question « Texter … ? » (ask first)', () => {
     expect(q('text-ask')!.querySelector('h2')!.textContent).toBe('Texter Julie ?');
     expect(q('text-ask-when')!.textContent).toBe('Mardi 15 janvier 2030, entre 13 h et 17 h');
     expect(q('text-ask-send')!.textContent).toContain('Envoyer le texto');
-    expect(q('text-ask-skip')!.textContent).toContain('Pas de texto');
+    expect(q('text-ask-skip')!.textContent).toContain('Pas maintenant');
+    expect(q('text-ask-later')!.textContent).toBe('Pas maintenant : rien ne part, sa nouvelle heure partira avec « Envoyer les heures aux clients ».');
     expect(api.notify).not.toHaveBeenCalled();
   });
 
@@ -107,7 +113,7 @@ describe('the question « Texter … ? » (ask first)', () => {
     box.remove();
   });
 
-  it('« Pas de texto »: nothing is sent', async () => {
+  it('« Pas maintenant »: nothing is sent', async () => {
     askMovedText(job(), { via: 'jobs' });
     await settle(); await ripe();
     await click('text-ask-skip');
@@ -116,7 +122,7 @@ describe('the question « Texter … ? » (ask first)', () => {
     expect(textAsksWaiting()).toEqual([]);
   });
 
-  it('closing the sheet (✕, Escape) is « Pas de texto »', async () => {
+  it('closing the sheet (✕, Escape) is « Pas maintenant »', async () => {
     askMovedText(job(), { via: 'notify' });
     await shown();
     await act(async () => { q('text-ask')!.querySelector<HTMLElement>('.sheet-x')!.click(); });
@@ -180,7 +186,8 @@ describe('the question « Texter … ? » (ask first)', () => {
     await shown();
     expect(q('text-ask')!.querySelector('h2')!.textContent).toBe('Text Julie?');
     expect(q('text-ask-send')!.textContent).toContain('Send the text');
-    expect(q('text-ask-skip')!.textContent).toContain('No text');
+    expect(q('text-ask-skip')!.textContent).toContain('Not now');
+    expect(q('text-ask-later')!.textContent).toBe('Not now: nothing goes, their new time goes with “Send the times to customers”.');
   });
 });
 
@@ -267,7 +274,7 @@ describe('the question « Texter … ? »: the reviews’ findings', () => {
     expect(title()).toBe('Texter Julie ?');
     expect(steps()).toBe(1);
     expect(api.notify).not.toHaveBeenCalled();
-    // then « Pas de texto » there: nothing sent, its step goes, the job screen stays
+    // then « Pas maintenant » there: nothing sent, its step goes, the job screen stays
     await act(() => tick(TEXT_ASK_DEAD_MS + 40));
     await act(async () => { q('text-ask-skip')!.click(); });
     await calm();
@@ -277,7 +284,7 @@ describe('the question « Texter … ? »: the reviews’ findings', () => {
     expect(api.notify).not.toHaveBeenCalled();
   });
 
-  it('L3: the phone’s back button is « Pas de texto »: one question, then two in turn; the screen stays', async () => {
+  it('L3: the phone’s back button is « Pas maintenant »: one question, then two in turn; the screen stays', async () => {
     askMovedText(job(), { via: 'jobs' });
     await fresh();
     expect(steps()).toBe(1);
@@ -330,5 +337,169 @@ describe('the question « Texter … ? »: the reviews’ findings', () => {
     await act(async () => { answer({ ok: true, status: 'sent', message: 'x', link: null, phone: '5145550141' }); });
     await calm();
     expect(title()).toBe('Texter Carla ?');
+  });
+});
+
+/* Part 28 (REARRANGE.md §3.6 points 1-2, §3.5 « Pas maintenant », U6, days F3): « Pas maintenant » leaves the customer due
+   for « Envoyer les heures aux clients »; the toast of the day he was TOLD comes after it (toldDayToast decides whether
+   that day is today and the move changed it), or after a move that asked nothing; never beside a question, never after
+   « Envoyer le texto ». */
+describe('« Pas maintenant » and the told day’s toast (Part 28)', () => {
+  const tick = (ms = 30) => new Promise<void>((r) => setTimeout(r, ms));
+  const settled = () => new Promise<void>((r) => whenHistorySettled(() => setTimeout(r, 0)));
+  async function calm() { for (let i = 0; i < 8; i++) await act(async () => { await tick(); await settled(); }); }
+  const fresh = async () => { await calm(); await act(() => tick(TEXT_ASK_DEAD_MS + 40)); };
+  const title = () => q('text-ask')?.querySelector('h2')?.textContent ?? null;
+  /** Denis (j1) was told TODAY 13 h à 17 h; the move takes him to Thursday */
+  const TODAY = '2030-01-15';
+  const denis = (): Job => ({ ...job(), told_day: TODAY, told_start: 780, told_end: 1020, told_at: '2030-01-15T12:00:00.000000+00:00', told_how: 'sms' } as Job);
+  const movedTo = async (day: string, ws = 540, we = 780) => { await act(async () => { upsertLocal('jobs', [{ ...denis(), day, win_start: ws, win_end: we }] as never, { force: true }); }); };
+  beforeEach(async () => { await calm(); history.replaceState({ d: 0 }, '', '/#/agenda'); told.toldDayToast.mockClear(); });
+  afterEach(async () => { await act(async () => { clearTextAsks(); outcome.value = null; }); await calm(); });
+
+  it('« Pas maintenant »: nothing sent, the toast of his told day with the job as it was BEFORE the move', async () => {
+    const before = denis();
+    await movedTo(LATER);
+    askMovedText(before, { via: 'notify' });
+    await fresh();
+    // while the question is up: no toast (never beside a question)
+    expect(told.toldDayToast).not.toHaveBeenCalled();
+    await act(async () => { q('text-ask-skip')!.click(); });
+    await calm();
+    expect(q('text-ask')).toBeNull();
+    expect(api.notify).not.toHaveBeenCalled();
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast.mock.calls[0][0]).toMatchObject({ id: 'j1', day: DAY, told_day: TODAY, win_start: 780 });
+  });
+
+  it('closing it (✕) or the back button is « Pas maintenant »: the same toast, once each', async () => {
+    askMovedText(denis(), { via: 'notify' });
+    await fresh();
+    await act(async () => { q('text-ask')!.querySelector<HTMLElement>('.sheet-x')!.click(); });
+    await calm();
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    askMovedText(denis(), { via: 'jobs' });
+    await fresh();
+    await act(async () => { history.back(); });
+    await calm();
+    expect(q('text-ask')).toBeNull();
+    expect(told.toldDayToast).toHaveBeenCalledTimes(2);
+    expect(api.notify).not.toHaveBeenCalled();
+  });
+
+  it('« Envoyer le texto »: sent once, and NO told-day toast (he is told by that text)', async () => {
+    askMovedText(denis(), { via: 'notify' });
+    await fresh();
+    await act(async () => { q('text-ask-send')!.click(); });
+    await calm();
+    expect(api.notify).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast).not.toHaveBeenCalled();
+  });
+
+  it('a navigation (« Voir ») does not answer it: no toast until it is answered on the next screen', async () => {
+    askMovedText(denis(), { via: 'jobs' });
+    await fresh();
+    await act(async () => { navigate('/job/j1'); });
+    await calm();
+    expect(title()).toBe('Texter Julie ?');
+    expect(told.toldDayToast).not.toHaveBeenCalled();
+    await act(() => tick(TEXT_ASK_DEAD_MS + 40));
+    await act(async () => { q('text-ask-skip')!.click(); });
+    await calm();
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('two changes before the answer: one question, and the toast compares with the job before the FIRST change', async () => {
+    const first = denis();
+    await movedTo(LATER);
+    askMovedText(first, { via: 'notify' });
+    await fresh();
+    const second = job();                                   // Thursday, as the second move's sheet showed it
+    await movedTo('2030-01-18', 600, 840);
+    askMovedText(second, { via: 'notify' });
+    await fresh();
+    expect(textAsksWaiting()).toEqual(['j1']);
+    await act(async () => { q('text-ask-skip')!.click(); });
+    await calm();
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast.mock.calls[0][0]).toMatchObject({ id: 'j1', day: DAY, win_start: 780 });
+  });
+
+  it('a flow that asked nothing (texts off, no cell): the toast at once, from the job before the move', async () => {
+    replaceLocal('settings', [{ id: '1', messages: { on: { moved: false } } }] as never);
+    const before = denis();
+    expect(askMovedText(before, { via: 'notify' })).toBe(false);
+    toldDayAfter(before);
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast.mock.calls[0][0]).toBe(before);
+    await calm();
+    expect(q('text-ask')).toBeNull();
+  });
+
+  it('never beside a question: a flow’s toast waits while another customer’s question is up, then shows once it is answered', async () => {
+    askMovedText(job('j2'), { via: 'notify' });           // Carla's question
+    const before = denis();
+    toldDayAfter(before);                                  // Denis's move asked nothing, at the same time
+    expect(told.toldDayToast).not.toHaveBeenCalled();      // the question is about to open: held
+    await fresh();
+    expect(title()).toBe('Texter Carla ?');
+    expect(told.toldDayToast).not.toHaveBeenCalled();
+    await act(async () => { q('text-ask-send')!.click(); });
+    await calm();
+    expect(api.notify).toHaveBeenCalledTimes(1);
+    expect(api.notify.mock.calls[0][1]).toBe('j2');
+    // Carla was texted: no toast for her; Denis's held toast now
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast.mock.calls[0][0]).toBe(before);
+  });
+
+  it('with E4’s real toast: Julie told TODAY 13 h à 17 h, moved to another day, « Pas maintenant » → « Julie attendait aujourd’hui … » with that day’s button (days F3)', async () => {
+    const real = await vi.importActual<typeof import('./ToldBits')>('./ToldBits');
+    told.toldDayToast.mockImplementation(real.toldDayToast);
+    const { access } = await import('../../data/auth');
+    const { today, addDays } = await import('../../lib/dates');
+    access.value = { id: 'hassan', owner: true, roles: ['owner'], rights: {}, trucks: [] } as never;
+    try {
+      const now = today();
+      const toldToday = { ...JOB, day: now, told_day: now, told_start: 780, told_end: 1020, told_at: `${now}T12:00:00.000000+00:00`, told_how: 'sms' };
+      replaceLocal('jobs', [toldToday] as never);
+      const before = job();
+      await act(async () => { upsertLocal('jobs', [{ ...toldToday, day: addDays(now, 4), win_start: 540, win_end: 780 }] as never, { force: true }); });
+      askMovedText(before, { via: 'notify' });
+      await fresh();
+      expect(toasts.value.filter((x) => x.text.includes('attendait'))).toEqual([]);
+      await act(async () => { q('text-ask-skip')!.click(); });
+      await calm();
+      const tt = toasts.value.filter((x) => x.text.includes('attendait'));
+      expect(tt.map((x) => x.text)).toEqual(['Julie attendait aujourd’hui : sa nouvelle heure n’est pas partie.']);
+      expect(tt[0].action?.label).toBe('Envoyer les heures aux clients (1)');
+      expect(api.notify).not.toHaveBeenCalled();
+      // « Envoyer le texto » instead (the server writes told): no such toast
+      toasts.value = [];
+      askMovedText(before, { via: 'notify' });
+      await fresh();
+      await act(async () => { q('text-ask-send')!.click(); });
+      await calm();
+      expect(toasts.value.filter((x) => x.text.includes('attendait'))).toEqual([]);
+    } finally {
+      told.toldDayToast.mockReset();
+      access.value = null;
+    }
+  });
+
+  it('two questions: the first « Pas maintenant », its toast only once the second is answered too', async () => {
+    askMovedText(denis(), { via: 'notify' });
+    askMovedText(job('j2'), { via: 'notify' });
+    await fresh();
+    await act(async () => { q('text-ask-skip')!.click(); });
+    await calm();
+    expect(title()).toBe('Texter Carla ?');
+    expect(told.toldDayToast).not.toHaveBeenCalled();
+    await act(() => tick(TEXT_ASK_DEAD_MS + 40));
+    await act(async () => { q('text-ask-skip')!.click(); });
+    await calm();
+    expect(told.toldDayToast).toHaveBeenCalledTimes(2);
+    expect(told.toldDayToast.mock.calls.map((c) => (c[0] as Job).id)).toEqual(['j1', 'j2']);
+    expect(api.notify).not.toHaveBeenCalled();
   });
 });

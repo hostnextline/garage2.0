@@ -1,7 +1,8 @@
-/* « La journée » (owner, office): the jobs left open on a past day, each truck now, the money to collect, the proposals
-   waiting for the customer, tomorrow's appointments to confirm, the week's needs.
+/* « La journée » (owner, office): the jobs left open on a past day, the line of every coming day with customers who do not
+   have their new hours (Part 28: one button per day), each truck now (« Réorganiser la journée » beside them), the money
+   to collect, the proposals waiting for the customer, tomorrow (« Demain »: its customers to tell), the week's needs.
    The treasurer: today's payments and the treasury. */
-import { CalendarPlus, CalendarDays, MapIcon, Wallet } from 'lucide-preact';
+import { CalendarPlus, CalendarDays, ListOrdered, MapIcon, Wallet } from 'lucide-preact';
 import { Panel, Rows, RowItem, Button, BigStep, Money, Empty, Banner, Skeleton } from '../../ui';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
@@ -12,12 +13,15 @@ import { may } from '../../domain/rights';
 import { wide } from '../../platform/media';
 import { clockOf } from '../../shared/jobs/select';
 import { NeedsCard } from '../../shared/stock/needsView';
+import { openDayOrder } from '../../shared/jobs/DayOrderHost';
+import { ToldDays } from '../../shared/jobs/ToldBanner';
+import { mayOrderDay } from '../../domain/jobs/dayOrder';
 import { trucksNow, unplacedOn, paymentsOn } from './select';
 import { useTick, useToday } from './hooks';
 import { ShiftCard } from './ShiftCard';
 import { TruckCard } from './TruckCard';
 import { OpenBefore } from './OpenBefore';
-import { CollectPanel, ProposalsPanel, ConfirmPanel } from './TeamPanels';
+import { CollectPanel, ProposalsPanel, TomorrowPanel } from './TeamPanels';
 
 export function OfficeDay() {
   const now = useTick(30_000);
@@ -38,8 +42,12 @@ export function OfficeDay() {
         </div>
       </div>
       <OpenBefore day={day} mineOnly={false} />
+      <ToldDays />
       <section class="today-section" aria-labelledby="today-trucks">
-        <h2 class="today-h" id="today-trucks">{t('today.trucks.title')}</h2>
+        <div class="row-wrap between">
+          <h2 class="today-h" id="today-trucks">{t('today.trucks.title')}</h2>
+          {mayOrderDay(day) && <Button size="sm" variant="secondary" icon={<ListOrdered size={16} />} onClick={() => openDayOrder(day)} data-testid="today-reorg">{t('reorg.open')}</Button>}
+        </div>
         {loading ? <div class="today-trucks"><Skeleton h={150} /><Skeleton h={150} /></div>
           : trucks.length ? <div class="today-trucks">{trucks.map((x) => <TruckCard key={x.truck.id} x={x} now={now} day={day} />)}</div>
             : <Panel><Empty title={t('today.trucks.none')} text={t('today.trucks.noneText')} /></Panel>}
@@ -52,7 +60,7 @@ export function OfficeDay() {
       <div class="today-lists">
         {can('invoices') || can('edit_invoices') || can('book') ? <CollectPanel /> : null}
         <ProposalsPanel />
-        {can('book') && <ConfirmPanel day={day} />}
+        {can('book') && <TomorrowPanel day={day} />}
         {may.inventory() && <NeedsCard />}
       </div>
     </div>

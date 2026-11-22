@@ -34,7 +34,6 @@ import { ItemSheet } from './work/ItemSheet';
 import { AddWorkSheet } from './work/AddWorkSheet';
 import { ProposeSheet } from './work/ProposeSheet';
 import { AnswerSheet } from './work/AnswerSheet';
-import { StopOrderSheet } from './StopOrderSheet';
 import { EditSheet } from './JobEdit';
 import { HeadPanel } from './HeadPanel';
 import { NotesSheet } from './NotesSheet';
@@ -42,12 +41,13 @@ import { WaiverPanel } from './WaiverPanel';
 import { StepState } from './StepState';
 import { MomentPanel } from './MomentPanel';
 import { MoveSheet } from '../../shared/jobs/MoveSheet';
+import { DayOrderHost, openDayOrder } from '../../shared/jobs/DayOrderHost';
 import { TruckSheet } from './TruckSheet';
 import { TextsPanel } from './TextsPanel';
 import { MenuSheet } from './MenuSheet';
 import { afterSheet, calmScroll } from './scroll';
 
-type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'order' | 'truck' | 'edit';
+type SheetKind = 'waiver' | 'signature' | 'add' | 'propose' | 'pay' | 'move' | 'menu' | 'notes' | 'truck' | 'edit';
 /** the last request reached the server (read alone: the sheet does not redraw while a pull goes table by table) */
 const online = computed(() => net.value.online);
 const invoiceBox = () => document.getElementById('job-invoice');
@@ -138,7 +138,7 @@ export function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }
         </div>
         <div class="jobs-col">
           <div id="job-invoice" class="jobs-invoice" data-tour="job-invoice"><InvoicePanel jobId={j.id} /></div>
-          <MomentPanel job={j} rights={rights} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} />
+          <MomentPanel job={j} rights={rights} onMove={() => setSheet('move')} onOrder={() => openDayOrder(j.day, { truck: j.truck_id, job: j.id })} />
           <TextsPanel job={j} rights={rights} />
         </div>
       </div>
@@ -150,8 +150,9 @@ export function JobSheet({ job: j, query }: { job: Job; query: URLSearchParams }
       <NotesSheet job={j} open={sheet === 'notes'} onClose={close} />
       <MoveSheet job={j} open={sheet === 'move'} onClose={close} />
       <TruckSheet job={j} open={sheet === 'truck'} onClose={close} />
-      <StopOrderSheet job={j} open={sheet === 'order'} onClose={close} />
-      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => setSheet('order')} onCoffre={() => openCoffre(j.id)} onTruck={() => setSheet('truck')}
+      {/* « Réorganiser la journée » (« Ordre des arrêts » retired into it, Part 28): the job's day, its truck, the job ringed */}
+      <DayOrderHost />
+      <MenuSheet job={j} rights={rights} open={sheet === 'menu'} onClose={close} onMove={() => setSheet('move')} onOrder={() => openDayOrder(j.day, { truck: j.truck_id, job: j.id })} onCoffre={() => openCoffre(j.id)} onTruck={() => setSheet('truck')}
         onEdit={editable ? () => setSheet('edit') : undefined} />
       <EditSheet job={j} rights={rights} open={sheet === 'edit'} onClose={close}
         onMove={() => afterSheet(() => setSheet('move'))} onTruck={() => afterSheet(() => setSheet('truck'))} onNotes={() => afterSheet(() => setSheet('notes'))}

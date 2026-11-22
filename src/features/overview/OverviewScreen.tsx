@@ -4,7 +4,7 @@
    Computer: the list on the left, the map on the right. Phone: the map on top, the list under it.
    Touch a stop on the map: its appointment is picked out in the list; touch an appointment: its job opens. */
 import { useMemo, useState } from 'preact/hooks';
-import { CalendarPlus, Map as MapIcon } from 'lucide-preact';
+import { CalendarPlus, ListOrdered, Map as MapIcon } from 'lucide-preact';
 import type { ScreenProps } from '../../platform/router';
 import { may } from '../../domain/rights';
 import { wide } from '../../platform/media';
@@ -17,6 +17,8 @@ import { MapView } from '../../shared/map/MapView';
 import { assemble } from '../../shared/map/assemble';
 import { roadNote } from '../../shared/moment/roadNote';
 import { MoveHost } from '../../shared/jobs/MoveHost';
+import { DayOrderHost, openDayOrder } from '../../shared/jobs/DayOrderHost';
+import { mayOrderDay } from '../../domain/jobs/dayOrder';
 import { dayCounts } from '../../domain/jobs/counts';
 import { overviewRows } from './rows';
 import { mapMarks } from './marks';
@@ -81,7 +83,8 @@ export default function OverviewScreen(_p: ScreenProps) {
     </>
   );
   return (
-    <Page title={t('overview.title')} sub={sub} help={t(may.book() ? 'overview.helpMove' : 'overview.help')} wide={isWide} data-testid="overview-screen">
+    <Page title={t('overview.title')} sub={sub} help={t(may.book() ? 'overview.helpMove' : 'overview.help')} wide={isWide} data-testid="overview-screen"
+      actions={mayOrderDay(day) ? <Button size="sm" variant="secondary" icon={<ListOrdered size={16} />} onClick={() => openDayOrder(day)} data-testid="overview-reorg">{t('reorg.open')}</Button> : undefined}>
       {isWide ? (
         <div class="overview-layout">
           <div class="overview-list stack">{list}</div>
@@ -92,6 +95,8 @@ export default function OverviewScreen(_p: ScreenProps) {
       )}
       {/* « Déplacer » from a row's menu: the sheet on this screen; the list is the phone's copy, it follows by itself */}
       <MoveHost />
+      {/* « Réorganiser la journée »: the sheet on this screen; the list is the phone's copy, it follows by itself */}
+      <DayOrderHost />
     </Page>
   );
 }

@@ -636,7 +636,7 @@ test('« Plages d’arrivée »: the texts and the customer’s page say the win
     const n = await fn('notify', { kind: 'booking', job_id: b.job_id, base: BASE }, ownerJwt);
     assert.match(n.message, /^Bonjour Jean, votre rendez-vous avec .+ est confirmé : [^\n]+, entre 14 h et 18 h\.\n\nEstimation :\n• Vidange d’huile : 79,99 \$\nTotal : 79,99 \$ \+ tx\n/, n.message);
     assert.doesNotMatch(n.message, /matin|après-midi|le soir|\(entre/);
-    const mv = await fn('notify', { kind: 'moved', job_id: b.job_id, base: BASE }, ownerJwt);
+    const mv = await fn('notify', { kind: 'moved', job_id: b.job_id, base: BASE, resend: true }, ownerJwt);   // Part 28: just told these hours by the booking text, so asked again
     assert.match(mv.message, /a changé : [^\n]+, entre 14 h et 18 h\. Détails : /, mv.message);
     const rm = await fn('notify', { kind: 'reminder', job_id: b.job_id, base: BASE }, ownerJwt);
     assert.match(rm.message, /vient demain, [^\n]+, entre 14 h et 18 h\. Pour changer/, rm.message);

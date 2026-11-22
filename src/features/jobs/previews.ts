@@ -1,41 +1,16 @@
 /* What the server would do, asked before the person decides (« Vraies routes » on; off nothing is asked and the sheets
-   work as before). Nothing is written: move_preview and stop_order_preview run the action and undo it.
-   - useOrderPreview (« Ordre des arrêts »): the arrival times of the order on screen, asked a short moment after the
-     last change of the order (ORDER_WAIT_MS: several taps in a row make one request, not one each), remembered per
-     order while the sheet is open, asked again when a measure of the roads ended (roadsTick), the answer on screen kept
-     until the new one replaces it (domain/jobs/asked.ts Answers).
+   work as before). Nothing is written: move_preview runs the action and undoes it.
+   (useOrderPreview, « Ordre des arrêts », went in Part 28: « Réorganiser la journée » asks its own preview,
+   src/shared/jobs/DayOrderSheet.tsx.)
    - useTruckFits (« Changer de camion »): for each truck, whether it can take the appointment and its arrival there.
-   Never throw: no signal, an error, an older server → « pas encore calculé ». Tested in StopOrderSheet.test.tsx and
-   TruckSheet.test.tsx. */
+   Never throw: no signal, an error, an older server → « pas encore calculé ». Tested in TruckSheet.test.tsx. */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { movePreview, stopOrderPreview, roadsTick, type StopEta } from '../../data/roads';
+import { movePreview, roadsTick } from '../../data/roads';
 import { exactPreview, exactRefusal, ARRIVE_LATE } from '../../data/exact';
 import type { BlockKey } from '../../lib/dates';
-import { NOT_ASKED, Answers, type Asked } from '../../domain/jobs/asked';
+import { Answers, type Asked } from '../../domain/jobs/asked';
 import { fitOf } from '../../domain/jobs/move';
 import { exactFitOf, type ExactFit } from '../../domain/jobs/exact';
-
-/** how long after the last change of the order the times are asked */
-export const ORDER_WAIT_MS = 600;
-
-export function useOrderPreview(on: boolean, truckId: string | null, day: string, block: BlockKey, ids: readonly string[], waitMs = ORDER_WAIT_MS): Asked<StopEta[]> {
-  const tick = roadsTick.value;
-  const key = on && truckId ? `${truckId}|${day}|${block}|${ids.join(',')}` : '';
-  const memo = useRef(new Answers<StopEta[]>());
-  const live = useRef(true);
-  const [, redraw] = useState(0);
-  useEffect(() => () => { live.current = false; }, []);
-  useEffect(() => {
-    if (!key || memo.current.asked(key, tick)) return;
-    const tm = setTimeout(() => {
-      if (!memo.current.start(key, tick)) return;
-      const said = (v: StopEta[] | null | undefined) => { if (memo.current.take(key, tick, v) && live.current) redraw((x) => x + 1); };
-      stopOrderPreview(truckId!, day, block, [...ids]).then(said, () => said(undefined));
-    }, waitMs);
-    return () => clearTimeout(tm);
-  }, [key, tick]);
-  return key ? memo.current.shown(key) : NOT_ASKED;
-}
 
 /** what the server says of one truck: it fits (its arrival there, or none while a trip of that day is not measured:
     `unmeasured`), or not */

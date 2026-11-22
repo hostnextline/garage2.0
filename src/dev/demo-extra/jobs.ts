@@ -3,10 +3,15 @@
    - enroute / notify answer like the real ones and leave the same traces (trip, text in the list, confirmation date).
      The « en route » text goes by itself only when the demo says texts are switched on (&texts=on); &texts=off also
      makes the other texts come back « to send by hand ».
+   - notify, Part 28 (REARRANGE.md §1.6): { action: 'day' } = « Envoyer les heures aux clients » (each id through the
+     lease's « due? », the hours of tell_now, told written); the single booking / window / moved texts go through the
+     same « due? » (`already` when he has his hours, `resend` forces) and write told with the hours THAT text said; their
+     `off` / `error` answers carry `told`, `kind`, `job_id` (« C'est envoyé »). The told rules: demo-extra/tell.ts.
    Small on purpose; nothing here can stop the demo (every part is guarded). */
 import { registerFn, registerRpc, rpcOf, DemoRefusal, put, find, table, rows as answerRows, refuse, nowIso, type DemoRow } from '../fake-server';
-import { can, customerVisible, hasRole, isStaff, jobIdVisible, myTruckIds, need } from '../demo-rules';
+import { can, customerVisible, hasRole, isStaff, jobIdVisible, jobVisible, myTruckIds, need } from '../demo-rules';
 import { addDays, today, longDay, clock } from '../../lib/dates';
+import { tellDue, hoursSaid, nowOf, toldDone, kindOn } from './tell';
 
 const D = (n: number) => addDays(today(), n);
 const at = (day: string, min: number) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, Math.floor(min / 60), min % 60).toISOString(); };
@@ -95,31 +100,75 @@ function fns() {
     return { ok: true, sms, link, message, phone: c?.phone ?? null, eta_at: trip.eta_at, minutes, km: 6.2 };
   });
   registerFn('notify', (b) => {
+    if (b.action === 'day') return dayTexts(b);
     const j = find('jobs', b.job_id);
     if (!j) return { ok: false, code: 'not_found', error: 'Cette job n’existe plus (ou tu n’y as pas accès).' };
     const kind = String(b.kind || '');
-    if (kind === 'booking' && j.confirm_sent_at && !b.resend) return { ok: true, status: 'already' };
     if (['booking', 'moved', 'reminder', 'window'].includes(kind) && j.status !== 'booked') return { ok: false, code: 'not_booked', error: 'Ce rendez-vous n’est plus à venir.' };
+    // Part 28: the single booking / window / moved texts go through the lease: nothing new to tell him → already
+    const told = TOLD_KINDS.includes(kind);
+    if (told && !tellDue(j, { force: !!b.resend })) return { ok: true, status: 'already' };
     if (kind === 'arrived' && j.status !== 'on_site') return { ok: false, code: 'not_on_site', error: 'Le mécano n’est pas encore arrivé chez ce client.' };
-    const c = find('customers', j.customer_id);
-    const link = `${LINK}#t=demo-${String(j.id)}${c?.lang === 'en' ? '&l=en' : ''}`;
-    const words: Record<string, string> = {
-      booking: `votre rendez-vous avec Mécanique Mobile H.I.S est confirmé. Pour voir et signer votre estimation : ${link}`,
-      arrived: `votre mécano de Mécanique Mobile H.I.S est arrivé. Votre facture, à payer pendant les travaux : ${link}`,
-      moved: `votre rendez-vous avec Mécanique Mobile H.I.S a été déplacé. Détails : ${link}`,
-      extras: `votre mécano propose un travail sur votre véhicule. Acceptez ou refusez ici : ${link}`,
-      invoice: `voici votre facture de Mécanique Mobile H.I.S. Pour payer : ${link}`,
-      payment_reminder: `petit rappel : votre facture de Mécanique Mobile H.I.S est à payer. ${link}`,
-      // « Plages d'arrivée »: the window of a flexible appointment, once fixed
-      window: `votre plage d’arrivée est confirmée : Mécanique Mobile H.I.S vient ${longDay(String(j.day), 'fr')}${j.win_start != null && j.win_end != null ? `, entre ${clock(Number(j.win_start))} et ${clock(Number(j.win_end))}` : ''}. Détails : ${link}`
-    };
-    const message = `Bonjour ${first(c)}, ${words[kind] || link}`;
-    const status = textsOff() ? 'off' : c?.phone ? 'sent' : 'no_phone';
+    const { message, link, phone } = textOf(j, kind);
+    const status = textsOff() ? 'off' : phone ? 'sent' : 'no_phone';
     textRow(j, kind, message, status);
-    if (status === 'sent' && (kind === 'booking' || kind === 'moved')) put('jobs', { id: j.id, confirm_sent_at: nowIso() });
+    const said = told ? hoursSaid(j) : null;
+    if (status === 'sent' && said) toldDone(j, said, 'sms', kind);
     if (status === 'sent' && kind === 'invoice') for (const v of table('invoices').filter((x) => x.job_id === j.id && x.status !== 'void')) put('invoices', { id: v.id, sent_at: nowIso() });
-    return { ok: status === 'sent', status, message, link, phone: c?.phone ?? null };
+    const hand = said && status === 'off' ? { told: said, kind, job_id: j.id } : {};
+    return { ok: status === 'sent', status, message, link, phone, ...hand };
   });
+}
+
+/** the kinds that tell a customer his day and hours (Part 28: through the lease, told written) */
+const TOLD_KINDS = ['booking', 'window', 'moved'];
+/** a text's words as the demo's notify writes them (`hours`: the window to say instead of the job's own) */
+function textOf(j: DemoRow, kind: string, hours?: { start: number | null; end: number | null }): { message: string; link: string; phone: string | null } {
+  const c = find('customers', j.customer_id);
+  const link = `${LINK}#t=demo-${String(j.id)}${c?.lang === 'en' ? '&l=en' : ''}`;
+  const ws = hours ? hours.start : j.win_start, we = hours ? hours.end : j.win_end;
+  const words: Record<string, string> = {
+    booking: `votre rendez-vous avec Mécanique Mobile H.I.S est confirmé. Pour voir et signer votre estimation : ${link}`,
+    arrived: `votre mécano de Mécanique Mobile H.I.S est arrivé. Votre facture, à payer pendant les travaux : ${link}`,
+    moved: `votre rendez-vous avec Mécanique Mobile H.I.S a été déplacé. Détails : ${link}`,
+    extras: `votre mécano propose un travail sur votre véhicule. Acceptez ou refusez ici : ${link}`,
+    invoice: `voici votre facture de Mécanique Mobile H.I.S. Pour payer : ${link}`,
+    payment_reminder: `petit rappel : votre facture de Mécanique Mobile H.I.S est à payer. ${link}`,
+    // « Plages d'arrivée »: the window of a flexible appointment, once fixed
+    window: `votre plage d’arrivée est confirmée : Mécanique Mobile H.I.S vient ${longDay(String(j.day), 'fr')}${ws != null && we != null ? `, entre ${clock(Number(ws))} et ${clock(Number(we))}` : ''}. Détails : ${link}`
+  };
+  if (hours && kind === 'moved' && ws != null && we != null) words.moved = `votre rendez-vous avec Mécanique Mobile H.I.S a changé : ${longDay(String(j.day), 'fr')}, entre ${clock(Number(ws))} et ${clock(Number(we))}. Détails : ${link}`;
+  return { message: `Bonjour ${first(c)}, ${words[kind] || link}`, link, phone: (c?.phone as string | null | undefined) ?? null };
+}
+
+/** « Envoyer les heures aux clients » (notify { action: 'day' }, REARRANGE.md §1.6-1): owner / « Réserver »; the ids the
+    person saw, each through the lease's « due? » in id order, texted the hours tell_now gives; texts off → to send by hand */
+function dayTexts(b: Record<string, unknown>) {
+  if (!isStaff() || !can('book')) return { ok: false, code: 'not_allowed', error: 'Seuls le propriétaire et le bureau envoient les heures aux clients.' };
+  const only = (Array.isArray(b.only) ? b.only : []).filter((x): x is string => typeof x === 'string');
+  if (only.length > 100) return { ok: false, code: 'bad_list', error: 'Liste incomplète.' };
+  const again = new Set((Array.isArray(b.again) ? b.again : []).filter((x): x is string => typeof x === 'string'));
+  const out = { sent: [] as string[], maybe: [] as string[], already: [] as string[], busy: [] as string[], gone: [] as string[], no_phone: [] as string[], left: [] as string[],
+    quiet: [] as { id: string; phone: string | null; why: string }[], failed: [] as unknown[],
+    by_hand: [] as { id: string; phone: string | null; message: string; link: string; told: { day: string; start: number | null; end: number | null }; kind: string }[] };
+  const changed: DemoRow[] = [];
+  for (const id of [...new Set(only)].sort()) {
+    const j = find('jobs', id);
+    if (!j || !jobVisible(j)) continue;                 // not one this person may select: dropped, never texted
+    if (j.deleted_at || j.status !== 'booked' || String(j.day) < today()) { out.gone.push(id); continue; }
+    if (!tellDue(j, { again: again.has(id) })) { out.already.push(id); continue; }
+    const n = nowOf(j);
+    const kind = n.kind ?? 'moved';
+    const c = find('customers', j.customer_id);
+    const { message, link, phone } = textOf(j, kind, j.block === 'day' ? { start: n.start, end: n.end } : undefined);
+    if (c?.sms_ok === false || !kindOn(kind)) { out.quiet.push({ id, phone, why: c?.sms_ok === false ? 'sms_ok' : 'kind_off' }); textRow(j, kind, message, 'quiet'); continue; }
+    if (textsOff()) { out.by_hand.push({ id, phone, message, link, told: { day: n.day, start: n.start, end: n.end }, kind }); continue; }
+    if (!phone) { out.no_phone.push(id); textRow(j, kind, message, 'no_phone'); continue; }
+    textRow(j, kind, message, 'sent');
+    changed.push(toldDone(j, n, 'sms', kind));
+    out.sent.push(id);
+  }
+  return { ok: true, status: 'done', day: b.day ?? null, ...out, rows: answerRows({ jobs: changed }) };
 }
 
 /* « Changer de client » (Part 24 nonies): the appointment goes to the right customer, with the database's rules */

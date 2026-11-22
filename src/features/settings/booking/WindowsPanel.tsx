@@ -1,15 +1,17 @@
 /* « Plages d'arrivée »: the owner's switch (behind a question), and once on: the minutes before / after the estimated
-   arrival with a live example, the hours of the day (instead of the blocks), « Fixer les plages de demain » with the
-   customers who could not be texted their window. After the switch, what the server says to do by hand (R87): the
-   customers told a window that is no longer inside their block (call / text), and the days left as they were; kept
-   for the visit until « Fermer », so leaving Réglages does not lose whom to call (settings-team-r2-4). */
+   arrival with a live example, the hours of the day (instead of the blocks), « Fixer les plages de demain », which then
+   opens tomorrow's send list (Part 28, REARRANGE.md §3.6, days F19: the one rule and the one lease of « Envoyer les
+   heures aux clients »; no window text job by job any more; today's customers due are on Aujourd'hui's line). After the
+   switch, what the server says to do by hand (R87): the customers told a window that is no longer inside their block
+   (call / text), and the days left as they were; kept for the visit until « Fermer », so leaving Réglages does not lose
+   whom to call (settings-team-r2-4). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { CalendarCheck, MessageSquare, Phone } from 'lucide-preact';
 import { t, lang } from '../../../lib/i18n';
-import { addDays, clock, today, nowMinute } from '../../../lib/dates';
-import { settings, windowsOn, jobsOn, job as jobOf, customer, customerName } from '../../../data/select';
-import { windowsSwitch, lockWindows, notify } from '../../../data/api';
+import { addDays, clock, today } from '../../../lib/dates';
+import { windowsOn, job as jobOf, customer, customerName } from '../../../data/select';
+import { windowsSwitch, lockWindows } from '../../../data/api';
 import { pull } from '../../../data/sync';
 import { access, isOwner, hasRole } from '../../../data/auth';
 import { Panel, Field, Button, Banner, Switch, Seg, ask, attempt, toast } from '../../../ui';
@@ -17,7 +19,7 @@ import { smsHref } from '../../../shared/invoices/share';
 import { e164 } from '../../../lib/text';
 import { NumInput, TimeInput } from '../fields';
 import { spanOf, withDaySpan, exampleWindow, winRound } from './windows';
-import { flexibleWithWindow, tellOutcome, windowOver, type TellAnswer, type Untold } from './windowTexts';
+import { openTell } from '../../../shared/jobs/TellHost';
 import { backOutcome, blockNow, toldWindow, toCallText, keptWords, type BackOutcome } from './backToBlocks';
 import type { PartProps } from './BookingSection';
 
@@ -28,7 +30,6 @@ export const lastBack = signal<{ who: string; out: BackOutcome } | null>(null);
 export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
   const winOn = windowsOn.value;
   const [busy, setBusy] = useState(false);
-  const [untold, setUntold] = useState<Untold[]>([]);
   const who = access.value?.id || '';
   const last = lastBack.value;
   const back = last && last.who === who ? last.out : null;
@@ -65,28 +66,19 @@ export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
   const lock = async () => {
     if (busy) return;
     setBusy(true);
-    setUntold([]);
     try {
       let n = 0;
-      let ids: string[] = [];
+      const tomorrow = addDays(today(), 1);
       const ok = await attempt(async () => {
-        const r = await lockWindows(addDays(today(), 1));
+        const r = await lockWindows(tomorrow);
         n = r?.fixed ?? 0;
-        // a newer server also fixes today's and lists the windows never told (`untold`); an older one answers `jobs` only
-        ids = [...(r?.jobs ?? []), ...((r as { untold?: string[] } | undefined)?.untold ?? [])];
       });
       if (!ok) return;
       await pull('jobs').catch(() => undefined);
-      // every flexible customer of today and tomorrow whose window is fixed is told (the server never texts the same
-      // window twice): the ones just fixed, and the ones the server fixed by itself. Today's windows already over are not.
-      const day = today(), minute = nowMinute();
-      const tell = [...new Set([...ids, ...flexibleWithWindow(jobsOn(day)), ...flexibleWithWindow(jobsOn(addDays(day, 1)))])]
-        .filter((id) => !windowOver(jobOf(id), day, minute));
-      const answers: TellAnswer[] = await Promise.all(tell.map((id) => notify('window', id)
-        .then((a) => ({ id, ok: a.ok, status: a.status, code: a.code, message: a.message, phone: a.phone }), () => ({ id, failed: true }))));
-      const r = tellOutcome(answers, settings.value.messages?.on?.window === false);
-      if (alive.current) setUntold(r.untold);
-      toast(n ? t('settings.booking.win.locked', { n }) : t('settings.booking.win.lockedNone'), { kind: r.untold.length ? 'bad' : 'ok' });
+      toast(n ? t('settings.booking.win.locked', { n }) : t('settings.booking.win.lockedNone'), { kind: 'ok' });
+      // the customers given their window (and any other of tomorrow not told their hours) get it with the day's button:
+      // its list says who, nothing goes before « Envoyer à N clients »
+      openTell(tomorrow);
     } finally { if (alive.current) setBusy(false); }
   };
 
@@ -138,34 +130,11 @@ export function WindowsPanel({ d, set, err, clear, flag }: PartProps) {
             <div class="stack" data-testid="windows-flex">
               <p class="small muted" style={{ margin: 0 }}>{t('settings.booking.win.flexHelp')}</p>
               {mayLock && <div class="row-wrap"><Button icon={<CalendarCheck />} disabled={busy} onClick={() => lock()} data-testid="windows-lock">{t('settings.booking.win.lock')}</Button></div>}
-              {untold.length > 0 && <UntoldList list={untold} />}
             </div>
           </>
         )}
       </div>
     </Panel>
-  );
-}
-
-/** the customers whose window could not be texted (texts not plugged, no phone, refused…): to tell by hand */
-function UntoldList(p: { list: Untold[] }) {
-  return (
-    <Banner kind="warn" title={t('settings.booking.win.untoldTitle', { n: p.list.length })} data-testid="windows-untold">
-      <ul style={{ margin: '6px 0 0', padding: 0, listStyle: 'none' }}>
-        {p.list.map((u) => {
-          const j = jobOf(u.id);
-          const name = customerName(customer(j?.customer_id)) || `#${j?.number ?? ''}`;
-          return (
-            <li key={u.id} class="row-wrap">
-              <span class="grow">{name}</span>
-              {u.phone
-                ? <Button size="sm" icon={<MessageSquare size={16} />} href={smsHref(u.phone, u.message || '')}>{t('settings.booking.win.untoldText')}</Button>
-                : <span class="small muted">{t('settings.booking.win.untoldNoPhone')}</span>}
-            </li>
-          );
-        })}
-      </ul>
-    </Banner>
   );
 }
 

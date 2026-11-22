@@ -1,12 +1,20 @@
 /* When a text to the customer could not go (texts not set up, no cell number, the service refused): the message and
    the link are ready, to send from the person's own phone (Messages, share, copy). Drawn by one host (hosts.ts): dropped
-   when the person leaves for a screen that shows none, rather than popping up later somewhere else. */
-import { MessageSquareText, Share2, Copy } from 'lucide-preact';
+   when the person leaves for a screen that shows none, rather than popping up later somewhere else.
+   Part 28 (REARRANGE.md §3.3-5, days F6): when the answer says the hours that text told (a booking / window / moved text
+   with texting off, or one that failed), « C'est envoyé » marks the customer told by hand (tell_mark how 'hand'), so
+   « Envoyer les heures aux clients » never texts him again what someone already sent him. */
+import { MessageSquareText, Share2, Copy, CheckCheck } from 'lucide-preact';
 import { Sheet, Button, toast } from '../../ui';
 import { t } from '../../lib/i18n';
 import { e164 } from '../../lib/text';
-import { outcome } from './texts';
+import { tellMark, type TellKindName } from '../../data/tell';
+import { errorMessage } from '../../data/api';
+import { isNetworkError, refetch } from '../../data/sync';
+import { job as jobRow } from '../../data/select';
+import { outcome, type TextOutcome } from './texts';
 import { useHostTurn } from './hosts';
+import { jobFirstName } from './select';
 
 /** copies a text; false when the phone refuses (then the person selects it by hand) */
 export async function copyText(text: string): Promise<boolean> {
@@ -29,6 +37,26 @@ export function smsHref(phone: string | null | undefined, body: string): string 
 
 const close = () => { outcome.value = null; };
 
+const KINDS: readonly string[] = ['booking', 'window', 'moved'];
+/** « C'est envoyé »: the text sent by hand told him those hours (marked only while they are still the ones to tell) */
+export async function sentByHand(o: Pick<TextOutcome, 'told' | 'kind' | 'jobId'>): Promise<boolean> {
+  if (!o.told || !o.jobId) return false;
+  const kind = (o.kind && KINDS.includes(o.kind) ? o.kind : null) as TellKindName | null;
+  try {
+    const a = await tellMark([{ id: o.jobId, how: 'hand', kind, day: o.told.day, start: o.told.start, end: o.told.end }]);
+    const j = jobRow(o.jobId);
+    const names = j ? jobFirstName(j) : '';
+    void refetch('jobs', o.jobId);
+    if (a.marked.includes(o.jobId)) { toast(t('tell.marked', { n: 1, names }), { kind: 'ok' }); return true; }
+    if (a.busy.includes(o.jobId)) toast(t('tell.busy', { names }));
+    else toast(t('tell.markChanged', { names }));
+    return false;
+  } catch (e) {
+    toast(isNetworkError(e) ? t('tell.offline') : errorMessage(e), { kind: 'bad' });
+    return false;
+  }
+}
+
 export function TextOutcomeHost() {
   const mine = useHostTurn('text-outcome', close);
   const o = outcome.value;
@@ -38,7 +66,10 @@ export function TextOutcomeHost() {
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
   return (
     <Sheet open onClose={close} title={t('jobs.text.failTitle')} data-testid="text-outcome"
-      footer={<Button onClick={close}>{t('common.close')}</Button>}>
+      footer={<>
+        <Button onClick={close}>{t('common.close')}</Button>
+        {o.told && o.jobId && <Button variant="primary" icon={<CheckCheck />} onClick={async () => { if (await sentByHand(o)) close(); }} data-testid="text-outcome-handed">{t('tell.sentByHand')}</Button>}
+      </>}>
       <div class="stack">
         <p class="muted" style={{ margin: 0 }}>{why}</p>
         {o.status === 'error' && o.error && <p class="small faint" style={{ margin: 0 }}>{t('jobs.text.errorDetail', { error: o.error })}</p>}

@@ -2,7 +2,7 @@
    On an appointment: open it, copy it, move it; the customer (file, text, call, directions, a new car, an estimate, a
    new appointment); its invoice. On a block: paste the appointment copied, book in this block, see the day, its map.
    Each shortcut shows only to the people who may use it (the screen it opens checks again, as always). */
-import { ClipboardPaste, CalendarPlus, CalendarDays, Map as MapIcon } from 'lucide-preact';
+import { ClipboardPaste, CalendarPlus, CalendarDays, ListOrdered, Map as MapIcon } from 'lucide-preact';
 import { clock, today as todayOf, type BlockKey, type Day } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { may } from '../../domain/rights';
@@ -14,6 +14,8 @@ import { dayWords } from './layout';
 import { copiedRow, pasteHref, bookHref } from './copy';
 import { dropWindowStart } from '../../domain/moment/grid';
 import { openMenu, openMenuAt, pressProps, type MenuAction } from '../../ui/ContextMenu';
+import { openDayOrder } from '../../shared/jobs/DayOrderHost';
+import { mayOrderDay } from '../../domain/jobs/dayOrder';
 
 /* the shortcuts of an appointment are shared with the lists of a truck's stops (Carte, Vue d'ensemble, Aujourd'hui):
    shared/jobs/shortcuts.tsx. The agenda uses them from here, as before (« Déplacer » opens the appointment's screen). */
@@ -32,7 +34,8 @@ export function unitWin(block: BlockKey, minute: number): number | null {
 }
 /** the booking screen for a unit of the time grid: that day, the window that goes with that arrival time */
 export function unitBookHref(day: Day, block: BlockKey, minute: number): string { return bookHref(day, block, unitWin(block, minute)); }
-/** the shortcuts of a block (or of a whole day, block 'day', with « Plages d'arrivée »): paste, book here, the day, its map.
+/** the shortcuts of a block (or of a whole day, block 'day', with « Plages d'arrivée »): paste, book here, the day,
+    « Réorganiser la journée » (computer), its map.
     `at`: a unit of the time grid (minutes of the day): paste and book go with the window of that arrival time. */
 export function blockActions(day: Day, block: BlockKey, v: { started: boolean; open: boolean; room?: boolean }, at: number | null = null): MenuAction[] {
   const a: MenuAction[] = [];
@@ -42,6 +45,8 @@ export function blockActions(day: Day, block: BlockKey, v: { started: boolean; o
   if (may.book() && v.open && !v.started) a.push({ key: 'bookHere', label: at != null ? t('agenda.menu.bookAt', { time }) : t(block === 'day' ? 'agenda.menu.bookDay' : 'agenda.menu.bookHere'), icon: icon(CalendarPlus), testid: 'menu-book-here', run: go(bookHref(day, block, win).slice(1)) });
   // on the computer's week: the day on its own; everywhere: the day's map
   if (wide.value) a.push({ key: 'day', label: t('agenda.menu.day'), icon: icon(CalendarDays), sep: a.length > 0, testid: 'menu-day', run: go(href(`/agenda/${day}`, { view: 'day' }).slice(1)) });
+  // the computer's week: « Réorganiser la journée » of that day (Part 28), on the agenda itself
+  if (wide.value && mayOrderDay(day)) a.push({ key: 'reorg', label: t('reorg.open'), icon: icon(ListOrdered), testid: 'menu-reorg-day', run: () => openDayOrder(day) });
   if (may.map()) a.push({ key: 'map', label: t('agenda.menu.map'), icon: icon(MapIcon), sep: a.length > 0 && !wide.value, testid: 'menu-map', run: go(href('/map', { day }).slice(1)) });
   return a;
 }

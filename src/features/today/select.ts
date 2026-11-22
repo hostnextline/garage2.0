@@ -1,5 +1,6 @@
 /* What « Aujourd'hui » reads from the device's copy: my stops of a day, what each truck is doing now, the jobs left open on a
-   past day, the money to collect, the proposals waiting for an answer, tomorrow's confirmations, today's payments.
+   past day, the money to collect, the proposals waiting for an answer, today's payments (tomorrow's customers to tell:
+   domain/jobs/told.ts, read by the « Demain » panel).
    Plain functions over the table signals (a screen that calls them redraws when the data changes); the rules
    themselves are in rules.ts. */
 import { computed } from '@preact/signals';
@@ -93,11 +94,6 @@ export function proposalsWaiting(): { item: JobItem; job: Job }[] {
     .filter((x) => !!x.job && OPEN.includes(x.job.status))
     .sort((a, b) => a.job.day.localeCompare(b.job.day) || a.job.number - b.job.number);
 }
-/** a day's appointments whose customer did not get the confirmation text (tomorrow by default) */
-export function toConfirm(day = addDays(today(), 1)): Job[] {
-  return jobsOn(day).filter((j) => j.status === 'booked' && !j.confirm_sent_at);
-}
-
 /** payments received on a day, newest first, with whose they are */
 export function paymentsOn(day = today()): { payment: Payment; name: string; jobId: string | null }[] {
   return rowsOf<Payment>('payments')

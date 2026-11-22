@@ -14,7 +14,7 @@ import { clientLinkOf } from '../../shared/jobs/links';
 import { sendText, sendTracking } from '../../shared/jobs/texts';
 import { doBack, doCancel, doNoShow, doReopen, backTo, drives } from '../../shared/jobs/actions';
 import { copyText } from '../../shared/jobs/TextOutcome';
-import { stopFirst } from './StopOrderSheet';
+import { openDayOrder } from '../../shared/jobs/DayOrderHost';
 import { afterSheet } from './scroll';
 
 interface MenuSheetProps {
@@ -47,8 +47,9 @@ function MenuRows(p: MenuSheetProps) {
     arrived: () => <RowItem key="a" start={icon(<Send size={20} />)} title={t('jobs.menu.sendArrived')} sub={t('jobs.menu.sendArrivedSub')} onClick={then(() => sendText('arrived', j, { resend: true, okText: t('jobs.did.arriveInvoice', { name: jobName(j) }) }))} data-testid="menu-send-arrived" />,
     link: () => <RowItem key="l" start={icon(<Link2 size={20} />)} title={t('jobs.menu.copyLink')} sub={t('jobs.menu.copyLinkSub')}
       onClick={async () => { const ok = await copyText(link!); toast(ok ? t('jobs.text.linkCopied') : t('jobs.text.copyFail'), { kind: ok ? 'ok' : 'bad' }); if (ok) p.onClose(); }} data-testid="menu-link" />,
-    first: () => <RowItem key="f" start={icon(<ChevronsUp size={20} />)} title={t('jobs.order.firstMenu')} sub={wt(j, 'jobs.order.firstMenuSub')} onClick={then(() => stopFirst(j))} data-testid="menu-first" />,
-    order: () => <RowItem key="o" start={icon(<ListOrdered size={20} />)} title={t('jobs.order.open')} sub={t('jobs.order.openSub')} onClick={then(p.onOrder)} data-testid="menu-order" />,
+    // « Mettre en premier » opens « Réorganiser la journée » with this stop already first (in the draft, not saved: Part 28)
+    first: () => <RowItem key="f" start={icon(<ChevronsUp size={20} />)} title={t('jobs.order.firstMenu')} sub={wt(j, 'jobs.order.firstMenuSub')} onClick={then(() => openDayOrder(j.day, { truck: j.truck_id, job: j.id, first: true }))} data-testid="menu-first" />,
+    order: () => <RowItem key="o" start={icon(<ListOrdered size={20} />)} title={t('reorg.open')} sub={t('reorg.openSub')} onClick={then(p.onOrder)} data-testid="menu-order" />,
     move: () => <RowItem key="m" start={icon(<CalendarClock size={20} />)} title={t('jobs.menu.move')} sub={wt({ block: windowsOn.value ? 'day' : 'am' }, 'jobs.menu.moveSub')} onClick={then(p.onMove)} />,
     truck: () => <RowItem key="tk" start={icon(<Truck size={20} />)} title={t('jobs.truck.menu')} sub={wt(j, 'jobs.truck.menuSub', { truck: truckLabel(j.truck_id) || t('jobs.truck.noneYet') })} onClick={then(p.onTruck!)} data-testid="menu-truck" />,
     back: () => <RowItem key="u" start={icon(<Undo2 size={20} />)} title={t('jobs.menu.back')} sub={t('jobs.menu.backSub', { status: jobStatusWord(back!) })} onClick={then(() => doBack(j))} data-testid="menu-back" />,

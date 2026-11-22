@@ -7,7 +7,8 @@
    longer than usual, with « Voir » (the appointment). A move kept on the phone (no signal) marks the appointment
    « waiting » until it leaves, so no second move is offered behind it (the agenda's rule), and once it reaches the server
    the question « Texter … ? » is asked when what the customer was told changed (the agenda's textWhenSent; textAsk.tsx:
-   nothing goes by itself). The sheet closes by itself when the appointment may no longer be moved (under way by
+   nothing goes by itself; none asked: the toast of the day the customer was told when it is today, Part 28). The sheet
+   closes by itself when the appointment may no longer be moved (under way by
    realtime) or leaves the phone. The « text to send by hand » sheet of the customer's « moved » text has its host here
    too. */
 import { useEffect } from 'preact/hooks';
@@ -18,11 +19,11 @@ import { t } from '../../lib/i18n';
 import { toast } from '../../ui';
 import { jobRights } from '../../domain/jobs/rights';
 import { moveTextGoes } from '../../domain/jobs/move';
-import { toldChanged } from '../../domain/moment/moveRules';
+import { toldChanged, moveOutcome } from '../../domain/moment/moveRules';
 import { MoveSheet } from './MoveSheet';
 import { TextOutcomeHost } from './TextOutcome';
 import { mayMove, moveSettled, setWaiting, noteMoved } from './moving';
-import { askMovedText } from './textAsk';
+import { askMovedText, toldDayAfter } from './textAsk';
 import { seen } from './select';
 
 /** the appointment whose move sheet is open on this screen */
@@ -64,16 +65,17 @@ function giveFocusBack() {
 
 /** the question « Texter … ? » once a move kept on the phone reaches the server: when its answer says what the customer
     was told changed (`tell`), or, already sent meanwhile, when the phone's row says it (the agenda's textWhenSent).
-    Refused: nothing (the frame's « refusé » list says so). The « waiting » mark stays until then. */
+    Refused: nothing (the frame's « refusé » list says so). None asked once it moved: the toast of the day he was told
+    (when that day is today and the move changed it). The « waiting » mark stays until then. */
 async function whenSent(before: Job, wanted: boolean) {
   setWaiting(before.id, true);
   try {
     const s = await moveSettled(before.id);
-    if (!wanted) return;
-    const goes = s.kind === 'done' ? moveTextGoes({ queued: false, data: s.data }, before, jobRow(before.id), true)
-      : s.kind === 'gone' ? (() => { const after = jobRow(before.id); return !!after && toldChanged(before, after); })()
-      : false;
-    if (goes) askMovedText(before, { via: 'jobs' });
+    if (s.kind === 'refused') return;
+    const goes = wanted && (s.kind === 'done' ? moveTextGoes({ queued: false, data: s.data }, before, jobRow(before.id), true)
+      : (() => { const after = jobRow(before.id); return !!after && toldChanged(before, after); })());
+    const moved = s.kind === 'gone' || moveOutcome({ queued: false, data: s.data }, before.id).kind === 'moved';
+    if (!(goes && askMovedText(before, { via: 'jobs' })) && moved) toldDayAfter(before);
   } catch { /* nothing more to do: the job screen still offers the text */ } finally {
     setWaiting(before.id, false);
   }

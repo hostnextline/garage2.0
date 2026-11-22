@@ -280,6 +280,7 @@ export const jobs: typeof fr = {
     pushedLine: '{name}: around {eta} instead of {was}.',
     lateTitle: { one: 'Moving {who} to {time} makes {name} late', other: 'Moving {who} to {time} makes {n} customers late' },
     lateLine: '{name}: around {eta}, {by} after their window ({from} to {to}).',
+    lateNew: 'They get {from} to {to} with “Send the times to customers”.',
     overHours: 'The truck would end its day {by} after its hours.',
     lateOk: 'Move anyway',
     other: 'Pick another time',
@@ -293,7 +294,8 @@ export const jobs: typeof fr = {
     offline: 'No signal: I can’t check whether this move makes someone late. Try again when the signal is back.',
     lost: 'No answer from the server: the move may have gone through. Check the agenda in a moment before trying again.',
     done: 'Appointment moved: {when} at {time}.',
-    doneLate: { one: 'Tell {names}: reached after their window.', other: 'Tell {names}: reached after their window.' },
+    doneLate: { one: '{names} gets a new window: it goes with “Send the times to customers”.', other: '{names} get new windows: they go with “Send the times to customers”.' },
+    doneLateToday: { one: 'Tell {names}: reached after their window.', other: 'Tell {names}: reached after their window.' },
     notAt: 'Placed at {real}: the truck couldn’t be there at {time}.',
     someone: 'a customer',
     otherTruck: 'Its truck doesn’t work that day: the job goes on {truck}.'
@@ -302,7 +304,8 @@ export const jobs: typeof fr = {
     title: 'Text {name}?',
     lead: 'The text will tell them the new time:',
     send: 'Send the text',
-    skip: 'No text'
+    skip: 'Not now',
+    later: 'Not now: nothing goes, their new time goes with “Send the times to customers”.'
   },
   order: {
     open: 'Order of the stops',

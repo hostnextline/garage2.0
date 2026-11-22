@@ -1,0 +1,91 @@
+/* « Réorganiser la journée » (Part 28, REARRANGE.md §2.2): tokens only. Phone: the trucks one under the other, the truck
+   chips keep the other truck one thumb away; computer (≥ 760 px, the sheet is a 1040 px window): the trucks side by side,
+   all inside the one scrolling body (no column scrolls by itself: one box to auto-scroll), no chips. */
+
+/* the status line and the chips stay at the top of the scrolling body */
+.dayord-sticky { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--sp-5)); padding: 0 var(--sp-5);
+  background: color-mix(in srgb, var(--solid) 92%, transparent); }
+.dayord-status { min-height: 48px; display: flex; align-items: center; gap: var(--sp-3); }
+.dayord-status .grow { color: var(--ink-2); font-size: var(--t-sm); }
+.dayord-chips { display: flex; gap: var(--sp-2); padding-bottom: var(--sp-2); overflow-x: auto; }
+.dayord-chip { flex: none; min-height: 40px; padding: 0 var(--sp-4); border-radius: var(--r-pill); border: 1px solid var(--line);
+  background: var(--sunken); color: var(--ink); font: inherit; font-weight: 520; display: inline-flex; align-items: center; gap: var(--sp-2); }
+.dayord-chip b { font-weight: 560; color: var(--ink-2); }
+.dayord-chip.is-over { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+
+.dayord-notes { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.dayord-trucks { display: flex; flex-direction: column; gap: var(--sp-5); }
+.dayord-truck { display: flex; flex-direction: column; gap: var(--sp-2); scroll-margin-top: 112px; }
+.dayord-head { display: flex; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-2) 0; border-radius: var(--r-md); }
+.dayord-head h3 { margin: 0; font-size: var(--t-lg); font-weight: 560; }
+.dayord-head p { margin: 2px 0 0; font-size: var(--t-sm); color: var(--ink-2); }
+.dayord-head .dayord-warn { color: var(--warn); font-weight: 520; }
+.dayord-head.is-refused { box-shadow: inset 4px 0 0 var(--warn); padding-left: var(--sp-3); }
+.dayord-block { margin: var(--sp-2) 0 0; font-size: var(--t-sm); font-weight: 560; color: var(--ink-2); }
+.dayord-done, .dayord-note { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
+.dayord-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+/* a row: the grip ≡ (48 × 48) and the main button; the `.jobs-order` look, no glass per row */
+.dayord-row { position: relative; display: flex; align-items: stretch; min-height: 64px; border-radius: var(--r-md); background: var(--sunken);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.dayord-row.is-this { box-shadow: inset 0 0 0 2px var(--accent); }
+.dayord-row.is-warn { box-shadow: inset 4px 0 0 var(--warn); }
+.dayord-row.is-this.is-warn { box-shadow: inset 4px 0 0 var(--warn), inset 0 0 0 2px var(--accent); }
+.dayord-row.is-dragging { outline: 2px dashed var(--line); outline-offset: -2px; background: transparent; }
+.dayord-row.is-dragging > * { opacity: 0.3; }
+.dayord-row.is-picked { box-shadow: inset 0 0 0 2px var(--focus, var(--accent)); }
+.dayord-grip { flex: none; width: 48px; min-height: 48px; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 22px;
+  cursor: grab; touch-action: none; border-radius: var(--r-md) 0 0 var(--r-md); }
+.dayord-grip[aria-pressed="true"] { color: var(--accent); }
+.dayord-grip:focus-visible, .dayord-main:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: -2px; }
+.dayord-nogrip { flex: none; width: 48px; display: grid; place-items: center; color: var(--ink-3); }
+.dayord-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: var(--sp-2) var(--sp-3) var(--sp-2) 0;
+  border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dayord-l1 { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.dayord-n { flex: none; min-width: 24px; font-weight: 560; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.dayord-name { flex: 1; min-width: 0; font-weight: 520; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dayord-l2 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px var(--sp-3); font-size: var(--t-sm); color: var(--ink-2); }
+.dayord-l2 b { font-weight: 550; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dayord-l3 { display: flex; align-items: flex-start; gap: 6px; font-size: var(--t-sm); }
+.dayord-l3.is-warn { color: var(--warn); }
+.dayord-l3.is-ok { color: var(--ok); }
+.dayord-l3 svg { flex: none; width: 16px; height: 16px; margin-top: 2px; }
+.dayord-live { display: flex; align-items: center; gap: var(--sp-3); min-height: 48px; padding: 0 var(--sp-3); border-radius: var(--r-md);
+  background: var(--sunken); opacity: 0.7; font-size: var(--t-sm); }
+
+/* where it would land, and the end slot (only while dragging, or when the list is empty) */
+.dayord-line { height: 3px; margin: -5px 0 -4px; border-radius: 2px; background: var(--accent); }
+.dayord-end { min-height: 56px; display: grid; place-items: center; border: 2px dashed var(--line); border-radius: var(--r-md);
+  color: var(--ink-3); font-size: var(--t-sm); }
+.dayord-end.is-over { border-color: var(--accent); color: var(--ink); }
+
+/* the ghost under the finger: on document.body, moved by transform only */
+.dayord-ghost { position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; margin: 0; box-shadow: var(--glass-shadow, 0 12px 32px rgba(0,0,0,0.35));
+  background: var(--solid); opacity: 0.96; will-change: transform; }
+
+/* the summary over the buttons */
+.dayord-sum { flex: 1 1 100%; display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0; padding: 0; border: 0; background: transparent;
+  color: var(--ink-2); font: inherit; font-size: var(--t-sm); text-align: left; }
+.dayord-sum.is-warn { color: var(--warn); }
+.dayord-sum.is-ok { color: var(--ok); }
+.dayord-sum svg { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+.dayord-sum > span { flex: 1; min-width: 0; }
+.dayord-sum .btn { flex: none; }
+.dayord-sum-go { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+
+/* the row menu */
+.dayord-menu { display: flex; flex-direction: column; gap: var(--sp-2); }
+.dayord-menu .btn { justify-content: flex-start; }
+.dayord-menu small { display: block; color: var(--ink-3); font-size: var(--t-xs); }
+
+/* moves shift in 120 ms (none under « Réduire les animations »: base.css) */
+.dayord-list > .dayord-row { transition: transform 120ms var(--ease); }
+
+@media (min-width: 760px) {
+  .dayord-chips { display: none; }
+  .dayord-trucks { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; gap: var(--sp-4); }
+  .dayord-row { min-height: 56px; }
+  /* the footer on one line: the summary, then the buttons */
+  .sheet-foot .dayord-sum { flex: 1 1 auto; align-self: center; }
+  .sheet-foot:has(.dayord-sum) .btn { flex: 0 0 auto; }
+}

@@ -4,7 +4,7 @@
    Téléphone: la carte prend tout l'écran, la liste monte du bas. Ordinateur: la carte et la liste côte à côte.
    The screen only composes: the data (useTeamMap), what the map draws (layers.ts), the legend, the list, the card. */
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { RefreshCw, LocateFixed, CalendarPlus, Settings2, MapPinOff } from 'lucide-preact';
+import { RefreshCw, LocateFixed, CalendarPlus, Settings2, MapPinOff, ListOrdered } from 'lucide-preact';
 import { may } from '../../domain/rights';
 import { setQuery, href, type ScreenProps } from '../../platform/router';
 import { wide } from '../../platform/media';
@@ -22,6 +22,8 @@ import { useTeamMap } from '../../shared/map/useTeamMap';
 import { teamMarkers, teamLines, fitIds } from '../../shared/map/layers';
 import { useRoads, roadOf, roadTotal, roadState } from '../../shared/map/useRoads';
 import { MoveHost } from '../../shared/jobs/MoveHost';
+import { DayOrderHost, openDayOrder } from '../../shared/jobs/DayOrderHost';
+import { mayOrderDay } from '../../domain/jobs/dayOrder';
 import { MapDay } from './MapDay';
 import { Stage, PullUp } from './MapStage';
 import { Legend } from './MapLegend';
@@ -137,6 +139,10 @@ export default function MapScreen({ query }: ScreenProps) {
       action={may.book() ? <Button variant="primary" icon={<CalendarPlus size={18} />} href={href('/book', { day })}>{t('map.empty.book')}</Button> : undefined} />
   );
   const spin = tm.busy ? 'spin-slow' : '';
+  // « Réorganiser la journée » of the day shown (Part 28): the phone's rows, never this map's (team_map)
+  const reorg = mayOrderDay(day)
+    ? <Button size="sm" variant="secondary" icon={<ListOrdered size={16} />} onClick={() => openDayOrder(day)} data-testid="map-reorg">{t('reorg.open')}</Button>
+    : null;
 
   return (
     <Page title={t('map.title')} sub={longDay(day, lang.value)} help={t(may.book() ? 'map.helpMove' : 'map.help')} data-testid="map-screen"
@@ -159,6 +165,7 @@ export default function MapScreen({ query }: ScreenProps) {
         </div>
         {isWide ? (
           <aside class="map-side" aria-label={t('map.legend.title')}>
+            {reorg}
             <p class={`small map-line ${warnLine ? 'map-warn' : 'muted'}`} aria-live="polite" data-testid="map-status">{line}</p>
             {notices}
             {sel && <StopCard stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} />}
@@ -168,6 +175,7 @@ export default function MapScreen({ query }: ScreenProps) {
         ) : (
           <PullUp open={open} onOpen={setOpen} summary={summary} status={line} warn={warnLine}
             card={sel ? <StopCard plain stop={sel} truck={truckOf(sel.truckId)} onClose={closeCard} /> : null}>
+            {reorg}
             {notices}
             <Legend plain m={m} day={day} focus={focus} onFocus={toggleFocus} roadOf={totalOf} roadState={stateOf} />
             {m.count === 0 ? empty : <StopList plain m={m} focus={focus} selected={selected} onChoose={(id) => choose(id, true)} />}
@@ -181,6 +189,8 @@ export default function MapScreen({ query }: ScreenProps) {
       {/* « Déplacer » from a stop (its card, its menu): the sheet on the map; moved, the server's day is asked again so the
           stop leaves it at once (the list is the server's answer, asked every 30 s otherwise) */}
       <MoveHost onMoved={() => { void tm.refresh(); }} />
+      {/* « Réorganiser la journée »: saved, the server's day is asked again (the map is its answer) */}
+      <DayOrderHost onSaved={() => { void tm.refresh(); }} />
     </Page>
   );
 }

@@ -4,8 +4,10 @@
    call, directions, a new car, an estimate, a new appointment); its invoice. Each shortcut shows only to the people who
    may use it (the screen it opens checks again, as always).
    `onMove`: « Déplacer » opens the move sheet on the screen itself (the lists of stops); without it (the agenda), the
-   appointment's screen opens with its sheet (`?do=move`), as before. */
-import { Copy, ExternalLink, CalendarClock, ReceiptText, Truck, Pencil } from 'lucide-preact';
+   appointment's screen opens with its sheet (`?do=move`), as before.
+   « Réorganiser la journée » (Part 28, `menu-reorg`): that stop's day, its truck shown first, on the screen itself (every
+   screen with this menu mounts DayOrderHost); for who may order that stop's truck that day. */
+import { Copy, ExternalLink, CalendarClock, ReceiptText, Truck, Pencil, ListOrdered } from 'lucide-preact';
 import type { Job } from '../../data/types';
 import { t } from '../../lib/i18n';
 import { may } from '../../domain/rights';
@@ -19,6 +21,8 @@ import { openMenu, openMenuAt, pressProps, type MenuAction } from '../../ui/Cont
 import { copyJob } from './copy';
 import { mayMove } from './moving';
 import { noteMenuOpener } from './MoveHost';
+import { openDayOrder } from './DayOrderHost';
+import { mayOrderDay } from '../../domain/jobs/dayOrder';
 
 export interface JobMenuOptions {
   /** « Déplacer » opens the move sheet here (a list of stops); else the appointment's screen opens with it */
@@ -46,6 +50,9 @@ export function jobActions(j: Job, o: JobMenuOptions = {}): { title: string; act
   const onMove = o.onMove;
   add(mayMove(j) && { key: 'move', label: t('agenda.menu.move'), icon: icon(CalendarClock), run: onMove ? () => onMove(j) : go(`/job/${j.id}?do=move`), testid: 'menu-move' });
   add(mayChangeTruck(j, r) && { key: 'truck', label: t('jobs.truck.menu'), icon: icon(Truck), run: go(`/job/${j.id}?do=truck`), testid: 'menu-truck' });
+  // the whole day of this stop, its truck shown first (who may order that truck: the server's set_stop_order rule)
+  add(j.status === 'booked' && !!j.truck_id && r.order && mayOrderDay(j.day)
+    && { key: 'reorg', label: t('reorg.open'), icon: icon(ListOrdered), run: () => openDayOrder(j.day, { truck: j.truck_id, job: j.id }), testid: 'menu-reorg' });
   // the customer (the same shortcuts as in the list of customers; directions to the appointment's own address)
   if (c) {
     group();

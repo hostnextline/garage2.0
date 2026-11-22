@@ -157,7 +157,7 @@ export const guide: typeof fr = {
       qa: {
         book: {
           how: { a: 'Tap “+”, then “Book an appointment”. Choose the customer, their car and the services, then one of the suggested arrival windows. Tap “Book”: the customer gets a confirmation text.' },
-          change: { a: 'Open the appointment from the agenda and tap “Edit”: the customer, the car, the address, the day and arrival window, the truck, the services and the prices. To cancel it: menu “…”, “Cancel the job”, with the reason. If the day or the window changes, the app asks you whether to text the customer.' }
+          change: { a: 'Open the appointment from the agenda and tap “Edit”: the customer, the car, the address, the day and arrival window, the truck, the services and the prices. To cancel it: menu “…”, “Cancel the job”, with the reason. If the day or the window changes, the app asks you whether to text the customer; otherwise their new time goes with “Send the times to customers”.' }
         },
         blocks: {
           what: { q: 'What is an arrival window?', a: 'Four hours around the time the app expects to arrive: 1 hour before, 3 hours after. If the app expects to arrive at 3 p.m., the customer hears “between 2 and 6 p.m.”. We promise a window, not an exact time.' },
@@ -177,7 +177,7 @@ export const guide: typeof fr = {
       book: {
         how: { q: 'How do I book an appointment?', a: 'Tap “+”, then “Book an appointment”. Choose the customer, their car and the services, then one of the suggested time slots. Tap “Book”: the customer gets a confirmation text.' },
         newCustomer: { q: 'The customer is not in the app yet?', a: 'Type their name or number in the customer field. If they do not exist, create their file in the same place: name, phone, address.' },
-        change: { q: 'How do I move or cancel an appointment?', a: 'Open the appointment from the agenda and tap “Edit”: the customer, the car, the address, the day and time slot, the truck, the services and the prices. To cancel it: menu “…”, “Cancel the job”, with the reason. If the day or the slot changes, the app asks you whether to text the customer.' },
+        change: { q: 'How do I move or cancel an appointment?', a: 'Open the appointment from the agenda and tap “Edit”: the customer, the car, the address, the day and time slot, the truck, the services and the prices. To cancel it: menu “…”, “Cancel the job”, with the reason. If the day or the slot changes, the app asks you whether to text the customer; otherwise their new time goes with “Send the times to customers”.' },
         walkIn: { q: 'A customer without an appointment?', a: 'Tap “+”, then “Walk-in customer”: the job starts right away, on site.' }
       },
       blocks: {
@@ -193,7 +193,7 @@ export const guide: typeof fr = {
         refused: { q: 'A change was refused?', a: 'A red banner says why. Fix it if needed, then tap “Try again”, or “Remove” if it is no longer useful.' }
       },
       texts: {
-        which: { q: 'Which texts does the customer get?', a: 'The appointment confirmation, a change of appointment (the app asks you first), “on the way” with the link to follow the truck, extra work to accept, and the invoice.' },
+        which: { q: 'Which texts does the customer get?', a: 'The appointment confirmation, a change of appointment (the app asks you first, otherwise it goes with “Send the times to customers”), “on the way” with the link to follow the truck, extra work to accept, and the invoice.' },
         notSent: { q: 'Texts are not going out?', a: 'They go through GoHighLevel, which the owner connects in the settings. Without it, the app gives you the message and the link: you can send it yourself from your phone.' },
         lang: { q: 'The customer speaks English?', a: 'Texts, the customer page and the invoice follow the language written in their file.' }
       },

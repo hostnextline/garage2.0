@@ -52,6 +52,13 @@ vi.mock('../../../ui', async (orig) => {
   const real = await orig<typeof import('../../../ui')>();
   return { ...real, ask: async (o: { title: string; text?: string }) => { asked.push(o); return sayYes; } };
 });
+/* Part 28 (days F6): « Je l'ai averti » on a late customer = tell_mark how 'call' (data/tell pretended) */
+const marks: unknown[][] = [];
+let markAnswer: (m: { id: string }[]) => Record<string, unknown> = (m) => ({ ok: true, marked: m.map((x) => x.id), changed: [], busy: [] });
+vi.mock('../../../data/tell', async (orig) => {
+  const real = await orig<typeof import('../../../data/tell')>();
+  return { ...real, tellMark: async (m: { id: string }[]) => { marks.push(m); return markAnswer(m); } };
+});
 vi.mock('../../../shared/map/MapView', () => ({ MapView: () => null }));
 vi.mock('../../../shared/places/AddressField', () => ({ AddressField: () => null }));
 import { BookingSection } from './BookingSection';
@@ -437,6 +444,43 @@ describe('the switch', () => {
     await click(one('roads-switch'));
     expect(asked.length).toBe(0);
     expect(names()).not.toContain('roadsSwitch:true');
+  });
+});
+
+describe('the customers to call: « Je l\'ai averti » (Part 28, days F6, U11)', () => {
+  it('marks the customer told by call, with the hours the phone says he must be told now; then the row says so', async () => {
+    const tomorrow = addDays(today(), 1);
+    replaceLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'Roy', phone: '514 555-1234', lang: 'fr' }] as never);
+    // told 8 h à 12 h (a block, then the windows), now a sure arrival at 12 h 25 outside it: told the window of that arrival
+    replaceLocal('jobs', [{ id: 'j1', number: 41, customer_id: 'c1', day: tomorrow, block: 'day', status: 'booked', eta_min: 745, win_start: 480, win_end: 720,
+      told_day: tomorrow, told_start: 480, told_end: 720, told_at: '2026-11-20T10:00:00-05:00', told_how: 'sms' }] as never);
+    switches = [swOk({ planned: 1, late: ['j1'] })];
+    seed({ windows_on: true });
+    marks.length = 0;
+    markAnswer = (m) => ({ ok: true, marked: m.map((x) => x.id), changed: [], busy: [] });
+    await show();
+    await click(one('roads-switch'));
+    expect(q('roads-late-row').length).toBe(1);
+    await click(one('roads-late-mark'));
+    expect(marks).toEqual([[{ id: 'j1', how: 'call', kind: 'moved', day: tomorrow, start: 660, end: 900 }]]);
+    expect(lastToast()).toContain('Noté : Julie Roy a son heure.');
+    expect(q('roads-late-mark').length).toBe(0);
+    expect(sp(one('roads-late-told').textContent)).toContain('Déjà averti : Julie Roy');
+  });
+  it('the hours changed meanwhile: not marked, the row keeps its button', async () => {
+    const tomorrow = addDays(today(), 1);
+    replaceLocal('customers', [{ id: 'c1', first_name: 'Julie', last_name: 'Roy', phone: '514 555-1234', lang: 'fr' }] as never);
+    replaceLocal('jobs', [{ id: 'j1', number: 41, customer_id: 'c1', day: tomorrow, block: 'am', status: 'booked', eta_min: 745 }] as never);
+    switches = [swOk({ planned: 1, late: ['j1'] })];
+    seed({});
+    marks.length = 0;
+    markAnswer = (m) => ({ ok: true, marked: [], changed: m.map((x) => x.id), busy: [] });
+    await show();
+    await click(one('roads-switch'));
+    await click(one('roads-late-mark'));
+    expect(marks.length).toBe(1);
+    expect(lastToast()).toContain('a changé entre-temps');
+    expect(q('roads-late-mark').length).toBe(1);
   });
 });
 

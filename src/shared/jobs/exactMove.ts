@@ -14,7 +14,11 @@
    4. « Garde-route » as before (the caller's question, after this one).
    5. The move, with the stops accepted late; « the day changed since » (late_changed) → the preview again, once.
    The caller says the result (doneWords: the late customers NAMED, so they can be called; the app texts them nothing) and,
-   by today's rule (the server's `tell`), asks « Texter … ? » for the moved customer (textAsk.tsx: nothing goes by itself). */
+   by today's rule (the server's `tell`), asks « Texter … ? » for the moved customer (textAsk.tsx: nothing goes by itself).
+   Part 28 (REARRANGE.md §3.6, §4.4): a late customer whose new window will leave with « Envoyer les heures aux clients »
+   (a day other than today, « les plages » allowed to move, his sure arrival outside the window he was told: lateWindow,
+   the phone's tell_now) is said so: « Il aura 16 h à 20 h avec … » in the question, « Denis aura une nouvelle plage : elle
+   part avec … » after the move. Today such a slip is the « en route » text's to say: the words of before (« Avertis … »). */
 import { net, refetch, pull } from '../../data/sync';
 import { moveJob } from '../../data/api';
 import { exactPreview, exactAnswer, exactRefusal, ARRIVE_LATE, LATE_CHANGED, PICK_TRUCK, type ExactStop } from '../../data/exact';
@@ -22,7 +26,7 @@ import { warmJobDay } from '../../data/roads';
 import { windowOf, job as jobRow, truckLabel } from '../../data/select';
 import type { Job } from '../../data/types';
 import { t, lang } from '../../lib/i18n';
-import { clock, duration, type Day } from '../../lib/dates';
+import { clock, duration, type Day, type Range } from '../../lib/dates';
 import { codeWords, isNetworkError, classify, Refused } from '../../lib/errors';
 import { ask, toast } from '../../ui';
 import { exactCase, lateOkOf, type ExactCase } from '../../domain/jobs/exact';
@@ -30,6 +34,7 @@ import { jobPerson } from '../../domain/jobs/words';
 import { dayInSentence } from '../../domain/jobs/when';
 import { dropTells } from '../../domain/moment/moveRules';
 import { wantsText } from '../moment/notify';
+import { tellCtx, tellNow } from '../../domain/jobs/told';
 
 type Question = { title: string; text?: string; ok?: string; cancel?: string; danger?: boolean };
 export interface ExactAsk {
@@ -64,6 +69,25 @@ function nameOf(id: string): string {
   return (row && jobPerson(row)) || t('jobs.exact.someone');
 }
 const names = (ids: readonly string[]) => ids.map(nameOf).join(', ');
+
+/** the window a customer pushed late by the move will get with « Envoyer les heures aux clients » (null: none to say).
+    The phone's tell_now on his row with the arrival after the move: a day other than today (today such a slip is
+    'drift': the « en route » text gives him the time), « les plages ne bougent jamais » not set (rewin), a sure arrival
+    (the preview's `measured` not false; « Vraies routes » off: always), outside the window he was told (days F1: inside
+    it, nothing to send). The window is the garage's rule around that arrival (win_for). */
+export function lateWindow(s: ExactStop, day: Day): Range | null {
+  if (s.etaAfter == null) return null;
+  const ctx = tellCtx();
+  if (day === ctx.today) return null;
+  const row = jobRow(s.id);
+  const n = tellNow({
+    day, block: 'day', status: 'booked', eta_min: s.etaAfter, eta_measured: s.measured !== false,
+    win_start: s.winStart ?? row?.win_start ?? null, win_end: s.winEnd ?? row?.win_end ?? null,
+    told_day: row?.told_day ?? null, told_start: row?.told_start ?? null, told_end: row?.told_end ?? null,
+    told_at: row?.told_at ?? null, hand_at: row?.hand_at ?? null
+  }, ctx);
+  return n.rewin && n.start != null && n.end != null ? [n.start, n.end] : null;
+}
 
 /** how long the preview is waited for before the person is told it could not be checked (review F3: a weak signal or a
     busy server is NO ANSWER, said plainly with « Déplacer quand même » / « Annuler », never « Pas de réseau » after 15 s) */
@@ -117,7 +141,12 @@ export function questionOf(c: ExactCase, a: { job: Job; day: Day; at: number; co
       // the moved appointment and its time named too (review L2)
       title: n ? t('jobs.exact.lateTitle', { n, name: nameOf(c.late[0].id), who, time }) : title,
       text: lines(
-        ...c.late.map((s) => t('jobs.exact.lateLine', { name: nameOf(s.id), eta: clock(s.etaAfter ?? 0, l), by: duration(s.lateMin, l), from: clock(s.winStart ?? 0, l), to: clock(s.winEnd ?? 0, l) })),
+        ...c.late.map((s) => {
+          const line = t('jobs.exact.lateLine', { name: nameOf(s.id), eta: clock(s.etaAfter ?? 0, l), by: duration(s.lateMin, l), from: clock(s.winStart ?? 0, l), to: clock(s.winEnd ?? 0, l) });
+          // his new window, which leaves with the day's button (never by itself)
+          const w = lateWindow(s, a.day);
+          return w ? `${line} ${t('jobs.exact.lateNew', { from: clock(w[0], l), to: clock(w[1], l) })}` : line;
+        }),
         c.overHours > 0 && t('jobs.exact.overHours', { by: duration(c.overHours, l) }),
         pushedLines(c.pushed, l), other, toldFor(), sms),
       ok: t('jobs.exact.lateOk'), cancel: t('jobs.exact.other'), danger: true
@@ -230,12 +259,20 @@ function landed(data: unknown, jobId: string, at: number): { late: string[]; rea
   return { late, real: real != null && real !== at ? real : null };
 }
 
-/** the message once moved: « Rendez-vous déplacé : demain à 13 h. », the late customers named (to call them), or where it
-    really landed. `head`: the caller's own first sentence (« Changer de camion »: « Rendez-vous passé à … ») */
+/** the message once moved: « Rendez-vous déplacé : demain à 13 h. », the late customers named, or where it really
+    landed. `head`: the caller's own first sentence (« Changer de camion »: « Rendez-vous passé à … »). A late customer
+    whose new window leaves with the day's button (lateWindow, from the move's own answer) is said so; the others (today,
+    the windows that never move, an arrival not sure) are to be told by the person: « Avertis … ». */
 export function doneWords(d: Extract<ExactDone, { kind: 'moved' }>, day: Day, head?: string): string {
   const l = lang.value;
   const first = d.real != null
     ? t('jobs.exact.notAt', { real: clock(d.real, l), time: clock(d.at, l) })
     : head ?? t('jobs.exact.done', { when: dayInSentence(day, l), time: clock(d.at, l) });
-  return d.late.length ? `${first} ${t('jobs.exact.doneLate', { n: d.late.length, names: names(d.late) })}` : first;
+  if (!d.late.length) return first;
+  const stops = exactAnswer(d.r.data)?.stops ?? [];
+  const gets = d.late.filter((id) => { const s = stops.find((x) => x.id === id); return !!s && lateWindow(s, day) != null; });
+  const tell = d.late.filter((id) => !gets.includes(id));
+  return [first,
+    gets.length ? t('jobs.exact.doneLate', { n: gets.length, names: names(gets) }) : '',
+    tell.length ? t('jobs.exact.doneLateToday', { n: tell.length, names: names(tell) }) : ''].filter(Boolean).join(' ');
 }

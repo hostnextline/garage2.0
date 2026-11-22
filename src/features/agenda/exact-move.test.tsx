@@ -234,13 +234,16 @@ describe('no signal (A4)', () => {
 });
 
 describe('the late customers named; the refusals (A2, A5)', () => {
-  it('somebody late: the warning first; moved anyway, the message names them to call (the app texts them nothing)', async () => {
+  // Part 28 (REARRANGE.md §3.6, §4.4): a day other than today, « les plages » allowed to move: Carla's new window leaves
+  // with « Envoyer les heures aux clients » (said in the question and after the move); the app texts her nothing
+  it('somebody late: the warning first (with her new window); moved anyway, the message says it goes with the day’s button (the app texts them nothing)', async () => {
     exact.exactPreview.mockResolvedValue(ok({ stops: [ok().stops[0], { id: 'j2', day: DAY, truckId: 't1', orderBefore: 2, orderAfter: 2, etaBefore: 840, etaAfter: 1050, winStart: 780, winEnd: 1020, delay: 210, late: true, lateMin: 30, measured: null }] }));
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, exact: true, tell: false, stops: [{ id: 'j2', eta_after: 1050, late: true, late_min: 30 }] } });
     await moveToTime(julie(), DAY, 't1', 780);
     expect((ui.ask.mock.calls[0][0] as { title: string }).title).toBe('Déplacer Julie à 13 h met Carla en retard');
     expect(api.moveJob.mock.calls[0][4]).toMatchObject({ lateOk: ['j2'] });
-    expect(ui.toast.mock.calls.at(-1)?.[0]).toMatch(/Avertis Carla : servi après sa plage\.$/);
+    expect((ui.ask.mock.calls[0][0] as { text: string }).text.split('\n')[0]).toBe('Carla : vers 17 h 30, 30 min après sa plage (13 h à 17 h). Il aura 16 h à 20 h avec « Envoyer les heures aux clients ».');
+    expect(ui.toast.mock.calls.at(-1)?.[0]).toMatch(/Carla aura une nouvelle plage : elle part avec « Envoyer les heures aux clients »\.$/);
     expect(asked()).toEqual([]);
   });
   it('« ça ne rentre pas » or its truck does not work that day: the windows still possible open, as before', async () => {

@@ -95,7 +95,6 @@ export const today: typeof fr = {
   /* arrival windows: the same without the word “block”, and the window the customer was told */
   win: {
     bookSub: 'A customer on the phone: find them an arrival window',
-    confirmHelp: 'Tomorrow’s appointments whose customer did not get the confirmation text (the day, the arrival window and the planned total).',
     told: 'Customer was told: {window}'
   },
   agenda: 'Schedule',
@@ -140,14 +139,6 @@ export const today: typeof fr = {
     title: 'Proposals waiting',
     help: 'Work proposed on site that the customer has not accepted or declined yet.',
     none: 'No proposal waiting.'
-  },
-  confirm: {
-    title: 'To confirm for tomorrow',
-    help: 'Tomorrow’s appointments whose customer did not get the confirmation text (the day, the block and the planned total).',
-    none: 'Tomorrow’s appointments are all confirmed.',
-    send: 'Send',
-    sendLabel: 'Send the confirmation to {name}',
-    noPhone: 'No number'
   },
   payments: {
     title: 'Today’s payments',

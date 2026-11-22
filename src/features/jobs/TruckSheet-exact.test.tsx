@@ -11,8 +11,8 @@ vi.mock('../../data/roads', async (orig) => ({ ...(await orig<object>()), movePr
 vi.mock('../../data/api', async (orig) => ({ ...(await orig<object>()), moveJob: h.move }));
 vi.mock('../../data/exact', async (orig) => ({ ...(await orig<object>()), exactPreview: h.exact }));
 vi.mock('../../ui', async (orig) => ({ ...(await orig<object>()), ask: h.ask }));
-const asking = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true), sendText: vi.fn() }));
-vi.mock('../../shared/jobs/textAsk', async (orig) => ({ ...(await orig<object>()), askMovedText: asking.askMovedText }));
+const asking = vi.hoisted(() => ({ askMovedText: vi.fn((..._a: unknown[]) => true), sendText: vi.fn(), toldDayAfter: vi.fn() }));
+vi.mock('../../shared/jobs/textAsk', async (orig) => ({ ...(await orig<object>()), askMovedText: asking.askMovedText, toldDayAfter: asking.toldDayAfter }));
 vi.mock('../../shared/jobs/texts', async (orig) => ({ ...(await orig<object>()), sendText: asking.sendText }));
 
 import { TruckSheet } from './TruckSheet';
@@ -138,5 +138,21 @@ describe('« Texter … ? » instead of the text (Hassan, 2026-11-22: « the sys
     await tap('truck-pick-t2');
     expect(h.move).toHaveBeenCalledTimes(1);
     expect(asking.askMovedText).not.toHaveBeenCalled();
+  });
+  // Part 28 (REARRANGE.md §3.6-2): asked nothing → the told day's toast is checked with the job as it was (it shows only
+  // when the day he was told is today and the move changed it: never here, the day and hours stay); asked → nothing
+  it('Part 28: asked nothing → toldDayAfter with the job of before; the question asked → no toast from here', async () => {
+    seed(false); textOn();
+    await show(J());
+    await tap('truck-pick-t2');
+    expect(asking.toldDayAfter).toHaveBeenCalledTimes(1);
+    expect(asking.toldDayAfter.mock.calls[0][0]).toMatchObject({ id: 'j1', truck_id: 't1' });
+    asking.toldDayAfter.mockClear();
+    h.exact.mockResolvedValueOnce({ ...OK, refused: 'arrive_late', earliest: 840, earliestKeep: 840 }).mockResolvedValue(OK);
+    h.move.mockResolvedValue({ queued: false, data: { ok: true, exact: true, tell: true } });
+    await show(J());
+    await tap('truck-pick-t2');
+    expect(asking.askMovedText).toHaveBeenCalledTimes(1);
+    expect(asking.toldDayAfter).not.toHaveBeenCalled();
   });
 });

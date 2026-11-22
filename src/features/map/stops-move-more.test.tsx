@@ -43,6 +43,9 @@ vi.mock('../../data/sync', async (orig) => ({
   pull: async () => undefined
 }));
 vi.mock('../../shared/map/MapView', () => ({ MapView: () => null }));
+// Part 28: E4's toast of the day the customer was TOLD (its own rule decides whether it shows): its calls are looked at
+const told = vi.hoisted(() => ({ toldDayToast: vi.fn() }));
+vi.mock('../../shared/jobs/ToldBits', async (orig) => ({ ...(await orig<object>()), toldDayToast: told.toldDayToast }));
 vi.mock('../../shared/map/useRoads', () => ({ useRoads: () => 0, roadOf: () => [], roadTotal: () => null, roadState: () => 'known' }));
 vi.mock('../../shared/moment/BlockPicker', async () => {
   const { h } = await import('preact');
@@ -111,7 +114,7 @@ async function show(who: Access) {
 }
 const closeMenu = () => act(() => { (document.querySelector('.agenda-menu-shade') as HTMLElement | null)?.click(); });
 
-beforeEach(() => { lang.value = 'fr'; wide.value = true; srv.textStatus = 'sent'; srv.tell = false; srv.moves = []; srv.queued = false; srv.notified = []; srv.outbox = []; srv.done = []; forgetTeamMaps(); toasts.value = []; location.hash = '#/map'; });
+beforeEach(() => { told.toldDayToast.mockClear(); lang.value = 'fr'; wide.value = true; srv.textStatus = 'sent'; srv.tell = false; srv.moves = []; srv.queued = false; srv.notified = []; srv.outbox = []; srv.done = []; forgetTeamMaps(); toasts.value = []; location.hash = '#/map'; });
 afterEach(async () => { act(() => { clearTextAsks(); }); closeMenu(); act(() => render(null, box)); clearAll(); access.value = null; movesWaiting.value = new Set(); outbox.value = []; srv.outbox = []; await outboxChanged(); vi.useRealTimers(); });
 
 describe('a move kept on the phone (no signal), from the card', () => {
@@ -141,6 +144,8 @@ describe('a move kept on the phone (no signal), from the card', () => {
     await answerTextAsk(true);
     expect(srv.notified.length).toBe(1);
     expect(srv.notified[0].slice(0, 2)).toEqual(['moved', 'j1']);
+    // told by that text: never the told day's toast (Part 28)
+    expect(told.toldDayToast).not.toHaveBeenCalled();
   });
   it('the server answers that the customer has nothing new to hear (tell: false): no text', async () => {
     garage();
@@ -157,6 +162,9 @@ describe('a move kept on the phone (no signal), from the card', () => {
     expect(srv.notified).toEqual([]);
     expect(q('text-ask')).toBeNull();
     expect(movesWaiting.value.has('j1')).toBe(false);
+    // Part 28: nothing asked → the told day's toast is checked once, with the job as it was before the move
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast.mock.calls[0][0]).toMatchObject({ id: 'j1', day: TODAY, block: 'am' });
   });
   it('the « moved » text off: the message says nothing of a text, and none goes', async () => {
     garage({ textOn: false });
@@ -174,6 +182,29 @@ describe('a move kept on the phone (no signal), from the card', () => {
     await settle(); await settle();
     expect(srv.notified).toEqual([]);
     expect(q('text-ask')).toBeNull();
+    // Part 28: « Rendez-vous changé » off asks nothing, yet the move landed: the told day's toast is still checked
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast.mock.calls[0][0]).toMatchObject({ id: 'j1', day: TODAY });
+  });
+  it('Part 28: the question answered « Pas maintenant » once the kept move landed: the told day’s toast after it, not before', async () => {
+    garage();
+    srv.queued = true;
+    srv.outbox = [pendingMove];
+    await show(owner);
+    await click('stop-j1');
+    await click('map-move');
+    await click('fake-pick');
+    await click('move-ok');
+    srv.outbox = [];
+    await act(async () => { srv.done.forEach((r) => r({ ok: true, changed: true, tell: true })); });
+    await settle(); await settle();
+    for (let i = 0; i < 60 && !q('text-ask'); i++) await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(q('text-ask-later')!.textContent).toBe('Pas maintenant : rien ne part, sa nouvelle heure partira avec « Envoyer les heures aux clients ».');
+    expect(told.toldDayToast).not.toHaveBeenCalled();
+    await answerTextAsk(false);
+    expect(srv.notified).toEqual([]);
+    expect(told.toldDayToast).toHaveBeenCalledTimes(1);
+    expect(told.toldDayToast.mock.calls[0][0]).toMatchObject({ id: 'j1', day: TODAY });
   });
 });
 

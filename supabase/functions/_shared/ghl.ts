@@ -75,7 +75,10 @@ async function ready(): Promise<{ token: string; location: string } | null> {
     throw new Error(NO_SETTINGS);
   }
 }
-const failed = (e: unknown, words?: string) => ({ status: 'error' as const, error: (words || String((e as Error)?.message || e)).slice(0, 300) });
+/** a send that did not go: its words. `maybe` = GoHighLevel took the text but its answer came too late (no_answer): the
+    text may have gone, so a caller never sends it again by itself (Part 28: counted told, « peut-être parti ») */
+const failed = (e: unknown, words?: string) => ({ status: 'error' as const, error: (words || String((e as Error)?.message || e)).slice(0, 300),
+  ...(e instanceof Fail && e.code === 'no_answer' ? { maybe: true as const } : {}) });
 async function contactId(cfg: { token: string; location: string }, p: Person, tag: string, until: number): Promise<string> {
   const up = await call('/contacts/upsert', '2021-07-28', cfg.token, {
     locationId: cfg.location, firstName: p.first || undefined, lastName: p.last || undefined,
@@ -98,7 +101,7 @@ export async function syncContact(p: Person, tag = 'garage-mobile', time?: SendT
 }
 /** one text or email: the contact first (it leaves the text its SEND_MS), then the message, started only with SEND_MS left
     and never cut once started */
-async function deliver(cfg: { token: string; location: string }, p: Person, tag: string, payload: Record<string, unknown>, until: number): Promise<{ status: SendStatus; id?: string; error?: string }> {
+async function deliver(cfg: { token: string; location: string }, p: Person, tag: string, payload: Record<string, unknown>, until: number): Promise<{ status: SendStatus; id?: string; error?: string; maybe?: true }> {
   let cid: string;
   try { cid = await contactId(cfg, p, tag, until - SEND_MS); }
   catch (e) { return failed(e, e instanceof Fail && e.code === 'timeout' ? NOT_SENT : undefined); }
@@ -106,7 +109,7 @@ async function deliver(cfg: { token: string; location: string }, p: Person, tag:
   const sent = await call('/conversations/messages', '2021-04-15', cfg.token, { ...payload, contactId: cid }, until, true);
   return { status: 'sent', id: sent?.messageId || sent?.id };
 }
-export async function sendSms(p: Person, message: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string }> {
+export async function sendSms(p: Person, message: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string; maybe?: true }> {
   const until = endOf(time);
   try {
     const cfg = await ready();
@@ -115,7 +118,7 @@ export async function sendSms(p: Person, message: string, tag = 'garage-mobile',
     return await deliver(cfg, p, tag, { type: 'SMS', message }, until);
   } catch (e) { return failed(e); }
 }
-export async function sendEmail(p: Person, subject: string, html: string, text: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string }> {
+export async function sendEmail(p: Person, subject: string, html: string, text: string, tag = 'garage-mobile', time?: SendTime): Promise<{ status: SendStatus; id?: string; error?: string; maybe?: true }> {
   const until = endOf(time);
   try {
     const cfg = await ready();

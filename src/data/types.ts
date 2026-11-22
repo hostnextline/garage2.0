@@ -125,6 +125,16 @@ export interface Job extends Base {
   /** « exact move » (S1): the minute of the day the person pointed when moving it by hand; the planner then keeps the
       arrival there. null / absent: the planner chooses inside the window. Written by the server only (src/data/exact.ts). */
   arrive_at?: number | null;
+  /** what the customer was last TOLD (Part 28, « Envoyer les heures aux clients »): the day and the hours (minutes of the day)
+      his last text said, or what a person confirmed telling him; told_start / told_end null with told_at set = told « dans la
+      journée » (flexible); told_at null = never told anything. told_how: 'sms' sent, 'maybe' (the texting service answered
+      too late), 'hand' (sent by hand from a phone), 'call' (« Je l'ai averti »), 'install' (marked by the migration).
+      told_by: who sent or marked it (null: the server). Written by the server only (src/domain/jobs/told.ts reads them). */
+  told_day?: string | null; told_start?: number | null; told_end?: number | null; told_at?: string | null;
+  told_how?: 'sms' | 'maybe' | 'hand' | 'call' | 'install' | null; told_by?: string | null;
+  /** when a « Réorganiser » save by someone without « Réserver » left this stop's sure arrival outside its window (kept, never
+      cleared: a later told_at makes it old). Written by the server only. */
+  hand_at?: string | null;
   pay_later: boolean; pay_later_reason: string | null; waiver_signed_at: string | null; waiver_signer: string | null; waiver_version: string | null; waiver_attachment: string | null;
   /** signed by the customer online (from the confirmation text) or at the door */
   waiver_via?: 'phone' | 'online' | null;

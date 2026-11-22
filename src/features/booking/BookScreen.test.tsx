@@ -152,9 +152,10 @@ describe('the booking screen', () => {
     await click(q('book-confirm'));
     expect(api.bookJob).toHaveBeenCalledTimes(2);
     expect(ui.toast).toHaveBeenCalledTimes(1);
-    // where the text is sent from, said right: the appointment, or the day before in « À confirmer pour demain »
+    // where the text is sent from, said right: the appointment, or « Envoyer les heures aux clients » of its day (Part 28)
     expect(ui.toast.mock.calls[0][0]).toMatch(/Renvoyer le texto de confirmation/);
-    expect(ui.toast.mock.calls[0][0]).toMatch(/la veille dans « À confirmer pour demain »/);
+    expect(ui.toast.mock.calls[0][0]).toMatch(/ou avec « Envoyer les heures aux clients » de sa journée/);
+    expect(ui.toast.mock.calls[0][0]).not.toMatch(/À confirmer pour demain/);
     expect(nav.navigate).toHaveBeenCalledWith(`/agenda/${DAY}`, { replace: true });
     expect(texts.notifyCustomer).not.toHaveBeenCalled();
   });
