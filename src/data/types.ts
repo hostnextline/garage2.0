@@ -24,6 +24,14 @@ export interface Settings extends Row {
     windows_on?: boolean; win_before_min?: number; win_after_min?: number; win_round_min?: number;
     /** « garde-route »: the longest drive between two customers (min) and the most driving in a truck's day (min) before a moment is said « loin » */
     max_hop_min?: number; max_day_drive_min?: number;
+    /** « Vraies routes » (Part 27): the planner counts the real roads measured (TomTom, OSRM when TomTom does not answer), never a
+        straight line; flipped only by roads_switch (missing = off). roads_rush: the rush-hour times too (false: usual hours only);
+        roads_rush_min: a rush time is asked only for a trip of at least this (min); near_min: « près » = at most this many minutes
+        of real driving (on; off: near_km); roads_month_tx: the month's ceiling of TomTom Matrix transactions; roads_keep_days: a
+        time older than this is asked again */
+    roads_on?: boolean; roads_rush?: boolean; roads_rush_min?: number; near_min?: number; roads_month_tx?: number; roads_keep_days?: number;
+    /** the public booking page's own TomTom allowance of the month (the function « book »; 1 000 when missing; owner only) */
+    roads_web_tx?: number;
     home: { label: string; address: string; lat: number; lng: number };
     /** « Réserver en ligne » (Part 23): the public link client.html#reserver is open */
     web?: { on?: boolean; max_km?: number };
@@ -111,6 +119,12 @@ export interface Job extends Base {
   manual_order?: number | null;
   /** booked « quand même » in a full block: the route goes past the truck's hours (Part 19) */
   forced?: boolean;
+  /** « Vraies routes » on: false = a trip before this stop counts the fixed unknown time, so eta_min is not a sure time
+      (null / absent: switch off, or a server without the column: eta_min said as before). Written by the server only. */
+  eta_measured?: boolean | null;
+  /** « exact move » (S1): the minute of the day the person pointed when moving it by hand; the planner then keeps the
+      arrival there. null / absent: the planner chooses inside the window. Written by the server only (src/data/exact.ts). */
+  arrive_at?: number | null;
   pay_later: boolean; pay_later_reason: string | null; waiver_signed_at: string | null; waiver_signer: string | null; waiver_version: string | null; waiver_attachment: string | null;
   /** signed by the customer online (from the confirmation text) or at the door */
   waiver_via?: 'phone' | 'online' | null;

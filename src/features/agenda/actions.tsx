@@ -2,73 +2,29 @@
    On an appointment: open it, copy it, move it; the customer (file, text, call, directions, a new car, an estimate, a
    new appointment); its invoice. On a block: paste the appointment copied, book in this block, see the day, its map.
    Each shortcut shows only to the people who may use it (the screen it opens checks again, as always). */
-import { Copy, ClipboardPaste, ExternalLink, CalendarPlus, CalendarClock, ReceiptText, CalendarDays, Map as MapIcon, Truck, Pencil } from 'lucide-preact';
-import type { Job } from '../../data/types';
+import { ClipboardPaste, CalendarPlus, CalendarDays, Map as MapIcon } from 'lucide-preact';
 import { clock, today as todayOf, type BlockKey, type Day } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
 import { may } from '../../domain/rights';
 import { navigate, href } from '../../platform/router';
 import { wide } from '../../platform/media';
-import { customer as customerRow, invoiceOf, windowsOn, windowOf } from '../../data/select';
-import { toast } from '../../ui';
+import { windowOf } from '../../data/select';
 import { blockPhrase } from '../../domain/moment/words';
 import { dayWords } from './layout';
-import { customerActions } from '../../shared/customers/shortcuts';
-import { jobRights, mayChangeTruck, mayEditJob } from '../../domain/jobs/rights';
-import { jobPerson } from '../../domain/jobs/words';
-import { copiedRow, copyJob, pasteHref, bookHref } from './copy';
+import { copiedRow, pasteHref, bookHref } from './copy';
 import { dropWindowStart } from '../../domain/moment/grid';
 import { openMenu, openMenuAt, pressProps, type MenuAction } from '../../ui/ContextMenu';
-import { movesWaiting } from './move';
+
+/* the shortcuts of an appointment are shared with the lists of a truck's stops (Carte, Vue d'ensemble, Aujourd'hui):
+   shared/jobs/shortcuts.tsx. The agenda uses them from here, as before (« Déplacer » opens the appointment's screen). */
+export { jobActions, jobMenu, jobPress } from '../../shared/jobs/shortcuts';
 
 /** a block takes a paste when it has not started and is open (a full block: the booking screen offers « quand même »),
     while the appointment copied is still on this phone (else the booking screen would open empty) */
 export const mayPaste = (v: { started: boolean; open: boolean }) => may.book() && !!copiedRow() && !v.started && v.open;
 
 const go = (path: string) => () => navigate(path);
-const icon = (I: typeof Copy) => <I size={18} aria-hidden="true" />;
-
-/** the shortcuts of an appointment, in groups: the appointment, its customer, the money */
-export function jobActions(j: Job): { title: string; actions: MenuAction[] } {
-  const name = jobPerson(j) || `#${j.number}`;
-  const c = customerRow(j.customer_id);
-  const r = jobRights(j);
-  const a: MenuAction[] = [];
-  const add = (x: MenuAction | false | null | undefined) => { if (x) a.push(x); };
-  const group = () => { if (a.length) a[a.length] = undefined as never; };   // marks where the next group starts
-  // the appointment
-  add({ key: 'open', label: t('agenda.menu.open'), icon: icon(ExternalLink), run: go(`/job/${j.id}`), testid: 'menu-open' });
-  add(may.book() && !!j.customer_id && { key: 'copy', label: t('agenda.menu.copy'), icon: icon(Copy), testid: 'menu-copy-job',
-    run: () => { copyJob(j.id); toast(t(windowsOn.value ? 'agenda.copy.copiedDay' : 'agenda.copy.copied', { name }), { kind: 'ok' }); } });
-  add(mayEditJob(j, r) && { key: 'edit', label: t('jobs.edit.menu'), icon: icon(Pencil), run: go(`/job/${j.id}?do=edit`), testid: 'menu-edit' });
-  // a move of it still kept on the phone: no second one queued behind it (agenda-14)
-  add(j.status === 'booked' && r.move && !movesWaiting.value.has(j.id) && { key: 'move', label: t('agenda.menu.move'), icon: icon(CalendarClock), run: go(`/job/${j.id}?do=move`), testid: 'menu-move' });
-  add(mayChangeTruck(j, r) && { key: 'truck', label: t('jobs.truck.menu'), icon: icon(Truck), run: go(`/job/${j.id}?do=truck`), testid: 'menu-truck' });
-  // the customer (the same shortcuts as in the list of customers; directions to the appointment's own address)
-  if (c) {
-    group();
-    for (const x of customerActions(c, { place: j.address ? { address: j.address, unit: j.unit, postal_code: j.postal_code, lat: j.lat, lng: j.lng } : undefined })) add(x);
-  }
-  // the money
-  const inv = invoiceOf(j.id);
-  if (inv && inv.status !== 'void' && may.invoices()) {
-    group();
-    add({ key: 'invoice', label: t('agenda.menu.invoice'), icon: icon(ReceiptText), run: go(`/invoice/${inv.id}`), testid: 'menu-invoice' });
-  }
-  // the groups: a thin line above the first shortcut of each
-  const out: MenuAction[] = [];
-  let sep = false;
-  for (const x of a) { if (!x) { sep = true; continue; } out.push(sep ? { ...x, sep: true } : x); sep = false; }
-  return { title: name, actions: out };
-}
-export function jobMenu(e: MouseEvent, j: Job) {
-  const m = jobActions(j);
-  openMenu(e, m.actions, m.title);
-}
-/** the long press on an appointment (phone) */
-export function jobPress(j: Job) {
-  return pressProps((x, y) => { const m = jobActions(j); openMenuAt(x, y, m.actions, m.title); });
-}
+const icon = (I: typeof CalendarPlus) => <I size={18} aria-hidden="true" />;
 
 /** the window that goes with a time of the grid, as the booking screen reads it (`&win=`); a day of blocks has none */
 export function unitWin(block: BlockKey, minute: number): number | null {

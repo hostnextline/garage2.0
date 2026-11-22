@@ -6,7 +6,7 @@ import { cityOf } from './address';
 export interface PlaceValue { address: string; unit: string | null; postal_code: string | null; lat: number | null; lng: number | null; city?: string | null }
 export const EMPTY_PLACE: PlaceValue = { address: '', unit: null, postal_code: null, lat: null, lng: null, city: null };
 
-/** the place to save on a customer or a job: the city read from the address when Photon did not give it. A postal code
+/** the place to save on a customer or a job: the city read from the address when the map service did not give it. A postal code
     that is not one (« H3P », « 12345 ») is never written: the field shows it in red, and saving it would carry it into
     the file, the exports and the directions (customers-a-18). */
 export function placeFields(v: PlaceValue): { address: string | null; unit: string | null; postal_code: string | null; lat: number | null; lng: number | null; city: string | null } {

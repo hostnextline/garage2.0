@@ -26,9 +26,22 @@ export function pickDay(x: { owner: boolean; office: boolean; mechanic: boolean;
 export function nextStopOf<J extends Pick<Job, 'status'>>(list: J[]): J | undefined {
   return list.find((j) => j.status === 'on_site') || list.find((j) => j.status === 'en_route') || list.find((j) => j.status === 'booked');
 }
+/** the arrival said for a stop: on the way, only the trip's real arrival from the server (« Je pars »: TomTom, else OSRM),
+    never the plan's time said as an arrival (null while the server has none; the map legend says the same); otherwise the
+    planned arrival */
+export function arrivalOf(j: Pick<Job, 'status' | 'eta_min'> & { eta_measured?: boolean | null }, tripEtaMin: number | null | undefined): number | null {
+  if (j.status === 'en_route') return tripEtaMin ?? null;
+  // a plan's time that is not sure (a trip before it not measured yet: final-guess G1) is not said
+  return j.eta_measured === false ? null : j.eta_min ?? null;
+}
 export function summaryOf(list: Pick<Job, 'status' | 'travel_min' | 'duration_min'>[]): { stops: number; drive: number; work: number } {
   const l = list.filter(isLive);
   return { stops: l.length, drive: l.reduce((n, j) => n + (j.travel_min ?? 0), 0), work: l.reduce((n, j) => n + (j.duration_min || 0), 0) };
+}
+/** « Vraies routes » on: a stop still to do whose trips are not all measured (`eta_measured` false): the day's « de route »
+    then counts the fixed unknown time for it and says so (final-guess G1) */
+export function driveUnsure(list: (Pick<Job, 'status'> & { eta_measured?: boolean | null })[]): boolean {
+  return list.some((j) => j.status === 'booked' && j.eta_measured === false);
 }
 /** minutes worked: every shift, the open one until now */
 export function workedMinutes(shifts: { started_at: string; ended_at: string | null }[], now = Date.now()): number {

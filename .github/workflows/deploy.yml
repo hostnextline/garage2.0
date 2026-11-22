@@ -58,6 +58,9 @@ jobs:
           # a version made before this date must update before anything else (only after a harmful build): the
           # repository variable APP_MIN_BUILT_AT (Settings → Secrets and variables → Actions → Variables), empty = none
           APP_MIN_BUILT_AT: ${{ vars.APP_MIN_BUILT_AT }}
+          # TomTom's BROWSER key (maps, routes with traffic, addresses; restricted to the app's addresses on
+          # developer.tomtom.com): the repository variable TOMTOM_KEY, empty = the free OpenStreetMap services as before
+          VITE_TOMTOM_KEY: ${{ vars.TOMTOM_KEY }}
       - name: Publier sur Vercel (branche vercel)
         # the same built app in public/, with the Vercel settings next to it; Vercel publishes each new push
         run: |

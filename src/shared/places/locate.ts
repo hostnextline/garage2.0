@@ -1,75 +1,20 @@
 /* The position of an address without asking anyone: the right door, in the right town, or nothing.
-   Used when the person leaves the address field without choosing a suggestion, by « Chercher », and by the locator
-   that fills in the positions still missing (src/app/locator.ts).
-   Photon is asked with the address as typed, then with the short words written out (av. → avenue, St- → Saint-),
-   then without the town; every answer is checked against what was typed: the same door number, the same street, and
-   the town or the postal code (its first three characters) when they were given. Two different places that both fit
-   are not chosen: the person picks (« Laquelle est la bonne ? »). */
-import { findPostal, postalCode, fold } from '../../lib/text';
-import { splitPasted, civicOf, withoutPostal } from './address';
+   Used when the person leaves the address field without choosing a suggestion, by « Chercher » / « Trouver », by the
+   saves (withPosition.ts, which hurries), by the customer's booking page and by the locator that fills in the
+   positions still missing (src/shared/customers/locator.ts).
+   The map services (places.ts: TomTom with the app's key, Photon with it or alone) are asked with the address as typed,
+   then with the short words written out (av. → avenue, St- → Saint-), then without the town; every answer is checked
+   against what was typed: the same door number, the same street, and the town or the postal code (its first three
+   characters) when they were given. Two different places that both fit are not chosen: the person picks (« Laquelle
+   est la bonne ? »). */
+import { splitPasted } from './address';
 import { photonQuery, metres, type Suggestion } from './photon';
 import { searchPlaces } from './places';
+import { streetWords, sameStreet, sameTown, wantedOf, digits, AREA, type Wanted } from './match';
 
-/* words that only say what kind of street it is (they may be written or not, in full or short) */
-const GENERIC = new Set([
-  'rue', 'avenue', 'av', 'ave', 'boulevard', 'boul', 'blvd', 'bd', 'chemin', 'ch', 'place', 'pl', 'route', 'rte', 'rang', 'montee',
-  'cote', 'croissant', 'cr', 'allee', 'impasse', 'terrasse', 'terr', 'promenade', 'prom', 'carre', 'square', 'sq', 'autoroute', 'aut',
-  'cours', 'voie', 'passage', 'sentier', 'quai', 'esplanade', 'rond', 'point', 'ruelle', 'circuit', 'street', 'road', 'rd',
-  'drive', 'dr', 'lane', 'ln', 'court', 'ct', 'crescent', 'cres', 'way', 'du', 'de', 'des', 'la', 'le', 'les', 'l', 'd', 'of', 'the'
-]);
-const DIRECTION: Record<string, string> = { e: 'est', o: 'ouest', w: 'ouest', west: 'ouest', east: 'est', n: 'nord', north: 'nord', s: 'sud', south: 'sud' };
+// what was typed and how a street or a town compares now live in match.ts (places.ts uses them too); said here as well
+export { streetWords, sameStreet, sameTown, wantedOf, type Wanted } from './match';
 
-/** a street as a set of words to compare: « rue Khalil-Gibran » = « khalil gibran », « 58e av. » = « 58e Avenue »,
-    « St-Laurent » = « Saint-Laurent », « 1st » = « 1re » */
-export function streetWords(s: string | null | undefined): string[] {
-  const words = fold(String(s || '')).replace(/[.,'’`]/g, ' ').replace(/[-/]/g, ' ').split(/\s+/).filter(Boolean);
-  const out: string[] = [];
-  words.forEach((w, i) => {
-    if (w === 'st' || w === 'saint') { if (i < words.length - 1) out.push('saint'); return; }   // « Main St » is the generic word
-    if (w === 'ste' || w === 'sainte') { out.push('sainte'); return; }
-    if (w === 'mt') { out.push('mont'); return; }
-    const ord = /^(\d+)(e|eme|ieme|er|re|ere|th|st|nd|rd)$/.exec(w);
-    if (ord) { out.push(`${ord[1]}e`); return; }
-    if (DIRECTION[w]) { out.push(DIRECTION[w]); return; }
-    if (GENERIC.has(w)) return;
-    out.push(w);
-  });
-  return out;
-}
-/** every word typed is in the street of the answer (« khalil gibran » fits « rue Khalil-Gibran ») */
-export function sameStreet(typed: string, found: string): boolean {
-  const a = streetWords(typed), b = new Set(streetWords(found));
-  return a.length > 0 && a.every((w) => b.has(w));
-}
-const townKey = (s: string) => streetWords(s).join('');
-/** « St-Laurent » and « Saint-Laurent », « Montréal-Nord » inside « Montréal »… */
-export function sameTown(a: string | null | undefined, b: string | null | undefined): boolean {
-  const x = townKey(a || ''), y = townKey(b || '');
-  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
-}
-
-export interface Wanted {
-  /** the door number, and the other number of a duplex (« 4521-4523 rue Fabre ») */
-  civic: string | null; civics: string[];
-  street: string; city: string | null; fsa: string | null;
-}
-const PROVINCE = /^(qc|que|quebec|on|ont|ontario|nb|ns|pe|nl|mb|sk|ab|bc|yt|nt|nu|canada)$/;
-/** what the person typed: « 144 58e Avenue, Laval, QC H7V 2A7 » → door 144, street « 58e Avenue », Laval, H7V */
-export function wantedOf(address: string, opts: { postal?: string | null; city?: string | null } = {}): Wanted {
-  const { line, postal } = splitPasted(address);
-  const pc = postalCode(opts.postal) || postal || findPostal(line);
-  const parts = withoutPostal(line).split(',').map((x) => x.trim()).filter(Boolean);
-  const first = parts[0] || '';
-  const range = /^\s*(\d{1,6}[A-Za-z]?)\s*-\s*(\d{1,6}[A-Za-z]?)\s+(?=\D)/.exec(first);
-  const civic = range ? range[1] : civicOf(first);
-  const civics = range ? [range[1], range[2]] : civic ? [civic] : [];
-  const street = civic ? first.replace(/^\s*\d{1,6}[A-Za-z]?(?:\s*-\s*\d{1,6}[A-Za-z]?)?\b[\s,]*/, '').trim() : first;
-  let city = opts.city?.trim() || null;
-  if (!city) for (const p of parts.slice(1)) { const f = fold(p).replace(/\s+/g, ''); if (f && !PROVINCE.test(f) && !/^\d/.test(f)) { city = p; break; } }
-  return { civic, civics, street, city, fsa: pc ? pc.slice(0, 3) : null };
-}
-
-const digits = (s: string | null | undefined) => String(s || '').replace(/\D/g, '');
 const near = (a: Suggestion, b: Suggestion) =>
   a.place.lat != null && b.place.lat != null && metres(a.place.lat, a.place.lng!, b.place.lat, b.place.lng!) < 250;
 
@@ -78,8 +23,6 @@ const SIDES = new Set(['est', 'ouest', 'nord', 'sud']);
 const sidesOf = (street: string) => streetWords(street).filter((x) => SIDES.has(x));
 
 export interface Best { place: Suggestion | null; quality: 'door' | 'street' | null; choices: Suggestion[] }
-/** where the garage works: with no town and no postal code typed, an answer farther than this is not taken */
-const AREA = { lat: 45.5, lng: -73.65, km: 120 };
 /** the one answer that fits what was typed; none when nothing fits or when two different places fit */
 export function bestPlace(cands: Suggestion[], w: Wanted, area = AREA): Best {
   const inArea = (s: Suggestion) => !!w.city || !!w.fsa || metres(s.place.lat!, s.place.lng!, area.lat, area.lng) <= area.km * 1000;
@@ -126,10 +69,17 @@ export function longWords(q: string): string {
 export type Located =
   | { status: 'found'; place: Suggestion; quality: 'door' | 'street' }
   | { status: 'choose'; choices: Suggestion[] }
-  | { status: 'none' | 'offline' };
+  | { status: 'none' }
+  /** `partial`: the network works (TomTom answered) but Photon, needed, did not: « not now », asked again at the next try,
+      neither « no network » nor « the map services do not know it » (places.ts, review-places R6) */
+  | { status: 'offline'; partial?: true };
 
-/** finds the position of an address, or says why not (nothing fits, several fit, no network) */
-export async function locate(address: string | null | undefined, opts: { postal?: string | null; city?: string | null; fresh?: boolean } = {}): Promise<Located> {
+/** finds the position of an address, or says why not (nothing fits, several fit, no network). `hurry`: TomTom and Photon
+    are asked at once and the first door that fits is taken (a save waits 2.5 s at most: places.ts). `signal`: the
+    person typed again (the customer's booking page): the question being asked is stopped and nothing more is asked
+    (review-places R4) */
+export async function locate(address: string | null | undefined,
+  opts: { postal?: string | null; city?: string | null; fresh?: boolean; hurry?: boolean; signal?: AbortSignal } = {}): Promise<Located> {
   const text = String(address || '').trim();
   if (!text) return { status: 'none' };
   const w = wantedOf(text, opts);
@@ -138,8 +88,9 @@ export async function locate(address: string | null | undefined, opts: { postal?
   const queries = [typed, longWords(typed), w.civic ? longWords(`${w.civic} ${w.street}`) : ''].filter((q, i, all) => q && all.indexOf(q) === i);
   let choices: Suggestion[] = [];
   for (const q of queries) {
-    const r = await searchPlaces(q, undefined, { fresh: opts.fresh });
-    if (r.error) return { status: 'offline' };
+    if (opts.signal?.aborted) return { status: 'offline' };
+    const r = await searchPlaces(q, opts.signal, { fresh: opts.fresh, hurry: opts.hurry, postal: opts.postal, city: opts.city });
+    if (r.error) return r.partial ? { status: 'offline', partial: true } : { status: 'offline' };
     const best = bestPlace(r.places, w);
     if (best.place && best.quality) return { status: 'found', place: best.place, quality: best.quality };
     for (const c of best.choices) if (!choices.some((x) => x.key === c.key)) choices.push(c);

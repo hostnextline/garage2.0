@@ -161,7 +161,7 @@ button.row-item:hover, a.row-item:hover { background: var(--sunken); }
 .sheet-head h2 { font-size: var(--t-xl); flex: 1; min-width: 0; }
 .sheet-grip { position: absolute; top: 8px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: var(--line); }
 .sheet-body { overflow: auto; padding: 0 var(--sp-5) var(--sp-5); overscroll-behavior: contain; }
-.sheet-foot { display: flex; gap: var(--sp-3); padding: var(--sp-3) var(--sp-5) calc(var(--sp-4) + env(safe-area-inset-bottom)); border-top: 1px solid var(--glass-line); }
+.sheet-foot { display: flex; flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-3) var(--sp-5) calc(var(--sp-4) + env(safe-area-inset-bottom)); border-top: 1px solid var(--glass-line); }
 .sheet-foot .btn { flex: 1; }
 @media (min-width: 760px) {
   .sheet-back { align-items: center; padding: var(--sp-6); }

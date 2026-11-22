@@ -72,7 +72,12 @@ export const errors = {
 
   // booking, route and appointments
   bad_window: 'Cette plage n’est pas dans les heures de la journée : choisis-en une autre.',
+  roads_cold: 'Il reste des trajets à mesurer avant d’allumer les vraies routes. Réessaie dans un instant.',
   needs_truck: 'Ce travail demande le camion (montage ou balancement des pneus) : la voiture ne peut pas le faire.',
+  // « exact move »: a move to a time pointed (move_job's p_exact, move_preview with p_at)
+  arrive_late: 'Le camion ne peut pas être là à cette heure-là : choisis une heure plus tard.',
+  late_changed: 'La journée a changé depuis la vérification : ce déplacement mettrait un autre client en retard. Déplace-le de nouveau pour voir qui.',
+  pick_truck: 'Son camion ne travaille pas ce jour-là : choisis un camion qui travaille.',
   quote_done: 'Cette estimation est déjà réservée : ouvre son rendez-vous.',
   no_truck: 'Choisis le véhicule : la voiture ou le camion.',
   no_position: 'Cette adresse n’est pas trouvée sur la carte. Choisis-la dans la liste.',
@@ -166,6 +171,7 @@ export const errors = {
     extra_answer: { signature: 'La signature ne correspond pas à cette job.' },
     notify: { not_booked: 'Ce rendez-vous n’est plus à venir.', nothing: 'Rien à envoyer : ajoute le travail d’abord.' },
     windows_switch: { bad_mode: 'Choisis : les plages d’arrivée, ou les blocs.' },
+    roads_switch: { bad_mode: 'Choisis : les vraies routes, ou l’estimation.' },
     team: { exists: 'Cette personne a déjà un compte.' },
     invoice_reopen: { closed: 'La job est terminée : la facture ne se modifie plus. Annule-la pour en faire une nouvelle.' },
     set_job_duration: { block_full: 'Avec cette durée, la job ne rentre plus dans le bloc. Déplace-la ou raccourcis-la.' },

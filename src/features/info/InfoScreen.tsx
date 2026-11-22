@@ -1,14 +1,15 @@
 /* « Info » (#/info, #/info/<fiche>): every procedure of the app, in simple words, with an example. A search (accents
    and capitals do not count) and the topics; each sheet: for whom, the short answer, the steps, an example, tips,
    the screen to open (only when this reader may open it), the other sheets of the same topic. The articles are in
-   articles.ts. */
+   articles.ts; a sentence that depends on the real roads (Part 27) follows the garage's switch (articleText). */
 import { useEffect, useState } from 'preact/hooks';
 import { Lightbulb, Info as InfoIcon, ArrowRight } from 'lucide-preact';
 import { navigate, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
 import { may } from '../../domain/rights';
+import { roadsOn } from '../../data/select';
 import { Page, Panel, Rows, RowItem, SearchInput, Chips, Button, Empty } from '../../ui';
-import { ARTICLES, INFO_TOPICS, type InfoArticle, type InfoTopic } from './articles';
+import { ARTICLES, INFO_TOPICS, articleText, type InfoArticle, type InfoTopic } from './articles';
 import { searchInfo } from './search';
 import { mayOpen } from './links';
 import './info.css';
@@ -28,7 +29,8 @@ function List() {
   const [q, setQ] = useState(kept.q);
   const [topic, setTopic] = useState<InfoTopic | null>(kept.topic);
   useEffect(() => { kept = { q, topic }; }, [q, topic]);
-  const list = searchInfo(ARTICLES, q, l, topic);
+  const roads = roadsOn.value;
+  const list = searchInfo(ARTICLES, q, l, topic, roads);
   return (
     <Page title={t('info.title')} sub={t('info.sub')} help={t('info.help')} data-testid="info-screen">
       <SearchInput value={q} onValue={setQ} placeholder={t('info.search')} data-testid="info-search" />
@@ -42,7 +44,7 @@ function List() {
             {list.map((x) => (
               <RowItem key={x.id} href={`#/info/${x.id}`} chevron data-testid={`info-${x.id}`}
                 start={<span class="info-topic-dot" data-topic={x.topic} aria-hidden="true"><InfoIcon size={18} /></span>}
-                title={x[l].title} sub={x[l].short} />
+                title={x[l].title} sub={articleText(x, l, roads).short} />
             ))}
           </Rows>
         </Panel>
@@ -53,7 +55,7 @@ function List() {
 
 function Sheet({ a }: { a: InfoArticle }) {
   const l = L();
-  const x = a[l];
+  const x = articleText(a, l, roadsOn.value);
   const who = a.roles.map((r) => t(`info.roles.${r}`)).join(', ');
   const related = ARTICLES.filter((o) => o.topic === a.topic && o.id !== a.id);
   useEffect(() => { window.scrollTo?.(0, 0); }, [a.id]);

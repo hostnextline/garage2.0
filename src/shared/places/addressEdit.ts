@@ -56,7 +56,7 @@ export function pasted(v: PlaceValue, text: string, anchor: string): PlaceValue 
 }
 
 /** a suggestion chosen: its address and position; the unit typed with the address (« 3-1250 rue graham ») is kept
-    (customers-a-08); never Photon's postal code (often wrong in Canada), only the person's, and only for the same door */
+    (customers-a-08); never the suggestion's postal code (Photon's is often wrong in Canada, TomTom's may be only the area), only the person's, and only for the same door */
 export function picked(v: PlaceValue, s: Suggestion, anchor: string): PlaceValue {
   const fromText = splitPasted(v.address);
   const keep = detailsFit(anchor, s.place.address);
@@ -68,7 +68,7 @@ export function picked(v: PlaceValue, s: Suggestion, anchor: string): PlaceValue
 }
 
 /** leaving the field without a choice: « 3-1250 rue Graham » typed by hand puts the unit in its own box; the old unit
-    and postal code go when the door changed. After a choice nothing is cut again: the address is Photon's, and cutting
+    and postal code go when the door changed. After a choice nothing is cut again: the address is the map service's, and cutting
     it turned « 1650 rue Logan » into « 1650 rue » + unit « an » (customers-a-02). */
 export function left(v: PlaceValue, anchor: string, afterChoice: boolean): PlaceValue {
   if (afterChoice || !v.address.trim()) return v;
@@ -90,7 +90,7 @@ export function located(v: PlaceValue, s: Suggestion): PlaceValue {
   return { ...v, lat: s.place.lat, lng: s.place.lng, city: v.city || s.place.city || null, postal_code: v.postal_code || null };
 }
 
-/** worth asking Photon: three letters at least, and a letter somewhere */
+/** worth asking the map services: three letters at least, and a letter somewhere */
 export function searchable(text: string): boolean {
   const t = text.trim();
   return photonQuery(t).length >= 3 && /\p{L}/u.test(t);

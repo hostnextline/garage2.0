@@ -27,7 +27,15 @@ const APP = [
   'job_customer', 'job_item_price', 'job_step', 'lock_windows', 'member_update', 'move_job', 'my_access', 'payment_add', 'payment_remove',
   'public_track', 'recon_ack', 'recon_now', 'recon_summary', 'report_position', 'rights_table', 'set_job_duration', 'set_role_rights', 'set_stop_order', 'set_truck_start',
   'shift_end', 'shift_start', 'suggest_blocks', 'suggest_windows', 'team_map', 'treasury_report', 'update_me', 'vin_history', 'walk_in',
-  'web_switch', 'windows_switch'
+  'web_switch', 'windows_switch',
+  // « Vraies routes » (Part 27, 20261119000200): the owner's switch in Réglages → Réservations; it checks the owner inside
+  'roads_switch',
+  // « Vraies routes » (Part 27): what « La voiture ferme » and « Ordre des arrêts » would do, said before it is done (the app
+  // shows them with the real roads instead of a phone's guess). Each runs the action itself (move_job, set_stop_order) in a
+  // block that is always undone, so it checks the very right of that action and writes nothing (vraies-routes-apercu.test.mjs)
+  'move_preview', 'stop_order_preview'
+  // (« exact move », STATE.md 2026-11-21: move_job's 8-argument form and move_preview's form (p_job, p_day, p_truck, p_at) are
+  // these same names; their helpers exact_* and route_hold stay closed: tests/db/exact-move.test.mjs)
 ];
 /** what the row rules, the guards and the functions that run as the person (not security definer) call */
 const AS_PERSON = [

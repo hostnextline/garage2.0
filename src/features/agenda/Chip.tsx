@@ -8,7 +8,7 @@ import type { Job } from '../../data/types';
 import { jobStatusWord } from '../../ui';
 import { winInfo, winShort } from './layout';
 import { isOff } from './select';
-import { etaWord } from '../../shared/jobs/select';
+import { etaWord, plannedTime, etaUnsure } from '../../shared/jobs/select';
 import { jobPerson } from '../../domain/jobs/words';
 import { jobMenu, jobPress } from './actions';
 import { firstWork } from './work';
@@ -23,7 +23,7 @@ export function Chip(p: { job: Job; unplaced?: boolean; draggable: boolean; drag
   const stub = p.unplaced ? '?' : j.stop_order ?? '–';
   // « Plages d'arrivée »: the window told to the customer, « Flexible », « Hors plage »
   const w = isOff(j) ? null : winInfo(j);
-  const winWords = w ? [w.win ? winShort(w.win, l) : w.flex ? t('agenda.win.flex') : '', w.win && j.status === 'booked' ? etaWord(j.eta_min, l) : '', w.late ? t('common.window.late') : ''].filter(Boolean) : [];
+  const winWords = w ? [w.win ? winShort(w.win, l) : w.flex ? t('agenda.win.flex') : '', w.win && j.status === 'booked' ? (etaUnsure(j) ? t('jobs.order.etaUnmeasured') : etaWord(plannedTime(j), l)) : '', w.late ? t('common.window.late') : ''].filter(Boolean) : [];
   // a move of it still kept on the phone (agenda-14): said on the chip, so it does not look like « it did not work »
   const waits = movesWaiting.value.has(j.id);
   const label = [waits ? t('agenda.move.waiting') : '', p.unplaced ? t('agenda.lane.unplaced') : j.stop_order ? t('agenda.lane.stop', { n: j.stop_order }) : '', name, work, ...winWords, jobStatusWord(j.status, l), duration(j.duration_min, l)].filter(Boolean).join(', ');

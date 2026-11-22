@@ -102,6 +102,84 @@ describe('demo: ?fenetres=1', () => {
     expect(find('jobs', 'j-t1')!.win_start).toBe(480);
     expect(code(() => call('move_job', { p_job: 'j-t1', p_day: day, p_block: 'pm', p_truck: null }))).toBe('bad_block');
   });
+  it('« exact move » (A6): move_preview and move_job with p_exact: AT that minute, the other stops keep their order and times', () => {
+    const day = freeDay();
+    call('book_job', { p_job: { id: 'e1', customer_id: 'c-julie', day, block: 'day', win_start: 480 }, p_items: [] });
+    const truck = String(find('jobs', 'e1')!.truck_id);
+    call('book_job', { p_job: { id: 'e2', customer_id: 'c-marc', day, block: 'day', win_start: 840, truck_id: truck }, p_items: [] });
+    call('book_job', { p_job: { id: 'e3', customer_id: 'c-sophie', day, block: 'day', win_start: 600, truck_id: truck }, p_items: [] });
+    const was = (id: string) => [find('jobs', id)!.stop_order, find('jobs', id)!.eta_min];
+    const e1 = was('e1'), e2 = was('e2');
+    // the preview writes nothing and says every stop before / after
+    const snap = JSON.stringify(table('jobs'));
+    const pv = call('move_preview', { p_job: 'e3', p_day: day, p_truck: null, p_at: 735 }) as unknown as { exact: boolean; stops: DemoRow[]; earliest: unknown };
+    expect(JSON.stringify(table('jobs'))).toBe(snap);
+    expect(pv.exact).toBe(true);
+    expect(pv.stops.find((x) => x.id === 'e3')).toMatchObject({ eta_after: 735, win_start: 660, win_end: 900, late: false });
+    expect(pv.stops.filter((x) => x.id !== 'e3').every((x) => x.delay_min === 0 && x.late === false)).toBe(true);
+    // the move: 12 h 15 exactly, the window of the garage's rule (11 h – 15 h), on its truck; the others as they were
+    const r = call('move_job', { p_op: 'x', p_job: 'e3', p_day: day, p_block: 'day', p_truck: null, p_win_start: 660, p_win_flex: false, p_exact: { at: 735, late_ok: [] } });
+    expect(r).toMatchObject({ ok: true, exact: true, tell: true });
+    expect(find('jobs', 'e3')).toMatchObject({ eta_min: 735, arrive_at: 735, win_start: 660, win_end: 900, truck_id: truck, truck_pinned: true });
+    expect([find('jobs', 'e1')!.eta_min, find('jobs', 'e2')!.eta_min]).toEqual([e1[1], e2[1]]);
+    expect(['e1', 'e3', 'e2'].map((id) => find('jobs', id)!.stop_order)).toEqual([1, 2, 3]);
+    expect(e1[0]).toBe(1);
+    // a later plan of that day keeps the minute pointed (S6); a move without it gives the time back to the planner (S7)
+    call('book_job', { p_job: { id: 'e4', customer_id: 'c-kevin', day, block: 'day', truck_id: truck }, p_items: [] });
+    expect(find('jobs', 'e3')!.eta_min).toBe(735);
+    call('move_job', { p_job: 'e3', p_day: day, p_block: 'day', p_truck: null, p_win_start: 660, p_win_flex: false });
+    expect(find('jobs', 'e3')!.arrive_at).toBe(null);
+  });
+  it('« exact move » (A6): somebody late is said first and refused without late_ok; the truck cannot be there: the earliest', () => {
+    const day = freeDay();
+    call('book_job', { p_job: { id: 'l1', customer_id: 'c-julie', day, block: 'day', win_start: 480 }, p_items: [] });
+    const truck = String(find('jobs', 'l1')!.truck_id);
+    call('book_job', { p_job: { id: 'l2', customer_id: 'c-marc', day, block: 'day', win_start: 840, truck_id: truck, duration_min: 240 }, p_items: [] });
+    // at the start of the day the truck is still on its way: arrive_late, with the earliest it can be there
+    const early = call('move_preview', { p_job: 'l2', p_day: day, p_truck: null, p_at: 480 }) as unknown as { ok: boolean; code: string; earliest: number };
+    expect([early.ok, early.code]).toEqual([false, 'arrive_late']);
+    expect(early.earliest).toBeGreaterThan(480);
+    expect(code(() => call('move_job', { p_job: 'l2', p_day: day, p_block: 'day', p_truck: null, p_win_start: 480, p_win_flex: false, p_exact: { at: 480, late_ok: [] } }))).toBe('arrive_late');
+    // first at the earliest with 4 hours of work: the 8 h – 12 h customer after it would be late, said first
+    const pv = call('move_preview', { p_job: 'l2', p_day: day, p_truck: null, p_at: early.earliest }) as unknown as { stops: DemoRow[] };
+    expect(pv.stops.find((x) => x.id === 'l1')).toMatchObject({ late: true });
+    const args = { p_job: 'l2', p_day: day, p_block: 'day', p_truck: null, p_win_start: 480, p_win_flex: false };
+    expect(code(() => call('move_job', { ...args, p_exact: { at: early.earliest, late_ok: [] } }))).toBe('late_changed');
+    expect(find('jobs', 'l2')!.arrive_at ?? null).toBe(null);
+    call('move_job', { ...args, p_exact: { at: early.earliest, late_ok: ['l1'] } });
+    expect(find('jobs', 'l2')!.eta_min).toBe(early.earliest);
+    expect(Number(find('jobs', 'l1')!.eta_min)).toBeGreaterThan(720);
+  });
+  it('« exact move » (A6, review F4): « late » is the server’s rule: made late or later than before, against the minute pinned', () => {
+    const day = freeDay();
+    // (a) a stop ALREADY late before the move (booked « quand même » past its window, like j-5) and untouched by it
+    call('book_job', { p_job: { id: 'a1', customer_id: 'c-julie', day, block: 'day', win_start: 480 }, p_items: [] });
+    const truck = String(find('jobs', 'a1')!.truck_id);
+    call('book_job', { p_job: { id: 'a2', customer_id: 'c-marc', day, block: 'day', win_start: 600, truck_id: truck }, p_items: [] });
+    put('jobs', { id: 'a1', win_start: 400, win_end: 490, forced: true });
+    const snap = JSON.stringify(table('jobs'));
+    const pa = call('move_preview', { p_job: 'a2', p_day: day, p_truck: null, p_at: 900 }) as unknown as { stops: DemoRow[]; rows: { jobs: DemoRow[] } };
+    expect(pa.stops.find((x) => x.id === 'a1')).toMatchObject({ delay_min: 0, late: false, late_min: 0 });
+    // the trial's rows come with the answer, like the real server's (review F0: the app never applies them); nothing written
+    expect(pa.rows.jobs.find((x) => x.id === 'a2')).toMatchObject({ eta_min: 900, arrive_at: 900, win_start: 840 });
+    expect(JSON.stringify(table('jobs'))).toBe(snap);
+    expect(code(() => call('move_job', { p_job: 'a2', p_day: day, p_block: 'day', p_truck: null, p_win_start: 840, p_win_flex: false, p_exact: { at: 900, late_ok: [] } }))).toBe('ok');
+    expect(find('jobs', 'a2')!.eta_min).toBe(900);
+    // (b) a stop pinned by an earlier exact move, pushed past ITS minute (inside its window): late, by the minutes past it
+    const other = freeDay() === day ? D(31) : freeDay();
+    const d2 = new Date(other + 'T12:00').getDay() === 0 ? D(32) : other;
+    call('book_job', { p_job: { id: 'b1', customer_id: 'c-julie', day: d2, block: 'day', win_start: 600 }, p_items: [] });
+    const t2 = String(find('jobs', 'b1')!.truck_id);
+    call('move_job', { p_job: 'b1', p_day: d2, p_block: 'day', p_truck: null, p_win_start: 600, p_win_flex: false, p_exact: { at: 660, late_ok: [] } });
+    expect(find('jobs', 'b1')!.arrive_at).toBe(660);
+    call('book_job', { p_job: { id: 'b2', customer_id: 'c-marc', day: d2, block: 'day', win_start: 840, truck_id: t2, duration_min: 180 }, p_items: [] });
+    const pb = call('move_preview', { p_job: 'b2', p_day: d2, p_truck: null, p_at: 540 }) as unknown as { stops: DemoRow[] };
+    const b1 = pb.stops.find((x) => x.id === 'b1')!;
+    expect(Number(b1.eta_after)).toBeGreaterThan(660);
+    expect(Number(b1.eta_after)).toBeLessThan(840);
+    expect(b1).toMatchObject({ late: true, late_min: Number(b1.eta_after) - 660 });
+    expect(code(() => call('move_job', { p_job: 'b2', p_day: d2, p_block: 'day', p_truck: null, p_win_start: 480, p_win_flex: false, p_exact: { at: 540, late_ok: [] } }))).toBe('late_changed');
+  });
   it('lock_windows fixes the flexible windows of a day from the planned arrival', () => {
     const day = freeDay();
     call('book_job', { p_job: { id: 'f1', customer_id: 'c-julie', day, block: 'day', win_flex: true }, p_items: [] });

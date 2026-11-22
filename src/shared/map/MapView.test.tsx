@@ -8,6 +8,8 @@ const log: string[] = [];
 let mapsAlive = 0;
 let removeThrows = false;
 const tiles: Record<string, unknown>[] = [];
+// without TomTom's key, whatever the shell says (VITE_TOMTOM_KEY): the tiles of these tests are OpenStreetMap's
+vi.mock('../../lib/config', async (orig) => ({ ...(await orig<typeof import('../../lib/config')>()), TOMTOM_KEY: '' }));
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 vi.mock('leaflet', () => {
   const chain = <T extends object>(o: T) => Object.assign(o, { addTo() { return o; } });
@@ -41,7 +43,7 @@ vi.mock('leaflet', () => {
   };
   return { default: L };
 });
-import { MapView, type MapMarker, type MapLine } from './MapView';
+import { MapView, tilesFor, type MapMarker, type MapLine } from './MapView';
 
 const box = document.createElement('div');
 document.body.appendChild(box);
@@ -106,6 +108,15 @@ describe('MapView', () => {
     expect(tiles[0].url).toMatch(/tile\.openstreetmap\.org/);
     expect(tiles[0].crossOrigin).toBe('anonymous');
     await act(async () => { render(null, box); });
+  });
+  it('with TomTom’s key the map is TomTom’s (asked with CORS and the site’s address); without it, OpenStreetMap’s as before', () => {
+    const tt = tilesFor('KEY');
+    expect(tt.url).toBe('https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=KEY&tileSize=256');
+    expect(tt.options).toMatchObject({ crossOrigin: 'anonymous', referrerPolicy: 'strict-origin-when-cross-origin', maxZoom: 19 });
+    expect(String(tt.options.attribution)).toContain('TomTom');
+    const osm = tilesFor('');
+    expect(osm.url).toMatch(/tile\.openstreetmap\.org/);
+    expect(osm.options).toMatchObject({ crossOrigin: 'anonymous', subdomains: 'abc' });
   });
   it('Leaflet throws while the map is removed: the screen still goes (mh-7)', async () => {
     await act(async () => { render(<MapView markers={stops()} />, box); });

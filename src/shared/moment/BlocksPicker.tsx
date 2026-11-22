@@ -1,27 +1,33 @@
 /* Choose the day and block (the switch « Plages d'arrivée » off): the map of the days, the best suggestions near the
    address (they need the network), then a two-week calendar coloured by the room left (works with the copy on the
-   phone). Shared: booking, moving a job (through BlockPicker). */
+   phone). Shared: booking, moving a job (through BlockPicker).
+   « Vraies routes » ON: the phone decides nothing by straight line. « Arrêt n sur N » only from the server's row (blocks
+   mode: never, the lead's decision of 2026-11-20); « Voir sur la carte » gets the row of its moment; the calendar's
+   « Complet / Presque plein » comes from the rows (PE-09: a row = room, an answered page with no row = full, not answered
+   = « À vérifier », pickable); a banner while the address is measured, or when it could not be, with « Réessayer ». */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Check, ListOrdered, RefreshCw, Sparkles } from 'lucide-preact';
 import { addDays, daysBetween, duration, type BlockKey } from '../../lib/dates';
 import { t, lang } from '../../lib/i18n';
-import { blocks, blockLoad, settings, job as jobRow, activeTrucks } from '../../data/select';
+import { blocks, blockLoad, settings, job as jobRow, activeTrucks, roadsOn } from '../../data/select';
+import { placeRoads, retryRoads } from '../../data/roads';
 import { net } from '../../data/sync';
 import { Banner, Button, Pill } from '../../ui';
 import { openMenu, openMenuAt, pressProps } from '../../ui/ContextMenu';
-import { isFar, farLimits, farInfo, momentsByKey, offered, betterText, roadWords } from '../../domain/moment/logic';
+import { isFar, farLimits, farInfo, momentsByKey, offered, betterText, roadWords, cellFromRows, unmeasured } from '../../domain/moment/logic';
+import { serverRank } from '../../domain/moment/serverPlace';
 import type { BlockPickerProps } from '../../domain/moment/choice';
 import { blockPhraseWithHours, spanEnds } from '../../domain/moment/words';
 import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';
 import { dayOf } from './deviceDay';
-import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer, answers } from './hooks';
+import { useSuggestions, useLaterAnswers, useClock, useHover, useFinePointer, hasAnswer, answers } from './hooks';
 import { askedKind, bothKinds, kindOf } from './vehicles';
 import { anyFar, betterThan } from './moments';
 import { blockCell, keyOf } from './blockCells';
 import { BlockCalendar, type CalRow } from './BlockCalendar';
-import { ChosenBar, FarBanner, KindSwitch, KindTag, SuggNotes, momentActions, staleClick } from './parts';
+import { ChosenBar, FarBanner, KindSwitch, KindTag, RoadsBanner, SuggNotes, momentActions, staleClick } from './parts';
 import './booking.css';
 
 const PAGE = 14;
@@ -38,6 +44,7 @@ export function BlocksPicker(p: BlockPickerProps) {
   const kinds = bothKinds(trucks);
   const online = net.value.online;
   const hasPos = p.lat != null && p.lng != null;
+  const onRoads = roadsOn.value;
 
   /* ---------- suggestions (server): the next two weeks ---------- */
   const [retry, setRetry] = useState(0);
@@ -64,7 +71,20 @@ export function BlocksPicker(p: BlockPickerProps) {
     return out;
   }, [start, lastDay]);
   const ask = { ...p, kinds, exclude: p.excludeJob };
-  const cellOf = (day: string, block: BlockKey) => blockCell(blockLoad(day, block), dur, drive, ask);
+
+  /* ---------- « garde-route »: the server's scores, for the first two weeks and for any later page shown ---------- */
+  const laterAns = useLaterAnswers(base, page > 0 ? start : null, PAGE, online, again);
+  const later = laterAns.list;
+  const scored = useMemo(() => (usable ? [...sugg.list, ...later] : later), [sugg.list, later, usable]);
+  const moments = useMemo(() => momentsByKey(scored), [scored]);
+  /* the page's answer (switch on: the calendar's room comes from it, PE-09): the first two weeks by the best moments'
+     answer to the question of now, a later page by its own */
+  const pageAnswered = page === 0 ? fresh : laterAns.answered(start);
+  const cellOf = (day: string, block: BlockKey) => {
+    const phone = blockCell(blockLoad(day, block), dur, drive, ask);
+    // a vehicle chosen by hand: the server places on the one IT prefers, so no row says nothing of this one (never « full »)
+    return onRoads ? cellFromRows(phone, pageAnswered, moments.get(keyOf(day, block)), !!p.truckId) : phone;
+  };
   const rows: CalRow[] = days.map((day) => ({ day, blocks: bl.map((b) => ({ key: b.key, start: b.start, end: b.end, ...cellOf(day, b.key) })) }));
   const isPicked = (day: string, block: string) => !!p.value && p.value.day === day && p.value.block === block;
   // moving a job: where it is now
@@ -72,10 +92,6 @@ export function BlocksPicker(p: BlockPickerProps) {
   const isCurrent = (day: string, block: string) => !!moving && moving.day === day && moving.block === block;
   const pickedCell = p.value ? cellOf(p.value.day, p.value.block) : null;
 
-  /* ---------- « garde-route »: the server's scores, for the first two weeks and for any later page shown ---------- */
-  const later = useLaterScores(base, page > 0 ? start : null, PAGE, online, again);
-  const scored = useMemo(() => (usable ? [...sugg.list, ...later] : later), [sugg.list, later, usable]);
-  const moments = useMemo(() => momentsByKey(scored), [scored]);
   /* the warning and the question before booking only from the answer to the question of now: while a new one is awaited
      (another address, another duration) the old scores may speak of another place, so nothing is said until it lands */
   const freshMoments = useMemo(() => (fresh ? moments : momentsByKey(later)), [fresh, moments, later]);
@@ -96,8 +112,9 @@ export function BlocksPicker(p: BlockPickerProps) {
   /* ---------- « Voir sur la carte »: a right-click or a long press on a moment, or the button under the moment chosen ---------- */
   const [preview, setPreview] = useState<PreviewAsk | null>(null);
   const truckOf = (day: string, block: BlockKey) => p.truckId || sugg.list.find((s) => s.day === day && s.block === block)?.truck || null;
+  // the server's row of that moment goes with it (switch on: what it adds, the vehicle; review-moments M1)
   const askOf = (day: string, block: BlockKey): PreviewAsk => ({ day, block, truckId: truckOf(day, block), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
-    when: phrase(day, block), exclude: p.excludeJob ?? null });
+    when: phrase(day, block), exclude: p.excludeJob ?? null, row: moments.get(keyOf(day, block)) ?? null });
   const see = (day: string, block: BlockKey) => setPreview(askOf(day, block));
   /* on a computer, the mouse over a moment opens a small map of that day beside it (no scrolling to the big map) */
   const canHover = useFinePointer();
@@ -110,11 +127,14 @@ export function BlocksPicker(p: BlockPickerProps) {
     return { onContextMenu: (e: MouseEvent) => { hov.off(); openMenu(e, actions(), phrase(day, block)); }, ...pressProps((x, y) => { hov.off(); openMenuAt(x, y, actions(), phrase(day, block)); }) };
   };
 
-  /* which stop of its route the appointment would be at each moment offered (the phone's copy of the day, the same
-     estimate as « Voir sur la carte ») */
-  const ranks = useMemo(() => shown.map((s) => (hasPos
-    ? stopRank(dayOf(s.day, p.excludeJob), { day: s.day, block: s.block, truckId: s.truck, lat: p.lat!, lng: p.lng!, name: '', address: '' }) : null)),
-  [shown, p.lat, p.lng, p.excludeJob]);
+  /* which stop of its route the appointment would be at each moment offered: off, the phone's copy of the day (the same
+     estimate as « Voir sur la carte »); on, only the server's (blocks mode: never, nothing of the order is said) */
+  const ranks = useMemo(() => shown.map((s) => (!hasPos ? null : onRoads ? serverRank(s, p.truckId || s.truck)
+    : stopRank(dayOf(s.day, p.excludeJob), { day: s.day, block: s.block, truckId: s.truck, lat: p.lat!, lng: p.lng!, name: '', address: '' }))),
+  [shown, p.lat, p.lng, p.excludeJob, onRoads, p.truckId]);
+  /* « Vraies routes »: the address being measured, or it could not be (« Réessayer » measures again, then asks again) */
+  const roads = hasPos ? placeRoads({ lat: p.lat!, lng: p.lng! }) : null;
+  const roadsAgain = () => { void retryRoads({ lat: p.lat!, lng: p.lng! }); setRetry((n) => n + 1); };
 
   return (
     <div class="bp" data-testid="block-picker">
@@ -125,6 +145,8 @@ export function BlocksPicker(p: BlockPickerProps) {
       {preview && <RoutePreview ask={preview} onClose={() => setPreview(null)} onPick={() => pick(preview.day, preview.block as BlockKey)} />}
       {p.value && pickedCell?.state === 'full' && <Banner kind="warn">{t('booking.picker.fullWarn')}</Banner>}
       {p.value && pickedCell?.state === 'tight' && <Banner kind="info">{t('booking.picker.tightWarn')}</Banner>}
+      {p.value && pickedCell?.state === 'unknown' && <Banner kind="info" data-testid="bp-unknown-warn">{t('booking.picker.unknownWarn')}</Banner>}
+      <RoadsBanner roads={roads} online={online} onRetry={roadsAgain} />
       {far && <FarBanner text={far.text} better={better.map((b) => ({ key: keyOf(b.moment.day, b.moment.block), text: betterText(b, today, l), onPick: () => pick(b.moment.day, b.moment.block) }))} />}
 
       {/* the map first: the days, the appointments around, the day's routes with the new stop (needs a position) */}
@@ -154,7 +176,7 @@ export function BlocksPicker(p: BlockPickerProps) {
                   onClick={staleClick(stale, () => pick(s.day, s.block))} {...menuProps(s.day, s.block)} {...hoverProps(s.day, s.block)} data-testid="bp-sugg">
                   <span class="bp-sugg-main">
                     {isCurrent(s.day, s.block) ? <span class="bp-best"><Pill tone="muted" dot={false}>{t('booking.picker.current')}</Pill></span>
-                      : i === 0 && <span class="bp-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
+                      : i === 0 && !unmeasured(s) && <span class="bp-best"><Pill tone="ok" dot={false}>{t('booking.picker.best')}</Pill></span>}
                     <span class="bp-sugg-title">{phrase(s.day, s.block)}</span>
                     {kinds && s.truck && <KindTag kind={kindOf(trucks, s.truck)} size={16} testid="bp-sugg-kind" />}
                     {rank && <span class="bp-order-tag" data-testid="bp-sugg-order"><ListOrdered size={16} aria-hidden="true" />{rank.total === 1 ? t('booking.picker.orderOnly') : t('booking.picker.order', { n: rank.n, total: rank.total })}</span>}

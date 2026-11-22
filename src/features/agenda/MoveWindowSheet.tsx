@@ -1,13 +1,14 @@
 /* « Plages d'arrivée »: a booked job dropped on a day (the week grid). The sheet asks the server which 4-hour windows
    are still possible that day (the best first), and offers « Flexible » (no window yet: fixed the evening before).
-   One tap on a window is the move; the customer gets the usual text when the garage sends one for a change.
+   One tap on a window is the move; the customer gets the usual text when the garage sends one for a change. A row that
+   says « Arrivée vers 13 h 07 » moves the appointment to arrive at 13 h 07 exactly (« exact move », move.ts).
    It reads the job's live row (another phone may have moved it meanwhile) and closes when the agenda goes away. */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Clock, CalendarRange, RefreshCw } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { today as todayOf, clock, type Day } from '../../lib/dates';
 import { errorMessage, type Suggestion } from '../../data/api';
-import { job as jobRow } from '../../data/select';
+import { job as jobRow, daySpan, windowOf } from '../../data/select';
 import type { Job } from '../../data/types';
 import { Sheet, Button, Spinner } from '../../ui';
 import { wantsText } from '../../shared/moment/notify';
@@ -46,11 +47,14 @@ function MoveWindowSheet(p: { job: Job; day: Day; farDone: boolean; onClose: () 
   }, [turn]);
   const name = jobPerson(j);
   const sms = wantsText('moved', j.id);
-  const choices = list ? windowChoices(list, j, day, l) : [];
+  // « exact move »: each row prints the minute it sends, whose window IS the row's (review F1)
+  const choices = list ? windowChoices(list, j, day, l, { span: daySpan.value, windowOf }) : [];
   // already flexible that day (its window maybe fixed since by the evening lock): « Flexible » would change nothing
   const flexAlready = j.day === day && j.win_flex === true;
   const flexNow = flexAlready && j.win_start == null;
-  const pick = async (key: string, win: { start: number } | { flex: true }) => {
+  // « exact move » (A1): a row that showed its arrival (« Arrivée vers … ») moves there exactly; unsure or « Flexible »: as before.
+  // Its own window that day stays a choice when its arrival is another one (a new quarter hour is a move, as on the grid: L4)
+  const pick = async (key: string, win: { start: number; at?: number | null; truck?: string | null } | { flex: true }) => {
     if (picking.current) return;
     picking.current = true;
     setBusy(key);
@@ -72,11 +76,12 @@ function MoveWindowSheet(p: { job: Job; day: Day; farDone: boolean; onClose: () 
         )}
         {list && choices.length === 0 && <p class="muted" data-testid="move-window-none">{t('agenda.move.winNone')}</p>}
         {choices.map((c) => (
-          <button key={c.start} type="button" class={`agenda-winpick${c.best ? ' is-best' : ''}`} disabled={c.current || !!busy} onClick={() => pick(`w${c.start}`, { start: c.start })} data-testid={`move-window-${c.start}`}>
+          <button key={c.start} type="button" class={`agenda-winpick${c.best ? ' is-best' : ''}`} disabled={(c.current && (c.at == null || c.at === j.eta_min)) || !!busy} onClick={() => pick(`w${c.start}`, { start: c.start, at: c.at ?? null, truck: c.truck ?? null })} data-testid={`move-window-${c.start}`}>
             <Clock size={20} aria-hidden="true" />
             <span class="agenda-winpick-main">
               <span class="agenda-winpick-words">{c.words}</span>
-              {c.eta != null && <span class="agenda-winpick-sub">{t('agenda.move.winEta', { time: clock(c.eta, l) })}</span>}
+              {(c.at ?? c.eta) != null ? <span class="agenda-winpick-sub">{t('agenda.move.winEta', { time: clock((c.at ?? c.eta)!, l) })}</span>
+                : c.unsure ? <span class="agenda-winpick-sub" data-testid={`move-window-unsure-${c.start}`}>{t('jobs.order.etaUnmeasured')}</span> : null}
             </span>
             {c.current ? <span class="agenda-winpick-tag is-current">{t('agenda.move.winCurrent')}</span> : c.best ? <span class="agenda-winpick-tag">{t('agenda.move.winBest')}</span> : null}
             {busy === `w${c.start}` && <Spinner />}

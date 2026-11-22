@@ -81,8 +81,12 @@ export const today = {
     title: 'Ta journée en bref',
     stops: { one: 'arrêt', other: 'arrêts' },
     drive: 'de route',
+    /** a stop still to do whose trips are not all measured (« Vraies routes » on; final-guess G1) */
+    driveUnsure: 'de route (trajets pas encore tous mesurés)',
     work: 'de travail',
-    help: 'La route est estimée par le bureau à partir des adresses (en voiture, sans le trafic).'
+    help: 'La route est estimée par le bureau à partir des adresses (en voiture, sans le trafic).',
+    /** with « Vraies routes » on (final-guess G3) */
+    helpRoads: 'La route vient des vraies routes (la circulation habituelle de l’heure). Un trajet pas encore mesuré compte un temps fixe.'
   },
   tomorrow: {
     title: 'Demain',
@@ -120,7 +124,13 @@ export const today = {
     noPosition: 'Pas de position partagée',
     unplaced: { one: '{n} job sans camion aujourd’hui : place-la dans l’agenda.', other: '{n} jobs sans camion aujourd’hui : place-les dans l’agenda.' },
     none: 'Aucun camion actif.',
-    noneText: 'Ajoute un camion et son chauffeur dans Horaires ou Équipe.'
+    noneText: 'Ajoute un camion et son chauffeur dans Horaires ou Équipe.',
+    /* the truck's stops, listed on demand; each one has the agenda's shortcut menu (« Déplacer »…) */
+    stopsShow: { one: 'Voir l’arrêt', other: 'Voir les {n} arrêts' },
+    stopsHide: 'Cacher les arrêts',
+    /* phone first; « Déplacer » named only to who may move (stopsHintMove) */
+    stopsHint: 'Appui long sur un arrêt (à l’ordi : clic droit) : « Appeler », « Itinéraire »…',
+    stopsHintMove: 'Appui long sur un arrêt (à l’ordi : clic droit) : « Déplacer », « Appeler », « Itinéraire »…'
   },
   collect: {
     title: 'À encaisser',

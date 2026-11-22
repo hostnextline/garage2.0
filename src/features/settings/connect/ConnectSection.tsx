@@ -1,6 +1,6 @@
-/* Branchements (owner): GoHighLevel (automatic texts and team invitations), the incoming calls and texts, and Stripe
-   (« Payer » by card on invoices). The keys are written here once and kept on the server; the screen only learns
-   whether each one is set. */
+/* Branchements (owner): GoHighLevel (automatic texts and team invitations), the incoming calls and texts, Stripe
+   (« Payer » by card on invoices) and TomTom (maps and the real roads, Part 27: read only, its keys are never typed
+   here). The keys are written here once and kept on the server; the screen only learns whether each one is set. */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../../lib/i18n';
 import { errorMessage } from '../../../data/api';
@@ -10,6 +10,7 @@ import { teamDo } from '../../../domain/team/teamApi';
 import { GhlPanel } from './GhlPanel';
 import { RingPanel, TextsPanel } from './IncomingPanels';
 import { StripePanel } from './StripePanel';
+import { TomtomPanel } from './TomtomPanel';
 import { useSectionAnchor } from '../SectionFrame';
 import { secretsOf, type Secrets } from './secrets';
 
@@ -42,6 +43,7 @@ export function ConnectSection() {
       {s && <RingPanel />}
       {s && <TextsPanel />}
       {s && <StripePanel s={s} onChanged={changed} />}
+      {s && <TomtomPanel />}
     </div>
   );
 }

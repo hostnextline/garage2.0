@@ -2,7 +2,10 @@
    garage to the last, a column per truck (the day) or per day (the week). A job is a block at its planned arrival, as
    tall as its work. An empty unit books that day at that time (click, or right-click « Réserver ici » / « Coller ici »);
    a booked job dragged to a unit is moved there (move.ts). The maths is in domain/moment/grid.ts.
-   While a job is dragged only the ghost under the pointer redraws: the units and the blocks are memoised. */
+   While a job is dragged only the ghost under the pointer redraws: the units and the blocks are memoised.
+   « exact move » (A3): once let go, the job is HELD where it was dropped (`landings`, the same box as the ghost, its time
+   and the window told) through the question, the preview and the send, its block dimmed at its old place; the server's
+   rows then put it at that very minute, so nothing jumps. */
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import type { RefObject } from 'preact';
@@ -13,7 +16,7 @@ import type { Job } from '../../data/types';
 import { may } from '../../domain/rights';
 import { UNIT, unitCount, unitMinutes, unitIndex, minuteAt, unitsAt, jobBox, jobMinute, overlapColumns, openingUnit } from '../../domain/moment/grid';
 import { dropRefusal, winShort } from './layout';
-import { moveFlow, moveToTime } from './move';
+import { moveFlow, moveToTime, landings, type Landing } from './move';
 import { unitMenu, unitBookHref, placeWords } from './actions';
 import { canDragJob, leftFor, type Drag, type Refusal } from './drag';
 import { GridJob } from './GridJob';
@@ -83,9 +86,29 @@ function Ghost(p: { drag: Drag; colKey: string; span: Range; places: readonly Pl
   const place = placeAt(p.places, over.minute);
   const l = lang.value;
   return (
-    <div class={`agenda-grid-ghost${over.ok ? '' : ' is-no'}`} style={{ top: `calc(var(--u) * ${unitIndex(p.span, over.minute)})`, height: `calc(var(--u) * ${box.height})` }} aria-hidden="true">
+    // the very box the held block (and then the job's block) will have: kept inside the day, so nothing jumps at the drop (L1)
+    <div class={`agenda-grid-ghost${over.ok ? '' : ' is-no'}`} style={{ top: `calc(var(--u) * ${box.top})`, height: `calc(var(--u) * ${box.height})` }} aria-hidden="true">
       <b>{clock(over.minute, l)}</b>
       {over.ok && place?.block === 'day' && !p.compact && <span>{winShort(windowOf(over.minute), l)}</span>}
+    </div>
+  );
+}
+/** the job let go here, held at the minute dropped while the move is asked and sent (A3): the same box and words as the
+    ghost, so nothing moves under the pointer */
+function Held(p: { colKey: string; span: Range; compact: boolean }) {
+  // every job let go in this column whose move is still asked or sent (one each: review F2)
+  const here = [...landings.value.values()].filter((h) => `${h.day}|${h.column ?? ''}` === p.colKey);
+  return <>{here.map((h) => <HeldBox key={h.jobId} h={h} span={p.span} compact={p.compact} />)}</>;
+}
+function HeldBox(p: { h: Landing; span: Range; compact: boolean }) {
+  const { h } = p;
+  const box = jobBox(p.span, h.minute, h.duration);
+  const l = lang.value;
+  return (
+    // the very box the job's block will have once the server's rows are in (a minute off the quarter, the end of the day)
+    <div class="agenda-grid-ghost is-held" style={{ top: `calc(var(--u) * ${box.top})`, height: `calc(var(--u) * ${box.height})` }} aria-hidden="true" data-testid={`grid-held-${h.jobId}`}>
+      <b>{clock(h.minute, l)}</b>
+      {!p.compact && <span>{winShort(windowOf(h.minute), l)}</span>}
     </div>
   );
 }
@@ -151,9 +174,10 @@ export function GridColumn(p: ColumnProps) {
       <Units day={day} span={span} suffix={p.truckId ? `-${p.truckId}` : ''} on={p.on} places={places} past={past} book={may.book()} l={lang.value} />
       {placed.map((x) => (
         <GridJob key={x.j.id} job={x.j} box={x.box} slot={slots.get(x.j.id) || { col: 0, cols: 1 }} compact={p.compact}
-          draggable={canDragJob(x.j)} dragging={drag.job?.id === x.j.id} onDragStart={drag.start} onDragEnd={drag.end} />
+          draggable={canDragJob(x.j)} dragging={drag.job?.id === x.j.id || landings.value.has(x.j.id)} onDragStart={drag.start} onDragEnd={drag.end} />
       ))}
       <Ghost drag={drag} colKey={key} span={span} places={places} compact={p.compact} />
+      <Held colKey={key} span={span} compact={p.compact} />
       {p.now && <NowLine span={span} day={day} />}
     </div>
   );

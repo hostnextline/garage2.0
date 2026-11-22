@@ -245,6 +245,7 @@ export const jobs: typeof fr = {
     blockValue: '{block}, {range}',
     stop: 'Stop',
     stopValue: '{n}, around {time}',
+    stopValueUnsure: '{n}, time: trips not measured yet',
     duration: 'Planned length',
     durationLabel: 'Length of the job',
     keep: 'Keep {time}',
@@ -265,8 +266,37 @@ export const jobs: typeof fr = {
     moveLeadText: 'Pick another day or another block. The customer gets a text with the new time.',
     moveOk: 'Move here',
     moved: 'Appointment moved: {when}.',
+    /* the message's button after a move from a list of stops: opens the appointment */
+    see: 'View',
     same: 'That is already the time.',
     help: 'The truck uses the length to fit the stops in the block. If the job no longer fits, move it.'
+  },
+  exact: {
+    question: 'Move {name}’s job: {when} at {time}?',
+    text: 'The customer is told: between {from} and {to}. The other stops keep their time.',
+    told: 'The customer is told: between {from} and {to}.',
+    toldFor: '{name} is told: between {from} and {to}.',
+    pushed: { one: 'This stop arrives a little later, still inside its window:', other: 'These stops arrive a little later, still inside their window:' },
+    pushedLine: '{name}: around {eta} instead of {was}.',
+    lateTitle: { one: 'Moving {who} to {time} makes {name} late', other: 'Moving {who} to {time} makes {n} customers late' },
+    lateLine: '{name}: around {eta}, {by} after their window ({from} to {to}).',
+    overHours: 'The truck would end its day {by} after its hours.',
+    lateOk: 'Move anyway',
+    other: 'Pick another time',
+    earlyTitle: 'Not possible at {time}',
+    early: 'The truck can’t be at {name}’s at {time}: {earliest} at the earliest.',
+    earlyKeep: 'At {time}, no other stop changes its time.',
+    earlyOk: 'Set to {earliest}',
+    earlyTold: 'At {earliest}, the window the customer is told becomes {from} to {to} instead.',
+    unchecked: 'I couldn’t check the other customers’ times.',
+    unmeasured: 'Not every road of that day is measured yet: I can’t tell yet whether someone will be late.',
+    offline: 'No signal: I can’t check whether this move makes someone late. Try again when the signal is back.',
+    lost: 'No answer from the server: the move may have gone through. Check the agenda in a moment before trying again.',
+    done: 'Appointment moved: {when} at {time}.',
+    doneLate: { one: 'Tell {names}: reached after their window.', other: 'Tell {names}: reached after their window.' },
+    notAt: 'Placed at {real}: the truck couldn’t be there at {time}.',
+    someone: 'a customer',
+    otherTruck: 'Its truck doesn’t work that day: the job goes on {truck}.'
   },
   order: {
     open: 'Order of the stops',
@@ -277,6 +307,8 @@ export const jobs: typeof fr = {
     up: 'Move {name} up',
     down: 'Move {name} down',
     eta: 'around {time}',
+    /* « Vraies routes » on: a trip up to that stop not measured yet (stop_order_preview measured false) */
+    etaUnmeasured: 'time: trips not measured yet',
     save: 'Save the order',
     saved: 'Order saved. Arrival times are up to date.',
     auto: 'Let the app choose',
@@ -286,7 +318,12 @@ export const jobs: typeof fr = {
     firstMenu: 'Put first',
     firstMenuSub: 'This customer comes before the others of this block',
     firstDone: '{name} comes first. Arrival times are up to date.',
-    live: { en_route: 'On the way', on_site: 'On site' }
+    live: { en_route: 'On the way', on_site: 'On site' },
+    /* « Vraies routes » on: the arrival times of the order built come from the server (stop_order_preview) */
+    pending: 'Arrival times: not worked out yet.',
+    serverTimes: 'The times shown are those of this new order, worked out by the server.',
+    late: 'Late',
+    lateServer: { one: 'With this order, {names} would be reached after the time the customer was told. Tell this customer if you save.', other: 'With this order, these customers would be reached after the time they were told: {names}. Tell them if you save.' }
   },
   menu: {
     title: 'More actions',
@@ -411,7 +448,23 @@ export const jobs: typeof fr = {
     done: 'Appointment moved to {truck}. The route is worked out again.',
     doneAuto: 'The app picks the truck. The route is worked out again.',
     same: 'It is already this truck.',
-    noText: 'The customer gets no text: the day and time do not change.'
+    noText: 'The customer gets no text: the day and time do not change.',
+    /* « Vraies routes » on: what the server says of each truck (move_preview), never a free time worked out by the phone */
+    fits: 'There is room: arriving around {time}',
+    fitsNoTime: 'There is room',
+    fitsUnmeasured: 'There is room (time: trips not measured yet)',
+    needsTruck: 'Can’t: this work needs the truck',
+    noRoom: 'Cannot take it at that time',
+    asking: 'Room: working it out…',
+    unknown: 'Room: not worked out yet',
+    nowEta: 'Planned arrival around {time}',
+    nowUnmeasured: 'Planned arrival: trips not measured yet',
+    keeps: 'Keeps its time: arriving at {time}',
+    keepsLate: { one: 'Arriving at {time}, but a customer would be late', other: 'Arriving at {time}, but {n} customers would be late' },
+    notAt: 'Can’t be there at {time}: {earliest} at the earliest',
+    notAtNoTime: 'Can’t be there at {time}',
+    doneAt: 'Appointment moved to {truck}, now at {time} (instead of {was}).',
+    doneKept: 'Appointment moved to {truck}, still at {time}.'
   },
   price: {
     change: 'Change the price',

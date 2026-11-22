@@ -63,11 +63,17 @@
 @media (min-width: 960px) { .today-quick-links .btn { flex: none; } }
 .today-trucks { display: grid; gap: var(--sp-3); grid-template-columns: 1fr; }
 @media (min-width: 720px) { .today-trucks { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); } }
-.today-truck { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5); border-radius: var(--r-lg); text-decoration: none; color: inherit; min-width: 0;
+.today-truck { display: flex; flex-direction: column; border-radius: var(--r-lg); color: inherit; min-width: 0;
   background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%); border: 1px solid var(--glass-edge); box-shadow: var(--glass-shadow);
   transition: border-color var(--dur) var(--ease); }
 [data-glass='off'] .today-truck { -webkit-backdrop-filter: none; backdrop-filter: none; }
-a.today-truck:hover { border-color: color-mix(in srgb, var(--ink) 22%, transparent); }
+/* the card's own part (it opens the job it speaks of), then its stops listed on demand */
+.today-truck-link { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5); text-decoration: none; color: inherit; min-width: 0; border-radius: inherit; }
+.today-truck:has(> a.today-truck-link:hover) { border-color: color-mix(in srgb, var(--ink) 22%, transparent); }
+.today-truck-stops { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 var(--sp-4) var(--sp-3); margin-top: calc(-1 * var(--sp-2)); }
+.today-truck-hint { margin: 0; }
+/* a long press opens the stop's shortcut menu (« Déplacer »…): no link preview, no text selection under the finger */
+.today-stopwrap, .today-stopwrap a { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .today-truck-top { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .today-truck-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--solid) 70%, transparent); }
 .today-truck-name { font-weight: 560; font-stretch: 108%; font-size: var(--t-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

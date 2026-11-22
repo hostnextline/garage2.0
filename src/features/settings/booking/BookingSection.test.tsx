@@ -28,6 +28,11 @@ vi.mock('../../../ui', async (orig) => {
   const real = await orig<typeof import('../../../ui')>();
   return { ...real, ask: async (o: { title: string; text?: string }) => { asked.push(o); return sayYes; } };
 });
+// « Vraies routes » (RoadsPanel, its own tests in RoadsPanel.test.tsx): the function « drive » is pretended, nothing leaves
+vi.mock('../../../data/roads', async (orig) => {
+  const real = await orig<typeof import('../../../data/roads')>();
+  return { ...real, roadsStatus: async () => ({ ok: true, key: true, on: false, left: 0, left0: 0, month: null, rows: { tomtom: 0, osrm: 0, none: 0 } }) };
+});
 vi.mock('../../../shared/map/MapView', () => ({ MapView: () => null }));
 vi.mock('../../../shared/places/AddressField', () => ({ AddressField: () => null }));
 import { BookingSection } from './BookingSection';

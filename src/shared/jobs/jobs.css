@@ -197,3 +197,7 @@ a.bigstep, a.bigstep:hover { text-decoration: none; }
   .jobs-cf-car > div { flex: 1 1 calc(100% - 40px); }
   .jobs-cf-history { margin-left: 38px; }
 }
+
+/* « En attente d'envoi »: a move kept on the phone (MoveWaiting; the agenda's .agenda-wait) */
+.move-wait { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; font-size: 13px; font-weight: 520; color: var(--warn); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.move-wait svg { flex: none; }

@@ -1,13 +1,14 @@
 /* « Choisir sur la carte » (MomentMap.tsx): the pure rules of the day strip, of the block highlighted by default and of
    the pins of the overview. No signals here (momentDays.test.ts). */
 import type { BlockKey } from '../../lib/dates';
-import { isFar, type CellState, type Moment } from './logic';
+import { isFar, unmeasured, type CellState, type Moment } from './logic';
 
 /** a block of a day as the calendar shows it (cellState) */
 export interface DayCell { key: BlockKey; state: CellState; left?: number }
 export interface DayRow { day: string; blocks: DayCell[] }
-/** a block where a booking goes in without forcing: room left, not closed, not started */
-export const isOpen = (c: Pick<DayCell, 'state'>): boolean => c.state === 'ok' || c.state === 'tight';
+/** a block where a booking goes in without forcing: room left, not closed, not started (« Vraies routes » on: also a
+    block the server has not answered for yet, « À vérifier », which stays pickable) */
+export const isOpen = (c: Pick<DayCell, 'state'>): boolean => c.state === 'ok' || c.state === 'tight' || c.state === 'unknown';
 
 export interface DayChip {
   day: string;
@@ -17,8 +18,11 @@ export interface DayChip {
   open: boolean;
   /** why not, when no block is open: every block full, else closed (or passed) */
   shut: 'full' | 'closed' | null;
-  /** what the best moment of the day that is not far adds to the route (the server's score), when it is said */
+  /** what the best moment of the day that is not far adds to the route (the server's score), when it is said (never
+      from a moment whose trips are not all measured: its minutes are the « unknown » time) */
   add: number | null;
+  /** « Vraies routes »: the day's open moments are scored, but none of them is fully measured yet (« route à mesurer ») */
+  unmeasured: boolean;
   /** every open moment of that day the server scored is far from the other stops */
   far: boolean;
   /** the day of the server's best moment */
@@ -29,13 +33,15 @@ export interface DayChip {
 export function dayChips(rows: DayRow[], list: Moment[], counts: Record<string, number>): DayChip[] {
   const openKey = new Set(rows.flatMap((r) => r.blocks.filter(isOpen).map((c) => `${r.day}|${c.key}`)));
   const scored = list.filter((m) => openKey.has(`${m.day}|${m.block}`));
-  const bestDay = scored.find((m) => !isFar(m))?.day ?? null;
+  // never « Meilleur choix » from a moment whose trips are not all measured (its score counts the unknown time: final-guess G2)
+  const bestDay = scored.find((m) => !isFar(m) && !unmeasured(m))?.day ?? null;
   return rows.map((r) => {
     const open = r.blocks.some(isOpen);
     const mine = scored.filter((m) => m.day === r.day);
-    const adds = mine.filter((m) => !isFar(m) && m.add_min != null).map((m) => m.add_min as number);
+    const adds = mine.filter((m) => !isFar(m) && !unmeasured(m) && m.add_min != null).map((m) => m.add_min as number);
     return {
       day: r.day, jobs: counts[r.day] || 0, open,
+      unmeasured: !adds.length && mine.some(unmeasured),
       shut: open ? null : r.blocks.some((c) => c.state === 'full') ? 'full' : 'closed',
       add: adds.length ? Math.min(...adds) : null,
       far: mine.length > 0 && mine.every(isFar),

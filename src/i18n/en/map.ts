@@ -1,7 +1,9 @@
 import type { map as fr } from '../fr/map';
 export const map: typeof fr = {
   title: 'Map',
-  help: 'The team’s day: where the trucks leave from, each truck in its colour with its stops numbered in the order of its route, and where the mechanics are right now.',
+  help: 'The team’s day: where the trucks leave from, each truck in its colour with its stops numbered in the order of its route, and where the mechanics are right now. Tap a stop to open it or drive there; press and hold a stop of the list (on a computer: right-click): “Call”, “Directions”…',
+  /* the same for who may move appointments (“Book”): “Move” named */
+  helpMove: 'The team’s day: where the trucks leave from, each truck in its colour with its stops numbered in the order of its route, and where the mechanics are right now. Tap a stop to open it, move it or drive there; press and hold a stop of the list (on a computer: right-click): “Move”, “Call”, “Directions”…',
   label: 'Team map',
   days: { yesterday: 'Yesterday', today: 'Today', tomorrow: 'Tomorrow' },
   dayLabel: 'Day shown',
@@ -87,6 +89,7 @@ export const map: typeof fr = {
   },
   ago: { now: 'just now', min: '{n} min ago', hours: '{n} h ago', yesterday: 'yesterday', on: 'on {date}' },
   tripLabel: 'Arriving around {time}',
+  roadNote: { asking: 'Working out the route…', none: 'Route not available for now', never: 'This route can’t be drawn' },
   empty: {
     title: 'No appointment that day',
     text: 'The trucks’ stops show here as soon as an appointment is booked.',

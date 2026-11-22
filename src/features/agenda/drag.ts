@@ -9,7 +9,7 @@ import { t } from '../../lib/i18n';
 import { may } from '../../domain/rights';
 import { toast } from '../../ui';
 import type { DropRefusal } from './layout';
-import { movesWaiting } from './move';
+import { movesWaiting, landings } from './move';
 
 export type Refusal = DropRefusal | 'past';
 /** the place under the pointer: a cell, a day's top, or a unit of a column (`minute`) */
@@ -75,8 +75,9 @@ export function useGridDrag(): Drag {
   return { job, ...fns.current };
 }
 
-/** a job this person may drag: booked, with the right to book, and no move of it still waiting on the phone */
-export const canDragJob = (j: Job) => may.book() && j.status === 'booked' && !movesWaiting.value.has(j.id);
+/** a job this person may drag: booked, with the right to book, no move of it still waiting on the phone, and not the
+    ones held where they were just dropped (their move is being asked and sent: A3; each until its own flow ends, F2) */
+export const canDragJob = (j: Job) => may.book() && j.status === 'booked' && !movesWaiting.value.has(j.id) && !landings.value.has(j.id);
 
 /** the pointer left the element for good (not just for one of its children) */
 export function leftFor(e: DragEvent): boolean {

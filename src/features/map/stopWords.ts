@@ -33,6 +33,7 @@ export function whenOf(s: Stop, row?: JobWindow | null, l: Lang = lang.value): s
     const flex = s.flex || (!!row && row.win_flex === true);
     moment = w || flex ? cap(windowWords(w, l)) : t('common.blocks.day', undefined, l);
   }
+  if (s.etaMin == null && s.unsure && s.status === 'booked') return `${moment}, ${t('jobs.order.etaUnmeasured', undefined, l)}`;
   return s.etaMin != null ? t('map.stops.when', { block: moment, time: clock(s.etaMin, l) }, l) : moment;
 }
 

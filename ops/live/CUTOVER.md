@@ -9,11 +9,18 @@ Les règles de toujours (CLAUDE.md, « The live database ») :
 - Jamais `DELETE`, `DROP` ou `TRUNCATE` sur la base en ligne. Jamais de rendez-vous de test (`job_number_seq` ne recule pas).
 - Chaque changement est d'abord **essayé** dans un bloc qui finit par `raise exception` (tout est annulé), puis appliqué.
 - On s'arrête au **premier écart** entre ce qu'on attend et ce qu'on voit : on comprend avant de continuer.
-- L'ordre : **sauvegarde à la main → questions en lecture seule → les 6 migrations une à une → les 12 fonctions du
-  serveur, toutes au même commit → ce que le propriétaire fait à la main → l'app.** Le retour se fait dans l'ordre
-  inverse, et chaque pièce peut revenir seule : le serveur de la refonte reste compatible avec l'app d'hier (mêmes
-  actions, mêmes réponses), et les nouvelles fonctions répondent en mots (`not_ready`) sur une base où les migrations
-  ne sont pas encore appliquées.
+- L'ordre : **sauvegarde à la main → questions en lecture seule → les 7 migrations une à une → les 13 fonctions du
+  serveur, toutes au même commit → ce que le propriétaire fait à la main → l'app → (un autre soir) les vraies routes :
+  les clés de TomTom, la mesure, puis l'interrupteur (section 5 bis).** Le retour se fait dans l'ordre inverse, et chaque
+  pièce peut revenir seule : le serveur de la refonte reste compatible avec l'app d'hier (mêmes actions, mêmes
+  réponses), et `recon`, nouvelle, répond en mots (`not_ready`) sur une base où les migrations ne sont pas encore
+  appliquées. `drive`, nouvelle aussi, ne le fait pas : elle se déploie après sa migration (la 7), jamais avant.
+- Les vraies routes (Partie 27) arrivent **éteintes** : la migration 7 et la fonction `drive` ne changent aucun plan
+  tant que `settings.booking.roads_on` n'est pas vrai, et cet interrupteur ne s'allume que par le propriétaire, dans
+  l'app, à la section 5 bis. Éteint, le planificateur répond exactement comme avant, et les écrans montrent les mêmes
+  chiffres qu'aujourd'hui : l'estimation du serveur (« 48 min de route (27,8 km) », « vers 10 h »), comme l'app en ligne.
+  C'est voulu (décision du 2026-11-21) : éteint, c'est le chemin du retour ; la règle « un temps ou des km affichés sont
+  mesurés » vaut une fois l'interrupteur allumé.
 
 Dans ce fichier : **C** = le commit de la refonte, poussé sur GitHub (une branche, pas `main` : `main` ne bouge qu'à
 l'étape 5) ; **AVANT** = `acf46c3`, la version en ligne aujourd'hui (tag `avant-refonte`) ; **le projet** = Supabase
@@ -29,10 +36,17 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
 ## 0. Avant de commencer (sur le Mac, rien en ligne)
 
 1. C est poussé sur GitHub, et toute la suite passe à C : `bash tests/stack/mac/all.sh <dossier à C>` (la base,
-   l'API, les 39 étapes de bout en bout), `npx tsc --noEmit`, `TZ=America/Toronto npm test` (l'heure du garage,
+   l'API, les 39 étapes de bout en bout), puis les autres fichiers du navigateur, qu'`all.sh` ne lance pas : les 9
+   étapes des vraies routes (`SRC=<dossier à C> bash tests/stack/mac/e2e-file.sh routes`), puis de la même façon
+   `plages` (les plages d'arrivée, interrupteur éteint), `argent` et `mise-a-jour` (l'app d'hier, avec ses données et
+   ses changements en attente, mise à jour vers C), les tests de `ops`
+   (`SRC=<dossier à C> bash tests/stack/mac/api-tests.sh ops/tests/sauvegardes.test.mjs` et
+   `node --test ops/tests/fichiers.test.mjs`), et la base encore une fois sur une base neuve
+   (`FRESH=1 bash tests/stack/mac/db-tests.sh` : après un passage dans le navigateur, des lignes restent et les tests du
+   rapprochement les voient) ; `npx tsc --noEmit`, `TZ=America/Toronto npm test` (l'heure du garage,
    comme « Publier l'app » ; sous `TZ=UTC`, six tests d'horloge sont rouges tant que `vite.config.ts` ne fixe pas
    l'heure des tests : ce n'est pas un écart).
-2. Les migrations à appliquer : **exactement ces six**, dans cet ordre (vérifier la liste, puis noter l'empreinte de
+2. Les migrations à appliquer : **exactement ces sept**, dans cet ordre (vérifier la liste, puis noter l'empreinte de
    chacune) :
 
    | # | Fichier | Ce qu'il change |
@@ -42,17 +56,19 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
    | 3 | `20261116000200_refonte_planification.sql` | le planificateur, les plages d'arrivée, `job_step`, `walk_in` ; la tâche pg_cron `garage-lock-windows` refaite (même horaire) |
    | 4 | `20261116000300_refonte_acces.sql` | les droits : des règles d'accès (policies) refaites, `attachments` écrites une fois et sans SVG, `settings.booking.web.on` par `web_switch` seulement |
    | 5 | `20261116000400_refonte_rapprochement.sql` | **ajout seulement** : 3 tables `ops_recon_*`, les fonctions `recon_*`, la tâche pg_cron `garage-recon` (si pg_cron existe) |
-   | 6 | `20261116000500_refonte_sauvegarde.sql` | **ajout seulement** : la table `ops_backup_runs` |
+   | 6 | `20261116000500_refonte_sauvegarde.sql` | **ajout seulement** : la table `ops_backup_runs` (et le déclencheur `ops_recon_runs_backup_age` sur la table du rapprochement) |
+   | 7 | `20261119000200_vraies_routes.sql` | Partie 27, « Vraies routes », **INERTE** tant que `settings.booking.roads_on` n'est pas vrai : 2 tables neuves (`drive_times` les temps de route mesurés, `drive_spend` ce que TomTom a compté ce mois-ci ; ni l'une ni l'autre n'est sauvegardée), 3 colonnes neuves, vides (`jobs.eta_measured` : l'heure d'arrivée compte-t-elle seulement des trajets mesurés ? ; `drive_times.tt_none_at` ; `jobs.arrive_at` : la minute pointée par un « Déplacer à l'heure choisie », écrite par le serveur seulement), le planificateur refait (une seule horloge quand l'interrupteur est allumé ; éteint, les mêmes réponses et les mêmes lignes qu'avant ; un rendez-vous qui a un `arrive_at` est tenu à cette minute par chaque plan, tant qu'aucun n'en a, rien ne change), `book_job`, `move_job`, `lock_windows_core` et `log_activity` refaites (un seul changement chacune, qui ne joue qu'allumé), `roads_switch`, les deux aperçus `move_preview` et `stop_order_preview` ; « Déplacer à l'heure choisie » (fragment `exact.sql` du générateur) : une forme NEUVE de `move_job` à 8 arguments (`p_exact`, sans valeur par défaut : l'app d'hier appelle les formes à 5 et 7, inchangées) et une forme neuve de `move_preview(p_job, p_day, p_truck, p_at)`, leurs pièces internes (`exact_works`, `exact_try`, `exact_view`, `exact_run`, `exact_hm`, `exact_place`, `exact_move`, `route_hold`, `plan_late_new`, fermées à l'app) ; la nouvelle app appelle `move_job` à 8 arguments : la migration avant l'app, toujours (sans elle, un déplacement à une heure est refusé, rien n'est gardé sur le téléphone) ; un déclencheur neuf `settings_roads_guard` (l'interrupteur et les quatre nombres qui décident de ce que TomTom coûte ne changent que par le propriétaire). Pas de tâche pg_cron, rien qui ne tourne pas dans un bloc |
 
    ```
-   git diff --name-only --diff-filter=A acf46c3 C -- supabase/migrations | sort     # les six ci-dessus, rien d'autre
+   git diff --name-only --diff-filter=A acf46c3 C -- supabase/migrations | sort     # les sept ci-dessus, rien d'autre
    git diff --name-only --diff-filter=M acf46c3 C -- supabase/migrations            # VIDE (une migration déjà en ligne ne change jamais)
-   shasum -a 256 supabase/migrations/20261116*.sql                                   # au commit C : les six empreintes
+   shasum -a 256 supabase/migrations/20261116*.sql supabase/migrations/20261119*.sql # au commit C : les sept empreintes
    ```
    Aucune de ces migrations ne réécrit de lignes de données au moment où elle s'applique (que des fonctions, des
-   déclencheurs, des règles, des tables neuves) : les nombres du contrôle 2c ne doivent pas bouger.
-3. Les fonctions du serveur à C : `ls supabase/functions` = `backup book client conversation enroute hermes notify recon
-   ring stripe team vin` (les 11 d'aujourd'hui, plus `recon`, nouvelle) et `_shared`.
+   déclencheurs, des règles, des tables neuves, des colonnes neuves sans valeur) : les nombres du contrôle 2c ne doivent
+   pas bouger.
+3. Les fonctions du serveur à C : `ls supabase/functions` = `backup book client conversation drive enroute hermes notify recon ring stripe team vin`
+   (les 11 d'aujourd'hui, plus `recon` et `drive`, nouvelles) et `_shared`.
 
 ## 1. Avant de toucher à quoi que ce soit (une sauvegarde, puis lecture seule)
 
@@ -64,8 +80,8 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
 2. Dans ce dépôt, Settings → Actions → General → « Workflow permissions » : **Read and write** (le travail pousse la
    copie). Aucun secret à mettre : le travail prend un ticket signé de GitHub (`id-token: write` dans le fichier).
 3. GitHub → dépôt des sauvegardes → **Actions** → « Sauvegarde du garage » → **Run workflow**. Elle doit finir **verte**.
-   Deux avertissements jaunes sont normaux tant que le serveur n'est pas à jour (« ne connaît pas encore backup done »,
-   « … le rapprochement »).
+   Trois avertissements jaunes sont normaux tant que le serveur n'est pas à jour (« ne connaît pas encore backup done »,
+   « … le rapprochement », « … la mesure des routes (fonction « drive ») »).
 4. Noter : le commit de cette sauvegarde dans le dépôt privé, et les totaux de `donnees/_resume.json`.
 5. Télécharger ce dossier `donnees` (avec `photos/`) sur le Mac, **hors de GitHub** : c'est la copie de secours si
    GitHub ou le dépôt n'était plus là.
@@ -80,7 +96,7 @@ Lancer `ops/live/2026-11-16_verifications.sql` sur la base en ligne, une requêt
 
 | Question | On continue si… | Sinon |
 |---|---|---|
-| Q1 migrations enregistrées | `fenetres_20261115000100` = `true` et la dernière version est `20261115000100` ; aucune `20261116…` | arrêt : la base en ligne n'est pas où les migrations la croient |
+| Q1 migrations enregistrées | `fenetres_20261115000100` = `true` et la dernière version est `20261115000100` ; aucune `20261116…` ni `20261119…` | arrêt : la base en ligne n'est pas où les migrations la croient |
 | Q2 mode de réservation | (une information : `windows_on` dit si l'équipe réserve par plages ; `web_on` doit être `false`, la réservation en ligne fermée depuis le 2026-11-09) | `web_on` = `true` : le dire au propriétaire avant de continuer |
 | Q3 version de Postgres | 15, 16 ou 17 | (le texte reconstruit par Postgres peut différer d'une version majeure à l'autre : comparer F à l'œil) |
 | Q4 pg_cron | (une information : `garage-housekeeping`, `garage-lock-windows` existent-elles ; la migration 5 ajoute `garage-recon` seulement si pg_cron est là) | — |
@@ -142,7 +158,7 @@ end $do$;
 
 Toute autre erreur : arrêt, rien n'a changé. (`canceling statement due to lock timeout` : l'app tenait une table ;
 attendre une minute et refaire l'essai.) (Une migration qui ne peut pas tourner dans un bloc — `create index
-concurrently`, `vacuum` — le dit ici ; aucune des six n'en a.)
+concurrently`, `vacuum` — le dit ici ; aucune des sept n'en a.)
 
 **b. Pour vrai** (le bloc de CLAUDE.md, avec le même `lock_timeout` ; identique à l'essai sauf la fin) :
 
@@ -173,7 +189,7 @@ select json_build_object('customers', (select count(*) from public.customers), '
   'next_job_number', (select last_value from public.job_number_seq));
 ```
 
-Les nombres doivent être ceux de départ (aucune des six ne change de données ; un rendez-vous ou un paiement fait par
+Les nombres doivent être ceux de départ (aucune des sept ne change de données ; un rendez-vous ou un paiement fait par
 l'équipe pendant ce temps les change, d'où « hors des heures de l'équipe »). Après la migration 5 :
 `select public.recon_run(public.local_today() - 1, 'manual')` n'est **pas** à lancer à la main (il écrit) : le
 rapprochement part de la sauvegarde de l'étape 3.5.
@@ -181,8 +197,16 @@ rapprochement part de la sauvegarde de l'étape 3.5.
 Un fichier qui échoue en **b** n'a rien changé (le bloc est une seule transaction). Les fichiers déjà appliqués restent :
 on décide alors entre la suite corrigée et le retour (section 7).
 
-**d. À la fin des six** : F (1.2) sur la base en ligne = F sur une base locale construite à C
-(`bash tests/stack/mac/up.sh <dossier à C>`), mêmes écarts attendus qu'en 1.2. Q1 montre les six versions.
+**Entre la 6 et la 7** (après le contrôle c de la 6, avant l'essai de la 7) : relancer la requête de 1.3.3 sur la base
+en ligne (lecture seule) et garder la réponse dans `ops/live/rollback/fonctions_avant_7.sql`. C'est le texte d'avant de la
+migration 7 : elle refait onze fonctions que la migration 3 venait de refaire (`apply_plan`, `book_job`,
+`lock_windows_core`, `move_job`, `plan_route`, `replan_block_safe`, `route_cost`, `route_retime`, `route_walk_in`,
+`suggest_core`, `suggest_windows_core`) ; leur texte de `fonctions_avant.sql` (AVANT) reprendrait aussi le planificateur
+de la refonte (section 7).
+
+**d. À la fin des sept** : F (1.2) sur la base en ligne = F sur une base locale construite à C
+(`bash tests/stack/mac/up.sh <dossier à C>`), mêmes écarts attendus qu'en 1.2. Q1 montre les sept versions. Après la migration 7 :
+`select public.roads_on()` répond `false` (lecture seule) : les vraies routes sont là, éteintes.
 
 Pendant ce temps l'app et les fonctions d'hier tournent sur la base qui change : c'est voulu (tout reste compatible).
 
@@ -190,9 +214,20 @@ Pendant ce temps l'app et les fonctions d'hier tournent sur la base qui change :
 
 1. Chaque fonction est déployée depuis les fichiers bruts de GitHub au commit C (`index.ts`, `handler.ts` et chaque
    fichier de `_shared/` qu'elle importe, **au même commit C**), avec `verify_jwt` coupé (`supabase/config.toml` : les
-   12 y sont). Tous les imports restent relatifs et dans `supabase/functions`.
-2. L'ordre : d'abord celles que seule la nuit utilise (`backup`, `recon`), puis celles de l'équipe (`team`, `hermes`,
-   `vin`, `stripe`), puis celles que voient les clients (`book`, `client`, `notify`, `enroute`, `conversation`, `ring`).
+   13 y sont). Tous les imports restent relatifs et dans `supabase/functions`.
+2. L'ordre : d'abord celles que seule la nuit utilise (`backup`, `recon`), puis `drive` (les vraies routes : la tâche de
+   nuit et l'app ; elle lit les tables de la migration 7), puis celles de l'équipe (`team`, `hermes`, `vin`, `stripe`),
+   puis celles que voient les clients (`book`, `client`, `notify`, `enroute`, `conversation`, `ring`).
+   Ce que la Partie 27 change dans ce lot (toutes partent quand même au même commit C) : `drive` est nouvelle
+   (`drive/index.ts`, `drive/handler.ts`, avec `_shared/roads.ts`, `_shared/tomtom.ts`, `_shared/texts.ts`,
+   `_shared/http.ts`, `_shared/db.ts`, `_shared/github.ts`) ; `enroute` (« Je pars » : la route de TomTom avec la
+   circulation du moment quand le serveur a sa clé, sinon OSRM, sinon pas d'heure, jamais une ligne droite ; au plus 30
+   routes à l'heure par personne pour « Je pars », ensuite le trajet et le texto partent sans heure ; un `refresh` d'un
+   trajet terminé est refusé sans rien refaire ni texter) ; `book` (« slots » refuse `web_off` avant de mesurer quoi que
+   ce soit, comme ce soir où la réservation en ligne est fermée ; allumée, la page mesure l'adresse avant d'offrir des
+   moments) ; `backup` (`drive_times` et `drive_spend` ne sont pas sauvegardées).
+   `enroute` part AVANT l'app (section 5) : l'app de C redemande l'heure d'arrivée pendant un trajet (`refresh`), et
+   l'`enroute` d'hier en ferait un nouveau trajet.
 3. **Le contrôle de chacune** :
    - `curl -s "https://wyxvizxabqgvsiiemvfw.supabase.co/functions/v1/<nom>?version"` répond `{"ok":true,"commit":"<C>"}`
      (le commit est lu dans l'adresse des fichiers déployés : un autre commit = une fonction déployée depuis le mauvais
@@ -208,13 +243,20 @@ Pendant ce temps l'app et les fonctions d'hier tournent sur la base qui change :
      | `conversation` | 400 `action` |
      | `notify` | 400 `kind` |
      | `stripe` | 400 `signature` (Stripe branché) ; 503 `no_stripe` si Stripe n'est pas branché |
-     | `enroute`, `hermes`, `recon`, `ring`, `team`, `vin` | 401 `signin` |
-4. Les variables des fonctions (Supabase → Edge Functions → Secrets) : **rien de nouveau à mettre**. `SUPABASE_URL`,
+     | `drive`, `enroute`, `hermes`, `recon`, `ring`, `team`, `vin` | 401 `signin` |
+4. Les variables des fonctions (Supabase → Edge Functions → Secrets) : **rien de nouveau à mettre ce soir-là**
+   (`TOMTOM_KEY`, la clé SERVEUR de TomTom, est la seule nouvelle : elle se met à la section 5 bis, un autre soir ;
+   sans elle, « Je pars » prend OSRM, gratuit, comme hier, et la mesure des routes aussi ; OSRM, c'est le serveur de
+   démonstration public `router.project-osrm.org` (ses règles, lues sur son wiki le 2026-11-20 : un usage raisonnable et
+   non commercial, une demande par seconde au plus), et dès cette nuit la mesure de la nuit lui envoie les positions des
+   arrêts des jours à venir, interrupteur éteint aussi ; voir 5 bis, « Ce que Hassan doit faire »). `SUPABASE_URL`,
    `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` sont données par Supabase. Facultatives, comme hier :
    `APP_BASE_URLS` (défaut : l'adresse Vercel), `BACKUP_REPOS` (défaut : `hostnextline/garage2.0-sauvegardes`),
    `HERMES_URL` / `HERMES_KEY` (la table `secrets` passe d'abord), `CODE_COMMIT` (nouvelle, facultative : le commit se
-   lit dans l'adresse). **Jamais en ligne** : `GHL_API_BASE`, `STRIPE_API_BASE`, `OSRM_BASE`, `VPIC_BASE`,
-   `GITHUB_OIDC_JWKS` (elles servent aux tests, elles enverraient les appels ailleurs).
+   lit dans l'adresse). **Jamais en ligne** : `GHL_API_BASE`, `STRIPE_API_BASE`, `OSRM_BASE`, `TOMTOM_BASE`,
+   `VPIC_BASE`, `GITHUB_OIDC_JWKS` (elles servent aux tests, elles enverraient les appels ailleurs ; seule exception
+   possible : `OSRM_BASE` vers un serveur OSRM du garage lui-même, si le propriétaire en décide ainsi, 5 bis), ni les
+   lignes `drive_limits` et `stripe_test_ok` de la table `secrets` (copies de test seulement).
 5. Les 6 fonctions qui tournent aujourd'hui avec un `_shared` d'un autre commit (`enroute`, `team`, `backup`, `hermes`,
    `stripe`, `vin`) changent donc aussi par leur `_shared` : c'est voulu, c'est la combinaison que les tests de l'API
    ont essayée à C.
@@ -229,7 +271,11 @@ Pendant ce temps l'app et les fonctions d'hier tournent sur la base qui change :
 | Le travail de nuit | rien de plus (pas de secret : le ticket GitHub). Au premier bon ticket, le serveur note les numéros du dépôt (ligne `backup_repo:hostnextline/garage2.0-sauvegardes` de `secrets`) | 3.5 ci-dessous |
 
 5\. **Lancer « Sauvegarde du garage » à la main** : verte, et cette fois « Sauvegarde notée au garage : … tables,
-… lignes, commit … » et « Rapprochement : … » (plus d'avertissement jaune). Contrôle en lecture seule :
+… lignes, commit … », « Rapprochement : … » et « Routes : N trajets mesurés en M appels. … » (plus d'avertissement
+jaune). Sans la clé de TomTom (elle vient à la section 5 bis), c'est OSRM, gratuit (le serveur de démonstration
+public : 3.4), qui mesure les heures habituelles ; les vraies routes restent éteintes, rien ne bouge dans les plans. La
+mesure de la nuit commence par effacer les trajets que plus personne ne fait (plus de 30 jours, un bout qui n'est plus un
+arrêt des jours à venir). Contrôle en lecture seule :
 `select ok, tables, rows, commit, at from public.ops_backup_runs order by at desc limit 1` (une ligne `ok = true`) et
 `select day, status from public.ops_recon_runs order by day desc limit 1`. Un « RAPPROCHEMENT : des écarts » rouge ici
 n'est pas une panne de la bascule : ce sont les écarts que les comptes d'avant contenaient déjà (les lire dans le résumé
@@ -250,6 +296,150 @@ du travail ; l'app les montrera à l'étape 5, Trésorerie → « Rapprochement 
    nouveau commit dans Réglages → L'app — décision du propriétaire, O-17) ; les données du téléphone sont là (même
    stockage, IndexedDB version 3) ; un téléphone resté hors ligne envoie ses changements en attente au retour du réseau.
 
+## 5 bis. Les vraies routes (Partie 27) : les clés de TomTom, la mesure, puis l'interrupteur
+
+Un **autre soir** que la bascule, une fois la refonte vue un jour de travail. Avant, rien de la Partie 27 ne change un
+plan : la migration 7 et la fonction `drive` sont là, l'interrupteur est éteint. Chaque étape ci-dessous se défait seule
+(section 7). Ce qui change dès qu'une clé est mise, interrupteur éteint ou pas, est dit à chaque étape.
+
+### Ce que Hassan doit faire
+
+1. **Ouvrir un compte TomTom** pour développeurs (developer.tomtom.com), au nom du garage. Dans le compte : mettre les
+   alertes d'usage (et un arrêt au plafond si TomTom en offre un), et savoir si le compte a une carte de crédit. Pas
+   vérifié : si TomTom demande une carte à l'ouverture, et s'il refuse ou facture une fois le gratuit passé (sans carte,
+   s'il refuse : les cartes passent à OpenStreetMap, les routes et les adresses à OSRM et Photon, comme sans clé).
+2. **Créer deux clés** dans ce compte, chacune avec ses produits seulement :
+   - la **clé du navigateur** (les cartes, les routes dessinées, les adresses qu'on tape) : elle est publique, elle est
+     dans l'app ; ses produits : **Map Display** (les tuiles de carte), **Routing** (les routes dessinées) et **Search**
+     (la recherche d'adresse) — l'app ne lui demande rien d'autre —, **jamais Matrix** ; sur le site de TomTom, la
+     restreindre aux deux adresses de l'app : `mecanique-mobile-his.vercel.app` **et** `hostnextline.github.io`
+     (l'ancienne adresse marche encore). La liste des sites n'arrête que les navigateurs : quelqu'un qui lit l'app peut
+     se servir de la clé ailleurs, pour chaque produit qu'elle a, et aucun plafond de l'app ne la compte (d'où les
+     produits limités et les alertes du compte) ;
+   - la **clé du serveur** (les temps de route que le planificateur compte, et « Je pars ») : ses produits : **Matrix
+     Routing** (les temps de route) et **Routing** (« Je pars ») ; elle reste secrète, sans liste de sites (le serveur
+     n'est pas un site web).
+   Pas vérifié : les écrans du site de TomTom où l'on choisit les produits et la liste des sites d'une clé.
+3. **Où coller chacune** (jamais l'une à la place de l'autre — les deux s'appellent `TOMTOM_KEY` : une erreur met la
+   clé du serveur, sans liste de sites, dans l'app publique ; vérifier deux fois) :
+   - la clé du serveur : Supabase → projet `garage2` → Edge Functions → **Secrets** → nouveau secret `TOMTOM_KEY` ;
+   - la clé du navigateur : GitHub → dépôt garage2.0 → Settings → Secrets and variables → Actions → **Variables** →
+     nouvelle variable `TOMTOM_KEY` (une variable, pas un secret : elle finit dans l'app publiée de toute façon).
+4. **Le plafond du mois**, dans l'app : Réglages → Réservations → « Vraies routes » → « Plafond du mois chez TomTom »
+   (le propriétaire seulement ; 10 000 au départ, que Hassan change pour le sien ; 0 = jamais TomTom), et « Enveloppe du
+   mois pour la réservation en ligne » (1 000 au départ, comptée dans le plafond). Le choisir AVANT de coller la clé du
+   serveur : dès qu'elle est là, la mesure de la nuit demande TomTom chaque nuit, interrupteur éteint aussi.
+5. **Ce que ça peut coûter** :
+   - gratuit chaque mois, par service (vérifié sur le site de TomTom le 2026-11-19) : 2 500 transactions Matrix (les
+     temps de route du planificateur), 20 000 calculs de route (« Je pars », les routes dessinées sur les cartes),
+     20 000 recherches d'adresse, 200 000 tuiles de carte ;
+   - l'ordre de grandeur des temps de route (compté par la dernière revue sur la copie de test, avec 2 camions et la
+     règle de facturation de TomTom notée le 2026-11-19) : **environ 90 transactions pour chaque adresse demandée**
+     (nouvelle ou déjà au dossier : elle se mesure contre chaque arrêt des 14 jours à venir), **environ 125 une fois le
+     rendez-vous réservé**, autant de nouveau pour un « Déplacer » ou un « Voir d'autres dates » ; **environ 20 000 par
+     mois à 8 rendez-vous par jour de travail** : les 2 500 gratuites partent vers le 3e jour de travail du mois, le
+     plafond de 10 000 vers le 14e jour. La première mesure de tous les rendez-vous à venir compte en plus (environ 260
+     pour 50 rendez-vous à venir, environ 6 400 pour 400), et 120 jours plus tard ses trajets, devenus trop vieux, sont
+     redemandés presque tous ensemble ;
+   - au-delà du plafond, le reste du mois : les heures habituelles se mesurent avec OSRM, sans la circulation, et les
+     heures de pointe attendent le mois suivant ;
+   - **le prix au-delà du gratuit n'a PAS été confirmé** : la page de TomTom ne le montrait pas ; un résultat de
+     recherche disait environ 0,75 $ les 1 000 routes et 2,50 $ les 1 000 transactions Matrix, sans preuve. Si ce prix
+     était le vrai : le plafond de 10 000 = environ 19 $ par mois au plus (7 500 payées), 20 000 = environ 44 $ ;
+   - pour ne jamais dépasser le gratuit des temps de route : un plafond de 2 500 ou moins (les plans passent alors à
+     OSRM tôt dans le mois). Les cartes, les routes dessinées et les adresses n'ont pas de plafond dans l'app : une tuile
+     refusée par TomTom fait passer les cartes à OpenStreetMap ;
+   - les freins : chaque personne a 30 appels à l'heure qui demandent TomTom pour une adresse (ensuite OSRM) ; à environ
+     90 chacun, c'est encore jusqu'à environ 2 700 transactions à l'heure : un téléphone (ou un script avec sa session)
+     qui boucle sur des adresses peut passer le plafond de 10 000 en moins de 4 heures, et le reste du mois se mesure
+     alors avec OSRM ; la page de réservation en ligne : 30 adresses à l'heure et son enveloppe du mois (1 000 au départ) ;
+   - « Ce mois-ci chez TomTom : … sur … » dans le panneau donne le compte de l'app ; le tableau de bord de TomTom fait
+     foi : les comparer après la première semaine (pas vérifié sans le vrai TomTom : s'il compte un carré de trajets
+     case par case plutôt que 5 × le plus grand côté, l'app compte trop bas les jours chargés).
+6. **Le secours gratuit, OSRM** (une décision du propriétaire) : sans la clé du serveur, quand TomTom refuse ou est
+   occupé, et au-delà d'un plafond, le planificateur, « Je pars » et la page de réservation en ligne prennent le serveur
+   de démonstration public d'OSRM (`router.project-osrm.org`), fait pour un usage raisonnable et non commercial, une
+   demande par seconde au plus : il peut nous bloquer. La mesure de la nuit lui envoie déjà les positions des arrêts à
+   venir chaque nuit depuis la bascule, tant que la clé du serveur n'est pas là. Choisir : (a) la clé du serveur
+   obligatoire avant d'allumer les vraies routes (OSRM ne sert plus que de secours), (b) un serveur OSRM du garage
+   (`OSRM_BASE`, pas essayé), ou (c) le serveur de démonstration tel quel.
+7. **Avant d'allumer** : chaque téléphone de l'équipe sur la nouvelle app (5 bis.4, étape 1).
+8. **À savoir** (décision du 2026-11-21) : interrupteur éteint, les écrans gardent les chiffres d'aujourd'hui,
+   l'estimation du serveur (« 48 min de route (27,8 km) », « +9 min de route », « vers 10 h ») : éteint, c'est l'app
+   comme elle est en ligne, le chemin du retour. « Jamais un chiffre deviné » vaut une fois les vraies routes allumées.
+
+### 5 bis.1 La clé du serveur
+
+1. Coller `TOMTOM_KEY` dans les secrets des fonctions (ci-dessus). Le contrôle dit si les fonctions la voient (sinon :
+   redéployer `drive`, `enroute` et `book` au même commit C, comme à la section 3).
+2. **Contrôle** : l'app, Réglages → Branchements → « Cartes et vraies routes (TomTom) » dit « Le serveur a la clé de
+   TomTom. » (c'est `drive { action: 'status' }` → `key: true`).
+3. Dès ce moment, interrupteur éteint ou pas : « Je pars » prend la route de TomTom avec la circulation du moment (un
+   calcul de route chacun, au plus 30 à l'heure par personne, et au plus 8 `refresh` d'un trajet, un aux 4 minutes au
+   plus), et la mesure de la nuit (« Routes : … » de la sauvegarde) demande TomTom, dans le plafond du mois.
+
+### 5 bis.2 La clé du navigateur
+
+1. Mettre la variable `TOMTOM_KEY` du dépôt (ci-dessus), puis GitHub → Actions → « Publier l'app » → **Run workflow**
+   (la clé entre dans l'app à sa construction : sans nouvelle publication, rien ne change).
+2. **Contrôle** : `version.json` donne la nouvelle version ; sur un téléphone, après « Vérifier les mises à jour », la
+   carte montre les tuiles de TomTom (« © TomTom » en bas) et Réglages → Branchements dit « Cette version de l'app a la
+   clé des cartes ». Ouvrir aussi l'ancienne adresse (https://hostnextline.github.io/garage2.0/) : sa carte doit
+   montrer les tuiles de TomTom aussi (sinon la liste des sites de la clé ne la contient pas : elle passe alors aux
+   tuiles d'OpenStreetMap, et les adresses et les routes demandent d'abord TomTom, qui refuse, avant OSRM et Photon).
+3. Dès ce moment : les cartes, les routes dessinées et la recherche d'adresse demandent TomTom d'abord (OSRM et Photon
+   derrière, comme avant). Les plans ne changent pas.
+
+### 5 bis.3 Mesurer
+
+1. Réglages → Réservations → « Vraies routes » → **« Mesurer maintenant »** (le propriétaire ou le bureau), et rester
+   sur l'écran : la barre dit « N trajets mesurés, M à mesurer » ; la fin dit « Tous les trajets à venir sont mesurés. »,
+   ou que des trajets se mesureront plus tard (heures de pointe, plafond). Le relancer tant qu'il en reste aux heures
+   habituelles (« Trajets à mesurer : … (dont M aux heures habituelles) » : M doit être 0 pour allumer).
+2. **Contrôle** (lecture seule) : `select public.roads_state()` → `on: false`, `left0: 0`, `month.tx` sous `month.cap`,
+   `rows` compte les trajets gardés (`tomtom`, `osrm`, `none` = pas de route). Les heures d'arrivée de l'agenda n'ont
+   pas bougé (interrupteur éteint, mesurer ne change aucun plan).
+
+### 5 bis.4 L'interrupteur
+
+1. Quand : hors des heures de l'équipe (il replanifie tous les jours à venir), jamais entre 07:30 et 09:00 UTC.
+   **Avant** : chaque téléphone de l'équipe montre le commit C (ou plus récent) dans Réglages → L'app. L'app d'hier
+   (AVANT) ne connaît pas les vraies routes : elle garde ses propres estimations en ligne droite (« Voir sur la carte »,
+   « Arrêt n sur N », les km ajoutés), dessine des lignes droites pendant qu'une route se charge, et montre le temps de
+   route ajouté du serveur, qui compte 20 minutes pour un trajet pas encore mesuré, comme une vraie route. Un téléphone
+   encore sur AVANT : « Vérifier les mises à jour » sur ce téléphone. `APP_MIN_BUILT_AT` n'y aide pas : l'app d'hier ne
+   la lit pas (seules les versions à partir de C la lisent).
+2. Réglages → Réservations → « Vraies routes » → **« Compter les vraies routes »** (le propriétaire seulement) → la
+   question → « Allumer les vraies routes ». L'app mesure d'abord ce qui manque aux heures habituelles, puis le serveur
+   allume (`roads_switch`) ; il refuse (`roads_cold`) tant qu'un trajet des jours à venir n'a aucun temps : l'app mesure
+   encore une fois et redemande. Rester sur l'écran jusqu'à la fin.
+3. La fin dit « Vraies routes allumées : N moments replanifiés. », et deux listes : les moments restés comme avant
+   (sinon un rendez-vous tombait dans « À placer » ; leurs heures suivent quand même les vraies routes) et **les
+   clients à rappeler** (ils arrivent maintenant plus tard que le moment qu'on leur a dit : appeler ou texter de la
+   liste, le texto est prêt).
+4. **Contrôle** (lecture seule) : `select public.roads_on()` → `true` ; la ligne d'activité
+   `select data from public.activity where action = 'roads_switch' order by at desc limit 1` (`on: true`, `planned`,
+   `kept`, `late`).
+
+### 5 bis.5 Ce qu'on regarde ensuite
+
+- Les premiers jours : les heures d'arrivée de l'agenda contre celles que les mécanos vivent. Un rendez-vous réservé
+  pendant qu'un trajet n'était pas mesuré compte le « Trajet inconnu » (20 min) jusqu'à sa mesure : l'app le dit
+  (« heure : trajets pas encore mesurés », jamais « Vers … » ni « Hors plage ») ; par plages d'arrivée, il reste
+  « flexible » (le client a lu « nous vous confirmons la veille une plage de 4 heures ») et a sa plage au verrou du soir
+  (18 h la veille) une fois mesuré.
+- Chaque matin : la sauvegarde de la nuit dit « Routes : N trajets mesurés en M appels. … » et ce qui reste ; un
+  avertissement « TomTom a refusé la clé du serveur » = la clé à vérifier (OSRM a mesuré les heures habituelles) ; un
+  avertissement « N rendez-vous arrivent maintenant après l’heure dite au client (les vraies routes de cette nuit) : à
+  rappeler. n° … » = les appeler (les numéros, le jour et le bloc ; jamais un nom, le résumé est chez GitHub).
+- Le compte du mois : « Ce mois-ci chez TomTom » (Réglages) et le tableau de bord de TomTom (les comparer après la
+  première semaine : 5 bis, « Ce que ça peut coûter »).
+- Tous les rendez-vous rendus en retard par une replanification automatique (la nuit ne nomme que les siens) :
+  `select entity_id, data from public.activity where action = 'window_late' order by at desc` (pas encore d'écran pour
+  cette liste).
+- Le poids des temps de route : `select pg_size_pretty(pg_total_relation_size('public.drive_times'))` (lecture seule ;
+  la mesure de la nuit efface les trajets de plus de 30 jours que plus personne ne fait, Q7 pour la limite du forfait).
+
 ## 6. Après
 
 - Le lendemain matin : la sauvegarde de la nuit est verte ; si elle est rouge avec « RAPPROCHEMENT », lire les écarts
@@ -259,40 +449,76 @@ du travail ; l'app les montrera à l'étape 5, Trésorerie → « Rapprochement 
 
 ## 7. Le retour en arrière, pièce par pièce — et ce qui ne se défait pas
 
-Dans l'ordre inverse de la bascule : l'app d'abord (la plus visible), puis les fonctions, puis la base. Chaque pièce
-revient seule : l'app d'hier marche avec le serveur de la refonte, et les fonctions d'hier avec la base de la refonte.
+Dans l'ordre inverse de la bascule : les vraies routes d'abord (la section 5 bis, la dernière faite : l'interrupteur,
+puis les clés), puis l'app (la plus visible), puis les fonctions, puis la base. Chaque pièce revient seule : l'app d'hier
+marche avec le serveur de la refonte, et les fonctions d'hier avec la base de la refonte. Pour les vraies routes,
+**éteindre l'interrupteur suffit presque toujours** : éteint, le planificateur répond comme avant la Partie 27.
 
 | Ce qui ne va pas | Le retour | Durée | Ce qui reste après |
 |---|---|---|---|
+| **les vraies routes** (l'interrupteur, 5 bis.4) — toujours en premier | Réglages → Réservations → « Vraies routes » → « Compter les vraies routes » éteint → « Revenir à l'estimation » (le propriétaire ; `roads_switch(op, false)`). Si l'app de C est ce qui est en panne (l'app d'hier n'a pas ce panneau), ou si le téléphone du propriétaire n'est pas là : le bloc « Éteindre les vraies routes depuis l'éditeur SQL » sous ce tableau — jamais un simple `update` des réglages, que `settings_roads_guard` garde allumé sans rien dire. Les jours à venir sont replanifiés avec l'estimation de « Le calcul de la route » ; la liste des clients à rappeler revient (ceux qui arrivent maintenant plus tard que le moment dit). Contrôle : `select public.roads_on()` → `false`. Les trajets mesurés restent : rallumer plus tard ne remesure pas tout. | minutes | les plans de l'estimation : les heures sont celles de l'estimation, mais pas forcément le même ordre des arrêts qu'avant l'allumage ; les trajets mesurés |
+| **la clé du navigateur** (5 bis.2) | effacer (ou vider) la variable `TOMTOM_KEY` du dépôt, puis GitHub → Actions → « Publier l'app » → Run workflow : les cartes, les routes dessinées et les adresses reviennent à OpenStreetMap, OSRM et Photon. Plus vite, sans publier : retirer les deux adresses de la liste de la clé chez TomTom (les cartes passent seules aux tuiles d'OpenStreetMap ; les routes et les adresses demandent d'abord TomTom, qui refuse, puis OSRM et Photon). | minutes | rien |
+| **la clé du serveur** (5 bis.1) | effacer le secret `TOMTOM_KEY` des fonctions : « Je pars » et la mesure des routes reviennent à OSRM (gratuit, sans la circulation, le serveur de démonstration public : 5 bis, « Ce que Hassan doit faire », point 6 ; un trajet sans réponse d'OSRM n'a pas d'heure, jamais une ligne droite). Pour garder « Je pars » sur TomTom mais ne plus payer de temps de route : « Plafond du mois chez TomTom » à 0. | minutes | ce que TomTom a déjà compté ce mois-ci |
+| **la fonction `drive`** | elle n'existait pas : la laisser. Éteinte, elle ne change aucun plan ; seule la tâche de nuit l'appelle (elle mesure, c'est tout). Si elle fait rougir la nuit (« ERREUR : les routes n'ont pas pu être mesurées ») : la sauvegarde de la nuit est gardée quand même ; corriger, puis la redéployer au commit corrigé. | — | les trajets mesurés |
 | **l'app** | Vercel → Deployments → le déploiement noté en 1.3 → « Promote to Production » (immédiat). Vercel ne publie plus les poussées suivantes tant que ce retour n'est pas défait (« Undo Rollback ») : à défaire après la correction. Ou bien `git revert -m 1 <fusion>` + push `main` (3 à 5 min, les deux adresses ; son message porte `[important]` pour que les téléphones reprennent l'ancienne). Les téléphones gardent leurs données : le format du stockage (IndexedDB version 3) ne change pas. | minutes | rien |
-| **une fonction du serveur** | la redéployer au commit noté dans `deployed.avant.json`, même procédure (3.1). `recon` n'existait pas : la laisser (rien ne l'appelle sans le travail de nuit, qui dit « pas encore » quand elle répond `not_ready`). | minutes | rien |
+| **une fonction du serveur** | la redéployer au commit noté dans `deployed.avant.json`, même procédure (3.1). `recon` n'existait pas : la laisser (rien ne l'appelle sans le travail de nuit, qui dit « pas encore » quand elle répond `not_ready`). Deux à savoir : `enroute` à son commit d'hier (`a4f2da6`) ramène l'heure d'arrivée en ligne droite dans le texto du client quand OSRM ne répond pas (`source: 'line'`) : la ramener à C, pas avant ; `book` d'hier ne mesure jamais une adresse : avec les vraies routes allumées, la page de réservation en ligne n'offrirait alors aucun moment pour une adresse pas encore mesurée (éteindre l'interrupteur d'abord). | minutes | rien |
 | **la clé Stripe** (4) | rien à refaire : l'adresse neuve reçoit les mêmes notifications. La fonction `team` d'hier, si elle revient, recrée une adresse sans remboursements quand on enregistre de nouveau la clé. | — | l'adresse neuve chez Stripe |
-| **une fonction SQL** changée par une migration | relancer sa définition d'avant depuis `ops/live/rollback/fonctions_avant.sql` (un `create or replace` garde ses droits ; si la migration a changé ses droits, les remettre comme le dit F d'avant : `grant`/`revoke`). D'abord dans un bloc d'essai (`raise exception`), puis pour vrai. Une fonction ajoutée par la refonte (`op_begin`, `recon_*`…) reste. | minutes | rien |
-| **un déclencheur ajouté par la refonte** (migrations 2 et 4 : il ne reste PAS inutilisé, il tourne à chaque écriture) | `alter table … disable trigger …` (jamais `drop` ; `enable trigger` le remet), les lignes du bloc « Déclencheurs » ci-dessous. **Obligatoire** quand une fonction SQL des migrations 2 ou 4 revient à son texte d'avant (`job_step`, `invoice_void`, `coffre_add`…) : sous `jobs_unbilled_guard` et `invoices_number_keep`, les fonctions d'avant sont refusées (`unbilled`, `numbered`). Ces lignes ramènent aussi les règles d'avant (une facture numérotée effaçable, la réservation en ligne changée par un simple enregistrement des réglages, un numéro de téléphone changé sans fermer les liens) : le rapprochement peut alors signaler des trous de numéros (M3). D'abord dans un bloc d'essai. | minutes | les fonctions des déclencheurs, éteintes |
+| **une fonction SQL** changée par une migration | relancer sa définition d'avant depuis `ops/live/rollback/fonctions_avant.sql` (un `create or replace` garde ses droits ; si la migration a changé ses droits, les remettre comme le dit F d'avant : `grant`/`revoke`). D'abord dans un bloc d'essai (`raise exception`), puis pour vrai. Une fonction ajoutée par la refonte ou la Partie 27 (`op_begin`, `recon_*`, `drive_*`, `roads_*`, `route_clock`, `route_mark`, `eta_walk`, `eta_known`, `web_unmeasured`, `move_preview`, `move_job` à 8 arguments, `exact_*`, `route_hold`, `plan_late_new`…) reste ; la colonne `jobs.arrive_at` aussi (l'app d'hier ne la lit pas ; le planificateur d'avant l'ignore : un rendez-vous déplacé à une minute garde sa plage dite au client, le plan suivant le replace dedans). Pour une fonction refaite par la migration 7 (le planificateur de la Partie 27, `book_job`, `move_job`, `lock_windows_core`, `log_activity`…), son texte d'avant est dans `ops/live/rollback/fonctions_avant_7.sql` (pris entre la 6 et la 7, section 2), **pas** dans `fonctions_avant.sql` (qui reprendrait aussi le planificateur de la refonte) ; et seulement si l'interrupteur éteint ne répond pas comme avant : il est fait pour (les tests de la base le comparent aux définitions d'avant, réponses, lignes et activité). | minutes | rien |
+| **un déclencheur ajouté par la refonte** (migrations 2, 4, 6 et 7 : il ne reste PAS inutilisé, il tourne à chaque écriture) | `alter table … disable trigger …` (jamais `drop` ; `enable trigger` le remet), les lignes du bloc « Déclencheurs » ci-dessous. `settings_roads_guard` (migration 7) seulement APRÈS l'interrupteur éteint et avec les fonctions d'avant : sans lui, un simple enregistrement des réglages pourrait rallumer les vraies routes. **Obligatoire** quand une fonction SQL des migrations 2 ou 4 revient à son texte d'avant (`job_step`, `invoice_void`, `coffre_add`…) : sous `jobs_unbilled_guard` et `invoices_number_keep`, les fonctions d'avant sont refusées (`unbilled`, `numbered`). Ces lignes ramènent aussi les règles d'avant (une facture numérotée effaçable, la réservation en ligne changée par un simple enregistrement des réglages, un numéro de téléphone changé sans fermer les liens) : le rapprochement peut alors signaler des trous de numéros (M3). D'abord dans un bloc d'essai. | minutes | les fonctions des déclencheurs, éteintes |
 | **une règle d'accès (policy) ou un déclencheur d'avant** (migrations 2, 4) | `alter policy … using (…) with check (…)` / `create or replace trigger …` avec le texte de F d'avant (jamais `drop`). Une policy que la migration 4 a créée sous un nouveau nom : `alter policy` pour la rendre aussi large que l'ancienne (jamais `drop`). | minutes | rien |
 | **la tâche pg_cron `garage-recon`** (migration 5) | `select cron.unschedule('garage-recon')` (avec le go : elle ne fait qu'écrire le rapprochement de la veille) | — | — |
-| **une table, une colonne ou une fonction ajoutée** | rien : elle reste, inutilisée (jamais de `DROP` en ligne). Une colonne ajoutée a une valeur par défaut : l'app d'hier l'ignore. Une fonction appelée par un déclencheur, elle, tourne tant que son déclencheur est allumé (ligne « un déclencheur ajouté » ci-dessus). | — | l'objet inutilisé |
-| **des données abîmées** par la nouvelle logique | `restaurer.mjs` depuis la sauvegarde de 1.1 : `--tables <t> --ids <id>,…` (les téléphones les revoient) ou `--remplacer` sur la seule table concernée (lire le README des sauvegardes : ce que ça fait et ne fait pas). Jamais toute la base, jamais `--neuve` (refusé sur une base qui a des données). | minutes à 1 h | ce qui a été créé depuis (rien n'est effacé) |
-| **le projet lui-même** perdu | README des sauvegardes, « Après la perte du projet » : nouveau projet, toutes les migrations, `restaurer-comptes.mjs`, puis `restaurer.mjs donnees --neuve` (répété par un test de `ops/tests`) ; clés des services retapées. | heures | les mots de passe (chacun fait « Mot de passe oublié ») |
+| **une table, une colonne ou une fonction ajoutée** | rien : elle reste, inutilisée (jamais de `DROP` en ligne ; ainsi `drive_times` et `drive_spend` de la migration 7 restent, rien ne les lit une fois l'interrupteur éteint et les fonctions d'avant revenues). Une colonne ajoutée a une valeur par défaut : l'app d'hier l'ignore. Une fonction appelée par un déclencheur, elle, tourne tant que son déclencheur est allumé (ligne « un déclencheur ajouté » ci-dessus). | — | l'objet inutilisé |
+| **des données abîmées** par la nouvelle logique | `restaurer.mjs` depuis la sauvegarde de 1.1 : `--tables <t> --ids <id>,…` (les téléphones les revoient) ou `--remplacer` sur la seule table concernée (lire le README des sauvegardes : ce que ça fait et ne fait pas ; `--remplacer` des réglages garde la réservation en ligne et l'interrupteur des vraies routes comme la base les a : une restauration ne rallume jamais les vraies routes). Jamais toute la base, jamais `--neuve` (refusé sur une base qui a des données). | minutes à 1 h | ce qui a été créé depuis (rien n'est effacé) |
+| **le projet lui-même** perdu | README des sauvegardes, « Après la perte du projet » : nouveau projet, toutes les migrations, `restaurer-comptes.mjs`, puis `restaurer.mjs donnees --neuve` (répété par un test de `ops/tests`) ; clés des services retapées (les deux `TOMTOM_KEY` aussi). `--neuve` remet les vraies routes **éteintes** : `drive_times` n'est jamais dans une sauvegarde ; « Mesurer maintenant », puis rallumer dans l'app (5 bis.3, 5 bis.4). `drive_spend` repart de 0 dans le projet neuf : le plafond du mois peut y être dépensé une deuxième fois ce mois-là (la facture de TomTom, elle, continue). | heures | les mots de passe (chacun fait « Mot de passe oublié ») ; les temps de route mesurés (à remesurer) |
+
+**Éteindre les vraies routes depuis l'éditeur SQL** — quand l'app de C ne peut pas le faire. `roads_switch` ne répond
+qu'au propriétaire : depuis l'éditeur SQL (personne) il refuse « Seul le propriétaire change la façon de compter la
+route. », et un simple `update` de `settings.booking.roads_on` est gardé allumé par `settings_roads_guard`. Le bloc
+l'appelle donc au nom du propriétaire, le temps de ce bloc seulement (`set_config(…, true)`). D'abord l'identifiant du
+propriétaire (lecture seule), puis l'essai :
+
+```sql
+select id, full_name from public.staff where 'owner' = any(roles) and active and deleted_at is null;
+
+do $do$
+declare r jsonb;
+begin
+  perform set_config('lock_timeout', '5s', true);
+  perform set_config('request.jwt.claims', '{"sub":"<id du propriétaire>","role":"authenticated"}', true);
+  perform set_config('request.jwt.claim.sub', '<id du propriétaire>', true);
+  r := public.roads_switch(gen_random_uuid(), false);
+  raise exception 'ESSAI OK (rien n''est gardé) : %', r;
+end $do$;
+```
+
+La réponse attendue est l'erreur `ESSAI OK (rien n'est gardé) : {"ok": true, "on": false, …}` (avec `planned`, `kept`,
+`late`). Pour vrai : le même bloc, la ligne `raise exception …` remplacée par `raise notice 'FAIT : %', r;`. Contrôle :
+`select public.roads_on()` → `false`, et la ligne d'activité `roads_switch` (`on: false` ; `late` = les clients à
+rappeler). Les jours à venir sont replanifiés : hors des heures de l'équipe si possible. Jamais ce bloc pour rallumer :
+rallumer se fait dans l'app, qui mesure d'abord (5 bis.4). (Essayé sur la copie de test le 2026-11-21, dans une
+transaction annulée.)
 
 **Déclencheurs** — le retour de la base aux règles d'hier (avec le retour des fonctions SQL de
 `fonctions_avant.sql`, jamais seul ; essayé d'abord dans un bloc qui finit par `raise exception`) :
 
 ```sql
--- les six déclencheurs faits par la refonte : éteints (enable trigger les rallume)
+-- les huit déclencheurs faits par la refonte et la Partie 27 : éteints (enable trigger les rallume)
 alter table public.invoices disable trigger invoices_number_keep;
 alter table public.jobs disable trigger jobs_unbilled_guard;
 alter table public.customers disable trigger customers_delete_guard;
 alter table public.customers disable trigger customers_phone_links;
 alter table public.push_subs disable trigger push_subs_takeover;
 alter table public.settings disable trigger settings_web_guard;
+alter table public.ops_recon_runs disable trigger ops_recon_runs_backup_age;
+-- les vraies routes (migration 7) : seulement l'interrupteur déjà éteint (roads_switch, section 7, première ligne)
+alter table public.settings disable trigger settings_roads_guard;
 -- job_items_invoice_follow existait (sur update seulement) ; la refonte l'a refait sur insert or update.
 -- Son texte d'avant est dans F d'avant (pg_get_triggerdef) : « CREATE TRIGGER » y devient « CREATE OR REPLACE TRIGGER ».
 -- À AVANT : create or replace trigger job_items_invoice_follow after update on public.job_items for each row execute function job_items_invoice_follow()
 ```
 
 La dernière ligne se prend dans F d'avant, pas recopiée d'ici : c'est F qui fait foi. Un test le répète
-(`ops/tests/sauvegardes.test.mjs`, « the way back ») : une base à AVANT, les six migrations, puis `fonctions_avant.sql`
+(`ops/tests/sauvegardes.test.mjs`, « the way back ») : une base à AVANT, les sept migrations, puis `fonctions_avant.sql`
 et ce bloc : les fonctions et les déclencheurs allumés sont ceux d'AVANT.
 
 **Ce qui ne se défait pas** (le savoir avant le go) :
@@ -307,6 +533,13 @@ et ce bloc : les fonctions et les déclencheurs allumés sont ceux d'AVANT.
   `donnees/photos/`) : l'ancien `restaurer.mjs` ne lit pas ce format ; garder le nouveau (il lit les deux).
 - La ligne `backup_repo:…` de `secrets` (les numéros du dépôt des sauvegardes) : un dépôt refait sous le même nom est
   refusé tant qu'elle reste (README des sauvegardes : l'effacer pour déplacer les sauvegardes, avec le go).
+- Les vraies routes : ce que TomTom a compté (sa facture, s'il y en a une) ; les rendez-vous replanifiés en allumant
+  puis en éteignant (éteindre redonne les heures de l'estimation, pas forcément l'ordre des arrêts d'avant ; ce qui a
+  été dit aux clients rappelés reste dit) ; un rendez-vous laissé « flexible » parce que son heure n'était pas mesurée
+  (le client a lu « nous vous confirmons la veille une plage de 4 heures ») le reste jusqu'au verrou du soir, qui lui
+  donne sa plage (de l'estimation, une fois éteint) ; les lignes `activity` `roads_switch` et `window_late`,
+  `drive_times`, `drive_spend`, et les freins et les baux de `drive` et d'`enroute` dans `rate_limits` (`drive:…`,
+  `enroute:road:…`, ils s'effacent seuls ; `jobs.eta_measured` revient à vide quand l'interrupteur s'éteint).
 
 ## 8. À copier dans le dépôt privé des sauvegardes (`hostnextline/garage2.0-sauvegardes`)
 
@@ -314,11 +547,11 @@ et ce bloc : les fonctions et les déclencheurs allumés sont ceux d'AVANT.
 
 | Fichier de ce dépôt | Où dans le dépôt des sauvegardes | Ce qui change |
 |---|---|---|
-| `ops/sauvegardes/sauvegarde.mjs` | `sauvegarde.mjs` (à la racine) | une photo par fichier (`donnees/photos/`), une table qui bouge est relue, l'avertissement avant 100 Mo, l'option `--fin` (done, puis le rapprochement ; rouge si « bad » ; `not_ready` = « pas encore »), une nuit ratée notée au garage (`done` avec `ok: false`, et `--echec` quand le push est refusé) |
-| `ops/sauvegardes/restaurer.mjs` | `restaurer.mjs` | les colonnes de la sauvegarde seulement, les numéros qui ne reculent jamais, `--retablir`, `--ids`, `--neuve` (projet neuf), la réservation en ligne gardée par `--remplacer`, aucun fichier sauté en silence, les tables `ops_backup_runs`, `ops_recon_runs`, `ops_recon_findings`, `ops_recon_baseline` |
+| `ops/sauvegardes/sauvegarde.mjs` | `sauvegarde.mjs` (à la racine) | une photo par fichier (`donnees/photos/`), une table qui bouge est relue, l'avertissement avant 100 Mo, l'option `--fin` (done, puis le rapprochement ; rouge si « bad » ; `not_ready` = « pas encore » ; puis la mesure des routes : `drive { action: 'sweep' }` avec le même ticket GitHub, redemandée tant que `more`, 10 appels au plus ; pas de `drive` = un avertissement ; les rendez-vous que cette mesure a mis en retard nommés dans le résumé et en avertissement : numéros, jour, bloc, jamais un nom), une nuit ratée notée au garage (`done` avec `ok: false`, et `--echec` quand le push est refusé) |
+| `ops/sauvegardes/restaurer.mjs` | `restaurer.mjs` | les colonnes de la sauvegarde seulement, les numéros qui ne reculent jamais, `--retablir`, `--ids`, `--neuve` (projet neuf), la réservation en ligne et l'interrupteur des vraies routes gardés comme la base les a par `--remplacer` (`--neuve` remet les vraies routes éteintes), aucun fichier sauté en silence, les tables `ops_backup_runs`, `ops_recon_runs`, `ops_recon_findings`, `ops_recon_baseline` |
 | `ops/sauvegardes/restaurer-comptes.mjs` | `restaurer-comptes.mjs` (nouveau) | recrée les comptes de l'équipe avec les mêmes identifiants après la perte du projet |
-| `ops/sauvegardes/README.md` | `README.md` | ce que fait et ne fait pas chaque façon de restaurer ; « Après la perte du projet » ; les comptes ; la ligne `backup_repo` |
-| `ops/sauvegardes/.github/workflows/sauvegarde.yml` | `.github/workflows/sauvegarde.yml` | la dernière étape `node sauvegarde.mjs --fin donnees`, après le push ; l'étape « Push refusé » (`--echec`) |
+| `ops/sauvegardes/README.md` | `README.md` | ce que fait et ne fait pas chaque façon de restaurer ; « Après la perte du projet » ; les comptes ; la ligne `backup_repo` ; la fin de chaque nuit (le garage prévenu, le rapprochement, puis les routes) |
+| `ops/sauvegardes/.github/workflows/sauvegarde.yml` | `.github/workflows/sauvegarde.yml` | la dernière étape `node sauvegarde.mjs --fin donnees`, après le push (son nom dit aussi « puis les routes ») ; l'étape « Push refusé » (`--echec`) |
 
 Vérifier la copie : `shasum -a 256 ops/sauvegardes/*.mjs` au commit C = les mêmes chiffres dans le dépôt des
 sauvegardes ; après la première nuit, `donnees/_resume.json` → `scripts` donne ces mêmes chiffres. Le format change

@@ -216,6 +216,8 @@
 .agenda-grid-ghost { position: absolute; left: 2px; right: 3px; z-index: 4; display: flex; align-items: baseline; gap: 6px; box-sizing: border-box; padding: 0 6px; border-radius: 6px; overflow: hidden; pointer-events: none;
   border: 2px dashed var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-size: 11.5px; line-height: 13px; font-stretch: var(--w-num); white-space: nowrap; }
 .agenda-grid-ghost.is-no { border-color: var(--ink-3); background: var(--sunken); color: var(--ink-2); }
+/* « exact move »: the job let go, held at its new time while the move is asked and sent (solid: it is no longer a try) */
+.agenda-grid-ghost.is-held { border-style: solid; }
 /* now */
 .agenda-grid-now { position: absolute; left: 0; right: 0; z-index: 4; height: 0; border-top: 2px solid var(--bad); pointer-events: none; }
 .agenda-grid-now::before { content: ''; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }

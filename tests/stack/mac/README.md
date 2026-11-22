@@ -35,6 +35,7 @@ report in `$HIS_STACK/logs/`.
 | `bash M/api-tests.sh [file or pattern]` | `tests/api/*.test.mjs` (also any test file given by its path: `bash M/api-tests.sh ops/tests/sauvegardes.test.mjs`) | 5 s |
 | `bash M/e2e.sh [test name pattern]` | `tests/e2e/app.test.cjs` (production build, Playwright 1.55.0, `TZ=America/Toronto`) | 2 min |
 | `bash M/all.sh [source folder]` | The four above in GitHub's order on a new database, one table at the end | about 2 min 10 s |
+| `bash M/e2e-file.sh <file> [test name pattern]` | another end-to-end file the same way as `e2e.sh` (the same lock, the same preparation, the copy's `lib/common.sh`): `routes` (« Vraies routes », 9 steps, its own build WITH a fake browser TomTom key), `plages`, `argent`, `mise-a-jour` (= `tests/e2e/<name>.test.cjs`, or a path); `SRC=`, `NOSYNC=1`, `FRESH=1` as below | 1 to 3 min |
 | `bash M/down.sh` | Stops everything this stack started (and nothing else) | 1 s |
 | `bash M/psql.sh "<sql>"` | SQL on the test database (or psql options: `psql.sh -f file.sql`) | |
 
@@ -62,7 +63,9 @@ It copies the CURRENT state of the folder each time (0.3 s), so `up.sh` is rarel
 - a changed test or app → it is simply what runs (the end-to-end test builds the app each time);
 - something stopped (`down.sh`, a crash) → it is started again.
 
-Options: `NOSYNC=1` runs what is already in the copy. `FRESH=1` starts from a new database.
+Options: `NOSYNC=1` runs what is already in the copy. `FRESH=1` starts from a new database. After any end-to-end run
+(`e2e.sh`, `e2e-file.sh`), run the database tests with `FRESH=1 bash M/db-tests.sh`: the browser steps leave rows that
+the reconciliation tests then count.
 
 ### Patterns
 
@@ -86,7 +89,41 @@ end-to-end run starts from a new database. From an agent's shell, give `e2e.sh` 
 - Last full reports: `$HIS_STACK/logs/db.last.log`, `api.last.log`, `e2e.last.log`, `up.last.log`; the services:
   `functions.log`, `auth.log`, `postgrest.log`, `pg.log`, `mocks.log`, `gateway.log`, `migrate.log`.
 - End-to-end pictures: `$HIS_STACK/proj/tests/out/*.png`; a failing step's are also kept in `logs/e2e-<date>-fail/`.
-- What the fake outside services received: `curl -s http://127.0.0.1:8021/log`.
+- What the fake outside services received: `curl -s http://127.0.0.1:8021/log` (`curl -s -X POST http://127.0.0.1:8021/log/clear` empties it).
+
+## The fake outside services (port 8021, `tests/stack/mocks.mjs`)
+
+GoHighLevel, Stripe, the maps, NHTSA vPIC, Hermes, GitHub's tickets: each answers like the real one and logs every call.
+The functions are started with them (`lib/common.sh` `start_functions`, the same lines as `tests/stack/start.sh`):
+`GHL_API_BASE`, `STRIPE_API_BASE`, `OSRM_BASE`, `VPIC_BASE`, `PHOTON_BASE`, `GITHUB_OIDC_JWKS`, and for TomTom
+`TOMTOM_KEY=tt-test` with `TOMTOM_BASE=http://127.0.0.1:8021/tomtom` (the two go together: a functions restart without
+them would start « drive » without the server key).
+
+The maps (« Vraies routes », Part 27):
+- TomTom: `GET /tomtom/routing/1/calculateRoute/…/json` (« Je pars ») and `POST /tomtom/routing/matrix/2` (the planner's
+  times: at most 100 cells a request, HTTP 200 even when a cell fails, each cell its own `detailedError`; 400 for a
+  `departAt` with an offset or without historical traffic). A key other than `tt-test` is refused (403).
+- OSRM: `/osrm/route/v1/driving/…` and `/osrm/table/v1/driving/…`.
+- Their times follow one made-up road (the straight line × 1.25) and differ ON PURPOSE from the planner's estimate,
+  between TomTom's three hours (11 h 30; 8 h × 1.5; 17 h × 1.8, read in `departAt`), and between the two directions of a
+  trip (+2 min going north), so a test can tell which one the planner used. Logged: `{ svc: 'tomtom', kind: 'route' |
+  'matrix', origins, destinations, cells, departAt, traffic, inflight }`, `{ svc: 'osrm', kind: 'route' | 'table', … }`.
+
+The switches (`curl -s "http://127.0.0.1:8021/control?…"`, answered with the state; they stay until changed, so a test
+that changes one puts it back):
+
+| Switch | What it does |
+|---|---|
+| `tomtom=ok\|fail\|refuse\|busy\|noroad\|cells` | TomTom answers; 503; 403 (the key refused); 429; « no road » for every cell (HTTP 200, `NO_ROUTE_FOUND`); every Matrix cell failed with TomTom's own trouble (HTTP 200, `COMPUTATION_TIMEOUT`) |
+| `osrm=ok\|fail` | OSRM answers, or 503 |
+| `tomtom_ms=N` | each TomTom answer after N ms (0: at once) |
+| `noroad=lat,lng;…` | no road to or from those places (100 m) for TomTom AND OSRM (an island); `noroad=` clears |
+| `ghl=…`, `ghl_ms=N`, `stripe=…` | GoHighLevel and Stripe (the header of `mocks.mjs`) |
+
+The browser's TomTom (tiles, routing, geocoding of the app itself) is NOT these fakes: `tests/e2e/routes.test.cjs`
+answers it with Playwright's `ctx.route` (build key `tt-browser-test`) and fails a step on any request to a host it does
+not fake. `$HIS_STACK/e2e-file.sh`, an older copy kept in the stack's folder, reads the stack's older `lib/common.sh`
+(no TomTom lines): use `bash M/e2e-file.sh` from the source folder.
 
 ## What is real, what differs from the Linux stack
 

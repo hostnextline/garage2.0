@@ -2,6 +2,7 @@
 import type { TrackAnswer, Garage } from '../api';
 import { ct, isLang, type CLang } from '../i18n';
 import { localMinuteOf, nbClock } from '../format';
+import { isRoadLine } from '../../lib/tomtom';
 
 export type TrackKind = 'active' | 'arrived' | 'cancelled' | 'expired' | 'not_found';
 const KINDS: TrackKind[] = ['active', 'arrived', 'cancelled', 'expired', 'not_found'];
@@ -14,6 +15,7 @@ export interface TrackView {
   lang: CLang | null;
   dest: LatLng | null;
   pos: (LatLng & { at: string }) | null;
+  /** the server's road to the customer (3 points or more), or none: never a straight line */
   route: [number, number][];
   /** the expected arrival: Montréal clock minute, and minutes left by the server's clock (not the phone's) */
   eta: { minute: number; left: number } | null;
@@ -37,9 +39,11 @@ export function trackView(a: TrackAnswer | null | undefined, fetchedAt: number, 
   const garage: Garage = { name: a?.garage?.name || null, phone: a?.garage?.phone || null };
   const dest = kind === 'active' && okPt(a?.dest) ? { lat: a!.dest!.lat, lng: a!.dest!.lng } : null;
   const pos = kind === 'active' && okPt(a?.pos) ? { lat: a!.pos!.lat, lng: a!.pos!.lng, at: a!.pos!.at } : null;
-  const route = kind === 'active' && Array.isArray(a?.route)
+  const line = kind === 'active' && Array.isArray(a?.route)
     ? a!.route!.filter((p) => Array.isArray(p) && okPt({ lat: Number(p[0]), lng: Number(p[1]) })).map((p) => [Number(p[0]), Number(p[1])] as [number, number])
     : [];
+  // a road has 3 points or more: two points are the old server's straight line (written when no planner answered)
+  const route = isRoadLine(line) ? line : [];
   let eta: TrackView['eta'] = null;
   if (kind === 'active' && a?.eta_at) {
     const etaMs = Date.parse(a.eta_at);

@@ -32,6 +32,7 @@ export function BlockCalendar(p: BlockCalendarProps) {
   const l = lang.value;
   const grid = useRef<HTMLTableElement>(null);
   const flat = p.rows.flatMap((r) => r.blocks.map((c) => ({ day: r.day, block: c.key, state: c.state })));
+  const unknown = flat.some((c) => c.state === 'unknown');
   const focusable = flat.find((c) => p.isPicked(c.day, c.block)) || flat.find((c) => !off(c)) || flat[0];
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const currentKey = focusKey && flat.some((c) => keyOf(c.day, c.block) === focusKey) ? focusKey : focusable ? keyOf(focusable.day, focusable.block) : null;
@@ -96,6 +97,8 @@ export function BlockCalendar(p: BlockCalendarProps) {
       <div class="bp-foot">
         <ul class="bp-legend" aria-hidden="true">
           {(['ok', 'tight', 'full', 'closed'] as const).map((s) => <li key={s}><span class={`bp-swatch is-${s}`} />{t(`booking.picker.legend.${s}`)}</li>)}
+          {/* « Vraies routes » on: a block the server has not answered for yet */}
+          {unknown && <li data-testid="bp-legend-unknown"><span class="bp-swatch is-unknown" />{t('booking.picker.legend.unknown')}</li>}
           {p.anyFar && <li data-testid="bp-legend-far"><span class="bp-swatch is-far"><Route size={11} /></span>{t('booking.far.legend')}</li>}
         </ul>
         <span class="row">

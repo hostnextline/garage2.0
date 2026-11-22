@@ -111,6 +111,10 @@ if (lignesDe.attachments) {
     lignesDe.attachments = lignesDe.attachments.filter((r) => !(r && r.mime === 'image/svg+xml'));
   }
 }
+// « exact move » (verify-off L2): a backup made before jobs.arrive_at existed holds no minute pointed. A job put back from it
+// (--remplacer) gets that night's day and window: it must not keep a minute pointed since (a pin outside its own window,
+// that every later plan would hold). Its rows say « no minute » (null); a backup that has the column is put back as it is
+if (lignesDe.jobs) for (const r of lignesDe.jobs) if (r && typeof r === 'object' && !('arrive_at' in r)) r.arrive_at = null;
 if (ids) {
   const absents = ids.filter((x) => !trouves.has(x));
   if (absents.length) arreter(`${absents.length > 1 ? 'ces ids ne sont' : 'cet id n\'est'} dans aucun des fichiers nommés (${tables.map((t) => `${t}.json`).join(', ')}) : ${absents.join(', ')}.`);
@@ -164,6 +168,11 @@ if (neuve) {
 // what the database holds now is kept aside, then put back over the night's settings
 const garderWeb = remplacer && tables.includes('settings');
 if (garderWeb) await ecrire(`create temp table restaurer_web on commit drop as select id, coalesce(booking->'web' ? 'on', false) as avait, booking->'web'->'on' as valeur from public.settings;`);
+// « Vraies routes » (final-security F4): a restore never turns the switch on (roads_switch alone does, after its checks and
+// with its re-plan). --remplacer keeps it as the base has it; --neuve writes it off (the road times are never in a backup:
+// measure them, then switch on in the app)
+const garderRoutes = remplacer && tables.includes('settings');
+if (garderRoutes) await ecrire(`create temp table restaurer_routes on commit drop as select id, booking ? 'roads_on' as avait, booking->'roads_on' as valeur from public.settings;`);
 await ecrire("set local session_replication_role = replica;  -- sans les automatismes : les données reviennent telles quelles");
 // the key of each table is read from the database itself (its primary key): no second list to keep in step.
 // The columns written are those of the BACKUP that the table still has: a column added after that night is not named,
@@ -218,6 +227,14 @@ if (garderWeb) {
       then jsonb_set(coalesce(s.booking, '{}'::jsonb), '{web}', (case when jsonb_typeof(s.booking->'web') = 'object' then s.booking->'web' else '{}'::jsonb end) || jsonb_build_object('on', w.valeur))
       else coalesce(s.booking, '{}'::jsonb) #- '{web,on}' end
     from restaurer_web w where w.id = s.id and (s.booking->'web'->'on') is distinct from w.valeur;  -- la réservation en ligne reste comme elle était`);
+}
+if (garderRoutes) {
+  await ecrire(`update public.settings s set booking = case when r.avait then jsonb_set(coalesce(s.booking, '{}'::jsonb), '{roads_on}', r.valeur)
+      else coalesce(s.booking, '{}'::jsonb) - 'roads_on' end
+    from restaurer_routes r where r.id = s.id and (s.booking->'roads_on') is distinct from r.valeur;  -- les vraies routes restent comme elles étaient`);
+}
+if (neuve && tables.includes('settings')) {
+  await ecrire(`update public.settings set booking = jsonb_set(booking, '{roads_on}', 'false'::jsonb) where booking ? 'roads_on' and booking->'roads_on' <> 'false'::jsonb;  -- les vraies routes : éteintes (les temps de route ne sont pas dans la sauvegarde)`);
 }
 if (neuve) {
   // the accounts come first (restaurer-comptes.mjs): a person whose account is missing cannot sign in — said, not stopped

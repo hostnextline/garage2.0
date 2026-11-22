@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { UNIT, unitCount, unitMinute, unitIndex, unitMinutes, minuteAt, unitsAt, jobBox, jobMinute, overlapColumns, workedUnits, dropWindowStart, openingUnit } from './grid';
 import { windowFor, type Range } from '../../lib/dates';
-import { sameWindowPlace, refusalCode, FULL_CODES } from '../../features/agenda/move';
+import { samePlace, refusalCode, FULL_CODES } from '../../features/agenda/move';
 import { pasteHref, bookHref } from '../../features/agenda/copy';
 
 const DAY: Range = [480, 1200];   // 8 h → 20 h
@@ -140,14 +140,17 @@ describe('where the grid opens', () => {
 });
 
 describe('a job let go on a unit', () => {
-  const job = { day: '2026-11-16', block: 'day' as const, win_start: 840, truck_id: 't1' };
-  it('has nothing to move when it is the same day, window and truck', () => {
-    expect(sameWindowPlace(job, { day: '2026-11-16', truck: null, start: 840 })).toBe(true);    // the week: the app chooses
-    expect(sameWindowPlace(job, { day: '2026-11-16', truck: 't1', start: 840 })).toBe(true);
-    expect(sameWindowPlace(job, { day: '2026-11-16', truck: 't2', start: 840 })).toBe(false);   // another truck
-    expect(sameWindowPlace(job, { day: '2026-11-16', truck: 't1', start: 780 })).toBe(false);   // another window
-    expect(sameWindowPlace(job, { day: '2026-11-17', truck: null, start: 840 })).toBe(false);   // another day
-    expect(sameWindowPlace({ ...job, block: 'pm', win_start: null }, { day: '2026-11-16', truck: null, start: 840 })).toBe(false);
+  const job = { day: '2026-11-16', block: 'day' as const, win_start: 840, eta_min: 900, truck_id: 't1' };
+  // « exact move » (STATE.md A3): « same place » is the same planned ARRIVAL now; a new quarter hour inside the same
+  // window is a real move (it used to be « nothing to move: the app picks the time »)
+  it('has nothing to move when it is the same day, arrival and truck', () => {
+    expect(samePlace(job, { day: '2026-11-16', truck: null, at: 900 })).toBe(true);     // the week: its own truck
+    expect(samePlace(job, { day: '2026-11-16', truck: 't1', at: 900 })).toBe(true);
+    expect(samePlace(job, { day: '2026-11-16', truck: 't2', at: 900 })).toBe(false);    // another truck
+    expect(samePlace(job, { day: '2026-11-16', truck: 't1', at: 915 })).toBe(false);    // another quarter hour, same window
+    expect(samePlace(job, { day: '2026-11-16', truck: 't1', at: 780 })).toBe(false);    // another window
+    expect(samePlace(job, { day: '2026-11-17', truck: null, at: 900 })).toBe(false);    // another day
+    expect(samePlace({ ...job, block: 'pm' }, { day: '2026-11-16', truck: null, at: 900 })).toBe(false);
   });
   it('reads the code of a refusal, and knows the ones that open the windows still possible', () => {
     expect(refusalCode({ hint: 'window_full', code: 'P0001', message: '…' })).toBe('window_full');

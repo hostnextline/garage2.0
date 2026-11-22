@@ -1,10 +1,11 @@
 /* Réservations: « Départ des camions » first (where the trucks leave from: every route and arrival time is counted
-   from there, it is shown on every map), then the arrival windows, the times of the 3 blocks, how far ahead one can
-   book and the numbers of the route estimate. Moving the start, or changing a number of the estimate, re-plans the
-   coming appointments on the server (Part 17); the phone brings them back at once. */
+   from there, it is shown on every map), then the arrival windows, the times of the 3 blocks, the real roads (Part 27:
+   « Vraies routes », TomTom), how far ahead one can book and the numbers of the route estimate. Moving the start, or
+   changing a number the planner counts, re-plans the coming appointments on the server (Part 17); the phone brings them
+   back at once. */
 import { useState } from 'preact/hooks';
 import { t } from '../../../lib/i18n';
-import { settings, windowsOn } from '../../../data/select';
+import { settings, windowsOn, roadsOn } from '../../../data/select';
 import { saveSection } from '../save';
 import { flush, pull } from '../../../data/sync';
 import { attempt, toast } from '../../../ui';
@@ -14,6 +15,7 @@ import { StartPanel } from './StartPanel';
 import { WindowsPanel } from './WindowsPanel';
 import { BlocksPanel } from './BlocksPanel';
 import { PlanNumbers } from './PlanNumbers';
+import { RoadsPanel } from './RoadsPanel';
 
 /** what each panel of the section gets: the draft, how to change it, and the errors to show */
 export interface PartProps {
@@ -32,14 +34,15 @@ export const bookingSaved = (): BookingView => viewOf(settings.value.booking);
 export function BookingSection() {
   const saved = bookingSaved();
   const winOn = windowsOn.value;
+  const onRoads = roadsOn.value;
   const { draft: d, set, dirty, changes, reset } = useSectionDraft<BookingView>('booking', saved);
   const [err, setErr] = useState<BookingErrors>({});
   const clear = (k: keyof BookingErrors) => { if (err[k]) setErr((e) => ({ ...e, [k]: null })); };
   const flag = (k: keyof BookingErrors, message: string) => setErr((e) => ({ ...e, [k]: message }));
-  const replan = planOf(d) !== planOf(saved);
+  const replan = planOf(d, onRoads) !== planOf(saved, onRoads);
 
   const save = async () => {
-    const { errors, blocks } = check(d, { winOn, placeChanged: !!changes.place });
+    const { errors, blocks } = check(d, { winOn, placeChanged: !!changes.place, roadsOn: onRoads });
     setErr(errors);
     if (blocks || Object.keys(errors).length) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
     const moved = d.place.lat !== saved.place.lat || d.place.lng !== saved.place.lng;
@@ -58,7 +61,8 @@ export function BookingSection() {
       <StartPanel {...parts} replanNote={dirty && replan} />
       <WindowsPanel {...parts} />
       {!winOn && <BlocksPanel {...parts} />}
-      <PlanNumbers {...parts} />
+      <RoadsPanel {...parts} />
+      <PlanNumbers {...parts} roadsOn={onRoads} />
     </Section>
   );
 }

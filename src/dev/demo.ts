@@ -1,11 +1,14 @@
 /* DEV ONLY — the demo: npm run dev, then open http://localhost:5173/?demo (owner), ?demo=mechanic (Saleh),
    ?demo=office, ?demo=treasurer. Add &l=en for English, &fenetres=1 for « Plages d'arrivée » already switched on
-   (demo-windows.ts). The whole data layer runs as usual against the pretend
+   (demo-windows.ts), &routes=1 for « Vraies routes » already on, &tomtom=nokey|refuse|busy|over|down|missing for what the
+   pretend function « drive » answers (demo-extra/roads.ts). TomTom is never asked from the demo: the app has no TomTom key
+   there (config.ts) and the pretend server answers api.tomtom.com itself (fake-server.ts). The whole data layer runs as usual against the pretend
    server in fake-server.ts (changes made in the demo are lost when the page reloads). */
 import { installFakeServer, db, find, registerRpc } from './fake-server';
 import { loadDemoData, ME } from './demo-data';
 import './demo-rpc';
 import { installWindows } from './demo-windows';
+import { installRoads } from './demo-extra/roads';
 import { sb, access, authState, session } from '../data/auth';
 import { startSync, syncOptions } from '../data/sync';
 import { RIGHTS, type Access, type Right, type Role } from '../data/types';
@@ -36,6 +39,8 @@ export async function startDemo() {
   for (const m of Object.values(extras)) m.load?.();
   // « Plages d'arrivée »: wraps the booking operations registered above (the block demo is unchanged while the mode is off)
   try { installWindows(); } catch (e) { console.warn('demo: fenêtres', e); }
+  // « Vraies routes »: wraps the suggestions (blocks and windows) so they carry the real-road fields while it is on
+  try { installRoads(); } catch (e) { console.warn('demo: vraies routes', e); }
   const who = (/[?&]demo=(\w+)/.exec(location.search)?.[1] || 'owner') as 'owner' | 'mechanic' | 'office' | 'treasurer' | 'adam';
   const id = who === 'mechanic' ? ME.saleh : who === 'adam' ? ME.adam : who === 'office' ? ME.office : who === 'treasurer' ? ME.treasurer : ME.owner;
   registerRpc('my_access', () => accessOf(id));

@@ -214,7 +214,10 @@ export const client = {
       seeDates: 'Voir les dates' },
     slots: { title: 'Choisissez le moment', sub: 'Ces moments sont les plus proches de nos autres clients ce jour-là : le mécano arrive plus vite.',
       best: 'Meilleur choix', near: 'Un mécano est déjà dans votre coin', more: 'Voir d’autres dates', loading: 'Recherche des meilleurs moments…',
-      none: 'Aucun moment libre dans ces jours-là.', noneMore: 'Aucun autre moment libre. Appelez-nous, on va vous trouver une place.',
+      none: 'Aucun moment libre dans ces jours-là.',
+      /** « Vraies routes » on: the address's trips could not be measured, its moments are not offered online (decision 6, critic W1) */
+      notMeasured: 'On ne peut pas proposer de moment en ligne pour cette adresse en ce moment : appelez-nous.',
+      noneMore: 'Aucun autre moment libre. Appelez-nous, on va vous trouver une place.',
       taken: 'Ce moment vient d’être pris. Choisissez-en un autre.',
       subWindows: 'Le mécano arrive chez vous pendant la plage de 4 heures indiquée.',
       otherHours: 'Voir d’autres heures', fewerHours: 'Cacher les autres heures',

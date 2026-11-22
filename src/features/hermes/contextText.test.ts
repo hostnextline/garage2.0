@@ -73,3 +73,12 @@ describe('Hermes: the picture of the garage', () => {
     expect(blockTime({ block: 'pm', blockStart: 720, blockEnd: 960, winStart: null, winEnd: null, eta: null })).toBe('12:00-16:00');
   });
 });
+
+describe('Hermes: an arrival counted with a trip not measured yet (« Vraies routes » on, decision 2)', () => {
+  it('no time and never OUTSIDE its window: « not known yet »; a sure one as before', () => {
+    const w = { block: 'day', winStart: 840, winEnd: 1080 };
+    expect(blockTime({ ...w, eta: null, etaUnsure: true, status: 'booked' })).toBe('arrival window 14:00-18:00, planned arrival not known yet (drives not measured yet)');
+    expect(blockTime({ ...w, eta: 1100, status: 'booked' })).toContain('OUTSIDE');
+    expect(blockTime({ ...w, eta: null, etaUnsure: true, status: 'on_site' })).toBe('arrival window 14:00-18:00');
+  });
+});

@@ -102,18 +102,19 @@ export class Sender {
     this.queued();
   }
 
-  /** an operation that needs the network now (never kept for later) */
-  async direct<T>(name: string, args: Record<string, unknown>): Promise<T> {
+  /** an operation that needs the network now (never kept for later). `apply: false`: a preview, whose answer's rows are
+      the trial's (made inside a block the server undid): never kept on the phone (exact-move review F0) */
+  async direct<T>(name: string, args: Record<string, unknown>, apply = true): Promise<T> {
     const data = await ask<T>((s) => this.h.client.rpc(name, args).abortSignal(s), REQUEST_MS, this.h.signal).catch((e: unknown) => { throw fromSource(e, name); });
-    if (!this.h.closed()) { this.h.sessionOk(); this.h.applyAnswer(data); }
+    if (!this.h.closed()) { this.h.sessionOk(); if (apply) this.h.applyAnswer(data); }
     return data;
   }
   /** an operation kept in the outbox: waits a little for the answer, else « kept on the phone » */
-  async callRpc<T>(name: string, args: Record<string, unknown>, o: { label?: string; queue?: boolean; noOp?: boolean } = {}): Promise<RpcAnswer<T>> {
+  async callRpc<T>(name: string, args: Record<string, unknown>, o: { label?: string; queue?: boolean; noOp?: boolean; apply?: boolean } = {}): Promise<RpcAnswer<T>> {
     if (!o.noOp) this.h.guard();
     const op = String(args.p_op || uuid());
     const full = o.noOp ? { ...args } : { ...args, p_op: op };
-    if (o.queue === false || o.noOp) return { queued: false, data: await this.direct<T>(name, full), op };
+    if (o.queue === false || o.noOp) return { queued: false, data: await this.direct<T>(name, full, o.apply !== false), op };
     let resolve!: (v: unknown) => void, reject!: (e: unknown) => void;
     const answer = new Promise<unknown>((a, b) => { resolve = a; reject = b; });
     const w: Waiter = { resolve, reject, watching: true };

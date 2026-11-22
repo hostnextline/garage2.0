@@ -6,7 +6,8 @@ import { resolve } from 'node:path';
 /* Mécanique Mobile H.I.S — build.
    - base './' : the same files work at the root of mecanique-mobile-his.vercel.app and at hostnextline.github.io/garage2.0/.
    - two pages: the team app (index.html) and the public client page (client.html: estimate, invoice, payment, tracking).
-   - the service worker precaches the app shell (fast start with no signal) and never caches data or API calls. */
+   - the service worker precaches the app shell (fast start with no signal) and never caches data or API calls; it keeps
+     only the map tiles a little while (TomTom's or OpenStreetMap's: runtimeCaching below) and the heavy tools. */
 /* when this version was made (the commit's time on GitHub), and the version file the running app reads to know whether a
    newer one exists and whether it is important (a commit with « [important] » in its message since this one) */
 const BUILT_AT = process.env.VITE_BUILT_AT || new Date().toISOString();
@@ -80,8 +81,12 @@ export default defineConfig(({ mode }) => ({
         /* the alert while the app is closed (« Texto entrant »): public/push-sw.js */
         importScripts: ['push-sw.js'],
         runtimeCaching: [
-          { /* map tiles: kept a little while so the map still shows with weak signal */
-            urlPattern: ({ url }) => /tile\.openstreetmap\.org$/.test(url.hostname),
+          { /* map tiles: kept a little while so the map still shows with weak signal. Only a tile really shown is kept
+               (200): a tile TomTom refused (key, site, quota) is never stored. A tile served from here proves nothing about
+               TomTom today (it loads even when TomTom refuses every other tile), so the maps (MapView, TrackMap) never take
+               a tile shown as proof: a tile that FAILED is asked again by one plain request (lib/tomtom.ts checkTile;
+               that URL is not in this cache, since it failed) and TomTom's answer decides the switch to OpenStreetMap's */
+            urlPattern: ({ url }) => /tile\.openstreetmap\.org$/.test(url.hostname) || (url.hostname === 'api.tomtom.com' && url.pathname.startsWith('/map/')),
             handler: 'CacheFirst',
             // only real answers are kept: a tile asked without CORS is opaque and is never stored (the map layers must
             // ask with crossOrigin; an opaque tile would weigh 7 MB of quota each)

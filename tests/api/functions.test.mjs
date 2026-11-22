@@ -223,7 +223,7 @@ test('« Je pars »: en route, the tracking link texted, the customer follows th
   assert.equal(r.sms, 'sent');
   assert.match(r.message, /^Hello Marie, Adam from Mécanique Mobile H\.I\.S is on the way to you: arriving around .+ \(about \d+ min\)\. Follow the trip live: http.+client\.html#suivi=.+&l=en$/);
   assert.ok(r.minutes > 0 && r.km > 0);
-  assert.equal(r.route_source, 'osrm');
+  assert.equal(r.route_source, 'tomtom', 'TomTom first (the server has its key: tt-test, the fake TomTom)');
   assert.equal((await q(`select status from public.jobs where id = $1`, [job]))[0].status, 'en_route');
   // the customer's tracking page (no account)
   const t = await rpc('public_track', { p_token: tokenOf(r.link) }, K.anon);

@@ -1,5 +1,6 @@
 /* « Réserver en ligne », step 2: the address, chosen in the list of places found (it gives the position), and the
-   apartment. Only places on the street typed are offered. */
+   apartment. Only places on the street typed are offered. The postal code sent with it: the one the customer typed when
+   it is a whole one, else the suggestion's when it is a whole valid code (placeOf, review-places R2). */
 import { useEffect, useState } from 'preact/hooks';
 import { CalendarDays, MapPin, Search } from 'lucide-preact';
 import { Button } from '../../../ui/Button';
@@ -8,7 +9,7 @@ import { locate } from '../../../shared/places/locate';
 import type { Suggestion } from '../../../shared/places/photon';
 import { ct, type CLang } from '../../i18n';
 import { Note } from '../../ui';
-import { onTypedStreet, placeOf, type Place } from '../book-state';
+import { onTypedStreet, placeOf, streetNotTyped, worthAskingAgain, type Place } from '../book-state';
 import type { TitleRef } from './ServicesStep';
 
 const MIN_CHARS = 4;
@@ -21,7 +22,8 @@ export function AddressStep(p: { l: CLang; value: Place | null; onValue: (x: Pla
   const [state, setState] = useState<'idle' | 'searching' | 'none' | 'offline'>('idle');
   const [hint, setHint] = useState(false);
   useEffect(() => {
-    if (p.value || q.trim().length < MIN_CHARS) { setList([]); setState('idle'); return; }
+    // too short, or a street with no word of its own yet (« 8200 av »): nothing could be offered, nothing is asked (R4)
+    if (p.value || q.trim().length < MIN_CHARS || streetNotTyped(q)) { setList([]); setState('idle'); return; }
     // each new letter cancels the search before it (its answer would come back after the newer one)
     const ctl = new AbortController();
     setState('searching');
@@ -29,14 +31,16 @@ export function AddressStep(p: { l: CLang; value: Place | null; onValue: (x: Pla
       const r = await searchPlaces(q, ctl.signal);
       if (ctl.signal.aborted) return;
       let ok = onTypedStreet(r.places, q);
-      // nothing on that street: ask again the careful way (short words written out, without the town)
-      if (!ok.length && !r.error) {
-        const x = await locate(q);
+      // nothing on that street: ask again the careful way (short words written out, without the town), only once the
+      // street is typed in whole words; a new letter stops it (review-places R4)
+      if (!ok.length && !r.error && worthAskingAgain(r.places, q)) {
+        const x = await locate(q, { signal: ctl.signal });
         if (ctl.signal.aborted) return;
         ok = onTypedStreet(x.status === 'found' ? [x.place] : x.status === 'choose' ? x.choices : [], q);
       }
       setList(ok);
-      setState(r.error === 'offline' ? 'offline' : ok.length ? 'idle' : 'none');
+      // `partial`: TomTom answered, Photon did not: the customer's network works (review-places R6)
+      setState(r.error === 'offline' && !r.partial ? 'offline' : ok.length ? 'idle' : 'none');
     }, WAIT_MS);
     return () => { ctl.abort(); clearTimeout(t); };
   }, [q, p.value]);
@@ -76,7 +80,7 @@ export function AddressStep(p: { l: CLang; value: Place | null; onValue: (x: Pla
             <ul class="bk-sugg" data-testid="book-suggestions">
               {list.map((s) => (
                 <li key={s.key}>
-                  <button type="button" onClick={() => { const v = placeOf(s); if (v) p.onValue(v); }} data-testid="book-suggestion">
+                  <button type="button" onClick={() => { const v = placeOf(s, q); if (v) p.onValue(v); }} data-testid="book-suggestion">
                     <MapPin aria-hidden="true" /><span><b>{s.label}</b><span class="cl-small cl-muted">{s.sub}</span></span>
                   </button>
                 </li>

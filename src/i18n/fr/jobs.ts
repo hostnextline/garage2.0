@@ -263,6 +263,8 @@ export const jobs = {
     blockValue: '{block}, {range}',
     stop: 'Arrêt',
     stopValue: '{n}, vers {time}',
+    /** « Vraies routes » on, a trip before this stop not measured yet: no time said (final-guess G1) */
+    stopValueUnsure: '{n}, heure : trajets pas encore mesurés',
     duration: 'Durée prévue',
     durationLabel: 'Durée de la job',
     keep: 'Garder {time}',
@@ -283,8 +285,40 @@ export const jobs = {
     moveLeadText: 'Choisis un autre jour ou un autre bloc. Le client reçoit un texto avec le nouveau moment.',
     moveOk: 'Déplacer ici',
     moved: 'Rendez-vous déplacé : {when}.',
+    /* the message's button after a move from a list of stops: opens the appointment */
+    see: 'Voir',
     same: 'C’est déjà ce moment-là.',
     help: 'La durée sert au camion pour placer les arrêts dans le bloc. Si la job ne rentre plus, déplace-la.'
+  },
+  /* « exact move » (Hassan, 2026-11-21: « move exactly where I point, the rest stays the same »): the one question before a
+     move to a time pointed (shared/jobs/exactMove.ts), its four cases, and the message after it */
+  exact: {
+    question: 'Déplacer la job de {name} : {when} à {time} ?',
+    text: 'Dit au client : entre {from} et {to}. Les autres arrêts gardent leur heure.',
+    told: 'Dit au client : entre {from} et {to}.',
+    toldFor: 'Dit à {name} : entre {from} et {to}.',
+    pushed: { one: 'Cet arrêt arrive un peu plus tard, toujours dans sa plage :', other: 'Ces arrêts arrivent un peu plus tard, toujours dans leur plage :' },
+    pushedLine: '{name} : vers {eta} au lieu de {was}.',
+    lateTitle: { one: 'Déplacer {who} à {time} met {name} en retard', other: 'Déplacer {who} à {time} met {n} clients en retard' },
+    lateLine: '{name} : vers {eta}, {by} après sa plage ({from} à {to}).',
+    overHours: 'Le camion finirait sa journée {by} après ses heures.',
+    lateOk: 'Déplacer quand même',
+    other: 'Choisir une autre heure',
+    earlyTitle: 'Pas possible à {time}',
+    early: 'Le camion ne peut pas être chez {name} à {time} : au plus tôt {earliest}.',
+    earlyKeep: 'À {time}, aucun autre arrêt ne change d’heure.',
+    earlyOk: 'Mettre à {earliest}',
+    earlyTold: 'À {earliest}, la plage dite au client devient : entre {from} et {to}.',
+    unchecked: 'Je n’ai pas pu vérifier l’heure des autres clients.',
+    unmeasured: 'Les routes de cette journée ne sont pas toutes mesurées : je ne peux pas encore dire si quelqu’un sera en retard.',
+    offline: 'Pas de réseau : je ne peux pas vérifier si ce déplacement met quelqu’un en retard. Réessaie quand le réseau revient.',
+    lost: 'Pas de réponse du serveur : le déplacement est peut-être fait. Regarde l’agenda dans un instant avant de réessayer.',
+    done: 'Rendez-vous déplacé : {when} à {time}.',
+    doneLate: { one: 'Avertis {names} : servi après sa plage.', other: 'Avertis {names} : servis après leur plage.' },
+    notAt: 'Placé à {real} : le camion ne pouvait pas être là à {time}.',
+    someone: 'un client',
+    /* its own truck does not work that day: the vehicle the server offered at that time */
+    otherTruck: 'Son camion ne travaille pas ce jour-là : la job va sur {truck}.'
   },
   /* the « … » sheet */
   order: {
@@ -296,6 +330,8 @@ export const jobs = {
     up: 'Monter {name}',
     down: 'Descendre {name}',
     eta: 'vers {time}',
+    /* « Vraies routes » on: a trip up to that stop not measured yet (stop_order_preview measured false) */
+    etaUnmeasured: 'heure : trajets pas encore mesurés',
     save: 'Enregistrer l’ordre',
     saved: 'Ordre enregistré. Les heures d’arrivée sont à jour.',
     auto: 'Laisser l’app choisir',
@@ -305,7 +341,12 @@ export const jobs = {
     firstMenu: 'Mettre en premier',
     firstMenuSub: 'Ce client passe avant les autres de ce bloc',
     firstDone: '{name} passe en premier. Les heures d’arrivée sont à jour.',
-    live: { en_route: 'En route', on_site: 'Sur place' }
+    live: { en_route: 'En route', on_site: 'Sur place' },
+    /* « Vraies routes » on: the arrival times of the order built come from the server (stop_order_preview) */
+    pending: 'Heures d’arrivée : pas encore calculées.',
+    serverTimes: 'Les heures montrées sont celles de ce nouvel ordre, calculées par le serveur.',
+    late: 'En retard',
+    lateServer: { one: 'Avec cet ordre, {names} serait servi après l’heure dite au client. Avertis ce client si tu enregistres.', other: 'Avec cet ordre, ces clients seraient servis après l’heure qui leur a été dite : {names}. Avertis-les si tu enregistres.' }
   },
   menu: {
     title: 'Plus d’actions',
@@ -431,7 +472,24 @@ export const jobs = {
     done: 'Rendez-vous passé à {truck}. La tournée est recalculée.',
     doneAuto: 'L’app choisit le camion. La tournée est recalculée.',
     same: 'C’est déjà ce camion.',
-    noText: 'Le client ne reçoit pas de texto : le jour et l’heure ne changent pas.'
+    noText: 'Le client ne reçoit pas de texto : le jour et l’heure ne changent pas.',
+    /* « Vraies routes » on: what the server says of each truck (move_preview), never a free time worked out by the phone */
+    fits: 'Il y a de la place : arrivée vers {time}',
+    fitsNoTime: 'Il y a de la place',
+    fitsUnmeasured: 'Il y a de la place (heure : trajets pas encore mesurés)',
+    needsTruck: 'Ne peut pas : ce travail demande le camion',
+    noRoom: 'Ne peut pas le prendre à ce moment-là',
+    asking: 'Place : en calcul…',
+    unknown: 'Place : pas encore calculée',
+    nowEta: 'Arrivée prévue vers {time}',
+    nowUnmeasured: 'Arrivée prévue : trajets pas encore mesurés',
+    /* « exact move »: the appointment keeps its time on the other truck (the exact preview of that minute) */
+    keeps: 'Garde son heure : arrivée à {time}',
+    keepsLate: { one: 'Arrivée à {time}, mais un client serait en retard', other: 'Arrivée à {time}, mais {n} clients seraient en retard' },
+    notAt: 'Ne peut pas y être à {time} : au plus tôt {earliest}',
+    notAtNoTime: 'Ne peut pas y être à {time}',
+    doneAt: 'Rendez-vous passé à {truck}, maintenant à {time} (au lieu de {was}).',
+    doneKept: 'Rendez-vous passé à {truck}, toujours à {time}.'
   },
   price: {
     change: 'Changer le prix',

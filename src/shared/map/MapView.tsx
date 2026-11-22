@@ -1,4 +1,9 @@
-/* A map (owner: map). Leaflet with OpenStreetMap tiles, loaded only when a map is shown.
+/* A map (owner: map). Leaflet, loaded only when a map is shown, with TomTom's tiles when the app has its key, else
+   OpenStreetMap's. TomTom's tiles refused (a key refused, the site missing from the key's list, the month's tiles used up)
+   → OpenStreetMap's tiles with OpenStreetMap's credit, on every map open and every map after it until the app is opened
+   again: never a blank map, never back and forth. Decided by TomTom's own answer to ONE plain request of a tile that
+   failed (lib/tomtom.ts checkTile): the first failed tile is enough (a small map shows only 4), a tile from the phone's
+   cache proves nothing, and a network that lets nothing through is never taken for a refusal.
    Markers: numbered stops in the truck's colour (a check when done), the Centrale with the H.I.S badge, people as a
    pulsing dot with their name, a customer's place (a pin). Lines in a colour, dashed for a trip on the way.
    Only what changed is drawn again (markers.ts): a marker that moves is moved, a label that changes gets a new icon,
@@ -13,6 +18,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type * as Leaflet from 'leaflet';
 import { iconSpec, zIndexOf, drawable, markerSig, markerChange, sameLine, samePoints, safeColor, shouldFit, type MapMarker, type MapLine, type MarkerSig } from './markers';
+import { TOMTOM_KEY } from '../../lib/config';
+import { tomtomTiles, tileWatch, checkTile, OSM_ATTRIBUTION } from '../../lib/tomtom';
 import './mapview.css';
 
 export type { MapMarker, MapLine } from './markers';
@@ -31,9 +38,61 @@ export interface MapViewProps {
 }
 
 type LeafletNS = typeof Leaflet;
-const TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+const OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+/** TomTom's map when the app has its key (config.ts), else OpenStreetMap's free tiles as before (TomTom's credit names
+    OpenStreetMap too: the roads drawn may come from OSRM and the addresses from Photon) */
+export function tilesFor(key: string): { url: string; options: Leaflet.TileLayerOptions } {
+  if (key) {
+    const t = tomtomTiles(key);
+    // the page's own address goes with each tile (TomTom answers the key only for the app's addresses)
+    return { url: t.url, options: { maxZoom: 19, attribution: t.attribution, crossOrigin: 'anonymous', referrerPolicy: 'strict-origin-when-cross-origin' } };
+  }
+  return { url: OSM_TILES, options: { maxZoom: 19, attribution: OSM_ATTRIBUTION, subdomains: 'abc', crossOrigin: 'anonymous' } };
+}
 const MONTREAL: [number, number] = [45.5017, -73.5673];
+
+/** TomTom's tiles, for every map of this visit of the app: refused once → OpenStreetMap's everywhere from then on */
+const tiles = tileWatch();
+/** the maps showing TomTom's tiles now: each changes to OpenStreetMap's when TomTom refuses (one check for them all) */
+const onTomtom = new Set<() => void>();
+/** takes a map out of that list when its screen closes. Kept beside the map, not as a Leaflet « unload » listener: the
+    screen's cleanup drops every listener of the map (map.off()) BEFORE it removes it, so such a listener never hears the
+    map go. (Found by the end-to-end test, e2e-routes B1: a map closed earlier in the visit stayed in the list; when TomTom
+    then refused its tiles, changing that dead map threw, and the map on screen was never changed: blank, « © TomTom ».) */
+const tilesOff = new WeakMap<object, () => void>();
+const online = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+/** the tile layer of a new map: TomTom's (watched: refused → OpenStreetMap's, once) or OpenStreetMap's */
+function addTiles(L: LeafletNS, map: Leaflet.Map, key: string): void {
+  const use = tiles.down ? '' : key;
+  const first = tilesFor(use);
+  const layer = L.tileLayer(first.url, first.options).addTo(map);
+  if (!use) return;
+  const toOsm = () => {
+    onTomtom.delete(toOsm);
+    // only our own listener: the credit's « remove » listener must hear the layer go (its words leave with it)
+    layer.off('tileerror', failed);
+    layer.remove();
+    const osm = tilesFor('');
+    L.tileLayer(osm.url, osm.options).addTo(map);
+  };
+  function failed(e: Leaflet.TileErrorEvent) {
+    if (!tiles.error(online())) return;
+    const url = e?.tile?.src || (e?.coords ? layer.getTileUrl(e.coords) : '');
+    if (!url) { tiles.checked('network'); return; }
+    // fetch read when the check runs (a test pretends it)
+    void checkTile(url, (u, o) => fetch(u, o)).then((r) => {
+      if (!tiles.checked(r)) return;
+      // each map by itself: one that cannot change (already gone) never stops the others
+      for (const change of [...onTomtom]) { try { change(); } catch { onTomtom.delete(change); } }
+    });
+  }
+  layer.on('tileerror', failed);
+  onTomtom.add(toOsm);
+  // the map goes (its screen closed): nothing to change on it any more (called by the screen's cleanup)
+  tilesOff.set(map, () => onTomtom.delete(toOsm));
+}
+/** forgets that TomTom's tiles were refused (tests) */
+export function forgetTiles() { tiles.forget(); }
 
 let leafletP: Promise<LeafletNS> | null = null;
 function loadLeaflet(): Promise<LeafletNS> {
@@ -85,7 +144,7 @@ export function MapView(p: MapViewProps) {
       L.control.attribution({ prefix: false, position: 'bottomright' }).addTo(map);
       // asked with CORS (the tile servers answer « * »): a real answer the « tuiles » cache keeps, so a map already seen
       // still shows its streets without signal (an opaque answer is never stored, R127)
-      L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION, subdomains: 'abc', crossOrigin: 'anonymous' }).addTo(map);
+      addTiles(L, map, TOMTOM_KEY);
       map.setView(MONTREAL, 11);
       map.on('click', () => latest.current.onBackgroundClick?.());
       const layer = L.layerGroup().addTo(map);
@@ -114,6 +173,7 @@ export function MapView(p: MapViewProps) {
       if (s) {
         s.markers.clear();
         s.lines = [];
+        tilesOff.get(s.map)?.();
         // Leaflet may throw while it is busy (a zoom animation): the screen goes anyway (mh-7)
         try {
           s.layer.clearLayers();

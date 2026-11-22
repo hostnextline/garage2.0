@@ -63,6 +63,8 @@
 .map-stop.is-done .map-n { background: color-mix(in srgb, var(--c) 50%, var(--solid)); color: var(--solid); }
 .map-stop.is-done .row-title { color: var(--ink-2); }
 .map-stop.is-selected { background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+/* a long press opens the stop's shortcut menu (« Déplacer »…): no text selection nor callout under the finger */
+.map-stop { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .map-card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); }
 .map-card-title { font-size: var(--t-lg); overflow-wrap: anywhere; }
 .map-card-meta { gap: var(--sp-3); }

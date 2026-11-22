@@ -3,6 +3,8 @@
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
+// without TomTom's key, whatever the shell says (VITE_TOMTOM_KEY): OpenStreetMap's tiles, as before
+vi.mock('../../lib/config', async (orig) => ({ ...(await orig<typeof import('../../lib/config')>()), TOMTOM_KEY: '' }));
 import TrackMap from './TrackMap';
 import type { TrackView } from './track-state';
 
@@ -43,5 +45,23 @@ describe('the tracking map', () => {
     await wait();
     expect(box.querySelector('.cl-dot')).toBeNull();
     expect(box.querySelector('.cl-home')).toBeTruthy();
+  });
+  it('no road from the server: the truck and the house, and NO line between them (never a straight one)', async () => {
+    await act(async () => { render(<TrackMap view={view()} l="fr" />, box); });
+    for (let i = 0; i < 20 && !box.querySelector('.cl-dot'); i++) await wait(20);
+    expect(box.querySelector('.cl-dot')).toBeTruthy();
+    expect(box.querySelector('.cl-home')).toBeTruthy();
+    expect(box.querySelector('path.cl-route')).toBeNull();
+    expect(box.querySelector('path.cl-route-casing')).toBeNull();
+    // the road arrives: it is drawn; it goes again (the server lost it): the line leaves
+    const road: [number, number][] = [[45.5, -73.57], [45.51, -73.58], [45.52, -73.6]];
+    await act(async () => { render(<TrackMap view={view({ route: road })} l="fr" />, box); });
+    await wait();
+    expect(box.querySelector('path.cl-route')).toBeTruthy();
+    expect(box.querySelector('path.cl-route')!.getAttribute('stroke-dasharray')).toBeNull();
+    await act(async () => { render(<TrackMap view={view({ route: [] })} l="fr" />, box); });
+    await wait();
+    expect(box.querySelector('path.cl-route')).toBeNull();
+    expect(box.querySelector('path.cl-route-casing')).toBeNull();
   });
 });

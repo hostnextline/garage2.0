@@ -31,11 +31,14 @@ export const TABLES = [
   // « vu » notes, and the stock's starting point (lost, the next run would quietly take a new one)
   'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'
 ] as const;
-// never backed up: secrets (the keys of the texting and card services), rate_limits (a brake, worthless the next day),
+// never backed up: secrets (the keys of the texting and card services), rate_limits (the brakes, the leases of « drive »
+// and the public page's TomTom count of the month: worthless the next day; after a restore that count starts again),
 // incoming_calls (the calls of the day, for the « Appel entrant » banner), incoming_texts (the week's texts that wake the
 // « Texto entrant » bubble: the conversations themselves stay in GoHighLevel), push_subs (the devices that asked for the
-// alert while the app is closed: a device asks again)
-export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incoming_texts', 'push_subs'] as const;
+// alert while the app is closed: a device asks again), drive_times (the road times measured by « drive »: a cache, asked
+// again by the next measure; a restore without it plans with the fixed unknown time until then, never a straight line),
+// drive_spend (this month's count of TomTom transactions: a counter, TomTom keeps its own bill)
+export const NOT_BACKED_UP = ['secrets', 'rate_limits', 'incoming_calls', 'incoming_texts', 'push_subs', 'drive_times', 'drive_spend'] as const;
 // tables of the « Refonte » migrations: while a database does not have them yet (this function deployed before its
 // migration is applied), the backup goes on without them instead of failing every night
 const LATER: readonly string[] = ['ops_backup_runs', 'ops_recon_runs', 'ops_recon_findings', 'ops_recon_baseline'];

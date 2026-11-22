@@ -1,9 +1,13 @@
 /* The windows still possible on each day shown by the time calendar (`suggest_windows`, one request per day, in
    parallel). Answers are kept a short moment (by day, place, length of work, kind of vehicle, job left out, and what the
    phone holds of that day) so that going back a week, or choosing a time, does not ask again; a day whose appointments
-   change on the phone (a colleague booked, the planner moved a stop) is asked again. */
+   change on the phone (a colleague booked, the planner moved a stop) is asked again. « Vraies routes »: every day is
+   asked again when a measure the screen stopped waiting for lands (roadsTick: the « unknown » times give way to the real
+   ones; never with the switch off). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { suggestWindows } from '../../data/api';
+import { roadsTick } from '../../data/roads';
+import { roadsOn } from '../../data/select';
 import { isNetworkError } from '../../data/sync';
 import { cacheKey } from '../../domain/moment/units';
 import type { DayWins, WinStatus } from './windowDays';
@@ -28,13 +32,16 @@ export function useDayWindows(days: string[], q: WinQuery, online: boolean, bump
   const keyOf = (day: string) => `${cacheKey({ day, ...q })}#${stampOf(day)}`;
   const keys = days.map(keyOf);
   const list = keys.join(',');
-  const lastBump = useRef(bump);
+  // a measure landed: the same as a new `bump` (everything asked again)
+  // … and the switch « Vraies routes » flipped while the picker is open (final-off L5)
+  const again = `${bump}|${roadsTick.value}|${roadsOn.value}`;
+  const lastBump = useRef(again);
   /* the day's question (place, work, vehicle, job left out: the key without its stamp) → the key of its LAST answer, so a
      day asked again shows that answer dimmed meanwhile (not an older one) */
   const last = useRef(new Map<string, string>());
   const note = (k: string) => { last.current.set(headOf(k), k); };
   useEffect(() => {
-    if (lastBump.current !== bump) { lastBump.current = bump; forgetWindows(); }
+    if (lastBump.current !== again) { lastBump.current = again; forgetWindows(); }
     if (!days.length) return;
     if (!online) { setGot((g) => ({ ...g, ...Object.fromEntries(keys.map((k) => [k, { status: 'offline', rows: [] } as DayWins])) })); return; }
     let alive = true;
@@ -74,7 +81,7 @@ export function useDayWindows(days: string[], q: WinQuery, online: boolean, bump
       });
     }, 300);
     return () => { alive = false; clearTimeout(tm); };
-  }, [list, online, bump]);
+  }, [list, online, again]);
   return (day) => got[keyOf(day)] || LOADING;
 }
 

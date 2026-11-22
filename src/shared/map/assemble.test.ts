@@ -62,23 +62,54 @@ describe('team map: stops and routes per truck', () => {
     ]);
   });
 
-  it("uses the active trip's own route (ending at the customer) and its arrival time", () => {
+  it("uses the active trip's own road as the server gave it, and its arrival time", () => {
     const v = m.trucks[1];
     expect(v.color).toBe(PALETTE[1]);                // no colour stored: the palette by position
     expect(v.trip?.jobId).toBe('j-6');
     expect(v.legs[0].kind).toBe('trip');
-    expect(v.legs[0].points[0]).toEqual([45.5005, -73.6577]);
-    expect(v.legs[0].points[v.legs[0].points.length - 1]).toEqual([45.5307, -73.6702]);   // the destination is added
+    // the server's road as it is: no straight piece added from its end to the door (Hassan's rule, 2026-11-19)
+    expect(v.legs[0].points).toEqual([[45.5005, -73.6577], [45.512, -73.663], [45.5201, -73.6655]]);
     expect(v.legs[1]).toEqual({ points: [[45.5307, -73.6702], [45.4772, -73.6213]], kind: 'todo' });
     expect(v.nextEta).toBe(10 * 60 + 40);
     expect(m.trips[0].dest).toEqual([45.5307, -73.6702]);
   });
 
-  it('a trip without a road route goes straight from the driver to the customer', () => {
+  it('a trip without a road: the leg from the driver to the customer, whose road is ASKED (nothing drawn before)', () => {
     const a = answer();
     a.trips[0].route = null;
     const v = assemble(a).trucks[1];
     expect(v.legs[0]).toEqual({ points: [[45.5201, -73.6655], [45.5307, -73.6702]], kind: 'trip' });
+  });
+
+  it('a stored « road » of two points (the old server’s straight line when OSRM did not answer) is not a road', () => {
+    const a = answer();
+    a.trips[0].route = [[45.5005, -73.6577], [45.5307, -73.6702]];
+    const m2 = assemble(a);
+    expect(m2.trips[0].route).toEqual([]);
+    // the leg is the one to ask from where Adam is: never that straight line
+    expect(m2.trucks[1].legs[0]).toEqual({ points: [[45.5201, -73.6655], [45.5307, -73.6702]], kind: 'trip' });
+    expect(m2.trips[0].dest).toEqual([45.5307, -73.6702]);
+  });
+
+  it('on the way with no real arrival from the server: no time said, never the plan’s time as an arrival (review F10)', () => {
+    const a = answer();
+    a.trips[0].eta_at = null;
+    const v = assemble(a).trucks[1];
+    expect(v.next?.id).toBe('j-6');
+    expect(v.nextEta).toBeNull();
+    expect(assemble(answer()).trucks[0].nextEta).toBe(590);   // a stop not on the way: the plan, as before
+  });
+  it('on the way and the server sent NO trip row for it (« Je pars » still on its way, an older server): no time either (fix-sheets §5.6)', () => {
+    const a = answer();
+    a.trips = [];
+    const v = assemble(a).trucks[1];
+    expect(v.next?.id).toBe('j-6');
+    expect(v.next?.status).toBe('en_route');
+    expect(v.nextEta).toBeNull();
+    // another job's trip is not this stop's time
+    const b = answer();
+    b.trips[0].job_id = 'j-7';
+    expect(assemble(b).trucks[1].nextEta).toBeNull();
   });
 
   it('puts jobs without a truck apart, and gives each person a colour and a truck', () => {
@@ -224,5 +255,33 @@ describe('team map: one order of the stops', () => {
       ]
     });
     expect(m.trucks[0].stops.map((s) => [s.id, s.n])).toEqual([['done', 1], ['first', 2], ['pm', 3]]);
+  });
+});
+
+describe('a plan’s time that is not sure (« Vraies routes » on, eta_measured false: final-guess G1)', () => {
+  it('the stop and the legend’s next stop say no time; a sure one says it, as before', () => {
+    const a = answer();
+    a.jobs = a.jobs.map((j) => (j.id === 'j-7' ? { ...j, eta_measured: false } : j));
+    const m = assemble(normalize(a as unknown));
+    const v = m.trucks.find((t) => t.id === 't-voiture')!;
+    const c = m.trucks.find((t) => t.id === 't-complet')!;
+    expect(v.stops.find((x) => x.id === 'j-7')!.etaMin).toBeNull();
+    expect(c.stops.find((x) => x.id === 'j-5')!.etaMin).toBe(980);
+    expect(v.nextEta).toBe(10 * 60 + 40);   // the stop on the way: its trip's real time, untouched
+    // the same from the phone's own jobs (no flag = the plan's time)
+    expect(normalize(answer() as unknown).jobs.find((j) => j.id === 'j-7')!.eta_measured).toBeUndefined();
+  });
+});
+
+describe('the phone’s own flag when the answer does not carry it (team_map without eta_measured: decision 2)', () => {
+  it('measuredOf false: no time, the stop is « unsure »; the answer’s own flag wins; nothing: as before', () => {
+    const m = assemble(answer(), { measuredOf: (id) => (id === 'j-5' ? false : undefined) });
+    const c = m.trucks.find((t) => t.id === 't-complet')!;
+    expect(c.stops.find((x) => x.id === 'j-5')!.etaMin).toBeNull();
+    expect(c.stops.find((x) => x.id === 'j-5')!.unsure).toBe(true);
+    const a = answer();
+    a.jobs = a.jobs.map((j) => (j.id === 'j-5' ? { ...j, eta_measured: true } : j));
+    expect(assemble(a, { measuredOf: () => false }).trucks.find((t) => t.id === 't-complet')!.stops.find((x) => x.id === 'j-5')!.etaMin).toBe(980);
+    expect(assemble(answer()).trucks.find((t) => t.id === 't-complet')!.stops.find((x) => x.id === 'j-5')!.unsure).toBeUndefined();
   });
 });

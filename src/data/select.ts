@@ -31,6 +31,8 @@ export function blockOfKey(k: BlockKey): Block {
 }
 /** the garage books by 4-hour arrival windows (Part 25) */
 export const windowsOn = computed<boolean>(() => settings.value.booking.windows_on === true);
+/** « Vraies routes » (Part 27): the planner counts the real roads measured, never a straight line (missing = off) */
+export const roadsOn = computed<boolean>(() => settings.value.booking.roads_on === true);
 // the refusals of a block (« complet », « fermé ») then say « journée » (lib/errors cannot read the settings: R144)
 effect(() => { setDayMode(windowsOn.value); });
 /** the span of a booking day: first block's start → last block's end */

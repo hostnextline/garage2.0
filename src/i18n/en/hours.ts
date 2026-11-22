@@ -57,7 +57,17 @@ export const hours: typeof fr = {
     donePart: '{n} of {total} appointments moved to {to}. The others are in “To place” in the schedule.',
     /* a move refused or not answered: nothing is closed (map-hours-01, -07) */
     refused: { zero: 'The move was refused: {reason} Nothing is closed.', one: '{n} appointment moved, then a refusal: {reason} Nothing is closed.', other: '{n} appointments moved, then a refusal: {reason} Nothing is closed.' },
-    waiting: 'No answer from the server for the move: nothing is closed. Try again when the network is back.'
+    waiting: 'No answer from the server for the move: nothing is closed. Try again when the network is back.',
+    /* « Vraies routes » on: the new route of the other vehicle is the server's (move_preview), never the phone's guess */
+    refusedHere: 'Can’t go on {to}',
+    at: 'stop {n}, around {time}',
+    atNoTime: 'stop {n}',
+    /* an answer that says a trip of that day is not measured: its arrival counts a fixed time, so it is not said */
+    atUnmeasured: 'stop {n}, time: trips not measured yet',
+    pending: 'Order and route: not worked out yet.',
+    roadUnmeasured: { one: 'Route of the day: not measured yet ({n} trip to measure).', other: 'Route of the day: not measured yet ({n} trips to measure).' },
+    refusedSome: { one: 'The server refuses to put {n} of these appointments there.', other: 'The server refuses to put {n} of these appointments there.' },
+    serverNote: 'The order, the numbers and the route of the day come from the planner, with the real roads.'
   },
   apply: {
     title: 'Apply',

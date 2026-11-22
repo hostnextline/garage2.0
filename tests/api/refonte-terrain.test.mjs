@@ -755,6 +755,17 @@ async function enrouteSetup(driverId) {
   await q(`insert into public.customers (id, first_name, phone, lat, lng) values ($1, 'Lina', '438 556-0170', 45.53, -73.61)`, [cust]);
   return { truck, cust };
 }
+/** the job's active trip as if its last time was worked out 5 minutes ago (the trigger touch() would write now(): it is
+    not run for this one write) */
+async function aged(job) {
+  const c = await db.connect();
+  try {
+    await c.query('begin');
+    await c.query(`set local session_replication_role = replica`);
+    await c.query(`update public.trips set updated_at = now() - interval '5 minutes' where job_id = $1 and status = 'active'`, [job]);
+    await c.query('commit');
+  } catch (e) { await c.query('rollback'); throw e; } finally { c.release(); }
+}
 async function enrouteJob(cust, truck, createdBy, status = 'en_route') {
   const job = randomUUID();
   await q(`insert into public.jobs (id, customer_id, day, block, truck_id, status, duration_min, created_by) values ($1, $2, public.local_today(), 'am', $3, $4, 60, $5)`, [job, cust, truck, status, createdBy]);
@@ -788,8 +799,9 @@ test('« Je pars »: the trip, the name in the text and the map are those of the
   assert.equal(o.ok, true, JSON.stringify(o));
   assert.match(o.message, /Bilal/);
   assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [job2]))[0].staff_id, bilal.id);
-  const osrm = (await mockLog()).filter((x) => x.svc === 'osrm');
-  assert.deepEqual(osrm.map((x) => x.pts[0]), [[-73.60, 45.52]], 'the route starts where Bilal is');
+  // TomTom first (the server's key): its points are [lat, lng]
+  const roads = (await mockLog()).filter((x) => x.svc === 'tomtom' && x.kind === 'route');
+  assert.deepEqual(roads.map((x) => x.pts[0]), [[45.52, -73.60]], 'the route starts where Bilal is');
   assert.equal((await q(`select count(*)::int n from public.positions where id = $1`, [owner]))[0].n, 0, 'the office is not on the map');
   // naming who leaves: the owner may name Adam; a mechanic may not leave in somebody else's name
   const job3 = await enrouteJob(cust, truck, adam.id);
@@ -816,7 +828,7 @@ test('« Je pars » pressed by someone whose day is not started (an owner who is
     assert.equal((await q(`select staff_id from public.trips where job_id = $1 and status = 'active'`, [j1]))[0].staff_id, saleh.id);
     assert.match(r1.message, /Saleh/); assert.doesNotMatch(r1.message, /Hassan/);
     assert.ok(r1.eta_at, 'the text has its arrival time');
-    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'osrm').map((x) => x.pts[0]), [[-73.60, 45.52]], 'the route starts where Saleh is');
+    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'tomtom' && x.kind === 'route').map((x) => x.pts[0]), [[45.52, -73.60]], 'the route starts where Saleh is');
     assert.equal((await q(`select count(*)::int n from public.positions where id = $1`, [boss.id]))[0].n, 0, 'the office is not on the map');
     // shared routes on: Ali (no day started: today's app sends no position for him) presses on Saleh's truck: the truck's
     // driver, as on live — not Ali with no position (no arrival time, a map with no truck)
@@ -834,6 +846,176 @@ test('« Je pars » pressed by someone whose day is not started (an owner who is
     assert.match(r3.message, /Ali/);
   } finally {
     await q(`update public.settings set booking = $1 where id = 1`, [was]);
+  }
+});
+
+test('« Je pars »: the road and the time are TomTom’s; TomTom down → OSRM’s (+20 %); TomTom AND OSRM down → no time at all and the text without a time (never a straight line)', async () => {
+  const adam = await member('Adam Route', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(adam.id);
+  await rpc('shift_start', {}, adam.jwt);
+  // the fake services' road (tests/stack/mocks.mjs): km = straight line × 1.25; TomTom 240 s + 110 s a km (+120 s going north);
+  // OSRM 32 km/h, + 20 % by enroute
+  const from = { lat: 45.50, lng: -73.66 }, to = { lat: 45.53, lng: -73.61 };
+  const km = Math.hypot((to.lng - from.lng) * 78, (to.lat - from.lat) * 111) * 1.25;
+  try {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+    const leave = async () => fn('enroute', { action: 'start', job_id: await enrouteJob(cust, truck, adam.id), base: BASE, pos: from }, adam.jwt);
+    await clearLog();
+    const t = await leave();
+    assert.deepEqual([t.ok, t.route_source, t.minutes, t.km], [true, 'tomtom', Math.max(1, Math.round(Math.round(240 + km * 110 + 120) / 60)), Math.round(Math.round(km * 1000) / 100) / 10], JSON.stringify(t));
+    assert.match(t.message, /arrivée prévue vers .+ \(environ \d+ min\)/);
+    assert.equal((await mockLog()).filter((x) => x.svc === 'osrm').length, 0, 'OSRM not asked');
+    // TomTom down: OSRM
+    await fetch(`${MOCK}/control?tomtom=fail`);
+    await clearLog();
+    const o = await leave();
+    assert.deepEqual([o.ok, o.route_source, o.minutes], [true, 'osrm', Math.max(1, Math.round((((km / 32) * 3600) / 60) * 1.2))], JSON.stringify(o));
+    assert.deepEqual((await mockLog()).filter((x) => x.svc === 'tomtom' || x.svc === 'osrm').map((x) => x.svc), ['tomtom', 'osrm']);
+    // both down: no road, no time; the trip and its link still made, the text the one without a time
+    await fetch(`${MOCK}/control?tomtom=fail&osrm=fail`);
+    const n = await leave();
+    assert.deepEqual([n.ok, n.route_source, n.minutes, n.km, n.eta_at], [true, null, null, null, null], JSON.stringify(n));
+    assert.match(n.message, /^Bonjour Lina, Adam de Mécanique Mobile H\.I\.S est en route vers chez vous\. Suivez son trajet en direct : http/);
+    assert.doesNotMatch(n.message, /\(environ|arrivée prévue/);
+    const tr = await rpc('public_track', { p_token: tokenOf(n.link) }, K.anon);
+    assert.deepEqual([tr.status, tr.eta_at ?? null, tr.route ?? null], ['active', null, null], 'no time and no line on the customer’s map');
+  } finally {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+  }
+});
+
+test('« Je pars »: at most 30 roads an hour a person (final-security F7: the server key’s TomTom requests are outside every ceiling); past it the trip and the text still go, without a time — never refused', async () => {
+  const adam = await member('Adam Frein', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(adam.id);
+  await rpc('shift_start', {}, adam.jwt);
+  const from = { lat: 45.50, lng: -73.66 };
+  const bucket = (await q(`select floor(extract(epoch from now()) / 3600)::bigint b`))[0].b;
+  try {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+    await clearLog();
+    const t = await fn('enroute', { action: 'start', job_id: await enrouteJob(cust, truck, adam.id), base: BASE, pos: from }, adam.jwt);
+    assert.deepEqual([t.ok, t.route_source], [true, 'tomtom'], JSON.stringify(t));
+    assert.equal((await q(`select n from public.rate_limits where key = $1`, [`enroute:road:${adam.id}`]))[0]?.n, 1, 'counted');
+    await q(`update public.rate_limits set n = 30 where key = $1 and bucket = $2`, [`enroute:road:${adam.id}`, bucket]);
+    await clearLog();
+    const n = await fn('enroute', { action: 'start', job_id: await enrouteJob(cust, truck, adam.id), base: BASE, pos: from }, adam.jwt);
+    assert.deepEqual([n.ok, n.route_source, n.minutes, n.eta_at], [true, null, null, null], JSON.stringify(n));
+    assert.doesNotMatch(n.message, /\(environ|arrivée prévue/);
+    assert.equal((await mockLog()).filter((x) => x.svc === 'tomtom' || x.svc === 'osrm').length, 0, 'no road asked past the brake');
+  } finally {
+    await q(`delete from public.rate_limits where key = $1`, [`enroute:road:${adam.id}`]);
+  }
+});
+
+test('« Je pars » refresh: a new time on the trip under way and never a text; nothing answered → the last real time stays; the trip ended → refused, and NO new trip, link or message', async () => {
+  const adam = await member('Adam Rafraîchit', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(adam.id);
+  await rpc('shift_start', {}, adam.jwt);
+  try {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+    const job = await enrouteJob(cust, truck, adam.id);
+    const s = await fn('enroute', { action: 'start', job_id: job, base: BASE, pos: { lat: 45.50, lng: -73.66 } }, adam.jwt);
+    assert.equal(s.ok, true, JSON.stringify(s));
+    const msgs = async () => (await q(`select count(*)::int n from public.messages where job_id = $1`, [job]))[0].n;
+    const trips = async () => q(`select id, status, minutes, eta_at, token_hash from public.trips where job_id = $1 order by created_at`, [job]);
+    assert.equal(await msgs(), 1);
+    const [t0] = await trips();
+    // closer, 5 minutes later (the server refuses a refresh within 4 minutes of the trip's last time): a new time, the
+    // same trip and link, no text
+    await aged(job);
+    const r = await fn('enroute', { action: 'refresh', job_id: job, pos: { lat: 45.52, lng: -73.63 }, notify: false, driver_id: adam.id }, adam.jwt);
+    assert.deepEqual([r.ok, r.sms, r.route_source], [true, 'already', 'tomtom'], JSON.stringify(r));
+    let [t1, more] = await trips();
+    assert.equal(more, undefined, 'the same trip');
+    assert.equal(t1.token_hash, t0.token_hash, 'the same link');
+    assert.ok(t1.minutes < t0.minutes, `a new, shorter time: ${t0.minutes} → ${t1.minutes}`);
+    assert.equal(await msgs(), 1, 'no text');
+    // TomTom and OSRM down: the last real time stays (never erased, never guessed)
+    await fetch(`${MOCK}/control?tomtom=fail&osrm=fail`);
+    await aged(job);
+    const r2 = await fn('enroute', { action: 'refresh', job_id: job, pos: { lat: 45.525, lng: -73.62 }, notify: false, driver_id: adam.id }, adam.jwt);
+    assert.equal(r2.ok, true, JSON.stringify(r2));
+    const kept = t1.minutes;
+    [t1] = await trips();
+    assert.ok(t1.eta_at && t1.minutes === kept, 'the last real time kept');
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+    // the trip ended meanwhile (« Terminer ma journée », the night's cleanup): a refresh makes NOTHING, even with notify left on
+    await q(`update public.trips set status = 'cancelled', ended_at = now() where job_id = $1 and status = 'active'`, [job]);
+    await clearLog();
+    for (const body of [{ action: 'refresh', job_id: job, pos: { lat: 45.52, lng: -73.62 }, notify: false, driver_id: adam.id }, { action: 'refresh', job_id: job, base: BASE }]) {
+      const e = await fn('enroute', body, adam.jwt);
+      assert.deepEqual([e.status, e.ok, e.code], [409, false, 'not_en_route'], JSON.stringify(e));
+    }
+    assert.deepEqual((await trips()).map((x) => x.status), ['cancelled'], 'no new trip, no new link');
+    assert.equal(await msgs(), 1, 'no message row');
+    assert.equal((await mockLog()).filter((x) => x.svc === 'ghl').length, 0, 'no text');
+    assert.equal((await mockLog()).filter((x) => x.svc === 'tomtom' || x.svc === 'osrm').length, 0, 'not even a road asked (no TomTom request spent)');
+  } finally {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+  }
+});
+
+test('« Je pars » on a job that is not on the way (there already, done): refused « not_en_route » with ONE status, 409, on every path (« Je pars » and the refresh alike), and no road asked (join-server, fix-fn L11)', async () => {
+  const adam = await member('Adam Statut', '{mechanic}');
+  const { truck, cust } = await enrouteSetup(adam.id);
+  await rpc('shift_start', {}, adam.jwt);
+  try {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+    for (const status of ['on_site', 'done']) {
+      const job = await enrouteJob(cust, truck, adam.id, status);
+      await clearLog();
+      for (const body of [{ action: 'start', job_id: job, base: BASE, pos: { lat: 45.50, lng: -73.66 } }, { action: 'refresh', job_id: job, pos: { lat: 45.52, lng: -73.63 }, notify: false, driver_id: adam.id }]) {
+        const e = await fn('enroute', body, adam.jwt);
+        assert.deepEqual([e.status, e.ok, e.code], [409, false, 'not_en_route'], `${status} ${body.action}: before, « Je pars » answered 400 and the refresh of an ended trip 409: ` + JSON.stringify(e));
+      }
+      assert.equal((await mockLog()).filter((x) => x.svc === 'tomtom' || x.svc === 'osrm').length, 0, 'no road asked');
+      assert.equal((await q(`select count(*)::int n from public.trips where job_id = $1`, [job]))[0].n, 0, 'no trip made');
+    }
+  } finally {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+  }
+});
+
+test('« Je pars » refresh on the server: the trip stays its driver’s (another member’s refresh is refused); at most one every 4 minutes and 8 a trip, refused BEFORE any road is asked (review-fn L7, L8)', async () => {
+  const adam = await member('Adam Garde', '{mechanic}');
+  const bea = await member('Béa Propriétaire', '{owner,mechanic}');
+  const { truck, cust } = await enrouteSetup(adam.id);
+  await rpc('shift_start', {}, adam.jwt);
+  await rpc('shift_start', {}, bea.jwt);   // her day open too: before, a refresh from her phone took the trip
+  try {
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
+    const job = await enrouteJob(cust, truck, adam.id);
+    const s = await fn('enroute', { action: 'start', job_id: job, base: BASE, pos: { lat: 45.50, lng: -73.66 } }, adam.jwt);
+    assert.equal(s.ok, true, JSON.stringify(s));
+    const trip = async () => (await q(`select id, staff_id, minutes, updated_at from public.trips where job_id = $1 and status = 'active'`, [job]))[0];
+    const roads = async () => (await mockLog()).filter((x) => x.svc === 'tomtom' || x.svc === 'osrm').length;
+    const refresh = (who, extra = {}) => fn('enroute', { action: 'refresh', job_id: job, pos: { lat: 45.52, lng: -73.63 }, notify: false, ...extra }, who.jwt);
+    // L8: right after « Je pars »: too soon (the phone waits 5 minutes), nothing asked
+    await clearLog();
+    const soon = await refresh(adam, { driver_id: adam.id });
+    assert.deepEqual([soon.status, soon.code], [429, 'busy'], JSON.stringify(soon));
+    assert.equal(await roads(), 0, 'no road asked');
+    // L7: another member (her day open) refreshes: refused, the trip stays Adam's, nothing asked
+    await aged(job);
+    const t0 = await trip();
+    const other = await refresh(bea);
+    assert.deepEqual([other.status, other.code], [403, 'not_allowed'], JSON.stringify(other));
+    assert.equal((await trip()).staff_id, adam.id, 'the trip is still Adam’s');
+    assert.equal(await roads(), 0);
+    // Adam, 5 minutes later: a new time
+    const ok = await refresh(adam, { driver_id: adam.id });
+    assert.deepEqual([ok.ok, ok.route_source], [true, 'tomtom'], JSON.stringify(ok));
+    assert.equal((await trip()).staff_id, adam.id);
+    assert.notEqual(String((await trip()).updated_at), String(t0.updated_at));
+    // L8: the 8 refreshes of a trip are spent: the 9th is refused before any road
+    await q(`insert into public.rate_limits (key, bucket, n) values ($1, 0, 8) on conflict (key, bucket) do update set n = 8`, [`enroute:refresh:${t0.id}`]);
+    await aged(job); await clearLog();
+    const ninth = await refresh(adam, { driver_id: adam.id });
+    assert.deepEqual([ninth.status, ninth.code], [429, 'busy'], JSON.stringify(ninth));
+    assert.equal(await roads(), 0);
+  } finally {
+    await q(`delete from public.rate_limits where key like 'enroute:refresh:%'`);
+    await fetch(`${MOCK}/control?tomtom=ok&osrm=ok`);
   }
 });
 

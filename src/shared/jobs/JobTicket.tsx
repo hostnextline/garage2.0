@@ -5,15 +5,21 @@
 import type { Job } from '../../data/types';
 import { Ticket, StatusPill } from '../../ui';
 import { t, lang } from '../../lib/i18n';
-import { truckColor, truckLabel, vehicle, vehicleLabel, invoiceOf } from '../../data/select';
+import { truckColor, truckLabel, vehicle, vehicleLabel, invoiceOf, activeTrip } from '../../data/select';
+import { enRouteTicket } from '../../domain/jobs/when';
 import { jobName, servicesText, shortDayWord, etaWord, clockOf, proposedOf, seen, momentShort, outsideWindow, isWindowJob, blockRange } from './select';
 import './jobs.css';
 
 export interface JobTicketProps { job: Job; showDay?: boolean; showTruck?: boolean }
 
-/** when, in a few words: « vers 12 h 15 », « arrivé à 9 h 44 », « fini à 10 h 50 » */
-function timeWord(j: Job, l: string): string {
+/** when, in a few words: « vers 12 h 15 », « arrivé à 9 h 44 », « fini à 10 h 50 ». A stop on the way (as this phone sees
+    it) says the trip's REAL arrival (the server's TomTom / OSRM time) or no time, never the plan's time said as an arrival:
+    the same rule as the map legend and the truck card (enRouteTicket; review-trip F1, task point L4 / F10). */
+function timeWord(job: Job, l: string): string {
+  const j = enRouteTicket(job, job.status, activeTrip(job.id)?.eta_at);
   if ((j.status === 'booked' || j.status === 'en_route') && j.eta_min != null) return etaWord(j.eta_min, l as 'fr' | 'en');
+  // « Vraies routes » on, a trip before this stop not measured yet: the plan's time is not said (final-guess G1)
+  if (j.status === 'booked' && j.eta_measured === false) return t('jobs.order.etaUnmeasured');
   if (j.status === 'on_site' && j.arrived_at) return t('jobs.arrivedAt', { time: clockOf(j.arrived_at, l as 'fr' | 'en') });
   if (j.status === 'done' && j.finished_at) return t('jobs.finishedAt', { time: clockOf(j.finished_at, l as 'fr' | 'en') });
   return '';

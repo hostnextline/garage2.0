@@ -29,10 +29,11 @@ jobs:
           if git diff --cached --quiet; then echo "Rien n'a changé depuis la dernière sauvegarde."; exit 0; fi
           git commit -q -m "Sauvegarde du $(date -u +%F)"
           git push -q
-      - name: Le dire au garage, puis le rapprochement de la journée
+      - name: Le dire au garage, le rapprochement de la journée, puis les routes
         # APRÈS « Garder la copie », exprès : cette étape finit en rouge quand le rapprochement trouve un écart
         # (GitHub écrit alors au propriétaire), et la sauvegarde de la nuit est déjà gardée quoi qu'il arrive.
-        # Un serveur qui ne connaît pas encore « done » ou « recon » : un avertissement, jamais un échec.
+        # Puis les trajets des jours qui viennent (drive sweep, 10 appels au plus, ~40 s chacun).
+        # Un serveur qui ne connaît pas encore « done », « recon » ou « drive » : un avertissement, jamais un échec.
         run: node sauvegarde.mjs --fin donnees
       - name: Push refusé — le dire au garage
         # seulement quand « Garder la copie » a échoué (la copie était entière, GitHub l'a refusée) : la nuit reste rouge,

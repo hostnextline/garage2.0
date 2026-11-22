@@ -1,11 +1,14 @@
 /* A job as a block of the time grid: at its planned arrival, as tall as its work, in its truck's colour; the stop number,
-   the person, the arrival, the window told (« Flexible », « Hors plage »), the work when there is room.
+   the person, the arrival (on the way: the trip's real one, or none), the window told (« Flexible », « Hors plage »), the
+   work when there is room.
    Dragged to move it; right-click / long press: its menu. Memoised: a pointer moving over the grid redraws none. */
 import { memo } from 'preact/compat';
 import { TriangleAlert, CloudUpload } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { clock, duration } from '../../lib/dates';
-import { truckColor, customer as customerRow } from '../../data/select';
+import { truckColor, customer as customerRow, activeTrip } from '../../data/select';
+import { enRouteTicket, etaUnsure } from '../../domain/jobs/when';
+import { seen } from '../../shared/jobs/select';
 import type { Job } from '../../data/types';
 import type { Box, Slot } from '../../domain/moment/grid';
 import { jobStatusWord } from '../../ui';
@@ -31,11 +34,16 @@ export const GridJob = memo(function GridJob(p: GridJobProps) {
   const win = w ? (w.win ? winShort(w.win, l) : w.flex ? t('agenda.win.flex') : '') : t(`common.blocks.${j.block}`);
   // the week's narrow blocks: the window as short as it gets (« 14 h–18 h », “2–6 p.m.”)
   const winSmall = w?.win ? winTiny(w.win, l) : win;
-  const eta = j.eta_min != null ? clock(j.eta_min, l) : '';
+  // the arrival said: a stop on the way (as this phone sees it) says the trip's REAL arrival or none, never the plan's
+  // time as an arrival (the rule of JobTicket: review-trip F1); the block itself stays at the plan's place in the grid
+  const said = enRouteTicket(j, seen(j).status, activeTrip(j.id)?.eta_at).eta_min;
+  const eta = said != null ? clock(said, l) : '';
+  // « Vraies routes » on, a trip before this stop not measured yet: no time, and the words say why (final-guess G1)
+  const unsure = seen(j).status === 'booked' && etaUnsure(j);
   const late = !!w?.late;
   // a move of it still kept on the phone (agenda-14): said on the block
   const waits = movesWaiting.value.has(j.id);
-  const label = [waits ? t('agenda.move.waiting') : '', j.stop_order ? t('agenda.lane.stop', { n: j.stop_order }) : '', name, eta ? t('agenda.grid.eta', { time: eta }) : '', win, late ? t('common.window.late') : '', work, jobStatusWord(j.status, l), duration(j.duration_min, l)].filter(Boolean).join(', ');
+  const label = [waits ? t('agenda.move.waiting') : '', j.stop_order ? t('agenda.lane.stop', { n: j.stop_order }) : '', name, eta ? t('agenda.grid.eta', { time: eta }) : unsure ? t('jobs.order.etaUnmeasured') : '', win, late ? t('common.window.late') : '', work, jobStatusWord(j.status, l), duration(j.duration_min, l)].filter(Boolean).join(', ');
   // how many lines of text fit (a line is 13 px, a unit 16 px, 4 px go to the edges)
   const lines = Math.max(2, Math.floor((p.box.height * 16 - 4) / 13));
   const { col, cols } = p.slot;

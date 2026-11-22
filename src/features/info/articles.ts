@@ -6,8 +6,16 @@ export type InfoTopic = 'day' | 'booking' | 'pay' | 'customers' | 'map' | 'offic
 export const INFO_TOPICS: InfoTopic[] = ['day', 'booking', 'pay', 'customers', 'map', 'office', 'setup'];
 export type InfoRole = 'owner' | 'office' | 'mechanic' | 'accountant';
 
-export interface InfoText { title: string; short: string; steps: string[]; example: string; tips?: string[]; keys?: string }
+/** `roads`: what changes while the real roads are on (settings.booking.roads_on, Part 27): a sentence true only with the
+    estimate of before has its twin here (articleText picks it) */
+export interface InfoText { title: string; short: string; steps: string[]; example: string; tips?: string[]; keys?: string; roads?: Partial<Pick<InfoText, 'short' | 'steps' | 'example' | 'tips'>> }
 export interface InfoArticle { id: string; topic: InfoTopic; roles: InfoRole[]; link?: string; fr: InfoText; en: InfoText }
+
+/** the article's text in a language, with the real roads on or off */
+export function articleText(a: InfoArticle, l: 'fr' | 'en', roadsOn: boolean): InfoText {
+  const x = a[l];
+  return roadsOn && x.roads ? { ...x, ...x.roads } : x;
+}
 
 export const ARTICLES: InfoArticle[] = [
   /* ---------- the day of the mechanic ---------- */
@@ -222,7 +230,12 @@ export const ARTICLES: InfoArticle[] = [
         'Un moment marqué « loin » met beaucoup de route dans la journée : voir « Garde-route ».',
         'Si le garage réserve par plages d’arrivée (voir « Plages d’arrivée de 4 heures »), tu choisis une plage de 4 heures au lieu d’un bloc. Le reste est pareil.'
       ],
-      keys: 'reserver rendez-vous rdv booking bloc matin apres-midi soir camion voiture carte nouveau prendre'
+      keys: 'reserver rendez-vous rdv booking bloc matin apres-midi soir camion voiture carte nouveau prendre',
+      roads: { tips: [
+        'L’heure est calculée par l’app avec les vraies routes (la circulation habituelle de l’heure). Un trajet pas encore mesuré compte un temps fixe : l’heure est sûre une fois la route mesurée. Le client a le bloc ; il reçoit l’heure le jour même avec « Je pars ».',
+        'Un moment marqué « loin » met beaucoup de route dans la journée : voir « Garde-route ».',
+        'Si le garage réserve par plages d’arrivée (voir « Plages d’arrivée de 4 heures »), tu choisis une plage de 4 heures au lieu d’un bloc. Le reste est pareil.'
+      ] }
     },
     en: {
       title: 'Book an appointment',
@@ -230,7 +243,8 @@ export const ARTICLES: InfoArticle[] = [
       steps: ['Tap the red “+” → “Book an appointment”.', 'Find the customer (or create them).', 'Pick their car (or add it).', 'Tick the services. The length is worked out; you can change it.', 'The garage has the car and the truck? Choose “Either”, “Car” or “Truck”.', 'Pick a suggested moment, or “Choose on the map” to see each day’s routes.', 'Tap “Book”. The customer gets a text with each service, its price and the total.'],
       example: 'Andre calls for an oil change tomorrow afternoon. The office types “Andre”, picks his Sienna, ticks “Oil change”, picks “Tomorrow, afternoon” and books. Andre gets the text: “Oil change $89.99 — Total: $89.99 + tx”.',
       tips: ['The exact time is worked out by the app (the shortest route). The customer gets the block; the exact time comes on the day with “I’m leaving”.', 'A moment marked “far” puts a lot of driving in the day: see “Too much driving”.', 'If the garage books by arrival windows (see “4-hour arrival windows”), you pick a 4-hour window instead of a block. The rest is the same.'],
-      keys: 'book appointment booking block morning afternoon evening truck car map new'
+      keys: 'book appointment booking block morning afternoon evening truck car map new',
+      roads: { tips: ['The time is worked out by the app with the real roads (the usual traffic of the hour). A drive not measured yet counts a fixed time: the time is sure once the road is measured. The customer gets the block; the exact time comes on the day with “I’m leaving”.', 'A moment marked “far” puts a lot of driving in the day: see “Too much driving”.', 'If the garage books by arrival windows (see “4-hour arrival windows”), you pick a 4-hour window instead of a block. The rest is the same.'] }
     }
   },
   {
@@ -317,19 +331,19 @@ export const ARTICLES: InfoArticle[] = [
         'Touche « Modifier » (aussi dans le menu « … », et d’un clic droit ou d’un appui long dans l’agenda).',
         'Change ce qu’il faut : un autre jour ou un autre bloc, un autre client (« Changer de client »), un service, un prix.',
         'Enregistre. Si le jour ou le bloc change et que les textos sont branchés, le client est averti.',
-        'Seulement le camion à changer ? Menu « … » → « Changer de camion » : choisis un camion qui travaille ce bloc, ou « Laisser l’app choisir ». Le client n’est pas averti (même jour, même heure).'
+        'Seulement le camion à changer ? Menu « … » → « Changer de camion » : choisis un camion qui travaille ce bloc, ou « Laisser l’app choisir ». Le client n’est pas averti (même jour, même heure). Avec les plages d’arrivée, si l’autre camion ne peut pas être là à cette heure, l’app te le dit avant et te propose la première heure possible : sa nouvelle plage est dite, et le client reçoit le texto du changement.'
       ],
       example: 'Amro ne peut plus samedi. Le bureau ouvre sa job → « Modifier » → lundi matin, puis enregistre. Amro reçoit le texto du changement.',
-      tips: ['Avec les plages d’arrivée, tu choisis le nouveau jour et une plage de 4 heures (ou « Flexible ») au lieu d’un bloc.', 'Le mauvais client sur le rendez-vous ? « Changer de client » : ses liens sont retirés, renvoie la confirmation au bon client.'],
-      keys: 'modifier deplacer changer date jour reporter remettre bloc client camion prix service'
+      tips: ['Avec les plages d’arrivée, tu choisis le nouveau jour et l’heure où le mécano arrive (à 15 minutes près ; dans l’agenda à l’ordi, glisse la job à cette heure) : la job arrive à cette heure-là, le client reçoit la plage de 4 heures autour, et les autres arrêts gardent leur ordre et leur heure. Si quelqu’un serait en retard, l’app te dit qui avant d’enregistrer. « Flexible » : l’app choisit l’heure.', 'Le mauvais client sur le rendez-vous ? « Changer de client » : ses liens sont retirés, renvoie la confirmation au bon client.', 'Sans ouvrir la job : sur la Carte (« Déplacer » sur la fiche de l’arrêt), dans Vue d’ensemble et dans « Les camions » d’Aujourd’hui, appui long sur un arrêt (à l’ordi : clic droit) → « Déplacer ». La feuille s’ouvre sur place ; l’arrêt quitte la liste s’il change de jour.'],
+      keys: 'modifier deplacer changer date jour reporter remettre bloc client camion prix service carte arret arrets vue ensemble camions'
     },
     en: {
       title: 'Edit or move an appointment',
       short: 'On the job, “Edit” changes everything in one place: the customer, the car, the address, the day and block, the truck, the services and prices, the problem and notes.',
-      steps: ['Open the job (not started yet).', 'Tap “Edit” (also in the “…” menu, and with a right click or a long press in the agenda).', 'Change what you need: another day or block, another customer (“Change the customer”), a service, a price.', 'Save. If the day or block changes and texts are on, the customer is told.', 'Only the truck to change? “…” menu → “Change truck”: pick a truck working that block, or “Let the app choose”. The customer is not told (same day, same time).'],
+      steps: ['Open the job (not started yet).', 'Tap “Edit” (also in the “…” menu, and with a right click or a long press in the agenda).', 'Change what you need: another day or block, another customer (“Change the customer”), a service, a price.', 'Save. If the day or block changes and texts are on, the customer is told.', 'Only the truck to change? “…” menu → “Change truck”: pick a truck working that block, or “Let the app choose”. The customer is not told (same day, same time). With arrival windows, if the other truck can’t be there at that time, the app tells you first and offers the earliest time: its new window is shown, and the customer gets the change text.'],
       example: 'Amro can’t make Saturday. The office opens his job → “Edit” → Monday morning → save. Amro gets the text.',
-      tips: ['With arrival windows, you pick the new day and a 4-hour window (or “Flexible”) instead of a block.', 'The wrong customer on the appointment? “Change the customer”: their links are removed, send the confirmation again to the right customer.'],
-      keys: 'edit move change date day reschedule block customer truck price service'
+      tips: ['With arrival windows, you pick the new day and the time the mechanic arrives (to the quarter hour; in the agenda on a computer, drag the job to that time): the job arrives then, the customer is told the 4-hour window around it, and the other stops keep their order and time. If someone would be late, the app tells you who before saving. “Flexible”: the app picks the time.', 'The wrong customer on the appointment? “Change the customer”: their links are removed, send the confirmation again to the right customer.', 'Without opening the job: on the Map (“Move” on the stop’s card), in Overview and in “The trucks” on Today, press and hold a stop (on a computer: right-click) → “Move”. The sheet opens right there; the stop leaves the list when it changes day.'],
+      keys: 'edit move change date day reschedule block customer truck price service map stop stops overview trucks'
     }
   },
   {
@@ -345,16 +359,18 @@ export const ARTICLES: InfoArticle[] = [
         '« Choisir sur la carte » montre les jours, la route ajoutée et le « Meilleur choix ».'
       ],
       example: 'Un client de Pointe-aux-Trembles veut mardi après-midi. Les deux autres arrêts de mardi sont à Lachine : le moment est « loin ». L’app propose « Plutôt jeudi matin : 48 min de route en moins ».',
-      tips: ['Les limites se changent dans Réglages → Réservations (0 = pas de limite).', 'La route est une estimation à vol d’oiseau, pas la circulation réelle.'],
-      keys: 'loin route garde-route trop de route distance carte choisir meilleur choix plutot beaucoup'
+      tips: ['Les limites se changent dans Réglages → Réservations (0 = pas de limite).', 'La route est une estimation (« Le calcul de la route », Réglages → Réservations), pas la circulation réelle.'],
+      keys: 'loin route garde-route trop de route distance carte choisir meilleur choix plutot beaucoup',
+      roads: { tips: ['Les limites se changent dans Réglages → Réservations (0 = pas de limite).', 'La route vient des vraies routes (TomTom), avec la circulation habituelle de l’heure ; sans la clé de TomTom, les vraies rues sans la circulation. Un trajet pas encore mesuré compte le « Trajet inconnu » de Réglages → Réservations.'] }
     },
     en: {
       title: 'Too much driving in a day',
       short: 'The app counts the driving each appointment adds to the truck’s day. A moment too far from the other stops is marked “far” and is never suggested.',
       steps: ['When you book (or move), the moments suggested are the ones that add the least driving.', 'In the calendar, a moment “far from the other stops” is marked.', 'You pick it anyway? The app offers “Rather …” buttons with the driving saved.', 'Before booking, “A lot of driving that day” asks: book anyway, or choose another moment.', '“Choose on the map” shows the days, the driving added and the “Best choice”.'],
       example: 'A customer in Pointe-aux-Trembles wants Tuesday afternoon. Tuesday’s two other stops are in Lachine: the moment is “far”. The app offers “Rather Thursday morning: 48 min less driving”.',
-      tips: ['The limits are changed in Settings → Bookings (0 = no limit).', 'The driving is an estimate as the crow flies, not real traffic.'],
-      keys: 'far driving distance map choose best choice rather too much'
+      tips: ['The limits are changed in Settings → Bookings (0 = no limit).', 'The driving is an estimate (“Route estimate”, Settings → Bookings), not real traffic.'],
+      keys: 'far driving distance map choose best choice rather too much',
+      roads: { tips: ['The limits are changed in Settings → Bookings (0 = no limit).', 'The driving comes from the real roads (TomTom), with the usual traffic of the hour; without TomTom’s key, the real streets without traffic. A drive not measured yet counts the “Unknown drive” of Settings → Bookings.'] }
     }
   },
   {

@@ -1,7 +1,9 @@
 /* Carte */
 export const map = {
   title: 'Carte',
-  help: 'La journée de l’équipe : le départ des camions, chaque camion dans sa couleur avec ses arrêts numérotés dans l’ordre de sa route, et où sont les mécanos en ce moment.',
+  help: 'La journée de l’équipe : le départ des camions, chaque camion dans sa couleur avec ses arrêts numérotés dans l’ordre de sa route, et où sont les mécanos en ce moment. Touche un arrêt pour l’ouvrir ou t’y rendre ; appui long sur un arrêt de la liste (à l’ordi : clic droit) : « Appeler », « Itinéraire »…',
+  /* the same for who may move appointments (« Réserver »): « Déplacer » named */
+  helpMove: 'La journée de l’équipe : le départ des camions, chaque camion dans sa couleur avec ses arrêts numérotés dans l’ordre de sa route, et où sont les mécanos en ce moment. Touche un arrêt pour l’ouvrir, le déplacer ou t’y rendre ; appui long sur un arrêt de la liste (à l’ordi : clic droit) : « Déplacer », « Appeler », « Itinéraire »…',
   label: 'Carte de l’équipe',
   days: { yesterday: 'Hier', today: 'Aujourd’hui', tomorrow: 'Demain' },
   dayLabel: 'Jour affiché',
@@ -87,6 +89,9 @@ export const map = {
   },
   ago: { now: 'à l’instant', min: 'il y a {n} min', hours: 'il y a {n} h', yesterday: 'hier', on: 'le {date}' },
   tripLabel: 'Arrivée vers {time}',
+  /* where a truck's road by the streets would be said, while it is asked or when no route planner answers: nothing is
+     drawn between the stops then (never a straight line) */
+  roadNote: { asking: 'Route en cours de calcul…', none: 'Route indisponible pour l’instant', never: 'Route impossible à tracer' },
   empty: {
     title: 'Aucun rendez-vous ce jour-là',
     text: 'Les arrêts des camions apparaissent ici dès qu’un rendez-vous est réservé.',

@@ -2,6 +2,8 @@
 import { weekDays, weekStart, addDays, daysBetween, duration, parseDay, clock, longDay, type Day, type BlockKey, type Range } from '../../lib/dates';
 import { t, type Lang } from '../../lib/i18n';
 import { blockPhraseLower, relativeDay, windowWords } from '../../domain/moment/words';
+import { windowRowAt } from '../../domain/moment/exactAt';
+import type { WindowOf } from '../../domain/moment/units';
 
 /** the 7 days shown (Sunday → Saturday) around a day */
 export function weekOfDay(day: Day): Day[] { return weekDays(day); }
@@ -77,14 +79,16 @@ export function byArrival(a: Planned, b: Planned): number {
   return ((a.eta_min ?? 9999) - (b.eta_min ?? 9999)) || ((a.stop_order ?? 99) - (b.stop_order ?? 99)) || (a.number - b.number);
 }
 export interface WinInfo { win: Range | null; flex: boolean; late: boolean }
-type Windowed = { block: BlockKey; win_start?: number | null; win_end?: number | null; win_flex?: boolean; eta_min: number | null; status: string };
+type Windowed = { block: BlockKey; win_start?: number | null; win_end?: number | null; win_flex?: boolean; eta_min: number | null; eta_measured?: boolean | null; status: string };
 /** what to say of a job booked for « the day »: its window, « flexible » (no window yet), « hors plage » (the arrival
     planned falls outside the window promised). null: a job of a block (drawn as before). */
 export function winInfo(j: Windowed): WinInfo | null {
   if (j.block !== 'day') return null;
   const win: Range | null = j.win_start != null && j.win_end != null ? [j.win_start, j.win_end] : null;
   // a stop on the way or there is not judged: the planner no longer moves it (the same rule as the job ticket)
-  const late = !!win && j.status === 'booked' && j.eta_min != null && (j.eta_min < win[0] || j.eta_min > win[1]);
+  // a plan's time that is not sure (a trip before it not measured: final-guess G1) is never judged « Hors plage »
+  const eta = j.eta_measured === false ? null : j.eta_min;
+  const late = !!win && j.status === 'booked' && eta != null && (eta < win[0] || eta > win[1]);
   return { win, flex: !win && j.win_flex === true, late };
 }
 /** « 14 h – 18 h » / « 2 p.m. – 6 p.m. »: a window, short enough for a small ticket */
@@ -111,18 +115,29 @@ export function moveDayTitle(name: string, from: Day, to: Day, todayDay: Day, l:
   const day = dayWords(to, todayDay, l);
   return t(from === to ? 'agenda.move.winTitleSame' : 'agenda.move.winTitle', { name: name || t('agenda.move.someone', undefined, l), day: l === 'en' ? day : day.charAt(0).toLowerCase() + day.slice(1) }, l);
 }
-export interface WindowChoice { start: number; end: number; eta: number | null; best: boolean; current: boolean; words: string }
+export interface WindowChoice { start: number; end: number; eta: number | null; best: boolean; current: boolean; words: string;
+  /** « Vraies routes » on: a trip of that day is not measured yet: no arrival said, never « the best » (final-guess G1 / G2) */
+  unsure?: boolean;
+  /** the vehicle the server would send in that window (« exact move »: taken only when the job's own truck does not work) */
+  truck?: string;
+  /** « exact move » (given `rule`): the minute the row prints and sends, whose window IS the row's (windowRowAt; null: the
+      window alone is sent) */
+  at?: number | null }
 /** the windows to offer for a move, as the server ranked them (best first), each once; the job's own window that same
     day is marked (nothing to change there) and is never « the best » */
-export function windowChoices(list: readonly { win_start?: number | null; win_end?: number | null; eta?: number | null }[], job: { day: Day; win_start?: number | null }, day: Day, l: Lang): WindowChoice[] {
+export function windowChoices(list: readonly { win_start?: number | null; win_end?: number | null; eta?: number | null; unmeasured?: number | null; truck?: string | null }[], job: { day: Day; win_start?: number | null }, day: Day, l: Lang,
+  rule?: { span: Range; windowOf: WindowOf }): WindowChoice[] {
   const out: WindowChoice[] = [];
   for (const s of list) {
     if (s.win_start == null || s.win_end == null || out.some((x) => x.start === s.win_start)) continue;
     const current = job.day === day && job.win_start === s.win_start;
     const w = windowWords([s.win_start, s.win_end], l);
-    out.push({ start: s.win_start, end: s.win_end, eta: s.eta ?? null, best: false, current, words: w.charAt(0).toUpperCase() + w.slice(1) });
+    const unsure = (Number(s.unmeasured) || 0) > 0;
+    const eta = unsure ? null : s.eta ?? null;
+    out.push({ start: s.win_start, end: s.win_end, eta, best: false, current, words: w.charAt(0).toUpperCase() + w.slice(1), ...(unsure ? { unsure } : {}), ...(s.truck ? { truck: s.truck } : {}),
+      ...(rule ? { at: windowRowAt(s.win_start, eta, rule.span, rule.windowOf) } : {}) });
   }
-  const best = out.find((x) => !x.current);
+  const best = out.find((x) => !x.current && !x.unsure);
   if (best) best.best = true;
   return out;
 }

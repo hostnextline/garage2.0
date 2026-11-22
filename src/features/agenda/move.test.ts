@@ -82,10 +82,11 @@ describe('the server’s « tell » decides the text when it gives it (R85)', ()
 });
 
 describe('a drop in the job’s own truck column (agenda-08)', () => {
-  it('moves the time without keeping the truck for good, and promises no text when only the truck changes', async () => {
+  // « exact move » (STATE.md A1, S2): the column's truck is sent, its own column included (it stays on its truck)
+  it('moves the time on its own truck, and promises no text when only the truck changes', async () => {
     api.moveJob.mockResolvedValue({ queued: false, data: { ok: true, changed: false, rows: { jobs: [julie({ win_start: 840 })] } } });
     await moveToTime(julie(), '2026-11-20', 't1', 900);
-    expect(api.moveJob.mock.calls[0][3]).toBe(null);
+    expect(api.moveJob.mock.calls[0][3]).toBe('t1');
     await moveToTime(julie(), '2026-11-20', 't2', 540);
     const question = ui.ask.mock.calls[ui.ask.mock.calls.length - 1][0] as { text: string };
     expect(question.text).not.toMatch(/texto/i);

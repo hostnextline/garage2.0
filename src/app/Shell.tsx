@@ -42,14 +42,19 @@ export function startWithRetry(name: string, run: () => Promise<void>): void {
 
 let backgroundStarted = false;
 /** background work started with the frame, each in a file of its own (the first download stays small): the mechanic's
-    position (shared only between « Commencer ma journée » and the end of the day, app on screen) and the search of the
-    addresses with no position. Started once for the life of the page (both are for the whole session); code that could
-    not come is asked again (startWithRetry). */
+    position (shared only between « Commencer ma journée » and the end of the day, app on screen), the search of the
+    addresses with no position, the driver's arrival time worked out again while he drives (« Vraies routes »:
+    services/tripRefresh.ts, his own trip only) and the measure of the trips still missing (« Vraies routes »:
+    services/roadsSweep.ts, owner / office with the switch on). Each decides by itself whether it has anything to do for
+    this person (nothing is asked with the switch off). Started once for the life of the page (all are for the whole
+    session); code that could not come is asked again (startWithRetry). */
 export function startBackground(): void {
   if (backgroundStarted) return;
   backgroundStarted = true;
   startWithRetry('position', () => import('../services/position').then((m) => m.startPositionSharing()));
   startWithRetry('locator', () => import('../shared/customers/locator').then((m) => m.startLocator()));
+  startWithRetry('trip', () => import('../services/tripRefresh').then((m) => m.startTripRefresh()));
+  startWithRetry('roads', () => import('../services/roadsSweep').then((m) => m.startRoadsSweep()));
 }
 
 export function Shell() {

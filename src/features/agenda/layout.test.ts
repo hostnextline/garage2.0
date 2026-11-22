@@ -91,6 +91,9 @@ describe('« Plages d’arrivée »', () => {
     expect(winInfo({ ...j, eta_min: 1100 })!.late).toBe(true);
     expect(winInfo({ ...j, eta_min: 800 })!.late).toBe(true);
     expect(winInfo({ ...j, eta_min: null })!.late).toBe(false);
+    // « Vraies routes » on, a trip before it not measured: never « Hors plage » from that time (final-guess G1)
+    expect(winInfo({ ...j, eta_min: 1100, eta_measured: false })!.late).toBe(false);
+    expect(winInfo({ ...j, eta_min: 1100, eta_measured: true })!.late).toBe(true);
     // once the mechanic is there or the job is done, the planned arrival no longer counts
     expect(winInfo({ ...j, eta_min: 1100, status: 'on_site' })!.late).toBe(false);
     expect(winInfo({ ...j, eta_min: 1100, status: 'done' })!.late).toBe(false);
@@ -155,5 +158,15 @@ describe('the time grid: order on a phone, short windows', () => {
     expect(winTiny([510, 750], 'fr')).toBe('8 h 30–12 h 30');
     expect(winTiny([840, 1080], 'en')).toBe('2–6 p.m.');
     expect(winTiny([600, 840], 'en')).toBe('10 a.m.–2 p.m.');
+  });
+});
+
+describe('the windows offered for a move (« Vraies routes » on: a trip of that day not measured, decisions 1 and 2)', () => {
+  it('no arrival said, never « Meilleur choix »; the first measured one is the best', () => {
+    const list = [{ win_start: 540, win_end: 780, eta: 600, unmeasured: 2 }, { win_start: 600, win_end: 840, eta: 660, unmeasured: 0 }];
+    const c = windowChoices(list, { day: '2026-11-16', win_start: null }, '2026-11-17', 'fr');
+    expect(c[0]).toMatchObject({ start: 540, eta: null, best: false, unsure: true });
+    expect(c[1]).toMatchObject({ start: 600, eta: 660, best: true });
+    expect(c[1].unsure).toBeUndefined();
   });
 });

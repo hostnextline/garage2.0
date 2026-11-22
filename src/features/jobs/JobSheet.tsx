@@ -41,7 +41,7 @@ import { NotesSheet } from './NotesSheet';
 import { WaiverPanel } from './WaiverPanel';
 import { StepState } from './StepState';
 import { MomentPanel } from './MomentPanel';
-import { MoveSheet } from './MoveSheet';
+import { MoveSheet } from '../../shared/jobs/MoveSheet';
 import { TruckSheet } from './TruckSheet';
 import { TextsPanel } from './TextsPanel';
 import { MenuSheet } from './MenuSheet';

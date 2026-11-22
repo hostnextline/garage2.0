@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Job } from '../../data/types';
-import { blockRange, momentWord, momentShort, promisedWindow, outsideWindow, keepWindow, wt, isWindowJob, minuteOf, clockOf } from './when';
+import { blockRange, momentWord, momentShort, promisedWindow, outsideWindow, keepWindow, wt, isWindowJob, minuteOf, clockOf, enRouteTicket, plannedTime, etaUnsure } from './when';
 
 describe('the hour of a moment is the garage’s, whatever the phone’s zone (R169)', () => {
   it('reads Montréal’s clock (winter UTC−5, summer UTC−4, just after midnight)', () => {
@@ -79,5 +79,49 @@ describe('a window job whose twin text is missing says the base text, never a ra
     expect(wt(win, 'jobs.step.leave', undefined, 'fr')).toBe('Je pars');
     expect(wt(win, 'jobs.step.leave', undefined, 'en')).toBe('I’m leaving');
     expect(wt(J({}), 'jobs.step.leave', undefined, 'fr')).toBe('Je pars');
+  });
+});
+
+describe('enRouteTicket: a stop on the way says the trip’s real arrival or no time (fix-sheets L4)', () => {
+  const j = { id: 'c1', eta_min: 600 };
+  it('on the way, no trip time: no time at all, never the plan’s 10 h', () => {
+    expect(enRouteTicket(j, 'en_route', null).eta_min).toBeNull();
+    expect(enRouteTicket(j, 'en_route', undefined).eta_min).toBeNull();
+  });
+  it('on the way with the trip’s arrival: that time (the garage’s clock)', () => {
+    expect(enRouteTicket(j, 'en_route', '2026-11-20T15:25:00Z').eta_min).toBe(minuteOf('2026-11-20T15:25:00Z'));
+  });
+  it('booked or anything else: the job as it is (the same object)', () => {
+    expect(enRouteTicket(j, 'booked', '2026-11-20T15:25:00Z')).toBe(j);
+    expect(enRouteTicket(j, 'on_site', null)).toBe(j);
+  });
+});
+
+describe('a plan’s time that is not sure (« Vraies routes » on, jobs.eta_measured false: final-guess G1)', () => {
+  it('plannedTime: no time while a trip before the stop is not measured; the plan’s time otherwise, as before', () => {
+    expect(plannedTime({ eta_min: 580, eta_measured: false })).toBeNull();
+    expect(plannedTime({ eta_min: 580, eta_measured: true })).toBe(580);
+    expect(plannedTime({ eta_min: 580, eta_measured: null })).toBe(580);
+    expect(plannedTime({ eta_min: 580 })).toBe(580);   // switch off, or a server without the column
+    expect(plannedTime({ eta_min: null, eta_measured: true })).toBeNull();
+    expect(etaUnsure({ eta_min: 580, eta_measured: false })).toBe(true);
+    expect(etaUnsure({ eta_min: null, eta_measured: false })).toBe(false);
+    expect(etaUnsure({ eta_min: 580 })).toBe(false);
+  });
+  it('outsideWindow: never « Hors plage » from a time that is not sure', () => {
+    const j = { block: 'day' as const, win_start: 540, win_end: 780, status: 'booked' as const, eta_min: 900 };
+    expect(outsideWindow(j)).toBe(true);
+    expect(outsideWindow({ ...j, eta_measured: false })).toBe(false);
+    expect(outsideWindow({ ...j, eta_measured: true })).toBe(true);
+  });
+  it('enRouteTicket: a booked stop’s unsure time is not said (the flag kept); on the way the trip’s real time is said', () => {
+    const j = { id: 'c1', eta_min: 580, eta_measured: false };
+    expect(enRouteTicket(j, 'booked', null).eta_min).toBeNull();
+    expect(enRouteTicket(j, 'booked', null).eta_measured).toBe(false);
+    const r = enRouteTicket(j, 'en_route', '2026-11-20T15:25:00Z');
+    expect(r.eta_min).toBe(minuteOf('2026-11-20T15:25:00Z'));
+    expect(plannedTime(r)).toBe(minuteOf('2026-11-20T15:25:00Z'));
+    const sure = { id: 'c2', eta_min: 580, eta_measured: true };
+    expect(enRouteTicket(sure, 'booked', null)).toBe(sure);
   });
 });

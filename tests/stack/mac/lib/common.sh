@@ -220,6 +220,7 @@ start_functions(){
   port_ours_or_die 8011 functions
   ( export TZ=UTC SUPABASE_URL=http://127.0.0.1:54331 SUPABASE_ANON_KEY="$(key anon)" SUPABASE_SERVICE_ROLE_KEY="$(key service)" JWT_SECRET="$(key secret)" \
       GHL_API_BASE=http://127.0.0.1:8021/ghl STRIPE_API_BASE=http://127.0.0.1:8021/stripe OSRM_BASE=http://127.0.0.1:8021/osrm \
+      TOMTOM_KEY=tt-test TOMTOM_BASE=http://127.0.0.1:8021/tomtom \
       VPIC_BASE=http://127.0.0.1:8021/vpic PHOTON_BASE=http://127.0.0.1:8021/photon GITHUB_OIDC_JWKS=http://127.0.0.1:8021/github/jwks \
       APP_BASE_URLS=http://127.0.0.1:4173/ DENO_NO_UPDATE_CHECK=1 DENO_DIR="$TOOLS/deno-dir"
     start_service functions "$PROJ/tests/stack" "$DENO" run --allow-net --allow-env --allow-read "$PROJ/tests/stack/functions.ts" )
@@ -364,5 +365,5 @@ report_stack(){
   echo "   functions   Deno $("$DENO" --version 2>/dev/null | awk 'NR==1 {print $2}') on 8011 — $(echo "$fl" | tr ',' '\n' | grep -c .) of $nf loaded: $fl"
   bad=$(grep 'could not load' "$LOGS/functions.log" 2>/dev/null | cut -c1-300)
   [ -n "$bad" ] && echo "$bad" | sed 's/^/      !! /'
-  echo "   fake services (GoHighLevel, Stripe, maps, VIN, Hermes, GitHub) on 8021; front door http://127.0.0.1:54331"
+  echo "   fake services (GoHighLevel, Stripe, maps: TomTom and OSRM, VIN, Hermes, GitHub) on 8021; front door http://127.0.0.1:54331"
 }

@@ -19,6 +19,8 @@ export interface ContextWhen {
   winStart: number | null; winEnd: number | null;
   /** the planned arrival (minutes); said to Hermes only while the job is booked, but it orders the day either way */
   eta: number | null;
+  /** « Vraies routes » on: the plan has a time but a trip before the stop is not measured yet (eta is null then) */
+  etaUnsure?: boolean;
   status?: string;
 }
 export interface ContextJob extends ContextWhen {
@@ -45,7 +47,8 @@ export const MAX_JOBS = 160, MAX_INVOICES = 30, MAX_STOCK = 40, MAX_CATEGORIES =
 export function blockTime(j: ContextWhen): string {
   if (j.block === 'day') {
     const planned = j.eta != null && (j.status === undefined || j.status === 'booked') ? j.eta : null;
-    const eta = planned != null ? `, planned arrival ${hm(planned)}` : '';
+    const eta = planned != null ? `, planned arrival ${hm(planned)}`
+      : j.etaUnsure && (j.status === undefined || j.status === 'booked') ? ', planned arrival not known yet (drives not measured yet)' : '';
     if (j.winStart == null || j.winEnd == null) return `flexible (any time that day, 4-hour arrival window fixed the evening before)${eta}`;
     const out = planned != null && (planned < j.winStart || planned > j.winEnd) ? ' OUTSIDE its window' : '';
     return `arrival window ${hm(j.winStart)}-${hm(j.winEnd)}${eta}${out}`;

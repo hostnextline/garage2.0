@@ -472,8 +472,10 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   // Saleh has Lina's appointment open
   await s.page.goto(h.APP + `#/job/${X}`);
   await s.page.getByTestId('job-moment').getByText(/Today|Aujourd/).first().waitFor({ timeout: 15000 });
-  // the day of the move, as the job screen writes it (« Saturday, November 21 » / « Samedi 21 novembre »)
-  const dayNum = String(Number(target.slice(8)));
+  // the day of the move, as the job screen writes it (« Saturday, November 21 » / « Samedi 21 novembre »); tomorrow it
+  // writes « Demain » / « Tomorrow » and no number (STATE 2026-11-21 00:50: the step failed every day that was so)
+  const isTomorrow = target === h.sql(`select (public.local_today() + 1)::text`);
+  const dayNum = isTomorrow ? '' : String(Number(target.slice(8)));
   // the office moves it to another day (same truck)
   await o.page.goto(h.APP + `#/job/${X}`);
   await o.page.getByTestId('job-move').click({ timeout: 15000 });
@@ -499,7 +501,7 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   assert.equal(await until(() => h.sql(`select status from public.invoices where job_id = '${Y}' and status <> 'void'`), (v) => v === 'paid', 15000), 'paid');
   // Saleh's screen follows, without a reload (no realtime on the test server: the app asks every 45 s)
   const t0 = Date.now();
-  await s.page.waitForFunction((n) => { const x = document.querySelector('[data-testid="job-moment"]')?.innerText || ''; return !/Today|Aujourd/.test(x) && new RegExp(`\\b${n}\\b`).test(x); }, dayNum, { timeout: 70000 });
+  await s.page.waitForFunction((n) => { const x = document.querySelector('[data-testid="job-moment"]')?.innerText || ''; return !/Today|Aujourd/.test(x) && (n ? new RegExp(`\\b${n}\\b`).test(x) : /Demain|Tomorrow/.test(x)); }, dayNum, { timeout: 70000 });
   console.log(`# Saleh’s screen followed the move after ${Math.round((Date.now() - t0) / 1000)} s`);
   await h.shot(s.page, 'maj-5-moved');
   await s.page.goto(h.APP + `#/job/${Y}`);

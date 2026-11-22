@@ -27,7 +27,7 @@ qu'on veut.
   des deux scripts qui ont fait la copie.
 - Lancer une sauvegarde tout de suite : onglet **Actions**, « Sauvegarde du garage », **Run workflow**.
 
-## La fin de chaque nuit : le garage est prévenu, puis le rapprochement
+## La fin de chaque nuit : le garage est prévenu, le rapprochement, puis les routes
 
 Après avoir gardé la copie (commit + push), le travail fait une dernière étape, `node sauvegarde.mjs --fin donnees` :
 
@@ -35,12 +35,20 @@ Après avoir gardé la copie (commit + push), le travail fait une dernière éta
    l'heure de la dernière bonne sauvegarde ;
 2. il demande le rapprochement de la journée (`recon { action: 'run' }`) : l'argent, les factures, les paiements
    qui ne balancent pas ;
-3. il finit **en rouge** quand le rapprochement dit « bad » (GitHub envoie alors un courriel au propriétaire) ; la
+3. il fait mesurer les trajets des jours qui viennent (« Vraies routes » : `drive { action: 'sweep' }`, avec le même
+   billet GitHub que le rapprochement). Le serveur mesure lui-même ce qui manque (TomTom, sinon OSRM ; jamais la
+   ligne droite), s'arrête de lui-même après ~40 secondes et répond `more: true` s'il en reste : le travail le
+   redemande tant que `more` est vrai, **10 appels au plus** (le reste la nuit suivante ; l'app du propriétaire et du
+   bureau mesure aussi). Le résumé dit « Routes : N trajets mesurés en M appels » et ce qui reste. Cette mesure se
+   fait même quand les vraies routes sont éteintes (c'est elle qui permet de les allumer) et compte dans le plafond
+   TomTom du mois (`booking.roads_month_tx`) ;
+4. il finit **en rouge** quand le rapprochement dit « bad » (GitHub envoie alors un courriel au propriétaire) ; la
    copie de la nuit est gardée quoi qu'il arrive (cette étape vient après le push, exprès).
 
-Un serveur qui ne connaît pas encore ces deux appels (avant la mise à jour du serveur, ou une fonction déjà
-publiée dont la migration n'est pas encore appliquée : réponse `not_ready`) : un avertissement jaune, jamais un échec.
-Un appel refusé ou en panne : rouge, avec la raison en clair.
+Un serveur qui ne connaît pas encore ces appels (avant la mise à jour du serveur : pas de fonction `drive`, 404, ou
+une fonction d'avant : « action » ; ou une fonction déjà publiée dont la migration n'est pas encore appliquée :
+réponse `not_ready`) : un avertissement jaune, jamais un échec. TomTom qui refuse la clé du serveur : un
+avertissement (OSRM a mesuré les heures habituelles). Un appel refusé ou en panne : rouge, avec la raison en clair.
 
 Une nuit **ratée** (la copie n'est pas entière, ou le push est refusé) finit en rouge, et le garage le note aussi
 (`backup { action: 'done', ok: false }`, avec les tables déjà lues) : l'historique des sauvegardes montre la nuit
@@ -61,9 +69,9 @@ plus de 26 heures.
 | Commande | Ce qu'elle fait | Ce qu'elle ne fait PAS |
 |---|---|---|
 | `node restaurer.mjs donnees > restauration.sql` | Remet les lignes **qui n'existent plus du tout** dans la base (effacées pour de bon, par SQL), telles qu'elles étaient cette nuit-là. | N'écrase rien : une ligne qui existe encore garde ses valeurs d'aujourd'hui. **Ne ramène pas** ce qui a été « Effacé » dans l'app (l'app ne fait que cacher la ligne : elle existe encore) → `--retablir`. |
-| `… --remplacer` | En plus, les lignes qui existent encore **reprennent les valeurs de cette nuit-là** (même clé). | Ne change pas la **réservation en ligne** : ouverte ou fermée, elle reste comme elle est dans la base (seul le propriétaire l'ouvre ou la ferme, dans l'app). **N'efface rien** : ce qui a été créé après la sauvegarde (rendez-vous, paiements, factures, numéros) reste. Ce n'est donc **pas** un retour complet à cette nuit-là. Ne recalcule rien : une facture payée après la sauvegarde redevient « non payée » alors que son paiement reste — les totaux ne balancent plus (le rapprochement le dira). À utiliser sur une table ou quelques lignes (`--tables`, `--ids`), pas sur toute la base. |
+| `… --remplacer` | En plus, les lignes qui existent encore **reprennent les valeurs de cette nuit-là** (même clé). | Ne change pas la **réservation en ligne** : ouverte ou fermée, elle reste comme elle est dans la base (seul le propriétaire l'ouvre ou la ferme, dans l'app). Les **vraies routes** non plus : allumées ou éteintes, elles restent comme dans la base (seul `roads_switch`, dans l'app, les change). **N'efface rien** : ce qui a été créé après la sauvegarde (rendez-vous, paiements, factures, numéros) reste. Ce n'est donc **pas** un retour complet à cette nuit-là. Ne recalcule rien : une facture payée après la sauvegarde redevient « non payée » alors que son paiement reste — les totaux ne balancent plus (le rapprochement le dira). À utiliser sur une table ou quelques lignes (`--tables`, `--ids`), pas sur toute la base. |
 | `… --tables customers --retablir` (`--ids <id>` pour une seule fiche) | Défait l'« Effacer » de l'app : `deleted_at` redevient vide, **automatismes allumés** (l'heure de modification est neuve : les téléphones la revoient ; l'historique le note). Seulement pour des lignes vivantes cette nuit-là. | N'écrit **aucune autre valeur** de la sauvegarde ; ne touche ni les lignes non nommées ni les autres tables (les voitures, rendez-vous et factures d'un client effacé sont restés intacts : il n'y a rien à leur faire). |
-| `node restaurer.mjs donnees --neuve > restauration.sql` | **Toute** la sauvegarde dans un **projet neuf** (après la perte du projet : voir « Après la perte du projet »). Comme `--remplacer`, et les réglages faits par les migrations (l'entreprise, les numéros de TPS/TVQ, le préfixe des factures, les droits, les réservations, la réservation en ligne ouverte ou fermée) prennent **ceux de la sauvegarde**. | Refusé, rien n'est changé, quand la base a déjà des personnes, des clients, des rendez-vous, des factures ou des paiements : jamais sur la base du garage. Ne va ni avec `--tables`, ni avec `--ids`, ni avec un autre mode. |
+| `node restaurer.mjs donnees --neuve > restauration.sql` | **Toute** la sauvegarde dans un **projet neuf** (après la perte du projet : voir « Après la perte du projet »). Comme `--remplacer`, et les réglages faits par les migrations (l'entreprise, les numéros de TPS/TVQ, le préfixe des factures, les droits, les réservations, la réservation en ligne ouverte ou fermée) prennent **ceux de la sauvegarde**, sauf les **vraies routes**, remises **éteintes** : les temps de route (`drive_times`) ne sont jamais dans une sauvegarde ; on les mesure (« Mesurer maintenant »), puis on rallume dans l'app. Le compteur du mois chez TomTom (`drive_spend`) repart aussi de 0 dans un projet neuf : le plafond du mois peut alors être dépensé une deuxième fois ce mois-là (la facture de TomTom, elle, continue). | Refusé, rien n'est changé, quand la base a déjà des personnes, des clients, des rendez-vous, des factures ou des paiements : jamais sur la base du garage. Ne va ni avec `--tables`, ni avec `--ids`, ni avec un autre mode. |
 | `… --tables customers --ids <id>,<id>` | Seulement ces lignes-là (avec le mode choisi). Leur heure de modification est faite neuve : chaque téléphone reprend leurs valeurs. | Un id qui n'est dans aucun des fichiers nommés est une **erreur** (rien n'est écrit). |
 
 Toujours vrai, quelle que soit la façon :

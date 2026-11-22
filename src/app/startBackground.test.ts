@@ -16,6 +16,15 @@ vi.mock('../services/position', () => ({
 }));
 const locatorStarts: number[] = [];
 vi.mock('../shared/customers/locator', () => ({ startLocator: () => { locatorStarts.push(1); } }));
+// « Vraies routes »: the driver's trip refresh and the measure of the trips still missing (else the test imports the real
+// data layer)
+const tripStarts: number[] = [];
+vi.mock('../services/tripRefresh', () => ({ startTripRefresh: () => { tripStarts.push(1); } }));
+let roadsFails = 0;
+const roadsStarts: number[] = [];
+vi.mock('../services/roadsSweep', () => ({
+  startRoadsSweep: () => { roadsStarts.push(1); if (roadsFails > 0) { roadsFails--; throw new TypeError('Failed to fetch dynamically imported module'); } }
+}));
 import { startWithRetry, startBackground, BACKGROUND_RETRY_MS } from './Shell';
 
 const chunkError = () => new TypeError('Failed to fetch dynamically imported module: /assets/position-x.js');
@@ -33,6 +42,7 @@ let visibility: DocumentVisibilityState = 'visible';
 beforeEach(() => {
   vi.useFakeTimers();
   reports.length = 0; positionStarts.length = 0; locatorStarts.length = 0; positionFails = 0;
+  tripStarts.length = 0; roadsStarts.length = 0; roadsFails = 0;
   online = true; visibility = 'visible';
   vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
   vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
@@ -111,16 +121,21 @@ describe('a background start that failed with no signal', () => {
 });
 
 describe('startBackground', () => {
-  it('starts the position and the locator once; a position start that failed is run again (it used to stay off)', async () => {
+  it('starts the position, the locator, the trip refresh and the roads sweep once; a start that failed is run again (it used to stay off)', async () => {
     positionFails = 1;
+    roadsFails = 1;
     startBackground();
     startBackground(); // the frame drawn again: nothing twice
     await flush();
     expect(locatorStarts).toHaveLength(1);
     expect(positionStarts).toHaveLength(1);
-    expect(reports).toEqual(['start:position']);
+    expect(tripStarts).toHaveLength(1);
+    expect(roadsStarts).toHaveLength(1);
+    expect(reports).toEqual(['start:position', 'start:roads']);
     await vi.advanceTimersByTimeAsync(BACKGROUND_RETRY_MS[0]);
     expect(positionStarts).toHaveLength(2);
+    expect(roadsStarts).toHaveLength(2);
     expect(locatorStarts).toHaveLength(1);
+    expect(tripStarts).toHaveLength(1);
   });
 });

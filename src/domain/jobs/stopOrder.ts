@@ -54,3 +54,13 @@ export function brokenWindows(ids: string[], booked: Job[], fallbackDrive = 20):
     .sort((a, b) => ids.indexOf(a.job.id) - ids.indexOf(b.job.id));
 }
 export function sameOrder(a: string[], b: string[]): boolean { return a.length === b.length && a.every((x, i) => x === b[i]); }
+
+/** « Ordre des arrêts » with the real roads on: the server's answer for the order shown (stop_order_preview), by stop
+    (its arrival, late = after the window, else the block, told to the customer), and the late ones in the order shown.
+    Never a time of the phone's. A stop the server says is NOT measured (`measured: false`: a trip up to it counts the
+    fixed « unknown » time) has no arrival (eta null, `unmeasured` true) and is never said late: that would be a guess
+    (CONTRACT §0). `measured` absent (the switch off on the server, an older server): its times as given. */
+export function serverOrder(answer: readonly { id: string; eta: number | null; late: boolean; measured?: boolean }[], ids: readonly string[]): { byId: Map<string, { eta: number | null; late: boolean; unmeasured?: true }>; late: string[] } {
+  const byId = new Map(answer.map((x) => [x.id, x.measured === false ? { eta: null, late: false, unmeasured: true as const } : { eta: x.eta, late: x.late }]));
+  return { byId, late: ids.filter((id) => byId.get(id)?.late === true) };
+}

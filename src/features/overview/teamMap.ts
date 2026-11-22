@@ -5,14 +5,16 @@
    never shown « À placer » for want of a fresh answer. */
 import type { TeamMapAnswer } from '../../shared/map/assemble';
 
-export function mergeTeamMap(server: TeamMapAnswer | null, device: TeamMapAnswer): TeamMapAnswer {
+/** `elsewhere`: the phone holds that appointment on another day (moved a moment ago): the server's answer, up to 30 s
+    old, does not keep it on this day's map */
+export function mergeTeamMap(server: TeamMapAnswer | null, device: TeamMapAnswer, elsewhere: (jobId: string) => boolean = () => false): TeamMapAnswer {
   if (!server) return device;
   const fromServer = new Map(server.jobs.map((j) => [j.id, j]));
   const held = new Set(device.jobs.map((j) => j.id));
   const jobs = [
     // the phone's row wins: it is at least as fresh as an answer up to 30 s old (the server's name when the phone has none)
     ...device.jobs.map((d) => { const s = fromServer.get(d.id); return s ? { ...s, ...d, name: d.name && d.name !== '—' ? d.name : s.name } : d; }),
-    ...server.jobs.filter((s) => !held.has(s.id))
+    ...server.jobs.filter((s) => !held.has(s.id) && !elsewhere(s.id))
   ];
   // a truck the server did not list but that holds one of the day's jobs on the phone (else its stops would be lost)
   const trucks = [...server.trucks, ...device.trucks.filter((d) => !server.trucks.some((s) => s.id === d.id) && jobs.some((j) => j.truck_id === d.id))];

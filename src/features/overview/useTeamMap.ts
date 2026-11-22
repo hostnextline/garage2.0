@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { rpcNow } from '../../data/api';
 import { normalize, type TeamMapAnswer } from '../../shared/map/assemble';
 import { fromDevice } from '../../shared/map/device';
+import { job as jobRow } from '../../data/select';
+import { movedLately } from '../../shared/jobs/moving';
 import { afterFailure, mapKey, mergeTeamMap, type ServerMap } from './teamMap';
 
 const REFRESH_MS = 30000;
@@ -37,5 +39,7 @@ export function useTeamMap(day: string): TeamMapAnswer {
   const answer = server && server.day === day ? server.data : null;
   const device = fromDevice(day);
   const key = mapKey(device);
-  return useMemo(() => mergeTeamMap(answer, device), [answer, key]);
+  // an appointment moved from this phone a moment ago (« Déplacer » from the list) and now on another day leaves the map
+  // at once; any other the phone holds on another day stays where the server says (its copy may be the late one)
+  return useMemo(() => mergeTeamMap(answer, device, (id) => { const r = jobRow(id); return !!r && r.day !== day && movedLately(id); }), [answer, key]);
 }

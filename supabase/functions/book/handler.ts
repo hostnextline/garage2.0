@@ -1,6 +1,8 @@
 // « Réserver en ligne » (client.html#reserver): one public link, no account.
 //   info   the garage, whether online booking is open, the services offered, the blocks
-//   slots  the best blocks for an address and the services chosen (where a truck already goes nearby, soonest)
+//   slots  the best blocks for an address and the services chosen (where a truck already goes nearby, soonest); with
+//          « Vraies routes » on, the address's trips are measured first (measureFirst: TomTom within the page's own
+//          brakes, 30 addresses an hour and booking.roads_web_tx transactions a month; past them OSRM)
 //          « Plages d’arrivée » (settings.booking.windows_on): each slot is a day with its 4-hour window (block 'day',
 //          win_start, win_end); the customer books that window, or « flexible » (free all day: win_flex, the window is
 //          confirmed the day before). A window that can no longer be kept is refused with `window_full`.
@@ -16,6 +18,7 @@ import { visitorMark } from '../_shared/visitor.ts';
 import { baseOf, clientLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
 import { money, fill, first, type Lang, servicesList, subtotalWords, whenText, jobWindow } from '../_shared/texts.ts';
+import { warmPoint, tableClaims, monthAllowance } from '../_shared/roads.ts';
 
 type Row = Record<string, any>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,6 +56,34 @@ async function allowed(key: string, windowSec: number, max: number): Promise<boo
 async function robot(ip: string | null, reason: string) {
   try { await adminDb().from('activity').insert({ entity: 'web', entity_id: null, action: 'web_robot', data: { reason, ip } }); } catch { /* a log only */ }
 }
+/** « Vraies routes » on: the address's usual-hours trips of those days are measured before the moments are asked
+    (web_suggest offers online only moments whose trips are all measured), the same « warm » as the team's screens
+    (_shared/roads.ts). Only with the switch on (off, the planner does not read them: no TomTom spent for nothing), only
+    for an address inside the garage's area (a far one is refused by web_suggest anyway), at most 8 s (TomTom 3.5 s, then
+    OSRM 2.5 s: a TomTom that does not answer still leaves OSRM the time); whatever happens here (TomTom and OSRM both
+    down, the month's ceiling), the moments are still asked: a moment not measured is then just not offered, and the page
+    never breaks. Anyone may call this page, so it has its own brakes: 30 addresses measured an hour (`drive:web`, counted
+    by EVERY call that measures, OSRM included: final-security F2, the rows a robot would leave are bounded; past it the
+    address is not measured, its moments are not offered and the page says it cannot offer one now) and a TomTom allowance
+    of the month (booking.roads_web_tx transactions, 1 000 when not set; past it OSRM measures: the moments are still offered
+    and the team keeps its month) */
+async function measureFirst(lat: number, lng: number, from: string | null, days: number) {
+  try {
+    if ((await rpc('roads_on', {})) !== true) return;
+    if ((await rpc('web_in_area', { p_lat: lat, p_lng: lng })) !== true) return;
+    // something to measure for that address? (a call that measures nothing counts nothing)
+    const w = await rpc('drive_wanted', { p_point: { lat, lng }, p_from: from, p_days: days });
+    if (!(Array.isArray(w?.pairs) && w.pairs.some((p: unknown[]) => Array.isArray(p) && p[5] === true && p[4] === 0))) return;
+    if (!(await allowed('drive:web', 3600, 30))) return;
+    const cap = Number((await settings()).booking?.roads_web_tx ?? 1000);
+    const db = adminDb(), claims = tableClaims(db);
+    const month = monthAllowance(db, claims, Number.isFinite(cap) ? cap : 1000);
+    const gate = (cost: number) => month(cost);
+    await warmPoint(rpc, { lat, lng }, from, days, true, { ms: 8000, requests: 6, tomtomMs: 3500, osrmMs: 2500 }, { claims, gate });
+  } catch (e) {
+    console.error('book: measuring the address', String((e as Error)?.message || e).slice(0, 200));
+  }
+}
 /** the total of lines, the same way everywhere (a discount counts negative): _shared/money.ts */
 const taxed = (lines: Row[], s: Row): number => sumLines(lines, s).total;
 
@@ -75,10 +106,21 @@ async function slots(req: Request, b: Row) {
   if (!(await allowed(`slots:${who}`, 600, 20)) || !(await allowed('slots:all', 3600, 150))) fail('busy', BUSY, 429);
   const from = typeof b.from === 'string' && DAY.test(b.from) ? b.from : null;
   const days = Math.max(1, Math.min(14, Number(b.days) || 14));
+  // (final-security F1) online booking closed: refused BEFORE anything is measured (web_suggest says the same after)
+  if ((await rpc('web_on', {})) !== true) fail('web_off', 'La réservation en ligne est fermée pour le moment. Appelez le garage.');
+  await measureFirst(lat, lng, from, days);
   const list = await rpc('web_suggest', { p_lat: lat, p_lng: lng, p_services: ids, p_from: from, p_days: days, p_limit: 6 }) as Row[];
+  // (final-critic W1) nothing offered because the trips are not measured yet (« Vraies routes » on): the page says it cannot
+  // offer a moment for that address right now (call us), never « no moment free »
+  let unmeasured = false;
+  if (!(list || []).length) {
+    try { unmeasured = Number(await rpc('web_unmeasured', { p_lat: lat, p_lng: lng, p_services: ids, p_from: from, p_days: days })) > 0; } catch (e) {
+      console.error('book: unmeasured', String((e as Error)?.message || e).slice(0, 200));
+    }
+  }
   // the customer sees the day, the block and whether a truck is already nearby; never the trucks or the minutes
   // (window mode: the day and its window, « entre 14 h et 18 h »)
-  return { ok: true, from, days, slots: (list || []).map((x) => ({ day: x.day, block: x.block, near: Number(x.near) > 0,
+  return { ok: true, from, days, ...(unmeasured ? { unmeasured: true } : {}), slots: (list || []).map((x) => ({ day: x.day, block: x.block, near: Number(x.near) > 0,
     ...(x.block === 'day' && num(x.win_start) !== null && num(x.win_end) !== null ? { win_start: Number(x.win_start), win_end: Number(x.win_end) } : {}) })) };
 }
 

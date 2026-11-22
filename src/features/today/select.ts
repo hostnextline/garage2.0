@@ -5,7 +5,9 @@
 import { computed } from '@preact/signals';
 import type { Job, JobItem, Invoice, Payment, Shift, Truck } from '../../data/types';
 import { rowsOf, getRow } from '../../data/store';
-import { allJobs, jobsOn, activeTrucks, openShift, positionOf, invoicesList, customer, customerName, job as jobById } from '../../data/select';
+import { allJobs, jobsOn, activeTrucks, openShift, positionOf, invoicesList, customer, customerName, job as jobById, activeTrip } from '../../data/select';
+import { seen } from '../../shared/jobs/select';
+import { enRouteTicket } from '../../domain/jobs/when';
 import { myTrucks, isOwner, hasRole, can } from '../../data/auth';
 import { today, addDays, dayOf } from '../../lib/dates';
 import { OPEN, isLive, pickDay, routeInUse, openBefore, collectList, invoicesByJob, type TodayRole, type Collect } from './rules';
@@ -31,6 +33,11 @@ export function myJobsOn(day: string): Job[] {
   const route = currentRoute();
   const mine = route ? [route] : myTrucks();
   return jobsOn(day).filter((j) => !!j.truck_id && mine.includes(j.truck_id));
+}
+/** the job as its ticket shows it (« vers 10 h 40 »): on the way (also while « Je pars » still waits on the phone), the
+    trip's real arrival or no time, never the plan's time said as an arrival */
+export function ticketJob(j: Job): Job {
+  return enRouteTicket(j, seen(j).status, activeTrip(j.id)?.eta_at);
 }
 /** the next day with work on my trucks (within two weeks) and its first stop */
 export function nextWorkDay(from: string): { day: string; first: Job } | null {

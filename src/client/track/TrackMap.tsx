@@ -1,15 +1,26 @@
 /* The tracking map, kept plain (Uber style): grey streets, a black route, the truck (a black round with a van) and the
    customer's place (a black square). Leaflet and its style are loaded with this file only. The map follows the truck
-   until the customer moves it (« Recentrer » brings it back). padBottom: room left for the card over the map. */
+   until the customer moves it (« Recentrer » brings it back). padBottom: room left for the card over the map.
+   The streets: TomTom's tiles when the app has its key; refused (TomTom's own answer to ONE plain request of a tile that
+   failed: lib/tomtom.ts checkTile; no network is never a refusal) → OpenStreetMap's with its credit, once, for good on
+   this page: never a blank map. The route: the server's road
+   only (3 points or more), else no line at all (never a straight one, and never the old server's two-point line). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Crosshair } from 'lucide-preact';
 import type * as Leaflet from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ct, type CLang } from '../i18n';
 import type { TrackView } from './track-state';
+import { TOMTOM_KEY } from '../../lib/config';
+import { tomtomTiles, tileWatch, checkTile, isRoadLine, OSM_ATTRIBUTION } from '../../lib/tomtom';
 
 const VAN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>';
 const MONTREAL: [number, number] = [45.5017, -73.5673];
+const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+/** TomTom's tiles on this page: refused once → a map made again takes OpenStreetMap's at once */
+const tiles = tileWatch();
+/** forgets that TomTom's tiles were refused (tests) */
+export function forgetTiles() { tiles.forget(); }
 
 interface Live {
   L: typeof Leaflet; map: Leaflet.Map; dot: Leaflet.Marker | null; home: Leaflet.Marker | null;
@@ -34,11 +45,29 @@ export default function TrackMap(p: { view: TrackView; l: CLang; padBottom?: num
         if (!alive || !box.current) return;
         const map = L.map(box.current, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, tapHold: false } as Leaflet.MapOptions);
         map.attributionControl.setPrefix(false);
-        // the page sends no Referer (client.html), but OpenStreetMap refuses tiles asked without one: the tiles say
-        // where they are shown (the site only, never the address with its fragment)
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
-        }).addTo(map);
+        // the page sends no Referer (client.html), but OpenStreetMap refuses tiles asked without one, and TomTom answers
+        // its key only for the app's addresses: the tiles say where they are shown (the site only, never the address
+        // with its fragment). TomTom's map when the app has its key, else OpenStreetMap's as before.
+        const tt = TOMTOM_KEY && !tiles.down ? tomtomTiles(TOMTOM_KEY) : null;
+        const osm = () => L.tileLayer(OSM_TILES, { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: OSM_ATTRIBUTION }).addTo(map);
+        if (!tt) osm();
+        else {
+          const layer = L.tileLayer(tt.url, { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: tt.attribution }).addTo(map);
+          const failed = (e: Leaflet.TileErrorEvent) => {
+            if (!tiles.error(typeof navigator === 'undefined' || navigator.onLine !== false)) return;
+            const url = e?.tile?.src || (e?.coords ? layer.getTileUrl(e.coords) : '');
+            if (!url) { tiles.checked('network'); return; }
+            // the request says the site's address itself (this page sends no Referer otherwise)
+            void checkTile(url, (u, o) => fetch(u, o)).then((r) => {
+              if (!tiles.checked(r) || !alive) return;
+              // only our own listener: the credit's « remove » listener must hear the layer go (its words leave with it)
+              layer.off('tileerror', failed);
+              layer.remove();
+              osm();
+            });
+          };
+          layer.on('tileerror', failed);
+        }
         map.setView(MONTREAL, 11);
         const st: Live = { L, map, dot: null, home: null, line: null, casing: null, fitting: false, fitted: false };
         const mark = () => { if (!st.fitting) setTouched(true); };
@@ -90,13 +119,16 @@ export default function TrackMap(p: { view: TrackView; l: CLang; padBottom?: num
 /** the route, the house and the truck of the last answer; then the view (follow: the customer has not moved the map) */
 function draw(st: Live, v: TrackView, l: CLang, follow: boolean, padBottom: number) {
   const { L, map } = st;
-  const route: [number, number][] = v.route.length >= 2 ? v.route : v.pos && v.dest ? [[v.pos.lat, v.pos.lng], [v.dest.lat, v.dest.lng]] : [];
-  const dashed = v.route.length < 2;
-  if (route.length >= 2) {
+  // the road the server worked out, or no line at all: the truck and the house still show (never a straight line between them)
+  const route: [number, number][] = isRoadLine(v.route) ? v.route : [];
+  if (route.length) {
     if (!st.casing) st.casing = L.polyline(route, { className: 'cl-route-casing', weight: 8, opacity: 1, interactive: false }).addTo(map);
     else st.casing.setLatLngs(route);
-    if (!st.line) st.line = L.polyline(route, { className: 'cl-route', weight: 5, opacity: 0.95, interactive: false, dashArray: dashed ? '2 10' : undefined }).addTo(map);
-    else { st.line.setLatLngs(route); st.line.setStyle({ dashArray: dashed ? '2 10' : '' }); }
+    if (!st.line) st.line = L.polyline(route, { className: 'cl-route', weight: 5, opacity: 0.95, interactive: false }).addTo(map);
+    else st.line.setLatLngs(route);
+  } else {
+    if (st.casing) { st.casing.remove(); st.casing = null; }
+    if (st.line) { st.line.remove(); st.line = null; }
   }
   if (v.dest) {
     const at: [number, number] = [v.dest.lat, v.dest.lng];
@@ -117,7 +149,7 @@ function fit(st: Live, v: TrackView, whole: boolean, padBottom: number) {
   const pts: [number, number][] = [];
   if (v.pos) pts.push([v.pos.lat, v.pos.lng]);
   if (v.dest) pts.push([v.dest.lat, v.dest.lng]);
-  if (whole) for (const r of v.route) pts.push(r);
+  if (whole && isRoadLine(v.route)) for (const r of v.route) pts.push(r);
   if (!pts.length) return;
   st.fitting = true;
   try {

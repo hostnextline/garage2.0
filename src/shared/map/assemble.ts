@@ -1,10 +1,13 @@
 /* The team map, from the answer of team_map(p_day) (or the same shape built from the phone's copy):
-   for each truck its numbered stops in stop order (stopOrder.ts), the route from the Centrale through the
-   stops (straight lines; the active trip's real route when there is one), the live positions of the people.
+   for each truck its numbered stops in stop order (stopOrder.ts), the legs of its route from the Centrale through the
+   stops (each leg is drawn by the streets once the route planner answered, nothing before: useRoads.ts `roadOf`; the
+   active trip's own road when the server gave one, as it is: never a straight piece added to reach the door; a stored
+   « road » of two points is the old server's straight line: not a road), the live positions of the people.
    A person is tied to what he is doing (his position's job, his trip), the truck's nominal driver only last: with
    « Routes partagées » the mechanics swap vehicles during the day.
    Pure functions: no screen, no server (tested in assemble.test.ts). */
 import { minuteOf as garageMinute } from '../../lib/dates';
+import { isRoadLine } from '../../lib/tomtom';
 import { sortStops } from './stopOrder';
 
 export type LatLng = [number, number];
@@ -14,7 +17,9 @@ export interface TeamMapAnswer {
   trucks: { id: string; name: string; color: string | null; driver_id: string | null; start?: { lat: number; lng: number; label: string | null; address: string | null } | null }[];
   jobs: { id: string; number: number | null; truck_id: string | null; order: number | null; eta_min: number | null; status: string; block: string; name: string | null; address: string | null; lat: number | null; lng: number | null;
     /** « Plages d'arrivée » (block 'day'): the window told to the customer; flexible: none yet. Absent in an older answer. */
-    win_start?: number | null; win_end?: number | null; win_flex?: boolean }[];
+    win_start?: number | null; win_end?: number | null; win_flex?: boolean;
+    /** « Vraies routes » on: false = a trip before this stop is not measured, eta_min is not a sure time (final-guess G1) */
+    eta_measured?: boolean | null }[];
   people: { id: string; name: string | null; color: string | null; lat: number; lng: number; at: string | null; job_id: string | null }[];
   trips: { job_id: string; staff_id: string | null; eta_at: string | null; km: number | null; minutes: number | null; route: LatLng[] | null }[];
 }
@@ -32,7 +37,12 @@ export interface Stop {
   done: boolean;
   /** the mechanic is on the way or there */
   live: boolean;
+  /** « Vraies routes » on: the plan has a time for it but a trip before it is not measured (etaMin null then; the words
+      « heure : trajets pas encore mesurés » are said instead: final-guess G1) */
+  unsure?: true;
 }
+/** a leg of a truck's route: two points (from → to: the road by the streets is asked, nothing drawn before), or for a trip
+    on its way the server's own road (3 points or more, drawn as it is) */
 export interface Leg { points: LatLng[]; kind: 'done' | 'todo' | 'trip' }
 export interface TripInfo { jobId: string; staffId: string | null; etaAt: string | null; minutes: number | null; km: number | null; route: LatLng[]; dest: LatLng | null }
 export interface TruckRoute {
@@ -40,7 +50,8 @@ export interface TruckRoute {
   stops: Stop[]; done: number; total: number;
   /** the first stop not done yet */
   next: Stop | null;
-  /** when it should get there (minutes after midnight): the trip's estimate when on the way, else the plan */
+  /** when it should get there (minutes after midnight): the trip's real arrival when on the way (null while the server
+      has none: never the plan's time said as an arrival), else the plan */
   nextEta: number | null;
   trip: TripInfo | null;
   legs: Leg[];
@@ -99,6 +110,7 @@ export function normalize(raw: unknown): TeamMapAnswer {
       id: String(j.id), number: num(j.number), truck_id: j.truck_id ? String(j.truck_id) : null, order: num(j.order), eta_min: num(j.eta_min),
       status: String(j.status ?? 'booked'), block: String(j.block ?? 'am'), name: j.name == null ? null : String(j.name), address: j.address == null ? null : String(j.address),
       lat: num(j.lat), lng: num(j.lng),
+      ...(typeof j.eta_measured === 'boolean' ? { eta_measured: j.eta_measured } : {}),
       ...(j.win_start != null || j.win_end != null || j.win_flex != null ? { win_start: num(j.win_start), win_end: num(j.win_end), win_flex: j.win_flex === true } : {})
     })),
     people: arr<Record<string, unknown>>(a.people).filter((p) => p && p.id != null && okLat(num(p.lat)) && okLng(num(p.lng))).map((p) => ({
@@ -120,11 +132,12 @@ export function minuteOf(iso: string | null | undefined): number | null {
   return Number.isFinite(m) ? m : null;
 }
 
-const near = (a: LatLng, b: LatLng) => Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
-
 export interface AssembleOptions {
   /** the name of a person (staff), to name the driver of a truck */
   nameOf?: (staffId: string) => string;
+  /** the phone's own copy of a job's `eta_measured`, for an answer that does not carry it (team_map before the server
+      sends it): false = its plan's time is not said (final-guess G1) */
+  measuredOf?: (jobId: string) => boolean | null | undefined;
 }
 
 export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {}): Assembled {
@@ -137,13 +150,17 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
   const trips: TripInfo[] = a.trips.map((t) => {
     const j = a.jobs.find((x) => x.id === t.job_id);
     const dest: LatLng | null = j && okLat(j.lat) && okLng(j.lng) ? [j.lat, j.lng] : (t.route?.length ? t.route[t.route.length - 1] : null);
-    return { jobId: t.job_id, staffId: t.staff_id, etaAt: t.eta_at, minutes: t.minutes, km: t.km, route: t.route || [], dest };
+    // a « road » of two points is the old « Je pars »'s straight line (written when OSRM did not answer): not drawn
+    return { jobId: t.job_id, staffId: t.staff_id, etaAt: t.eta_at, minutes: t.minutes, km: t.km, route: isRoadLine(t.route) ? t.route! : [], dest };
   });
 
+  // a plan's time that is not sure (a trip before it not measured) is not said on the map (final-guess G1)
+  const unsureOf = (j: TeamMapAnswer['jobs'][number]) => (j.eta_measured ?? opts.measuredOf?.(j.id)) === false;
   const toStop = (j: TeamMapAnswer['jobs'][number]): Omit<Stop, 'n'> => ({
-    id: j.id, number: j.number, truckId: j.truck_id, block: j.block, order: j.order, etaMin: j.eta_min, status: j.status,
+    id: j.id, number: j.number, truckId: j.truck_id, block: j.block, order: j.order, etaMin: unsureOf(j) ? null : j.eta_min, status: j.status,
     name: j.name || '', address: j.address || '', lat: okLat(j.lat) ? j.lat : null, lng: okLng(j.lng) ? j.lng : null,
     hasPos: okLat(j.lat) && okLng(j.lng), done: j.status === 'done', live: j.status === 'en_route' || j.status === 'on_site',
+    ...(unsureOf(j) && j.eta_min != null ? { unsure: true as const } : {}),
     ...(j.block === 'day' && j.win_start != null && j.win_end != null ? { win: [j.win_start, j.win_end] as [number, number] } : {}),
     ...(j.block === 'day' && j.win_flex === true && (j.win_start == null || j.win_end == null) ? { flex: true } : {})
   });
@@ -171,20 +188,23 @@ export function assemble(raw: TeamMapAnswer | unknown, opts: AssembleOptions = {
       const to: LatLng = [s.lat!, s.lng!];
       const tr = !s.done ? myTrips.find((x) => x.jobId === s.id) : undefined;
       if (tr) {
-        let pts: LatLng[] = tr.route.length >= 2 ? tr.route.slice() : [];
+        // the server's road as it is (it ends on the street in front of the door: nothing straight is added); without
+        // one, the leg from the person who drives it to the stop, whose road is asked (useRoads), nothing drawn before
+        let pts: LatLng[] = tr.route.slice();
         if (!pts.length) {
           const who = tripPerson(tr);
           const from: LatLng | null = who ? [who.lat, who.lng] : prev;
           pts = from ? [from, to] : [];
         }
-        if (pts.length && !near(pts[pts.length - 1], to)) pts.push(to);
         if (pts.length >= 2) legs.push({ points: pts, kind: 'trip' });
       } else if (prev) {
         legs.push({ points: [prev, to], kind: s.done ? 'done' : 'todo' });
       }
       prev = to;
     }
-    const nextEta = next ? (trip && trip.jobId === next.id ? minuteOf(trip.etaAt) ?? next.etaMin : next.etaMin) : null;
+    // on the way with no real arrival from the server (no planner answered « Je pars », or no trip row for it at all):
+    // no time, not the plan's (fix-sheets §5.6)
+    const nextEta = next ? (trip && trip.jobId === next.id ? minuteOf(trip.etaAt) : next.status === 'en_route' ? null : next.etaMin) : null;
     trucks.push({
       id: t.id, name: t.name, color, driverId: t.driver_id,
       driverName: (t.driver_id && (nameOf(t.driver_id) || driverPerson?.name)) || '',
