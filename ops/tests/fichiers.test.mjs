@@ -135,6 +135,33 @@ test('the cutover runbook is exact for this tree: the six migrations in order, t
   for (const m of rb.matchAll(/\| `(ops\/sauvegardes\/[^`]+)` \|/g)) assert.ok(existsSync(join(ROOT, m[1])), m[1]);
 });
 
+test('Part 27 alone, from today\'s live (the rebuild went live 2026-11-21): its runbook names what runs and what changes; the try and the fingerprint only read (merge-main F6)', () => {
+  const rb = lire('ops/live/PARTIE27.md');
+  const cut = lire('ops/live/CUTOVER.md');
+  // CUTOVER says the rebuild's night is done and points to this runbook before anyone follows its sections 1-5 again
+  assert.ok(cut.indexOf('ops/live/PARTIE27.md') >= 0 && cut.indexOf('ops/live/PARTIE27.md') < cut.indexOf('## 0. '), 'CUTOVER.md points to PARTIE27.md at its top');
+  assert.match(lire('CLAUDE.md'), /REBUILD \(« refonte »\) IS LIVE since 2026-11-21/);
+  // what runs today: the app d7b6c0d2, the functions and migrations at 837c89d8
+  for (const x of ['d7b6c0d2', '837c89d8', '`20261119000200`', 'fonctions_avant_27.sql', 'ESSAI OK', 'lock_timeout', 'Le retour'])
+    assert.ok(rb.includes(x), 'PARTIE27.md speaks of ' + x);
+  // the one migration this branch adds to live's (and nothing else in supabase/migrations is newer)
+  const neuves = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261119000100_zzz');
+  assert.deepEqual(neuves, ['20261119000200_vraies_routes.sql']);
+  // the four functions it redeploys exist, the order: drive first (it needs the migration)
+  const order = ['`drive`', '`book`', '`enroute`', '`backup`'].map((f) => rb.indexOf(f));
+  assert.ok(order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), 'drive, book, enroute, backup, in that order');
+  for (const f of ['drive', 'book', 'enroute', 'backup']) assert.ok(existsSync(join(ROOT, 'supabase/functions', f, 'index.ts')), f);
+  // the files it names are in the repository; the fingerprint only reads; the try ends by undoing everything
+  for (const f of ['ops/live/partie27/essai-partie27.sql', 'ops/live/partie27/empreinte-21.sql', 'ops/live/partie27/empreinte-21.local-main.txt', 'ops/live/partie27/essai-local.mjs'])
+    assert.ok(rb.includes(f) && existsSync(join(ROOT, f)), f);
+  const fp = lire('ops/live/partie27/empreinte-21.sql').replace(/--.*$/gm, '');
+  assert.ok(!/\b(insert|update|delete|truncate|drop|alter|create|grant|revoke|do)\b\s/i.test(fp), 'the fingerprint only reads');
+  assert.equal(lire('ops/live/partie27/empreinte-21.local-main.txt').trim().split('\n').length, 22);
+  const essai = lire('ops/live/partie27/essai-partie27.sql');
+  assert.match(essai, /raise exception 'ESSAI OK[^']*'/);
+  assert.ok(!/\b(drop|truncate|delete from)\b/i.test(essai.replace(/--.*$/gm, '')), 'the try sends no DROP, TRUNCATE or DELETE');
+});
+
 test('the full test workflow checks the types of the server functions (deno check), after the stack is installed (infra-15)', () => {
   const y = lire('.github/workflows/tests-complets.yml');
   const i = y.indexOf('deno check --quiet supabase/functions/*/index.ts');

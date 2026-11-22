@@ -69,7 +69,10 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261119000100_heures.sql` (« Heures travaillées », Part 26 of live, applied 2026-11-19 from commit `5e77db6` of the
+- THE REBUILD (« refonte ») IS LIVE since 2026-11-21: its six migrations `20261116000100` … `20261116000600` and twelve server
+  functions at `837c89d8` (20:06), the app `d7b6c0d2` (published about 23:10; `main`). `ops/live/CUTOVER.md` sections 1–5 tell
+  that night (done). Part 27 alone, from today's live: `ops/live/PARTIE27.md`.
+- Applied on live before the rebuild: every migration up to `20261119000100_heures.sql` (« Heures travaillées », Part 26 of live, applied 2026-11-19 from commit `5e77db6` of the
   live branch with the sha256 check; this file is the same byte for byte); before it: `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
   check; INERT while `settings.booking.windows_on` is not true: the owner flips it in Réglages → Réservations, `windows_switch`, and back the
   same way, nothing lost; functions `notify`, `book`, `client` deployed pinned to `6b978bd` the same day);
@@ -95,9 +98,11 @@ end $do$;
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
 - NOT on live: Part 27 « Vraies routes » (`20261119000200_vraies_routes.sql`, the function `drive`, the TomTom keys):
-  its cutover and its way back are `ops/live/CUTOVER.md` (section 5 bis, section 7), nothing without Hassan's go.
+  its runbook from today's live is `ops/live/PARTIE27.md` (the keys, the measure and the switch: `ops/live/CUTOVER.md`
+  section 5 bis; the way back: section 7), nothing without Hassan's go.
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  `notify`, `book` at `408de6c`; `conversation`, `ring` at `5f6640b` (2026-11-13, pictures and documents; before: `4142fac`); `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
+  since 2026-11-21 the twelve functions of the rebuild all at `837c89d8` (`drive`, Part 27's, not deployed). Before the
+  rebuild: `notify`, `book` at `408de6c`; `conversation`, `ring` at `5f6640b` (2026-11-13, pictures and documents; before: `4142fac`); `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
   the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
 - Live access: since 2026-11-09 through the Claude Code MCP server `supabase-garage` (scoped to this project; the claude.ai Supabase
@@ -729,8 +734,8 @@ end $do$;
   points is not drawn (taken for the old straight line; enroute keeps 3 points of any road the planner gave with more:
   `roadLine`); in blocks mode a moment's vehicle and `day_min` may differ from what
   the booking then does (as before Part 27); `left` still counts idle minutes before a break; an empty day's « Voir sur la
-  carte » (switch on, blocks) shows only the new pin; the demo has no `move_preview` / `stop_order_preview` (« pas encore
-  calculé » there); `his.tripRefresh` is not cleared at sign-out; the way back to the Centrale is never refreshed; Photon's
+  carte » (switch on, blocks) shows only the new pin; the demo's `stop_order_preview` answers null (« pas encore
+  calculé » in « Ordre des arrêts »; its `move_preview` of the exact move is there, the 5-argument one answers `{ ok: true }` with nothing in it); `his.tripRefresh` is not cleared at sign-out; the way back to the Centrale is never refreshed; Photon's
   whole postal code is sent by the online booking when the customer typed none; switch off, the planner is a little slower
   than before Part 27 (×1.1–1.8: `drive_min` reads the switch at every leg); a phone still on yesterday's app (acf46c3)
   knows nothing of the switch (CUTOVER 5 bis.4: every phone on the new app first); CI (`tests-complets.yml`) runs `app`,
@@ -783,7 +788,7 @@ end $do$;
   truck and the house still show; the streets are TomTom's tiles when the app has its key (OpenStreetMap's once refused). The demo's pretend trip (`src/client/demo.ts`, `WAY`) is a real road
   thinned the same way. Tests: `src/client/track/server-road.test.ts`, and `tests/api/functions.test.mjs` (the stand-in planner
   answers a road with a corner when asked in full: the trip keeps the corner). Only on the test copies until the functions are
-  deployed; live's `enroute` (pinned at `a4f2da6`) still asks the simplified road.
+  deployed; live's `enroute` (`837c89d8` since 2026-11-21) asks OSRM's full road, thinned by `thinRoad`, then the straight line.
   Two road planners (Hassan, same day: « yes add it just in case »; on live 3 trips of 39 had no road at all, the planner had not
   answered): `route()` asks TomTom first (server key, 8 s), then OSRM's own server, then its FOSSGIS copy
   (`routing.openstreetmap.de/routed-car`, the same two and the same order as the app's maps), each OSRM waited 6 s at most,

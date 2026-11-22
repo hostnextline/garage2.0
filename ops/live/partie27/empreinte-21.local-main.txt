@@ -1,0 +1,22 @@
+apply_plan(p_plan jsonb) 272f0bbd8173c9e8f017c2877bacc78b v
+book_job(p_op uuid, p_job jsonb, p_items jsonb) 568b5779fd48f693a7abea48becc384f v
+customers_replan_on_position() 72323b1b9c76b5c6e77acb12fc71a8c4 v
+day_drive(p_day date, p_truck uuid, p_plan jsonb, p_extra jsonb, p_exclude uuid) 40094b95c2ee0b93b17c4f6aa9bf51d5 s
+drive_min(lat1 double precision, lng1 double precision, lat2 double precision, lng2 double precision, p_speed numeric, p_detour numeric, p_unknown numeric) 92915e70549b98b4b046f26a29723860 i
+lock_windows_core(p_day date) 959218ca4f1982de3cbf09b4fda76556 v
+log_activity() 272c9407ac047ea515db21c7febaf0f1 v
+move_job(p_op uuid, p_job uuid, p_day date, p_block text, p_truck uuid) 2564e66e17faf02095ea85e9c1c58353 v
+move_job(p_op uuid, p_job uuid, p_day date, p_block text, p_truck uuid, p_win_start integer, p_win_flex boolean) 4e97aadc1b9cbe6c5ddc0c1bac047de5 v
+plan_inputs(p_booking jsonb) d32158ab5431fb10d476d5de407f8ead i
+plan_late_new(p0 jsonb, p1 jsonb) a6983d0aed878cf200cd10939bbec976 i
+plan_route(p_day date, p_block text, p_extra jsonb, p_exclude uuid, p_seed boolean) eeefb0fcdd05ffc0cde144519624db16 s
+replan_block_safe(p_day date, p_block text) ffb09e53505db7fc09ccf98679062b85 v
+route_cost(p_ids jsonb, p_add text, p_at integer, p_pts jsonb, p_start integer, p_hlat double precision, p_hlng double precision, p_elat double precision, p_elng double precision, p_speed numeric, p_detour numeric, p_unknown numeric, p_stop numeric, p_fixed integer, p_ranges jsonb, p_windows boolean, p_walk boolean) 05b8f0fa0d5a6903be0c8235d181a4c3 i
+route_retime(p_truck uuid, p_day date, p_block text) 4ab14a7b220452f37358200db72cd44d v
+route_walk_in(p_ids jsonb, p_pts jsonb, p_start integer, p_hlat double precision, p_hlng double precision, p_speed numeric, p_detour numeric, p_unknown numeric, p_stop numeric, p_fixed integer, p_ranges jsonb, p_windows boolean) 592dcddd54c922cef53d76522fd4b1f0 i
+stop_order_one(p_truck uuid, p_day date, p_block text, p_ids uuid[]) cab866617ecdd52d42f11b58db5e9666 v
+suggest_core(p_lat double precision, p_lng double precision, p_duration integer, p_from date, p_days integer, p_exclude uuid, p_limit integer, p_need boolean, p_kind text) d690466fa35262e1047e10da316bd203 s
+suggest_windows_core(p_lat double precision, p_lng double precision, p_duration integer, p_day date, p_exclude uuid, p_need boolean, p_kind text) 844055e8bfe3f4dc8c59130ea15830ee s
+web_suggest(p_lat double precision, p_lng double precision, p_services uuid[], p_from date, p_days integer, p_limit integer) ae2ec9a8dc4ff5891553fdfd00d9939e s
+web_windows(p_lat double precision, p_lng double precision, p_services uuid[], p_day date) c1718b6d74d712e85a64d0afc0c6c3fc s
+windows_switch(p_op uuid, p_on boolean) 0853022ef4e79d4051134036073fce7a v
