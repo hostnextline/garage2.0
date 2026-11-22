@@ -193,6 +193,14 @@ export const customers = {
     delete: 'Supprimer la note',
     deleteConfirm: 'Toucher encore pour supprimer'
   },
+  follow: {
+    title: 'Ses rendez-vous à venir',
+    text: { one: 'Un rendez-vous à venir est encore à l’ancienne adresse. Le mettre à la nouvelle adresse ?', other: '{n} rendez-vous à venir sont encore à l’ancienne adresse. Les mettre à la nouvelle adresse ?' },
+    ok: 'Oui, à la nouvelle adresse',
+    no: 'Non, les laisser',
+    done: { one: 'Le rendez-vous est à la nouvelle adresse', other: '{n} rendez-vous sont à la nouvelle adresse' }
+  },
+  vehicle: { vinReading: 'NIV enregistré. Lecture du NIV en cours…' },
   picker: {
     label: 'Chercher le client',
     placeholder: 'Nom, téléphone, adresse…',
@@ -206,5 +214,7 @@ export const customers = {
     missing: 'Ce client n’est pas (ou plus) sur ce téléphone.',
     createTitle: 'Nouveau client',
     createOk: 'Créer'
-  }
+  },
+  // the conversation sheet (src/shared/customers/ConversationSheet.tsx): a text sent again while the first one still leaves
+  texting: { pending: 'Ce message est en train de partir.' }
 };

@@ -6,13 +6,20 @@ const FUEL: Record<string, string> = { Gasoline: 'essence', Diesel: 'diesel', El
 const DRIVE: Record<string, string> = { 'FWD/Front-Wheel Drive': 'fwd', 'RWD/Rear-Wheel Drive': 'rwd', 'AWD/All-Wheel Drive': 'awd', '4WD/4-Wheel Drive/4x4': '4wd', '4x2': '2wd' };
 
 export const handler = serve(async (req) => {
-  await caller(req);
+  await caller(req);   // who asks first: a member of the team
   const b = await body(req);
   const vin = String(b.vin || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) fail('vin', 'Un VIN a 17 caractères (jamais de I, O ou Q).');
-  const r = await withTimeout(fetch(`${env('VPIC_BASE', 'https://vpic.nhtsa.dot.gov')}/api/vehicles/DecodeVinValues/${vin}?format=json`), 10000, 'service de VIN');
-  if (!r.ok) fail('vpic', 'La base des VIN ne répond pas. Réessaie ou tape le véhicule.', 502);
-  const d = (await r.json())?.Results?.[0] || {};
+  // 10 seconds in all, the answer's body included; the request itself is stopped when time is up
+  const ctl = new AbortController();
+  const d = await withTimeout((async () => {
+    let r: Response;
+    try { r = await fetch(`${env('VPIC_BASE', 'https://vpic.nhtsa.dot.gov')}/api/vehicles/DecodeVinValues/${vin}?format=json`, { signal: ctl.signal }); }
+    catch { fail('vpic', 'La base des VIN ne répond pas. Réessaie ou tape le véhicule.', 502); }
+    if (!r!.ok) fail('vpic', 'La base des VIN ne répond pas. Réessaie ou tape le véhicule.', 502);
+    try { return ((await r!.json())?.Results?.[0] || {}) as Record<string, any>; }
+    catch { fail('vpic', 'La base des VIN a donné une réponse illisible. Réessaie ou tape le véhicule.', 502); }
+  })(), 10000, 'service de VIN').finally(() => ctl.abort());
   const num = (x: unknown) => { const n = Number(x); return Number.isFinite(n) && n > 0 ? n : null; };
   const hybrid = /HEV|Hybrid/i.test(String(d.ElectrificationLevel || ''));
   const out = {

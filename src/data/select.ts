@@ -1,11 +1,15 @@
 /* Reading the device's copy: small, fast lookups the screens share. They are plain functions over the table signals,
-   so a screen that calls them redraws when the data changes. */
-import { computed } from '@preact/signals';
-import { tableSignal, getRow, rowsOf } from './store';
+   so a screen that calls them redraws when the data changes. The lookups by a parent (a job's lines, a customer's
+   cars, a day's jobs…) read indexes built once per change of their table, not a scan of the whole table per call:
+   a list of hundreds of rows asking each row's lines stays fast (core-data-40). Lists are returned as copies. */
+import { computed, effect, type ReadonlySignal } from '@preact/signals';
+import { tableSignal, getRow, rowsOf, type Row } from './store';
+import type { TableName } from './schema';
 import type { Settings, Staff, Truck, TruckWeek, TruckDay, Customer, Vehicle, Job, JobItem, Invoice, Payment, Service, InventoryItem, Quote, Shift, Position, Trip, EngineSpec, CustomerNote, Expense, Message, ServicePart, InventoryMove } from './types';
-import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today } from '../lib/dates';
+import { DEFAULT_BLOCKS, windowFor, dow, overlapMinutes, mergeRanges, type Block, type BlockKey, type Range, type Day, nowMinute, today, dayOf, minuteOf, daysBetween } from '../lib/dates';
 import { totals, type Line } from '../lib/money';
 import { fullName, firstName } from '../lib/text';
+import { setDayMode } from '../lib/errors';
 
 export const DEFAULT_SETTINGS: Settings = {
   id: '1',
@@ -27,6 +31,8 @@ export function blockOfKey(k: BlockKey): Block {
 }
 /** the garage books by 4-hour arrival windows (Part 25) */
 export const windowsOn = computed<boolean>(() => settings.value.booking.windows_on === true);
+// the refusals of a block (« complet », « fermé ») then say « journée » (lib/errors cannot read the settings: R144)
+effect(() => { setDayMode(windowsOn.value); });
 /** the span of a booking day: first block's start → last block's end */
 export const daySpan = computed<Range>(() => [Math.min(...blocks.value.map((b) => b.start)), Math.max(...blocks.value.map((b) => b.end))]);
 /** the window told to this customer: its own (windows), else its block's hours; a « flexible » job: the whole day */
@@ -65,15 +71,47 @@ export function truckColor(id: string | null | undefined): string {
   return PALETTE[(i < 0 ? 7 : i) % PALETTE.length];
 }
 
+/* ---------- indexes ---------- */
+/** rows of a table grouped by a key, in the table's order (then sorted when asked) */
+function groupBy<T extends Row>(t: TableName, key: (r: T) => unknown, keep: (r: T) => boolean = () => true, sort?: (a: T, b: T) => number): ReadonlySignal<Map<string, T[]>> {
+  return computed(() => {
+    const m = new Map<string, T[]>();
+    for (const r of tableSignal<T>(t).value.values()) {
+      if (!keep(r)) continue;
+      const k = key(r);
+      if (k == null) continue;
+      const l = m.get(String(k));
+      if (l) l.push(r); else m.set(String(k), [r]);
+    }
+    if (sort) for (const l of m.values()) l.sort(sort);
+    return m;
+  });
+}
+/** the first row of a table for each key, in the table's order */
+function firstBy<T extends Row>(t: TableName, key: (r: T) => unknown, keep: (r: T) => boolean = () => true): ReadonlySignal<Map<string, T>> {
+  return computed(() => {
+    const m = new Map<string, T>();
+    for (const r of tableSignal<T>(t).value.values()) {
+      if (!keep(r)) continue;
+      const k = key(r);
+      if (k != null && !m.has(String(k))) m.set(String(k), r);
+    }
+    return m;
+  });
+}
+const alive = (r: Row) => !r.deleted_at;
+const newest = (a: { created_at?: string }, b: { created_at?: string }) => String(b.created_at).localeCompare(String(a.created_at));
+const list = <T>(m: Map<string, T[]>, k: string | null | undefined): T[] => (k == null ? [] : (m.get(k) || []).slice());
+
+const truckDayByKey = firstBy<TruckDay>('truck_days', (x) => `${x.truck_id}|${x.day}`, alive);
+const truckWeekByKey = firstBy<TruckWeek>('truck_week', (x) => `${x.truck_id}|${x.dow}`, alive);
+
 /* ---------- hours ---------- */
 export function truckRanges(truckId: string, day: Day): Range[] {
-  const d = rowsOf<TruckDay>('truck_days').find((x) => x.truck_id === truckId && x.day === day && !x.deleted_at);
+  const d = truckDayByKey.value.get(`${truckId}|${day}`);
   if (d) return mergeRanges(d.ranges || []);
-  const w = rowsOf<TruckWeek>('truck_week').find((x) => x.truck_id === truckId && x.dow === dow(day) && !x.deleted_at);
+  const w = truckWeekByKey.value.get(`${truckId}|${dow(day)}`);
   return mergeRanges(w?.ranges || []);
-}
-export function truckDayOverride(truckId: string, day: Day): TruckDay | undefined {
-  return rowsOf<TruckDay>('truck_days').find((x) => x.truck_id === truckId && x.day === day && !x.deleted_at);
 }
 export function weekOf(truckId: string): Record<number, Range[]> {
   const out: Record<number, Range[]> = {};
@@ -82,13 +120,33 @@ export function weekOf(truckId: string): Record<number, Range[]> {
   return out;
 }
 export interface TruckBlock { truck: Truck; cap: number; used: number; left: number; jobs: Job[] }
-/** how full a block is, per truck: the hours the truck works in it, and what its jobs take (durations + driving) */
+/** the minutes a job still takes out of its truck's hours (the planner's count, R216; the one home of this rule: the
+    agenda, « Changer de camion » and the pickers all read it through blockLoad). `now`: the garage's minute today
+    (null: another day, every job counts whole). On site: its work less the minutes since its arrival, as the server's
+    planner counts it (an arrival of another day lies whole days before today's midnight). On the way: the drive left,
+    then the work. Done: nothing. */
+export function jobTimeLeft(j: Pick<Job, 'status' | 'duration_min' | 'travel_min' | 'eta_min' | 'arrived_at'>, now: number | null, unknownMin: number, todayDay: Day = today()): number {
+  if (j.status === 'done') return 0;
+  if (now != null && j.status === 'on_site') {
+    const at = j.arrived_at ? new Date(j.arrived_at) : null;
+    // the arrival as a minute of today's garage clock (yesterday 23:30 = −30); no arrival known: it counts whole
+    const arrived = at ? minuteOf(at) + 1440 * daysBetween(todayDay, dayOf(at)) : NaN;
+    return Math.max(0, (Number.isFinite(arrived) ? arrived : now) + j.duration_min - now);
+  }
+  if (now != null && j.status === 'en_route') return (j.eta_min != null ? Math.max(0, j.eta_min - now) : j.travel_min ?? unknownMin) + j.duration_min;
+  return j.duration_min + (j.travel_min ?? unknownMin);
+}
+/** how full a block is, per truck: the hours the truck works in it, and what its jobs take (durations + driving; today a
+    job under way only for what it still needs, as the planner and the agenda count it) */
 export function blockLoad(day: Day, block: BlockKey, opts: { exclude?: string | null } = {}): { trucks: TruckBlock[]; unplaced: Job[]; open: boolean; left: number; started: boolean } {
   const b = blockOfKey(block);
-  const isToday = day === today();
-  // a block has started at its first minute; a whole day of arrival windows (block 'day') stays open until too little of it is left
+  const todayDay = today();
+  const isToday = day === todayDay;
   const minBlock = Math.min(settings.value.booking.min_block_min, b.end - b.start);
-  const started = day < today() || (isToday && nowMinute() >= (block === 'day' ? b.end - minBlock : b.start));
+  // a block has started at its first minute; a whole day of arrival windows (block 'day') at its last one, as the
+  // server's block_open and the agenda's dayState say (it no longer books before then only when too little is left: open)
+  const started = day < todayDay || (isToday && nowMinute() >= (block === 'day' ? b.end : b.start));
+  const now = isToday ? nowMinute() : null;
   const from = isToday ? Math.ceil(nowMinute() / 5) * 5 : 0;
   const js = jobsOn(day).filter((j) => j.block === block && !['cancelled', 'no_show'].includes(j.status) && j.id !== opts.exclude);
   const out: TruckBlock[] = [];
@@ -96,7 +154,7 @@ export function blockLoad(day: Day, block: BlockKey, opts: { exclude?: string | 
     const rs = truckRanges(tr.id, day).map(([a, z]) => [Math.max(a, from), z] as Range).filter(([a, z]) => z > a);
     const cap = day < today() ? 0 : overlapMinutes(rs, b.start, b.end);
     const mine = js.filter((j) => j.truck_id === tr.id).sort((x, y) => ((x.stop_order ?? 99) - (y.stop_order ?? 99)) || ((x.eta_min ?? 9999) - (y.eta_min ?? 9999)));
-    const used = mine.filter((j) => j.status !== 'done').reduce((n, j) => n + j.duration_min + (j.travel_min ?? settings.value.booking.unknown_min), 0);
+    const used = mine.reduce((n, j) => n + jobTimeLeft(j, now, settings.value.booking.unknown_min, todayDay), 0);
     if (cap > 0 || mine.length) out.push({ truck: tr, cap, used, left: cap - used, jobs: mine });
   }
   const open = !started && out.some((x) => x.cap >= minBlock);
@@ -110,11 +168,14 @@ export function customerName(c: Customer | null | undefined): string {
   return fullName(c.first_name, c.last_name) || c.company || '';
 }
 export const customersList = computed(() => rowsOf<Customer>('customers').filter((c) => !c.deleted_at).sort((a, b) => customerName(a).localeCompare(customerName(b), 'fr')));
+const vehiclesByCustomer = groupBy<Vehicle>('vehicles', (v) => v.customer_id, alive);
+const notesByCustomer = groupBy<CustomerNote>('customer_notes', (n) => n.customer_id, alive, newest);
+const specsByKey = firstBy<EngineSpec>('engine_specs', (s) => s.key, alive);
 export function vehicle(id: string | null | undefined): Vehicle | undefined { return getRow<Vehicle>('vehicles', id); }
-export function vehiclesOf(customerId: string): Vehicle[] { return rowsOf<Vehicle>('vehicles').filter((v) => v.customer_id === customerId && !v.deleted_at); }
+export function vehiclesOf(customerId: string): Vehicle[] { return list(vehiclesByCustomer.value, customerId); }
 export function vehicleLabel(v: Vehicle | null | undefined): string { return v ? [v.year, v.make, v.model].filter(Boolean).join(' ') : ''; }
-export function notesOf(customerId: string): CustomerNote[] { return rowsOf<CustomerNote>('customer_notes').filter((n) => n.customer_id === customerId && !n.deleted_at).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); }
-export function specByKey(key: string | null | undefined): EngineSpec | undefined { return key ? rowsOf<EngineSpec>('engine_specs').find((s) => s.key === key && !s.deleted_at) : undefined; }
+export function notesOf(customerId: string): CustomerNote[] { return list(notesByCustomer.value, customerId); }
+export function specByKey(key: string | null | undefined): EngineSpec | undefined { return key ? specsByKey.value.get(key) : undefined; }
 
 /* ---------- jobs ---------- */
 export const allJobs = computed(() => rowsOf<Job>('jobs').filter((j) => !j.deleted_at));
@@ -122,8 +183,15 @@ export function job(id: string | null | undefined): Job | undefined { return get
 /** the day's jobs in order. Blocks: morning, afternoon, evening, then the stop. « Plages d'arrivée » (block 'day'): the stop,
     then the planned arrival. A day holding both (never after the switch, kept safe): each 'day' job goes with the block its
     arrival falls in, after that block's own jobs. */
+const jobsByDay = computed(() => {
+  const m = new Map<string, Job[]>();
+  for (const j of allJobs.value) { const l = m.get(j.day); if (l) l.push(j); else m.set(j.day, [j]); }
+  const order = dayOrder(blocks.value);
+  for (const l of m.values()) l.sort(order);
+  return m;
+});
 export function jobsOn(day: Day): Job[] {
-  return allJobs.value.filter((j) => j.day === day).sort(dayOrder(blocks.value));
+  return list(jobsByDay.value, day);
 }
 const BLOCK_RANK: Record<string, number> = { am: 0, pm: 1, eve: 2 };
 /** when a 'day' job is expected: its planned arrival, else the start of its window (none: last) */
@@ -144,18 +212,40 @@ export function dayOrder(bl: Block[] = DEFAULT_BLOCKS) {
   };
 }
 export function jobsBetween(from: Day, to: Day): Job[] { return allJobs.value.filter((j) => j.day >= from && j.day <= to); }
-export function jobsOfCustomer(customerId: string): Job[] { return allJobs.value.filter((j) => j.customer_id === customerId).sort((a, b) => b.day.localeCompare(a.day)); }
-export function itemsOf(jobId: string): JobItem[] { return rowsOf<JobItem>('job_items').filter((i) => i.job_id === jobId && !i.deleted_at).sort((a, b) => a.sort - b.sort || String(a.created_at).localeCompare(String(b.created_at))); }
+const jobsByCustomer = computed(() => {
+  const m = new Map<string, Job[]>();
+  for (const j of allJobs.value) { if (j.customer_id == null) continue; const l = m.get(j.customer_id); if (l) l.push(j); else m.set(j.customer_id, [j]); }
+  for (const l of m.values()) l.sort((a, b) => b.day.localeCompare(a.day));
+  return m;
+});
+export function jobsOfCustomer(customerId: string): Job[] { return list(jobsByCustomer.value, customerId); }
+const itemsByJob = groupBy<JobItem>('job_items', (i) => i.job_id, alive, (a, b) => a.sort - b.sort || String(a.created_at).localeCompare(String(b.created_at)));
+export function itemsOf(jobId: string): JobItem[] { return list(itemsByJob.value, jobId); }
+/** the line's own total sign, as the server counts it (invoice_totals): a discount is negative, any other line keeps
+    the sign it was given (a credit typed as a negative price stays a credit: core-data-23) */
+export function lineCents(i: Pick<JobItem, 'kind' | 'unit_cents'>): number {
+  return i.kind === 'discount' ? -Math.abs(Number(i.unit_cents)) : Number(i.unit_cents);
+}
 /** what the work is worth with taxes: booked/done/accepted lines */
 export function jobTotals(jobId: string) {
-  const lines: Line[] = itemsOf(jobId).filter((i) => ['planned', 'done', 'approved'].includes(i.status)).map((i) => ({ qty: Number(i.qty), unitCents: (i.kind === 'discount' ? -1 : 1) * Math.abs(i.unit_cents), taxable: i.taxable }));
+  const lines: Line[] = itemsOf(jobId).filter((i) => ['planned', 'done', 'approved'].includes(i.status)).map((i) => ({ qty: Number(i.qty), unitCents: lineCents(i), taxable: i.taxable }));
   return totals(lines, settings.value.taxes);
 }
+const invoiceByJob = firstBy<Invoice>('invoices', (v) => v.job_id, (v) => v.status !== 'void' && !v.deleted_at);
 export function invoiceOf(jobId: string): Invoice | undefined {
-  return rowsOf<Invoice>('invoices').find((v) => v.job_id === jobId && v.status !== 'void' && !v.deleted_at);
+  return invoiceByJob.value.get(jobId);
 }
+/** the payments with their place in the table, so the two lookups below merge in the table's order */
+const paymentPlace = computed(() => { const m = new Map<string, number>(); let i = 0; for (const id of tableSignal('payments').value.keys()) m.set(id, i++); return m; });
+const paymentsByInvoice = groupBy<Payment>('payments', (p) => p.invoice_id, alive);
+const paymentsByJob = groupBy<Payment>('payments', (p) => p.job_id, alive);
 export function paymentsOf(opts: { invoiceId?: string; jobId?: string }): Payment[] {
-  return rowsOf<Payment>('payments').filter((p) => !p.deleted_at && ((opts.invoiceId && p.invoice_id === opts.invoiceId) || (opts.jobId && p.job_id === opts.jobId)));
+  const a = opts.invoiceId ? paymentsByInvoice.value.get(opts.invoiceId) || [] : [];
+  const b = opts.jobId ? paymentsByJob.value.get(opts.jobId) || [] : [];
+  if (!b.length) return a.slice();
+  if (!a.length) return b.slice();
+  const place = paymentPlace.value;
+  return [...new Set([...a, ...b])].sort((x, y) => (place.get(x.id) ?? 0) - (place.get(y.id) ?? 0));
 }
 export function invoiceNumber(v: Pick<Invoice, 'number'> | null | undefined): string {
   if (!v || v.number == null) return '';
@@ -163,25 +253,29 @@ export function invoiceNumber(v: Pick<Invoice, 'number'> | null | undefined): st
   return `${b.invoice_prefix ?? 'F-'}${String(v.number).padStart(Number(b.pad ?? 4), '0')}`;
 }
 export const invoicesList = computed(() => rowsOf<Invoice>('invoices').filter((v) => !v.deleted_at));
-export function activeTrip(jobId: string): Trip | undefined { return rowsOf<Trip>('trips').find((t) => t.job_id === jobId && t.status === 'active'); }
+const activeTripByJob = firstBy<Trip>('trips', (t) => t.job_id, (t) => t.status === 'active');
+export function activeTrip(jobId: string): Trip | undefined { return activeTripByJob.value.get(jobId); }
 /** this person's trip back to the start, still on (« Retour à la Centrale ») */
 export function activeReturnTrip(staffId: string): Trip | undefined {
   return rowsOf<Trip>('trips').find((t) => t.staff_id === staffId && t.kind === 'return' && t.status === 'active' && !t.deleted_at && Date.parse(t.expires_at) > Date.now());
 }
-export function messagesOf(jobId: string): Message[] { return rowsOf<Message>('messages').filter((m) => m.job_id === jobId).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); }
+const messagesByJob = groupBy<Message>('messages', (m) => m.job_id, () => true, newest);
+export function messagesOf(jobId: string): Message[] { return list(messagesByJob.value, jobId); }
 
 /* ---------- services, inventory, quotes, treasury ---------- */
 export const servicesList = computed(() => rowsOf<Service>('services').filter((s) => !s.deleted_at).sort((a, b) => (Number(b.is_promo) - Number(a.is_promo)) || a.sort - b.sort || a.name_fr.localeCompare(b.name_fr, 'fr')));
 export const activeServices = computed(() => servicesList.value.filter((s) => s.active && (!s.promo_until || s.promo_until >= today())));
 export function service(id: string | null | undefined): Service | undefined { return getRow<Service>('services', id); }
 export function serviceName(s: Service, l: string): string { return (l === 'en' && s.name_en) || s.name_fr; }
-export function partsOfService(serviceId: string): ServicePart[] { return rowsOf<ServicePart>('service_parts').filter((p) => p.service_id === serviceId && !p.deleted_at); }
+const partsByService = groupBy<ServicePart>('service_parts', (p) => p.service_id, alive);
+export function partsOfService(serviceId: string): ServicePart[] { return list(partsByService.value, serviceId); }
 /** the garage's stock (the Coffre's own stock is apart: never in the garage's lists, value, orders, week's needs or services) */
 export const inventoryList = computed(() => rowsOf<InventoryItem>('inventory_items').filter((i) => !i.deleted_at && i.pool !== 'coffre').sort((a, b) => a.name.localeCompare(b.name, 'fr')));
 /** the Coffre's own stock (bought with the Coffre's money, no taxes) */
 export const coffreStock = computed(() => rowsOf<InventoryItem>('inventory_items').filter((i) => !i.deleted_at && i.pool === 'coffre').sort((a, b) => a.name.localeCompare(b.name, 'fr')));
 export const lowStock = computed(() => inventoryList.value.filter((i) => i.active && (i.min_qty != null ? Number(i.qty) <= Number(i.min_qty) : Number(i.qty) <= 0)));
-export function movesOf(itemId: string): InventoryMove[] { return rowsOf<InventoryMove>('inventory_moves').filter((m) => m.item_id === itemId && !m.deleted_at).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); }
+const movesByItem = groupBy<InventoryMove>('inventory_moves', (m) => m.item_id, alive, newest);
+export function movesOf(itemId: string): InventoryMove[] { return list(movesByItem.value, itemId); }
 export const quotesList = computed(() => rowsOf<Quote>('quotes').filter((q) => !q.deleted_at).sort((a, b) => b.number - a.number));
 export const expensesList = computed(() => rowsOf<Expense>('expenses').filter((e) => !e.deleted_at).sort((a, b) => b.day.localeCompare(a.day)));
 

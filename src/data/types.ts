@@ -63,8 +63,10 @@ export interface Vehicle extends Base {
   /** the last oil change the customer told us about (done elsewhere, or before the app); ours are read from the visits */
   last_oil_on?: string | null;
 }
-/** `at`: when the call was noted, `by`: who; `again_on`: call back that day; `stop`: do not call for this car any more */
-export interface OilMark { at: string; by?: string | null; again_on?: string | null; stop?: boolean }
+/** `at`: when the call was noted, `by`: who; `again_on`: call back that day; `stop`: do not call for this car any more;
+    `not_oil`: the visits (job ids) that had no oil change although a line said so (« Pas de changement d'huile à cette
+    visite »), kept with no `at` when no call was noted */
+export interface OilMark { at?: string; by?: string | null; again_on?: string | null; stop?: boolean; not_oil?: string[] }
 export interface EngineSpec extends Base { key: string; year: number | null; make: string | null; model: string | null; engine: string | null; data: SpecData; confirmed_by: string | null; confirmed_at: string | null }
 export interface SpecData {
   oil_l?: number | null; oil_visc?: string; oil_filter?: string; drain_torque?: string; air_filter?: string; cabin_filter?: string; plugs?: string;
@@ -135,7 +137,7 @@ export interface Expense extends Base {
   day: string; vendor: string | null; category: string; description: string | null; subtotal_cents: number; tps_cents: number; tvq_cents: number; total_cents: number;
   method: string | null; truck_id: string | null; receipt_id: string | null; notes: string | null;
 }
-/** fixed_by / fixed_at: an owner or the treasurer corrected or added it in « Heures travaillées » (Part 26) */
+/** fixed_by / fixed_at: an owner or the treasurer corrected or added it in « Heures travaillées » (Part 26 of live) */
 export interface Shift extends Base { staff_id: string; started_at: string; ended_at: string | null; fixed_by?: string | null; fixed_at?: string | null }
 export interface Position extends Base { lat: number; lng: number; accuracy_m: number | null; heading: number | null; speed_kmh: number | null; job_id: string | null; at: string }
 export interface Trip extends Base {

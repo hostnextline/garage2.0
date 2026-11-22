@@ -45,7 +45,24 @@ export const shell = {
     lead: 'Le serveur les a refusés. La fiche est revenue à sa version d’avant. Lis la raison, corrige si besoin, puis réessaie ou retire.',
     retry: 'Réessayer',
     dismiss: 'Retirer',
-    show: 'Voir'
+    show: 'Voir',
+    line: '{label} : {error}',
+    chip: { one: '1 refusé', other: '{n} refusés' },
+    paymentAsk: 'Retirer ce paiement ?',
+    paymentConfirm: 'Ce paiement n’a pas été enregistré. Le client a peut-être payé : vérifie avant de retirer.'
+  },
+  session: {
+    lost: { one: 'Reconnecte-toi : 1 changement attend', other: 'Reconnecte-toi : {n} changements attendent' },
+    lostNone: 'Reconnecte-toi pour continuer',
+    lead: 'Ta connexion a expiré. Rien n’est perdu : tes changements partent dès que tu es reconnecté.',
+    signIn: 'Me reconnecter'
+  },
+  storageLost: 'Ce téléphone ne peut pas garder tes changements : reste en ligne',
+  notUpToDate: 'Pas encore à jour : certaines listes n’ont pas pu être lues.',
+  stuck: { one: 'Un changement attend que le serveur réponde. Il est gardé et repart tout seul.', other: '{n} changements attendent que le serveur réponde. Ils sont gardés et repartent tout seuls.' },
+  crash: {
+    title: 'Quelque chose n’a pas marché',
+    text: 'Rien n’est perdu : tes changements sont gardés sur le téléphone.'
   },
   update: {
     title: 'Mise à jour de l’app', help: 'L’app se met à jour toute seule la prochaine fois qu’elle s’ouvre. Ici, tu peux vérifier tout de suite et l’installer sans attendre.',
@@ -53,7 +70,11 @@ export const shell = {
     check: 'Vérifier les mises à jour', checking: 'Vérification…',
     none: 'L’app est à jour.', offline: 'Pas de réseau : réessaie quand le signal revient.', error: 'La vérification n’a pas marché. Réessaie dans un moment.',
     ready: 'Une nouvelle version de l’app est prête.', important: 'Mise à jour importante de l’app : installe-la dès que tu peux.',
-    notes: 'Ce qui change : {notes}', apply: 'Mettre à jour maintenant', later: 'Plus tard'
+    notes: 'Ce qui change : {notes}', apply: 'Mettre à jour maintenant',
+    downloading: 'Une nouvelle version se télécharge. Elle sera prête dans un moment.',
+    installed: 'Une nouvelle version de l’app est installée. Recharge pour l’utiliser.',
+    tooOld: 'Mets l’app à jour',
+    tooOldLead: 'Cette version de l’app est trop vieille pour continuer. Tes changements sont gardés : ils partiront avec la nouvelle version.'
   },
   moved: {
     title: 'L’app a une nouvelle adresse : {host}',
@@ -63,6 +84,9 @@ export const shell = {
   preview: { banner: 'Tu vois l’app comme {name}. Rien ne peut être changé.', stop: 'Revenir à moi' },
   queued: 'Gardé sur le téléphone : ça part dès que le réseau revient.',
   loadFail: 'Cette page ne s’ouvre pas. L’app a peut-être été mise à jour.',
+  // a page whose code is not on the phone yet, asked with no signal
+  loadOffline: 'Pas de réseau : cette page s’ouvrira quand le signal reviendra.',
+  loadBack: 'Le signal est revenu : touche « Réessayer » pour ouvrir cette page.',
   reload: 'Recharger',
   notFound: 'Cette page n’existe pas.',
   noRight: 'Tu n’as pas accès à cette partie de l’app.',
@@ -70,5 +94,11 @@ export const shell = {
   skip: 'Aller au contenu',
   menu: 'Menu',
   splash: 'Ouverture…',
-  offlineBanner: 'Hors ligne : tu travailles sur la copie du téléphone.'
+  /* the words of the design kit (status pills, the stamp, the totals) */
+  kit: {
+    job: { booked: 'Réservé', en_route: 'En route', on_site: 'Sur place', done: 'Terminé', cancelled: 'Annulé', no_show: 'Client absent' },
+    invoice: { draft: 'Brouillon', issued: 'À payer', partial: 'Payée en partie', paid: 'Payée', void: 'Annulée' },
+    stamp: { paid: 'Payé', cancelled: 'Annulé', no_show: 'Absent' },
+    paid: 'Payé', balance: 'Reste à payer'
+  }
 };

@@ -1,7 +1,7 @@
 /* « Rappels d’huile » : les autos dues pour un changement d’huile, à appeler. */
 export const oil = {
   title: 'Rappels d’huile',
-  help: 'Les autos dues pour un changement d’huile. On appelle le client 6 mois après son dernier changement d’huile : celui fait chez nous, ou la date qu’il a donnée (« Dernier changement d’huile » sur la fiche de l’auto). Si la dernière visite n’avait pas de changement d’huile, on l’appelle 3 mois après cette visite. Une auto qui a déjà un rendez-vous avec un changement d’huile sort de la liste toute seule. L’app reconnaît un changement d’huile par le service, par les mots de la job (huile, vidange, lube, 5W-30…) ou par l’huile sortie de l’inventaire ; si elle en manque un, ouvre la ligne et touche « L’huile a été changée à cette visite ».',
+  help: 'Les autos dues pour un changement d’huile. On appelle le client 6 mois après son dernier changement d’huile : celui fait chez nous, ou la date qu’il a donnée (« Dernier changement d’huile » sur la fiche de l’auto). Si la dernière visite n’avait pas de changement d’huile, on l’appelle 3 mois après cette visite. Une auto qui a déjà un rendez-vous avec un changement d’huile sort de la liste toute seule. L’app reconnaît un changement d’huile par le service, par les mots de la job (huile, vidange, lube, 5W-30…) ou par l’huile sortie de l’inventaire (3 litres ou plus) ; un ajout d’huile ou une vérification du niveau ne compte pas. Si elle se trompe, ouvre la ligne : « L’huile a été changée à cette visite » ou « Pas de changement d’huile à cette visite ».',
   sub: { one: '{n} client à appeler', other: '{n} clients à appeler', zero: 'Personne à appeler aujourd’hui' },
   loading: 'Chargement des visites',
   tabs: { label: 'Afficher', call: 'À appeler', soon: 'Bientôt', all: 'Tous' },
@@ -24,7 +24,7 @@ export const oil = {
     next: '{when}, sans changement d’huile'
   },
   sheet: {
-    car: 'Auto', phone: 'Téléphone', noPhone: 'Pas de numéro au dossier',
+    phone: 'Téléphone', noPhone: 'Pas de numéro au dossier',
     lastOil: 'Dernier changement d’huile', never: 'Jamais chez nous',
     lastVisit: 'Dernière visite', due: 'Dû le', next: 'Prochain rendez-vous',
     nextHint: 'Ce rendez-vous n’a pas de changement d’huile : propose de l’ajouter.',
@@ -38,7 +38,12 @@ export const oil = {
     clear: 'Remettre dans la liste',
     missedHint: 'L’app n’a pas vu de changement d’huile à la visite du {day}. Si l’huile a été changée ce jour-là, dis-le ici.',
     missedFix: 'L’huile a été changée à cette visite',
+    countedHint: 'L’app compte un changement d’huile à la visite du {day}. Si c’était seulement un ajout ou une vérification, dis-le ici.',
+    deny: 'Pas de changement d’huile à cette visite', denyConfirm: 'Toucher encore : cette visite ne compte pas',
+    saidOnHint: 'La date du {day} a été donnée à la main (par le client, ou avec « L’huile a été changée à cette visite »).',
+    forget: 'Effacer cette date', forgetConfirm: 'Toucher encore pour effacer la date',
     needCar: 'Cette visite n’a pas d’auto : ajoute l’auto à la fiche du client pour noter un rappel.'
   },
-  toast: { again: 'Noté : rappeler le {day}', stop: 'Noté : on ne l’appelle plus pour cette auto', clear: 'Remis dans la liste', fixed: 'Noté : prochain rappel le {day}' }
+  toast: { again: 'Noté : rappeler le {day}', stop: 'Noté : on ne l’appelle plus pour cette auto', clear: 'Remis dans la liste', fixed: 'Noté : prochain rappel le {day}', denied: 'Noté : cette visite ne compte plus comme un changement d’huile', forgot: 'Date effacée' },
+  more: { one: 'Voir la dernière auto', other: 'Voir plus ({n} autres)' }
 };

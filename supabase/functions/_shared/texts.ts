@@ -15,13 +15,41 @@ export function longDay(day: string, lang: Lang): string {
   return new Intl.DateTimeFormat(lang === 'en' ? 'en-CA' : 'fr-CA', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(dt);
 }
 export function fill(tpl: string, vars: Record<string, string | number | null | undefined>): string {
-  // the lines of the text stay (the list of services); spaces left by an empty word are tidied
+  // the lines of the text stay (the list of services); spaces left by an empty word are tidied (« Bonjour , » for a
+  // customer with no first name, a company: « Bonjour, »; a comma never has a space before it, in French or English)
   return tpl.replace(/\{(\w+)\}/g, (_, k) => (vars[k] == null ? '' : String(vars[k])))
-    .split('\n').map((l) => l.replace(/[ \t]{2,}/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    .split('\n').map((l) => l.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+,/g, ',').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 interface Line { description?: string | null; qty?: number | string | null; unit_cents?: number | string | null; status?: string | null; kind?: string | null }
 const COUNTED = ['planned', 'done', 'approved'];
-const lineCents = (l: Line) => { const c = Math.round(Number(l.qty || 1) * Number(l.unit_cents || 0)); return l.kind === 'discount' ? -Math.abs(c) : c; };
+/** a number written exactly in decimal (what the database's numeric holds): its digits and how many of them are
+    decimals; null for anything not a finite number */
+function decimal(x: number): { digits: bigint; scale: number } | null {
+  if (!Number.isFinite(x)) return null;
+  let t = String(Math.abs(x)), exp = 0;
+  const e = t.indexOf('e');
+  if (e >= 0) { exp = Number(t.slice(e + 1)); t = t.slice(0, e); }
+  const dot = t.indexOf('.');
+  let digits = dot >= 0 ? t.slice(0, dot) + t.slice(dot + 1) : t;
+  let scale = (dot >= 0 ? t.length - dot - 1 : 0) - exp;
+  if (scale < 0) { digits += '0'.repeat(-scale); scale = 0; }
+  return { digits: BigInt(digits) * (x < 0 ? -1n : 1n), scale };
+}
+/** quantity × price to the cent, exactly as the database rounds it: round(coalesce(qty, 1) × unit_cents), the quantity
+    as written (1,333 h stays 1,333; 0 stays 0: an option at 0 costs nothing; nothing written = 1), a half going away
+    from zero; never a cent off the invoice because of how a computer writes 1,15 */
+export function lineCents(l: { qty?: number | string | null; unit_cents?: number | string | null; kind?: string | null }): number {
+  const q = decimal(l.qty === null || l.qty === undefined || l.qty === '' ? 1 : Number(l.qty));
+  const u = decimal(l.unit_cents === null || l.unit_cents === undefined || l.unit_cents === '' ? 0 : Number(l.unit_cents));
+  if (!q || !u) return 0;
+  const p = q.digits * u.digits, unit = 10n ** BigInt(q.scale + u.scale);
+  const a = p < 0n ? -p : p;
+  let cents = a / unit;
+  if ((a % unit) * 2n >= unit) cents += 1n;
+  let t = Number(p < 0n ? -cents : cents);
+  if (l.kind === 'discount' && t > 0) t = -t;
+  return t || 0;
+}
 /** the work of an appointment, one line each: « • Vidange d’huile : 79,99 $ » (no price yet: « selon le travail sur place ») */
 export function servicesList(lines: Line[], lang: Lang): string {
   return lines.filter((l) => COUNTED.includes(String(l.status || 'planned')) && String(l.description || '').trim())
@@ -118,6 +146,10 @@ export function payNowWords(on: boolean, lang: Lang): string {
   return on ? (lang === 'en' ? ' (and pay now if you wish)' : ' (et la payer maintenant si vous le voulez)') : '';
 }
 export function first(name?: string | null): string { return String(name || '').trim().split(/\s+/)[0] || ''; }
+/** the day (YYYY-MM-DD) of a moment in Montréal: an invoice finished at 19 h 30 is that evening's, not the next day's */
+export function localDay(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
 /** minutes after midnight, Montréal time, of a moment */
 export function localMinute(d: Date): number {
   const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(d);

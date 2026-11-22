@@ -56,12 +56,12 @@ export const booking = {
   confirm: 'Réserver',
   confirmWalkIn: 'Ouvrir la job',
   walkInSub: 'Maintenant, ici',
-  missing: { customer: 'Choisis le client', work: 'Ajoute un service ou décris le problème', block: 'Choisis le bloc' },
+  missing: { customer: 'Choisis le client', work: 'Ajoute un service ou décris le problème', block: 'Choisis le bloc', quote: 'Cette estimation est déjà réservée', truck: 'Choisis le camion' },
   cars: {
     also: 'Aussi dans ce rendez-vous :',
-    chip: '{car} : {n} travaux',
+    chip: { one: '{car} : {n} travail', other: '{car} : {n} travaux' },
     done: { one: 'Réservé : {when}', other: '{n} véhicules réservés : {when}' },
-    partial: 'Réservé pour {n} véhicule(s) sur {total}. Choisis un autre bloc pour les autres.'
+    partial: { one: 'Réservé pour {n} véhicule sur {total}. Choisis un autre bloc pour les autres.', other: 'Réservé pour {n} véhicules sur {total}. Choisis un autre bloc pour les autres.' }
   },
   force: {
     title: 'Ce bloc est plein',
@@ -73,7 +73,7 @@ export const booking = {
   },
   done: 'Réservé : {when}',
   doneWalkIn: 'Job ouverte',
-  queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si le bloc est plein, tu verras la raison).',
+  queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si le bloc est plein, tu verras la raison). Le texto de confirmation ne part pas tout seul : une fois la réservation placée, envoie-le du rendez-vous (« Renvoyer le texto de confirmation »), ou la veille dans « À confirmer pour demain ».',
   queuedWalkIn: 'Job gardée sur le téléphone : elle sera créée dès que le réseau revient.',
   refusedBlock: 'Choisis un autre bloc.',
   mechanicTruck: 'La job ira sur ton camion : {name}.',
@@ -86,10 +86,10 @@ export const booking = {
     missing: 'Cette estimation n’est pas sur ce téléphone. Vérifie le réseau, ou réserve sans elle.'
   },
   when: {
-    today: { am: 'Ce matin', pm: 'Cet après-midi', eve: 'Ce soir' },
-    tomorrow: { am: 'Demain matin', pm: 'Demain après-midi', eve: 'Demain soir' },
-    yesterday: { am: 'Hier matin', pm: 'Hier après-midi', eve: 'Hier soir' },
-    block: { am: 'matin', pm: 'après-midi', eve: 'soir' },
+    today: { am: 'Ce matin', pm: 'Cet après-midi', eve: 'Ce soir', day: 'Aujourd’hui' },
+    tomorrow: { am: 'Demain matin', pm: 'Demain après-midi', eve: 'Demain soir', day: 'Demain' },
+    yesterday: { am: 'Hier matin', pm: 'Hier après-midi', eve: 'Hier soir', day: 'Hier' },
+    block: { am: 'matin', pm: 'après-midi', eve: 'soir', day: 'dans la journée' },
     weekday: '{day} {block}',
     date: '{day}, {block}'
   },
@@ -111,7 +111,11 @@ export const booking = {
     title: 'Appel entrant',
     known: 'Un client qu’on connaît',
     open: 'Ouvrir',
-    newNamed: 'GoHighLevel dit : {name}. Par quoi on commence ?'
+    newNamed: 'GoHighLevel dit : {name}. Par quoi on commence ?',
+    leaveTitle: 'Quitter la réservation en cours ?',
+    leaveText: 'Ce qui est écrit pour cette réservation sera perdu.',
+    leaveOk: 'Ouvrir l’appel',
+    leaveCancel: 'Rester ici'
   },
   call: {
     title: 'Appel entrant',
@@ -176,7 +180,7 @@ export const booking = {
     mapAll: 'Les rendez-vous à venir autour de la nouvelle adresse',
     mapDay: 'Les routes de {day} avec le nouveau rendez-vous',
     hintAll: 'Chaque point est un rendez-vous déjà pris, avec sa date dedans. Touche un jour, ou un point, pour voir la route de ce jour-là.',
-    hintHover: 'Passe la souris sur un jour ou sur un moment : la carte de ce jour-là s’ouvre à côté. Un clic choisit.',
+    hintHover: 'Laisse la souris sur un jour ou sur un moment : la carte de ce jour-là s’ouvre à côté, avec le nouveau rendez-vous. Un clic choisit.',
     blocks: 'Les moments de {day}',
     noBlock: 'Aucun moment libre ce jour-là.'
   },
@@ -237,9 +241,9 @@ export const booking = {
     },
     summary: { noBlock: 'Aucun moment choisi' },
     missing: { block: 'Choisis le moment' },
-    cars: { partial: 'Réservé pour {n} véhicule(s) sur {total}. Choisis un autre moment pour les autres.' },
+    cars: { partial: { one: 'Réservé pour {n} véhicule sur {total}. Choisis un autre moment pour les autres.', other: 'Réservé pour {n} véhicules sur {total}. Choisis un autre moment pour les autres.' } },
     force: { title: 'Cette journée est pleine', cancel: 'Choisir un autre moment' },
-    queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si la journée est pleine, tu verras la raison).',
+    queued: 'Réservation gardée sur le téléphone : elle sera placée dès que le réseau revient (si la journée est pleine, tu verras la raison). Le texto de confirmation ne part pas tout seul : une fois la réservation placée, envoie-le du rendez-vous (« Renvoyer le texto de confirmation »), ou la veille dans « À confirmer pour demain ».',
     refusedBlock: 'Choisis un autre moment.',
     full: 'Cette plage n’est plus possible : le mécano ne peut plus arriver dans ces heures-là. Choisis une autre plage.',
     auto: 'plage donnée par l’app',
@@ -281,6 +285,7 @@ export const booking = {
     },
     picker: {
       title: 'Les meilleurs moments',
+      hintHover: 'Laisse la souris sur un moment ou sur une heure : la carte de ce jour-là s’ouvre à côté, avec le nouveau rendez-vous. Un clic choisit.',
       current: 'Moment actuel',
       loading: 'Recherche des meilleurs moments…',
       offline: 'Sans réseau, pas de suggestions. Choisis un jour dans le calendrier : l’app vérifiera la place à l’envoi.',
@@ -332,5 +337,12 @@ export const booking = {
     copied: 'Texto copié',
     copyFail: 'Garde le doigt sur le texte pour le copier.',
     share: 'Partager'
+  },
+  // refonte:moment-pickers
+  /** the moment pickers' own words (shared/moment) */
+  momentPickers: {
+    /** the server did not send the text on purpose (status « quiet »): nothing failed */
+    smsQuiet: 'Pas de texto : ce client ou ce type de texto est désactivé.'
   }
+  // fin refonte:moment-pickers
 };

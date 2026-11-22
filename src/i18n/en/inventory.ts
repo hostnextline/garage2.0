@@ -36,14 +36,8 @@ export const inventory: typeof fr = {
     missingSub: 'These appointments do not say enough about the vehicle to know what to take.',
     missing: {
       car: 'No vehicle on the appointment: add it to know which oil to take.',
-      oil_l: 'Oil quantity unknown: fill in the engine sheet.',
       oil_visc: 'Oil type unknown: fill in the engine sheet.',
       oil_filter: 'Oil filter unknown: fill in the engine sheet.',
-      air_filter: 'Air filter unknown.',
-      cabin_filter: 'Cabin filter unknown.',
-      wipers: 'Wipers unknown.',
-      plugs: 'Spark plugs unknown.',
-      battery: 'Battery unknown.',
       tires: 'Tire size unknown: add it on the vehicle.'
     },
     fromJobs: { one: '{n} appointment', other: '{n} appointments' },
@@ -77,6 +71,8 @@ export const inventory: typeof fr = {
     copied: 'List copied: paste it in a text or an email to the supplier.',
     copyFailed: 'Could not copy the list.',
     copyTitle: 'To buy, {week}',
+    ownTrucks: 'Only your truck’s appointments: the other trucks’ are not on your phone.',
+    ownTrucksCopy: '(my truck’s appointments only)',
     cardThis: 'To buy for this week',
     cardNext: 'To buy for next week',
     cardHelp: 'From the appointments already booked and the stock. The full list is in Inventory, « Needs of the week ».',

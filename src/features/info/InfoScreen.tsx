@@ -1,14 +1,16 @@
 /* « Info » (#/info, #/info/<fiche>): every procedure of the app, in simple words, with an example. A search (accents
    and capitals do not count) and the topics; each sheet: for whom, the short answer, the steps, an example, tips,
-   the screen to open, the other sheets of the same topic. The articles are in articles.ts. */
+   the screen to open (only when this reader may open it), the other sheets of the same topic. The articles are in
+   articles.ts. */
 import { useEffect, useState } from 'preact/hooks';
 import { Lightbulb, Info as InfoIcon, ArrowRight } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { navigate } from '../../app/router';
+import { navigate, type ScreenProps } from '../../platform/router';
 import { t, lang } from '../../lib/i18n';
+import { may } from '../../domain/rights';
 import { Page, Panel, Rows, RowItem, SearchInput, Chips, Button, Empty } from '../../ui';
 import { ARTICLES, INFO_TOPICS, type InfoArticle, type InfoTopic } from './articles';
 import { searchInfo } from './search';
+import { mayOpen } from './links';
 import './info.css';
 
 const L = () => (lang.value === 'en' ? 'en' : 'fr') as 'fr' | 'en';
@@ -70,7 +72,7 @@ function Sheet({ a }: { a: InfoArticle }) {
           <ul class="info-tips">{x.tips.map((s, i) => <li key={i}>{s}</li>)}</ul>
         </Panel>
       )}
-      {a.link && <div><Button variant="primary" icon={<ArrowRight />} onClick={() => navigate(a.link!.slice(1))} data-testid="info-open">{t('info.open')}</Button></div>}
+      {a.link && mayOpen(a.link, may) && <div><Button variant="primary" icon={<ArrowRight />} onClick={() => navigate(a.link!.slice(1))} data-testid="info-open">{t('info.open')}</Button></div>}
       {!!related.length && (
         <Panel title={t('info.related')} flush>
           <Rows>{related.map((o) => <RowItem key={o.id} href={`#/info/${o.id}`} chevron title={o[l].title} />)}</Rows>

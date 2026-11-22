@@ -1,35 +1,20 @@
 /* Every change the app makes goes through here: on screen at once, sent when possible (see sync.ts), refused with a
    clear message when the server says no. In « Voir l'app comme… » nothing can be changed. */
-import { insertRow, updateRow, deleteRow, callRpc, uuid, isNetworkError, forgetLocal, sentHooks } from './sync';
+import { insertRow, updateRow, deleteRow, callRpc, uuid, forgetLocal, sentHooks, sendOrKeep, onConfirmed, pendingOps, flush } from './sync';
 import { getRow, rowsOf } from './store';
 import type { TableName } from './schema';
 import { sb, callFn, preview, refreshAccess } from './auth';
-import { t, lang } from '../lib/i18n';
-import type { Customer, CustomerNote, Vehicle, EngineSpec, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
-import type { BlockKey, Range } from '../lib/dates';
+import { ask } from './client';
+import { REQUEST_MS } from './send';
+import { itemsOf, settings, customerName, invoiceNumber } from './select';
+import { t, tMaybe, lang } from '../lib/i18n';
+import { money } from '../lib/money';
+import type { Customer, CustomerNote, Vehicle, EngineSpec, Job, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Invoice, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
+import { clock, isValidDay, longDay, type BlockKey, type Range } from '../lib/dates';
 import { appBase } from '../lib/config';
+import { Refused, fromSource, classify } from '../lib/errors';
+export { Refused, errorMessage } from '../lib/errors';
 
-export class Refused extends Error {
-  constructor(public code: string, message: string) { super(message); }
-}
-/** the message to show a person for an error (the server's own words, translated when we know the case) */
-export function errorMessage(e: unknown): string {
-  if (!e) return t('common.genericError', { msg: '' });
-  if (typeof e === 'string') return e;
-  const err = e as { hint?: string; code?: string; message?: string; error?: string };
-  if (isNetworkError(err)) return t('common.networkError');
-  // our own refusals carry a short code (database: hint; server functions: code) and a French sentence
-  const own = String(err.hint || (/^[a-z_]+$/.test(String(err.code || '')) ? err.code : '') || '');
-  const said = String(err.error || err.message || '');
-  if (own) {
-    if (lang.value === 'fr' && said) return said;
-    const k = `errors.${own}`; const tr = t(k);
-    if (tr !== k) return tr;
-    return said || t('common.genericError', { msg: own });
-  }
-  if (err.code === '42501' || /row-level security|permission denied/i.test(said)) return lang.value === 'fr' && /[éèàù’]/.test(said) ? said : t('common.notAllowed');
-  return t('common.genericError', { msg: said });
-}
 function guard() { if (preview.value) throw new Refused('preview', t('errors.preview')); }
 const now = () => new Date().toISOString();
 const SKIP = new Set(['phone_digits', 'created_at', 'updated_at', 'created_by', 'number', 'no_shows']);
@@ -37,7 +22,9 @@ async function upsert(table: TableName, obj: Record<string, unknown>, defaults: 
   const { id, ...rest } = obj as { id?: string };
   const clean = Object.fromEntries(Object.entries(rest).filter(([k]) => !SKIP.has(k)));
   if (id && getRow(table, id)) { await updateRow(table, id, clean, { label }); return id; }
-  return (await insertRow(table, { ...defaults, ...clean, id: id || uuid(), created_at: now() }, { label })).id;
+  // a row this device does not hold may still exist on the server: what the person set is then sent as a change,
+  // never the defaults (core-data-49)
+  return (await insertRow(table, { ...defaults, ...clean, id: id || uuid(), created_at: now() }, { label, ...(id ? { patch: clean } : {}) })).id;
 }
 
 /* ---------- customers, cars, engine sheets ---------- */
@@ -64,16 +51,34 @@ export interface BookInput {
   win_start?: number | null; win_flex?: boolean;
 }
 export type ItemInput = Partial<JobItem> & { description: string };
+/** what the outbox says of a booking (the « en attente » and « refusé » lists, the stuck banner): whose and when, so a
+    booking kept in a basement and refused later still says whom to call back (e2e-plages-01), like `paymentLabel`.
+    « Réservation · Ines Tremblay · samedi 21 novembre, entre 9 h et 13 h » / « …, matin » / « …, dans la journée » */
+export function bookingLabel(job: Pick<BookInput, 'customer_id' | 'day' | 'block' | 'win_start' | 'win_flex'>): string {
+  const l = lang.value;
+  const who = customerName(getRow<Customer>('customers', job.customer_id));
+  let when: string;
+  if (job.block === 'day' && job.win_start != null && !job.win_flex) {
+    // the window's length as the server cuts it (public.win_len)
+    const b = settings.value.booking;
+    const len = Math.max(30, (b.win_before_min ?? 60) + (b.win_after_min ?? 180));
+    when = t('common.window.between', { from: clock(job.win_start, l), to: clock(job.win_start + len, l) });
+  } else when = (tMaybe(`common.blocks.${job.block}`) ?? '').toLocaleLowerCase(l === 'en' ? 'en-CA' : 'fr-CA');
+  const moment = [isValidDay(job.day) ? longDay(job.day, l) : '', when].filter(Boolean).join(', ');
+  return [t('log.booking'), who, moment].filter(Boolean).join(' · ');
+}
 export async function bookJob(job: BookInput, items: ItemInput[]) {
   guard();
   const id = job.id || uuid();
-  return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: t('log.booking') }).then((r) => ({ ...r, id }));
+  return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: bookingLabel(job) }).then((r) => ({ ...r, id }));
 }
-export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null) {
+/** `opts.queue: false`: a move that must happen now or not at all (never kept on the phone for later: R188) */
+export async function moveJob(jobId: string, day: string, block: BlockKey, truckId: string | null = null, win: { start?: number | null; flex?: boolean } | null = null, opts: { queue?: false } = {}) {
   guard();
+  const o = { label: t('log.move'), ...(opts.queue === false ? { queue: false } : {}) };
   // « Plages d'arrivée »: the new window (or flexible) goes with the move; the old call stays as it was for the blocks
-  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, { label: t('log.move') });
-  return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, { label: t('log.move') });
+  if (win) return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId, p_win_start: win.start ?? null, p_win_flex: win.flex === true }, o);
+  return callRpc<{ ok: boolean; changed: boolean }>('move_job', { p_job: jobId, p_day: day, p_block: block, p_truck: truckId }, o);
 }
 export async function setJobDuration(jobId: string, minutes: number) {
   guard();
@@ -100,7 +105,9 @@ export async function walkIn(job: Omit<BookInput, 'day' | 'block'>, items: ItemI
 }
 export async function addItem(jobId: string, item: ItemInput) {
   guard();
-  return (await insertRow('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', sort: Date.now() % 100000, ...item, job_id: jobId, id: item.id || uuid(), created_at: now() })).id;
+  // after the job's last line (a clock modulo used to wrap every 100 s and put a later line first: core-data-29)
+  const sort = itemsOf(jobId).reduce((m, i) => Math.max(m, Number(i.sort) || 0), 0) + 1;
+  return (await insertRow('job_items', { kind: 'service', qty: 1, unit_cents: 0, taxable: true, status: 'planned', sort, ...item, job_id: jobId, id: item.id || uuid(), created_at: now() })).id;
 }
 export async function updateItem(id: string, patch: Partial<JobItem>) { guard(); await updateRow('job_items', id, patch); }
 export async function removeItem(id: string) { guard(); await deleteRow('job_items', id); }
@@ -130,11 +137,40 @@ export async function vinHistory(vin: string, customerId: string | null = null):
 export async function invoiceForJob(jobId: string, refresh = true) { guard(); return callRpc('invoice_for_job', { p_job: jobId, p_refresh: refresh }, { label: t('log.invoice') }); }
 export async function saveInvoiceDraft(id: string, patch: { lines?: InvoiceLine[]; taxes_on?: boolean; notes?: string | null }) { guard(); await updateRow('invoices', id, patch); }
 export async function finishInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number; again?: boolean }>('invoice_finish', { p_invoice: id }, { label: t('log.invoiceFinish') }); }
-/** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network) */
-export async function reopenInvoice(id: string) { guard(); return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false }); }
+
+/** the payments of this invoice still waiting on this phone to be sent: those aimed at it, and those of its job that
+    name no invoice (the server puts them on the job's finished invoice). One aimed at another invoice of the same job
+    goes there whatever happens to this one: it does not hold this one back. */
+function paymentWaitingFor(invoiceId: string): boolean {
+  const jobId = getRow<Invoice>('invoices', invoiceId)?.job_id ?? null;
+  return pendingOps((e) => e.kind === 'rpc' && e.rpc === 'payment_add' && !!e.args
+    && (e.args.p_invoice === invoiceId || (e.args.p_invoice == null && !!jobId && e.args.p_job === jobId))).length > 0;
+}
+/** « Modifier la facture »: a finished invoice not paid goes back to a draft with its number (needs the network).
+    It goes straight to the server: while a payment of this invoice still waits in the outbox, it would get there first
+    and the payment would then be refused hours later (argent-app-03). The payment is given its chance to leave first
+    (8 s at most); still waiting, the reopen is refused here and nothing changes. */
+export async function reopenInvoice(id: string) {
+  guard();
+  if (paymentWaitingFor(id)) {
+    await Promise.race([flush(), new Promise((r) => setTimeout(r, 8000))]);
+    if (paymentWaitingFor(id)) throw new Refused('payment_waiting', t('errors.payment_waiting'));
+  }
+  return callRpc<{ ok: boolean; number: number }>('invoice_reopen', { p_invoice: id }, { queue: false });
+}
+/** what the outbox says of a payment (the « en attente » and « refusé » lists, the stuck banner): how much, how and for
+    whom, so a cash payment refused hours later still says which customer and how much to give back (argent-app-03) */
+export function paymentLabel(invoiceId: string | null, amountCents: number, method: PayMethod, jobId: string | null = null): string {
+  const inv = getRow<Invoice>('invoices', invoiceId);
+  const jb = getRow<Job>('jobs', jobId ?? inv?.job_id ?? null);
+  const who = customerName(getRow<Customer>('customers', inv?.customer_id ?? jb?.customer_id ?? null));
+  const how = tMaybe(`invoices.methods.${method}`);
+  const amount = `${money(amountCents, lang.value)}${how ? ` (${how})` : ''}`;
+  return [`${t('log.payment')} ${amount}`, who, invoiceNumber(inv)].filter(Boolean).join(' · ');
+}
 export async function addPayment(invoiceId: string | null, amountCents: number, method: PayMethod, reference: string | null = null, jobId: string | null = null) {
   guard();
-  return callRpc('payment_add', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_reference: reference, p_job: jobId, p_session: null }, { label: t('log.payment') });
+  return callRpc('payment_add', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_reference: reference, p_job: jobId, p_session: null }, { label: paymentLabel(invoiceId, amountCents, method, jobId) });
 }
 export async function removePayment(id: string) { guard(); return callRpc('payment_remove', { p_payment: id }); }
 export async function voidInvoice(id: string, reason: string) { guard(); return callRpc('invoice_void', { p_invoice: id, p_reason: reason }); }
@@ -177,18 +213,19 @@ export interface ChatMessage { id: string; at: string | null; dir: 'in' | 'out';
 export async function conversation(customerId: string) {
   return callFn<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }>('conversation', { action: 'get', customer_id: customerId }, 20000);
 }
-export async function sendChat(customerId: string, message: string) {
+/** `op`: one id per typed text, kept until it is sent: the same text sent again (a lost answer, a second tap) goes once */
+export async function sendChat(customerId: string, message: string, op?: string) {
   guard();
-  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', customer_id: customerId, message }, 20000);
+  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', customer_id: customerId, message, ...(op ? { op } : {}) }, 20000);
 }
 
 /** the same with a number that has no file yet (somebody new who texted the garage): the owner only */
 export async function conversationPhone(phone: string) {
   return callFn<{ status: 'ok' | 'off' | 'no_phone' | 'error'; messages?: ChatMessage[]; error?: string }>('conversation', { action: 'get', phone }, 20000);
 }
-export async function sendChatPhone(phone: string, message: string) {
+export async function sendChatPhone(phone: string, message: string, op?: string) {
   guard();
-  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', phone, message }, 20000);
+  return callFn<{ status: string; error?: string }>('conversation', { action: 'send', phone, message, ...(op ? { op } : {}) }, 20000);
 }
 
 /* ---------- « Coffre » (family and friends, Part 20): no invoice, no taxes, its own register (owner) ---------- */
@@ -202,7 +239,12 @@ export async function coffreRemove(id: string) {
 }
 
 /* ---------- settings, team ---------- */
-export async function saveSettings(part: keyof Settings, value: unknown) { guard(); await updateRow('settings', '1', { [part]: value }, { label: t('log.settings') }); }
+/** a part of the settings saved whole: what the screen showed before goes with it, so only the keys the person changed
+    overwrite the server's when it is sent (another device's change to another key stays: core-data-19) */
+export async function saveSettings(part: keyof Settings, value: unknown) {
+  guard();
+  await updateRow('settings', '1', { [part]: value }, { label: t('log.settings'), prev: { [part]: settings.value[part] } });
+}
 export async function saveService(sv: Partial<Service>): Promise<string> { guard(); return upsert('services', sv, { active: true, taxable: true, is_promo: false, includes: [], category: 'autre', duration_min: 60, sort: 0 }); }
 export async function saveServicePart(sp: Partial<ServicePart>) { guard(); return upsert('service_parts', sp, { qty: 1 }); }
 export async function setRoleRight(role: string, right: string, on: boolean) { guard(); return callRpc('set_role_rights', { p_role: role, p_right: right, p_on: on }, { queue: false }); }
@@ -212,27 +254,41 @@ export async function memberUpdate(staffId: string, patch: Partial<Staff>) {
   await refreshAccess();
   return r;
 }
+/** my own phone, language, switches: sent now; without signal kept on the phone and sent later; a refusal is listed in
+    the frame (it used to be dropped in silence while the screen said « Enregistré »: core-data-30) */
 export async function updateMe(patch: { phone?: string; lang?: string; prefs?: Record<string, unknown> }) {
   if (preview.value) return;
-  try { await sb.rpc('update_me', { p_patch: patch }); } catch { /* the device keeps it until next time */ }
+  try { await sendOrKeep('update_me', { p_patch: patch }); } catch { /* signed out meanwhile: the account keeps its old value */ }
 }
 
 /* ---------- treasury and inventory ---------- */
-export async function deleteExpense(id: string) { guard(); await deleteRow('expenses', id, { label: t('log.expense') }); }
 export async function saveExpense(e: Partial<Expense>): Promise<string> { guard(); return upsert('expenses', e, { category: 'Autre', subtotal_cents: 0, tps_cents: 0, tvq_cents: 0, total_cents: 0 }, t('log.expense')); }
-export async function saveReceipt(dataUrl: string, w: number, h: number): Promise<string> {
+/** a receipt picture, sent straight away (receipts are not kept on every phone). `opts.id`: the id the screen keeps for
+    this picture, so sending it again (a lost answer) is harmless: « already there » is a success; `opts.signal` stops it
+    (R116) */
+export async function saveReceipt(dataUrl: string, w: number, h: number, opts: { id?: string; signal?: AbortSignal } = {}): Promise<string> {
   guard();
   const [head, data] = dataUrl.split(',');
   const mime = /image\/(png|jpeg|webp)|application\/pdf/.exec(head)?.[0] || 'image/jpeg';
-  const id = uuid();
-  // receipts are sent straight away (they are not kept on every phone)
-  const { error } = await sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h });
-  if (error) throw error;
+  const id = opts.id || uuid();
+  // a picture gets the time it needs, then stops
+  const ms = Math.min(120000, REQUEST_MS + Math.floor(data.length / 20000) * 1000);
+  try {
+    await ask((s) => sb.from('attachments').insert({ id, kind: 'receipt', mime, data, bytes: Math.round(data.length * 0.75), width: w, height: h }).abortSignal(s), ms, opts.signal);
+  } catch (e) {
+    if (!(opts.id && classify(e).sub === 'duplicate')) throw e;
+  }
   return id;
 }
+/** the plain pictures a kept attachment may be shown as (an SVG can carry a script: never trusted, x-security-01) */
+const SAFE_PICTURE = /^image\/(jpeg|png|webp|gif)$/;
+/** a picture kept on the server (a signature), as a data URL. null when there is none, or when what is stored is not a
+    plain picture; a read that fails throws (no signal or the server unwell is not « no signature »: R106) */
 export async function loadAttachment(id: string): Promise<string | null> {
-  const { data } = await sb.from('attachments').select('mime, data').eq('id', id).maybeSingle();
-  return data ? `data:${(data as { mime: string }).mime};base64,${(data as { data: string }).data}` : null;
+  const data = await ask<{ mime: string; data: string } | null>((s) => sb.from('attachments').select('mime, data').eq('id', id).abortSignal(s).maybeSingle(), 30000);
+  if (!data || typeof data.data !== 'string') return null;
+  const mime = String(data.mime || '').trim().toLowerCase();
+  return SAFE_PICTURE.test(mime) ? `data:${mime};base64,${data.data}` : null;
 }
 export async function saveInventoryItem(i: Partial<InventoryItem>): Promise<string> {
   guard();
@@ -246,22 +302,28 @@ export async function saveInventoryItem(i: Partial<InventoryItem>): Promise<stri
 export async function deleteInventoryItem(id: string) {
   guard();
   const r = await callRpc('inventory_delete', { p_item: id }, { label: t('log.inventory') });
-  const moves = rowsOf<{ id: string; item_id: string }>('inventory_moves').filter((m) => m.item_id === id).map((m) => m.id);
-  const links = rowsOf<{ id: string; item_id: string }>('service_parts').filter((p) => p.item_id === id).map((p) => p.id);
-  await forgetLocal('inventory_moves', moves);
-  await forgetLocal('service_parts', links);
-  await forgetLocal('inventory_items', [id]);
+  // forgotten once the server has really deleted them (a refused delete no longer loses the item on this phone)
+  const forget = () => {
+    const moves = rowsOf<{ id: string; item_id: string }>('inventory_moves').filter((m) => m.item_id === id).map((m) => m.id);
+    const links = rowsOf<{ id: string; item_id: string }>('service_parts').filter((p) => p.item_id === id).map((p) => p.id);
+    void forgetLocal('inventory_moves', moves);
+    void forgetLocal('service_parts', links);
+    void forgetLocal('inventory_items', [id]);
+  };
+  if (r.queued && r.op) onConfirmed(r.op, forget); else forget();
   return r;
 }
 /** stock bought: the quantity comes in and the money leaves the Trésorerie (an expense) or the Coffre, in one step */
 export type PaidFrom = 'treasury' | 'coffre' | 'none';
-export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null) {
+/** `op`: one id per submission of the form (a repeat after a reload is done once by the server: R212) */
+export async function buyStock(itemId: string, qty: number, totalCents: number | null, from: PaidFrom, vendor: string | null, note: string | null, op?: string) {
   guard();
-  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note }, { label: t('log.inventory') });
+  return callRpc('inventory_buy', { p_item: itemId, p_qty: qty, p_total_cents: totalCents, p_from: from, p_vendor: vendor, p_note: note, ...(op ? { p_op: op } : {}) }, { label: t('log.inventory') });
 }
-export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null) {
+/** `id`: the move's own id, given by the form (the same move sent twice is one row: R212) */
+export async function moveStock(itemId: string, delta: number, reason: 'restock' | 'adjust' | 'used' | 'return', note: string | null, id?: string) {
   guard();
-  return (await insertRow('inventory_moves', { id: uuid(), item_id: itemId, delta, reason, note, created_at: now() })).id;
+  return (await insertRow('inventory_moves', { id: id || uuid(), item_id: itemId, delta, reason, note, created_at: now() })).id;
 }
 
 /* ---------- the day ---------- */
@@ -279,20 +341,14 @@ export async function shiftRemove(shiftId: string) {
 export async function shiftEnd() { guard(); return callRpc('shift_end', {}, { noOp: true }); }
 export async function reportPosition(lat: number, lng: number, accuracy: number | null, heading: number | null, speed: number | null, jobId: string | null) {
   if (preview.value) return { ok: false };
-  const { data } = await sb.rpc('report_position', { p_lat: lat, p_lng: lng, p_accuracy: accuracy, p_heading: heading, p_speed: speed, p_job: jobId });
+  // a request that hangs no longer holds back the next positions: it stops after 15 s
+  const data = await ask((s) => sb.rpc('report_position', { p_lat: lat, p_lng: lng, p_accuracy: accuracy, p_heading: heading, p_speed: speed, p_job: jobId }).abortSignal(s), REQUEST_MS).catch(() => undefined);
   return data as { ok: boolean; reason?: string };
 }
 
-/* ---------- needs the network ---------- */
-function inTime<T>(p: PromiseLike<T>, ms = 15000): Promise<T> {
-  return new Promise<T>((res, rej) => {
-    const tm = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), ms);
-    Promise.resolve(p).then((v) => { clearTimeout(tm); res(v); }, (e) => { clearTimeout(tm); rej(e); });
-  });
-}
+/* ---------- needs the network (each request stops at its limit; the error says no signal, server unwell or refused) ---------- */
 export async function suggestBlocks(lat: number | null, lng: number | null, duration: number, from: string, days = 14, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
-  const { data, error } = await inTime(sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 60, p_need: need, p_kind: kind }));
-  if (error) throw error;
+  const data = await ask((s) => sb.rpc('suggest_blocks', { p_lat: lat, p_lng: lng, p_duration: duration, p_from: from, p_days: days, p_exclude: exclude, p_limit: 60, p_need: need, p_kind: kind }).abortSignal(s), REQUEST_MS);
   /* every moment of the page, the best first. « Garde-route » (optional: an older server does not send them): what the
      job adds to the truck's whole day (add_min, add_km), the day's driving with it (day_min), the longest drive to a
      neighbouring customer that day (hop_min, null without another stop), the truck's other stops (stops), and
@@ -304,21 +360,21 @@ export interface Suggestion { day: string; block: BlockKey; drive_min: number; n
   pos?: number; add_min?: number; add_km?: number; day_min?: number; hop_min?: number | null; stops?: number; far?: 'hop' | 'day' | null }
 /** « Plages d'arrivée »: every window still possible on one day (the best first), for « Autres heures ce jour-là » */
 export async function suggestWindows(lat: number | null, lng: number | null, duration: number, day: string, exclude: string | null = null, need = false, kind: 'car' | 'truck' | null = null) {
-  const { data, error } = await inTime(sb.rpc('suggest_windows', { p_lat: lat, p_lng: lng, p_duration: duration, p_day: day, p_exclude: exclude, p_need: need, p_kind: kind }));
-  if (error) throw error;
+  const data = await ask((s) => sb.rpc('suggest_windows', { p_lat: lat, p_lng: lng, p_duration: duration, p_day: day, p_exclude: exclude, p_need: need, p_kind: kind }).abortSignal(s), REQUEST_MS);
   return (data || []) as Suggestion[];
 }
 export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms = 15000): Promise<T> {
-  const { data, error } = await inTime(sb.rpc(name, args), ms);
-  if (error) throw error;
-  return data as T;
+  try { return (await ask((s) => sb.rpc(name, args).abortSignal(s), ms)) as T; }
+  catch (e) { throw fromSource(e, name); }
 }
-export async function notify(kind: string, jobId: string, opts: { resend?: boolean } = {}) {
+/** `op`: one id per text sent, kept by the screen until it succeeds: the same send asked twice (an answer lost, a second
+    tap) is one text on the server; a new one for a deliberate « Renvoyer » */
+export async function notify(kind: string, jobId: string, opts: { resend?: boolean; op?: string } = {}) {
   guard();
   return callFn<{ status: string; message?: string; link?: string; phone?: string | null }>('notify', { kind, job_id: jobId, base: appBase(), ...opts });
 }
 /** the trip of a job (start, refresh, end), or the trip back to the start after the last job (return, return_end: no job) */
-export async function enroute(action: 'start' | 'refresh' | 'end' | 'return' | 'return_end', jobId: string | null, opts: { pos?: { lat: number; lng: number }; notify?: boolean; resend?: boolean } = {}) {
+export async function enroute(action: 'start' | 'refresh' | 'end' | 'return' | 'return_end', jobId: string | null, opts: { pos?: { lat: number; lng: number }; notify?: boolean; resend?: boolean; op?: string } = {}) {
   guard();
   return callFn<{ sms: string; link?: string; message?: string; phone?: string | null; place?: string; eta_at?: string | null; minutes?: number | null; km?: number | null; rows?: unknown }>('enroute', { action, ...(jobId ? { job_id: jobId } : {}), base: appBase(), ...opts });
 }

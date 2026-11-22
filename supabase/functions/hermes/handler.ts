@@ -7,7 +7,7 @@
 // only the owner reads them all ({ action: 'log' }).
 // Plugging in ({ action: 'pair', code, url, key }): the Hermes server sends its own address and key here itself, with a
 // one-time code whose fingerprint was put in secrets (hermes_pair = « sha256(code)|expiry »): the key never goes
-// through a person, a chat or the app. The code works once, for a short time; 10 tries an hour.
+// through a person, a chat or the app. The code works once, for a short time; 10 wrong tries burn it.
 import { serve, json, body, fail, env } from '../_shared/http.ts';
 import { caller, secret, adminDb, setSecrets } from '../_shared/db.ts';
 import { sha256hex, safeEqual } from '../_shared/tokens.ts';
@@ -47,14 +47,25 @@ async function keep(row: Record<string, unknown>) {
   if (error) console.error('hermes keep', error.message);
 }
 
+/** The pairing: the right code always works while it is valid; only WRONG codes are counted, and the 10th wrong one in an
+    hour burns the waiting code (a new pairing is needed). Before, any 10 posts (from anyone) used up the hour and blocked
+    the real pairing; guessing is still limited to 10 tries per code. Every post, whatever it says, also counts in a loose
+    ceiling of 120 an hour (« hermes:pair-any »), so the door never reads the secrets without limit. */
 async function pair(b: { code?: unknown; url?: unknown; key?: unknown }) {
-  if (!(await brake('hermes:pair', 3600, 10))) fail('busy', 'Trop d’essais. Réessaie dans une heure.', 429);
   const code = String(b.code || ''), url = String(b.url || '').trim().replace(/\/+$/, ''), key = String(b.key || '').trim();
+  // a loose ceiling on every post of this public door (each one reads the secrets): never reached by a real pairing
+  if (!(await brake('hermes:pair-any', 3600, 120))) fail('busy', 'Trop d’essais de branchement cette heure-ci. Réessaie plus tard.', 429);
   const want = (await secret('hermes_pair')) || '';
   const [hash, until] = want.split('|');
   if (!hash || !until) fail('no_pair', 'Aucun branchement de Hermes n’est attendu.', 403);
   if (!(Date.parse(until) > Date.now())) { await setSecrets({ hermes_pair: null }, null); fail('pair_expired', 'Le code de branchement a expiré.', 403); }
-  if (!code || !safeEqual(await sha256hex(code), hash)) fail('bad_pair', 'Ce code de branchement n’est pas le bon.', 403);
+  if (!code || !safeEqual(await sha256hex(code), hash)) {
+    if (!(await brake('hermes:pair', 3600, 9))) {
+      await setSecrets({ hermes_pair: null }, null);
+      fail('busy', 'Trop d’essais : ce code de branchement est annulé. Recommence le branchement.', 429);
+    }
+    fail('bad_pair', 'Ce code de branchement n’est pas le bon.', 403);
+  }
   if (!/^https:\/\/[\w.-]+(:\d+)?(\/[\w./-]*)?$/.test(url) && !/^http:\/\/127\.0\.0\.1(:\d+)?(\/[\w./-]*)?$/.test(url)) fail('bad_url', 'L’adresse de Hermes doit être en https.');
   if (key.length < 32) fail('bad_key', 'La clé de Hermes est trop courte.');
   await setSecrets({ hermes_url: url, hermes_key: key, hermes_pair: null }, null);

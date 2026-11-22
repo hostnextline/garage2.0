@@ -4,13 +4,19 @@ import { ArrowUp, ArrowDown, Trash2, Plus } from 'lucide-preact';
 import { t } from '../../lib/i18n';
 import { fold } from '../../lib/text';
 import { settings } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { saveSection } from './save';
 import { Panel, Input, IconButton, Button, Empty, attempt, toast } from '../../ui';
 import { useSectionDraft, SaveBar, Section } from './SectionFrame';
 
+/** the section's list as stored now (also what the dot of the list compares the draft with) */
+export const expensesSaved = (): { list: string[] } => ({ list: (settings.value.expense_categories || []).map(String) });
+
 export function ExpensesSection() {
-  const saved = (settings.value.expense_categories || []).map(String);
-  const { draft: d, set, dirty, reset } = useSectionDraft<string[]>('expenses', saved);
+  // the list is one value (its order counts): kept whole in the draft
+  const saved = expensesSaved();
+  const { draft, set: setDraft, dirty, reset } = useSectionDraft<{ list: string[] }>('expenses', saved);
+  const d = draft.list;
+  const set = (fn: (x: string[]) => string[]) => setDraft((x) => ({ list: fn(x.list) }));
   const [name, setName] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const dupes = new Set(d.map((x) => fold(x)).filter((x, i, a) => x && a.indexOf(x) !== i));
@@ -24,7 +30,7 @@ export function ExpensesSection() {
   const save = async () => {
     if (dupes.size) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
     const list = d.map((x) => x.trim()).filter(Boolean);
-    if (await attempt(() => saveSettings('expense_categories', list), { ok: t('settings.saved') })) reset();
+    if (await attempt(() => saveSection('expense_categories', list), { ok: t('settings.saved') })) reset();
   };
   return (
     <Section testid="settings-expenses" bar={<SaveBar dirty={dirty} onSave={save} onReset={() => { reset(); setErr(null); }} />}>

@@ -68,3 +68,6 @@
 .tre-read { color: var(--ok); font-weight: 520; }
 .tre-warn { color: var(--warn); font-weight: 520; }
 .tre-receipt-img { display: block; width: 100%; height: auto; border-radius: var(--r-md); background: var(--solid); }
+
+/* « Rapprochement d'hier »: a difference is a sentence, read whole (a row of the kit cuts its title to one line) */
+.tre-recon-row .row-title, .tre-recon-row .row-sub { white-space: normal; overflow-wrap: anywhere; }

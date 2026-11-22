@@ -238,3 +238,10 @@
 .agenda-grid-top.is-over { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent) !important; }
 .agenda-grid-topdrop { text-align: center; font-size: var(--t-xs); font-weight: 600; color: var(--accent-ink); }
 .agenda-gjob, .agenda-unit, .agenda-grid-top { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+/* a move kept on the phone (agenda-14): « En attente d’envoi » on the job until the server has it */
+.agenda-wait { display: inline-flex; align-items: center; gap: 3px; min-width: 0; font-size: 11px; font-weight: 600; color: var(--warn); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agenda-wait svg { flex: none; }
+.agenda-chip.is-waiting { border-style: dashed; border-color: color-mix(in srgb, var(--warn) 70%, transparent); }
+.agenda-gjob.is-waiting .agenda-gjob-in { border-style: dashed; }
+.agenda-ticketwrap.is-waiting { display: flex; flex-direction: column; gap: 2px; }

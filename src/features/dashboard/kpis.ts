@@ -2,13 +2,13 @@
    revenue against the goal, per truck, the average ticket, the no-show rate, money per km driven, month to month. */
 import type { Cents } from '../../lib/money';
 import type { Day } from '../../lib/dates';
-import { addMonths, daysInMonth, monthStart } from '../treasury/period';
+import { addMonths, daysInMonth, monthStart } from '../../domain/money/period';
 
 export interface TruckRevenue { truck_id: string | null; revenue_cents: Cents; invoices: number }
 export interface MonthRevenue { month: Day; revenue_cents: Cents }
 export interface TopService { name: string; n: number }
 export interface DashboardData {
-  month: Day; revenue_cents: Cents; tps_cents: Cents; tvq_cents: Cents; invoices: number; avg_ticket_cents: Cents;
+  month: Day; revenue_cents: Cents; invoices: number; avg_ticket_cents: Cents;
   collected_cents: Cents; receivable_cents: Cents; receivable_count: number; drafts: number;
   jobs_done: number; jobs_booked: number; jobs_cancelled: number; jobs_no_show: number; lost_cents: Cents; km: number; goal_cents: Cents | null;
   by_truck: TruckRevenue[]; months: MonthRevenue[]; top_services: TopService[];
@@ -18,7 +18,8 @@ const num = (x: unknown): number => { const n = Number(x); return Number.isFinit
 const int = (x: unknown): number => Math.round(num(x));
 const list = (x: unknown): Record<string, unknown>[] => (Array.isArray(x) ? x.filter((r) => r && typeof r === 'object') as Record<string, unknown>[] : []);
 
-/** the server's answer made safe to show: numbers are numbers, lists are lists, the six months are all there */
+/** the server's answer made safe to show: numbers are numbers, lists are lists, the six months are all there.
+    Shaping an answer already shaped gives the same (an answer kept on the device is shaped again when read) */
 export function normalizeDashboard(raw: unknown, month: Day): DashboardData {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const m = monthStart(month);
@@ -31,7 +32,7 @@ export function normalizeDashboard(raw: unknown, month: Day): DashboardData {
   const goal = r.goal_cents == null ? null : int(r.goal_cents);
   return {
     month: m,
-    revenue_cents: int(r.revenue_cents), tps_cents: int(r.tps_cents), tvq_cents: int(r.tvq_cents), invoices: int(r.invoices), avg_ticket_cents: int(r.avg_ticket_cents),
+    revenue_cents: int(r.revenue_cents), invoices: int(r.invoices), avg_ticket_cents: int(r.avg_ticket_cents),
     collected_cents: int(r.collected_cents), receivable_cents: int(r.receivable_cents), receivable_count: int(r.receivable_count), drafts: int(r.drafts),
     jobs_done: int(r.jobs_done), jobs_booked: int(r.jobs_booked), jobs_cancelled: int(r.jobs_cancelled), jobs_no_show: int(r.jobs_no_show),
     lost_cents: int(r.lost_cents), km: Math.max(0, num(r.km)), goal_cents: goal && goal > 0 ? goal : null,
@@ -62,15 +63,35 @@ export function projection(revenue: Cents, month: Day, today: Day): Cents | null
   if (day < 3) return null;
   return Math.round((revenue / day) * daysInMonth(today));
 }
+/** a month already over (its « autres prévues » would only count jobs left booked by mistake) */
+export function closedMonth(month: Day, today: Day): boolean {
+  return monthStart(month) < monthStart(today);
+}
 /** the month before, and the change in percent (only for a closed month: a month in progress is not comparable) */
 export function versusLastMonth(d: Pick<DashboardData, 'months' | 'month' | 'revenue_cents'>, today: Day): { prev: Cents | null; change: number | null } {
   const prevKey = addMonths(d.month, -1);
   const prev = d.months.find((m) => m.month === prevKey)?.revenue_cents ?? null;
-  const closed = monthStart(d.month) < monthStart(today);
+  const closed = closedMonth(d.month, today);
   return { prev, change: closed && prev && prev > 0 ? (d.revenue_cents - prev) / prev : null };
 }
 /** the share of each truck in the month's revenue */
 export function truckShares(rows: TruckRevenue[]): (TruckRevenue & { share: number; avg: Cents })[] {
   const total = rows.reduce((n, r) => n + Math.max(0, r.revenue_cents), 0);
   return rows.map((r) => ({ ...r, share: total > 0 ? Math.max(0, r.revenue_cents) / total : 0, avg: r.invoices > 0 ? Math.round(r.revenue_cents / r.invoices) : 0 }));
+}
+/** the goal on screen: the synced setting decides as soon as the settings row is on the phone (« Retirer l'objectif »
+    sets it to null: the goal kept in the server's last answer must not come back); the report's goal only before that */
+export function shownGoal(settingsRow: { billing?: { goal_cents?: number | null } | null } | undefined, reportGoal: Cents | null): Cents | null {
+  if (!settingsRow) return reportGoal;
+  const g = settingsRow.billing?.goal_cents;
+  return g != null && g > 0 ? g : null;
+}
+/** « Moyenne : … par mois »: the closed months from the first one with revenue (the month in progress and the months
+    before the garage used the app would pull it down); when none is closed yet, all the months shown */
+export function monthsAverage(months: MonthRevenue[], today: Day): Cents {
+  const now = monthStart(today);
+  const closed = months.filter((m) => m.month < now);
+  const first = closed.findIndex((m) => m.revenue_cents > 0);
+  const used = first >= 0 ? closed.slice(first) : months;
+  return Math.round(used.reduce((n, m) => n + m.revenue_cents, 0) / Math.max(1, used.length));
 }

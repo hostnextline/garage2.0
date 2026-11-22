@@ -193,6 +193,14 @@ export const customers: typeof fr = {
     delete: 'Delete the note',
     deleteConfirm: 'Tap again to delete'
   },
+  follow: {
+    title: 'Coming appointments',
+    text: { one: 'A coming appointment is still at the old address. Move it to the new address?', other: '{n} coming appointments are still at the old address. Move them to the new address?' },
+    ok: 'Yes, to the new address',
+    no: 'No, leave them',
+    done: { one: 'The appointment is at the new address', other: '{n} appointments are at the new address' }
+  },
+  vehicle: { vinReading: 'VIN saved. Reading the VIN…' },
   picker: {
     label: 'Find the customer',
     placeholder: 'Name, phone, address…',
@@ -206,5 +214,7 @@ export const customers: typeof fr = {
     missing: 'This customer isn’t (or is no longer) on this phone.',
     createTitle: 'New customer',
     createOk: 'Create'
-  }
+  },
+  // the conversation sheet (src/shared/customers/ConversationSheet.tsx): a text sent again while the first one still leaves
+  texting: { pending: 'This message is on its way.' }
 };

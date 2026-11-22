@@ -1,0 +1,473 @@
+/* The bugs of the moment pickers found by the scan of 2026-11-15, each drawn with the real pickers and a pretended
+   server (each test fails with the pickers of before). */
+import { describe, it, expect, afterAll, afterEach, beforeEach, vi } from 'vitest';
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+import { useState } from 'preact/hooks';
+import type { MenuAction } from '../../ui/ContextMenu';
+
+const api = vi.hoisted(() => ({ suggestBlocks: vi.fn(), suggestWindows: vi.fn() }));
+const ui = vi.hoisted(() => ({ ask: vi.fn(), toast: vi.fn() }));
+const seen = vi.hoisted(() => ({ preview: [] as { onPick?: () => void }[], menus: [] as MenuAction[][] }));
+vi.mock('../../data/api', () => api);
+vi.mock('../../data/auth', () => ({ isOwner: () => false, hasRole: () => false }));
+// the map window beside a moment under the mouse leaves a mark (RouteHover, in both modes), with the moment it shows
+vi.mock('./RoutePreview', async () => {
+  const { h } = await import('preact');
+  return {
+    RoutePreview: (p: { onPick?: () => void }) => { seen.preview.push(p); return null; },
+    RouteHover: (p: { ask: { day: string; eta?: number | null }; title?: string }) => h('i', { 'data-testid': 'test-hover-map', 'data-day': p.ask.day, 'data-eta': String(p.ask.eta ?? ''), 'data-title': p.title || '' }),
+    MapHover: () => null
+  };
+});
+vi.mock('../../ui', async (orig) => ({ ...(await orig<typeof import('../../ui')>()), ask: ui.ask, toast: ui.toast }));
+vi.mock('../../ui/ContextMenu', async (orig) => ({ ...(await orig<typeof import('../../ui/ContextMenu')>()), openMenu: (_e: MouseEvent, a: MenuAction[]) => { seen.menus.push(a); } }));
+
+import { upsertLocal, clearAll } from '../../data/store';
+import { addDays, today } from '../../lib/dates';
+import { lang } from '../../lib/i18n';
+import type { FarInfo } from '../../domain/moment/logic';
+import { BlockPicker, type BlockChoice } from './BlockPicker';
+import { forgetWindows } from './useDayWindows';
+
+// R81: the calendar is the garage's (Montréal) clock, frozen at a Wednesday noon (17 h UTC = 12 h EST): a run that
+// crosses midnight, or a machine on another zone, sees the same « today » and « tomorrow » as the pickers. Only Date
+// is pretended, the timers stay real (the waits for the server's pretended answers)
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-11-18T17:00:00Z'));
+afterAll(() => { vi.useRealTimers(); });
+const tomorrow = addDays(today(), 1);
+const later = addDays(today(), 3);
+const box = document.createElement('div');
+document.body.appendChild(box);
+const q = (id: string) => document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+const all = (prefix: string) => [...box.querySelectorAll(`[data-testid^="${prefix}"]`)] as HTMLElement[];
+const unit = (m: number, day = tomorrow) => q(`pick-unit-${day}-${m}`)!;
+const wait = async (ms = 800) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
+let picked: (BlockChoice | null)[] = [];
+let fars: (FarInfo | null)[] = [];
+interface HostProps { layout?: 'grid' | 'list'; lat?: number; duration?: number; truckId?: string; reload?: number; excludeJob?: string; first?: BlockChoice | null }
+function Host(p: HostProps) {
+  const [v, setV] = useState<BlockChoice | null>(p.first ?? null);
+  return <BlockPicker lat={p.lat ?? 45.5} lng={-73.6} duration={p.duration ?? 60} value={v} onPick={(c) => { picked.push(c); setV(c); }} onClear={() => { picked.push(null); setV(null); }}
+    onFar={(f) => fars.push(f)} layout={p.layout ?? 'grid'} truckId={p.truckId} reload={p.reload} excludeJob={p.excludeJob} />;
+}
+const draw = (p: HostProps = {}) => act(() => render(<Host {...p} />, box));
+const win = (day: string, start: number, truck: string | null = 'T1') => ({ day, block: 'day', drive_min: 12, near: 2, truck, left: 300, eta: start + 60, win_start: start, win_end: start + 240 });
+const windowsOn = (on: boolean) => upsertLocal('settings', [{ id: '1', booking: { windows_on: on } }], { force: true });
+
+beforeEach(() => {
+  picked = []; fars = []; seen.preview = []; seen.menus = [];
+  lang.value = 'fr';
+  forgetWindows();
+  ui.ask.mockReset().mockResolvedValue(true);
+  ui.toast.mockReset();
+  windowsOn(true);
+  upsertLocal('trucks', [{ id: 'T1', name: 'Camion', active: true, sort: 0 }], { force: true });
+  upsertLocal('truck_week', [0, 1, 2, 3, 4, 5, 6].map((dow) => ({ id: `w${dow}`, truck_id: 'T1', dow, ranges: [[480, 1200]] })), { force: true });
+  api.suggestBlocks.mockReset().mockResolvedValue([win(tomorrow, 840), win(later, 540)]);
+  api.suggestWindows.mockReset().mockImplementation(async (_a: unknown, _b: unknown, _c: unknown, day: string) => [win(day, 840), win(day, 540)]);
+});
+afterEach(() => { act(() => render(null, box)); clearAll(); });
+
+describe('« garde-route » with « Plages d’arrivée » (booking-b-01, x-dualmode-01)', () => {
+  beforeEach(() => {
+    // tomorrow is far from the truck's other stops (52 min between two customers); in 3 days it is not
+    api.suggestBlocks.mockResolvedValue([{ ...win(tomorrow, 840), far: 'hop', hop_min: 52, add_min: 40 }, { ...win(later, 540), far: null, add_min: 12 }]);
+  });
+  it('a far day is never offered among the best moments, and is marked in the calendar', async () => {
+    draw();
+    await wait();
+    expect(all('win-sugg-').map((x) => x.dataset.day)).toEqual([later]);
+    expect(q(`pick-day-${tomorrow}`)?.className).toContain('is-far');
+    expect(q(`pick-day-${tomorrow}`)?.getAttribute('aria-label')).toContain('loin des autres arrêts');
+    expect(q(`pick-day-${later}`)?.className).not.toContain('is-far');
+    expect(q('pick-legend-far')).toBeTruthy();
+  });
+  // review mp-1: the class alone drew nothing (the state of an open day is an empty space): the legend's road mark is drawn
+  it('the far day of the time grid shows the road mark of the legend in its header', async () => {
+    draw();
+    await wait();
+    const mark = q(`pick-day-far-${tomorrow}`);
+    expect(mark?.tagName.toLowerCase()).toBe('svg');
+    expect(q(`pick-day-${tomorrow}`)!.querySelector('.pk-dayhd-state')!.contains(mark)).toBe(true);
+    expect(q(`pick-day-far-${later}`)).toBeNull();
+  });
+  // review mp-2: while the answer for a new address is awaited, the old address's scores neither warn nor tell the screen
+  it('a new address: the warning waits for its own answer (never the old address’s)', async () => {
+    draw();
+    await wait();
+    await act(async () => { unit(900).click(); });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, kind: 'hop' });
+    let land: (rows: unknown[]) => void = () => {};
+    api.suggestBlocks.mockImplementation(() => new Promise((ok) => { land = ok; }));
+    draw({ lat: 45.6 });
+    await wait();
+    expect(fars.at(-1)).toBeNull();
+    expect(q('bp-far-warn')).toBeNull();
+    // the new address is near that day's other stops
+    await act(async () => { land([{ ...win(tomorrow, 840), far: null, add_min: 8 }]); });
+    expect(fars.at(-1)).toBeNull();
+    expect(q('bp-far-warn')).toBeNull();
+    await act(async () => { land([]); });
+  });
+  it('the same address asked again for another length of work: the warning comes back with its answer', async () => {
+    draw();
+    await wait();
+    await act(async () => { unit(900).click(); });
+    let land: (rows: unknown[]) => void = () => {};
+    api.suggestBlocks.mockImplementation(() => new Promise((ok) => { land = ok; }));
+    draw({ duration: 90 });
+    await wait();
+    expect(fars.at(-1)).toBeNull();
+    await act(async () => { land([{ ...win(tomorrow, 840), far: 'hop', hop_min: 55, add_min: 40 }]); });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, kind: 'hop' });
+    expect(q('bp-far-warn')?.textContent).toContain('55 min');
+  });
+  it('a time chosen on a far day: warned with « Plutôt … », and the screen is told (it asks before booking)', async () => {
+    draw();
+    await wait();
+    await act(async () => { unit(900).click(); });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, block: 'day', kind: 'hop' });
+    expect(q('bp-far-warn')?.textContent).toContain('52 min');
+    const better = q('bp-far-better')!;
+    expect(better.textContent).toContain('Plutôt');
+    expect(better.textContent).toContain('28 min de route en moins');
+    await act(async () => { better.click(); });
+    expect(picked.at(-1)).toMatchObject({ day: later, block: 'day', win_start: 540 });
+    expect(fars.at(-1)).toBeNull();
+    expect(q('bp-far-warn')).toBeNull();
+  });
+  it('« Flexible » on a far day is warned too', async () => {
+    draw();
+    await wait();
+    await act(async () => { unit(900).click(); });
+    await act(async () => { q('book-flex')!.click(); });
+    expect(picked.at(-1)).toEqual({ day: tomorrow, block: 'day', win_flex: true });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, block: 'day' });
+  });
+});
+
+describe('a vehicle chosen by hand (x-dualmode-07, booking-b-02)', () => {
+  it('its own kind is asked, so the windows it can take are open (before: the car’s rows, all dropped)', async () => {
+    upsertLocal('trucks', [{ id: 'CAR', name: 'Voiture', active: true, sort: 0, tire_machine: false }, { id: 'T1', name: 'Camion', active: true, sort: 1, tire_machine: true }], { force: true });
+    upsertLocal('truck_week', [0, 1, 2, 3, 4, 5, 6].flatMap((dow) => ['CAR', 'T1'].map((id) => ({ id: `${id}${dow}`, truck_id: id, dow, ranges: [[480, 1200]] }))), { force: true });
+    // the planner sends the car first unless the truck is asked
+    api.suggestWindows.mockImplementation(async (_a: unknown, _b: unknown, _c: unknown, day: string, _x: unknown, _n: unknown, kind: string | null) => [win(day, 840, kind === 'truck' ? 'T1' : 'CAR')]);
+    api.suggestBlocks.mockImplementation(async (...a: unknown[]) => [win(tomorrow, 840, a[7] === 'truck' ? 'T1' : 'CAR')]);
+    draw({ truckId: 'T1' });
+    await wait();
+    expect(api.suggestWindows).toHaveBeenCalledWith(45.5, -73.6, 60, tomorrow, null, false, 'truck');
+    expect(api.suggestBlocks.mock.calls[0][7]).toBe('truck');
+    expect(unit(900).dataset.state).toBe('open');
+    expect(all('win-sugg-')).toHaveLength(1);
+  });
+});
+
+describe('the phone’s list while the days answer in any order (booking-b-04)', () => {
+  it('the times of a later day never take the place of an earlier day still waiting', async () => {
+    const wait4: Record<string, (rows: unknown[]) => void> = {};
+    api.suggestWindows.mockImplementation((_a: unknown, _b: unknown, _c: unknown, day: string) => new Promise((ok) => { wait4[day] = ok; }));
+    draw({ layout: 'list' });
+    await wait();
+    await act(async () => { wait4[later]([win(later, 540)]); });
+    expect(all('pick-time-')).toHaveLength(0);
+    expect(q(`pick-daychip-${later}`)?.getAttribute('aria-pressed')).toBe('false');
+    await act(async () => { for (const d of Object.keys(wait4)) if (d !== later && d !== tomorrow) wait4[d]([]); });
+    await act(async () => { wait4[tomorrow]([win(tomorrow, 840)]); });
+    expect(q(`pick-daychip-${tomorrow}`)?.getAttribute('aria-pressed')).toBe('true');
+    expect(all('pick-time-').map((x) => x.dataset.testid)).toEqual(['pick-time-870', 'pick-time-885', 'pick-time-900', 'pick-time-915']);
+  });
+});
+
+describe('« Voir sur la carte » of a time the server refuses (booking-b-08)', () => {
+  it('the map opens, but « Choisir ce moment » is not in it', async () => {
+    draw();
+    await wait();
+    const col = box.querySelector(`.pk-col[data-day="${tomorrow}"]`)!;
+    await act(async () => { col.querySelector('.pk-u')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientY: 0 })); });
+    const actions = seen.menus.at(-1)!;
+    expect(actions.map((a) => a.testid)).toEqual(['menu-see-map']);
+    await act(async () => { actions[0].run(); });
+    expect(seen.preview.at(-1)?.onPick).toBeUndefined();
+    // a possible time keeps both
+    await act(async () => { unit(900).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+    expect(seen.menus.at(-1)!.map((a) => a.testid)).toContain('menu-see-map');
+  });
+});
+
+describe('answers being replaced (booking-b-26, booking-b-33)', () => {
+  it('a best moment of the address before does not take a tap while the new address is being looked at', async () => {
+    draw();
+    await wait();
+    draw({ lat: 45.6 });
+    await act(async () => { q('win-sugg-0')!.click(); });
+    expect(picked).toEqual([]);
+    await wait();
+    await act(async () => { q('win-sugg-0')!.click(); });
+    expect(picked).toHaveLength(1);
+  });
+  it('back to a length of work already asked: its own answer is drawn, even with as many rows as the other', async () => {
+    api.suggestWindows.mockImplementation(async (_a: unknown, _b: unknown, dur: number, day: string) => [win(day, dur === 60 ? 840 : 540)]);
+    draw();
+    await wait();
+    expect(unit(900).dataset.state).toBe('open');
+    api.suggestBlocks.mockImplementation(() => new Promise(() => {}));   // the best moments do not come back to redraw it
+    draw({ duration: 120 });
+    await wait();
+    expect(unit(600).dataset.state).toBe('open');
+    expect(unit(900).dataset.state).toBe('no');
+    draw({ duration: 60 });
+    await wait(100);
+    expect(unit(900).dataset.state).toBe('open');
+    expect(unit(600).dataset.state).toBe('no');
+  });
+});
+
+describe('the time grid on a touch screen (booking-b-09)', () => {
+  it('a tap does not open the words and the map of the unit (only a mouse that hovers does)', async () => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+    try {
+      draw();
+      await wait();
+      await act(async () => { unit(900).dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+      expect(q('pick-label')).toBeNull();
+    } finally { window.matchMedia = mm; }
+  });
+});
+
+// booking-b-31: the small map of a moment under the mouse (z-index 85) stayed open when the right-click menu (80) opened,
+// and could cover it
+describe('the small map of a moment closes when its menu opens (booking-b-31)', () => {
+  const fine = () => { const mm = window.matchMedia; window.matchMedia = ((query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia; return () => { window.matchMedia = mm; }; };
+  it('with « Plages d’arrivée »: a best moment', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      await act(async () => { q('win-sugg-0')!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+      await wait(450);
+      expect(q('test-hover-map')).toBeTruthy();
+      await act(async () => { q('win-sugg-0')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+      expect(seen.menus).toHaveLength(1);
+      expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
+  });
+  // the right-click on a day of the windows calendar opens its own menu (dayMenu): the small map closes there too
+  it('with « Plages d’arrivée »: a day of the calendar', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      await act(async () => { q('win-sugg-0')!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+      await wait(450);
+      expect(q('test-hover-map')).toBeTruthy();
+      await act(async () => { q(`pick-day-${tomorrow}`)!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+      expect(seen.menus).toHaveLength(1);
+      expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
+  });
+  it('blocks: a moment offered', async () => {
+    windowsOn(false);
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }]);
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const row = all('bp-sugg')[0];
+      await act(async () => { row.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+      await wait(350);
+      expect(q('test-hover-map')).toBeTruthy();
+      await act(async () => { row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); });
+      expect(seen.menus).toHaveLength(1);
+      expect(q('test-hover-map')).toBeNull();
+    } finally { back(); }
+  });
+});
+
+// 2026-11-19, Hassan: « i want the actual map to open, we are visual ». The map of a moment under the mouse is the real map
+// of that day in a window that stays open while the mouse goes from a moment to the next
+describe('the map window follows the mouse from a moment to the next, and closes a moment after it left', () => {
+  const fine = () => { const mm = window.matchMedia; window.matchMedia = ((query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia; return () => { window.matchMedia = mm; }; };
+  const fire = (el: Element, type: string) => act(async () => { el.dispatchEvent(new MouseEvent(type, { bubbles: type !== 'mouseleave' })); });
+  const shown = () => q('test-hover-map');
+  it('the best moments: it opens after a rest, goes to the next moment without closing, closes after the mouse left', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const [a, b] = [q('win-sugg-0')!, q('win-sugg-1')!];
+      await fire(a, 'mousemove');
+      expect(shown()).toBeNull();          // not at once: the mouse only passing opens nothing
+      await wait(320);
+      expect(shown()?.dataset.day).toBe(a.dataset.day);
+      // to the next moment: the window never closes on the way, then shows that moment
+      await fire(a, 'mouseleave');
+      await fire(b, 'mousemove');
+      expect(shown()?.dataset.day).toBe(a.dataset.day);
+      await wait(180);
+      expect(shown()?.dataset.day).toBe(b.dataset.day);
+      // the mouse leaves the moments: still there a moment (it may be on its way to another), then gone
+      await fire(b, 'mouseleave');
+      expect(shown()).toBeTruthy();
+      await wait(320);
+      expect(shown()).toBeNull();
+    } finally { back(); }
+  });
+  it('a moment only crossed on the way back to the one shown changes nothing', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const [a, b] = [q('win-sugg-0')!, q('win-sugg-1')!];
+      await fire(a, 'mousemove');
+      await wait(320);
+      await fire(a, 'mouseleave');
+      await fire(b, 'mousemove');
+      await fire(b, 'mouseleave');
+      await fire(a, 'mousemove');
+      await wait(400);
+      expect(shown()?.dataset.day).toBe(a.dataset.day);
+    } finally { back(); }
+  });
+  it('the time grid: the words at once beside the time, then the map instead; it follows from a time to the next and outlives a booked stop crossed', async () => {
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      expect(unit(900).dataset.state).toBe('open');
+      expect(unit(915).dataset.state).toBe('open');
+      await fire(unit(900), 'mouseover');
+      expect(q('pick-label')).toBeTruthy();
+      expect(shown()).toBeNull();
+      await wait(320);
+      expect(shown()?.dataset.eta).toBe('900');
+      // the window says the words itself, with the day (it is beside the picker, no longer beside the column)
+      expect(shown()?.dataset.title).toMatch(/^Jeudi 19 novembre · Arrivée vers 15 h/);
+      expect(q('pick-label')).toBeNull();
+      await fire(unit(915), 'mouseover');
+      expect(shown()?.dataset.eta).toBe('900');
+      await wait(180);
+      expect(shown()?.dataset.eta).toBe('915');
+      // off the possible times (a refused time, a booked stop): the words go at once, the map waits
+      await fire(unit(660), 'mouseover');
+      expect(q('pick-label')).toBeNull();
+      expect(shown()?.dataset.eta).toBe('915');
+      // back on a time before it closed: it stays, and follows
+      await wait(100);
+      expect(unit(885).dataset.state).toBe('open');
+      await fire(unit(885), 'mouseover');
+      await wait(260);
+      expect(shown()?.dataset.eta).toBe('885');
+      // the mouse leaves the calendar for good
+      await fire(q('pick-grid')!.querySelector('.pk-cols')!, 'mouseleave');
+      await wait(320);
+      expect(shown()).toBeNull();
+    } finally { back(); }
+  });
+  it('the times of the list (a narrow window on a computer) open the same map', async () => {
+    const back = fine();
+    try {
+      draw({ layout: 'list' });
+      await wait();
+      await act(async () => { q(`pick-daychip-${tomorrow}`)!.click(); });
+      await fire(q('pick-time-900')!, 'mousemove');
+      await wait(320);
+      expect(shown()?.dataset.day).toBe(tomorrow);
+      expect(shown()?.dataset.eta).toBe('900');
+      expect(shown()?.dataset.title).toMatch(/^Jeudi 19 novembre · Arrivée vers 15 h/);
+    } finally { back(); }
+  });
+  it('blocks: from a moment offered to the next', async () => {
+    windowsOn(false);
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }, { day: later, block: 'am', drive_min: 15, near: 1, truck: null, left: 200 }]);
+    const back = fine();
+    try {
+      draw();
+      await wait();
+      const [a, b] = [...box.querySelectorAll('[data-testid="bp-sugg"]')];
+      await fire(a, 'mousemove');
+      await wait(320);
+      expect(shown()?.dataset.day).toBe(tomorrow);
+      await fire(a, 'mouseleave');
+      await fire(b, 'mousemove');
+      await wait(180);
+      expect(shown()?.dataset.day).toBe(later);
+    } finally { back(); }
+  });
+});
+
+describe('blocks (the switch off)', () => {
+  beforeEach(() => { windowsOn(false); });
+  it('a block refused by the server asks the suggestions again (booking-b-29)', async () => {
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }]);
+    draw();
+    await wait();
+    const n = api.suggestBlocks.mock.calls.length;
+    draw({ reload: 1 });
+    await wait();
+    expect(api.suggestBlocks.mock.calls.length).toBe(n + 1);
+  });
+  it('a later page of the calendar gets its own garde-route scores (booking-b-03)', async () => {
+    const d20 = addDays(today(), 20);
+    api.suggestBlocks.mockImplementation(async (_a: unknown, _b: unknown, _c: unknown, from: string) => (from === today() ? [] : [{ day: d20, block: 'pm', drive_min: 50, near: 0, truck: null, left: 200, far: 'hop', hop_min: 60 }]));
+    draw();
+    await wait();
+    await act(async () => { q('bp-later')!.click(); });
+    await wait();
+    expect(api.suggestBlocks).toHaveBeenCalledWith(45.5, -73.6, 60, addDays(today(), 14), 14, null, false, null);
+    expect(q(`bp-cell-${d20}-pm`)?.className).toContain('is-far');
+    await act(async () => { q(`bp-cell-${d20}-pm`)!.click(); });
+    expect(fars.at(-1)).toMatchObject({ day: d20, block: 'pm', kind: 'hop' });
+    // back to the first page: the moment chosen is still known to be far
+    await act(async () => { q('bp-earlier')!.click(); });
+    await wait();
+    expect(q('bp-far-warn')).toBeTruthy();
+  });
+  // review mp-7: the map's day strip got only the first two weeks' scores, so the same day was far in the calendar only
+  it('a later page: the map’s day strip marks the far day too', async () => {
+    const d20 = addDays(today(), 20);
+    api.suggestBlocks.mockImplementation(async (_a: unknown, _b: unknown, _c: unknown, from: string) => (from === today() ? [] : [{ day: d20, block: 'pm', drive_min: 50, near: 0, truck: null, left: 200, far: 'hop', hop_min: 60 }]));
+    draw();
+    await wait();
+    await act(async () => { q('bp-later')!.click(); });
+    await wait();
+    expect(q(`bp-cell-${d20}-pm`)?.className).toContain('is-far');
+    expect(q(`mm-day-${d20}`)?.className).toContain('is-far');
+  });
+  it('a block chosen, then another address: no warning from the old address’s scores (booking-b-26)', async () => {
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 50, near: 0, truck: null, left: 200, far: 'hop', hop_min: 60 }]);
+    draw();
+    await wait();
+    await act(async () => { q(`bp-cell-${tomorrow}-pm`)!.click(); });
+    expect(fars.at(-1)).toMatchObject({ day: tomorrow, block: 'pm' });
+    api.suggestBlocks.mockImplementation(() => new Promise(() => {}));
+    draw({ lat: 45.6 });
+    await wait();
+    expect(fars.at(-1)).toBeNull();
+    expect(q('bp-far-warn')).toBeNull();
+  });
+  it('a suggestion being replaced does not take a tap (booking-b-26)', async () => {
+    api.suggestBlocks.mockResolvedValue([{ day: tomorrow, block: 'pm', drive_min: 12, near: 2, truck: null, left: 200 }]);
+    draw();
+    await wait();
+    draw({ lat: 45.6 });
+    await act(async () => { q('bp-sugg')!.click(); });
+    expect(picked).toEqual([]);
+  });
+  it('moving: « Plutôt … » never proposes the block the appointment is in now (booking-b-27)', async () => {
+    upsertLocal('customers', [{ id: 'C1', first_name: 'Amira' }], { force: true });
+    upsertLocal('jobs', [{ id: 'J1', customer_id: 'C1', day: tomorrow, block: 'am', status: 'booked', truck_id: 'T1', duration_min: 60, number: 1 }], { force: true });
+    api.suggestBlocks.mockResolvedValue([
+      { day: tomorrow, block: 'am', drive_min: 5, near: 2, truck: 'T1', left: 200, add_min: 5 },
+      { day: tomorrow, block: 'pm', drive_min: 9, near: 1, truck: 'T1', left: 200, add_min: 9 },
+      { day: later, block: 'eve', drive_min: 50, near: 0, truck: 'T1', left: 200, far: 'hop', hop_min: 60, add_min: 60 }
+    ]);
+    draw({ excludeJob: 'J1', first: { day: later, block: 'eve' } });
+    await wait();
+    const better = all('bp-far-better').map((x) => x.textContent);
+    expect(better).toHaveLength(1);
+    expect(better[0]).toContain('après-midi');
+  });
+});

@@ -9,8 +9,8 @@ import { errorMessage } from '../../data/api';
 import type { Role } from '../../data/types';
 import { Sheet, Button, Field, Input, PhoneInput, Chips, Seg, Select, Banner, toast } from '../../ui';
 import { HowSeg } from './LinkSheet';
-import { teamDo, type LinkAnswer, type LinkResult, type SendHow } from './teamApi';
-import { ALL_ROLES } from './rights';
+import { teamDo, type LinkAnswer, type LinkResult, type SendHow } from '../../domain/team/teamApi';
+import { ALL_ROLES } from '../../domain/team/rights';
 
 export interface InviteDraft { full_name: string; short_name: string; email: string; phone: string; roles: Role[]; truck_id: string; lang: 'fr' | 'en'; send: SendHow }
 const EMPTY: InviteDraft = { full_name: '', short_name: '', email: '', phone: '', roles: ['mechanic'], truck_id: '', lang: 'fr', send: 'email' };

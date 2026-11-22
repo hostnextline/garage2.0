@@ -1,38 +1,30 @@
 /* Sheets: a panel that rises from the bottom on the phone and opens as a window on the computer.
-   The phone's back button (Android) closes the sheet instead of leaving the screen.
-   ask() / askText(): a short question with two answers, returned as a promise. */
+   - The phone's back button (Android) closes the sheet instead of leaving the screen: the sheet owns one history step
+     (platform/history). A sheet that only its buttons may close (dismissable={false}: a signature in progress) keeps
+     its step when the back button is pressed, and ignores Escape and the dimmed area. Any other sheet keeps its step
+     too while its owner decides: one that asks first (« Quitter sans enregistrer ? ») and stays open asks again at the
+     next back (R57); one that closes goes with its step.
+   - The dimmed area closes the sheet only when the press AND the release are on it: closing on the press let the click
+     of that same tap land on what was under the finger once the sheet was gone (Android).
+   - After a sheet closes, an invisible shield takes taps for a moment (the second tap of a double tap).
+   ask() / askText(): ./ask.tsx. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
-import { signal } from '@preact/signals';
 import { X } from 'lucide-preact';
 import { t } from '../lib/i18n';
-import { Button } from './Button';
-import { Textarea } from './forms';
+import { openLayer } from '../platform/history';
+import { onEscape } from '../platform/escape';
+import { raiseShield } from './shield';
+
+export { whenHistorySettled } from '../platform/history';
 
 let openCount = 0;
-let seq = 0;
 function lockScroll(on: boolean) {
-  openCount += on ? 1 : -1;
+  openCount = Math.max(0, openCount + (on ? 1 : -1));
   document.documentElement.classList.toggle('is-locked', openCount > 0);
 }
-/* A sheet closed by one of its buttons steps back over its own history entry. That step is asynchronous: a
-   navigation asked meanwhile waits for it (see whenHistorySettled), or it would be undone by the step back. */
-let backPending = 0;
-const afterBack: (() => void)[] = [];
-if (typeof window !== 'undefined') {
-  window.addEventListener('popstate', () => {
-    if (backPending > 0 && --backPending === 0) for (const f of afterBack.splice(0)) f();
-  });
-}
-export function whenHistorySettled(fn: () => void) { if (backPending > 0) afterBack.push(fn); else fn(); }
-function stepBack() {
-  backPending++;
-  history.back();
-  // a browser that never answers the step back must not hold navigation
-  setTimeout(() => { if (backPending > 0) { backPending = 0; for (const f of afterBack.splice(0)) f(); } }, 600);
-}
-const stackOf = (st: unknown): string[] => ((st as { sheets?: string[] } | null)?.sheets || []);
+let seq = 0;
 
 export interface SheetProps {
   open: boolean;
@@ -56,37 +48,43 @@ function SheetOpen(p: SheetProps) {
   const closeRef = useRef(p.onClose);
   closeRef.current = p.onClose;
   const dismissable = p.dismissable !== false;
-  const [id] = useState(() => `s${++seq}`);
+  // read live: a signature started after the sheet opened makes it non-dismissable from then on
+  const dismissableRef = useRef(dismissable);
+  dismissableRef.current = dismissable;
+  const pressedOnBack = useRef(false);
+  const [id] = useState(() => `sheet${++seq}`);
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     lockScroll(true);
-    // the back button closes the sheet: one history step that belongs to it
-    let popped = false;
-    try { history.pushState({ ...(history.state || {}), sheets: [...stackOf(history.state), id] }, '', location.href); } catch { /* ignore */ }
-    const onPop = () => { if (!stackOf(history.state).includes(id) && !popped) { popped = true; closeRef.current(); } };
-    window.addEventListener('popstate', onPop);
-    // Escape closes the sheet on top only (a question asked over a sheet closes alone)
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || !dismissable) return;
-      const st = stackOf(history.state);
-      if (st.length && st[st.length - 1] !== id) return;
-      e.stopPropagation(); closeRef.current();
-    };
-    document.addEventListener('keydown', onKey);
+    let alive = true;
+    const layer = openLayer((why) => {
+      if (why === 'navigate') { closeRef.current(); return; }
+      // the phone's back: the sheet keeps its step and its owner is asked to close it, right after (R57). A sheet that
+      // closes goes with its step, as after its ✕; one that stays open (« Quitter sans enregistrer ? » answered « non »,
+      // a signature in progress) still has its step, so the next back asks again instead of leaving the screen
+      if (dismissableRef.current) queueMicrotask(() => { if (alive) closeRef.current(); });
+      return false;
+    });
+    const leaveEscape = onEscape(() => { if (dismissableRef.current) closeRef.current(); });
     const first = box.current?.querySelector<HTMLElement>('[autofocus], input:not([type=hidden]), select, textarea, button:not(.sheet-x)');
     (first || box.current)?.focus({ preventScroll: true });
     return () => {
-      window.removeEventListener('popstate', onPop);
-      document.removeEventListener('keydown', onKey);
+      alive = false;
+      leaveEscape();
       lockScroll(false);
-      // closed by a button: remove our history step, but only if nothing navigated meanwhile
-      const st = stackOf(history.state);
-      if (!popped && st[st.length - 1] === id) stepBack();
+      layer.release();
+      raiseShield();
       before?.focus?.({ preventScroll: true });
     };
   }, []);
   return createPortal(
-    <div class="sheet-back" onPointerDown={(e) => { if (dismissable && e.target === e.currentTarget) p.onClose(); }}>
+    <div class="sheet-back"
+      onPointerDown={(e) => { pressedOnBack.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        const both = pressedOnBack.current && e.target === e.currentTarget;
+        pressedOnBack.current = false;
+        if (both && dismissableRef.current) p.onClose();
+      }}>
       <div ref={box} class={`sheet glass-strong${p.wide ? ' sheet-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={`${id}-t`} tabIndex={-1}
         data-tour={p['data-tour']} data-testid={p['data-testid']}>
         <span class="sheet-grip" aria-hidden="true" />
@@ -102,48 +100,5 @@ function SheetOpen(p: SheetProps) {
       </div>
     </div>,
     document.body
-  );
-}
-
-/* ---------- short questions ---------- */
-interface Ask { id: number; title: string; text?: string; ok: string; cancel: string; danger: boolean; input?: { label: string; value: string; required: boolean }; resolve: (v: string | boolean | null) => void }
-const asks = signal<Ask[]>([]);
-let askSeq = 0;
-/** a yes/no question: resolves true (ok) or false */
-export function ask(o: { title: string; text?: string; ok?: string; cancel?: string; danger?: boolean }): Promise<boolean> {
-  return new Promise((resolve) => {
-    asks.value = [...asks.value, { id: ++askSeq, title: o.title, text: o.text, ok: o.ok || t('common.ok'), cancel: o.cancel || t('common.cancel'), danger: !!o.danger, resolve: (v) => resolve(v === true) }];
-  });
-}
-/** a question that needs a few words (a reason…): resolves the text, or null when cancelled */
-export function askText(o: { title: string; text?: string; label: string; value?: string; ok?: string; required?: boolean; danger?: boolean }): Promise<string | null> {
-  return new Promise((resolve) => {
-    asks.value = [...asks.value, {
-      id: ++askSeq, title: o.title, text: o.text, ok: o.ok || t('common.ok'), cancel: t('common.cancel'), danger: !!o.danger,
-      input: { label: o.label, value: o.value || '', required: o.required !== false }, resolve: (v) => resolve(typeof v === 'string' ? v : null)
-    }];
-  });
-}
-export function AskHost() {
-  const a = asks.value[0];
-  const [text, setText] = useState('');
-  useEffect(() => { setText(a?.input?.value || ''); }, [a?.id]);
-  if (!a) return null;
-  const done = (v: string | boolean | null) => { asks.value = asks.value.slice(1); a.resolve(v); };
-  const okDisabled = !!a.input?.required && !text.trim();
-  return (
-    <Sheet open onClose={() => done(a.input ? null : false)} title={a.title}
-      footer={<>
-        <Button onClick={() => done(a.input ? null : false)}>{a.cancel}</Button>
-        <Button variant={a.danger ? 'danger' : 'primary'} disabled={okDisabled} onClick={() => done(a.input ? text.trim() : true)} data-testid="ask-ok">{a.ok}</Button>
-      </>}>
-      {a.text && <p class="muted">{a.text}</p>}
-      {a.input && (
-        <label class="field">
-          <span class="field-label">{a.input.label}</span>
-          <Textarea value={text} onValue={setText} rows={2} autoFocus />
-        </label>
-      )}
-    </Sheet>
   );
 }

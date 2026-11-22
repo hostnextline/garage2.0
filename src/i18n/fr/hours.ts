@@ -33,7 +33,9 @@ export const hours = {
     dirtyOk: 'Laisser tomber',
     days: 'Jour à dessiner',
     keys: 'Flèches pour bouger, Espace pour allumer ou éteindre un carreau.',
-    outside: 'Cet horaire a des heures avant 6 h ou après 22 h : elles restent comme elles sont.'
+    outside: 'Cet horaire a des heures avant 6 h ou après 22 h : elles restent comme elles sont.',
+    /* « one day » mode: the window shows that date's real hours (map-hours-04) */
+    dayTitle: 'Le {day}'
   },
   closing: {
     title: { one: '{n} rendez-vous touché', other: '{n} rendez-vous touchés' },
@@ -44,7 +46,7 @@ export const hours = {
     none: 'Aucun de ces rendez-vous ne peut aller sur l’autre véhicule. Si tu fermes, ils passent dans « À placer » de l’agenda.',
     someStay: { one: '{n} ne peut pas y aller : il passera dans « À placer ».', other: '{n} ne peuvent pas y aller : ils passeront dans « À placer ».' },
     goes: 'Va sur {to}',
-    stays: { machine: 'Reste à placer : demande le camion', closed: 'Reste à placer : l’autre véhicule est fermé à ce moment-là' },
+    stays: { machine: 'Reste à placer : demande le camion', closed: 'Reste à placer : l’autre véhicule est fermé à ce moment-là', rights: 'Reste à placer : tu ne peux pas le mettre sur l’autre véhicule', started: 'Reste à placer : ce moment est déjà commencé', full: 'Reste à placer : l’autre véhicule est plein à ce moment-là', refused: 'Reste à placer : le déplacement a été refusé', waiting: 'Déplacement gardé sur le téléphone : il partira avec le réseau' },
     mapTitle: 'La nouvelle route pour {to}',
     day: 'Quel jour',
     stops: { one: '{n} arrêt ce jour-là.', other: '{n} arrêts ce jour-là.' },
@@ -52,7 +54,10 @@ export const hours = {
     move: { one: 'Déplacer vers {to}', other: 'Déplacer les {n} vers {to}' },
     only: 'Fermer sans déplacer',
     done: { one: '{n} rendez-vous déplacé vers {to}', other: '{n} rendez-vous déplacés vers {to}' },
-    donePart: '{n} rendez-vous sur {total} déplacés vers {to}. Les autres sont dans « À placer » de l’agenda.'
+    donePart: '{n} rendez-vous sur {total} déplacés vers {to}. Les autres sont dans « À placer » de l’agenda.',
+    /* a move refused or not answered: nothing is closed (map-hours-01, -07) */
+    refused: { zero: 'Le déplacement est refusé : {reason} Rien n’est fermé.', one: '{n} rendez-vous déplacé, puis un refus : {reason} Rien n’est fermé.', other: '{n} rendez-vous déplacés, puis un refus : {reason} Rien n’est fermé.' },
+    waiting: 'Pas de réponse du serveur pour le déplacement : rien n’est fermé. Réessaie quand le réseau revient.'
   },
   apply: {
     title: 'Appliquer',
@@ -77,7 +82,9 @@ export const hours = {
     doneDay: 'Horaire changé pour le {day}',
     doneWeeks: 'Horaire changé pour {weeks}',
     doneAlways: 'Horaire habituel changé',
-    queued: 'Horaire gardé sur le téléphone : il part dès que le réseau revient.'
+    queued: 'Horaire gardé sur le téléphone : il part dès que le réseau revient.',
+    nothingChanged: 'Rien n’a changé : ces jours-là avaient déjà ces heures.',
+    blind: 'Tu ne vois pas tous les rendez-vous de ce camion : ceux qui ne rentrent plus passeront dans « À placer » de l’agenda.'
   },
   exceptions: {
     title: 'Jours changés',
@@ -85,7 +92,11 @@ export const hours = {
     none: 'Aucun jour changé : la semaine habituelle compte partout.',
     revert: 'Revenir à l’horaire habituel',
     reverted: 'Le {day} suit de nouveau l’horaire habituel',
-    usual: 'Habituel : {hours}'
+    usual: 'Habituel : {hours}',
+    /* the usual hours of that day leave out appointments booked on it (map-hours-08) */
+    askTitle: { one: '{n} rendez-vous ne rentre plus dans l’horaire habituel', other: '{n} rendez-vous ne rentrent plus dans l’horaire habituel' },
+    askText: 'Le {day}, ces rendez-vous passent dans « À placer » de l’agenda si aucun autre véhicule ne peut les prendre.',
+    askOk: 'Revenir quand même'
   },
   start: {
     title: 'Départ de ce camion',
@@ -127,6 +138,13 @@ export const hours = {
     added: 'Camion ajouté',
     driverOf: 'Chauffeur : {name}',
     noDriverShort: 'Sans chauffeur',
+    /* out of service, or no tire machine any more, with appointments still coming (map-hours-08) */
+    askTitle: { one: '{n} rendez-vous à venir est touché', other: '{n} rendez-vous à venir sont touchés' },
+    askOffText: 'Hors service, ce véhicule ne reçoit plus de rendez-vous : ceux-ci vont sur un autre véhicule s’il a de la place, sinon dans « À placer » de l’agenda.',
+    askMachineText: 'Sans la machine à pneus, ce véhicule ne garde pas le montage ni le balancement : ces rendez-vous vont sur un autre véhicule s’il a de la place, sinon dans « À placer » de l’agenda.',
+    askWho: 'Lesquels : {who}.',
+    askMore: { one: '{n} autre', other: '{n} autres' },
+    askOk: 'Enregistrer quand même',
     colors: { red: 'Rouge', blue: 'Bleu', green: 'Vert', amber: 'Ambre', violet: 'Violet', teal: 'Sarcelle', pink: 'Framboise', slate: 'Ardoise' }
   }
 };

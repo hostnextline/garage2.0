@@ -1,0 +1,170 @@
+import { describe, it, expect } from 'vitest';
+import { windowFor, type Range } from '../../lib/dates';
+import type { Suggestion } from '../../data/api';
+import type { JobStatus } from '../../data/types';
+import { gridJobs, listDay, openingMinute, pageSettled, windowDay, windowGone, workedOf, ofTruck, type DayWins, type GridDay } from './windowDays';
+
+const span: Range = [480, 1200];
+const windowOf = (eta: number) => windowFor(eta, { before: 60, after: 180, round: 60, dayStart: 480, dayEnd: 1200 });
+const row = (win_start: number, truck: string | null = 'T1', eta = win_start + 60): Suggestion =>
+  ({ day: '2026-11-20', block: 'day', drive_min: 10, near: 1, truck, left: 300, eta, win_start, win_end: win_start + 240 });
+const allDay = Array(48).fill(true);
+const day = (wins: DayWins, o: Partial<Parameters<typeof windowDay>[0]> = {}) => windowDay({
+  day: '2026-11-20', today: '2026-11-16', now: 600, span, len: 240, windowOf, wins, worked: allDay, picked: null, moving: null, jobs: [], ...o
+});
+
+describe('a day of the time calendar', () => {
+  it('the units whose window the server lists are open, the others refused', () => {
+    const d = day({ status: 'ok', rows: [row(840), row(540)] });
+    expect(d.open).toEqual([570, 585, 600, 615, 870, 885, 900, 915]);
+    expect(d.kind).toBe('open');
+    expect(d.windows).toBe(2);
+    expect(d.states[unit(660)]).toBe('no');
+  });
+  it('no answer yet: waiting; an answer being replaced still shows, dimmed', () => {
+    expect(day({ status: 'loading', rows: [] }).kind).toBe('loading');
+    const stale = day({ status: 'loading', rows: [row(840)] });
+    expect(stale.stale).toBe(true);
+    expect(stale.open).toEqual([870, 885, 900, 915]);
+  });
+  it('failed, full, closed, past', () => {
+    expect(day({ status: 'error', rows: [] }).kind).toBe('failed');
+    expect(day({ status: 'ok', rows: [] }).kind).toBe('full');
+    expect(day({ status: 'ok', rows: [row(840)] }, { worked: Array(48).fill(false) }).kind).toBe('closed');
+    expect(day({ status: 'ok', rows: [row(840)] }, { day: '2026-11-15' }).kind).toBe('past');
+  });
+  it('a vehicle chosen by hand: the rows of another vehicle say nothing of it', () => {
+    expect(day({ status: 'ok', rows: [row(840, 'T2'), row(540, null)] }, { truckId: 'T1' }).open).toEqual([570, 585, 600, 615]);
+    expect(ofTruck([row(840, 'T2'), row(540, 'T1')], null)).toHaveLength(2);
+  });
+  it('the window chosen, its band, the best moment, the far mark', () => {
+    const d = day({ status: 'ok', rows: [row(840)] }, { picked: { day: '2026-11-20', block: 'day', win_start: 840, win_end: 1080, eta: 885 }, best: { win: [840, 1080], eta: 900 }, far: true });
+    expect(d.chosen).toBe(885);
+    expect(d.band).toEqual([840, 1080]);
+    expect(d.best).toBe(900);
+    expect(d.far).toBe(true);
+    // chosen on another day: nothing here
+    expect(day({ status: 'ok', rows: [row(840)] }, { picked: { day: '2026-11-21', block: 'day', win_start: 840 } }).chosen).toBeNull();
+  });
+  it('moving an appointment: where it is now', () => {
+    const d = day({ status: 'ok', rows: [] }, { moving: { day: '2026-11-20', block: 'day', eta_min: 610, win_start: 540, duration_min: 60 } });
+    expect(d.currentM).toBe(600);
+    expect(d.current).toEqual({ top: 130 / 15, height: 4 });
+  });
+  it('the hours worked by any vehicle that can take the job', () => {
+    const w = workedOf([[[480, 600]], [[1080, 1200]]], span);
+    expect(w.filter(Boolean)).toHaveLength(16);
+    expect(w[0] && w[7] && !w[8] && w[40] && w[47]).toBe(true);
+  });
+  it('the appointments already booked, side by side where they share time; cancelled and the one moved left out', () => {
+    const j = (id: string, eta: number, status: JobStatus = 'booked') => ({ id, status, number: 1, block: 'day' as const, eta_min: eta, win_start: null, duration_min: 60, truck_id: 'T1' });
+    const out = gridJobs([j('a', 600), j('b', 630), j('c', 900, 'cancelled'), j('d', 960)], span, { exclude: 'd', blocks: [], nameOf: (x) => x.id, colorOf: () => '#000', labelOf: (n, at) => `${n}@${at}` });
+    expect(out.map((x) => [x.id, x.col, x.cols, x.label])).toEqual([['a', 0, 2, 'a@600'], ['b', 1, 2, 'b@630']]);
+  });
+});
+
+describe('a window chosen elsewhere that the server no longer lists', () => {
+  const picked = { day: '2026-11-20', block: 'day' as const, win_start: 660, win_end: 900 };
+  it('is gone once the day answered, not before', () => {
+    expect(windowGone(picked, { status: 'ok' }, [row(840)], null, windowOf)).toBe(true);
+    expect(windowGone(picked, { status: 'loading' }, [], null, windowOf)).toBe(false);
+    expect(windowGone({ ...picked, win_start: 840 }, { status: 'ok' }, [row(840)], null, windowOf)).toBe(false);
+    expect(windowGone(null, { status: 'ok' }, [], null, windowOf)).toBe(false);
+  });
+  // R64 (x-time-02): « cette plage n'est plus possible » reads the server's rows exactly as the calendar's units do, with
+  // any « avant », rounding and first hour, rows on the rule's grid or not, a vehicle chosen or not: a window the calendar
+  // shows open is never taken back, and a window is taken back only when the server lists none starting there
+  it('never takes back a window the calendar shows open, whatever the settings (R64)', () => {
+    const settings = [
+      { before: 60, after: 180, round: 60, dayStart: 480 },
+      { before: 30, after: 210, round: 60, dayStart: 510 },
+      { before: 45, after: 195, round: 30, dayStart: 480 },
+      { before: 0, after: 240, round: 15, dayStart: 495 }
+    ];
+    for (const s of settings) {
+      const of = (eta: number) => windowFor(eta, { ...s, dayEnd: 1200 });
+      const sp: Range = [s.dayStart, 1200];
+      // rows on the rule's grid (win_for of an arrival), on another grid (a half hour off), one without its window
+      const rows = [row(of(900)[0], 'T1', 900), row(of(600)[0] + 30, 'T1', 640), { ...row(0, 'T2', 1020), win_start: null }];
+      for (const truckId of [null, 'T1']) {
+        const d = windowDay({ day: '2026-11-20', today: '2026-11-16', now: 600, span: sp, len: 240, windowOf: of, wins: { status: 'ok', rows }, truckId,
+          worked: Array(Math.ceil((1200 - s.dayStart) / 15)).fill(true), picked: null, moving: null, jobs: [] });
+        const shown = new Set(d.open.map((m) => of(m)[0]));
+        const starts = new Set([...rows.map((r) => r.win_start ?? of(r.eta!)[0]), ...d.open.map((m) => of(m)[0])]);
+        for (const st of starts) {
+          const gone = windowGone({ day: '2026-11-20', block: 'day', win_start: st, win_end: st + 240 }, { status: 'ok' }, rows, truckId, of);
+          // a window the calendar shows open is never taken back
+          if (shown.has(st)) expect([s, truckId, st, gone]).toEqual([s, truckId, st, false]);
+          // the same rule written again (a check of the rule against itself, for every setting; the answers written out by
+          // hand are in the next test)
+          const listed = ofTruck(rows, truckId).some((r) => (r.win_start ?? of(r.eta!)[0]) === st);
+          expect([s, truckId, st, gone]).toEqual([s, truckId, st, !listed]);
+        }
+      }
+    }
+  });
+  // review moment-pickers-r2-3: the answers written out by hand for « avant » 60, rounding 60, first hour 8 h. The server
+  // lists 14 h (an arrival at 15 h, on the rule's grid), 9 h 30 (a half hour off the grid: arrival 10 h 40) for T1, and
+  // for T2 a row with no window whose arrival at 17 h gives 16 h. Taken back only when no window of this vehicle starts there
+  it('taken back only when the server lists no window starting there for this vehicle (R64, written by hand)', () => {
+    const rows = [row(840, 'T1', 900), row(570, 'T1', 640), { ...row(0, 'T2', 1020), win_start: null }];
+    const starts = [540, 570, 600, 840, 900, 960];
+    const gone = (truckId: string | null) => starts.map((st) => windowGone({ day: '2026-11-20', block: 'day', win_start: st, win_end: st + 240 }, { status: 'ok' }, rows, truckId, windowOf));
+    // any vehicle: 9 h 30, 14 h and 16 h are listed
+    expect(gone(null)).toEqual([true, false, true, false, true, false]);
+    // T1: 16 h is T2's only
+    expect(gone('T1')).toEqual([true, false, true, false, true, true]);
+    expect(gone('T2')).toEqual([true, true, true, true, true, false]);
+  });
+});
+
+const g = (dayStr: string, kind: GridDay['kind'], open: number[] = [], status: GridDay['status'] = kind === 'loading' ? 'loading' : 'ok', stale = false) =>
+  ({ day: dayStr, kind, open, status, stale, chosen: null as number | null });
+
+describe('the phone’s list of times', () => {
+  // booking-b-04: the 7 days are asked at once and answer in any order. Before, the first day with times was listed as
+  // soon as it answered, then replaced by an earlier day answering later, under the person's thumb.
+  it('a day still waiting before the first day with times is shown first (its skeleton), never a later day’s times', () => {
+    expect(listDay([g('d1', 'past'), g('d2', 'loading'), g('d3', 'open', [600])], null)).toBe('d2');
+    expect(listDay([g('d1', 'past'), g('d2', 'full'), g('d3', 'open', [600])], null)).toBe('d3');
+  });
+  it('the day chosen stays; nothing at all: the first day', () => {
+    expect(listDay([g('d1', 'loading'), g('d3', 'open', [600])], 'd3')).toBe('d3');
+    expect(listDay([g('d1', 'full'), g('d2', 'closed')], null)).toBe('d1');
+    expect(listDay([g('d1', 'open', [600])], 'gone')).toBe('d1');
+    // review mp-4: an earlier day asked again (its appointments changed) does not put its skeleton in place of the times shown
+    expect(listDay([g('d1', 'loading'), g('d3', 'open', [600])], null, 'd3')).toBe('d3');
+    expect(listDay([g('d1', 'loading'), g('d3', 'loading')], null, 'd3')).toBe('d3');
+    // the day held has no time any more: the usual rule
+    expect(listDay([g('d1', 'open', [540]), g('d3', 'full')], null, 'd3')).toBe('d1');
+    expect(listDay([g('d1', 'open', [540])], null, 'gone')).toBe('d1');
+  });
+});
+
+describe('the hours brought into view when a page opens', () => {
+  const o = { today: 'd1', now: 600, span };
+  // booking-b-21: before, the first answer of any day decided (the grid opened at hours that changed with the order in
+  // which the days answered)
+  it('another page: waits until every day has answered, then the first possible time of the page', () => {
+    const page = [g('d2', 'open', [870]), g('d3', 'loading'), g('d4', 'open', [570])];
+    expect(pageSettled(page)).toBe(false);
+    expect(openingMinute(page, o)).toBeNull();
+    expect(openingMinute([g('d2', 'open', [870]), g('d3', 'full'), g('d4', 'open', [570])], o)).toBe(570);
+  });
+  it('the page of today: today’s first possible time as soon as today answered, whatever the others', () => {
+    expect(openingMinute([g('d1', 'loading'), g('d2', 'open', [495])], o)).toBeNull();
+    expect(openingMinute([g('d1', 'open', [645]), g('d2', 'loading')], o)).toBe(645);
+    expect(openingMinute([g('d1', 'open', [645]), g('d2', 'open', [495])], o)).toBe(645);
+    // nothing left today: the page decides once it is all in
+    expect(openingMinute([g('d1', 'full'), g('d2', 'loading')], o)).toBeNull();
+    expect(openingMinute([g('d1', 'full'), g('d2', 'open', [495])], o)).toBe(495);
+  });
+  it('the time chosen first; nothing possible: half an hour before now today, else the top of the day', () => {
+    expect(openingMinute([{ ...g('d1', 'loading'), chosen: 885 }], o)).toBe(885);
+    expect(openingMinute([g('d1', 'full')], o)).toBe(570);
+    expect(openingMinute([g('d2', 'full')], o)).toBe(480);
+    expect(pageSettled([g('d1', 'open', [600], 'loading', true)])).toBe(true);
+  });
+});
+
+function unit(m: number) { return (m - 480) / 15; }

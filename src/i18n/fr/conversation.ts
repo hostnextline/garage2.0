@@ -22,6 +22,8 @@ export const conversation = {
     book: 'Réserver pour ce numéro',
     noFile: 'Pas encore de fiche',
     noWords: '📎 Photo ou document',
+    more: { one: 'Une autre conversation', other: '{n} autres conversations' },
+    pretend: 'C’est un texto d’essai («\u00a0Essayer\u00a0», dans Réglages)\u00a0: on ne peut pas y répondre.',
     off: 'Les textos ne sont pas branchés (Réglages, Branchements) : tu vois ce qui est arrivé, sans pouvoir répondre d’ici.',
     error: 'Le service de textos n’a pas répondu : voici ce qui est arrivé. La suite revient dans un instant.'
   },
@@ -30,6 +32,9 @@ export const conversation = {
     off: 'Les textos automatiques ne sont pas branchés (Réglages, Branchements).',
     no_phone: 'Ce client n’a pas de numéro de cellulaire.',
     error: 'Le service de textos n’a pas répondu. Réessaie dans un instant.',
+    pending: 'Ce message est en train de partir.',
     offline: 'Pas de réseau : la conversation reviendra avec le réseau.'
-  }
+  },
+  /** said once when this device lost the alert while the app is closed and could not get it back by itself (comms-guide-08) */
+  alertLost: 'Cet appareil ne t’avertit plus quand l’app est fermée. Remets « M’avertir quand l’app est fermée » dans Réglages, Branchements.'
 };

@@ -1,43 +1,36 @@
 /* Mon compte (#/account): my name and phone, the app's language, my look (the team's, or my own with live swatches),
-   installing the app, signing out (warns about changes not sent yet), deleting my account. */
-import { UpdatePanel } from '../../app/UpdatePanel';
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { LogOut, Smartphone, Trash2, ImageUp, RotateCcw } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+   installing the app, signing out (warns about changes not sent yet), deleting my account. Each panel has its own file. */
+import { LogOut, Smartphone, Trash2 } from 'lucide-preact';
+import type { ScreenProps } from '../../platform/router';
 import { t, lang, setLang, type Lang } from '../../lib/i18n';
-import { access, me, preview, signOut, refreshAccess, isOwner } from '../../data/auth';
-import { updateMe, memberUpdate, errorMessage } from '../../data/api';
-import { pendingCount } from '../../data/sync';
+import { me, preview, refreshAccess } from '../../data/auth';
+import { updateMe, errorMessage } from '../../data/api';
 import { trucks } from '../../data/select';
-import { myLook, teamLook, setMyLook, type Look } from '../../app/theme';
-import { myPhoto, setMyPhoto, shrinkPhoto, HIS_NIGHT, HIS_DAY } from '../../app/backdrop';
-import { Page, Panel, Rows, RowItem, Field, Input, PhoneInput, Seg, Button, Banner, Avatar, ask, run, toast } from '../../ui';
-import { ThemeSwatches, LookChoices } from '../settings/LookSection';
-import { rolesWords, teamDo } from '../team/teamApi';
-import '../settings/settings.css';
+import { Page, Panel, Rows, RowItem, Seg, Button, Banner, Avatar, ask, attempt, toast } from '../../ui';
+import { UpdatePanel } from '../../shared/app/UpdatePanel';
+import { useSignOut, signOutNow } from '../../shared/app/signOut';
+import { rolesWords, teamDo } from '../../domain/team/teamApi';
+import { InfosPanel } from './InfosPanel';
+import { LookPanel } from './LookPanel';
+import { BackdropPanel } from './BackdropPanel';
+import '../../shared/look/settings.css';
 import './account.css';
 
 export default function AccountScreen(_p: ScreenProps) {
   const a = me.value;
   const pv = preview.value;
-  const [warn, setWarn] = useState(0);
+  // the one sign-out of the app (« Plus » has the same): this device's push address leaves first (R104)
+  const { warn, out } = useSignOut();
   if (!a) return <Page title={t('account.title')} />;
   const drives = trucks.value.filter((tr) => tr.driver_id === a.id).map((tr) => tr.name).join(', ');
 
-  const out = async () => {
-    if (!warn) {
-      const n = await pendingCount();
-      if (n > 0) { setWarn(n); return; }
-    }
-    await signOut(true);
-  };
   const leave = async () => {
     const ok = await ask({ title: t('account.leaveAsk.title'), text: t('account.leaveAsk.text'), ok: t('account.leaveAsk.ok'), danger: true });
     if (!ok) return;
     try {
       await teamDo('leave');
       toast(t('account.left'), { kind: 'ok' });
-      await signOut(true);
+      await signOutNow();
     } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
   };
 
@@ -59,7 +52,7 @@ export default function AccountScreen(_p: ScreenProps) {
           <Panel title={t('account.lang')}>
             <div class="stack">
               <Seg value={lang.value} label={t('account.lang')} data-testid="account-lang"
-                onValue={(l) => { setLang(l as Lang); if (!pv) void updateMe({ lang: l }).then(() => refreshAccess()); toast(t('account.langSaved'), { kind: 'ok' }); }}
+                onValue={(l) => { setLang(l as Lang); if (!pv) void attempt(async () => { await updateMe({ lang: l }); await refreshAccess(); }, { quiet: true }); toast(t('account.langSaved'), { kind: 'ok' }); }}
                 options={[{ value: 'fr', label: 'Français' }, { value: 'en', label: 'English' }]} />
               <p class="small muted" style={{ margin: 0 }}>{t('account.langHint')}</p>
             </div>
@@ -89,111 +82,5 @@ export default function AccountScreen(_p: ScreenProps) {
         </div>
       </div>
     </Page>
-  );
-}
-
-/* my name (the owner changes it; others ask the owner) and my phone */
-function InfosPanel() {
-  const a = access.value!;
-  const owner = isOwner();
-  const saved = { full_name: a.full_name || '', short_name: a.short_name || '', phone: a.phone || '' };
-  const [d, setD] = useState(saved);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { setD(saved); }, [a.full_name, a.short_name, a.phone]);
-  const dirty = d.phone.trim() !== saved.phone || (owner && (d.full_name.trim() !== saved.full_name || d.short_name.trim() !== saved.short_name));
-  const save = async () => {
-    if (owner && !d.full_name.trim()) { setErr(t('account.needName')); return; }
-    setErr(null);
-    await run(async () => {
-      if (owner && (d.full_name.trim() !== saved.full_name || d.short_name.trim() !== saved.short_name)) {
-        await memberUpdate(a.id, { full_name: d.full_name.trim(), short_name: d.short_name.trim() });
-      }
-      if (d.phone.trim() !== saved.phone) { await updateMe({ phone: d.phone.trim() }); await refreshAccess(); }
-    }, { ok: t('account.saved') });
-  };
-  return (
-    <Panel title={t('account.infos')}>
-      <div class="stack">
-        {owner ? (
-          <div class="grid-2">
-            <Field label={t('account.name')} error={err}><Input value={d.full_name} onValue={(v) => setD({ ...d, full_name: v })} autoComplete="name" invalid={!!err} /></Field>
-            <Field label={t('account.short')} hint={t('account.shortHint')} optional><Input value={d.short_name} onValue={(v) => setD({ ...d, short_name: v })} autoComplete="nickname" maxLength={40} /></Field>
-          </div>
-        ) : (
-          <p class="small muted" style={{ margin: 0 }}>{t('account.nameByOwner')}</p>
-        )}
-        <Field label={t('account.phone')} hint={t('account.phoneHint')} optional>
-          <PhoneInput value={d.phone} onValue={(v) => setD({ ...d, phone: v })} />
-        </Field>
-        {a.email && <p class="small muted" style={{ margin: 0 }}>{t('account.emailLine', { email: a.email })}</p>}
-        <div><Button variant={dirty ? 'primary' : 'secondary'} disabled={!dirty} onClick={save} data-testid="account-save">{t('account.save')}</Button></div>
-      </div>
-    </Panel>
-  );
-}
-
-/* my look: the team's, or my own (each tap applies at once) */
-function LookPanel() {
-  const mine = myLook.value;
-  const shown: Look = mine || teamLook.value;
-  return (
-    <Panel title={t('account.look')} help={t('account.lookHelp')} data-testid="account-look">
-      <div class="stack">
-        <Field label={t('account.followLabel')} hint={mine ? undefined : t('account.followHint')} group>
-          <Seg value={mine ? 'mine' : 'team'} label={t('account.followLabel')} data-testid="account-follow"
-            onValue={(v) => void setMyLook(v === 'mine' ? { ...teamLook.value } : null)}
-            options={[{ value: 'team', label: t('account.follow.team') }, { value: 'mine', label: t('account.follow.mine') }]} />
-        </Field>
-        {mine && (
-          <>
-            <ThemeSwatches value={shown} onLook={(l) => void setMyLook(l)} label={t('account.look')} />
-            <LookChoices look={shown} onLook={(l) => void setMyLook(l)} />
-          </>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
-/* what is behind the glass: the H.I.S picture (the road at night, the showroom by day), or my own photo (this device) */
-function BackdropPanel() {
-  const photo = myPhoto.value;
-  const file = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const pick = async (f: File | undefined) => {
-    if (!f) return;
-    setBusy(true);
-    try {
-      const url = await shrinkPhoto(f);
-      if (setMyPhoto(url)) toast(t('account.backdrop.saved'), { kind: 'ok' });
-      else toast(t('account.backdrop.full'), { kind: 'bad' });
-    } catch {
-      toast(t('account.backdrop.failed'), { kind: 'bad' });
-    } finally {
-      setBusy(false);
-      if (file.current) file.current.value = '';
-    }
-  };
-  return (
-    <Panel title={t('account.backdrop.title')} help={t('account.backdrop.help')} data-testid="account-backdrop">
-      <div class="stack">
-        <div class={`account-backdrop${photo ? ' is-mine' : ''}`} aria-hidden="true" data-testid="backdrop-preview"
-          style={photo ? { backgroundImage: `url("${photo}")` } : { '--day': `url("${HIS_DAY}")`, '--night': `url("${HIS_NIGHT}")` }}>
-          {!photo && <><span class="account-backdrop-day" /><span class="account-backdrop-night" /></>}
-        </div>
-        <p class="small muted" style={{ margin: 0 }}>{photo ? t('account.backdrop.mine') : t('account.backdrop.his')}</p>
-        <input ref={file} type="file" accept="image/*" hidden onChange={(e) => void pick((e.currentTarget as HTMLInputElement).files?.[0])} data-testid="backdrop-file" />
-        <div class="row-wrap">
-          <Button icon={<ImageUp size={18} />} busy={busy} onClick={() => file.current?.click()} data-testid="backdrop-choose">
-            {photo ? t('account.backdrop.change') : t('account.backdrop.choose')}
-          </Button>
-          {photo && (
-            <Button variant="ghost" icon={<RotateCcw size={18} />} onClick={() => { setMyPhoto(null); toast(t('account.backdrop.removed')); }} data-testid="backdrop-reset">
-              {t('account.backdrop.reset')}
-            </Button>
-          )}
-        </div>
-      </div>
-    </Panel>
   );
 }

@@ -2,9 +2,10 @@
    it counts on the day it began. The week goes from Monday to Sunday here (Hassan's choice for the hours, 2026-11-19;
    the schedule's week stays Sunday to Saturday). A shift of 16 hours or more that nobody corrected is « à vérifier »:
    the night's housekeeping closes a day only 16 hours after it began, so a forgotten « Terminer ma journée » always
-   shows that way. Tested in logic.test.ts. */
+   shows that way. Moments are read and written on the garage's clock (lib/dates: dayOf, minuteOf, instantOf), like
+   the rest of the app. Tested in logic.test.ts. */
 import type { Shift, Staff } from '../../data/types';
-import { addDays, addMonths, dayOf, dow, duration, parseDay, type Day } from '../../lib/dates';
+import { addDays, addMonths, dayOf, dow, duration, instantOf, minuteOf, parseDay, type Day } from '../../lib/dates';
 
 export const LONG_MIN = 16 * 60;
 export const MAX_MIN = 24 * 60;
@@ -19,10 +20,10 @@ export function monthOf(day: Day): { from: Day; to: Day } {
   const from = `${day.slice(0, 7)}-01`;
   return { from, to: addDays(addMonths(from, 1), -1) };
 }
-/** the local day a moment falls on */
+/** the garage's day a moment falls on */
 export function dayOfIso(iso: string): Day { return dayOf(new Date(iso)); }
-/** minutes after local midnight of a moment */
-export function minuteOfIso(iso: string): number { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); }
+/** minutes after the garage's midnight of a moment */
+export function minuteOfIso(iso: string): number { return minuteOf(new Date(iso)); }
 
 /** the minutes of one shift (an open one counts until now) */
 export function minutesOf(s: Pick<Shift, 'started_at' | 'ended_at'>, now = Date.now()): number {
@@ -103,10 +104,9 @@ export interface Draft { day: Day; start: number | null; end: number | null }
 export interface Planned { startIso: string; endIso: string | null; minutes: number; nextDay: boolean }
 export type DraftError = 'no_start' | 'no_end' | 'too_long' | 'future' | 'overlap' | 'zero';
 
-/** a local day + minutes after midnight → the moment (an end before the start is the next day) */
+/** a garage day + minutes after midnight → the moment (an end before the start is the next day) */
 export function isoAt(day: Day, min: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(y, m - 1, d, Math.floor(min / 60), min % 60, 0, 0).toISOString();
+  return instantOf(day, min).toISOString();
 }
 /** what the sheet will send, or why not (the same rules as the server's shift_save) */
 export function planDraft(dr: Draft, o: { open: boolean; others: ShiftLike[]; selfId?: string | null; now?: number }): { plan?: Planned; error?: DraftError } {

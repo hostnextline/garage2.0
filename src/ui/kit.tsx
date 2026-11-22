@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Info, AlertTriangle, CircleCheck, OctagonAle
 import { t, lang } from '../lib/i18n';
 import { money } from '../lib/money';
 import { initials } from '../lib/text';
-import { goBack } from '../app/router';
+import { goBack } from '../platform/router';
 import type { JobStatus } from '../data/types';
 import { Help } from './Help';
 import { IconButton } from './Button';
@@ -127,16 +127,18 @@ export function Pill(p: { tone: Tone; children: ComponentChildren; dot?: boolean
   const map: Record<string, string> = { ok: 'done', warn: 'en_route', bad: 'no_show', muted: 'cancelled' };
   return <span class={`pill pill-${map[p.tone] || p.tone}${p.dot === false ? ' pill-plain' : ''}`} data-testid={p['data-testid']}>{p.children}</span>;
 }
-const JOB_WORDS: Record<JobStatus, { fr: string; en: string }> = {
-  booked: { fr: 'Réservé', en: 'Booked' }, en_route: { fr: 'En route', en: 'On the way' }, on_site: { fr: 'Sur place', en: 'On site' },
-  done: { fr: 'Terminé', en: 'Done' }, cancelled: { fr: 'Annulé', en: 'Cancelled' }, no_show: { fr: 'Client absent', en: 'No-show' }
-};
-export function jobStatusWord(s: JobStatus, l = lang.value): string { return JOB_WORDS[s]?.[l === 'en' ? 'en' : 'fr'] || s; }
+/** a word of the kit in a language, or the raw value when the dictionary does not know it */
+function kitWord(key: string, raw: string, l: string): string {
+  const k = `shell.kit.${key}`;
+  const w = t(k, undefined, l === 'en' ? 'en' : 'fr');
+  return w === k ? raw : w;
+}
+export function jobStatusWord(s: JobStatus, l = lang.value): string { return kitWord(`job.${s}`, s, l); }
 export function StatusPill(p: { status: JobStatus }) {
   return <Pill tone={p.status} data-testid="job-status">{jobStatusWord(p.status)}</Pill>;
 }
-const INV_WORDS = { draft: { fr: 'Brouillon', en: 'Draft' }, issued: { fr: 'À payer', en: 'Unpaid' }, partial: { fr: 'Payée en partie', en: 'Partly paid' }, paid: { fr: 'Payée', en: 'Paid' }, void: { fr: 'Annulée', en: 'Cancelled' } };
-export function invoiceStatusWord(s: keyof typeof INV_WORDS, l = lang.value): string { return INV_WORDS[s]?.[l === 'en' ? 'en' : 'fr'] || s; }
+type InvoiceWord = 'draft' | 'issued' | 'partial' | 'paid' | 'void';
+export function invoiceStatusWord(s: InvoiceWord, l = lang.value): string { return kitWord(`invoice.${s}`, s, l); }
 export function InvoicePill(p: { status: 'draft' | 'issued' | 'paid' | 'void'; paidCents?: number }) {
   const key = p.status === 'issued' && (p.paidCents || 0) > 0 ? 'partial' : p.status;
   const tone: Tone = p.status === 'paid' ? 'paid' : p.status === 'void' ? 'void' : p.status === 'draft' ? 'draft' : 'unpaid';
@@ -146,7 +148,7 @@ export function InvoicePill(p: { status: 'draft' | 'issued' | 'paid' | 'void'; p
 /** the rubber stamp: PAYÉ on a paid invoice, ANNULÉ / ABSENT on a closed job */
 export function Stamp(p: { kind?: 'paid' | 'cancelled' | 'no_show'; animate?: boolean; class?: string; word?: string }) {
   const kind = p.kind || 'paid';
-  const word = p.word ? p.word : kind === 'paid' ? (lang.value === 'en' ? 'Paid' : 'Payé') : kind === 'cancelled' ? (lang.value === 'en' ? 'Cancelled' : 'Annulé') : (lang.value === 'en' ? 'No-show' : 'Absent');
+  const word = p.word ? p.word : kitWord(`stamp.${kind}`, kind, lang.value);
   const cls = ['stamp', kind === 'cancelled' && 'stamp-muted', kind === 'no_show' && 'stamp-bad', p.animate && 'stamp-land', p.class].filter(Boolean).join(' ');
   return <span class={cls} role="img" aria-label={word} data-testid={`stamp-${kind}`}>{word}</span>;
 }
@@ -200,8 +202,8 @@ export function Totals(p: { subtotal: number; tps: number; tvq: number; total: n
       {p.taxesOn !== false && <><span>{t('common.tps', undefined, l as 'fr' | 'en')}</span><span class="money">{money(p.tps, l)}</span>
         <span>{t('common.tvq', undefined, l as 'fr' | 'en')}</span><span class="money">{money(p.tvq, l)}</span></>}
       <span class="total">{t('common.total', undefined, l as 'fr' | 'en')}</span><span class="total money" data-testid="total">{money(p.total, l)}</span>
-      {p.paid != null && p.paid > 0 && <><span>{l === 'en' ? 'Paid' : 'Payé'}</span><span class="money">−{money(p.paid, l)}</span>
-        <span class="total">{l === 'en' ? 'Balance' : 'Reste à payer'}</span><span class="total money" data-testid="balance">{money(Math.max(0, due || 0), l)}</span></>}
+      {p.paid != null && p.paid > 0 && <><span>{kitWord('paid', 'Paid', l)}</span><span class="money">−{money(p.paid, l)}</span>
+        <span class="total">{kitWord('balance', 'Balance', l)}</span><span class="total money" data-testid="balance">{money(Math.max(0, due || 0), l)}</span></>}
     </div>
   );
 }

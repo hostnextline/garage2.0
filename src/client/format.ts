@@ -1,5 +1,5 @@
 /* Small pure helpers of the customer's page: the time slot, the day, money lines, phone links, local clock times. */
-import { clock, longDay, today, addDays, TZ, type Day } from '../lib/dates';
+import { clock, longDay, today, addDays, dayOf, minuteOf, TZ, type Day } from '../lib/dates';
 import { money } from '../lib/money';
 import { e164, formatPhone } from '../lib/text';
 import { ct, type CLang } from './i18n';
@@ -19,9 +19,12 @@ export function dayTitle(day: Day, l: CLang, now: Date = new Date()): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** 'today' | 'tomorrow' | null */
+/** today's date on the garage's clock (a phone set to another time zone must not move « Aujourd’hui ») */
+export function montrealToday(now: Date = new Date()): Day { return today(now); }
+
+/** 'today' | 'tomorrow' | null, on Montréal's calendar */
 export function relDay(day: Day, now: Date = new Date()): 'today' | 'tomorrow' | null {
-  const t = today(now);
+  const t = montrealToday(now);
   if (day === t) return 'today';
   if (day === addDays(t, 1)) return 'tomorrow';
   return null;
@@ -52,22 +55,24 @@ export function telHref(phone: string | null | undefined): string | null {
 }
 export function phoneText(phone: string | null | undefined): string { return formatPhone(phone); }
 
-/** minutes after midnight, Montréal time, of a moment (the garage's clock, whatever the phone's time zone) */
+/** minutes after midnight, Montréal time, of a moment (the garage's clock, whatever the phone's time zone: lib's
+    minuteOf, the same clock as the team app; never the phone's own getters) */
 export function localMinuteOf(iso: string | number | Date, tz: string = TZ): number | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
+  if (tz === TZ) return minuteOf(d);
   try {
     const p = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(d);
-    const h = Number(p.find((x) => x.type === 'hour')?.value || 0), m = Number(p.find((x) => x.type === 'minute')?.value || 0);
-    return (h % 24) * 60 + m;
+    return (Number(p.find((x) => x.type === 'hour')?.value || 0) % 24) * 60 + Number(p.find((x) => x.type === 'minute')?.value || 0);
   } catch {
-    return d.getHours() * 60 + d.getMinutes();
+    return null;
   }
 }
-/** the calendar day, Montréal time, of a moment ('YYYY-MM-DD') */
+/** the calendar day, Montréal time, of a moment ('YYYY-MM-DD'; lib's dayOf) */
 export function localDayOf(iso: string | number | Date, tz: string = TZ): Day | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
+  if (tz === TZ) return dayOf(d) || null;
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   } catch {

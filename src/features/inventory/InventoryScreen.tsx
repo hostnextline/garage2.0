@@ -1,56 +1,45 @@
 /* « Inventaire » (#/inventory, right « inventory »): the stock value, search and category, what to order first
-   (lowStock), then everything in stock with its quantity, minimum, cost and value. An item opens its sheet.
+   (at or under the minimum), then everything in stock with its quantity, minimum, cost and value. An item opens its sheet.
    Two stocks (?pool=coffre): the garage's, and the Coffre's own (bought with the Coffre's money, no taxes, apart from the
    garage's value, orders and the Trésorerie). */
 import { useState } from 'preact/hooks';
 import { Plus, PackageCheck, ClipboardList } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { inventoryList, lowStock, coffreStock } from '../../data/select';
-import { setQuery } from '../../app/router';
+import { inventoryList, coffreStock } from '../../data/select';
+import { setQuery, type ScreenProps } from '../../platform/router';
 import type { InventoryItem } from '../../data/types';
 import { Page, Panel, Rows, RowItem, Button, Empty, Chips, SearchInput, Pill, Help, BigStep, Seg, Banner } from '../../ui';
-import { BigMoney } from '../dashboard/charts';
-import { itemValue, stockValue, toOrder } from './stock';
-import { ItemSheet, useQty } from './ItemSheet';
-import { defaultWeek, weekWords } from './needsView';
-import '../dashboard/charts.css';
+import { BigMoney } from '../../shared/charts/charts';
+import { itemValue, stockValue, toOrder } from '../../domain/stock/stock';
+import { ItemSheet } from './ItemSheet';
+import { useQty } from './useQty';
+import { useShownItems } from './useOnHand';
+import { stockLists } from './stockLists';
+import { useDefaultWeek } from '../../shared/stock/useWeekNeeds';
+import { weekWords } from '../../shared/stock/needsWords';
+import '../../shared/charts/charts.css';
+import '../../shared/stock/needs.css';
 import './inventory.css';
-
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-function found(i: InventoryItem, q: string): boolean {
-  const s = fold(q.trim());
-  if (!s) return true;
-  const hay = fold([i.name, i.sku, i.category, i.supplier, i.notes].filter(Boolean).join(' '));
-  return s.split(/\s+/).every((w) => hay.includes(w));
-}
 
 export default function InventoryScreen({ query }: ScreenProps) {
   const pool: 'garage' | 'coffre' = query.get('pool') === 'coffre' ? 'coffre' : 'garage';
   const isCoffre = pool === 'coffre';
   const l = lang.value;
   const qtyText = useQty();
+  const shown = useShownItems();
+  const week = useDefaultWeek();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [showOff, setShowOff] = useState(false);
   const [sheet, setSheet] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const open = (id: string | null) => setSheet({ open: true, id });
 
-  const all = isCoffre ? coffreStock.value : inventoryList.value;
+  // each item with its quantity on hand (what still waits to be sent counts), for the value and « À commander » too
+  const all = shown(isCoffre ? coffreStock.value : inventoryList.value);
   const value = stockValue(all);
-  // what to order: the garage's (lowStock) or the same rule on the Coffre's stock
-  const lowAll = isCoffre ? all.filter((i) => i.active && (i.min_qty != null ? Number(i.qty) <= Number(i.min_qty) : Number(i.qty) <= 0)) : lowStock.value;
-  const cats = [...new Set(all.map((i) => (i.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
-  const keep = (i: InventoryItem) => (!cat || (i.category || '').trim() === cat) && found(i, q);
-  const urgency = (i: InventoryItem) => (i.min_qty ? Number(i.qty) / Number(i.min_qty) : Number(i.qty));
-  const low = lowAll.filter(keep).sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name, 'fr'));
-  const lowIds = new Set(lowAll.map((i) => i.id));
-  const rest = all.filter((i) => i.active && !lowIds.has(i.id) && keep(i));
-  const off = all.filter((i) => !i.active && keep(i));
-  const offCount = all.filter((i) => !i.active).length;
+  const { lowAll, low, rest, off, offCount, activeCount, cats } = stockLists(all, q, cat);
   const filtered = !!q.trim() || !!cat;
-  const activeCount = all.filter((i) => i.active).length;
 
   const row = (i: InventoryItem, isLowRow: boolean) => {
     const v = itemValue(i);
@@ -87,7 +76,7 @@ export default function InventoryScreen({ query }: ScreenProps) {
         options={[{ value: 'garage', label: t('inventory.coffre.garageTab') }, { value: 'coffre', label: t('inventory.coffre.coffreTab') }]} />
       {isCoffre
         ? <Banner kind="info" data-testid="inventory-coffre-note">{t('inventory.coffre.note')}</Banner>
-        : <BigStep icon={<ClipboardList size={24} />} label={t('inventory.needs.title')} sub={t('inventory.needs.openSub', { week: weekWords(defaultWeek()) })} href="#/needs" data-testid="inventory-needs" />}
+        : <BigStep icon={<ClipboardList size={24} />} label={t('inventory.needs.title')} sub={t('inventory.needs.openSub', { week: weekWords(week) })} href="#/needs" data-testid="inventory-needs" />}
       {!all.length ? (
         <Panel><Empty title={t(isCoffre ? 'inventory.coffre.empty' : 'inventory.empty')} text={t(isCoffre ? 'inventory.coffre.emptyText' : 'inventory.emptyText')} action={<Button variant="primary" icon={<Plus size={18} />} onClick={() => open(null)}>{t(isCoffre ? 'inventory.coffre.add' : 'inventory.add')}</Button>} /></Panel>
       ) : (

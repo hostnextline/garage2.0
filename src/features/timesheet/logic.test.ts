@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mondayOf, weekOf, monthOf, minutesOf, toCheck, weekHours, periodMinutes, teamWeek, decimalHours, weekLabel, isoAt, planDraft, dayOfIso } from './logic';
 
-// every moment is built in the device's own time (the tests run in Montréal, UTC and Tokyo)
+// every moment is built on the garage's clock (isoAt: lib/dates instantOf), so the tests give the same answers in any zone
 let n = 0;
 const shift = (staff: string, day: string, from: number, to: number | null, extra: Record<string, unknown> = {}) => ({
   id: `s${++n}`, staff_id: staff, started_at: isoAt(day, from), ended_at: to == null ? null : (to < from ? isoAt(nextDay(day), to) : isoAt(day, to)),

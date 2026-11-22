@@ -3,37 +3,43 @@
    they are saved or undone. Apparence and Branchements are the owner's. */
 import type { ComponentType } from 'preact';
 import { type LucideIcon, Building2, Receipt, Wrench, CalendarClock, MessageSquareText, FileSignature, Palette, PlugZap, Tags, ChevronRight, RefreshCw } from 'lucide-preact';
-import { may, type ScreenProps } from '../../app/routes';
-import { navigate } from '../../app/router';
-import { wide } from '../../app/media';
+import { may } from '../../domain/rights';
+import { navigate, type ScreenProps } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { t } from '../../lib/i18n';
 import { isOwner } from '../../data/auth';
 import { Page, Panel } from '../../ui';
-import { hasDraft } from './SectionFrame';
-import { CompanySection } from './CompanySection';
-import { BillingSection } from './BillingSection';
-import { ServicesSection } from './ServicesSection';
-import { BookingSection } from './BookingSection';
-import { TextsSection } from './TextsSection';
-import { WaiverSection } from './WaiverSection';
-import { LookSection } from './LookSection';
-import { ConnectSection } from './ConnectSection';
-import { ExpensesSection } from './ExpensesSection';
-import { UpdatePanel } from '../../app/UpdatePanel';
-import './settings.css';
+import { hasDraft, settingsHere, SectionWait, SectionAnchor } from './SectionFrame';
+import { CompanySection, companySaved } from './CompanySection';
+import { BillingSection, billingSaved } from './BillingSection';
+import { ServicesSection } from './services/ServicesSection';
+import { BookingSection, bookingSaved } from './booking/BookingSection';
+import { TextsSection, textsSaved } from './TextsSection';
+import { WaiverSection, waiverSaved } from './WaiverSection';
+import { LookSection, lookSaved } from './LookSection';
+import { ConnectSection } from './connect/ConnectSection';
+import { ExpensesSection, expensesSaved } from './ExpensesSection';
+import { UpdatePanel } from '../../shared/app/UpdatePanel';
+import '../../shared/look/settings.css';
 
 export type SectionKey = 'company' | 'billing' | 'services' | 'booking' | 'texts' | 'waiver' | 'look' | 'connect' | 'expenses' | 'app';
-interface SectionDef { key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; /** for everyone on the team (no « settings » right needed) */ all?: boolean; tour?: string }
+interface SectionDef {
+  key: SectionKey; icon: LucideIcon; view: ComponentType; owner?: boolean; tour?: string;
+  /** for everyone on the team (no « settings » right needed) */ all?: boolean;
+  /** a form over the settings row: drawn only once that row is on this device */ form?: boolean;
+  /** the section's fields as stored now: the dot of the list compares the draft with them (settings-team-st-5) */
+  saved?: () => object;
+}
 const SECTIONS: SectionDef[] = [
-  { key: 'company', icon: Building2, view: CompanySection, tour: 'settings-company' },
-  { key: 'billing', icon: Receipt, view: BillingSection },
+  { key: 'company', icon: Building2, view: CompanySection, form: true, saved: companySaved, tour: 'settings-company' },
+  { key: 'billing', icon: Receipt, view: BillingSection, form: true, saved: billingSaved },
   { key: 'services', icon: Wrench, view: ServicesSection, tour: 'settings-services' },
-  { key: 'booking', icon: CalendarClock, view: BookingSection },
-  { key: 'texts', icon: MessageSquareText, view: TextsSection, tour: 'settings-texts' },
-  { key: 'waiver', icon: FileSignature, view: WaiverSection },
-  { key: 'look', icon: Palette, view: LookSection, owner: true, tour: 'settings-look' },
+  { key: 'booking', icon: CalendarClock, view: BookingSection, form: true, saved: bookingSaved },
+  { key: 'texts', icon: MessageSquareText, view: TextsSection, form: true, saved: textsSaved, tour: 'settings-texts' },
+  { key: 'waiver', icon: FileSignature, view: WaiverSection, form: true, saved: waiverSaved },
+  { key: 'look', icon: Palette, view: LookSection, form: true, saved: lookSaved, owner: true, tour: 'settings-look' },
   { key: 'connect', icon: PlugZap, view: ConnectSection, owner: true, tour: 'settings-connect' },
-  { key: 'expenses', icon: Tags, view: ExpensesSection },
+  { key: 'expenses', icon: Tags, view: ExpensesSection, form: true, saved: expensesSaved },
   { key: 'app', icon: RefreshCw, view: AppSection, all: true }
 ];
 
@@ -55,7 +61,7 @@ export default function SettingsScreen({ params }: ScreenProps) {
           {list.map((s) => {
             const Icon = s.icon;
             const on = isWide && current?.key === s.key;
-            const dirty = hasDraft(s.key);
+            const dirty = hasDraft(s.key, s.saved);
             return (
               <a key={s.key} role="listitem" class={`row-item settings-nav-row${on ? ' is-on' : ''}`} href={`#/settings/${s.key}`} aria-current={on ? 'page' : undefined}
                 data-tour={s.tour} data-testid={`settings-nav-${s.key}`}
@@ -78,10 +84,13 @@ export default function SettingsScreen({ params }: ScreenProps) {
     return <Page title={t('settings.title')} help={t('settings.help')} data-testid="settings-screen">{nav}</Page>;
   }
   const View = current!.view;
+  const body = current!.form && !settingsHere() ? <SectionWait testid={`settings-${current!.key}`} /> : <View key={current!.key} />;
   if (!isWide) {
     return (
       <Page title={t(`settings.sections.${current!.key}.title`)} sub={t(`settings.sections.${current!.key}.sub`)} back="/settings" data-testid="settings-screen">
-        <View key={current!.key} />
+        {/* the menu is not drawn here: the section's first block carries the guide's anchor, so « Montre-moi » points at
+            the top of the section, not at the whole of it (R150, settings-team-r2-3) */}
+        <SectionAnchor.Provider value={current!.tour}>{body}</SectionAnchor.Provider>
       </Page>
     );
   }
@@ -91,7 +100,7 @@ export default function SettingsScreen({ params }: ScreenProps) {
         <aside class="settings-aside">{nav}</aside>
         <div class="settings-main">
           <h2 class="settings-main-title">{t(`settings.sections.${current!.key}.title`)}</h2>
-          <View key={current!.key} />
+          {body}
         </div>
       </div>
     </Page>

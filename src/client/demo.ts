@@ -11,7 +11,7 @@
      client.html?demo#reserver          « Réserver en ligne » (demo-book-closed in sessionStorage: closed)
      client.html?demo#reserver&plages=1 the same with « Plages d’arrivée » (4-hour windows; last name « plein »: the window was just taken)
      client.html?demo#t=demo-window     booked with a window (« Entre 14 h et 18 h »)        demo-flex: free all day, the window comes the day before
-     client.html?demo#suivi=demo        the truck on the way (moves at each refresh)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
+     client.html?demo#suivi=demo        the truck on the way (a real road, driven in 2 min 30, a position every 10 s)  demo-nopos, demo-arrived, demo-cancelled, demo-expired, demo-bad */
 import { SUPABASE_URL } from '../lib/config';
 import { totals } from '../lib/money';
 import { addDays, today, longDay } from '../lib/dates';
@@ -69,7 +69,7 @@ function fresh(): Record<string, DemoJob> {
 
 const KEY = 'demo.client.v2';
 let state: Record<string, DemoJob> = fresh();
-function save() { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch { /* ignore */ } }
+function save() { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode: the demo starts over on reload */ } }
 function restore() { try { const s = sessionStorage.getItem(KEY); if (s) state = { ...fresh(), ...JSON.parse(s) }; } catch { state = fresh(); } }
 
 const sum = (items: Item[]) => {
@@ -96,7 +96,8 @@ function jobView(j: DemoJob) {
     extras: j.extras.map((x) => ({ id: x.id, description: x.description, qty: x.qty, unit_cents: x.unit_cents, total_cents: Math.round(x.qty * x.unit_cents), status: x.status, note: x.note ?? null, answered_via: x.status === 'proposed' ? null : 'link' })),
     expected, prepaid_cents: j.prepaid, invoice,
     estimate: { signed_at: j.signed?.at ?? null, signer: j.signed?.name ?? null, cents: j.signed?.cents ?? null, changed: !!j.signed && j.signed.cents !== expected.total,
-      can_sign: ['booked', 'en_route', 'on_site'].includes(j.status) && !invoice && expected.total > 0 && (!j.signed || j.signed.cents !== expected.total) },
+      // as the server: no total above zero needed (Part 24 sexies)
+      can_sign: ['booked', 'en_route', 'on_site'].includes(j.status) && !invoice && planned.length > 0 && (!j.signed || j.signed.cents !== expected.total) },
     conditions: CONDITIONS,
     bill: j.draft && !invoice ? { lines: planned.map((i) => ({ description: i.description, qty: i.qty, unit_cents: i.unit_cents, taxable: true })),
       subtotal_cents: expected.subtotal, tps_cents: expected.tps, tvq_cents: expected.tvq, total_cents: expected.total } : null,
@@ -111,7 +112,10 @@ function quoteView() {
 }
 
 type Answer = { status: number; body: unknown };
-const refuse = (status: number, code: string, error: string): Answer => ({ status, body: { ok: false, code, error } });
+const refuse = (status: number, code: string, error: string, more: Record<string, unknown> = {}): Answer => ({ status, body: { ok: false, code, error, ...more } });
+/** the signing contract: the amount the page showed must still be the amount (409 « amount_changed » otherwise) */
+const moved = (b: Record<string, unknown>, current: number): Answer | null =>
+  typeof b.shown_cents === 'number' && b.shown_cents !== current ? refuse(409, 'amount_changed', 'Le montant a changé.', { current_cents: current }) : null;
 function clientAnswer(b: Record<string, unknown>): Answer {
   const token = String(b.token || '');
   const action = String(b.action || 'view');
@@ -125,6 +129,8 @@ function clientAnswer(b: Record<string, unknown>): Answer {
     if (b.confirm !== true) return refuse(400, 'confirm', 'Confirmez votre réponse.');
     const x = j.extras.find((e) => e.id === b.item_id);
     if (!x) return refuse(404, 'gone', 'Cette proposition n’existe plus.');
+    const no = moved(b, Math.round(x.qty * x.unit_cents));
+    if (no) return no;
     if (x.status === 'proposed') x.status = b.accept ? 'approved' : 'declined';
     save();
   }
@@ -132,6 +138,8 @@ function clientAnswer(b: Record<string, unknown>): Answer {
     if (b.confirm !== true) return refuse(400, 'confirm', 'Cochez « J’accepte » pour signer.');
     const v = jobView(j);
     if (!v.estimate.can_sign) return refuse(400, 'signed', 'Cette estimation est déjà signée.');
+    const no = moved(b, v.expected.total);
+    if (no) return no;
     j.signed = { name: String(b.signer || ''), at: new Date().toISOString(), cents: v.expected.total };
     save();
   }
@@ -143,12 +151,16 @@ function clientAnswer(b: Record<string, unknown>): Answer {
     return { status: 200, body: { ok: true, url: `${location.pathname}?demo&stripe=${Date.now()}#t=${token}${j.lang === 'en' ? '&l=en' : ''}&retour=paye` } };
   }
   if (action === 'check') {
+    // « session »: what became of the card page, as the real « client » function answers (R10)
+    let session: 'none' | 'open' | 'paid' = 'none';
     if (j.paying) {
       j.checks = (j.checks || 0) + 1;
+      session = 'open';
       // the bank answers at the second check (the page shows « Paiement en vérification… » meanwhile)
-      if (j.checks >= 2) { const v = jobView(j); if (j.invoiced) j.paid = -1; else j.prepaid += v.pay.amount_cents; j.paying = false; j.pending = false; }
+      if (j.checks >= 2) { const v = jobView(j); if (j.invoiced) j.paid = -1; else j.prepaid += v.pay.amount_cents; j.paying = false; j.pending = false; session = 'paid'; }
       save();
     }
+    return { status: 200, body: { ...jobView(j), session } };
   }
   return { status: 200, body: jobView(j) };
 }
@@ -165,12 +177,12 @@ const WEB_SERVICES = [
 /** « Plages d’arrivée » in the pretend booking: asked once in the address (#reserver&plages=1), kept for the visit */
 let windowsAsked = false;
 function demoWindows(): boolean {
-  try { if (new URLSearchParams(location.hash.replace(/^#/, '')).has('plages')) windowsAsked = true; } catch { /* ignore */ }
+  try { if (new URLSearchParams(location.hash.replace(/^#/, '')).has('plages')) windowsAsked = true; } catch { /* an old browser: blocks */ }
   return windowsAsked;
 }
 function bookAnswer(b: Record<string, unknown>): Answer {
   let closed = false;
-  try { closed = sessionStorage.getItem('demo-book-closed') === '1'; } catch { /* ignore */ }
+  try { closed = sessionStorage.getItem('demo-book-closed') === '1'; } catch { /* private mode: open */ }
   const action = String(b.action || 'info');
   if (action === 'info') {
     return { status: 200, body: { ok: true, garage: GARAGE, on: !closed, windows: demoWindows(), services: closed ? [] : WEB_SERVICES, taxes: true, horizon_days: 120,
@@ -206,19 +218,47 @@ function bookAnswer(b: Record<string, unknown>): Answer {
 }
 
 /* ---------- the truck on the way ---------- */
-const WAY: [number, number][] = [[45.5005, -73.6577], [45.5033, -73.6604], [45.5061, -73.6612], [45.5089, -73.6619], [45.5112, -73.6628], [45.5139, -73.6637],
-  [45.5162, -73.6644], [45.5188, -73.6651], [45.5213, -73.6659], [45.5241, -73.6672], [45.5266, -73.6684], [45.5289, -73.6694], [45.5307, -73.6702]];
-let step = 0;
+/* the road of the pretend trip: a REAL road between its two ends, asked once to the road planner in full and thinned by
+   the server's own rule (supabase/functions/_shared/road.ts, thinRoad: 346 points → these 34, never more than 3 m from
+   the street), so the demo draws what a customer sees on a real job: the streets the truck takes, not a straight line */
+const WAY: [number, number][] = [[45.50053, -73.65755], [45.49956, -73.65721], [45.49913, -73.66009], [45.50007, -73.66163], [45.5005, -73.6622], [45.50131, -73.66309],
+  [45.5022, -73.6639], [45.5026, -73.66411], [45.50336, -73.66406], [45.50417, -73.6645], [45.50449, -73.66458], [45.50608, -73.6636], [45.50711, -73.66285],
+  [45.50774, -73.66253], [45.50803, -73.66333], [45.50815, -73.66383], [45.50972, -73.6687], [45.50998, -73.6693], [45.51098, -73.67133], [45.51157, -73.67242],
+  [45.51405, -73.67633], [45.51501, -73.67799], [45.51621, -73.67992], [45.52067, -73.67423], [45.52101, -73.67384], [45.52147, -73.67349], [45.52381, -73.67193],
+  [45.52737, -73.66973], [45.52782, -73.67115], [45.53024, -73.66974], [45.5304, -73.66974], [45.53056, -73.66983], [45.53067, -73.66997], [45.53074, -73.67017]];
+/* the pretend mechanic leaves at the page's first question and drives the whole way in DRIVE_S (much faster than the
+   11 minutes planned, so the live arrival is seen going down); his phone sends its position every PHONE_S, as the real
+   one does while driving. eta_at is fixed when he leaves, as the server does. (5.1 km and 11 min: what the server
+   counts for this road, the planner's time + 20 %.) */
+const PLANNED_MIN = 11;
+const DRIVE_S = 150;
+const PHONE_S = 10;
+let leftAt = 0;
+function wayAt(f: number): [number, number] {
+  const seg: number[] = [];
+  let total = 0;
+  for (let i = 1; i < WAY.length; i++) { const d = Math.hypot(WAY[i][0] - WAY[i - 1][0], (WAY[i][1] - WAY[i - 1][1]) * 0.7); seg.push(d); total += d; }
+  let along = Math.max(0, Math.min(1, f)) * total;
+  for (let i = 0; i < seg.length; i++) {
+    if (along <= seg[i] || i === seg.length - 1) {
+      const t = seg[i] > 0 ? Math.min(1, along / seg[i]) : 0;
+      return [Math.round((WAY[i][0] + t * (WAY[i + 1][0] - WAY[i][0])) * 1e5) / 1e5, Math.round((WAY[i][1] + t * (WAY[i + 1][1] - WAY[i][1])) * 1e5) / 1e5];
+    }
+    along -= seg[i];
+  }
+  return WAY[WAY.length - 1];
+}
 function trackAnswer(token: string) {
   const now = new Date();
-  const base = { garage: { name: GARAGE.name, phone: GARAGE.phone }, mechanic: 'Adam', customer: 'Amira', lang: 'fr', now: now.toISOString(), km: 6.2, minutes: 14 };
-  const key = token === 'demo' ? 'demo-active' : token;
+  const base = { garage: { name: GARAGE.name, phone: GARAGE.phone }, mechanic: 'Adam', customer: 'Amira', lang: 'fr', now: now.toISOString(), km: 5.1, minutes: PLANNED_MIN };
+  // the appointment's own link opens its trip too, as public_track does (« Suivre le camion » of demo-route)
+  const key = token === 'demo' || token === 'demo-route' ? 'demo-active' : token;
   if (key === 'demo-active' || key === 'demo-nopos') {
-    const i = Math.min(step, WAY.length - 2);
-    if (key === 'demo-active') step += 1;
-    const left = Math.max(1, Math.round((WAY.length - 1 - i) * 1.2));
-    return { ...base, status: 'active', dest: { lat: 45.5307, lng: -73.6702 }, route: WAY, eta_at: new Date(now.getTime() + left * 60000).toISOString(), ended_at: null,
-      pos: key === 'demo-nopos' ? null : { lat: WAY[i][0], lng: WAY[i][1], at: new Date(now.getTime() - 20000).toISOString() } };
+    if (!leftAt) leftAt = now.getTime();
+    const sent = leftAt + Math.floor((now.getTime() - leftAt) / (PHONE_S * 1000)) * PHONE_S * 1000;
+    const [lat, lng] = wayAt((sent - leftAt) / (DRIVE_S * 1000));
+    return { ...base, status: 'active', dest: { lat: 45.5307, lng: -73.6702 }, route: WAY, eta_at: new Date(leftAt + PLANNED_MIN * 60000).toISOString(), ended_at: null,
+      pos: key === 'demo-nopos' ? null : { lat, lng, at: new Date(sent).toISOString() } };
   }
   if (key === 'demo-arrived') return { ...base, status: 'arrived', dest: null, route: null, eta_at: null, ended_at: new Date(now.getTime() - 3 * 60000).toISOString(), pos: null };
   if (key === 'demo-cancelled') return { ...base, status: 'cancelled', dest: null, route: null, eta_at: null, ended_at: now.toISOString(), pos: null };
@@ -245,15 +285,13 @@ function switcher() {
   reset.type = 'button';
   reset.textContent = 'Recommencer la démo';
   reset.style.cssText = 'padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:transparent';
-  reset.onclick = () => { try { sessionStorage.removeItem(KEY); localStorage.removeItem('his.client.suivi'); localStorage.removeItem('his.client.t'); } catch { /* ignore */ } location.reload(); };
+  reset.onclick = () => { try { sessionStorage.removeItem(KEY); localStorage.removeItem('his.client.t'); } catch { /* private mode: nothing kept */ } location.reload(); };
   nav.appendChild(reset);
   document.body.appendChild(nav);
 }
 
 export function installClientDemo() {
   restore();
-  // the « en route » appointment knows its tracking link, like a phone that opened the text
-  try { if (!localStorage.getItem('his.client.suivi')) localStorage.setItem('his.client.suivi', JSON.stringify({ token: 'demo', at: Date.now() })); } catch { /* ignore */ }
   const real = window.fetch.bind(window);
   const origin = new URL(SUPABASE_URL).origin;
   window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {

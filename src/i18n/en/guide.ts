@@ -17,7 +17,6 @@ export const guide: typeof fr = {
   go: 'Go',
   later: 'Later',
   laterToast: 'All right. We will bring it up again in a week.',
-  seeAll: 'See all',
   done: 'Done',
   todo: 'To do',
   unknown: 'To check with a signal',
@@ -60,11 +59,12 @@ export const guide: typeof fr = {
     title: 'The steps of a job',
     lead: 'The big red button always shows the next step. One at a time.',
     leave: { title: 'I’m leaving', text: 'The customer gets a text with the link to follow your truck.' },
-    arrive: { title: 'I’ve arrived', text: 'The office sees that you are on site.' },
+    arrive: { title: 'I’ve arrived', text: 'The office sees that you are on site. Note the car’s mileage.' },
+    vin: { title: 'The car’s VIN', text: 'Scan the VIN (driver’s door or windshield) or type it. Unreadable? Tap “VIN unreadable”.' },
     waiver: { title: 'Get it signed', text: 'The customer signs on your phone before the work.' },
-    invoice: { title: 'Invoice', text: 'The work done becomes the invoice. Check it.' },
-    pay: { title: 'Collect', text: 'Cash, debit, credit or Interac. The Paid stamp lands.' },
-    finish: { title: 'Finish', text: 'The job is over. Your next job shows up.' }
+    invoice: { title: 'Invoice', text: 'The work done becomes the invoice. Check it, then finish it.' },
+    pay: { title: 'Collect', text: 'Cash, debit, credit, Interac e-Transfer or cheque. The Paid stamp lands.' },
+    finish: { title: 'Finish', text: 'Confirm the parts used: the job is over. Your next job shows up.' }
   },
 
   tour: {
@@ -75,7 +75,6 @@ export const guide: typeof fr = {
     finishedOn: 'Tour taken on {date}.',
     others: 'The tours of the other roles',
     othersLead: 'To show the app to your team.',
-    label: 'Guided tour',
     here: 'Right here',
     count: '{n} of {total}',
     prev: 'Previous',
@@ -87,7 +86,6 @@ export const guide: typeof fr = {
     finished: 'Tour finished. You can take it again anytime in “Where to start”.',
     empty: 'This tour has nothing to show on this screen for now.',
     steps: {
-      sync: { title: 'Sync', text: 'This chip tells you whether everything is sent. With no signal, keep going: everything goes out by itself when the signal is back.' },
       add: { title: 'The + button', text: 'To add anything: an appointment, a walk-in customer, an estimate, an expense.' },
       addTreasurer: { title: 'The + button', text: 'An expense or a receipt, from anywhere in the app.' },
       today: { title: 'Today', text: 'The day at a glance: each truck’s next job and what is left to do.' },
@@ -105,7 +103,7 @@ export const guide: typeof fr = {
       map: { title: 'The map', text: 'Where the trucks and today’s jobs are.' },
       shift: { title: 'Start your day', text: 'Tap here in the morning. The office sees that you are working and where your truck is.' },
       next: { title: 'Your next job', text: 'It is always at the top. Tap it to open it.' },
-      bigstep: { title: 'The big red button', text: 'It shows the one next step: I’m leaving, I’ve arrived, Get it signed, Invoice, Collect, Finish.' },
+      bigstep: { title: 'The big red button', text: 'It shows the one next step: I’m leaving, I’ve arrived, the car’s VIN, Get it signed, Invoice, Collect, Finish.' },
       waiver: { title: 'The signature', text: 'The customer signs on your phone before the work starts.' },
       work: { title: 'The work', text: 'What is planned for this job, with the prices.' },
       extra: { title: 'Extra work', text: 'Found something else? Suggest it: the customer accepts or declines, on your phone or by text.' },
@@ -159,7 +157,7 @@ export const guide: typeof fr = {
       qa: {
         book: {
           how: { a: 'Tap “+”, then “Book an appointment”. Choose the customer, their car and the services, then one of the suggested arrival windows. Tap “Book”: the customer gets a confirmation text.' },
-          change: { a: 'Open the appointment from the agenda. You can move it to another day or another arrival window, or cancel it and write the reason. If the day or the window changes, the customer gets a text.' }
+          change: { a: 'Open the appointment from the agenda and tap “Edit”: the customer, the car, the address, the day and arrival window, the truck, the services and the prices. To cancel it: menu “…”, “Cancel the job”, with the reason. If the day or the window changes, the customer gets a text.' }
         },
         blocks: {
           what: { q: 'What is an arrival window?', a: 'Four hours around the time the app expects to arrive: 1 hour before, 3 hours after. If the app expects to arrive at 3 p.m., the customer hears “between 2 and 6 p.m.”. We promise a window, not an exact time.' },
@@ -179,7 +177,7 @@ export const guide: typeof fr = {
       book: {
         how: { q: 'How do I book an appointment?', a: 'Tap “+”, then “Book an appointment”. Choose the customer, their car and the services, then one of the suggested time slots. Tap “Book”: the customer gets a confirmation text.' },
         newCustomer: { q: 'The customer is not in the app yet?', a: 'Type their name or number in the customer field. If they do not exist, create their file in the same place: name, phone, address.' },
-        change: { q: 'How do I move or cancel an appointment?', a: 'Open the appointment from the agenda. You can move it to another time slot, or cancel it and write the reason. If the day or the slot changes, the customer gets a text.' },
+        change: { q: 'How do I move or cancel an appointment?', a: 'Open the appointment from the agenda and tap “Edit”: the customer, the car, the address, the day and time slot, the truck, the services and the prices. To cancel it: menu “…”, “Cancel the job”, with the reason. If the day or the slot changes, the customer gets a text.' },
         walkIn: { q: 'A customer without an appointment?', a: 'Tap “+”, then “Walk-in customer”: the job starts right away, on site.' }
       },
       blocks: {
@@ -191,7 +189,7 @@ export const guide: typeof fr = {
       offline: {
         works: { q: 'What works without a signal?', a: 'Almost everything: see your day, move a job forward, get it signed, make the invoice, collect. Everything stays on the phone and goes out by itself when the signal is back.' },
         needs: { q: 'What needs a signal?', a: 'The suggested time slots when booking, the live map, texts to customers and online card payments.' },
-        chip: { q: 'How do I know everything was sent?', a: 'Look at the chip at the top: “Up to date” means everything is sent. “Offline” or “3 to send” means it is waiting for a signal.' },
+        chip: { q: 'How do I know everything was sent?', a: 'When everything is sent, there is nothing to see. Otherwise a chip says “Offline” or “3 to send” (at the top on a phone, at the bottom of the menu on a computer): it is waiting for a signal and goes out by itself.' },
         refused: { q: 'A change was refused?', a: 'A red banner says why. Fix it if needed, then tap “Try again”, or “Remove” if it is no longer useful.' }
       },
       texts: {
@@ -200,8 +198,8 @@ export const guide: typeof fr = {
         lang: { q: 'The customer speaks English?', a: 'Texts, the customer page and the invoice follow the language written in their file.' }
       },
       payments: {
-        how: { q: 'How do I collect?', a: 'At the end of the job: the invoice, then “Collect”. Choose cash, debit, credit or Interac. The Paid stamp lands once everything is paid.' },
-        later: { q: 'The customer wants to pay later?', a: 'The office or the owner can allow “Pay later”, for example for a business account. Otherwise, the job cannot end before it is paid.' },
+        how: { q: 'How do I collect?', a: 'At the end of the job: the invoice, then “Collect”. Choose cash, debit, credit, Interac e-Transfer, cheque or other. The Paid stamp lands once everything is paid. A job for family or friends can be paid by the Coffre: no invoice.' },
+        later: { q: 'The customer wants to pay later?', a: 'Under the red button, tap “The customer will pay later”, write why, then “Let them go”: the job ends and the invoice stays to collect. For the owner and those with the invoices right. Otherwise, the job cannot end before it is paid.' },
         online: { q: 'Online card payment?', a: 'When Stripe is connected, the customer can pay by card from the link to their invoice. The payment is recorded in the app by itself.' }
       },
       rights: {

@@ -1,12 +1,13 @@
 /* Form fields. Every input is controlled by a value and an onValue(newValue) callback.
    Text is 16 px in inputs so phones don't zoom; touch targets are 48 px. */
 import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useId, useRef, useState } from 'preact/hooks';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Minus, Plus, Search, X } from 'lucide-preact';
 import { parseMoney, moneyInput } from '../lib/money';
 import { formatPhone } from '../lib/text';
 import { lang, t } from '../lib/i18n';
 import { Help } from './Help';
+import { actionFailed } from './actionFailed';
 
 /* ---------- the label around a field ---------- */
 export interface FieldProps {
@@ -36,7 +37,32 @@ export function Field(p: FieldProps) {
       </fieldset>
     );
   }
+  if (p.help) return <HelpField {...p} tail={tail} />;
   return <label class={`field ${p.class || ''}`} data-tour={p['data-tour']}>{head}{p.children}{tail}</label>;
+}
+/* A field with a « ? »: the « ? » button may not sit inside a <label> that wraps the input (the label then named the
+   button, the input had no name, and a tap on the words opened the bubble). The label points at the field's input. */
+function HelpField(p: FieldProps & { tail: ComponentChildren }) {
+  const box = useRef<HTMLDivElement>(null);
+  const label = useRef<HTMLLabelElement>(null);
+  const id = useId();
+  useLayoutEffect(() => {
+    const input = box.current?.querySelector<HTMLElement>('input:not([type=hidden]), select, textarea');
+    if (!input || !label.current) return;
+    if (!input.id) input.id = `f${id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    label.current.htmlFor = input.id;
+  });
+  return (
+    <div ref={box} class={`field ${p.class || ''}`} data-tour={p['data-tour']}>
+      <label ref={label} class="field-label">
+        {p.label}
+        {p.optional && <span class="faint">({t('common.optional')})</span>}
+        <Help text={p.help!} />
+      </label>
+      {p.children}
+      {p.tail}
+    </div>
+  );
 }
 
 type InputBase = Omit<JSX.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onInput' | 'size' | 'label' | 'icon'>;
@@ -101,26 +127,36 @@ export function Select<V extends string>(p: SelectProps<V>) {
   );
 }
 
-/** amounts in cents. Accepts "59,99", "59.99", "59 $"; shows "59,99" (fr) or "59.99" (en) once left. */
-export interface MoneyInputProps { cents: number | null | undefined; onCents: (c: number | null) => void; allowNegative?: boolean; placeholder?: string; disabled?: boolean; id?: string; 'aria-label'?: string; autoFocus?: boolean; invalid?: boolean }
+/** amounts in cents. Accepts "59,99", "59.99", "59 $"; shows "59,99" (fr) or "59.99" (en) once left.
+    onCents(cents, { valid }): null with valid=false is a mistyped amount (the field is red), not an empty one.
+    Leaving the field without changing the amount reports nothing (it used to save the draft at every visit). */
+export interface MoneyInputProps { cents: number | null | undefined; onCents: (c: number | null, info?: { valid: boolean }) => void; allowNegative?: boolean; placeholder?: string; disabled?: boolean; id?: string; 'aria-label'?: string; autoFocus?: boolean; invalid?: boolean }
+/** what a typed amount means: its cents (null when empty or not an amount) and whether it is one (pure: tested) */
+export function readMoney(s: string, allowNegative = false, l: string = lang.value): { cents: number | null; valid: boolean } {
+  if (s.trim() === '') return { cents: null, valid: true };
+  // the language on screen, said each time: « 1,000 » is 1 000 $ in English and a mistyped amount in French
+  let c = parseMoney(s, l);
+  if (c == null) return { cents: null, valid: false };
+  if (c < 0 && !allowNegative) c = -c;
+  return { cents: c, valid: true };
+}
 export function MoneyInput(p: MoneyInputProps) {
   const [text, setText] = useState(() => moneyInput(p.cents, lang.value));
   const focused = useRef(false);
   useEffect(() => { if (!focused.current) setText(moneyInput(p.cents, lang.value)); }, [p.cents, lang.value]);
-  const commit = (s: string) => {
-    let c = parseMoney(s);
-    if (c != null && c < 0 && !p.allowNegative) c = -c;
-    p.onCents(s.trim() === '' ? null : c);
-    return c;
+  const commit = (s: string, onlyIfChanged: boolean) => {
+    const r = readMoney(s, p.allowNegative);
+    if (!onlyIfChanged || r.cents !== (p.cents ?? null) || !r.valid) p.onCents(r.cents, { valid: r.valid });
+    return r.cents;
   };
   return (
     <span class="input-wrap input-money-wrap">
       <input
         class="input input-money" inputMode="decimal" id={p.id} aria-label={p['aria-label']} placeholder={p.placeholder ?? (lang.value === 'en' ? '0.00' : '0,00')}
-        disabled={p.disabled} autoFocus={p.autoFocus} aria-invalid={p.invalid || (text.trim() !== '' && parseMoney(text) == null) || undefined} value={text}
+        disabled={p.disabled} autoFocus={p.autoFocus} aria-invalid={p.invalid || !readMoney(text).valid || undefined} value={text}
         onFocus={(e) => { focused.current = true; (e.currentTarget as HTMLInputElement).select(); }}
-        onInput={(e) => { const s = (e.currentTarget as HTMLInputElement).value; setText(s); commit(s); }}
-        onBlur={() => { focused.current = false; const c = commit(text); setText(c == null ? text : moneyInput(c, lang.value)); }}
+        onInput={(e) => { const s = (e.currentTarget as HTMLInputElement).value; setText(s); commit(s, false); }}
+        onBlur={() => { focused.current = false; const c = commit(text, true); setText(c == null ? text : moneyInput(c, lang.value)); }}
       />
       <span class="input-unit" aria-hidden="true">$</span>
     </span>
@@ -222,7 +258,20 @@ export function DateInput(p: { value: string | null | undefined; onValue: (v: st
 
 /** a form that never reloads the page. Enter in a field « clicks » the form's submit button: put the action on that
     button's onClick (one submission only) and give the form onSubmit={() => undefined}, or put it here and use a
-    submit button without onClick — never both (it would run twice). */
+    submit button without onClick — never both (it would run twice). An onSubmit that returns a promise is not run
+    again while it is pending (Enter twice used to record a purchase twice); a failure is told, never swallowed. */
 export function Form(p: { onSubmit: () => unknown; children: ComponentChildren; class?: string; id?: string }) {
-  return <form class={p.class} id={p.id} noValidate onSubmit={(e) => { e.preventDefault(); void p.onSubmit(); }}>{p.children}</form>;
+  const pending = useRef(false);
+  const submit = (e: Event) => {
+    e.preventDefault();
+    if (pending.current) return;
+    let r: unknown;
+    try { r = p.onSubmit(); } catch (err) { failed(err); return; }
+    if (r && typeof (r as Promise<unknown>).then === 'function') {
+      pending.current = true;
+      (r as Promise<unknown>).then(() => undefined, failed).finally(() => { pending.current = false; });
+    }
+  };
+  return <form class={p.class} id={p.id} noValidate onSubmit={submit}>{p.children}</form>;
 }
+const failed = (err: unknown) => actionFailed(err, 'form');

@@ -5,6 +5,7 @@ export const invoices = {
   numbered: 'Facture {n}',
   draftTitle: 'Facture en brouillon',
   draftWord: 'Brouillon',
+  coffreLoadFailed: 'Le Coffre n’a pas pu s’ouvrir. Vérifie le réseau, puis réessaie.',
   noCustomer: 'Client sans fiche',
   ago: { zero: 'aujourd’hui', one: 'hier', other: 'il y a {n} jours' },
   methods: { cash: 'Comptant', debit: 'Débit', credit: 'Crédit', interac: 'Virement Interac', card_online: 'Carte en ligne', cheque: 'Chèque', other: 'Autre' },
@@ -107,6 +108,8 @@ export const invoices = {
     plate: 'plaque {p}',
     km: '{n} km',
     vin: 'NIV {v}',
+    over: 'Trop-perçu',
+    refund: 'Remboursement ({how})',
     quoteFooter: 'Prix estimé avant de voir tout le travail. Tout travail en plus vous sera proposé avant d’être fait.'
   },
 
@@ -132,7 +135,9 @@ export const invoices = {
     percent: 'Rabais en pourcentage',
     none: 'Aucune ligne.',
     qtyTimes: '{q} × {p}',
-    notTaxable: 'Non taxable'
+    notTaxable: 'Non taxable',
+    /** a price typed wrong (red) when finishing the invoice, or sending or booking the estimate */
+    badPrice: 'Un prix est mal écrit : corrige le champ en rouge d’abord.'
   },
   catalog: {
     title: 'Du catalogue',
@@ -164,7 +169,15 @@ export const invoices = {
     pdf: 'PDF',
     pdfReceipt: 'PDF du reçu',
     open: 'Voir la facture',
-    paidOn: 'Payée le {when}, {how}'
+    paidOn: 'Payée le {when}, {how}',
+    overTitle: 'Trop-perçu : {amount} à remettre au client',
+    over: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Remets-lui la différence, puis inscris-la ici.',
+    overButton: 'Inscrire le remboursement',
+    overOffice: 'Le client a payé plus que la facture (payé d’avance puis rabais, ou payé deux fois). Dis-le au bureau : c’est le bureau qui le rembourse.',
+    unbilled: { one: '1 travail de la job n’est pas sur la facture', other: '{n} travaux de la job ne sont pas sur la facture' },
+    unbilledText: 'Pour le facturer, touche « Modifier la facture », puis termine-la de nouveau.',
+    unbilledClosed: 'Cette facture ne peut plus être modifiée.',
+    coffreWaiting: 'Mise au Coffre sur ce téléphone : ça part dès que le réseau revient.'
   },
 
   draft: {
@@ -179,14 +192,38 @@ export const invoices = {
     finishHint: 'Elle reçoit son numéro. Ensuite : encaisser ou texter au client.',
     paidAhead: 'Le client a déjà payé {amount}. Reste à payer : {left}.',
     paidAheadAll: 'Le client a déjà tout payé ({amount}). Termine la facture : elle sera marquée PAYÉ.',
+    /** a first finish over what was paid ahead (no question): the office gives the rest back, never the reader (owner, 2026-11-20) */
+    paidAheadOver: 'Le client a déjà payé {amount}, soit {over} de plus que la facture. Une fois la facture terminée, le bureau lui remettra {over}.',
+    paidAheadBelow: 'Le client a déjà payé {amount}, soit {over} de plus que ce total. Si tu termines comme ça, la facture sera marquée PAYÉ et le bureau remettra {over} au client.',
+    /** paid, then every line taken off: the server never finishes an invoice with no line (empty), so the way out is said
+        (review srv-argent, probe 1): a line at 0 $, then the usual question; the office gives the money back */
+    paidAheadEmpty: 'Il n’y a plus de ligne et le client a déjà payé {amount}. Pour terminer quand même, touche « Une ligne », écris « Rien de fait » et laisse le prix à 0 $ : la facture sera marquée PAYÉ et le bureau lui remettra {amount}.',
+    /** « Terminer la facture » of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
+    overAsk: {
+      title: '{over} à remettre au client',
+      text: 'Le client a déjà payé {paid}. Avec ce total, {over} est à lui remettre : le bureau s’en occupe.',
+      ok: 'Oui, terminer',
+      cancel: 'Revoir la facture'
+    },
     finished: 'Facture {n} terminée',
+    addedWork: 'Ajouté à la facture : {what}',
+    missing: {
+      title: { one: '1 travail de la job n’est pas sur la facture', other: '{n} travaux de la job ne sont pas sur la facture' },
+      text: 'C’est fait ou prévu sur la job, mais pas facturé.',
+      add: 'Ajouter et terminer',
+      /** a job already over: the invoice is finished as it is, the work is not touched */
+      without: 'Terminer sans',
+      /** the job coming or under way: that work is marked « Pas fait » first (S58), and said before the tap */
+      notDone: 'Pas fait, terminer',
+      notDoneText: { one: '« Pas fait, terminer » : ce travail sera marqué « Pas fait » et ne sera pas facturé.', other: '« Pas fait, terminer » : ces travaux seront marqués « Pas fait » et ne seront pas facturés.' }
+    },
     newWork: { one: 'Du travail a été ajouté à la job', other: '{n} travaux ont été ajoutés à la job' },
     addNewWork: 'Ajouter à la facture',
     refresh: 'Refaire depuis le travail',
     refreshConfirm: 'Toucher encore pour remplacer les lignes',
     refreshed: 'Lignes refaites depuis le travail de la job',
     waiting: 'Pas de réseau : la facture sera terminée dès que le réseau revient.',
-    state: { saved: 'Enregistré', waiting: 'Pas encore enregistré', saving: 'Enregistrement…' },
+    state: { saved: 'Enregistré', waiting: 'Pas encore enregistré', saving: 'Enregistrement…', kept: 'Gardé sur le téléphone', failed: 'Pas enregistré' },
     problem: {
       empty: 'Ajoute au moins une ligne avant de terminer la facture.',
       no_description: 'Une ligne n’a pas de description : écris ce qui a été fait.',
@@ -202,7 +239,9 @@ export const invoices = {
     finishedAgain: 'Facture {n} terminée de nouveau. Le client a reçu l’ancienne : renvoie-la par texto.',
     finishedAgainQuiet: 'Facture {n} terminée de nouveau.',
     item: 'La facture est terminée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
-    itemPaid: 'La facture est payée : cette ligne ne change plus.'
+    itemPaid: 'La facture est payée. Pour retirer cette ligne ou changer son prix, rouvre-la :',
+    /** a billed line whose invoice nobody here may open again (the job is over, another truck's job) */
+    itemLocked: 'La facture est terminée : pour changer cette ligne, demande au bureau.'
   },
 
   void: {
@@ -228,6 +267,7 @@ export const invoices = {
     removeConfirm: 'Toucher encore pour retirer',
     removed: 'Paiement retiré',
     waiting: 'En attente du réseau',
+    refund: 'Remboursement ({how})',
     onlineNote: 'Un paiement par carte en ligne se rembourse dans Stripe, pas ici.'
   },
 
@@ -236,6 +276,22 @@ export const invoices = {
     sub: 'Facture {n} de {who}',
     missing: 'Facture introuvable',
     missingText: 'Elle n’est pas (ou plus) sur ce téléphone. Ferme et réessaie dans un instant.',
+    waiting: 'Paiement en attente d’envoi : {amount}',
+    waitingText: 'Il part dès que le réseau revient. Ne l’encaisse pas une deuxième fois.',
+    waitingPart: '{amount} déjà encaissé sur ce téléphone, en attente d’envoi.',
+    refund: {
+      title: 'Rembourser',
+      none: 'Rien à rembourser : le client n’a pas payé plus que la facture.',
+      waiting: 'Remboursement en attente d’envoi : {amount}',
+      toGive: 'À remettre au client',
+      amount: 'Montant remis',
+      confirm: 'Inscrire {amount} remboursé',
+      done: 'Remboursement de {amount} inscrit.',
+      tooMuch: 'C’est plus que le trop-perçu ({max}).',
+      hint: 'Inscris ici l’argent remis en main propre ou par virement.',
+      card: 'Payé par carte en ligne : rembourse {amount} dans Stripe. Le remboursement s’inscrit tout seul sur la facture.',
+      cardPart: 'Une partie a été payée par carte en ligne : elle se rembourse dans Stripe (le remboursement s’inscrit tout seul). Inscris ici seulement l’argent remis en main propre ou par virement.'
+    },
     not: {
       draft: 'Termine la facture avant d’encaisser.',
       void: 'Cette facture est annulée : rien à encaisser.',

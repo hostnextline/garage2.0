@@ -15,7 +15,7 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60   # 40 before plages and argent joined app.test.cjs (2 more minutes on a Mac; not timed on GitHub yet)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,14 +25,22 @@ jobs:
       - run: npm ci
       - name: Types et tests de l'app
         run: npx tsc --noEmit && npm test
+        env:
+          TZ: America/Toronto   # the garage's clock, as in « Publier l'app » (R01)
       - name: Postgres 16 de la machine
         run: |
           ls -d /usr/lib/postgresql/*/bin
           sudo systemctl stop postgresql || true
       - name: La copie locale du serveur
         run: bash tests/stack/install.sh && bash tests/stack/start.sh
+      - name: Les types des fonctions du serveur
+        # Deno runs a function without checking its types, and the app's tsc leaves supabase/ out (infra-15)
+        run: tests/stack/node_modules/.bin/deno check --quiet supabase/functions/*/index.ts
+        env:
+          DENO_NO_UPDATE_CHECK: '1'
       - name: Base de données et fonctions
-        run: node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs
+        # ops/tests: the backup and restore scripts (ops/sauvegardes) and the files of ops, the workflows and tests/stack/mac
+        run: node --test --test-concurrency=1 tests/db/*.test.mjs tests/api/*.test.mjs ops/tests/*.test.mjs
       - name: Playwright (Chromium)
         if: ${{ !cancelled() }}
         run: |
@@ -43,6 +51,20 @@ jobs:
         run: node --test tests/e2e/app.test.cjs
         env:
           TZ: America/Toronto   # the garage's clock (Montréal), like the phones
+      # the other end-to-end files, one at a time, after app.test.cjs (each saves the database and puts it back by itself)
+      - name: Les plages d'arrivée de bout en bout
+        if: ${{ !cancelled() }}
+        run: node --test tests/e2e/plages.test.cjs
+        env:
+          TZ: America/Toronto
+      - name: L'argent de bout en bout
+        if: ${{ !cancelled() }}
+        run: node --test tests/e2e/argent.test.cjs
+        env:
+          TZ: America/Toronto
+      # tests/e2e/mise-a-jour.test.cjs (yesterday's app, then the rebuilt one, on the same phone) is NOT run here: it builds
+      # yesterday's app from git history (it would need actions/checkout with fetch-depth: 0) and was never tried on a GitHub
+      # machine. It runs on a Mac: bash tests/stack/mac/e2e.sh mise-a-jour (tests/stack/mac/all.sh runs it too).
       - name: Journaux du serveur (si ça casse)
         if: ${{ failure() }}
         run: for f in tests/stack/run/*.log; do echo "=== $f"; tail -40 "$f"; done

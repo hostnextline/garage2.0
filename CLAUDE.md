@@ -60,8 +60,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261119000100_heures.sql` (« Heures travaillées », Part 26, applied 2026-11-19 from commit `5e77db6` with the
-  sha256 check); before it: `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
+- Applied on live: every migration up to `20261119000100_heures.sql` (« Heures travaillées », Part 26 of live, applied 2026-11-19 from commit `5e77db6` of the
+  live branch with the sha256 check; this file is the same byte for byte); before it: `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
   check; INERT while `settings.booking.windows_on` is not true: the owner flips it in Réglages → Réservations, `windows_switch`, and back the
   same way, nothing lost; functions `notify`, `book`, `client` deployed pinned to `6b978bd` the same day);
   before it: `20261114000100_garde_route.sql` (Part 25, applied 2026-11-15 from commit `aabe852`;
@@ -170,8 +170,10 @@ end $do$;
   appointment, without cancelling it. `invoice_reopen(op, invoice)`: a finished invoice not paid, its job booked / en route / on
   site, for whoever may finish it (`invoice_editable`) → back to a draft with its number; its payments wait on the job
   (`invoice_id` null, « Le client a déjà payé … ») and the customer's open card page is forgotten (`public_links.last_session*`);
-  activity `invoice_reopened`. `invoice_finish` keeps a reopened invoice's number (`again: true`, no number spent) and refuses a
-  total under what was paid (`below_paid`). `payment_add`: a card payment (no person) landing on a reopened draft waits on the
+  activity `invoice_reopened`. `invoice_finish` keeps a reopened invoice's number (`again: true`, no number spent). On live
+  until the refonte it refuses a total under what was paid (`below_paid`); in the refonte (owner's decision of 2026-11-20: « easy for
+  the mechanic, prevent mistakes, don't restrict them too much ») it finishes « paid » with `over_cents` and the activity `overpaid`:
+  the phone asks first (« {over} à remettre au client », « Oui, terminer ») and the office gives the difference back (« Trop-perçu »). `payment_add`: a card payment (no person) landing on a reopened draft waits on the
   job instead of being refused. Trigger `job_items_invoice_follow`: a job line taken off (removed, declined, deleted) leaves the
   draft invoice; a new price / quantity / words go on its line (only what changed: a price typed on the invoice stays when the work
   is only marked done); a person may not take off or reprice work billed on a FINISHED invoice (`invoice_done`: « Modifier la
@@ -386,9 +388,14 @@ end $do$;
   « Choisir sur la carte » (`moment-map`, above the suggestions, in booking and in « Déplacer »): the days of the page in a strip
   (appointments that day, the driving added, « Meilleur choix », « loin »), then the day's three blocks. On a phone the map is in
   the page (overview « Tous les jours »: every coming appointment as a dot with its date; a day: its routes with the new stop). On a
-  computer (`(hover: hover) and (pointer: fine)`) there is no map in the page: the mouse over a day, a block, a suggestion or a
-  calendar cell opens a small window beside it (`route-hover`, `MapHover`; armed by `mousemove`, closed by a scroll; it never takes
-  the mouse) with every vehicle's route that day, small points without labels, the new stop in black.
+  computer (`(hover: hover) and (pointer: fine)`) there is no map in the page: the mouse resting on a day, a block, a suggestion, a
+  calendar cell, a best moment or a time of « Plages d’arrivée » opens the real map of that day in a window (`route-hover`,
+  `MapHover` / `RouteHover` in `src/shared/moment/RoutePreview.tsx`; asked by Hassan on 2026-11-19: « i want the actual map to open,
+  we are visual »): up to 640 × 460, every vehicle's route by the streets with its numbered stops at full size, the new stop in
+  black with its name, under it the stops of the route it joins in order and what it adds. It goes beside the whole picker
+  (`popPlace` in `place.ts`, the picker marked `data-pop-group`), so it does not move, stays open and follows while the mouse goes
+  from a moment to the next (`useHover`: opens after 250 ms, follows after 110 ms, closes 220 ms after the mouse left, at once
+  at a scroll or when a menu opens); it never takes the mouse.
   Known limits: the driving is still the straight-line estimate (Tuesday's real driving was well over it); the planner still places
   inside one block (it can put a job on an empty vehicle while another is already next door that day).
   The dev demo (`?demo`) only runs in one browser tab at a time: a second tab stays blank while an older one is open.
@@ -418,11 +425,11 @@ end $do$;
   10 minutes when the database has it: today's, and tomorrow's from `win_lock_min` 1080 = 18:00), or at once when booked / moved into
   a day already locked. Not done here: the texts to customers, `team_map` (it does not answer the windows), the app's screens.
   The database tests run on a Mac too against any Postgres with the migrations (`GARAGE_DB_PORT`, see `tests/db/helpers.mjs`).
-- « Heures travaillées » (`#/timesheet`, Part 26, `20261119000100_heures.sql`, applied on live 2026-11-19 from commit `5e77db6` with the sha256 check; `src/features/timesheet/`): the
+- « Heures travaillées » (`#/timesheet`, Part 26 of live, `20261119000100_heures.sql`, applied on live 2026-11-19 from commit `5e77db6` with the sha256 check; `src/features/timesheet/`): the
   hours worked from « Commencer / Terminer ma journée » (`shifts`), a week at a time from Monday to Sunday (Hassan's choice for the
   hours; the schedule's week stays Sunday–Saturday), a day counted on the day it began, totals in h min and in decimals (pay), the
-  month's total. A mechanic sees only his own (« Mes heures », also « Voir mes heures » on the day card); the owners and the
-  treasurer (`may.timesheetAll`, server `hours_all()`) see the team and each person (`#/timesheet/STAFF?week=`), and correct:
+  month's total. A mechanic sees only his own (« Mes heures », also « Voir mes heures » on the day card, `src/features/today/ShiftCard.tsx`); the owners and the
+  treasurer (`may.timesheetAll` in `src/domain/rights.ts`, server `hours_all()`) see the team and each person (`#/timesheet/STAFF?week=`), and correct:
   `shift_save(op, shift, staff, start, end)` (fix a day, or add one with shift null; an open day keeps no end; refused: end not
   after start, more than 24 h, not yet passed, overlap with the person's other days) and `shift_remove(op, shift)` (closed days
   only, `deleted_at`). Each correction: `shifts.fixed_by` / `fixed_at` and an `activity` row (`hours_fix` / `hours_add` /
@@ -430,8 +437,34 @@ end $do$;
   housekeeping closes a forgotten day 16 h after it began (3 h 17), so it always shows that way; the 3 h 17 is not offered as the
   end in the sheet. The read rule of `shifts` adds `hours_all()` (the treasurer even without « Carte »). Dry run on live
   2026-11-19 (rolled back): applied clean, mechanic refused, treasurer's fix kept with its history. Tests: `logic.test.ts`,
-  `TimesheetScreen.test.tsx`, `tests/db/heures.test.mjs` (green on « Tests complets », run 44578750496). Live had 4 days « à vérifier »
+  `TimesheetScreen.test.tsx`, `tests/db/heures.test.mjs` (green on live's « Tests complets », run 44578750496). Live had 4 days « à vérifier »
   that day (closed by the night: 33.8 h, 22.6 h, 16.5 h, 19.2 h).
+  In the refonte: the moments are read and written on the garage's clock (`dayOf`, `minuteOf`, `instantOf` of `lib/dates`), like
+  the rest of the app; `too_long` of a day has its words under `errors.at.shift_save` (`errors.too_long` is a message too long);
+  `shift_save`, `shift_remove` (APP) and `hours_all` (AS_PERSON) are named in `tests/db/refonte-droits.test.mjs`; the demo is
+  `src/dev/demo-extra/timesheet.ts`. On a fresh database the file runs after the six forward migrations (`20261116000050` …
+  `000500`); the end state is the same as on live, where it ran before them (the D1 grant loop of `000300` only goes over its
+  own list of names, which does not hold `hours_all`, `shift_save`, `shift_remove`; the migration grants them itself).
+- The customer's tracking page, live (`client.html#suivi=…`, `src/client/track/`; asked by Hassan on 2026-11-20: « see the mechanic
+  moving in real time, smoothly, as if there was no refresh »; no server change for that part): `useTrack` asks `public_track` every
+  5 s (15 / 30 / 60 s after failures, nothing while the page is hidden), the truck glides from one position to the next along the
+  road's bends (`glide.ts`, requestAnimationFrame), the map does not refit, and the arrival is live (`liveEta`: what is left of the
+  road over its length × the planned minutes, kept calm; the server's `eta_at` when the position is over 2 min old or over 400 m
+  from the road).
+  The road itself is the REAL one (2026-11-21, Hassan on the first picture: « it's a straight line, it doesn't show the actual
+  route »): « Je pars » (`enroute`, `route()`) asks OSRM for the road in FULL (`overview=full`) and keeps the points that shape it
+  (`supabase/functions/_shared/road.ts`, `thinRoad`: a point is dropped only when the line passes within 3 m of it, 400 points at
+  most, the smallest bends first on a very long road; 5 km of city = about 35 points, 47 km = about 140). Before, the « simplified »
+  road was asked: about 15 points for 9 km on live (39 trips looked at), up to 15 m off the streets on a short trip and over 100 m
+  on a long one. The team's « Carte » draws the same line. The demo's pretend trip (`src/client/demo.ts`, `WAY`) is a real road
+  thinned the same way. Tests: `src/client/track/server-road.test.ts`, and `tests/api/functions.test.mjs` (the stand-in planner
+  answers a road with a corner when asked in full: the trip keeps the corner). Only on the test copies until the functions are
+  deployed; live's `enroute` (pinned at `a4f2da6`) still asks the simplified road.
+  Two road planners (Hassan, same day: « yes add it just in case »; on live 3 trips of 39 had no road at all, the planner had not
+  answered): `route()` asks OSRM's own server, then its FOSSGIS copy (`routing.openstreetmap.de/routed-car`, the same two and the
+  same order as the app's maps), each waited 6 s at most, then the straight-line estimate as before; `route_source` says `osrm`,
+  `osrm-backup` or `line`. A copy of the server with `OSRM_BASE` set (the tests) asks `<OSRM_BASE>-backup` as its second planner,
+  never the real one (`OSRM_BACKUP_BASE` names another); the stand-in fails on demand (`/control?osrm=fail`, `?osrm_backup=fail`).
 
 ## Ideas not done yet
 

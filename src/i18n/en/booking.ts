@@ -56,12 +56,12 @@ export const booking: typeof fr = {
   confirm: 'Book',
   confirmWalkIn: 'Open the job',
   walkInSub: 'Now, here',
-  missing: { customer: 'Pick the customer', work: 'Add a service or describe the problem', block: 'Pick the block' },
+  missing: { customer: 'Pick the customer', work: 'Add a service or describe the problem', block: 'Pick the block', quote: 'This estimate is already booked', truck: 'Pick the truck' },
   cars: {
     also: 'Also in this appointment:',
-    chip: '{car}: {n} jobs',
+    chip: { one: '{car}: {n} item', other: '{car}: {n} items' },
     done: { one: 'Booked: {when}', other: '{n} vehicles booked: {when}' },
-    partial: 'Booked for {n} vehicle(s) out of {total}. Choose another block for the others.'
+    partial: { one: 'Booked for {n} vehicle out of {total}. Choose another block for the others.', other: 'Booked for {n} vehicles out of {total}. Choose another block for the others.' }
   },
   force: {
     title: 'This block is full',
@@ -73,7 +73,7 @@ export const booking: typeof fr = {
   },
   done: 'Booked: {when}',
   doneWalkIn: 'Job opened',
-  queued: 'Booking kept on this phone: it will be placed as soon as the network is back (if the block is full, you will see why).',
+  queued: 'Booking kept on this phone: it will be placed as soon as the network is back (if the block is full, you will see why). The confirmation text does not go by itself: once the booking is placed, send it from the appointment (« Send the confirmation text again »), or the day before from « To confirm for tomorrow ».',
   queuedWalkIn: 'Job kept on this phone: it will be created as soon as the network is back.',
   refusedBlock: 'Pick another block.',
   mechanicTruck: 'The job goes on your truck: {name}.',
@@ -86,10 +86,10 @@ export const booking: typeof fr = {
     missing: 'This estimate is not on this phone. Check the network, or book without it.'
   },
   when: {
-    today: { am: 'This morning', pm: 'This afternoon', eve: 'This evening' },
-    tomorrow: { am: 'Tomorrow morning', pm: 'Tomorrow afternoon', eve: 'Tomorrow evening' },
-    yesterday: { am: 'Yesterday morning', pm: 'Yesterday afternoon', eve: 'Yesterday evening' },
-    block: { am: 'morning', pm: 'afternoon', eve: 'evening' },
+    today: { am: 'This morning', pm: 'This afternoon', eve: 'This evening', day: 'Today' },
+    tomorrow: { am: 'Tomorrow morning', pm: 'Tomorrow afternoon', eve: 'Tomorrow evening', day: 'Tomorrow' },
+    yesterday: { am: 'Yesterday morning', pm: 'Yesterday afternoon', eve: 'Yesterday evening', day: 'Yesterday' },
+    block: { am: 'morning', pm: 'afternoon', eve: 'evening', day: 'during the day' },
     weekday: '{day} {block}',
     date: '{day}, {block}'
   },
@@ -111,7 +111,11 @@ export const booking: typeof fr = {
     title: 'Incoming call',
     known: 'A customer we know',
     open: 'Open',
-    newNamed: 'GoHighLevel says: {name}. Where do we start?'
+    newNamed: 'GoHighLevel says: {name}. Where do we start?',
+    leaveTitle: 'Leave the booking in progress?',
+    leaveText: 'What is typed for this booking will be lost.',
+    leaveOk: 'Open the call',
+    leaveCancel: 'Stay here'
   },
   call: {
     title: 'Incoming call',
@@ -176,7 +180,7 @@ export const booking: typeof fr = {
     mapAll: 'The coming appointments around the new address',
     mapDay: 'The routes of {day} with the new appointment',
     hintAll: 'Each dot is an appointment already booked, with its date inside. Tap a day, or a dot, to see the route of that day.',
-    hintHover: 'Move the mouse over a day or a moment: that day’s map opens beside it. A click chooses.',
+    hintHover: 'Rest the mouse on a day or a moment: that day’s map opens beside it, with the new appointment. A click chooses.',
     blocks: 'The times of {day}',
     noBlock: 'No free time that day.'
   },
@@ -237,9 +241,9 @@ export const booking: typeof fr = {
     },
     summary: { noBlock: 'No time chosen' },
     missing: { block: 'Choose the time' },
-    cars: { partial: 'Booked for {n} of {total} vehicle(s). Choose another time for the others.' },
+    cars: { partial: { one: 'Booked for {n} of {total} vehicles. Choose another time for the others.', other: 'Booked for {n} of {total} vehicles. Choose another time for the others.' } },
     force: { title: 'This day is full', cancel: 'Choose another time' },
-    queued: 'Booking kept on the phone: it will be placed as soon as the network is back (if the day is full, you will see why).',
+    queued: 'Booking kept on the phone: it will be placed as soon as the network is back (if the day is full, you will see why). The confirmation text does not go by itself: once the booking is placed, send it from the appointment (« Send the confirmation text again »), or the day before from « To confirm for tomorrow ».',
     refusedBlock: 'Choose another time.',
     full: 'This window is no longer possible: the mechanic can no longer arrive within those hours. Choose another window.',
     auto: 'window given by the app',
@@ -281,6 +285,7 @@ export const booking: typeof fr = {
     },
     picker: {
       title: 'The best times',
+      hintHover: 'Rest the mouse on a moment or on a time: that day’s map opens beside it, with the new appointment. A click chooses.',
       current: 'Current time',
       loading: 'Looking for the best times…',
       offline: 'No network, no suggestions. Choose a day in the calendar: the app will check the room when it is sent.',
@@ -332,5 +337,12 @@ export const booking: typeof fr = {
     copied: 'Text copied',
     copyFail: 'Press and hold the text to copy it.',
     share: 'Share'
+  },
+  // refonte:moment-pickers
+  /** the moment pickers' own words (shared/moment) */
+  momentPickers: {
+    /** the server did not send the text on purpose (status « quiet »): nothing failed */
+    smsQuiet: 'No text: this customer or this kind of text is turned off.'
   }
+  // fin refonte:moment-pickers
 };

@@ -1,53 +1,36 @@
-/* Facturation: how invoice numbers are written, the hourly rate, travel fees, payment delay, the month's goal,
-   the words printed on the invoice (bottom line and conditions, in French and English). */
+/* Facturation: how invoice numbers are written, the hourly rate, payment delay, the month's goal, the words printed on
+   the invoice (bottom line and conditions, in French and English). */
 import { useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { settings, invoicesList } from '../../data/select';
-import { saveSettings } from '../../data/api';
-import { Panel, Field, Input, Textarea, MoneyInput, attempt, toast } from '../../ui';
-import { useSectionDraft, SaveBar, Section, NumInput, rangeError } from './SectionFrame';
-import { cleanText } from './draft';
+import { saveSection, anyQueued, type SaveAnswer } from './save';
+import { Panel, Field, Input, Textarea, MoneyInput, Banner, attempt, toast } from '../../ui';
+import { useSectionDraft, SaveBar, Section } from './SectionFrame';
+import { NumInput } from './fields';
+import { viewOf, check, patchOf, nextNumber, type BillingView, type BillingErrors } from './billingModel';
 
-interface Billing {
-  invoice_prefix: string; pad: number | null; hourly_cents: number | null; travel_cents: number | null; free_over_cents: number | null;
-  due_days: number | null; goal_cents: number | null; footer_fr: string; footer_en: string; terms_fr: string; terms_en: string;
-}
-type Errs = Partial<Record<keyof Billing, string>>;
+/** the section's fields as stored now (also what the dot of the list compares the draft with) */
+export const billingSaved = (): BillingView => viewOf(settings.value.billing, settings.value.company || {});
 
 export function BillingSection() {
-  const b = settings.value.billing;
-  const c = settings.value.company || {};
-  const saved: Billing = {
-    invoice_prefix: b.invoice_prefix ?? 'F-', pad: Number(b.pad ?? 4), hourly_cents: b.hourly_cents ?? null, travel_cents: b.travel?.cents ?? 0,
-    free_over_cents: b.travel?.free_over_cents ?? null, due_days: Number(b.due_days ?? 0), goal_cents: b.goal_cents ?? null,
-    footer_fr: c.footer_fr || '', footer_en: c.footer_en || '', terms_fr: b.terms_fr || '', terms_en: b.terms_en || ''
-  };
-  const { draft: d, set, dirty, reset } = useSectionDraft<Billing>('billing', saved);
-  const [err, setErr] = useState<Errs>({});
-  const put = <K extends keyof Billing>(k: K) => (v: Billing[K]) => { set((x) => ({ ...x, [k]: v })); if (err[k]) setErr({ ...err, [k]: undefined }); };
-  const nextNo = Math.max(0, ...invoicesList.value.map((v) => Number(v.number) || 0)) + 1;
-  const pad = Number.isFinite(d.pad) && d.pad != null ? Math.min(8, Math.max(1, Math.round(d.pad))) : 4;
-  const example = `${d.invoice_prefix || ''}${String(nextNo).padStart(pad, '0')}`;
+  const saved = billingSaved();
+  const { draft: d, set, dirty, changes, reset } = useSectionDraft<BillingView>('billing', saved);
+  const [err, setErr] = useState<BillingErrors>({});
+  const put = <K extends keyof BillingView>(k: K) => (v: BillingView[K]) => { set((x) => ({ ...x, [k]: v })); if (err[k]) setErr({ ...err, [k]: undefined }); };
+  const example = nextNumber(d, Math.max(0, ...invoicesList.value.map((v) => Number(v.number) || 0)));
+  // the number shown on an invoice is written with the CURRENT prefix and digits: the old ones change too
+  const renames = 'invoice_prefix' in changes || 'pad' in changes;
 
   const save = async () => {
-    const e: Errs = {};
-    const padErr = rangeError(d.pad, 1, 8);
-    if (padErr || !Number.isInteger(d.pad)) e.pad = t('settings.billing.badPad');
-    if ((d.invoice_prefix || '').trim().length > 10) e.invoice_prefix = t('settings.billing.badPrefix');
-    const dueErr = rangeError(d.due_days, 0, 365);
-    if (dueErr || !Number.isInteger(d.due_days)) e.due_days = t('settings.billing.badDue');
+    const e = check(d);
     setErr(e);
     if (Object.keys(e).length) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
-    const billing = {
-      ...settings.value.billing,
-      invoice_prefix: (d.invoice_prefix || '').trim(), pad: d.pad, hourly_cents: d.hourly_cents ?? null,
-      travel: { cents: d.travel_cents ?? 0, free_over_cents: d.free_over_cents ?? null },
-      due_days: d.due_days, goal_cents: d.goal_cents ?? null, terms_fr: cleanText(d.terms_fr) ?? '', terms_en: cleanText(d.terms_en) ?? ''
-    };
-    const footerChanged = (cleanText(d.footer_fr) ?? '') !== (cleanText(saved.footer_fr) ?? '') || (cleanText(d.footer_en) ?? '') !== (cleanText(saved.footer_en) ?? '');
+    const p = patchOf(changes);
     const ok = await attempt(async () => {
-      await saveSettings('billing', billing);
-      if (footerChanged) await saveSettings('company', { ...(settings.value.company || {}), footer_fr: cleanText(d.footer_fr) ?? '', footer_en: cleanText(d.footer_en) ?? '' });
+      const answers: SaveAnswer[] = [];
+      if (p.billing) answers.push(await saveSection('billing', { ...settings.value.billing, ...p.billing }));
+      if (p.company) answers.push(await saveSection('company', { ...(settings.value.company || {}), ...p.company }));
+      return anyQueued(answers);
     }, { ok: t('settings.saved') });
     if (ok) reset();
   };
@@ -65,6 +48,7 @@ export function BillingSection() {
             </Field>
           </div>
           <p class="settings-example" data-testid="billing-example">{t('settings.billing.example', { n: example })}</p>
+          {renames && <Banner kind="warn" data-testid="billing-renames">{t('settings.billing.renamesPast')}</Banner>}
         </div>
       </Panel>
       <Panel title={t('settings.billing.rates')}>
@@ -74,12 +58,6 @@ export function BillingSection() {
           </Field>
           <Field label={t('settings.billing.goal')} help={t('settings.billing.goalHelp')} optional>
             <MoneyInput cents={d.goal_cents} onCents={put('goal_cents')} aria-label={t('settings.billing.goal')} />
-          </Field>
-          <Field label={t('settings.billing.travel')} help={t('settings.billing.travelHelp')}>
-            <MoneyInput cents={d.travel_cents} onCents={put('travel_cents')} aria-label={t('settings.billing.travel')} />
-          </Field>
-          <Field label={t('settings.billing.freeOver')} help={t('settings.billing.freeOverHelp')} optional>
-            <MoneyInput cents={d.free_over_cents} onCents={put('free_over_cents')} aria-label={t('settings.billing.freeOver')} />
           </Field>
           <Field label={t('settings.billing.due')} help={t('settings.billing.dueHelp')} error={err.due_days}>
             <NumInput value={d.due_days} onValue={put('due_days')} unit={t('settings.billing.dueUnit')} invalid={!!err.due_days} aria-label={t('settings.billing.due')} />

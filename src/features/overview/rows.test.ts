@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { overviewRows } from './rows';
-import { assemble, UNPLACED_COLOR } from '../map/assemble';
+import { assemble, UNPLACED_COLOR } from '../../shared/map/assemble';
 import type { Job } from '../../data/types';
 import { overview as fr } from '../../i18n/fr/overview';
 import { overview as en } from '../../i18n/en/overview';
@@ -23,6 +23,11 @@ describe('« Vue d’ensemble »: the appointments of the day', () => {
     expect(rows.find((r) => r.job.id === 'a')).toMatchObject({ n: 1, color: '#D3000E', truckName: 'Camion Complet' });
     expect(rows.find((r) => r.job.id === 'c')?.n).toBe(3);
     expect(rows.find((r) => r.job.id === 'x')).toMatchObject({ n: null, color: UNPLACED_COLOR });
+  });
+  it('keeps a job’s own truck and stop number when the map does not show it yet', () => {
+    const late = { ...job('n', 'am', 700, 't1', 7), stop_order: 3 } as Job;
+    const r = overviewRows([late], assemble({ home: null, trucks: [], jobs: [], people: [], trips: [] }), () => ({ name: 'Camion Complet', color: '#D3000E' }));
+    expect(r[0]).toMatchObject({ n: 3, color: '#D3000E', truckName: 'Camion Complet' });
   });
   it('every word exists in French and English', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(fr).sort());

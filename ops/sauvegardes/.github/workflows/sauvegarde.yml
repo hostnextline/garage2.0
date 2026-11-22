@@ -17,8 +17,11 @@ jobs:
         with:
           node-version: 22
       - name: Télécharger toutes les données
+        # une copie qui n'est pas entière : rouge, et le garage note la nuit ratée (backup done, ok false)
+        id: copie
         run: node sauvegarde.mjs donnees
       - name: Garder la copie (l'historique du dépôt garde chaque nuit)
+        id: garder
         run: |
           git config user.name "Sauvegarde automatique"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -26,3 +29,13 @@ jobs:
           if git diff --cached --quiet; then echo "Rien n'a changé depuis la dernière sauvegarde."; exit 0; fi
           git commit -q -m "Sauvegarde du $(date -u +%F)"
           git push -q
+      - name: Le dire au garage, puis le rapprochement de la journée
+        # APRÈS « Garder la copie », exprès : cette étape finit en rouge quand le rapprochement trouve un écart
+        # (GitHub écrit alors au propriétaire), et la sauvegarde de la nuit est déjà gardée quoi qu'il arrive.
+        # Un serveur qui ne connaît pas encore « done » ou « recon » : un avertissement, jamais un échec.
+        run: node sauvegarde.mjs --fin donnees
+      - name: Push refusé — le dire au garage
+        # seulement quand « Garder la copie » a échoué (la copie était entière, GitHub l'a refusée) : la nuit reste rouge,
+        # le garage la note ratée. Une copie pas entière le dit elle-même (étape « Télécharger »).
+        if: ${{ failure() && steps.garder.outcome == 'failure' }}
+        run: node sauvegarde.mjs --echec donnees

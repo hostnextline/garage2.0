@@ -3,7 +3,7 @@
 
 export type Group = 'day' | 'office' | 'garage';
 export type MoreFilter = 'all' | Group;
-export const FILTERS: MoreFilter[] = ['all', 'day', 'office', 'garage'];
+const FILTERS: MoreFilter[] = ['all', 'day', 'office', 'garage'];
 
 /** each part of the app has its own colour on the launcher (the icon's glass square), the same in light and dark */
 export const TILE_HUE: Record<string, string> = {
@@ -24,18 +24,6 @@ export function tilesFor<T extends Tileable>(items: T[], f: MoreFilter): T[] {
   if (f === 'all') return items;
   const some = items.filter((i) => i.group === f);
   return some.length ? some : items;
-}
-
-export interface DayCounts { booked: number; live: number; done: number }
-/** today's jobs: still to start, under way (on the road or on site), finished (cancelled and no-shows are not counted) */
-export function dayCounts(jobs: { status: string }[]): DayCounts {
-  const c: DayCounts = { booked: 0, live: 0, done: 0 };
-  for (const j of jobs) {
-    if (j.status === 'booked') c.booked++;
-    else if (j.status === 'en_route' || j.status === 'on_site') c.live++;
-    else if (j.status === 'done') c.done++;
-  }
-  return c;
 }
 
 type Billed = { status: string; total_cents: number; paid_cents: number; deleted_at?: string | null };

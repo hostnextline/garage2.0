@@ -12,9 +12,9 @@ import { allJobs, truckLabel, settings } from '../../data/select';
 import { setStopOrder } from '../../data/api';
 import type { Job } from '../../data/types';
 import { Sheet, Button, IconButton, Banner, Pill, run } from '../../ui';
-import { jobName, isWindowJob, blockRange, momentWord, outsideWindow } from './select';
-import { routeOf, putFirst, moveBy, isManual, sameOrder, brokenWindows } from './stopOrder';
-import './jobs.css';
+import { jobName, isWindowJob, blockRange, momentWord, outsideWindow } from '../../shared/jobs/select';
+import { routeOf, putFirst, moveBy, isManual, sameOrder, brokenWindows } from '../../domain/jobs/stopOrder';
+import '../../shared/jobs/jobs.css';
 
 /** « Mettre en premier »: straight away, without the list */
 export async function stopFirst(j: Job): Promise<boolean> {

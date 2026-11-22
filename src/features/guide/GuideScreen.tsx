@@ -2,19 +2,19 @@
    the right screen; the calm guided tour; installing the app; short answers to common questions. */
 import { useEffect, useState } from 'preact/hooks';
 import { Check, CirclePlay } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { t } from '../../lib/i18n';
 import { shortDate, dayOf } from '../../lib/dates';
 import { lang } from '../../lib/i18n';
 import { me } from '../../data/auth';
 import { Page, Panel, Button, Banner, toast } from '../../ui';
-import { computeChecklist, progress, nextStep, type GuideStep, type Role, type Detail } from './checklist';
-import { guideInput, myRoles, nextJobId, readLocal, markStep, refreshChecks, watchScreens } from './guide-data';
-import { startTour, openStep } from './tour';
+import { computeChecklist, progress, nextStep, type GuideStep, type Role, type Detail } from '../../shared/guide/checklist';
+import { guideInput, myRoles, nextJobId, readLocal, markStep, refreshChecks, watchScreens } from '../../shared/guide/guide-data';
+import { startTour, openStep } from '../../shared/guide/tour';
 import { InstallPanel } from './Install';
-import { gt } from './words';
+import { gt } from '../../shared/guide/words';
 import { HelpCenter, isTopic, type Topic } from './HelpCenter';
-import './guide.css';
+import '../../shared/guide/guide.css';
 
 export function detailText(d: Detail | null): string | null {
   if (!d) return null;
@@ -55,7 +55,8 @@ function StepRow(p: { s: GuideStep; n: number; next: boolean }) {
   );
 }
 
-const JOB_STEPS = ['leave', 'arrive', 'waiver', 'invoice', 'pay', 'finish'] as const;
+// the order of the red button (domain/jobs/steps.ts nextStep): the VIN before the signature, the parts confirmed at « Terminer »
+export const JOB_STEPS = ['leave', 'arrive', 'vin', 'waiver', 'invoice', 'pay', 'finish'] as const;
 function JobSteps() {
   return (
     <Panel title={t('guide.jobSteps.title')} sub={t('guide.jobSteps.lead')} data-testid="guide-jobsteps">

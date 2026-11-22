@@ -11,12 +11,22 @@ import { resolve } from 'node:path';
    newer one exists and whether it is important (a commit with « [important] » in its message since this one) */
 const BUILT_AT = process.env.VITE_BUILT_AT || new Date().toISOString();
 
+/* jsPDF asks for these only in .html() and for SVG pictures, which the invoice PDF never uses: they were built and kept
+   for offline on every phone all the same (390 kB). They become an empty module. */
+const NEVER_USED = new Set(['html2canvas', 'canvg', 'dompurify']);
+
 export default defineConfig(({ mode }) => ({
   base: './',
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
   define: { __BUILT_AT__: JSON.stringify(BUILT_AT) },
   plugins: [
     preact(),
+    {
+      name: 'jspdf-extras-off',
+      enforce: 'pre' as const,
+      resolveId(id: string) { return NEVER_USED.has(id) ? '\0never-used' : null; },
+      load(id: string) { return id === '\0never-used' ? 'export default undefined;' : null; }
+    },
     {
       name: 'version-file',
       apply: 'build',
@@ -25,26 +35,17 @@ export default defineConfig(({ mode }) => ({
           type: 'asset', fileName: 'version.json',
           source: JSON.stringify({
             version: process.env.VITE_APP_VERSION || 'dev', built_at: BUILT_AT,
-            important_since: process.env.APP_IMPORTANT_SINCE || null, notes: process.env.APP_NOTES || null
+            important_since: process.env.APP_IMPORTANT_SINCE || null, notes: process.env.APP_NOTES || null,
+            // a version made before this date must update before anything else (set by hand, only for a harmful build)
+            min_built_at: process.env.APP_MIN_BUILT_AT || null
           })
         });
-      }
-    },
-    {
-      /* the customer's page is not the team app: no « Installer l'app » offer there */
-      name: 'client-page-without-manifest',
-      transformIndexHtml: {
-        order: 'post',
-        handler(html: string, ctx: { path: string }) {
-          return ctx.path.endsWith('client.html') ? html.replace(/\s*<link rel="manifest"[^>]*>/g, '') : html;
-        }
       }
     },
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,
       manifestFilename: 'manifest.webmanifest',
-      includeAssets: ['icons/*.png', 'logo-his.png'],
       manifest: {
         id: './',
         name: 'Mécanique Mobile H.I.S',
@@ -64,19 +65,27 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       workbox: {
+        // not the VIN barcode reader of iPhones (zxing, 1.09 MB, a .wasm): as on live, it comes the first time a VIN is
+        // scanned and is kept from then on (runtimeCaching below), so no phone downloads it at each update (fluidite-04)
         globPatterns: ['**/*.{js,css,html,png,svg,webp,woff2,webmanifest,json}'],
         globIgnores: ['**/client.html', '**/assets/client-*.js', '**/assets/client-*.css', '**/version.json'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/client\.html/],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         cleanupOutdatedCaches: true,
+        /* at its first install the worker takes the page already open: the screens not opened yet come from the phone
+           from then on, even with no signal (live waited for the next start of the app). An update still waits for
+           « Mettre à jour » or a safe moment (registerType prompt: no skipWaiting). */
+        clientsClaim: true,
         /* the alert while the app is closed (« Texto entrant »): public/push-sw.js */
         importScripts: ['push-sw.js'],
         runtimeCaching: [
           { /* map tiles: kept a little while so the map still shows with weak signal */
             urlPattern: ({ url }) => /tile\.openstreetmap\.org$/.test(url.hostname),
             handler: 'CacheFirst',
-            options: { cacheName: 'tuiles', expiration: { maxEntries: 600, maxAgeSeconds: 14 * 24 * 3600 } }
+            // only real answers are kept: a tile asked without CORS is opaque and is never stored (the map layers must
+            // ask with crossOrigin; an opaque tile would weigh 7 MB of quota each)
+            options: { cacheName: 'tuiles', expiration: { maxEntries: 600, maxAgeSeconds: 14 * 24 * 3600 }, cacheableResponse: { statuses: [200] } }
           },
           { /* the heavy tools loaded only when used (receipt reader, barcode reader) */
             urlPattern: ({ url }) => url.hostname === 'cdn.jsdelivr.net',
@@ -96,7 +105,19 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       devOptions: { enabled: false }
-    })
+    }),
+    {
+      /* the customer's page is not the team app: no « Installer l'app » offer there. After VitePWA, which adds the
+         manifest link (placed before it, this removed nothing: only client.html's own script took the link away) */
+      name: 'client-page-without-manifest',
+      enforce: 'post' as const,
+      transformIndexHtml: {
+        order: 'post',
+        handler(html: string, ctx: { path: string }) {
+          return ctx.path.endsWith('client.html') ? html.replace(/\s*<link rel="manifest"[^>]*>/g, '') : html;
+        }
+      }
+    }
   ],
   build: {
     target: 'es2022',

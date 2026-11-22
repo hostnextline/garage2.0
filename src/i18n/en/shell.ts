@@ -45,7 +45,24 @@ export const shell: typeof fr = {
     lead: 'The server refused them. The record went back to its previous version. Read the reason, fix if needed, then retry or remove.',
     retry: 'Retry',
     dismiss: 'Remove',
-    show: 'Show'
+    show: 'Show',
+    line: '{label}: {error}',
+    chip: { one: '1 refused', other: '{n} refused' },
+    paymentAsk: 'Remove this payment?',
+    paymentConfirm: 'This payment was not recorded. The customer may have paid: check before removing it.'
+  },
+  session: {
+    lost: { one: 'Sign in again: 1 change is waiting', other: 'Sign in again: {n} changes are waiting' },
+    lostNone: 'Sign in again to go on',
+    lead: 'Your session expired. Nothing is lost: your changes go out as soon as you are signed in again.',
+    signIn: 'Sign in again'
+  },
+  storageLost: 'This phone cannot keep your changes: stay online',
+  notUpToDate: 'Not up to date yet: some lists could not be read.',
+  stuck: { one: 'A change is waiting for the server to answer. It is kept and will go out by itself.', other: '{n} changes are waiting for the server to answer. They are kept and will go out by themselves.' },
+  crash: {
+    title: 'Something went wrong',
+    text: 'Nothing is lost: your changes are kept on the phone.'
   },
   update: {
     title: 'App updates', help: 'The app updates itself the next time it opens. Here you can check right away and install it without waiting.',
@@ -53,7 +70,11 @@ export const shell: typeof fr = {
     check: 'Check for updates', checking: 'Checking…',
     none: 'The app is up to date.', offline: 'No signal: try again when the network is back.', error: 'The check did not work. Try again in a moment.',
     ready: 'A new version of the app is ready.', important: 'Important app update: install it as soon as you can.',
-    notes: 'What changes: {notes}', apply: 'Update now', later: 'Later'
+    notes: 'What changes: {notes}', apply: 'Update now',
+    downloading: 'A new version is downloading. It will be ready in a moment.',
+    installed: 'A new version of the app is installed. Reload to use it.',
+    tooOld: 'Update the app',
+    tooOldLead: 'This version of the app is too old to go on. Your changes are kept: they will go out with the new version.'
   },
   moved: {
     title: 'The app has a new address: {host}',
@@ -63,6 +84,8 @@ export const shell: typeof fr = {
   preview: { banner: 'You are viewing the app as {name}. Nothing can be changed.', stop: 'Back to me' },
   queued: 'Kept on the phone: it goes out as soon as the signal is back.',
   loadFail: 'This page won’t open. The app may have been updated.',
+  loadOffline: 'No signal: this page will open when the signal is back.',
+  loadBack: 'The signal is back: tap « Try again » to open this page.',
   reload: 'Reload',
   notFound: 'This page doesn’t exist.',
   noRight: 'You don’t have access to this part of the app.',
@@ -70,5 +93,10 @@ export const shell: typeof fr = {
   skip: 'Skip to content',
   menu: 'Menu',
   splash: 'Opening…',
-  offlineBanner: 'Offline: you are working on the phone’s copy.'
+  kit: {
+    job: { booked: 'Booked', en_route: 'On the way', on_site: 'On site', done: 'Done', cancelled: 'Cancelled', no_show: 'No-show' },
+    invoice: { draft: 'Draft', issued: 'Unpaid', partial: 'Partly paid', paid: 'Paid', void: 'Cancelled' },
+    stamp: { paid: 'Paid', cancelled: 'Cancelled', no_show: 'No-show' },
+    paid: 'Paid', balance: 'Balance'
+  }
 };

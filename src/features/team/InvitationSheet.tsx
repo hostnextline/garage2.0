@@ -3,21 +3,17 @@ import { Send } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { stamp } from '../../lib/dates';
 import { truckLabel } from '../../data/select';
-import { errorMessage } from '../../data/api';
-import { Sheet, Button, Banner, Kv, toast } from '../../ui';
-import { teamDo, rolesWords, type Invitation } from './teamApi';
+import { Sheet, Button, Banner, Kv, attempt } from '../../ui';
+import { teamDo, rolesWords, type Invitation } from '../../domain/team/teamApi';
 
 export function InvitationSheet(p: { inv: Invitation | null; onClose: () => void; onAgain: (inv: Invitation) => void; onCancelled: () => void }) {
   const inv = p.inv;
   if (!inv) return null;
   const expired = Date.parse(inv.expires_at) < Date.now();
   const cancel = async () => {
-    try {
-      await teamDo('invite-cancel', { id: inv.id });
-      toast(t('team.invitation.cancelled'), { kind: 'ok' });
-      p.onCancelled();
-      p.onClose();
-    } catch (e) { toast(errorMessage(e), { kind: 'bad' }); }
+    if (!(await attempt(() => teamDo('invite-cancel', { id: inv.id }), { ok: t('team.invitation.cancelled') }))) return;
+    p.onCancelled();
+    p.onClose();
   };
   return (
     <Sheet open onClose={p.onClose} title={t('team.invitation.title', { name: inv.full_name })} data-testid="invitation-sheet"

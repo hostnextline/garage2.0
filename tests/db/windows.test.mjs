@@ -49,8 +49,8 @@ test('windows off: the blocks are the three of before, a booking has no window, 
   const m = await h.rpc('move_job', { p_op: uuid(), p_job: r.job_id, p_day: day, p_block: 'pm', p_truck: null });
   assert.equal(m.changed, true);
   assert.equal((await row(h, r.job_id)).block, 'pm');
-  const m7 = await h.fails(() => h.rpc('move_job', { p_op: uuid(), p_job: r.job_id, p_day: day, p_block: 'day', p_truck: null, p_win_start: 600, p_win_flex: false }));
-  assert.equal(m7?.hint, 'bad_block');
+  const m7 = await h.rpc('move_job', { p_op: uuid(), p_job: r.job_id, p_day: day, p_block: 'day', p_truck: null, p_win_start: 600, p_win_flex: false });
+  assert.equal((await row(h, r.job_id)).block, 'am', 'a move kept on a phone in window mode: the block of its window (Part 26)'); void m7;
 }));
 
 test('the window for an estimated arrival: 1 h before, 3 h after, inside the day', () => tx(async (h) => {
@@ -89,8 +89,9 @@ test('the switch: a coming morning job becomes a job of the day with 8–12, and
   const again = await h.rpc('windows_switch', { p_op: uuid(), p_on: true });
   assert.equal(again.converted, 0); assert.equal(again.unchanged, true);
   // a block is refused now, with words that say why
-  const e = await h.fails(() => h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: c, day, block: 'am', duration_min: 60 }, p_items: [] }));
-  assert.equal(e?.hint, 'bad_block'); assert.match(e.message, /plage/);
+  const e = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: c, day, block: 'am', duration_min: 60 }, p_items: [] });
+  assert.deepEqual([(await row(h, e.job_id)).block, (await row(h, e.job_id)).win_start], ['day', 480], 'a block kept on a phone: the window of its hours (Part 26)');
+  await h.rpc('job_step', { p_op: uuid(), p_job: e.job_id, p_action: 'cancel', p_data: {} });
   const off = await h.rpc('windows_switch', { p_op: uuid(), p_on: false });
   assert.ok(off.converted >= 2);
   ja = await row(h, a.job_id); jp = await row(h, p.job_id);
@@ -255,15 +256,18 @@ test('moving a job in window mode: a new window, flexible, another day; a block 
   assert.equal(jb.win_flex, false);
   inside(await row(h, a.job_id), 'A');
   // a block is refused
-  const e = await h.fails(() => h.rpc('move_job', { p_op: uuid(), p_job: b.job_id, p_day: day, p_block: 'pm', p_truck: null }));
-  assert.equal(e?.hint, 'bad_block');
+  const e = await h.rpc('move_job', { p_op: uuid(), p_job: b.job_id, p_day: day, p_block: 'pm', p_truck: null });
+  assert.deepEqual([(await row(h, b.job_id)).block, (await row(h, b.job_id)).win_start], ['day', 720], 'a block kept on a phone: the window of its hours (Part 26)'); void e;
   void dow;
 }));
 
 test('window mode, the same day: booked after the day started, planned from now; a window already over is refused', async (t) => tx(async (h) => {
   const owner = await h.person('Hassan', ['owner']);
+  // the server's clock at 10 h for this test only (rolled back with it): run late in the evening, the truck's day was
+  // nearly over and « Remettre à l'agenda » no longer fitted (R95, red between 22 h 50 and 23 h)
+  await h.q(`create or replace function public.now_min() returns integer language sql stable set search_path = public, extensions as $$ select 600 $$`);
   const now = await h.val(`select public.now_min()`);
-  if (now > 1380) { t.skip('too close to midnight to book today'); return; }
+  assert.equal(now, 600); void t;
   // a day that runs from midnight to midnight, so « today » is open whatever the hour of the test
   await h.q(`update public.settings set booking = booking || '{"blocks":[{"key":"am","start":0,"end":480},{"key":"pm","start":480,"end":960},{"key":"eve","start":960,"end":1440}]}'::jsonb where id = 1`);
   const today = await h.val(`select public.local_today()::text`);
@@ -299,12 +303,15 @@ test('window mode, the same day: booked after the day started, planned from now;
   // the scheduler's routine finds nothing left to fix
   await h.as(null);
   assert.equal((await h.one(`select public.lock_windows_due() r`)).r.fixed, 0);
-  // the truck's day ends now: a plan made from « now » has no truck left, but an appointment of a day already started keeps its truck
+  // the truck's day ends now: a plan made from « now » has no truck left. The owner closed it for the rest of the day
+  // (its hours changed now): its appointment goes to « À placer », as Horaires says (round 2, plages-01: it stayed on
+  // the closed truck with its old time). A truck whose day simply ended keeps its late appointment: refonte-planification
+  // « plages-01 ».
   if (now >= 10) {
     await h.q(`insert into public.truck_days (truck_id, day, ranges) values ($1, public.local_today(), $2)`, [t1, JSON.stringify([[0, now - 5]])]);
     const kept = await row(h, r.job_id);
     assert.equal(kept.status, 'booked');
-    assert.equal(kept.truck_id, t1, 'never thrown to « À placer » on a day already started');
+    assert.equal(kept.truck_id, null, 'the truck closed by the owner: « À placer » (it was kept on the closed truck)');
   }
 }));
 

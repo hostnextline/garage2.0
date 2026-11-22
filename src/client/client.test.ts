@@ -4,7 +4,7 @@ import { client as fr } from '../i18n/fr/client';
 import { client as en } from '../i18n/en/client';
 import { slotText, dayTitle, relDay, cad, lineCents, qtyText, telHref, localMinuteOf, localDayOf, clockOf } from './format';
 import { parseLink, linkHash } from './link';
-import { invoicePaid, nothingLeft, chargesTaxes, sections, afterCheck } from './view-state';
+import { invoicePaid, nothingLeft, chargesTaxes, sections, afterCheck } from './view/view-state';
 import type { JobView } from './api';
 
 const sp = (s: string | null) => String(s).replace(/\s/g, ' ');   // no-break spaces read as spaces
@@ -68,13 +68,21 @@ describe('money, days and times for the customer', () => {
     expect(slotText(720, 960, 'fr')).toContain('12 h');   // a time never breaks across two lines
   });
   it('writes the day, with the year only when it is not this year', () => {
-    const now = new Date(2026, 10, 4, 9);
+    // 9 h in Montréal on November 4th (an instant: the machine's own zone, UTC or Tokyo, must not move it — R169)
+    const now = new Date('2026-11-04T14:00:00Z');
     expect(dayTitle('2026-11-05', 'fr', now)).toBe('Jeudi 5 novembre');
     expect(dayTitle('2026-11-05', 'en', now)).toBe('Thursday, November 5');
     expect(dayTitle('2027-01-06', 'fr', now)).toBe('Mercredi 6 janvier 2027');
     expect(relDay('2026-11-04', now)).toBe('today');
     expect(relDay('2026-11-05', now)).toBe('tomorrow');
     expect(relDay('2026-11-07', now)).toBeNull();
+  });
+  it('« today » is Montréal’s day even late in the evening, when Tokyo or UTC is already tomorrow (R169)', () => {
+    const lateEvening = new Date('2026-11-05T04:30:00Z');   // 23 h 30 on November 4th in Montréal
+    expect(relDay('2026-11-04', lateEvening)).toBe('today');
+    expect(relDay('2026-11-05', lateEvening)).toBe('tomorrow');
+    expect(localDayOf(lateEvening)).toBe('2026-11-04');
+    expect(localMinuteOf(lateEvening)).toBe(23 * 60 + 30);
   });
   it('reads moments on Montréal’s clock (winter and summer time)', () => {
     expect(localMinuteOf('2026-11-04T17:40:00Z')).toBe(12 * 60 + 40);
@@ -111,6 +119,16 @@ describe('the link', () => {
   it('forgives a period or a bracket glued to the link by a texting app', () => {
     expect(parseLink('#t=abcdef.').token).toBe('abcdef');
     expect(parseLink('#suivi=abcdef)').token).toBe('abcdef');
+  });
+  it('opens the links of a text sent yesterday by the live server, and its way back from Stripe (terrain)', () => {
+    // supabase/functions/_shared/links.ts on live: `${base}client.html#t=${token}${lang === 'en' ? '&l=en' : ''}`
+    const token = 'k3Jx_9QwErTyUiOp-AsDfGhJkL2';
+    for (const [url, want] of [
+      [`https://app.example/client.html#t=${token}`, { kind: 't', token, l: null, retour: null }],
+      [`https://app.example/client.html#t=${token}&l=en`, { kind: 't', token, l: 'en', retour: null }],
+      [`https://app.example/client.html#suivi=${token}&l=en`, { kind: 'suivi', token, l: 'en', retour: null }],
+      [`https://app.example/client.html#t=${token}&l=en&retour=paye`, { kind: 't', token, l: 'en', retour: 'paye' }]
+    ] as const) expect(parseLink(new URL(url).hash)).toEqual(want);
   });
   it('writes it back', () => {
     expect(linkHash('t', 'abc', 'en')).toBe('#t=abc&l=en');

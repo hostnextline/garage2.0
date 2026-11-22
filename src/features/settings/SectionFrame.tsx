@@ -1,33 +1,77 @@
 /* What every settings section shares: its draft (kept while the app is open, so leaving a section does not lose what
-   was typed), the « changements non enregistrés » bar with one Save, and small inputs (numbers with a unit, times). */
-import type { ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+   was typed), the « changements non enregistrés » bar with one Save, and the frame of the section. */
+import { createContext, type ComponentChildren } from 'preact';
+import { useContext, useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import { t, lang } from '../../lib/i18n';
-import { hm, parseHm } from '../../lib/dates';
+import { t } from '../../lib/i18n';
+import { tableSignal } from '../../data/store';
 import { access } from '../../data/auth';
-import { Button } from '../../ui';
-import { isDirty } from './draft';
+import { Button, Panel, Skeleton } from '../../ui';
+import { changesOf, editsOf, pruneDraft, withChanges, sameChanges } from './draft';
 
-/** the drafts of the sections that have changes not saved yet (a section absent here is clean), per person */
-export const drafts = signal<Record<string, unknown>>({});
+/** per person and section, ONLY the fields changed and not saved yet, as typed (a section absent here is clean) */
+export const drafts = signal<Record<string, Record<string, unknown>>>({});
 export const draftKey = (section: string) => `${access.value?.id || ''}:${section}`;
-export const hasDraft = (section: string) => draftKey(section) in drafts.value;
+/** the dot of the list: the same rule as the section's bar, against the section's saved value NOW (`savedNow`), so a
+    section left closed while the same value was saved on another device no longer says « non enregistrés »
+    (settings-team-24c) */
+export function hasDraft(section: string, savedNow?: () => object): boolean {
+  const kept = drafts.value[draftKey(section)];
+  if (!kept || !Object.keys(kept).length) return false;
+  if (!savedNow) return true;
+  const saved = savedNow() as Record<string, unknown>;
+  return Object.keys(changesOf(saved, withChanges(saved, pruneDraft(saved, kept)))).length > 0;
+}
 
-export function useSectionDraft<T>(section: string, saved: T) {
+function write(key: string, changes: Record<string, unknown>) {
+  const all = { ...drafts.peek() };
+  if (Object.keys(changes).length) all[key] = changes; else delete all[key];
+  drafts.value = all;
+}
+
+/** `saved`: the section's fields as stored now. `draft`: what to show. `changes`: what the person changed (what to save). */
+export function useSectionDraft<T extends object>(section: string, saved: T) {
   const key = draftKey(section);
-  const has = key in drafts.value;
-  const draft = (has ? drafts.value[key] : saved) as T;
-  const dirty = has && isDirty(saved, draft);
+  const stored = (drafts.value[key] || {}) as Partial<T>;
+  // the saved value of the last render: a field whose saved value moved to what was typed leaves the draft
+  const seen = useRef<T>(saved);
+  const kept = pruneDraft(saved, stored, seen.current);
+  const draft = withChanges(saved, kept);
+  const changes = changesOf(saved, draft);
+  const dirty = Object.keys(changes).length > 0;
+  // the saved value caught up with a change (saved here, or the same value saved elsewhere), or the field is no longer
+  // part of the section (a text whose kind is hidden): it leaves the draft. What is typed stays as typed (st-1).
+  useEffect(() => {
+    seen.current = saved;
+    if (!sameChanges(stored, kept)) write(key, kept as Record<string, unknown>);
+  });
   const set = (next: T | ((d: T) => T)) => {
-    const cur = (key in drafts.value ? drafts.value[key] : saved) as T;
+    const cur = withChanges(saved, pruneDraft(saved, (drafts.peek()[key] || {}) as Partial<T>));
     const v = typeof next === 'function' ? (next as (d: T) => T)(cur) : next;
-    const all = { ...drafts.value };
-    if (isDirty(saved, v)) all[key] = v; else delete all[key];   // back to what is saved: nothing to save
-    drafts.value = all;
+    write(key, editsOf(saved, v) as Record<string, unknown>);
   };
-  const reset = () => { if (key in drafts.value) { const all = { ...drafts.value }; delete all[key]; drafts.value = all; } };
-  return { draft, set, dirty, reset };
+  const reset = () => write(key, {});
+  return { draft, set, dirty, changes, reset };
+}
+
+/** on a phone (no menu drawn beside the section), the guide's anchor of the section opened, for « Montre-moi » (R150).
+    The section puts it on its FIRST block only (the lead line or the first panel): small and at the top, so the guide
+    neither scrolls the first fields off the screen nor lights the whole screen (settings-team-r2-3). */
+export const SectionAnchor = createContext<string | undefined>(undefined);
+export const useSectionAnchor = () => useContext(SectionAnchor);
+
+/** the settings row has reached this device: until then a section shows a placeholder, never the built-in defaults
+    (one keystroke on a form drawn from them used to write them over the garage's settings: settings-team-03). A short
+    line says it is coming: a device that starts offline and never got the row is not left with a bare skeleton. */
+export const settingsHere = () => tableSignal('settings').value.has('1');
+export function SectionWait(p: { testid?: string }) {
+  const anchor = useSectionAnchor();
+  return (
+    <div class="settings-section stack-lg" data-testid={p.testid} aria-busy="true">
+      <Panel data-tour={anchor}><Skeleton h={18} lines={4} /></Panel>
+      <p class="small muted" style={{ margin: 0 }} aria-live="polite" data-testid="settings-wait">{t('common.loading')}</p>
+    </div>
+  );
 }
 
 /** one Save per section; says when something is not saved yet */
@@ -46,44 +90,4 @@ export function SaveBar(p: { dirty: boolean; onSave: () => unknown; onReset: () 
 /** a section: its panels, then the bar */
 export function Section(p: { children: ComponentChildren; bar?: ComponentChildren; testid?: string }) {
   return <div class="settings-section stack-lg" data-testid={p.testid}>{p.children}{p.bar}</div>;
-}
-
-const fmtNum = (v: number | null | undefined, l: string) => (v == null || !Number.isFinite(v) ? '' : l === 'en' ? String(v) : String(v).replace('.', ','));
-const parseNum = (s: string): number | null => {
-  const x = s.trim().replace(/\s/g, '').replace(',', '.');
-  if (!x) return null;
-  return /^-?\d+(\.\d+)?$/.test(x) ? Number(x) : Number.NaN;
-};
-/** a number with its unit (« 35 km/h »); an empty field gives null, a wrong one NaN (the section says what to fix) */
-export function NumInput(p: { value: number | null | undefined; onValue: (v: number | null) => void; unit?: string; decimals?: boolean; invalid?: boolean; id?: string; 'aria-label'?: string; placeholder?: string; 'data-testid'?: string }) {
-  const [text, setText] = useState(() => fmtNum(p.value, lang.value));
-  const focused = useRef(false);
-  useEffect(() => { if (!focused.current) setText(fmtNum(p.value, lang.value)); }, [p.value, lang.value]);
-  return (
-    <span class="input-wrap settings-num">
-      <input class="input" inputMode={p.decimals ? 'decimal' : 'numeric'} id={p.id} aria-label={p['aria-label']} placeholder={p.placeholder} data-testid={p['data-testid']}
-        aria-invalid={p.invalid || (text.trim() !== '' && Number.isNaN(parseNum(text))) || undefined} value={text}
-        style={p.unit ? { paddingRight: `${18 + p.unit.length * 9}px` } : undefined}
-        onFocus={() => { focused.current = true; }}
-        onBlur={() => { focused.current = false; setText(fmtNum(p.value, lang.value) || text); }}
-        onInput={(e) => { const s = (e.currentTarget as HTMLInputElement).value; setText(s); p.onValue(parseNum(s)); }} />
-      {p.unit && <span class="input-unit" aria-hidden="true">{p.unit}</span>}
-    </span>
-  );
-}
-
-/** a time of day (minutes after midnight) */
-export function TimeInput(p: { value: number; onValue: (v: number) => void; invalid?: boolean; 'aria-label'?: string; 'data-testid'?: string }) {
-  return (
-    <input class="input settings-time" type="time" step={900} aria-label={p['aria-label']} aria-invalid={p.invalid || undefined} data-testid={p['data-testid']}
-      value={hm(Math.max(0, Math.min(1439, p.value)))}
-      onInput={(e) => { const m = parseHm((e.currentTarget as HTMLInputElement).value); if (m != null) p.onValue(m); }} />
-  );
-}
-
-/** « Entre 10 et 120. » when a number is missing or out of range; null when fine */
-export function rangeError(v: number | null | undefined, min: number, max: number): string | null {
-  if (v == null || !Number.isFinite(v)) return t('settings.needNumber');
-  if (v < min || v > max) return t('settings.between', { min, max });
-  return null;
 }

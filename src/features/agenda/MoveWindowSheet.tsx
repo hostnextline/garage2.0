@@ -1,30 +1,43 @@
 /* « Plages d'arrivée »: a booked job dropped on a day (the week grid). The sheet asks the server which 4-hour windows
    are still possible that day (the best first), and offers « Flexible » (no window yet: fixed the evening before).
-   One tap on a window is the move; the customer gets the usual text when the garage sends one for a change. */
-import { useEffect, useState } from 'preact/hooks';
+   One tap on a window is the move; the customer gets the usual text when the garage sends one for a change.
+   It reads the job's live row (another phone may have moved it meanwhile) and closes when the agenda goes away. */
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Clock, CalendarRange, RefreshCw } from 'lucide-preact';
 import { t, lang } from '../../lib/i18n';
 import { today as todayOf, clock, type Day } from '../../lib/dates';
 import { errorMessage, type Suggestion } from '../../data/api';
+import { job as jobRow } from '../../data/select';
 import type { Job } from '../../data/types';
 import { Sheet, Button, Spinner } from '../../ui';
-import { wantsText } from '../booking/notify';
+import { wantsText } from '../../shared/moment/notify';
 import { moveDayTitle, windowChoices } from './layout';
-import { windowMove, windowsFor, moveToWindow, jobPerson } from './move';
+import { windowMove, windowsFor, moveToWindow, farCheckDay, type FarAsk } from './move';
+import { jobPerson } from '../../domain/jobs/words';
 
 export function MoveWindowHost() {
+  // the agenda leaves (a banner « Ouvrir », the back button): the move waiting for its window is dropped, so coming
+  // back later does not reopen the sheet for an old job
+  useEffect(() => () => { windowMove.value = null; }, []);
   const m = windowMove.value;
-  if (!m) return null;
-  return <MoveWindowSheet key={`${m.job.id}|${m.day}`} job={m.job} day={m.day} onClose={() => { windowMove.value = null; }} />;
+  const j = m ? jobRow(m.jobId) : undefined;
+  // gone from this phone, or no longer booked (on the way, cancelled): nothing to move any more
+  if (!m || !j || j.status !== 'booked') return null;
+  return <MoveWindowSheet key={`${m.jobId}|${m.day}`} job={j} day={m.day} farDone={!!m.farDone} onClose={() => { windowMove.value = null; }} />;
 }
 
-function MoveWindowSheet(p: { job: Job; day: Day; onClose: () => void }) {
+function MoveWindowSheet(p: { job: Job; day: Day; farDone: boolean; onClose: () => void }) {
   const { job: j, day } = p;
   const l = lang.value;
   const [list, setList] = useState<Suggestion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [turn, setTurn] = useState(0);
+  // a tap is taken while the last one is still being answered (state alone would let a fast second tap through)
+  const picking = useRef(false);
+  // « garde-route »: asked once, while the windows load (not again when the drop on the grid already asked it)
+  const far = useRef<Promise<FarAsk> | null | undefined>(undefined);
+  if (far.current === undefined) far.current = p.farDone ? null : farCheckDay(j, day);
   useEffect(() => {
     let live = true;
     setList(null); setError(null);
@@ -34,13 +47,16 @@ function MoveWindowSheet(p: { job: Job; day: Day; onClose: () => void }) {
   const name = jobPerson(j);
   const sms = wantsText('moved', j.id);
   const choices = list ? windowChoices(list, j, day, l) : [];
-  const flexNow = j.day === day && j.win_flex === true && j.win_start == null;
+  // already flexible that day (its window maybe fixed since by the evening lock): « Flexible » would change nothing
+  const flexAlready = j.day === day && j.win_flex === true;
+  const flexNow = flexAlready && j.win_start == null;
   const pick = async (key: string, win: { start: number } | { flex: true }) => {
-    if (busy) return;
+    if (picking.current) return;
+    picking.current = true;
     setBusy(key);
-    const ok = await moveToWindow(j, day, win);
-    setBusy(null);
-    if (ok) p.onClose();
+    try {
+      if (await moveToWindow(j, day, win, far.current)) p.onClose();
+    } finally { picking.current = false; setBusy(null); }
   };
   return (
     <Sheet open onClose={p.onClose} title={moveDayTitle(name, j.day, day, todayOf(), l)} data-testid="move-window-sheet"
@@ -66,7 +82,7 @@ function MoveWindowSheet(p: { job: Job; day: Day; onClose: () => void }) {
             {busy === `w${c.start}` && <Spinner />}
           </button>
         ))}
-        <button type="button" class="agenda-winpick is-flex" disabled={flexNow || !!busy} onClick={() => pick('flex', { flex: true })} data-testid="move-window-flex">
+        <button type="button" class="agenda-winpick is-flex" disabled={flexAlready || !!busy} onClick={() => pick('flex', { flex: true })} data-testid="move-window-flex">
           <CalendarRange size={20} aria-hidden="true" />
           <span class="agenda-winpick-main">
             <span class="agenda-winpick-words">{t('agenda.win.flex')}</span>

@@ -168,13 +168,6 @@ export function loadDemoData() {
   /* ---------- the day in the field ---------- */
   put('shifts', { id: 'sh-saleh', staff_id: ME.saleh, started_at: at(D(0), 465), ended_at: null });
   put('shifts', { id: 'sh-adam', staff_id: ME.adam, started_at: at(D(0), 600), ended_at: null });
-  // the days before (« Heures travaillées »): one « Terminer ma journée » forgotten, closed by the night at 3 h 17
-  for (let i = 1; i <= 9; i++) {
-    const day = D(-i);
-    if (new Date(`${day}T12:00`).getDay() === 0) continue;
-    put('shifts', { id: `sh-saleh-${i}`, staff_id: ME.saleh, started_at: at(day, 470 + (i % 3) * 7), ended_at: i === 2 ? at(D(-1), 197) : at(day, 990 + (i % 4) * 11) });
-    if (i % 3 !== 1) put('shifts', { id: `sh-adam-${i}`, staff_id: ME.adam, started_at: at(day, 540 + (i % 2) * 15), ended_at: at(day, 1020 - (i % 3) * 20) });
-  }
   put('positions', { id: ME.saleh, lat: 45.5022, lng: -73.7094, accuracy_m: 12, heading: null, speed_kmh: 0, job_id: 'j-2', at: new Date().toISOString() });
   put('positions', { id: ME.adam, lat: 45.5201, lng: -73.6655, accuracy_m: 9, heading: 40, speed_kmh: 38, job_id: 'j-6', at: new Date().toISOString() });
   put('trips', { id: 'tr-1', job_id: 'j-6', staff_id: ME.adam, status: 'active', started_at: at(D(0), 615), ended_at: null, eta_at: at(D(0), 640), km: 6.2, minutes: 14, route: [[45.5005, -73.6577], [45.5120, -73.6630], [45.5201, -73.6655], [45.5307, -73.6702]], dest_lat: 45.5307, dest_lng: -73.6702, sms_status: 'sent', expires_at: at(D(0), 900) });

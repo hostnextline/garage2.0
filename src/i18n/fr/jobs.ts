@@ -92,11 +92,18 @@ export const jobs = {
     invoiceDraftSub: 'Vérifie les lignes, puis termine la facture',
     invoiceOfflineSub: 'Sans réseau : la facture se fera dès que le réseau revient',
     invoiceStaleSub: 'Le travail a changé depuis le brouillon : mets la facture à jour',
+    /* work added or accepted after the invoice was finished: it goes on the invoice before the payment and the end */
+    unbilled: 'Mettre le travail sur la facture',
+    unbilledSub: '{what} n’est pas sur la facture : modifie la facture pour l’ajouter',
+    unbilledSubMore: '{what} et {n} autres travaux ne sont pas sur la facture : modifie la facture pour les ajouter',
+    unbilledPaidSub: '{what} n’est pas sur la facture payée : appelle le bureau, ou marque ce travail « Pas fait »',
     pay: 'Encaisser',
     paySub: '{amount} à payer',
+    payWaitingSub: '{amount} à payer (un paiement est gardé sur le téléphone)',
     finish: 'Terminer la job',
     finishPaidSub: 'La facture est payée',
     finishLaterSub: 'Le client paiera plus tard',
+    finishWaitingSub: 'Le paiement est gardé sur le téléphone : il part en premier',
     blocked: 'Encaisse d’abord {name}',
     blockedSub: 'La job d’avant n’est pas payée : on part après',
     payLater: 'Le client paiera plus tard',
@@ -172,6 +179,7 @@ export const jobs = {
     extraWhy: 'Pourquoi',
     accept: 'J’accepte',
     decline: 'Je refuse',
+    declineConfirm: 'Touchez encore pour refuser',
     acceptSign: 'Signez pour accepter'
   },
   /* the work */
@@ -191,6 +199,11 @@ export const jobs = {
     markDoneLabel: 'Marquer « {what} » comme fait',
     answer: 'Réponse',
     pendingTotal: 'En attente de réponse : {amount} plus taxes',
+    /* work on no line of the finished invoice (added or accepted after it was finished) */
+    unbilled: 'Pas sur la facture : {what}. Modifie la facture pour l’ajouter.',
+    unbilledPaid: 'Pas sur la facture payée : {what}. Appelle le bureau, ou marque ce travail « Pas fait ».',
+    /* the customer's answer is kept on the phone until the signal comes back */
+    answerWaiting: '{status}, gardé sur le téléphone',
     status: { planned: 'Prévu', done: 'Fait', proposed: 'Proposé, en attente du client', approved: 'Accepté', declined: 'Refusé', removed: 'Pas fait' },
     via: { signature: 'signé sur place', link: 'par le lien texto', verbal: 'de vive voix' },
     statusVia: '{status}, {via}',
@@ -471,8 +484,8 @@ export const jobs = {
     tripNoEta: 'Heure d’arrivée pas encore calculée',
     noTracking: 'Le client n’a pas reçu ton heure d’arrivée.',
     sendTracking: 'Envoyer le texto',
-    kinds: { booking: 'Confirmation du rendez-vous', moved: 'Rendez-vous déplacé', en_route: 'En route', extras: 'Travail à approuver', invoice: 'Facture', payment_reminder: 'Rappel de paiement', reminder: 'Rappel la veille', arrived: 'Mécano arrivé (facture)', estimate_signed: 'Estimation signée en ligne', extras_answer: 'Réponse du client', return_trip: 'Retour au point de départ' },
-    status: { sent: 'Envoyé', failed: 'Pas parti', skipped: 'Pas envoyé' },
+    kinds: { booking: 'Confirmation du rendez-vous', moved: 'Rendez-vous déplacé', en_route: 'En route', extras: 'Travail à approuver', invoice: 'Facture', payment_reminder: 'Rappel de paiement', reminder: 'Rappel la veille', arrived: 'Mécano arrivé (facture)', estimate_signed: 'Estimation signée en ligne', extras_answer: 'Réponse du client', return_trip: 'Retour au point de départ', window: 'Plage confirmée', payment_check: 'Paiement par carte à vérifier' },
+    status: { sent: 'Envoyé', failed: 'Pas parti', skipped: 'Pas envoyé', queued: 'En attente' },
     /* when the text did not go */
     failTitle: 'Le texto n’est pas parti',
     noArrived: 'Le client n’a pas encore reçu sa facture à payer pendant les travaux.',

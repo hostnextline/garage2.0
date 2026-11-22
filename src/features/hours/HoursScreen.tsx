@@ -1,32 +1,34 @@
 /* Horaires des camions — #/hours/:truck?
    Pick the truck, paint its usual week on the glass window, then say for when it counts: one day, a few weeks, or
    from now on (« Appliquer »). The dates that differ from the usual week are listed, each with « Revenir à l'horaire
-   habituel ». The owner (or the « settings » right) also manages the trucks here. */
-import { useEffect, useState } from 'preact/hooks';
-import { RotateCcw, Truck as TruckIcon } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { navigate } from '../../app/router';
-import { wide } from '../../app/media';
+   habituel ». The owner (or the « settings » right, when it may also write the trucks) also manages the trucks here.
+   The screen composes: the drawing (useHoursDraft), the window (HoursGridPanel), « Appliquer » (ApplyPanel), the changed
+   days, the start, the trucks; and the closing of a vehicle that holds appointments (CloseDaySheet, closeFlow.ts). */
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { Truck as TruckIcon } from 'lucide-preact';
+import { navigate, type ScreenProps } from '../../platform/router';
+import { wide } from '../../platform/media';
 import { t, lang } from '../../lib/i18n';
-import { addDays, dow, longDay, parseDay, duration, today as todayOf, isValidDay, type Day } from '../../lib/dates';
-import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs, blockOfKey, windowsOn } from '../../data/select';
+import { addDays, dow, longDay, today as todayOf, type Day, type BlockKey } from '../../lib/dates';
+import { trucks, activeTrucks, truck as truckRow, truckLabel, truckColor, weekOf, truckRanges, settings, allJobs, blockOfKey, blockLoad, windowsOn } from '../../data/select';
 import { rowsOf } from '../../data/store';
-import { applyHours, moveJob } from '../../data/api';
-import { closedJobs, otherKind, movesFor, type Move } from './closing';
-import { CloseDaySheet } from './CloseDaySheet';
-import { keepWindow } from '../jobs/select';
-import { deleteRow, pull, net } from '../../data/sync';
+import { applyHours, moveJob, errorMessage } from '../../data/api';
+import { pull, net } from '../../data/sync';
 import { can, isOwner, myTrucks, preview } from '../../data/auth';
 import type { TruckDay } from '../../data/types';
-import { Page, Panel, Banner, Button, IconButton, Chips, Seg, Field, Stepper, DateInput, Empty, Skeleton, ask, attempt, toast } from '../../ui';
-import { errorMessage } from '../../data/api';
-import { HoursGrid, weekdayName } from './HoursGrid';
+import { Page, Panel, Banner, Chips, Empty, Skeleton, ask, run, toast } from '../../ui';
+import { keepWindow } from '../../shared/jobs/select';
+import { TruckStartPanel } from '../../shared/places/TruckStartPanel';
+import { closedJobs, otherKind, movesFor, mayMoveBetween, holdsJobsOf, refusedWhy, type Move, type StayWhy } from '../../shared/map/closing';
+import { focusAfterNav, restoreFocus } from '../../platform/focus';
+import { CloseDaySheet } from './CloseDaySheet';
 import { TrucksPanel } from './TrucksPanel';
-import { TruckStartPanel } from './TruckStartPanel';
-import { weekToPanes, changedDays, applyPlan, paneMinutes, FROM, TO, type Panes, type Mode } from './grid';
-import { rangesWords, weekdaysWords } from './words';
-import { spanEnds } from '../booking/when';
-import { focusAfterNav, restoreFocus } from '../agenda/focus';
+import { HoursGridPanel } from './HoursGridPanel';
+import { ApplyPanel } from './ApplyPanel';
+import { ChangedDays } from './ChangedDays';
+import { useHoursDraft } from './useHoursDraft';
+import { moveAll } from './closeFlow';
+import { applyPlan, type Mode, type Week } from './grid';
 import './hours.css';
 
 /** the next date (from today) that falls on that weekday */
@@ -44,219 +46,177 @@ export default function HoursScreen({ params }: ScreenProps) {
     || mine.find((id) => list.some((x) => x.id === id)) || (all ? activeTrucks.value[0]?.id || list[0]?.id : null) || null;
   const tr = truckRow(truckId);
   const canEdit = !!truckId && (isOwner() || can('hours') || mine.includes(truckId)) && !preview.value;
-  const manage = isOwner() || can('settings');
+  // the trucks are written by the owner or « hours » (the server's rule): « settings » alone would see « enregistré », then a refusal
+  const manage = (isOwner() || can('settings')) && (isOwner() || can('hours'));
   const horizon = Number(settings.value.booking.horizon_days) || 120;
-
-  /* ---------- the drawing: starts from the usual week; follows it while nothing is drawn ---------- */
-  const usual = truckId ? weekOf(truckId) : {};
-  const usualKey = JSON.stringify(usual);
-  const [st, setSt] = useState(() => { const b = weekToPanes(usual); return { truck: truckId, key: usualKey, from: b, draft: b }; });
-  useEffect(() => {
-    const b = weekToPanes(usual);
-    if (st.truck !== truckId) { setSt({ truck: truckId, key: usualKey, from: b, draft: b }); return; }
-    if (st.key !== usualKey) {
-      const dirty = changedDays(st.draft, st.from).length > 0;
-      setSt(dirty ? { ...st, key: usualKey, from: b } : { truck: truckId, key: usualKey, from: b, draft: b });
-    }
-  }, [truckId, usualKey]);
-  const draft = st.truck === truckId ? st.draft : weekToPanes(usual);
-  const base = st.truck === truckId ? st.from : weekToPanes(usual);
-  const setDraft = (p: Panes) => setSt((s) => ({ ...s, draft: p }));
-  const dirtyDays = changedDays(draft, base);
+  const lastDay = addDays(today, horizon);
 
   /* ---------- for when ---------- */
   const [mode, setMode] = useState<Mode>('always');
   const [weeks, setWeeks] = useState(2);
-  const [from, setFrom] = useState<Day>(today);
+  const [chosen, setChosen] = useState<Day>(today);
+  // left open past midnight, the chosen day may be gone: it is today then (the server would write nothing for it).
+  // today() is not a signal: « Appliquer » reads the clock itself and draws the screen again when the day changed (setDaySeen)
+  const [, setDaySeen] = useState(today);
+  const from = chosen < today ? today : chosen;
+  useEffect(() => { if (chosen < today) setChosen(today); }, [chosen, today]);
   const [phoneDay, setPhoneDay] = useState<number>(() => dow(today));
   const shownDay = mode === 'day' ? dow(from) : phoneDay;
-  const lastDay = addDays(today, horizon);
-  const plan = applyPlan(mode, draft, usual, { from, weeks, today, until: lastDay, actual: truckId ? truckRanges(truckId, from) : [] });
-  const jobsHit = truckId ? allJobs.value.filter((j) => j.truck_id === truckId && j.status === 'booked' && j.day >= today && plan.dates.includes(j.day)).length : 0;
-  const exceptions = rowsOf<TruckDay>('truck_days').filter((x) => x.truck_id === truckId && !x.deleted_at && x.day >= today).sort((a, b) => a.day.localeCompare(b.day));
+
+  /* ---------- the drawing: what the truck has; « one day »: that date's real hours in its column ---------- */
+  const usual = truckId ? weekOf(truckId) : {};
+  const actual = truckId ? truckRanges(truckId, from) : [];
+  const week: Week = mode === 'day' ? { ...usual, [dow(from)]: actual } : usual;
+  const d = useHoursDraft(truckId, week);
+
+  const usualKey = JSON.stringify(usual), actualKey = JSON.stringify(actual);
+  const plan = useMemo(() => applyPlan(mode, d.draft, usual, { from, weeks, today, until: lastDay, actual }), [mode, d.draft, usualKey, actualKey, from, weeks, today, lastDay]);
+  const jobs = allJobs.value;
+  const jobsHit = useMemo(() => {
+    if (!truckId || plan.empty) return 0;
+    const dates = new Set(plan.dates);
+    return jobs.filter((j) => j.truck_id === truckId && j.status === 'booked' && j.day >= today && dates.has(j.day)).length;
+  }, [truckId, plan, jobs, today]);
+  const exceptions = rowsOf<TruckDay>('truck_days').filter((x) => x.truck_id === truckId && !x.deleted_at && x.day >= today);
   const alwaysReplaces = mode === 'always' && exceptions.some((x) => plan.dows.includes(dow(x.day)));
-  const outsideHours = Object.values(usual).some((rs) => rs.some(([a, b]) => a < FROM || b > TO));
+  const blind = !!truckId && !holdsJobsOf(truckId, { owner: isOwner(), agenda: can('agenda'), mine });
 
   const pickTruck = async (id: string) => {
     if (id === truckId) return;
-    if (dirtyDays.length && !(await ask({ title: t('hours.grid.dirtyTruck'), text: t('hours.grid.dirtyTruckText', { truck: truckLabel(truckId) }), ok: t('hours.grid.dirtyOk'), danger: true }))) return;
+    if (d.dirtyDays.length && !(await ask({ title: t('hours.grid.dirtyTruck'), text: t('hours.grid.dirtyTruckText', { truck: truckLabel(truckId) }), ok: t('hours.grid.dirtyOk'), danger: true }))) return;
     focusAfterNav('.hours-trucks .chip[aria-pressed="true"]');
     navigate(`/hours/${id}`, { replace: true });
   };
   useEffect(restoreFocus, []);
-  const pickPhoneDay = (d: number) => { setPhoneDay(d); if (mode === 'day') setFrom(nextDow(today, d)); };
+  const pickPhoneDay = (x: number) => { setPhoneDay(x); if (mode === 'day') setChosen(nextDow(today, x)); };
+  const pickMode = (m: Mode) => { setMode(m); if (m === 'day') setPhoneDay(dow(from)); };
+  const pickFrom = (v: Day) => { setChosen(v); if (mode === 'day') setPhoneDay(dow(v)); };
 
   /* ---------- « Appliquer » ---------- */
-  /* the new hours close a day (or a block; arrival windows: the hours of a window told to a customer) that has appointments, and the garage has the other kind of vehicle: ask first */
+  /* the new hours close a day (or a block; arrival windows: the hours of a window told to a customer) that has appointments,
+     and the garage has the other kind of vehicle: ask first */
   const [closing, setClosing] = useState<Move[] | null>(null);
-  const apply = async (asked = false) => {
-    if (!truckId || plan.empty) return;
-    if (!asked) {
-      const hit = closedJobs(allJobs.value, truckId, plan.week, plan.dates, blockOfKey);
-      const targets = otherKind(activeTrucks.value, truckId);
-      if (hit.length && targets.length) { setClosing(movesFor(hit, targets, truckRanges, blockOfKey)); return; }
-    }
-    try {
-      const r = await applyHours(truckId, mode, plan.week, mode === 'always' ? today : from, weeks);
-      if (r.queued) { toast(t('hours.apply.queued')); return; }
-      toast(mode === 'day' ? t('hours.apply.doneDay', { day: longDay(from, l) }) : mode === 'weeks' ? t('hours.apply.doneWeeks', { weeks: t('hours.apply.weeksN', { n: weeks }) }) : t('hours.apply.doneAlways'), { kind: 'ok' });
-      // the server re-planned the blocks touched: bring the hours and the jobs now
-      await Promise.all([pull('truck_week'), pull('truck_days'), pull('jobs')]).catch(() => undefined);
-      // one day or a few weeks: the usual week did not change, the window shows it again
-      if (mode !== 'always') setSt((s) => ({ ...s, draft: s.from }));
-    } catch (e) {
-      toast(errorMessage(e), { kind: 'bad' });
-    }
+  const [moving, setMoving] = useState(false);
+  /* this closing so far: the appointments the server already moved (on the other vehicle now, even before the phone's copy
+     knows it), and those it refused (or that wait on the phone), with why: never offered again in this closing (mh-1, mh-5) */
+  const round = useRef<{ moved: Set<string>; stayed: Map<string, StayWhy> }>({ moved: new Set(), stayed: new Map() });
+  /** the appointments the new hours leave out, and where each can go (null: nothing to ask) */
+  const movesNow = (): Move[] | null => {
+    if (!truckId) return null;
+    const hit = closedJobs(allJobs.value, truckId, plan.week, plan.dates, blockOfKey).filter((j) => !round.current.moved.has(j.id));
+    const targets = otherKind(activeTrucks.value, truckId);
+    if (!hit.length || !targets.length) return null;
+    return movesFor(hit, targets, truckRanges, blockOfKey, {
+      mayMove: (to) => mayMoveBetween(truckId, to, { book: can('book'), mine }),
+      roomOf: (to, job) => {
+        const b = blockLoad(job.day, job.block, { exclude: job.id });
+        return b.trucks.some((y) => y.truck.id === to) ? { started: b.started } : null;
+      },
+      stayed: round.current.stayed
+    });
   };
-  /** « Déplacer vers le camion »: each appointment first (while its vehicle is still open), then the hours */
+  /** sends the hours; true when the server took them (or kept on the phone) */
+  const apply = async (asked = false): Promise<boolean> => {
+    if (!truckId || plan.empty) return false;
+    // the screen may have been drawn before midnight: the day of the tap counts (mh-4)
+    const now = todayOf();
+    if (now !== today) {
+      setDaySeen(now);
+      // « Le … seulement » for a date now gone: the screen shows today's hours first, nothing is sent for a past day
+      if (mode === 'day' && chosen < now) { setChosen(now); setPhoneDay(dow(now)); return false; }
+    }
+    const at = mode === 'always' || chosen < now ? now : chosen;
+    if (!asked) {
+      round.current = { moved: new Set(), stayed: new Map() };
+      const m = movesNow();
+      if (m) { setClosing(m); return false; }
+    }
+    let r: Awaited<ReturnType<typeof applyHours>>;
+    // not run(): a change kept on the phone has its own words here (« Horaire gardé sur le téléphone »)
+    try { r = await applyHours(truckId, mode, plan.week, at, weeks); }
+    catch (e) { toast(errorMessage(e), { kind: 'bad' }); return false; }
+    if (r.queued) { toast(t('hours.apply.queued')); return true; }
+    if ((r.data as { changed?: number } | undefined)?.changed === 0) toast(t('hours.apply.nothingChanged'));
+    else toast(mode === 'day' ? t('hours.apply.doneDay', { day: longDay(at, l) }) : mode === 'weeks' ? t('hours.apply.doneWeeks', { weeks: t('hours.apply.weeksN', { n: weeks }) }) : t('hours.apply.doneAlways'), { kind: 'ok' });
+    // the server re-planned the blocks touched: bring the hours and the jobs now
+    await run(() => Promise.all([pull('truck_week'), pull('truck_days'), pull('jobs')]), { quiet: true });
+    // one day or a few weeks: the usual week did not change, the window shows it again
+    if (mode !== 'always') d.reset();
+    return true;
+  };
+  /** « Déplacer vers … »: every appointment first (while its vehicle is still open), then the hours; a refusal stops before
+      the hours, and the sheet stays open with what is left (map-hours-01, -07): the refused appointment says why and is
+      not offered again, so the next « Déplacer » moves the others (mh-1); a move kept on the phone will still be sent, so
+      it is not offered again either (mh-5). « Fermer sans déplacer »: the hours only. */
   const closeWith = async (move: boolean) => {
     const list = closing || [];
-    setClosing(null);
-    let moved = 0;
-    if (move) for (const m of list) {
-      if (!m.target) continue;
-      // same day, same block; booked by arrival window: the same window told to the customer
-      try { await moveJob(m.job.id, m.job.day, m.job.block, m.target, keepWindow(m.job)); moved++; } catch { /* refused (full, started…): it stays, said below */ }
-    }
-    await apply(true);
-    if (move) {
-      const left = list.length - moved;
-      const to = t(`hours.closing.to.${truckRow(list.find((m) => m.target)?.target)?.tire_machine === false ? 'car' : 'truck'}`);
-      toast(left ? t('hours.closing.donePart', { n: moved, total: list.length, to }) : t('hours.closing.done', { n: moved, to }), { kind: left ? 'info' : 'ok', ms: 9000 });
-    }
+    setMoving(true);
+    try {
+      if (move) {
+        const r = await moveAll(list, (m) => moveJob(m.job.id, m.job.day, m.job.block as BlockKey, m.target, keepWindow(m.job)));
+        for (const id of r.moved) round.current.moved.add(id);
+        if (r.kind !== 'done') {
+          round.current.stayed.set(r.job, r.kind === 'waiting' ? 'waiting' : refusedWhy(r.error));
+          toast(r.kind === 'waiting' ? t('hours.closing.waiting') : t('hours.closing.refused', { n: r.moved.length, reason: errorMessage(r.error) }), { kind: 'bad', ms: 9000 });
+          setClosing(movesNow());
+          return;
+        }
+      }
+      if (!(await apply(true))) return;
+      setClosing(null);
+      if (move) {
+        // every round of this closing counts; a move still on the phone is neither moved nor left « À placer »
+        const n = round.current.moved.size;
+        const left = list.filter((m) => !m.target && m.why !== 'waiting').length;
+        const to = t(`hours.closing.to.${truckRow(list.find((m) => m.target)?.target)?.tire_machine === false ? 'car' : 'truck'}`);
+        toast(left ? t('hours.closing.donePart', { n, total: n + left, to }) : t('hours.closing.done', { n, to }), { kind: left ? 'info' : 'ok', ms: 9000 });
+      }
+    } finally { setMoving(false); }
   };
-  const revert = (x: TruckDay) => attempt(() => deleteRow('truck_days', x.id, { label: t('log.hours') }), { ok: t('hours.exceptions.reverted', { day: longDay(x.day, l) }) });
-
-  /* ---------- words ---------- */
-  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-  const effect = plan.empty ? '' : mode === 'day'
-    ? t('hours.apply.effectDay', { day: longDay(from, l), hours: lower(rangesWords(plan.week[dow(from)] || [], l)) })
-    : mode === 'weeks'
-      ? t('hours.apply.effectWeeks', { days: weekdaysWords(plan.dows, l), weeks: t('hours.apply.weeksN', { n: weeks }), ...spanEnds(from, addDays(from, weeks * 7 - 1), l, today) })
-      : t('hours.apply.effectAlways', { days: weekdaysWords(plan.dows, l) });
-  const dayLabel = from === today ? t('hours.apply.today') : t('hours.apply.oneDay', { day: new Intl.DateTimeFormat(l === 'en' ? 'en-CA' : 'fr-CA', { weekday: 'short', day: 'numeric', month: 'short' }).format(parseDay(from)) });
 
   /* ---------- the screen ---------- */
+  const help = t(windowsOn.value ? 'hours.win.help' : 'hours.help');
   if (!list.length && !net.value.ready) {
     return (
-      <Page title={t('hours.title')} sub={t('hours.sub')} help={t(windowsOn.value ? 'hours.win.help' : 'hours.help')}>
+      <Page title={t('hours.title')} sub={t('hours.sub')} help={help}>
         <Panel><div aria-busy="true"><span class="sr-only">{t('common.loading')}</span><Skeleton h={48} w="60%" /><div style={{ height: '16px' }} /><Skeleton h={20} lines={8} /></div></Panel>
       </Page>
     );
   }
   if (!list.length) {
     return (
-      <Page title={t('hours.title')} sub={t('hours.sub')} help={t(windowsOn.value ? 'hours.win.help' : 'hours.help')}>
+      <Page title={t('hours.title')} sub={t('hours.sub')} help={help}>
         <Panel><Empty icon={<TruckIcon />} title={t('hours.noTruck')} text={manage ? t('hours.noTruckText') : t('hours.noTruckOther')} /></Panel>
         {manage && <TrucksPanel onAdded={(id) => navigate(`/hours/${id}`, { replace: true })} />}
       </Page>
     );
   }
-  const truckChips = (
-    <div class="hours-trucks" data-tour="hours-truck">
-      <Chips label={t('hours.trucks')} value={truckId ? [truckId] : []} onValue={(v) => { if (v[0]) void pickTruck(v[0]); }} data-testid="hours-trucks"
-        options={list.map((x) => ({
-          value: x.id,
-          label: <span class="hours-chip"><span class="hours-dot" style={{ background: truckColor(x.id) }} aria-hidden="true" />{truckLabel(x.id)}{!x.active && <span class="hours-chip-off">{t('hours.inactive')}</span>}</span>
-        }))} />
-    </div>
-  );
-  const gridPanel = truckId && tr && (
-    <Panel class="hours-gridpanel" title={t('hours.grid.usual')}
-      sub={<span class={dirtyDays.length ? 'hours-dirty' : ''}>{dirtyDays.length ? t('hours.grid.changed', { n: dirtyDays.length })
-        : isWide ? t('hours.grid.total', { d: duration(Object.values(draft).reduce((n, ps) => n + paneMinutes(ps), 0), l) })
-        : `${weekdayName(shownDay, l)} : ${lower(rangesWords(usual[shownDay] || [], l))}`}</span>}
-      action={
-        // always there (hidden when nothing changed): the window must not move under the finger when painting starts
-        <span class={`hours-reset${dirtyDays.length ? '' : ' is-hidden'}`} aria-hidden={dirtyDays.length ? undefined : 'true'}>
-          {isWide
-            ? <Button size="sm" variant="ghost" icon={<RotateCcw />} disabled={!dirtyDays.length} onClick={() => setSt((s) => ({ ...s, draft: s.from }))} data-testid="hours-reset">{t('hours.grid.reset')}</Button>
-            : <IconButton icon={<RotateCcw />} label={t('hours.grid.reset')} disabled={!dirtyDays.length} onClick={() => setSt((s) => ({ ...s, draft: s.from }))} data-testid="hours-reset" />}
-        </span>
-      }>
-      {!isWide && (
-        <div class="hours-days" role="group" aria-label={t('hours.grid.days')}>
-          {[0, 1, 2, 3, 4, 5, 6].map((d) => {
-            const lit = (draft[d] || []).length > 0;
-            return (
-              <button key={d} type="button" class={`hours-daychip${d === shownDay ? ' is-on' : ''}${dirtyDays.includes(d) ? ' is-changed' : ''}`} aria-pressed={d === shownDay}
-                onClick={() => pickPhoneDay(d)} data-testid={`hours-day-${d}`}>
-                <span>{weekdayName(d, l, 'short')}</span>
-                <span class={`hours-daychip-dot${lit ? ' is-lit' : ''}`} aria-hidden="true" />
-                {dirtyDays.includes(d) && <span class="sr-only">{t('hours.grid.changedDay')}</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      <HoursGrid panes={draft} onPanes={setDraft} color={truckColor(truckId)} truckName={truckLabel(truckId)} editable={canEdit} week={isWide} day={shownDay}
-        dim={mode === 'day' ? [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== dow(from)) : undefined} changed={dirtyDays} />
-      {outsideHours && <p class="faint small hours-note">{t('hours.grid.outside')}</p>}
-    </Panel>
-  );
-  const applyPanel = truckId && (
-    <Panel class="hours-apply" title={t('hours.apply.title')} data-tour="hours-apply" data-testid="hours-apply">
-      <div class="stack">
-        <Field label={t('hours.apply.mode')} group>
-          <Seg value={mode} onValue={(m) => { setMode(m); if (m === 'day') setPhoneDay(dow(from)); }} label={t('hours.apply.mode')} class="hours-modes" data-testid="hours-mode"
-            options={[{ value: 'day', label: dayLabel }, { value: 'weeks', label: t('hours.apply.weeks', { weeks: t('hours.apply.weeksN', { n: weeks }) }) }, { value: 'always', label: t('hours.apply.always') }]} />
-        </Field>
-        {mode === 'weeks' && (
-          <Field label={t('hours.apply.weeksLabel')} group>
-            <Stepper value={weeks} min={1} max={12} label={t('hours.apply.weeksLabel')} format={(n) => t('hours.apply.weeksN', { n })} onValue={setWeeks} />
-          </Field>
-        )}
-        {mode !== 'always' && (
-          <Field label={mode === 'day' ? t('hours.apply.on') : t('hours.apply.from')}>
-            <DateInput value={from} min={today} max={lastDay} onValue={(v) => { if (isValidDay(v) && v >= today) { setFrom(v); if (mode === 'day') setPhoneDay(dow(v)); } }} />
-          </Field>
-        )}
-        <div class="hours-effect" aria-live="polite" data-testid="hours-effect">
-          {plan.empty ? <p class="muted">{mode === 'day' ? t('hours.apply.nothingDay') : t('hours.apply.nothing')}</p> : (
-            <>
-              <p class="hours-effect-what">{effect}</p>
-              {alwaysReplaces && <p>{t('hours.apply.effectAlwaysDays')}</p>}
-              <p>{t(windowsOn.value ? 'hours.win.tail' : 'hours.apply.tail')}</p>
-              {jobsHit > 0 && <p class="hours-effect-jobs">{t('hours.apply.jobs', { n: jobsHit })}</p>}
-            </>
-          )}
-        </div>
-        <Button variant="primary" block disabled={plan.empty || !canEdit} onClick={() => apply()} data-testid="hours-apply-btn">{t('hours.apply.button')}</Button>
-      </div>
-    </Panel>
-  );
-  const exceptionsPanel = truckId && (
-    <Panel title={t('hours.exceptions.title')} sub={t('hours.exceptions.sub')} data-testid="hours-exceptions">
-      {!exceptions.length ? <p class="muted small" style={{ margin: 0 }}>{t('hours.exceptions.none')}</p> : (
-        <ul class="hours-exc">
-          {exceptions.map((x) => (
-            <li key={x.id}>
-              <span class="hours-exc-main">
-                <b>{longDay(x.day, l)}</b>
-                <span class={(x.ranges || []).length ? '' : 'hours-exc-closed'}>{rangesWords(x.ranges || [], l)}</span>
-                <span class="faint small">{t('hours.exceptions.usual', { hours: lower(rangesWords(usual[dow(x.day)] || [], l)) })}</span>
-              </span>
-              {canEdit && <Button size="sm" onClick={() => revert(x)} data-testid={`hours-revert-${x.day}`}>{t('hours.exceptions.revert')}</Button>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Panel>
-  );
   return (
-    <Page title={t('hours.title')} sub={t('hours.sub')} help={t(windowsOn.value ? 'hours.win.help' : 'hours.help')} wide={isWide} data-testid="hours-screen">
-      {truckChips}
+    <Page title={t('hours.title')} sub={t('hours.sub')} help={help} wide={isWide} data-testid="hours-screen">
+      <div class="hours-trucks" data-tour="hours-truck">
+        <Chips label={t('hours.trucks')} value={truckId ? [truckId] : []} onValue={(v) => { if (v[0]) void pickTruck(v[0]); }} data-testid="hours-trucks"
+          options={list.map((x) => ({
+            value: x.id,
+            label: <span class="hours-chip"><span class="hours-dot" style={{ background: truckColor(x.id) }} aria-hidden="true" />{truckLabel(x.id)}{!x.active && <span class="hours-chip-off">{t('hours.inactive')}</span>}</span>
+          }))} />
+      </div>
       {!canEdit && truckId && <Banner kind="info">{t('hours.readOnly')}</Banner>}
       <div class={`hours-layout${isWide ? ' is-wide' : ''}`}>
-        {gridPanel}
+        {truckId && tr && (
+          <HoursGridPanel truckId={truckId} wide={isWide} editable={canEdit} draft={d.draft} dirtyDays={d.dirtyDays} onPanes={d.setDraft} onReset={d.reset}
+            week={week} shownDay={shownDay} onShownDay={pickPhoneDay} oneDay={mode === 'day' ? from : null} />
+        )}
         <div class="hours-side">
-          {applyPanel}
-          {exceptionsPanel}
+          {truckId && (
+            <ApplyPanel mode={mode} onMode={pickMode} weeks={weeks} onWeeks={setWeeks} from={from} onFrom={pickFrom} today={today} lastDay={lastDay}
+              plan={plan} jobsHit={jobsHit} alwaysReplaces={alwaysReplaces} blind={blind} canEdit={canEdit} onApply={() => apply()} />
+          )}
+          {truckId && <ChangedDays truckId={truckId} usual={usual} today={today} canEdit={canEdit} />}
           {truckId && <TruckStartPanel truckId={truckId} canEdit={canEdit} />}
         </div>
       </div>
       {manage && <TrucksPanel onAdded={(id) => navigate(`/hours/${id}`, { replace: true })} />}
-      {closing && truckId && <CloseDaySheet truckId={truckId} moves={closing} onMove={() => void closeWith(true)} onJustClose={() => void closeWith(false)} onClose={() => setClosing(null)} />}
+      {closing && truckId && <CloseDaySheet truckId={truckId} moves={closing} busy={moving} onMove={() => closeWith(true)} onJustClose={() => closeWith(false)} onClose={() => { if (!moving) setClosing(null); }} />}
     </Page>
   );
 }

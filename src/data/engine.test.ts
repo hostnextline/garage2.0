@@ -1,0 +1,560 @@
+/* The offline engine against a pretend server (testkit.ts) through the real supabase-js client, with the device copy in
+   fake-indexeddb. Each case names the defect it proves fixed; each failed on the engine before tonight. */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Engine, type EngineOptions } from './engine';
+import { FakeServer, clientFor, stamp } from './testkit';
+import { getRow, baseRow } from './store';
+import { net, setNet } from './net';
+import { openLocal, type OutboxEntry } from './local';
+import type { LockManagerLike } from './lock';
+import { readRescue } from './rescue';
+import { lang, t } from '../lib/i18n';
+import { readNet } from '../app/netView';
+
+let srv: FakeServer;
+const engines: Engine[] = [];
+let n = 0;
+const nextUid = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;
+
+async function boot(uid: string, o: Partial<EngineOptions> = {}, s = srv): Promise<Engine> {
+  const e = new Engine(clientFor(s, uid), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined, retryDelays: [20, 40], ...o });
+  engines.push(e);
+  await e.start();
+  return e;
+}
+async function until(ok: () => boolean, ms = 3000) {
+  const end = Date.now() + ms;
+  while (!ok()) { if (Date.now() > end) throw new Error('timed out waiting'); await new Promise((r) => setTimeout(r, 10)); }
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+beforeEach(() => {
+  srv = new FakeServer();
+  setNet({ online: true, session: 'ok', storage: 'ok', stuck: null, pending: 0, failed: [], ready: false, firstPull: 'no' });
+});
+afterEach(() => { for (const e of engines.splice(0)) e.stop(); });
+
+describe('start', () => {
+  it('shows the device copy before any answer of the server (core-data-10)', async () => {
+    const uid = nextUid();
+    const db = openLocal(uid);
+    await db.commit({ rows: [{ table: 'customers', put: [{ id: 'c1', first_name: 'Julie', updated_at: stamp() }], del: [] }] });
+    db.close();
+    srv.hold();
+    const e = new Engine(clientFor(srv, uid), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(e);
+    await e.start();
+    expect(getRow('customers', 'c1')?.first_name).toBe('Julie');
+    expect(net.value.ready).toBe(false);
+    srv.release();
+    await until(() => net.value.ready);
+  });
+});
+
+describe('a first download that hangs (ready-slower-weak-signal)', () => {
+  it('the screens stop « loading » after one request\'s limit, the download goes on', async () => {
+    const uid = nextUid();
+    srv.hold();   // no answer at all
+    const e = new Engine(clientFor(srv, uid), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined, readyAfterMs: 150 });
+    engines.push(e);
+    await e.start();
+    expect(net.value.ready).toBe(false);
+    await until(() => net.value.ready, 2000);
+    expect(net.value.firstPull).toBe('no');
+    srv.release();
+    await until(() => net.value.firstPull === 'ok');
+  });
+});
+
+describe('the outbox', () => {
+  it('a new row shows at once and reaches the server once', async () => {
+    const e = await boot(nextUid());
+    await e.send.insertRow('customers', { id: 'c1', first_name: 'Amira' });
+    expect(getRow('customers', 'c1')?.first_name).toBe('Amira');
+    await until(() => srv.table('customers').length === 1 && net.value.pending === 0);
+    expect(baseRow('customers', 'c1')?.updated_at).toBeTruthy();
+  });
+
+  it('an edit made after a lost answer is not lost: sent as its own change (core-data-04)', async () => {
+    const e = await boot(nextUid());
+    srv.loseNext((c) => c.method === 'POST' && c.table === 'job_items');
+    await e.send.insertRow('job_items', { id: 'i1', job_id: 'j1', status: 'planned', description: 'Vidange' });
+    await until(() => srv.table('job_items').length === 1);
+    await until(() => (e.outbox.items[0]?.e.tries ?? 0) >= 1 && !e.outbox.inFlight);
+    await e.send.updateRow('job_items', 'i1', { status: 'done' });
+    expect(e.outbox.items.length).toBe(2);
+    expect(getRow('job_items', 'i1')?.status).toBe('done');
+    await e.send.flush();
+    await until(() => net.value.pending === 0, 8000);
+    expect(srv.table('job_items')[0].status).toBe('done');
+    expect(getRow('job_items', 'i1')?.status).toBe('done');
+  });
+
+  it('a delete made after a lost answer reaches the server too (core-data-04)', async () => {
+    const e = await boot(nextUid());
+    srv.loseNext((c) => c.method === 'POST' && c.table === 'customers');
+    await e.send.insertRow('customers', { id: 'c2', first_name: 'X' });
+    await until(() => srv.table('customers').length === 1 && !e.outbox.inFlight && (e.outbox.items[0]?.e.tries ?? 0) >= 1);
+    await e.send.updateRow('customers', 'c2', { deleted_at: new Date().toISOString() });
+    expect(getRow('customers', 'c2')).toBeUndefined();
+    await e.send.flush();
+    await until(() => net.value.pending === 0, 8000);
+    expect(srv.table('customers')[0].deleted_at).toBeTruthy();
+    expect(getRow('customers', 'c2')).toBeUndefined();
+  });
+
+  it('an edit is still merged into a new row that never left (one request)', async () => {
+    srv.offline = true;
+    const e = await boot(nextUid());
+    await e.send.insertRow('customers', { id: 'c3', first_name: 'A' });
+    // the first try failed before the request reached the server: the entry was attempted, so no merge
+    await until(() => !e.outbox.inFlight);
+    const before = e.outbox.items.length;
+    expect(before).toBe(1);
+    srv.offline = false;
+    await e.send.flush();
+    await until(() => net.value.pending === 0);
+  });
+
+  it('an edit and an operation asked right after it, without waiting, leave in that order (core-data-45)', async () => {
+    srv.offline = true;
+    setNet({ online: false });
+    const e = await boot(nextUid());
+    srv.put('invoices', { id: 'v1', notes: null });
+    void e.send.updateRow('invoices', 'v1', { notes: 'Merci' });
+    const op = e.send.callRpc('invoice_finish', { p_invoice: 'v1' });
+    expect(e.outbox.items.map((i) => i.e.kind)).toEqual(['update', 'rpc']);
+    await op;
+  });
+
+  it('edits of a new row that never left are one request', async () => {
+    srv.hold();
+    const e = new Engine(clientFor(srv, nextUid()), 'x', { realtime: false, requireSession: false, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(e);
+    await e.start();
+    const p1 = e.send.insertRow('customers', { id: 'm1', first_name: 'A' });
+    const p2 = e.send.updateRow('customers', 'm1', { phone: '514' });
+    expect(e.outbox.items.length).toBe(1);
+    expect(e.outbox.items[0].e.values).toMatchObject({ first_name: 'A', phone: '514' });
+    srv.release();
+    await p1; await p2;
+  });
+
+  it('an entry of the previous version that merged an edit after a lost answer delivers that edit (core-data-04, legacy)', async () => {
+    const uid = nextUid();
+    srv.put('customers', { id: 'c4', first_name: 'Avant', phone: null });
+    const db = openLocal(uid);
+    // the old engine merged the phone into the insert that had already reached the server
+    await db.addEntry({ op: 'op-legacy', kind: 'insert', table: 'customers', id: 'c4', values: { id: 'c4', first_name: 'Avant', phone: '5145551234' }, at: new Date().toISOString(), tries: 1, state: 'pending' });
+    db.close();
+    await boot(uid);
+    await until(() => net.value.pending === 0);
+    expect(srv.table('customers')[0].phone).toBe('5145551234');
+  });
+
+  it('server trouble is « try again », never « refusé » (core-data-11, x-sync-04)', async () => {
+    const e = await boot(nextUid());
+    srv.failNext((c) => c.method === 'PATCH', 503, { code: 'PGRST002', message: 'Could not query the database for the schema cache' });
+    srv.put('customers', { id: 'c5', first_name: 'A' });
+    await e.pullAll();
+    await e.send.updateRow('customers', 'c5', { first_name: 'B' });
+    await until(() => !e.outbox.inFlight && e.outbox.items[0]?.e.tries === 1);
+    expect(e.outbox.items[0].e.state).toBe('pending');
+    expect(net.value.failed.length).toBe(0);
+    await e.send.flush();
+    await until(() => net.value.pending === 0, 8000);
+    expect(srv.table('customers')[0].first_name).toBe('B');
+  });
+
+  it('a 502 page, a statement timeout and a deadlock all wait', async () => {
+    const e = await boot(nextUid());
+    await until(() => net.value.ready);
+    srv.rpc('job_step', () => ({ ok: true }));
+    srv.failNext((c) => c.table === 'rpc/job_step', 502, { message: 'An invalid response was received from the upstream server' });
+    srv.failNext((c) => c.table === 'rpc/job_step', 500, { code: '57014', message: 'canceling statement due to statement timeout' });
+    srv.failNext((c) => c.table === 'rpc/job_step', 500, { code: '40P01', message: 'deadlock detected' });
+    const r = await e.send.callRpc('job_step', { p_job: 'j1', p_action: 'leave' });
+    expect(r.queued).toBe(false);
+    expect(srv.count((c) => c.table === 'rpc/job_step')).toBe(4);
+    expect(net.value.failed.length).toBe(0);
+    expect(net.value.pending).toBe(0);
+  });
+
+  it('a real refusal is listed with words a person can read, not thrown away', async () => {
+    const e = await boot(nextUid());
+    srv.rpc('job_step', () => { throw Object.assign(new Error('Ce bloc est passé.'), { code: 'past' }); });
+    srv.offline = true;
+    setNet({ online: false });
+    const r = await e.send.callRpc('job_step', { p_job: 'j1', p_action: 'reopen' });
+    expect(r.queued).toBe(true);
+    srv.offline = false;
+    await e.send.flush();
+    await until(() => net.value.failed.length === 1);
+    // the words are those of the person's language at the moment of the refusal (here English: the dictionary has
+    // words for « past »); the server's own sentence is kept beside them, so the list can say it in French later
+    expect(lang.value).toBe('en');
+    expect(net.value.failed[0].error).toBe(t('errors.past'));
+    expect(net.value.failed[0].error).not.toBe('errors.past');
+    expect(net.value.failed[0].err?.hint).toBe('past');
+    expect(net.value.failed[0].err?.said).toBe('Ce bloc est passé.');
+  });
+
+  it('a refusal says the words of the operation that refused, on screen and in the « refusé » list (R144)', async () => {
+    const e = await boot(nextUid());
+    srv.rpc('set_job_duration', () => { throw Object.assign(new Error('Ce bloc est complet.'), { code: 'block_full' }); });
+    await expect(e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 240 })).rejects.toMatchObject({ hint: 'block_full', at: 'set_job_duration' });
+    srv.offline = true;
+    setNet({ online: false });
+    await e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 300 });
+    srv.offline = false;
+    await e.send.flush();
+    await until(() => net.value.failed.length === 1);
+    expect(lang.value).toBe('en');
+    expect(net.value.failed[0].error).toBe(t('errors.at.set_job_duration.block_full'));
+    expect(net.value.failed[0].err?.at).toBe('set_job_duration');
+    // a direct call too
+    await expect(e.send.callRpc('set_job_duration', { p_job: 'j1', p_duration: 240 }, { queue: false })).rejects.toMatchObject({ at: 'set_job_duration' });
+  });
+
+  it('a refusal whose code has no words keeps the server’s sentence', async () => {
+    const e = await boot(nextUid());
+    srv.rpc('job_step', () => { throw Object.assign(new Error('Le camion est au garage.'), { code: 'zz_no_words' }); });
+    srv.offline = true;
+    setNet({ online: false });
+    await e.send.callRpc('job_step', { p_job: 'j1', p_action: 'reopen' });
+    srv.offline = false;
+    await e.send.flush();
+    await until(() => net.value.failed.length === 1);
+    expect(net.value.failed[0].error).toBe('Le camion est au garage.');
+    expect(net.value.failed[0].err?.said).toBe('Le camion est au garage.');
+  });
+
+  it('a refusal while the screen waits is thrown to it, not listed twice', async () => {
+    const e = await boot(nextUid());
+    srv.rpc('book_job', () => { throw Object.assign(new Error('Ce bloc est complet.'), { code: 'block_full' }); });
+    await expect(e.send.callRpc('book_job', { p_job: { id: 'j9' } })).rejects.toMatchObject({ hint: 'block_full' });
+    expect(net.value.failed.length).toBe(0);
+    expect(e.outbox.items.length).toBe(0);
+  });
+
+  it('a job step kept on the phone shows ahead, and still after a restart without signal (core-data-43 / S12)', async () => {
+    const uid = nextUid();
+    srv.put('jobs', { id: 'j1', status: 'booked', day: '2026-11-15' });
+    const e = await boot(uid);
+    await until(() => getRow('jobs', 'j1')?.status === 'booked');
+    srv.offline = true;
+    setNet({ online: false });
+    const r = await e.send.callRpc('job_step', { p_job: 'j1', p_action: 'leave' });
+    expect(r.queued).toBe(true);
+    expect(getRow('jobs', 'j1')?.status).toBe('en_route');
+    e.stop();
+    await boot(uid);
+    expect(getRow('jobs', 'j1')?.status).toBe('en_route');
+  });
+
+  it('a waiting edit stays on screen when a newer server copy of the row arrives (core-data-43)', async () => {
+    const e = await boot(nextUid());
+    srv.put('jobs', { id: 'j2', notes: null, duration_min: 60 });
+    await e.pullAll();
+    srv.offline = true;
+    await e.send.updateRow('jobs', 'j2', { notes: 'Code 4521' });
+    srv.offline = false;
+    srv.hold();   // the edit cannot leave yet
+    srv.put('jobs', { id: 'j2', duration_min: 90 });
+    const pulled = e.pull('jobs');
+    srv.release();
+    await pulled;
+    expect(getRow('jobs', 'j2')?.notes).toBe('Code 4521');
+  });
+
+  it('a refused edit falls back to the server\'s row by itself', async () => {
+    const e = await boot(nextUid());
+    srv.put('customers', { id: 'c6', first_name: 'Vrai' });
+    await e.pullAll();
+    srv.failNext((c) => c.method === 'PATCH', 400, { code: '23514', message: 'violates check constraint' });
+    await e.send.updateRow('customers', 'c6', { first_name: 'Faux' });
+    await until(() => net.value.failed.length === 1);
+    expect(getRow('customers', 'c6')?.first_name).toBe('Vrai');
+  });
+
+  it('« Réessayer » sends the refused change after what was done since', async () => {
+    const e = await boot(nextUid());
+    srv.put('customers', { id: 'c7', first_name: 'A', last_name: 'A' });
+    await e.pullAll();
+    srv.failNext((c) => c.method === 'PATCH', 400, { code: '23514', message: 'nope' });
+    await e.send.updateRow('customers', 'c7', { first_name: 'Old' });
+    await until(() => net.value.failed.length === 1);
+    await e.send.updateRow('customers', 'c7', { first_name: 'New' });
+    await until(() => net.value.pending === 0);
+    await e.send.dismiss(net.value.failed[0].seq!, true);
+    await until(() => net.value.pending === 0 && net.value.failed.length === 0);
+    // the retried change went last: it is what the server has now (the person asked for it again)
+    expect(srv.table('customers')[0].first_name).toBe('Old');
+    expect(e.outbox.items.length).toBe(0);
+  });
+});
+
+describe('two quick edits of one row while IndexedDB is slow (hors-ligne-01)', () => {
+  it('the corrected value is what the server keeps, also after a restart: nothing old is left on the phone', async () => {
+    const uid = nextUid();
+    srv.put('customers', { id: 'c8', first_name: 'A', sms_ok: true });
+    const e = await boot(uid);
+    await e.pullAll();
+    // an iPhone just woken: the first write of the change takes a moment
+    const db = e.outbox.db!;
+    const add = db.addEntry;
+    db.addEntry = async (x) => { await sleep(120); return add(x); };
+    const off = e.send.updateRow('customers', 'c8', { sms_ok: false });   // « Textos OK » off by mistake…
+    await sleep(40);
+    const on = e.send.updateRow('customers', 'c8', { sms_ok: true });     // …and back on
+    await off; await on;
+    await until(() => net.value.pending === 0 && srv.count((c) => c.method === 'PATCH') > 0);
+    expect(srv.table('customers')[0].sms_ok).toBe(true);
+    expect(await db.listEntries()).toEqual([]);
+    e.stop();
+    const patches = srv.count((c) => c.method === 'PATCH');
+    const again = await boot(uid);
+    await until(() => net.value.ready);
+    await again.send.flush();
+    expect(srv.count((c) => c.method === 'PATCH')).toBe(patches);
+    expect(srv.table('customers')[0].sms_ok).toBe(true);
+  });
+});
+
+describe('no valid session is not a refusal (core-data-09, x-sync-08)', () => {
+  it('nothing leaves with the public key; the changes wait and the frame says so', async () => {
+    const uid = nextUid();
+    const e = new Engine(clientFor(srv, null), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(e);
+    await e.start();
+    await e.send.insertRow('customers', { id: 'c1', first_name: 'A' });
+    srv.rpc('payment_add', () => ({ ok: true }));
+    setNet({ online: false });
+    const r = await e.send.callRpc('payment_add', { p_invoice: 'v1', p_amount_cents: 5000 });
+    expect(r.queued).toBe(true);
+    await e.send.flush();
+    await sleep(50);
+    expect(srv.calls.length).toBe(0);
+    expect(e.outbox.items.map((i) => i.e.state)).toEqual(['pending', 'pending']);
+    expect(net.value.failed.length).toBe(0);
+    expect(net.value.session).toBe('expired');
+  });
+  it('offline with a token too old to renew: the frame says « pas de réseau », never « reconnecte-toi » (offline-shows-session-expired)', async () => {
+    const uid = nextUid();
+    const e = new Engine(clientFor(srv, null), uid, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(e);
+    srv.offline = true;
+    setNet({ online: false });
+    await e.start();
+    await e.send.insertRow('customers', { id: 'c1', first_name: 'A' });
+    await e.send.flush();
+    await until(() => net.value.ready);
+    // 'expired' is the engine's own note (it makes the queue leave the moment the token is renewed); the frame shows
+    // it as nothing more than no signal, with the change waiting
+    const v = readNet(net.value, false);
+    expect(v.chip).toBe('offline');
+    expect(v.sessionLost).toBe(false);
+    expect(v.pending).toBe(1);
+    expect(net.value.failed.length).toBe(0);
+  });
+  it('a 401 permission answer waits too', async () => {
+    const e = await boot(nextUid());
+    await until(() => net.value.ready);
+    srv.failNext((c) => c.method === 'POST' && c.table === 'customers', 401, { code: '42501', message: 'permission denied for table customers' }, 5);
+    await e.send.insertRow('customers', { id: 'c1', first_name: 'A' });
+    await until(() => !e.outbox.inFlight && (e.outbox.items[0]?.e.tries ?? 0) >= 1);
+    expect(e.outbox.items[0].e.state).toBe('pending');
+    expect(net.value.failed.length).toBe(0);
+  });
+});
+
+describe('IndexedDB fails (core-data-01, x-sync-02)', () => {
+  it('a device copy that cannot be opened: changes are still sent while online, and the frame knows', async () => {
+    const open = indexedDB.open.bind(indexedDB);
+    (indexedDB as { open: unknown }).open = () => { throw new Error('connection lost'); };
+    try {
+      const e = await boot(nextUid());
+      expect(net.value.storage).toBe('memory');
+      expect(net.value.storageBroken).toBe(true);
+      srv.rpc('job_step', () => ({ ok: true, rows: { jobs: [{ id: 'j1', status: 'en_route', updated_at: stamp() }] } }));
+      const r = await e.send.callRpc('job_step', { p_job: 'j1', p_action: 'leave' });
+      expect(r.queued).toBe(false);
+      await e.send.insertRow('customers', { id: 'c1', first_name: 'A' });
+      await until(() => srv.table('customers').length === 1);
+    } finally { (indexedDB as { open: unknown }).open = open; }
+  });
+  it('offline with nowhere to keep it: the operation says it was not done instead of « gardé »', async () => {
+    const open = indexedDB.open.bind(indexedDB);
+    const set = Storage.prototype.setItem;
+    (indexedDB as { open: unknown }).open = () => { throw new Error('connection lost'); };
+    Storage.prototype.setItem = () => { throw new Error('quota'); };
+    try {
+      const e = await boot(nextUid());
+      srv.offline = true;
+      setNet({ online: false });
+      await expect(e.send.callRpc('payment_add', { p_invoice: 'v1', p_amount_cents: 5000 })).rejects.toMatchObject({ kind: 'network' });
+      expect(e.outbox.items.length).toBe(0);
+    } finally { (indexedDB as { open: unknown }).open = open; Storage.prototype.setItem = set; }
+  });
+  it('offline with the rescue copy: kept, and put back in the outbox at the next start', async () => {
+    const uid = nextUid();
+    const open = indexedDB.open.bind(indexedDB);
+    (indexedDB as { open: unknown }).open = () => { throw new Error('connection lost'); };
+    let e: Engine;
+    try {
+      e = await boot(uid);
+      srv.offline = true;
+      setNet({ online: false });
+      const r = await e.send.callRpc('payment_add', { p_invoice: 'v1', p_amount_cents: 5000 });
+      expect(r.queued).toBe(true);
+      expect(readRescue(uid).length).toBe(1);
+    } finally { (indexedDB as { open: unknown }).open = open; }
+    e.stop();
+    srv.offline = false;
+    srv.rpc('payment_add', () => ({ ok: true }));
+    await boot(uid);
+    await until(() => srv.count((c) => c.table === 'rpc/payment_add') === 1 && net.value.pending === 0);
+    expect(readRescue(uid).length).toBe(0);
+  });
+});
+
+describe('one sender per account (core-data-06, x-sync-07)', () => {
+  const memoryLocks = (): LockManagerLike => {
+    const held = new Set<string>();
+    return { async request(name, _o, cb) { if (held.has(name)) { await cb(null); return; } held.add(name); try { await cb({}); } finally { held.delete(name); } } };
+  };
+  it('two tabs, one operation queued offline, the signal comes back: one request', async () => {
+    const uid = nextUid();
+    const locks = memoryLocks();
+    srv.rpc('payment_add', () => ({ ok: true }));
+    srv.offline = true;
+    setNet({ online: false });
+    const a = await boot(uid, { locks });
+    const r = await a.send.callRpc('payment_add', { p_invoice: 'v1', p_amount_cents: 5000 });
+    expect(r.queued).toBe(true);
+    const b = await boot(uid, { locks });
+    expect(b.outbox.pending().length).toBe(1);
+    srv.offline = false;
+    srv.latency = 30;
+    await Promise.all([a.send.flush(), b.send.flush()]);
+    await until(() => a.outbox.pending().length === 0);
+    await sleep(100);
+    expect(srv.count((c) => c.table === 'rpc/payment_add')).toBe(1);
+  });
+  /* « the queue changed » from another tab while this tab is keeping a change (two-tab reload drop): tab A must not
+     lose its own change from its queue. The device copy is shared (same uid, fake-indexeddb); the poke goes through
+     the real BroadcastChannel. */
+  type Gate = { wait: Promise<void>; open: () => void };
+  const gate = (): Gate => { let open!: () => void; const wait = new Promise<void>((r) => { open = r; }); return { wait, open }; };
+  const twoTabs = async () => {
+    const uid = nextUid();
+    srv.offline = true;   // nothing leaves: what stays in each tab's queue is what is checked
+    setNet({ online: false });
+    const a = await boot(uid);
+    const b = await boot(uid);
+    const db = a.outbox.db!;
+    // asked: the reload started; got: IndexedDB answered; read: the answer was handed to the reload
+    const lists = { asked: 0, got: 0, read: 0 };
+    const list = db.listEntries;
+    let listHold: Gate | null = null;
+    db.listEntries = async () => { lists.asked++; const h = listHold; const r = await list(); lists.got++; if (h) await h.wait; lists.read++; return r; };
+    return { a, b, db, lists, holdList: (g: Gate) => { listHold = g; } };
+  };
+  const opsOf = (e: Engine) => e.outbox.pending().map((i) => i.e.table + ':' + i.e.id);
+  it('a change still being written when the other tab pokes stays in this tab\'s queue (held write)', async () => {
+    const { a, b, db, lists } = await twoTabs();
+    const write = gate();
+    const add = db.addEntry;
+    db.addEntry = async (e) => { await write.wait; return add(e); };
+    const kept = a.send.insertRow('customers', { id: 'mine', first_name: 'A' });   // A's write is held
+    await b.send.insertRow('customers', { id: 'theirs', first_name: 'B' });       // B pokes « outbox »
+    await until(() => lists.read >= 1);
+    await sleep(20);
+    expect(opsOf(a)).toContain('customers:mine');
+    write.open();
+    await kept;
+    await sleep(20);
+    expect(opsOf(a).filter((o) => o === 'customers:mine')).toEqual(['customers:mine']);
+    expect(a.outbox.items.find((i) => i.e.id === 'mine')?.e.seq).toBeGreaterThan(0);
+  });
+  it('a change kept after the listing was asked stays in this tab\'s queue (engine passes its mark to the reload)', async () => {
+    const { a, b, lists, holdList } = await twoTabs();
+    const listing = gate();
+    holdList(listing);
+    await b.send.insertRow('customers', { id: 'theirs', first_name: 'B' });       // B pokes: A's listing is read, held
+    await until(() => lists.got >= 1);
+    await a.send.insertRow('customers', { id: 'mine', first_name: 'A' });         // kept in IndexedDB, after the listing
+    listing.open();
+    await until(() => lists.read >= 1);
+    await sleep(20);
+    expect(opsOf(a)).toContain('customers:mine');
+    expect(opsOf(a).filter((o) => o === 'customers:mine').length).toBe(1);
+  });
+  it('a refusal for an entry another tab already delivered is not written back', async () => {
+    const uid = nextUid();
+    const a = await boot(uid);
+    srv.offline = true;
+    await a.send.insertRow('customers', { id: 'c1', first_name: 'A' });
+    await until(() => !a.outbox.inFlight);
+    const it = a.outbox.items[0];
+    // another tab delivered it and deleted the entry
+    const db = openLocal(uid);
+    await db.mutateEntry(it.e.seq!, () => ({ del: true, result: null }));
+    const listed = await a.outbox.refuse(it, 'duplicate', { kind: 'refusal', sub: 'duplicate' });
+    expect(listed).toBe(false);
+    expect((await db.listEntries()).length).toBe(0);
+    db.close();
+  });
+});
+
+describe('an account switch on one device (core-data-07)', () => {
+  it('a late answer of the first account never lands in the second one\'s screen or cursor', async () => {
+    const A = nextUid(), B = nextUid();
+    srv.put('customers', { id: 'of-A', first_name: 'A' });
+    srv.visible = (_t, r, uid) => (r.id === 'of-A' ? uid === A : true);
+    srv.hold();
+    const a = new Engine(clientFor(srv, A), A, { realtime: false, requireSession: true, storage: 'idb', locks: null, notify: () => undefined, sent: () => undefined, narrow: () => false, guard: () => undefined });
+    engines.push(a);
+    await a.start();
+    a.stop();
+    const b = await boot(B);
+    srv.release();
+    await until(() => net.value.ready);
+    await sleep(50);
+    expect(getRow('customers', 'of-A')).toBeUndefined();
+    const db = openLocal(B);
+    const loaded = await db.loadAll();
+    db.close();
+    expect(loaded.rows.customers.map((r) => r.id)).toEqual([]);
+    expect(b.closed).toBe(false);
+  });
+});
+
+describe('sign-out stops everything', () => {
+  it('no timer, no request after stop', async () => {
+    const e = await boot(nextUid());
+    await until(() => net.value.ready);
+    e.stop();
+    const before = srv.calls.length;
+    await e.send.flush(); await e.pullAll();
+    expect(await e.refetch('customers', 'x')).toBe('failed');
+    expect(srv.calls.length).toBe(before);
+  });
+});
+
+describe('legacy entries are read and kept as they are', () => {
+  it('an old failed entry stays listed, an old pending one is sent in order', async () => {
+    const uid = nextUid();
+    const db = openLocal(uid);
+    const at = new Date().toISOString();
+    await db.addEntry({ op: 'o1', kind: 'rpc', rpc: 'job_step', args: { p_job: 'j1', p_action: 'leave', p_op: 'o1' }, at, tries: 0, state: 'failed', error: 'permission denied' } as OutboxEntry);
+    await db.addEntry({ op: 'o2', kind: 'rpc', rpc: 'job_step', args: { p_job: 'j1', p_action: 'arrive', p_op: 'o2' }, at, tries: 0, state: 'pending' } as OutboxEntry);
+    db.close();
+    const seen: string[] = [];
+    srv.rpc('job_step', (a) => { seen.push(String(a.p_action)); return { ok: true }; });
+    await boot(uid);
+    await until(() => net.value.pending === 0);
+    expect(seen).toEqual(['arrive']);
+    expect(net.value.failed.length).toBe(1);
+  });
+});

@@ -78,4 +78,4 @@
 /* a truck of the legend and its « Départ et heure » button */
 .map-legend-item { display: flex; align-items: center; gap: var(--sp-1); }
 .map-legend-item > .map-legend-row { flex: 1; min-width: 0; }
-.map-legend-item > .icon-btn, .map-legend-item > button:last-child:not(.map-legend-row) { flex: none; margin-right: var(--sp-2); }
+.map-legend-item > button:last-child:not(.map-legend-row) { flex: none; margin-right: var(--sp-2); }

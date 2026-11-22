@@ -36,14 +36,8 @@ export const inventory = {
     missingSub: 'Ces rendez-vous ne disent pas assez sur le véhicule pour savoir quoi prendre.',
     missing: {
       car: 'Pas de véhicule sur le rendez-vous : ajoute-le pour savoir quelle huile prendre.',
-      oil_l: 'Quantité d’huile inconnue : remplis la fiche moteur.',
       oil_visc: 'Type d’huile inconnu : remplis la fiche moteur.',
       oil_filter: 'Filtre à huile inconnu : remplis la fiche moteur.',
-      air_filter: 'Filtre à air inconnu.',
-      cabin_filter: 'Filtre d’habitacle inconnu.',
-      wipers: 'Essuie-glaces inconnus.',
-      plugs: 'Bougies inconnues.',
-      battery: 'Batterie inconnue.',
       tires: 'Grandeur des pneus inconnue : ajoute-la sur le véhicule.'
     },
     fromJobs: { one: '{n} rendez-vous', other: '{n} rendez-vous' },
@@ -77,6 +71,8 @@ export const inventory = {
     copied: 'Liste copiée : colle-la dans un texto ou un courriel au fournisseur.',
     copyFailed: 'Impossible de copier la liste.',
     copyTitle: 'Achats, {week}',
+    ownTrucks: 'Seulement les rendez-vous de ton camion : ceux des autres camions ne sont pas sur ton téléphone.',
+    ownTrucksCopy: '(rendez-vous de mon camion seulement)',
     cardThis: 'Achats pour cette semaine',
     cardNext: 'Achats pour la semaine prochaine',
     cardHelp: 'D’après les rendez-vous déjà pris et le stock. La liste complète est dans Inventaire, « Besoins de la semaine ».',

@@ -87,6 +87,32 @@ const draw = async (page, testid) => {
   for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + 30 + i * 18, box.y + box.height / 2 + (i % 2 ? -22 : 22));
   await page.mouse.up();
 };
+/** the app as it is on the team's phones: opened before, its service worker in charge of the page, so a screen not
+    opened yet still loads without signal (same as appOnPhone in plages.helpers.cjs). A first visit in a browser tab has
+    no worker yet: the screen the app opens after a booking kept on the phone could not load offline (S40). */
+const appOnPhone = async (page) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+  if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) {
+    await page.reload();
+    await page.getByTestId('app').waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
+  }
+};
+/** a « confirm » button (ui/Button.tsx, ui/tapGuard.ts): the first tap arms it and shows the question; taps in the next
+    450 ms are ignored (a double tap is never a confirmation; aria-disabled meanwhile); a tap within 4 s does it. Playwright's
+    click waits on aria-disabled only once the first tap was drawn: the second tap waits for the armed button to be ready
+    (« is-armed », aria-disabled gone). Right after it the button must no longer be armed (the tap was taken): a lost tap
+    is said at once, with its times, instead of a later check waiting 15 s for an action that never left (GitHub run
+    44833208139, step « Modifier la facture »). Same helper as argent.helpers.cjs. */
+const tapTwice = async (loc) => {
+  const t0 = Date.now();
+  await loc.click();
+  await loc.and(loc.page().locator('.is-armed:not([aria-disabled="true"])')).waitFor({ timeout: 3500 });
+  const ready = Date.now() - t0;
+  await loc.click();
+  const armed = await loc.evaluateAll((els) => els.some((el) => el.classList.contains('is-armed')));
+  assert.equal(armed, false, `the second tap was not taken as the confirmation (armed and ready ${ready} ms after the first tap, second tap done at ${Date.now() - t0} ms)`);
+};
 /* today's block that is still on (the morning after noon is over: a job brought to today goes in the current block) */
 const blockNow = () => h.sql(`select case when public.now_min() < 720 then 'am' when public.now_min() < 960 then 'pm' else 'eve' end`);
 
@@ -202,7 +228,8 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   assert.equal(h.sql(`select method from public.payments where job_id = '${jobId}'`), 'cash');
   assert.equal(Number(h.sql(`select count(*) from public.attachments where job_id = '${jobId}' and kind = 'signature'`)), 1);
   // the last job done: « Ma journée » offers the way back to the Centrale; « Je pars » texts the garage's return number
-  // (texts not connected here: the message is shown to send by hand), then « Je suis arrivé »
+  // (texts not connected here: the message is shown to send by hand), then « Je suis arrivé »: the card says he is back
+  // and offers no second « Je pars » (a tap would text the garage's return number again)
   h.sql(`update public.settings set booking = booking || jsonb_build_object('return_phone', '514 771-4243',
     'home', jsonb_build_object('label', 'Centrale', 'address', '1401 rue Legendre O, Montréal', 'lat', 45.5312898, 'lng', -73.6544639)) where id = 1`);
   await page.goto(h.APP + '#/');
@@ -215,7 +242,9 @@ step('Saleh’s day: start, I’m leaving, I’ve arrived, signature, invoice, c
   await page.getByTestId('today-return-arrived').waitFor({ timeout: 15000 });
   assert.equal(h.sql(`select kind || '|' || status || '|' || coalesce(dest_label, '') from public.trips where staff_id = '${who.saleh.id}' and kind = 'return' order by started_at desc limit 1`), 'return|active|Centrale');
   await page.getByTestId('today-return-arrived').click();
-  await page.getByTestId('today-return-leave').waitFor({ timeout: 15000 });
+  await page.getByTestId('today-return-home').waitFor({ timeout: 15000 });
+  assert.match(await page.getByTestId('today-return').innerText(), /Arrivé à Centrale à/);
+  assert.equal(await page.getByTestId('today-return-leave').count(), 0, 'no second « Je pars vers Centrale » once arrived');
   assert.equal(h.sql(`select status from public.trips where staff_id = '${who.saleh.id}' and kind = 'return' order by started_at desc limit 1`), 'arrived');
   noErrors(page);
   await page.context().close();
@@ -240,6 +269,7 @@ step('the customer’s page: the appointment, the invoice paid, in the customer�
 step('no signal: the office books anyway; the booking leaves when the signal is back', async () => {
   const { ctx, page } = await h.openW({ kind: 'phone' });
   await h.signIn(page, who.nadia.email, PW);
+  await appOnPhone(page);
   await page.goto(h.APP + '#/book');
   await page.getByTestId('book-screen').waitFor();
   await page.getByTestId('customer-search').fill('Julie');
@@ -349,12 +379,29 @@ step('the owner: truck hours for one day, an invitation, the company name, an es
   await page.getByTestId('settings-save').click();
   for (let i = 0; i < 20 && !h.sql(`select company->>'name' from public.settings`).includes('(test)'); i++) await page.waitForTimeout(500);
   assert.equal(h.sql(`select company->>'name' from public.settings`), 'Mécanique Mobile H.I.S (test)');
+  // English: the owner picks it in Mon compte; it shows at once, reaches his account and stays after a reload
+  const ownerLang = () => h.sql(`select lang from public.staff where id = '${who.owner.id}'`);
+  await page.goto(h.APP + '#/account');
+  await page.getByTestId('account-lang').locator('button', { hasText: 'English' }).click();
+  await page.getByText('Today').first().waitFor({ timeout: 5000 });
+  for (let i = 0; i < 20 && ownerLang() !== 'en'; i++) await page.waitForTimeout(500);
+  assert.equal(ownerLang(), 'en', 'his account says English');
+  await page.reload();
+  await page.getByTestId('app').waitFor();
+  await page.getByText('Today').first().waitFor({ timeout: 5000 });
   await ctx.close();
-  // English
-  const en = await h.openW({ kind: 'phone', locale: 'en-CA' });
+  // on another phone, even one set to French, his account's English follows him (the phone's language only decides
+  // until the person is known: a new phone used to keep the phone's language for ever, i18n-01 / app-shell-08)
+  const en = await h.openW({ kind: 'phone', locale: 'fr-CA' });
   await h.signIn(en.page, who.owner.email, PW);
   await en.page.getByText('Today').first().waitFor();
   await h.shot(en.page, 'e2e-6-english');
+  // back to French in Mon compte (the next steps read the owner's screens in French)
+  await en.page.goto(h.APP + '#/account');
+  await en.page.getByTestId('account-lang').locator('button', { hasText: 'Français' }).click();
+  await en.page.getByText('Aujourd’hui').first().waitFor({ timeout: 5000 });
+  for (let i = 0; i < 20 && ownerLang() !== 'fr'; i++) await en.page.waitForTimeout(500);
+  assert.equal(ownerLang(), 'fr', 'his account says French again');
   noErrors(en.page);
   await en.ctx.close();
 });
@@ -425,8 +472,7 @@ step('the estimate signed online from the confirmation link; at the door nothing
   await dismissSheets(m.page);
   // « NIV illisible » (two taps): the job goes on without it
   await openVin(m.page);
-  await m.page.getByTestId('car-check-skip').click();
-  await m.page.getByTestId('car-check-skip').click();
+  await tapTwice(m.page.getByTestId('car-check-skip'));
   await m.page.getByTestId('car-check').waitFor({ state: 'detached', timeout: 10000 });
   await m.page.getByTestId('step-invoice').waitFor({ timeout: 15000 });
   assert.equal(await m.page.getByTestId('step-waiver').count(), 0, 'already signed online: no signature at the door');
@@ -1515,8 +1561,7 @@ step('« Modifier la facture »: before the appointment, work taken off the job 
   assert.match(await until(lines, (v) => /Essuie-glaces/.test(v), 15000), /Plaquettes avant e2e,Essuie-glaces e2e$/);
   // the wipers taken off the job's work: they leave the invoice by themselves (screen and server)
   await page.getByTestId('job-item').filter({ hasText: 'Essuie-glaces e2e' }).locator('.jobs-item-main').click();
-  await page.getByTestId('item-remove').click();
-  await page.getByTestId('item-remove').click();
+  await tapTwice(page.getByTestId('item-remove'));
   assert.doesNotMatch(await until(lines, (v) => !/Essuie-glaces/.test(v), 15000), /Essuie-glaces/);
   await page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="line-desc"]')].some((i) => /Essuie-glaces/.test(i.value)), null, { timeout: 15000 });
   // finished: it has its number
@@ -1527,8 +1572,7 @@ step('« Modifier la facture »: before the appointment, work taken off the job 
   await page.getByTestId('job-item').filter({ hasText: 'Plaquettes avant e2e' }).locator('.jobs-item-main').click();
   await page.getByTestId('item-locked').waitFor();
   await h.shot(page, 'e2e-invoice-locked');
-  await page.getByTestId('item-locked').getByTestId('invoice-reopen').click();
-  await page.getByTestId('item-locked').getByTestId('invoice-reopen').click();
+  await tapTwice(page.getByTestId('item-locked').getByTestId('invoice-reopen'));
   assert.equal(await until(invoice, (v) => v.startsWith('draft|'), 15000), `draft|${number}`, 'back to a draft, same number');
   await dismissSheets(page);
   await page.getByTestId('draft-reopened').waitFor({ timeout: 15000 });

@@ -49,6 +49,13 @@
 .syncchip-pending, .syncchip-sending { color: var(--st-booked); }
 .syncchip.has-failed { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 .sidebar .syncchip { align-self: flex-start; }
+/* a refused change in « Synchronisation » (sync.tsx RefusedRow): its label and the server's reason are read whole, wrapping,
+   never cut with « … » (S30, S37); on a narrow phone « Réessayer » / « Retirer » go under the words, on the right */
+.sync-refused { flex-wrap: wrap; align-items: flex-start; }
+.sync-refused .row-main { flex: 1 1 14rem; }
+.sync-refused .row-title { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
+.sync-why { margin: 0; font-size: var(--t-xs); color: var(--ink-2); overflow-wrap: break-word; }
+.sync-refused .row-end { margin-left: auto; align-self: center; }
 .spin-slow { animation: spin 1.4s linear infinite; }
 .shell-banners { display: flex; flex-direction: column; gap: var(--sp-2); max-width: var(--content); margin: 0 auto; padding: 0 var(--sp-4); }
 .shell-banners:not(:empty) { padding-top: var(--sp-3); }

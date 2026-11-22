@@ -39,8 +39,6 @@ export const agenda = {
     map: 'Carte de la journée'
   },
   copy: {
-    copy: 'Copier le rendez-vous',
-    open: 'Ouvrir le rendez-vous',
     copied: 'Rendez-vous de {name} copié. Clic droit (ou appui long) sur un bloc, ou « Coller ici ».',
     paste: 'Coller ici',
     pasteHere: 'Coller ici',
@@ -124,6 +122,8 @@ export const agenda = {
     textSms: 'Un texto avertira {name} du changement.',
     ok: 'Déplacer',
     done: 'Job déplacée',
+    unchanged: 'Rien à changer : le rendez-vous est déjà à cette place.',
+    textLater: 'Le texto au client partira quand le déplacement sera envoyé, si l’app reste ouverte.',
     started: 'Ce bloc est déjà commencé : choisis un bloc à venir.',
     closed: 'Ce bloc est fermé : aucun camion ne travaille.',
     notBooked: 'Seule une job réservée, pas encore partie, se déplace.',
@@ -144,6 +144,8 @@ export const agenda = {
     timeText: 'L’app place l’arrêt dans cette plage et choisit l’heure exacte d’arrivée selon la route.',
     timeFull: 'Ça ne rentre pas à cette heure-là. Choisis parmi les plages encore possibles.',
     sameWin: '{name} a déjà cette plage ({win}). L’heure exacte d’arrivée, c’est l’app qui la choisit selon la route.',
-    pastTime: 'Cette heure est déjà passée : choisis une heure à venir.'
+    pastTime: 'Cette heure est déjà passée : choisis une heure à venir.',
+    waiting: 'En attente d’envoi',
+    waitingText: 'Le déplacement est gardé sur le téléphone : il partira dès que le réseau revient.'
   }
 };

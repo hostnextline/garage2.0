@@ -18,7 +18,6 @@ export const treasury: typeof fr = {
     refund: 'Taxes to get back',
     invoices: { zero: 'No invoices', one: '{n} invoice', other: '{n} invoices' },
     expensesCount: { zero: 'No expenses', one: '{n} expense', other: '{n} expenses' },
-    beforeTax: 'before taxes',
     remitSub: 'GST and QST together',
     loading: 'Working out the report…'
   },
@@ -61,6 +60,7 @@ export const treasury: typeof fr = {
     file: 'treasury-{from}-to-{to}',
     mismatch: 'The phone does not have all the invoices or expenses of the period yet. Wait until syncing is done (at the top) before exporting.',
     noInvoices: 'You do not see the invoices: the file will only have the expenses.',
+    offline: 'No signal: the file is made from what is kept on the phone. The latest changes may be missing.',
     help: 'The Excel file has three sheets: Revenue (the invoices), Expenses (the receipts) and Taxes (GST and QST to remit). The CSV puts everything in one list, by date.',
     sheets: { revenue: 'Revenue', expenses: 'Expenses', taxes: 'Taxes' },
     cols: {
@@ -118,13 +118,42 @@ export const treasury: typeof fr = {
     save: 'Save the expense',
     saved: 'Expense saved',
     deleted: 'Expense deleted',
-    sending: 'Sending the receipt…',
-    receiptQueued: 'No signal: the receipt will go with the expense as soon as the signal is back.',
+    photoWaiting: 'The photo is kept on the phone: it will go by itself when the signal is back.',
+    photoRefused: 'The server did not take this photo. Tap “Save the expense” to try again, or remove the photo.',
+    receiptQueued: 'No signal: the expense is saved, the receipt will go by itself as soon as the signal is back.',
+    errDayFuture: 'This date is in the future: check the day and the year.',
     errDay: 'Choose the date of the receipt.',
     errTotal: 'Enter the total paid.',
     errCategory: 'Choose the category.',
     errSum: 'The amounts do not add up: correct the before-taxes amount, the GST or the QST.',
     fix: 'Something is missing: look at the fields in red.'
+  },
+  recon: {
+    title: 'Yesterday’s reconciliation',
+    titleToday: 'Today’s reconciliation',
+    titleOlder: 'Latest reconciliation',
+    help: 'Every night, the app compares the previous day’s invoices, payments, expenses, the Coffre and the stock. You see the day’s summary, and each difference is written here: tap it to open what it is about. “Check now” also checks today so far.',
+    checked: 'Checked {when}',
+    day: 'Day of {day}',
+    sheetToday: 'Today so far',
+    dayUntil: 'Day of {day}, until {time}',
+    allGood: 'Everything balances',
+    allGoodText: 'No difference for that day.',
+    toLook: { one: '1 thing to check', other: '{n} things to check' },
+    never: 'Not checked yet. Tap “Check now” to run a check.',
+    offline: 'No signal: check of {when}.',
+    error: 'The reconciliation does not load.',
+    seen: 'Seen',
+    seenDone: 'Marked as seen',
+    since: 'Since {day}',
+    check: 'Check now',
+    checkDone: 'Check done',
+    braked: 'Checked less than a minute ago: try again at {time}',
+    severity: { bad: 'Important', warn: 'To look at', info: 'For information' },
+    sheet: {
+      invoiced: 'Invoiced', received: 'Received: {what}', refunded: 'Refunded', expenses: 'Expenses: {what}', coffreIn: 'Into the Coffre', coffreOut: 'Out of the Coffre', toReceive: 'Still to receive',
+      by: '{method}, {name}'
+    }
   },
   viewer: { title: 'Receipt', loading: 'Opening the receipt…', offline: 'The receipt only shows with signal.', missing: 'This receipt is no longer available.', open: 'Open full size' }
 };

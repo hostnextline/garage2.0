@@ -5,6 +5,7 @@ export const invoices: typeof fr = {
   numbered: 'Invoice {n}',
   draftTitle: 'Draft invoice',
   draftWord: 'Draft',
+  coffreLoadFailed: 'The Coffre could not open. Check the network, then try again.',
   noCustomer: 'No customer file',
   ago: { zero: 'today', one: 'yesterday', other: '{n} days ago' },
   methods: { cash: 'Cash', debit: 'Debit', credit: 'Credit', interac: 'Interac e-Transfer', card_online: 'Online card', cheque: 'Cheque', other: 'Other' },
@@ -107,6 +108,8 @@ export const invoices: typeof fr = {
     plate: 'plate {p}',
     km: '{n} km',
     vin: 'VIN {v}',
+    over: 'Overpaid',
+    refund: 'Refund ({how})',
     quoteFooter: 'Price estimated before seeing all the work. Any extra work will be offered to you before it is done.'
   },
 
@@ -132,7 +135,9 @@ export const invoices: typeof fr = {
     percent: 'Discount as a percentage',
     none: 'No lines.',
     qtyTimes: '{q} × {p}',
-    notTaxable: 'Not taxable'
+    notTaxable: 'Not taxable',
+    /** a price typed wrong (red) when finishing the invoice, or sending or booking the estimate */
+    badPrice: 'A price is not written right: fix the field in red first.'
   },
   catalog: {
     title: 'From the price list',
@@ -164,7 +169,15 @@ export const invoices: typeof fr = {
     pdf: 'PDF',
     pdfReceipt: 'Receipt PDF',
     open: 'See the invoice',
-    paidOn: 'Paid {when}, {how}'
+    paidOn: 'Paid {when}, {how}',
+    overTitle: 'Overpaid: {amount} to give back to the customer',
+    over: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Give the difference back, then record it here.',
+    overButton: 'Record the refund',
+    overOffice: 'The customer paid more than the invoice (paid ahead then a rebate, or paid twice). Tell the office: the office refunds it.',
+    unbilled: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
+    unbilledText: 'To bill it, tap “Change the invoice”, then finish it again.',
+    unbilledClosed: 'This invoice can no longer be changed.',
+    coffreWaiting: 'Put in the Coffre on this phone: it goes as soon as the network is back.'
   },
 
   draft: {
@@ -179,14 +192,38 @@ export const invoices: typeof fr = {
     finishHint: 'It gets its number. Then: take the payment or text it to the customer.',
     paidAhead: 'The customer already paid {amount}. Left to pay: {left}.',
     paidAheadAll: 'The customer already paid everything ({amount}). Finish the invoice: it will be marked PAID.',
+    /** a first finish over what was paid ahead (no question): the office gives the rest back, never the reader (owner, 2026-11-20) */
+    paidAheadOver: 'The customer already paid {amount}, {over} more than the invoice. Once the invoice is finished, the office will give {over} back to the customer.',
+    paidAheadBelow: 'The customer already paid {amount}, {over} more than this total. If you finish it like this, the invoice will be marked PAID and the office will give {over} back to the customer.',
+    /** paid, then every line taken off: the server never finishes an invoice with no line (empty), so the way out is said
+        (review srv-argent, probe 1): a line at $0, then the usual question; the office gives the money back */
+    paidAheadEmpty: 'There is no line left and the customer already paid {amount}. To finish anyway, tap “A line”, write “Nothing done” and leave the price at $0: the invoice will be marked PAID and the office will give {amount} back to the customer.',
+    /** “Finish the invoice” of a changed invoice under what was paid: asked first (owner, 2026-11-20) */
+    overAsk: {
+      title: '{over} to give back to the customer',
+      text: 'The customer already paid {paid}. With this total, {over} goes back to them: the office takes care of it.',
+      ok: 'Yes, finish',
+      cancel: 'Check again'
+    },
     finished: 'Invoice {n} finished',
+    addedWork: 'Added to the invoice: {what}',
+    missing: {
+      title: { one: '1 piece of work from the job is not on the invoice', other: '{n} pieces of work from the job are not on the invoice' },
+      text: 'It is done or planned on the job, but not billed.',
+      add: 'Add and finish',
+      /** a job already over: the invoice is finished as it is, the work is not touched */
+      without: 'Finish without',
+      /** the job coming or under way: that work is marked “Not done” first (S58), and said before the tap */
+      notDone: 'Not done, finish',
+      notDoneText: { one: '“Not done, finish”: this work will be marked “Not done” and not billed.', other: '“Not done, finish”: this work will be marked “Not done” and not billed.' }
+    },
     newWork: { one: 'Work was added to the job', other: '{n} pieces of work were added to the job' },
     addNewWork: 'Add to the invoice',
     refresh: 'Redo from the work',
     refreshConfirm: 'Tap again to replace the lines',
     refreshed: 'Lines redone from the job’s work',
     waiting: 'No signal: the invoice will be finished as soon as the signal is back.',
-    state: { saved: 'Saved', waiting: 'Not saved yet', saving: 'Saving…' },
+    state: { saved: 'Saved', waiting: 'Not saved yet', saving: 'Saving…', kept: 'Kept on the phone', failed: 'Not saved' },
     problem: {
       empty: 'Add at least one line before finishing the invoice.',
       no_description: 'A line has no description: write what was done.',
@@ -202,7 +239,9 @@ export const invoices: typeof fr = {
     finishedAgain: 'Invoice {n} finished again. The customer got the old one: text it again.',
     finishedAgainQuiet: 'Invoice {n} finished again.',
     item: 'The invoice is finished. To remove this line or change its price, open it again:',
-    itemPaid: 'The invoice is paid: this line no longer changes.'
+    itemPaid: 'The invoice is paid. To remove this line or change its price, open it again:',
+    /** a billed line whose invoice nobody here may open again (the job is over, another truck's job) */
+    itemLocked: 'The invoice is finished: to change this line, ask the office.'
   },
 
   void: {
@@ -228,6 +267,7 @@ export const invoices: typeof fr = {
     removeConfirm: 'Tap again to remove',
     removed: 'Payment removed',
     waiting: 'Waiting for signal',
+    refund: 'Refund ({how})',
     onlineNote: 'An online card payment is refunded in Stripe, not here.'
   },
 
@@ -236,6 +276,22 @@ export const invoices: typeof fr = {
     sub: 'Invoice {n} for {who}',
     missing: 'Invoice not found',
     missingText: 'It is not (or no longer) on this phone. Close and try again in a moment.',
+    waiting: 'Payment waiting to be sent: {amount}',
+    waitingText: 'It goes as soon as the network is back. Do not take it a second time.',
+    waitingPart: '{amount} already taken on this phone, waiting to be sent.',
+    refund: {
+      title: 'Refund',
+      none: 'Nothing to refund: the customer did not pay more than the invoice.',
+      waiting: 'Refund waiting to be sent: {amount}',
+      toGive: 'To give back to the customer',
+      amount: 'Amount given back',
+      confirm: 'Record {amount} refunded',
+      done: 'Refund of {amount} recorded.',
+      tooMuch: 'That is more than what was paid too much ({max}).',
+      hint: 'Record here money given back in person or by transfer.',
+      card: 'Paid by card online: refund {amount} in Stripe. The refund is recorded on the invoice by itself.',
+      cardPart: 'Part was paid by card online: that part is refunded in Stripe (the refund is recorded by itself). Record here only money given back in person or by transfer.'
+    },
     not: {
       draft: 'Finish the invoice before taking the payment.',
       void: 'This invoice is cancelled: nothing to collect.',

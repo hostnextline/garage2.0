@@ -3,18 +3,23 @@ import { useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
 import { EMAIL_RE } from '../../lib/text';
 import { settings } from '../../data/select';
-import { saveSettings } from '../../data/api';
+import { saveSection } from './save';
 import { Panel, Field, Input, PhoneInput, attempt, toast } from '../../ui';
-import { useSectionDraft, SaveBar, Section } from './SectionFrame';
+import { useSectionDraft, useSectionAnchor, SaveBar, Section } from './SectionFrame';
 import { cleanText } from './draft';
 
 const FIELDS = ['name', 'legal_name', 'phone', 'email', 'website', 'address', 'tps_no', 'tvq_no', 'neq'] as const;
 type Company = Record<(typeof FIELDS)[number], string>;
 
-export function CompanySection() {
+/** the section's fields as stored now (also what the dot of the list compares the draft with) */
+export function companySaved(): Company {
   const c = settings.value.company || {};
-  const saved = Object.fromEntries(FIELDS.map((k) => [k, String((c as Record<string, unknown>)[k] ?? '')])) as Company;
-  const { draft: d, set, dirty, reset } = useSectionDraft<Company>('company', saved);
+  return Object.fromEntries(FIELDS.map((k) => [k, String((c as Record<string, unknown>)[k] ?? '')])) as Company;
+}
+
+export function CompanySection() {
+  const saved = companySaved();
+  const { draft: d, set, dirty, changes, reset } = useSectionDraft<Company>('company', saved);
   const [err, setErr] = useState<Partial<Record<keyof Company, string>>>({});
   const field = (k: keyof Company) => (v: string) => { set((x) => ({ ...x, [k]: v })); if (err[k]) setErr({ ...err, [k]: undefined }); };
 
@@ -24,14 +29,16 @@ export function CompanySection() {
     if (d.email.trim() && !EMAIL_RE.test(d.email.trim())) e.email = t('settings.company.badEmail');
     setErr(e);
     if (Object.keys(e).length) { toast(t('settings.fixErrors'), { kind: 'bad' }); return; }
+    // only the fields changed here: one changed meanwhile on another device keeps its new value
     const next: Record<string, unknown> = { ...(settings.value.company || {}) };
-    for (const k of FIELDS) next[k] = cleanText(d[k]);
-    if (await attempt(() => saveSettings('company', next), { ok: t('settings.saved') })) reset();
+    for (const k of Object.keys(changes) as (keyof Company)[]) next[k] = cleanText(d[k]);
+    if (await attempt(() => saveSection('company', next), { ok: t('settings.saved') })) reset();
   };
 
+  const anchor = useSectionAnchor();
   return (
     <Section testid="settings-company" bar={<SaveBar dirty={dirty} onSave={save} onReset={() => { reset(); setErr({}); }} />}>
-      <Panel title={t('settings.company.garage')}>
+      <Panel title={t('settings.company.garage')} data-tour={anchor}>
         <div class="grid-2">
           <Field label={t('settings.company.name')} help={t('settings.company.nameHelp')} error={err.name}>
             <Input value={d.name} onValue={field('name')} autoComplete="organization" invalid={!!err.name} data-testid="company-name" />

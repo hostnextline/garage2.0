@@ -1,7 +1,9 @@
 /* « Faire signer l'autorisation »: the authorization text of the garage (Réglages) in the customer's language, the name
    of the person who signs, and the signature with the finger. Hassan's rule: a signature only, never a photo.
-   The sheet cannot be closed by a tap outside once the customer started signing. */
-import { useEffect, useState } from 'preact/hooks';
+   The sheet cannot be closed by a tap outside once the customer started signing; closed anyway (the phone's back gesture,
+   a stroke started at the edge of the screen), the signature is still there when it opens again. Only « Annuler » or a
+   signature saved starts it over. */
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Job } from '../../data/types';
 import type { Lang } from '../../lib/i18n';
 import { tl, t, lang } from '../../lib/i18n';
@@ -9,16 +11,16 @@ import { settings, garageName, customerName } from '../../data/select';
 import { loadAttachment } from '../../data/api';
 import { Sheet, Button, Field, Input, Spinner, Banner } from '../../ui';
 import { dayOf } from '../../lib/dates';
-import { SignaturePad } from './SignaturePad';
-import { hasEnoughInk, type Stroke } from './signature';
-import { signWaiver } from './flow';
-import { jobCustomer, dayWord, clockOf } from './select';
+import { SignaturePad } from '../../shared/sign/SignaturePad';
+import { hasEnoughInk, type Stroke } from '../../shared/sign/signature';
+import { signWaiver } from '../../shared/jobs/signatures';
+import { jobCustomer, dayWord, clockOf } from '../../shared/jobs/select';
 
 /** the customer's language (their texts, invoice and signatures follow it) */
 export function customerLang(j: Job): Lang { return jobCustomer(j)?.lang === 'en' ? 'en' : 'fr'; }
 
 /** the authorization text, with the garage's name */
-export function waiverText(l: Lang): string {
+function waiverText(l: Lang): string {
   const w = settings.value.waiver || { version: '1', fr: '', en: '' };
   return String((l === 'en' ? w.en : w.fr) || w.fr || w.en || '').replace(/\{garage\}/g, garageName.value);
 }
@@ -29,9 +31,16 @@ export function WaiverSheet(p: { job: Job; open: boolean; onClose: () => void })
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [error, setError] = useState<string | null>(null);
   const customerNow = customerName(jobCustomer(p.job));
+  // the job whose signature is on the pad; null: start over at the next opening
+  const kept = useRef<string | null>(null);
   useEffect(() => {
-    if (p.open) { setSigner(customerNow); setStrokes([]); setError(null); }
-  }, [p.open]);
+    if (!p.open) return;
+    setError(null);
+    if (kept.current === p.job.id) return;
+    kept.current = p.job.id;
+    setSigner(customerNow); setStrokes([]);
+  }, [p.open, p.job.id]);
+  const cancel = () => { kept.current = null; p.onClose(); };
   // the customer's file may arrive a moment later (a phone just signed in): fill the name if nothing was typed
   useEffect(() => { if (p.open && customerNow) setSigner((cur) => cur || customerNow); }, [customerNow]);
   const text = waiverText(l);
@@ -39,13 +48,13 @@ export function WaiverSheet(p: { job: Job; open: boolean; onClose: () => void })
   const save = async () => {
     if (!signer.trim()) { setError(tl(l, 'jobs.sign.signerMissing')); return; }
     if (!hasEnoughInk(strokes)) { setError(tl(l, 'jobs.sign.tooSmall')); return; }
-    if (await signWaiver(p.job, strokes, signer.trim())) p.onClose();
+    if (await signWaiver(p.job, strokes, signer.trim())) { kept.current = null; p.onClose(); }
   };
   return (
     <Sheet open={p.open} onClose={p.onClose} title={tl(l, 'jobs.sign.waiverTitle')} sub={tl(l, 'jobs.sign.version', { v: version })}
       dismissable={!strokes.length} data-testid="waiver-sheet"
       footer={<>
-        <Button onClick={p.onClose}>{tl(l, 'jobs.sign.cancel')}</Button>
+        <Button onClick={cancel}>{tl(l, 'jobs.sign.cancel')}</Button>
         <Button variant="primary" onClick={save} disabled={!strokes.length} data-testid="waiver-save">{tl(l, 'jobs.sign.save')}</Button>
       </>}>
       <div class="stack">

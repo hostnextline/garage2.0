@@ -39,8 +39,6 @@ export const agenda: typeof fr = {
     map: 'Map of the day'
   },
   copy: {
-    copy: 'Copy the appointment',
-    open: 'Open the appointment',
     copied: '{name}’s appointment copied. Right-click (or press and hold) a block, or “Paste here”.',
     paste: 'Paste here',
     pasteHere: 'Paste here',
@@ -124,6 +122,8 @@ export const agenda: typeof fr = {
     textSms: 'A text will let {name} know about the change.',
     ok: 'Move',
     done: 'Job moved',
+    unchanged: 'Nothing to change: the appointment is already there.',
+    textLater: 'The text to the customer goes once the move is sent, if the app stays open.',
     started: 'This block has already started: pick a block to come.',
     closed: 'This block is closed: no truck works.',
     notBooked: 'Only a booked job that has not left yet can be moved.',
@@ -144,6 +144,8 @@ export const agenda: typeof fr = {
     timeText: 'The app puts the stop in this window and picks the exact arrival time from the route.',
     timeFull: 'It does not fit at that time. Pick one of the windows still possible.',
     sameWin: '{name} already has this window ({win}). The app picks the exact arrival time from the route.',
-    pastTime: 'That time has already passed: pick a time to come.'
+    pastTime: 'That time has already passed: pick a time to come.',
+    waiting: 'Waiting to be sent',
+    waitingText: 'The move is kept on the phone: it goes as soon as the network is back.'
   }
 };

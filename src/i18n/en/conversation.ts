@@ -22,6 +22,8 @@ export const conversation: typeof fr = {
     book: 'Book for this number',
     noFile: 'No file yet',
     noWords: '📎 Photo or document',
+    more: { one: 'One more conversation', other: '{n} more conversations' },
+    pretend: 'This is a test text (“Try it”, in Settings): it can’t be answered.',
     off: 'Texts are not connected (Settings, Connections): you see what came in, but cannot answer from here.',
     error: 'The texting service did not answer: here is what came in. The rest comes back in a moment.'
   },
@@ -30,6 +32,8 @@ export const conversation: typeof fr = {
     off: 'Automatic texts are not connected (Settings, Connections).',
     no_phone: 'This customer has no cell number.',
     error: 'The text service did not answer. Try again in a moment.',
+    pending: 'This message is on its way.',
     offline: 'No signal: the conversation will come back with the signal.'
-  }
+  },
+  alertLost: 'This device no longer alerts you when the app is closed. Switch “Alert me when the app is closed” back on in Settings, Connections.'
 };

@@ -19,14 +19,16 @@ export const coffre = {
   emptyText: 'Sur une job de la famille ou des amis : menu ⋯, puis « Payé par le Coffre ».',
   remove: 'Retirer',
   removeConfirm: 'Toucher encore pour retirer',
+  offline: 'Le rapport du Coffre a besoin du réseau.',
+  offlineCached: 'Pas de réseau : rapport du {when}.',
+  error: 'Le rapport du Coffre ne se charge pas.',
   removed: 'Retiré du Coffre : ces jobs peuvent avoir une facture de nouveau',
   open: 'Coffre (famille et amis)',
   openSub: 'Le rapport à part, pour le comptable',
   job: {
     banner: 'Payé par le Coffre (famille et amis) : pas de facture, pas de taxes.',
     menu: 'Payé par le Coffre',
-    menuSub: 'Famille et amis : pas de facture, pas de taxes',
-    finish: 'Terminer la job'
+    menuSub: 'Famille et amis : pas de facture, pas de taxes'
   },
   pay: { method: 'Coffre' },
   sheet: {

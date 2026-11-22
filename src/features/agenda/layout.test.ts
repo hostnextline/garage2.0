@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { weekOfDay, shiftWeek, sameWeek, weekTitle, fillOf, freeWords, moveQuestion, dropRefusal, isWindowDay, dayState, byPlan, byArrival, winInfo, winShort, winTiny, dayWords, moveDayTitle, windowChoices } from './layout';
+import { weekOfDay, shiftWeek, sameWeek, weekTitle, fillOf, moveQuestion, dropRefusal, isWindowDay, byArrival, winInfo, winShort, winTiny, dayWords, moveDayTitle, windowChoices } from './layout';
+import { freeWords } from '../../domain/moment/words';
 import { agenda as fr } from '../../i18n/fr/agenda';
 import { agenda as en } from '../../i18n/en/agenda';
-import { sameShape } from '../booking/dict-check';
+import { sameShape } from '../../lib/dict-check';
 
 describe('the week', () => {
   it('goes Sunday → Saturday around any day', () => {
@@ -50,6 +51,12 @@ describe('moving a job', () => {
     expect(moveQuestion('Julie', { day: '2026-11-10', block: 'am' }, { day: '2026-11-07', block: 'pm' }, today, 'en'))
       .toBe('Move Julie’s job from Tuesday morning to Saturday afternoon?');
   });
+  it('says a job booked for the whole day by its day, never the raw key of a block (x-dualmode-21)', () => {
+    expect(moveQuestion('Julie', { day: '2026-11-03', block: 'day' }, { day: '2026-11-05', block: 'pm' }, today, 'fr'))
+      .toBe('Déplacer la job de Julie de hier à demain après-midi ?');
+    expect(moveQuestion('Julie', { day: '2026-11-06', block: 'day' }, { day: '2026-11-05', block: 'am' }, today, 'en'))
+      .not.toMatch(/booking\.when/);
+  });
   it('refuses a drop where the server would say no anyway', () => {
     const job = { day: '2026-11-05', block: 'am' as const, status: 'booked' };
     const open = { started: false, open: true };
@@ -75,20 +82,6 @@ describe('« Plages d’arrivée »', () => {
     expect(isWindowDay('2026-11-20', today, false, [])).toBe(false);
     expect(isWindowDay('2026-11-20', today, false, ['am', 'eve'])).toBe(false);
     expect(isWindowDay('2026-11-20', today, false, ['day'])).toBe(true);
-  });
-  it('keeps a whole day open until its last hour, while a truck has hours left', () => {
-    const span: [number, number] = [480, 1200];
-    expect(dayState('2026-11-15', today, 600, span, [720], 45)).toEqual({ started: false, open: true });
-    expect(dayState(today, today, 600, span, [300], 45)).toEqual({ started: false, open: true });   // 10 h: the day goes on
-    expect(dayState(today, today, 1200, span, [0], 45)).toEqual({ started: true, open: false });
-    expect(dayState(today, today, 1170, span, [30], 45)).toEqual({ started: false, open: false });   // too little left
-    expect(dayState('2026-11-13', today, 600, span, [0], 45)).toEqual({ started: true, open: false });
-    expect(dayState('2026-11-15', today, 600, span, [], 45)).toEqual({ started: false, open: false });
-    expect(dayState('2026-11-15', today, 600, span, [0, 0], 45)).toEqual({ started: false, open: false });
-  });
-  it('orders the stops as planned: the stop number, then the arrival', () => {
-    const js = [{ stop_order: null, eta_min: 600, number: 4 }, { stop_order: 2, eta_min: 700, number: 1 }, { stop_order: 1, eta_min: 900, number: 2 }, { stop_order: null, eta_min: 500, number: 3 }];
-    expect([...js].sort(byPlan).map((j) => j.number)).toEqual([2, 1, 3, 4]);
   });
   it('says the window of a job, « flexible », « hors plage »', () => {
     const j = { block: 'day' as const, win_start: 840, win_end: 1080, win_flex: false, eta_min: 900, status: 'booked' };

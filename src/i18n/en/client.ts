@@ -8,6 +8,7 @@ export const client: typeof fr = {
   callUsNoPhone: 'Call the garage at the number that sent you this link.',
   otherLang: 'Français',
   otherLangLabel: 'Lire cette page en français',
+  otherLangShort: 'FR',
   hello: 'Hello {name},',
   helloAlone: 'Hello,',
   today: 'Today',
@@ -16,7 +17,6 @@ export const client: typeof fr = {
   blocks: { am: 'Morning', pm: 'Afternoon', eve: 'Evening' },
   flex: 'During the day',
   flexNote: 'We confirm a 4-hour window the day before.',
-  printedOn: 'Printed on {date}',
 
   job: {
     title: 'Your appointment',
@@ -35,6 +35,8 @@ export const client: typeof fr = {
     },
     explain: {
       booked: 'Your mechanic arrives during this time slot. You will get a text when he is on the way.',
+      bookedWindow: 'Your mechanic arrives during this window. You will get a text when he is on the way.',
+      bookedFlex: 'You will get a text when your mechanic is on the way.',
       en_route: 'He is coming to you.',
       en_routeNoLink: 'He is coming to you. The link to follow the truck live was sent to you by text.',
       on_site: 'Your mechanic has arrived and is taking care of your vehicle.',
@@ -49,9 +51,10 @@ export const client: typeof fr = {
     title: 'Your estimate',
     billTitle: 'Your invoice',
     billLead: 'Your mechanic is on site. You can pay during the work: the final invoice with its number will follow.',
+    billLeadNoPay: 'Your mechanic is on site. The final invoice with its number will follow.',
     billTotal: 'Total to pay, taxes included',
-    expected: 'Expected total, taxes included',
     expectedNoTax: 'Expected total',
+    plusTax: '+ tx',
     prepaid: 'Already paid',
     left: 'Left to pay',
     done: 'Done',
@@ -62,7 +65,6 @@ export const client: typeof fr = {
   },
 
   sign: {
-    open: 'Sign the estimate',
     oneLead: 'By accepting, you authorize {garage} to do the work above on your vehicle, under the conditions below. The final price can only change with your consent.',
     oneButton: 'I accept and sign',
     oneNote: 'Electronic signature in your name, with the date and time.',
@@ -70,6 +72,8 @@ export const client: typeof fr = {
     title: 'Sign the estimate',
     lead: 'You accept the work and the estimated price ({total}). The final price can only change with your consent.',
     changed: 'Your estimate changed since you signed it: please sign the new one.',
+    changedNow: 'The price changed since this page was opened. The new total is {total}, taxes included. Check it, then sign again.',
+    already: 'This estimate is already signed or no longer needs signing. The page is up to date.',
     conditions: 'The conditions of the work',
     name: 'Your name',
     pad: 'Sign here with your finger',
@@ -100,6 +104,10 @@ export const client: typeof fr = {
     yesDecline: 'Yes, I decline',
     back: 'Back',
     thanks: 'Thank you! Your answer was sent to your mechanic.',
+    alreadyAccepted: 'This work had already been answered: it is accepted.',
+    alreadyDeclined: 'This work had already been answered: it is declined.',
+    closed: 'This appointment is over: this proposal can no longer be accepted here. Call us.',
+    changedNow: 'The price of this work changed: it is now {price}. Check it, then answer again.',
     newTotal: 'New expected total: {total}, taxes included.',
     declinedTitle: 'Declined work',
     declined: 'Declined'
@@ -119,31 +127,28 @@ export const client: typeof fr = {
     tvqNo: 'QST no. {no}',
     print: 'Print',
     stamp: 'Paid',
-    paidThanks: 'Invoice paid. Thank you!',
-    payOnSite: 'To pay, call us or pay your mechanic on site.'
+    paidThanks: 'Invoice paid. Thank you!'
   },
 
   pay: {
     button: 'Pay {amount} by card',
-    prepay: 'Pay {amount} ahead by card',
-    prepayLead: 'You can also pay on site when the work is done.',
     now: 'Pay {amount} now',
     secure: 'Secure payment by Stripe. You will come back here afterwards.',
-    opening: 'Opening the payment page…',
     pending: 'A card payment was started. If it is finished, it will show here in a moment.',
     checking: 'Checking your payment…',
     checkingLead: 'We are confirming your payment. Keep this page open.',
     done: 'Thank you! Your payment was received.',
     late: 'The payment does not show yet. If it was accepted, it will show here within a few minutes.',
     checkAgain: 'Check again',
-    fail: 'The payment page could not open. Try again in a moment or call us.'
+    fail: 'The payment page could not open. Try again in a moment or call us.',
+    down: 'Card payment is not answering right now. Try again in a moment, pay on site or call us.',
+    processing: 'A payment for this file is already being processed (a bank debit takes a few days). It will show here as soon as the bank confirms it. If you have a question, call us.'
   },
 
   quote: {
     title: 'Your estimate',
     lead: 'Here is the estimate from {garage}.',
     number: 'Estimate no. {number}',
-    vehicle: 'Vehicle',
     validUntil: 'Valid until {date}',
     expired: 'This estimate is no longer valid since {date}. Call us to update it.',
     note: 'Estimated price. If your mechanic finds something else, nothing will be done without your consent.',
@@ -169,11 +174,10 @@ export const client: typeof fr = {
     onTheWayTo: '{name} is on the way to {place}',
     arrivedTo: '{name} has arrived at {place}',
     mechanicAnon: 'The mechanic',
-    eta: 'Expected around {time} (about {min}\u00a0min)',
     etaAt: 'Arriving around {time}',
     etaSoon: 'Arriving any minute now',
     etaNone: 'He is coming to you.',
-    mechanic: 'Your mechanic: {name}',
+    min: 'min',
     updated: 'Position updated at {time}',
     noPos: 'The truck’s position is not available yet. This page updates by itself.',
     arrived: '{name} has arrived',
@@ -195,7 +199,6 @@ export const client: typeof fr = {
   },
   book: {
     title: 'Book an appointment',
-    lead: 'The mechanic comes to you. Choose the work, your address and the time that suits you.',
     step: 'Step {n} of 4',
     back: 'Back',
     next: 'Continue',
@@ -227,6 +230,7 @@ export const client: typeof fr = {
       leadFlex: 'See you {day}, during the day. We confirm a 4-hour window the day before.', text: 'A confirmation text is on its way to {phone}.',
       noText: 'Keep this link: it shows your appointment.', see: 'See my appointment', again: 'Book another appointment' },
     closed: { title: 'Online booking is closed', text: 'Call us: we will find you a time.' },
+    unconfirmed: { title: 'Your appointment is not confirmed', text: 'We could not save your request. Call us: we will find you a time.' },
     errors: { far: 'This address is outside our area. Call us, we may be able to work something out.',
       too_many: 'You already have upcoming appointments. To add one, please call us.',
       busy: 'Lots of bookings right now. Please try again in a few minutes.',

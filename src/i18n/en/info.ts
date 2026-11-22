@@ -6,7 +6,7 @@ export const info = {
   search: 'Search: coffre, cancel, first, oil…',
   all: 'All',
   topics: { day: 'My day', booking: 'Appointments', pay: 'Payments', customers: 'Customers', map: 'Map', office: 'Office', setup: 'Settings' },
-  roles: { owner: 'Owner', office: 'Office', mechanic: 'Mechanic', accountant: 'Accountant' },
+  roles: { owner: 'Owner', office: 'Office', mechanic: 'Mechanic', accountant: 'Treasurer' },
   forWho: 'For: {who}',
   count: '{n} sheets',
   countOne: '1 sheet',
@@ -17,6 +17,5 @@ export const info = {
   tips: 'Good to know',
   open: 'Open this screen',
   related: 'Same topic',
-  back: 'All sheets',
   notFound: 'This sheet no longer exists.'
 };

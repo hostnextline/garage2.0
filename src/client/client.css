@@ -20,11 +20,10 @@
 .cl-hero h1 { font-size: var(--t-2xl); font-stretch: var(--w-title); font-weight: 340; }
 .cl-lead { margin: 2px 0 0; color: var(--ink-2); }
 .cl-panel { border-radius: var(--r-lg); padding: var(--sp-5); position: relative; }
-.cl-panel > h2, .cl-panel-title { font-size: var(--t-lg); font-stretch: 112%; font-weight: 480; margin: 0 0 var(--sp-3); }
+.cl-panel > h2 { font-size: var(--t-lg); font-stretch: 112%; font-weight: 480; margin: 0 0 var(--sp-3); }
 .cl-panel p:last-child { margin-bottom: 0; }
 .cl-sub { margin: -6px 0 var(--sp-4); color: var(--ink-2); font-size: var(--t-sm); }
 .cl-stack { display: flex; flex-direction: column; gap: var(--sp-3); }
-.cl-row { display: flex; align-items: center; gap: var(--sp-3); }
 .cl-muted { color: var(--ink-2); }
 .cl-small { font-size: var(--t-xs); }
 
@@ -115,10 +114,6 @@
 .cl-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 700ms linear infinite; flex: none; margin-top: 1px; }
 
 /* ---------- tracking ---------- */
-.cl-track-head { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) 0 0; }
-.cl-track-head h1 { font-size: var(--t-2xl); font-stretch: var(--w-title); font-weight: 360; }
-.cl-eta { margin: 0; font-size: var(--t-lg); font-weight: 520; font-stretch: 104%; }
-.cl-eta b { font-stretch: var(--w-num); font-weight: 600; }
 .cl-map { position: relative; height: 54vh; min-height: 280px; max-height: 540px; border-radius: var(--r-lg); overflow: hidden; background: var(--sunken);
   border: 1px solid var(--glass-edge); box-shadow: var(--glass-shadow); }
 .cl-map .leaflet-container { width: 100%; height: 100%; background: var(--sunken); font: inherit; }
@@ -172,6 +167,9 @@
 .cl-uber-call:active { background: #e4e4e4; }
 .cl-uber-call svg { width: 20px; height: 20px; }
 .cl-uber-card .btn-ghost { color: #111; }
+/* the card stays white on a dark phone: a note inside it (« Connexion perdue ») takes the card's light ground and ink,
+   not the dark theme's near-black ones */
+.cl-uber-card .cl-note { --solid: #FFFFFF; color: #111; }
 .cl-uber.is-nomap .cl-uber-card { top: auto; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .cl-uber, :root:not([data-theme="light"]) .cl-uber .cl-map, :root:not([data-theme="light"]) .cl-uber .leaflet-container { background: #1b1c1e; }
@@ -181,7 +179,6 @@
   :root:not([data-theme="light"]) .cl-uber .leaflet-control-attribution { background: rgba(0, 0, 0, 0.5); color: #aaa; }
   :root:not([data-theme="light"]) .cl-uber .leaflet-control-attribution a { color: #ccc; }
 }
-.cl-map-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--sp-5); text-align: center; color: var(--ink-2); font-size: var(--t-sm); }
 
 /* ---------- the garage at the bottom ---------- */
 .cl-foot { padding-top: var(--sp-5); padding-bottom: calc(env(safe-area-inset-bottom) + var(--sp-8)); border-top: 1px solid var(--line); color: var(--ink-2); font-size: var(--t-sm);
@@ -193,7 +190,7 @@
 .cl-foot .btn { min-height: var(--tap); }
 .cl-printonly { display: none; }
 
-.cl-hero h1, .cl-day, .cl-track-head h1, .cl-state h1, .cl-inv-head h2, .cl-panel > h2 { text-wrap: balance; }
+.cl-hero h1, .cl-day, .cl-state h1, .cl-inv-head h2, .cl-panel > h2 { text-wrap: balance; }
 
 @media (max-width: 359px) {
   .cl-call { padding: 0 var(--sp-3); }
@@ -222,7 +219,7 @@
 }
 
 /* ---------- the estimate signed with the finger ---------- */
-.cl-sign { margin-top: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
+.cl-sign { margin-top: var(--sp-5); display: grid; gap: var(--sp-3); }
 .cl-sign-open { padding: var(--sp-4); border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--solid); }
 .cl-sign-open h3 { margin: 0; font-size: var(--t-lg); outline: none; }
 .cl-sign-done { margin-top: var(--sp-4); }
@@ -297,5 +294,4 @@
 
 /* « Signer avec le doigt plutôt »: a quiet link */
 .cl-linkbtn { border: 0; padding: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
-.cl-sign { display: grid; gap: var(--sp-3, 12px); }
 .bk-slot-sm { min-height: 48px; }

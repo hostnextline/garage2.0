@@ -1,17 +1,16 @@
 /* 🤖 Hermes: the round button at the bottom right of every screen, for everyone on the team (not while the owner
-   « Voir l'app comme… »). The panel's code is loaded the first time it is opened. */
+   « Voir l'app comme… »). The panel's code is loaded the first time it is opened; the conversation (session.ts) is
+   loaded with the button, so it is dropped at sign-out even if the panel never opened. */
 import type { ComponentType } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { signal } from '@preact/signals';
 import { Bot, X } from 'lucide-preact';
 import { access, preview } from '../../data/auth';
 import { t } from '../../lib/i18n';
+import { hermesOpen, setHermesOpen } from '../../services/bubbles';
+import { hermesBusy } from './session';
 import './hermes.css';
 
-export const hermesOpen = signal(false);
-export const hermesBusy = signal(false);
-const remember = (v: boolean) => { try { localStorage.setItem('his-hermes-open', v ? '1' : '0'); } catch { /* private window */ } };
-export function setHermesOpen(v: boolean) { hermesOpen.value = v; remember(v); }
+export { hermesBusy };
 
 export function mayHermes(): boolean { return !!access.value && !preview.value; }
 
@@ -20,7 +19,13 @@ export function HermesHost() {
   const open = show && hermesOpen.value;
   const [Panel, setPanel] = useState<ComponentType | null>(null);
   useEffect(() => { document.documentElement.classList.toggle('has-hermes', show); return () => document.documentElement.classList.remove('has-hermes'); }, [show]);
-  useEffect(() => { if (open && !Panel) void import('./HermesPanel').then((m) => setPanel(() => m.HermesPanel)); }, [open]);
+  useEffect(() => {
+    if (!open || Panel) return;
+    let alive = true;
+    // a failed load (no signal on a first open) leaves the bubble as it was: the next tap tries again
+    import('./HermesPanel').then((m) => { if (alive) setPanel(() => m.HermesPanel); }, () => { if (alive) setHermesOpen(false); });
+    return () => { alive = false; };
+  }, [open]);
   if (!show) return null;
   return (
     <>

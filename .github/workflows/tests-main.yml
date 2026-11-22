@@ -1,0 +1,33 @@
+# Les types et les tests de l'app sur main, pour un changement que « Publier l'app » ne publie pas mais que des tests de
+# l'app lisent : les migrations et les fonctions du serveur (src/i18n/errors.test.ts, server-texts, webpush, config…), et
+# le test d'API des reçus (tests/api/recus-serveur.test.mjs, lu par src/features/treasury/receipts.test.ts).
+# Sans lui, un changement du serveur poussé sur main qui casse un de ces tests passerait sans un mot, et la prochaine
+# correction de l'app serait refusée à la publication au moment où on en a besoin. Ne publie rien, n'écrit rien
+# (la publication reste dans deploy.yml, infra-10).
+name: Tests de l'app (serveur sur main)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'tests/**'
+permissions:
+  contents: read
+concurrency:
+  group: tests-main
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Types et tests de l'app
+        run: npx tsc --noEmit && npm test
+        env:
+          TZ: America/Toronto   # the garage's clock, as in « Publier l'app » (R01)

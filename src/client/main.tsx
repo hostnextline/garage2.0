@@ -9,26 +9,13 @@ import '../ui/styles/components.css';
 import './client.css';
 import { parseLink, recallGarage, type Link } from './link';
 import { pickLang, type CLang } from './i18n';
-import { ViewPage, ErrorState } from './ViewPage';
-import { TrackPage } from './TrackPage';
-import { BookPage } from './BookPage';
-import { Header, Footer } from './ui';
+import { ViewPage } from './view/ViewPage';
+import { TrackPage } from './track/TrackPage';
+import { BookPage } from './book/BookPage';
+import { ErrorState, Header, Footer } from './ui';
+import { followScheme } from './scheme';
+import { Guard } from './guard';
 
-/** the phone's light or dark, also when it changes while the page is open */
-function followScheme() {
-  try {
-    const mq = matchMedia('(prefers-color-scheme: dark)');
-    // the customer sees the garage's own look: H.I.S, its picture behind the glass
-    document.documentElement.dataset.theme = 'his';
-    const set = () => {
-      document.documentElement.dataset.mode = mq.matches ? 'dark' : 'light';
-      const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-      if (meta) meta.content = mq.matches ? '#000000' : '#E7EAEE';
-    };
-    set();
-    mq.addEventListener?.('change', set);
-  } catch { /* old browser: light */ }
-}
 
 function App() {
   const [link, setLink] = useState<Link>(() => parseLink(location.hash));
@@ -65,6 +52,6 @@ async function boot() {
     const m = await import('./demo');
     m.installClientDemo();
   }
-  render(<App />, document.getElementById('client')!);
+  render(<Guard><App /></Guard>, document.getElementById('client')!);
 }
 void boot();

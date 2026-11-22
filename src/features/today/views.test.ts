@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickDay } from './select';
+import { pickDay } from './rules';
 
 const who = (o: Partial<Parameters<typeof pickDay>[0]>) => ({ owner: false, office: false, mechanic: false, treasurer: false, agenda: false, ...o });
 

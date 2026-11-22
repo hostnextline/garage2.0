@@ -13,6 +13,7 @@ cd "$S"
 if ! pg_isready -h 127.0.0.1 -p 54332 -q; then
   as_pg "$PGBIN/pg_ctl -D $RUN/pgdata -l $RUN/pg.log -o '-p 54332 -k /tmp -c listen_addresses=127.0.0.1 -c wal_level=logical' start" >/dev/null 2>&1 </dev/null
   for i in $(seq 1 50); do pg_isready -h 127.0.0.1 -p 54332 -q && break; sleep 0.2; done
+  pg_isready -h 127.0.0.1 -p 54332 -q || { echo "Postgres did not start (54332)"; tail -20 "$RUN/pg.log" 2>/dev/null; exit 1; }
 fi
 bash "$S/migrate.sh" >/dev/null
 up 9997 || (set -a; . "$RUN/gotrue.env"; set +a; cd gotrue && setsid nohup ./auth > "$RUN/gotrue.log" 2>&1 < /dev/null &)
@@ -30,5 +31,10 @@ fi
 up 54331 || (setsid nohup node "$S/gateway.mjs" > "$RUN/gateway.log" 2>&1 < /dev/null &)
 wait_up 9997 gotrue; wait_up 3011 postgrest; wait_up 8021 mocks; wait_up 54331 gateway
 for i in $(seq 1 150); do up 8011 && break; sleep 0.2; done
-up 8011 || { echo "functions did not start"; tail -30 "$RUN/functions.log"; }
+# the functions: a test run against a copy without them (or with one that does not load) fails in confusing ways, so the
+# stack is not « up » then: exit 1, with the functions' own words
+up 8011 || { echo "functions did not start (8011)"; tail -30 "$RUN/functions.log" 2>/dev/null; exit 1; }
+if grep -q 'could not load' "$RUN/functions.log" 2>/dev/null; then
+  echo "a server function did not load:"; grep -A5 'could not load' "$RUN/functions.log" | head -40; exit 1
+fi
 echo "local Supabase: http://127.0.0.1:54331  (anon key in tests/stack/keys.json)"

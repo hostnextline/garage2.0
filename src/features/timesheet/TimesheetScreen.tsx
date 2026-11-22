@@ -4,8 +4,8 @@
    the night because « Terminer ma journée » was forgotten is « À vérifier ». Rules in logic.ts. */
 import { useEffect, useState } from 'preact/hooks';
 import { ChevronLeft, ChevronRight, Pencil, Plus } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
-import { may } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
+import { may } from '../../domain/rights';
 import { t, lang } from '../../lib/i18n';
 import { addDays, clock, isValidDay, longDay, monthName, today, type Day } from '../../lib/dates';
 import { me } from '../../data/auth';

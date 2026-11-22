@@ -9,6 +9,8 @@ export const client = {
   callUsNoPhone: 'Appelez le garage au numéro qui vous a envoyé ce lien.',
   otherLang: 'English',
   otherLangLabel: 'Read this page in English',
+  /* the language button of the tracking card: the other language, short */
+  otherLangShort: 'EN',
   hello: 'Bonjour {name},',
   helloAlone: 'Bonjour,',
   today: 'Aujourd’hui',
@@ -17,7 +19,6 @@ export const client = {
   blocks: { am: 'Matin', pm: 'Après-midi', eve: 'Soir' },
   flex: 'Dans la journée',
   flexNote: 'Nous vous confirmons la veille une plage de 4 heures.',
-  printedOn: 'Imprimé le {date}',
 
   job: {
     title: 'Votre rendez-vous',
@@ -36,6 +37,8 @@ export const client = {
     },
     explain: {
       booked: 'Votre mécano arrive pendant ce bloc. Vous recevrez un texto quand il sera en route.',
+      bookedWindow: 'Votre mécano arrive pendant cette plage. Vous recevrez un texto quand il sera en route.',
+      bookedFlex: 'Vous recevrez un texto quand votre mécano sera en route.',
       en_route: 'Il s’en vient chez vous.',
       en_routeNoLink: 'Il s’en vient chez vous. Le lien pour suivre le camion en direct vous a été envoyé par texto.',
       on_site: 'Votre mécano est arrivé et s’occupe de votre véhicule.',
@@ -50,9 +53,10 @@ export const client = {
     title: 'Votre estimation',
     billTitle: 'Votre facture',
     billLead: 'Votre mécano est sur place. Vous pouvez payer pendant les travaux : la facture finale avec son numéro suivra.',
+    billLeadNoPay: 'Votre mécano est sur place. La facture finale avec son numéro suivra.',
     billTotal: 'Total à payer, taxes incluses',
-    expected: 'Total prévu, taxes incluses',
     expectedNoTax: 'Total prévu',
+    plusTax: '+ tx',
     prepaid: 'Déjà payé',
     left: 'Reste à payer',
     done: 'Fait',
@@ -63,7 +67,6 @@ export const client = {
   },
 
   sign: {
-    open: 'Signer l’estimation',
     oneLead: 'En acceptant, vous autorisez {garage} à faire les travaux ci-dessus sur votre véhicule, aux conditions ci-dessous. Le prix final peut changer seulement avec votre accord.',
     oneButton: 'J’accepte et je signe',
     oneNote: 'Signature électronique à votre nom, avec la date et l’heure.',
@@ -71,6 +74,8 @@ export const client = {
     title: 'Signer l’estimation',
     lead: 'Vous acceptez les travaux et le prix estimé ({total}). Le prix final peut changer seulement avec votre accord.',
     changed: 'Votre estimation a changé depuis votre signature : signez la nouvelle.',
+    changedNow: 'Le prix a changé depuis l’ouverture de la page. Le nouveau total est de {total}, taxes incluses. Vérifiez-le, puis signez de nouveau.',
+    already: 'Cette estimation est déjà signée ou n’est plus à signer. La page est à jour.',
     conditions: 'Les conditions des travaux',
     name: 'Votre nom',
     pad: 'Signez ici avec le doigt',
@@ -101,6 +106,10 @@ export const client = {
     yesDecline: 'Oui, je refuse',
     back: 'Retour',
     thanks: 'Merci\u00a0! Votre réponse est envoyée à votre mécano.',
+    alreadyAccepted: 'Une réponse avait déjà été donnée pour ce travail\u00a0: il est accepté.',
+    alreadyDeclined: 'Une réponse avait déjà été donnée pour ce travail\u00a0: il est refusé.',
+    closed: 'Ce rendez-vous est terminé\u00a0: cette proposition ne peut plus être acceptée ici. Appelez-nous.',
+    changedNow: 'Le prix de ce travail a changé\u00a0: il est maintenant de {price}. Vérifiez-le, puis répondez de nouveau.',
     newTotal: 'Nouveau total prévu\u00a0: {total}, taxes incluses.',
     declinedTitle: 'Travaux refusés',
     declined: 'Refusé'
@@ -120,31 +129,28 @@ export const client = {
     tvqNo: 'No de TVQ\u00a0: {no}',
     print: 'Imprimer',
     stamp: 'Payé',
-    paidThanks: 'Facture payée. Merci\u00a0!',
-    payOnSite: 'Pour payer, appelez-nous ou payez votre mécano sur place.'
+    paidThanks: 'Facture payée. Merci\u00a0!'
   },
 
   pay: {
     button: 'Payer {amount} par carte',
-    prepay: 'Payer d’avance {amount} par carte',
-    prepayLead: 'Vous pouvez aussi payer sur place, à la fin des travaux.',
     now: 'Payer maintenant {amount}',
     secure: 'Paiement sécurisé par Stripe. Vous reviendrez ici ensuite.',
-    opening: 'Ouverture de la page de paiement…',
     pending: 'Un paiement par carte a été commencé. S’il est terminé, il s’affichera ici dans un instant.',
     checking: 'Paiement en vérification…',
     checkingLead: 'Nous confirmons votre paiement. Gardez cette page ouverte.',
     done: 'Merci\u00a0! Votre paiement est reçu.',
     late: 'Le paiement n’apparaît pas encore. S’il a été accepté, il s’affichera ici dans quelques minutes.',
     checkAgain: 'Vérifier encore',
-    fail: 'La page de paiement n’a pas pu s’ouvrir. Réessayez dans un instant ou appelez-nous.'
+    fail: 'La page de paiement n’a pas pu s’ouvrir. Réessayez dans un instant ou appelez-nous.',
+    down: 'Le paiement par carte ne répond pas pour l’instant. Réessayez dans un instant, payez sur place ou appelez-nous.',
+    processing: 'Un paiement pour ce dossier est déjà en traitement (un débit bancaire prend quelques jours). Il s’affichera ici dès que la banque l’aura confirmé. Pour toute question, appelez-nous.'
   },
 
   quote: {
     title: 'Votre estimation',
     lead: 'Voici l’estimation de {garage}.',
     number: 'Estimation no {number}',
-    vehicle: 'Véhicule',
     validUntil: 'Valable jusqu’au {date}',
     expired: 'Cette estimation n’est plus valable depuis le {date}. Appelez-nous pour la mettre à jour.',
     note: 'Prix estimé. Si votre mécano trouve autre chose, rien ne sera fait sans votre accord.',
@@ -170,11 +176,10 @@ export const client = {
     onTheWayTo: '{name} est en route vers {place}',
     arrivedTo: '{name} est arrivé à {place}',
     mechanicAnon: 'Le mécano',
-    eta: 'Arrivée prévue vers {time} (environ {min}\u00a0min)',
     etaAt: 'Arrivée prévue vers {time}',
     etaSoon: 'Arrivée d’un instant à l’autre',
     etaNone: 'Il s’en vient chez vous.',
-    mechanic: 'Votre mécano\u00a0: {name}',
+    min: 'min',
     updated: 'Position mise à jour à {time}.',
     noPos: 'La position du camion n’est pas encore disponible. Cette page se met à jour toute seule.',
     arrived: '{name} est arrivé',
@@ -197,7 +202,6 @@ export const client = {
   /* « Réserver en ligne » (client.html#reserver) */
   book: {
     title: 'Prendre rendez-vous',
-    lead: 'Le mécano vient chez vous. Choisissez le travail, votre adresse et le moment qui vous convient.',
     step: 'Étape {n} sur 4',
     back: 'Retour',
     next: 'Continuer',
@@ -229,6 +233,8 @@ export const client = {
       leadFlex: 'On vous attend {day}, dans la journée. Nous vous confirmons la veille une plage de 4 heures.', text: 'Un texto de confirmation s’en vient au {phone}.',
       noText: 'Gardez ce lien : il montre votre rendez-vous.', see: 'Voir mon rendez-vous', again: 'Prendre un autre rendez-vous' },
     closed: { title: 'La réservation en ligne est fermée', text: 'Appelez-nous : on va vous trouver un moment.' },
+    /* the server answered without the customer's link: nothing was booked */
+    unconfirmed: { title: 'Votre rendez-vous n’est pas confirmé', text: 'Nous n’avons pas pu enregistrer votre demande. Appelez-nous : on va vous trouver un moment.' },
     errors: { far: 'Cette adresse est en dehors de notre secteur. Appelez-nous, on peut peut-être s’arranger.',
       too_many: 'Vous avez déjà des rendez-vous à venir. Pour en ajouter un, appelez-nous.',
       busy: 'Il y a beaucoup de réservations en ce moment. Réessayez dans quelques minutes.',

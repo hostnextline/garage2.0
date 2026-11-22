@@ -1,17 +1,18 @@
 /* Équipe (#/team, propriétaire): the people as rows (colour, name, roles, last seen, state), the pending invitations,
    « Inviter quelqu'un », the person's sheet (roles, rights, colour…), and what each role may do. */
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { UserPlus } from 'lucide-preact';
-import type { ScreenProps } from '../../app/routes';
+import type { ScreenProps } from '../../platform/router';
 import { t } from '../../lib/i18n';
 import { staffList, trucks, truck } from '../../data/select';
 import { access } from '../../data/auth';
 import { errorMessage } from '../../data/api';
 import type { Staff } from '../../data/types';
 import { Page, Panel, Button, Avatar, Pill, Banner, Empty, Skeleton, Rows } from '../../ui';
-import { ago } from '../map/ago';
-import { loadTeamList, loadRules, rolesWords, type Invitation, type LinkResult, type TeamList } from './teamApi';
+import { ago } from '../../shared/map/ago';
+import { loadTeamList, loadRules, rolesWords, type Invitation, type LinkResult, type TeamList } from '../../domain/team/teamApi';
 import { InviteSheet, type InviteDraft } from './InviteSheet';
+import { againDraft } from './again';
 import { PersonSheet } from './PersonSheet';
 import { InvitationSheet } from './InvitationSheet';
 import { LinkSheet } from './LinkSheet';
@@ -28,12 +29,15 @@ export default function TeamScreen(_p: ScreenProps) {
   const [inv, setInv] = useState<Invitation | null>(null);
   const [link, setLink] = useState<LinkResult | null>(null);
 
+  // the latest ask wins: an older answer that comes back after a newer one (or after leaving the screen) is dropped
+  const asked = useRef(0);
   const refresh = async () => {
+    const n = ++asked.current;
     setListState((s) => (s === 'ok' ? 'ok' : 'loading'));
-    try { setList(await loadTeamList()); setListState('ok'); }
-    catch (e) { setListError(errorMessage(e)); setListState('error'); }
+    try { const l = await loadTeamList(); if (n === asked.current) { setList(l); setListState('ok'); } }
+    catch (e) { if (n === asked.current) { setListError(errorMessage(e)); setListState('error'); } }
   };
-  useEffect(() => { void refresh(); void loadRules(); }, []);
+  useEffect(() => { void refresh(); void loadRules(); return () => { asked.current = -1; }; }, []);
 
   const meId = access.value?.id;
   const order = (s: Staff) => (s.id === meId ? 0 : s.active ? 1 : 3);
@@ -67,7 +71,7 @@ export default function TeamScreen(_p: ScreenProps) {
       <InviteSheet open={!!invite} prefill={invite?.prefill} again={invite?.again} onClose={() => setInvite(null)} onSent={() => void refresh()} onLink={setLink} />
       <PersonSheet id={personId} signIns={list?.sign_ins} onClose={() => setPersonId(null)} onLink={setLink} />
       <InvitationSheet inv={inv} onClose={() => setInv(null)} onCancelled={() => void refresh()}
-        onAgain={(i) => { setInv(null); setInvite({ again: true, prefill: { full_name: i.full_name, email: i.email, roles: i.roles.length ? i.roles : ['mechanic'], truck_id: i.truck_id || '' } }); }} />
+        onAgain={(i) => { setInv(null); setInvite({ again: true, prefill: againDraft(i) }); }} />
       <LinkSheet result={link} onClose={() => setLink(null)} />
     </Page>
   );
