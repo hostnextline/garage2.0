@@ -128,10 +128,10 @@ const save = (h, day, lists, { moved = [], was, auto = false, accept = {}, op = 
 const stopOf = (r, id) => r.stops.find((s) => s.id === id);
 /** k → { eta, at (pin), win, truck, order } as stored */
 async function dayOf(h, w) {
-  const rows = await server(h, `select id, truck_id, stop_order, eta_min, arrive_at, win_start, win_end, truck_pinned, manual_order from public.jobs
+  const rows = await server(h, `select id, truck_id, stop_order, eta_min, arrive_at, win_start, win_end, truck_pinned, manual_order, status from public.jobs
     where day = $1 and truck_id = any($2::uuid[]) and deleted_at is null and status in ('booked', 'en_route', 'on_site')`, [w.day, [w.tk, w.tk2]]);
   return Object.fromEntries(rows.map((r) => [w.name[r.id] ?? r.id, { eta: r.eta_min, at: r.arrive_at, win: [r.win_start, r.win_end], truck: r.truck_id, order: r.stop_order,
-    pinned: r.truck_pinned, manual: r.manual_order }]));
+    pinned: r.truck_pinned, manual: r.manual_order, status: r.status }]));
 }
 const etas = (d, ks) => ks.map((k) => d[k].eta);
 /** the oracle: what the save wrote is what the preview said (Part 28's D2 oracle; `pin` is the minute written) */
@@ -350,23 +350,25 @@ test('G4 tight day (today, the Camion past its hours, F late): after the save, a
   // what Part 27's re-plan does to this day (inside a savepoint, undone): the planner of a tight day breaks the minutes
   await h.c.query('savepoint old');
   await server(h, part27('replan_block_safe'));
+  await server(h, part27('plan_route'));
   await replan(h, w);
   const old = await dayOf(h, w);
   assert.ok(old.C.eta > old.C.at, `Part 27: C past its minute (${old.C.eta} > ${old.C.at})`);
   await h.c.query('rollback to savepoint old');
-  // Part 29: kept
+  // Part 29: kept (the guard), or planned with the Camion frozen (plan_route: its stored day would break)
   const r = await replan(h, w);
-  assert.deepEqual([r.skipped, r.kept, r.why], [true, true, 'late']);
+  assert.ok((r.kept && r.why === 'late') || (r.frozen ?? []).includes(w.tk), 'kept or the Camion frozen: ' + JSON.stringify({ kept: r.kept, why: r.why, frozen: r.frozen }));
   const d2 = await dayOf(h, w);
   for (const k of ['C', 'E', 'B']) assert.deepEqual([d2[k].eta, d2[k].at, d2[k].order], [d1[k].at, d1[k].at, d1[k].order], `${k} at its minute, in his order`);
   for (const k of ['D', 'F', 'G', 'H']) assert.deepEqual([d2[k].eta, d2[k].order], [d1[k].eta, d1[k].order], `${k} as saved`);
   // roads_replan (the measures, the switch) of that day: the same guard (and Part 27's text breaks it the same way)
   await h.c.query('savepoint rr');
   const rr = await sval(h, `select public.roads_replan(array[$1::date]) v`, [w.day]);
-  assert.deepEqual([rr.planned, rr.kept], [0, [{ day: w.day, block: 'day' }]], 'roads_replan: kept');
+  assert.deepEqual(rr.kept, [{ day: w.day, block: 'day' }], 'roads_replan: kept (the guard, or the Camion frozen)');
   const dr = await dayOf(h, w);
   for (const k of ['C', 'E', 'B']) assert.deepEqual([dr[k].eta, dr[k].at], [d1[k].at, d1[k].at], `${k} at its minute after roads_replan`);
   await server(h, part27('roads_replan'));
+  await server(h, part27('plan_route'));
   await sval(h, `select public.roads_replan(array[$1::date]) v`, [w.day]);
   assert.ok((await dayOf(h, w)).C.eta > d1.C.at, 'Part 27’s roads_replan: C past its minute');
   await h.c.query('rollback to savepoint rr');
@@ -384,11 +386,15 @@ test('G4 tight later day (the trucks start at 10 h 20, not today): the planner a
   assert.ok(Object.keys(p.accept.late).length + Object.keys(p.accept.over).length > 0, 'a tight day: something late or past the hours');
   assert.equal((await save(h, w.day, lists, { moved: [w.ids.B], was: b.was, accept: p.accept })).saved, true);
   const d1 = await dayOf(h, w);
+  const core = await sval(h, `select public.plan_route_core($1::date, 'day', null, null, null, null) v`, [w.day]);
+  const breaks = (core.late ?? []).filter((id) => { const x = d1[w.name[id]]; return x && x.eta <= (x.at ?? x.win[1]); });
+  assert.ok(breaks.length > 0, 'the planner alone would make late someone served on time: ' + JSON.stringify((core.late ?? []).map((x) => w.name[x])));
+  // the reviews' F1: plan_route freezes the Camion (every plan of that day: a booking, a length, the hours)
   const plan = await sval(h, `select public.plan_block($1::date, 'day') v`, [w.day]);
-  const breaks = (plan.late ?? []).filter((id) => { const x = d1[w.name[id]]; return x && x.eta <= (x.at ?? x.win[1]); });
-  assert.ok(breaks.length > 0, 'the planner alone would make late someone served on time: ' + JSON.stringify((plan.late ?? []).map((x) => w.name[x])));
+  assert.deepEqual(plan.frozen, [w.tk], 'the Camion frozen');
+  assert.deepEqual(await sval(h, `select public.plan_breaks($1::jsonb, null) v`, [JSON.stringify(plan)]), [], 'the plan breaks nothing');
   const r = await replan(h, w);
-  assert.equal(r.why, 'late');
+  assert.ok(r.why === 'late' || (r.frozen ?? []).includes(w.tk), JSON.stringify({ why: r.why, frozen: r.frozen }));
   const d2 = await dayOf(h, w);
   for (const k of Object.keys(d1)) assert.deepEqual([d2[k].eta, d2[k].order, d2[k].at], [d1[k].eta, d1[k].order, d1[k].at], `${k} as saved`);
 }));
@@ -536,24 +542,6 @@ async function measureAll(h, fn = () => 12) {
   throw new Error('still something to measure');
 }
 
-test('« Vraies routes » on: a dragged stop whose trip is not measured is pointed anyway, no window cut from a guess (measured false), never said late', () => tx(async (h) => {
-  const w = await hassanDay(h, { pins: [] });
-  await measureAll(h, () => 12);
-  await become(h, w.owner);
-  assert.equal((await h.rpc('roads_switch', { p_op: uuid(), p_on: true })).on, true);
-  // B's place has no time any more
-  await server(h, `delete from public.drive_times where a = public.drive_key($1, $2) or b = public.drive_key($1, $2)`, P.B);
-  const b = await basis(h, w);
-  const lists = moveIn(b.lists, w.ids.B, w.tk, 4);
-  const p = await preview(h, w.day, lists, { moved: [w.ids.B], was: b.was });
-  const sb = stopOf(p, w.ids.B);
-  assert.deepEqual([sb.measured, sb.pin, sb.pin_new, sb.new_win, sb.late_min, sb.early_min], [false, sb.eta, true, null, null, null]);
-  assert.deepEqual(p.accept.at, { [w.ids.B]: sb.eta });
-  assert.equal((await save(h, w.day, lists, { moved: [w.ids.B], was: b.was, accept: p.accept })).saved, true);
-  const rb = await row(h, w.ids.B);
-  assert.deepEqual([rb.arrive_at, rb.win_start, rb.win_end, rb.truck_pinned], [sb.eta, 510, 750, true], 'pointed; its window as it was');
-}));
-
 test('blocks mode (not live): the others keep their arrival times (Part 28 pulled them earlier), no minute is written (a minute is window mode only)', () => tx(async (h) => {
   await h.as(null);
   const owner = await h.person('Hassan Roy', ['owner'], { short_name: 'Hassan' });
@@ -582,10 +570,178 @@ test('blocks mode (not live): the others keep their arrival times (Part 28 pulle
 }));
 
 /* ------------------------------------------------------------------------------------------------------------------
+   The reviews' fix (reports/drag-keeps-review-days.md F1, F7, F8). F1: on a TIGHT day (someone late, the truck past its
+   hours: what « Enregistrer quand même » makes), every path that writes a plan of the whole day — a booking, « Réserver
+   quand même », a length changed, the truck's hours, a move into the day — went through Part 27's planner, which breaks
+   the minutes and the windows there. Now plan_route freezes the vehicle whose stored day the plan would break (Part 27's
+   frozen vehicle: its stops stay in their order, nothing new on it but « quand même », at its end); the other vehicle is
+   planned around (G4)
+   ------------------------------------------------------------------------------------------------------------------ */
+
+/** the tight day of G3, saved: today 10 h 20, A under way, B dragged after E (F 7 min late, the Camion past its hours) */
+async function tightToday(h) {
+  const day = await h.val(`select public.local_today()::text`);
+  const w = await hassanDay(h, { day, today: { now: 620, enRoute: true } });
+  const b = await basis(h, w);
+  const lists = moveIn(b.lists, w.ids.B, w.tk, 3);
+  const p = await preview(h, w.day, lists, { moved: [w.ids.B], was: b.was });
+  assert.equal((await save(h, w.day, lists, { moved: [w.ids.B], was: b.was, accept: p.accept })).saved, true);
+  return { w, d1: await dayOf(h, w) };
+}
+/** a tight LATER day: the trucks from 10 h 20, B dragged to place 5 and saved (« quand même ») */
+async function tightLater(h) {
+  const w = await hassanDay(h, { hours: [[620, 1200]] });
+  const b = await basis(h, w);
+  const lists = moveIn(b.lists, w.ids.B, w.tk, 4);
+  const p = await preview(h, w.day, lists, { moved: [w.ids.B], was: b.was });
+  assert.equal((await save(h, w.day, lists, { moved: [w.ids.B], was: b.was, accept: p.accept })).saved, true);
+  return { w, d1: await dayOf(h, w) };
+}
+/** after a later action, against the day as saved: every stop still on a vehicle; one at its minute stays at it; one
+ *  inside its window stays inside it (the same window); one already past its minute is not made later; the vehicles of
+ *  `order` keep his order */
+function keeps(w, d1, d2, what, order = [w.tk]) {
+  for (const [k, x] of Object.entries(d1)) {
+    if (!w.ids[k] || x.status === 'en_route') continue;
+    const y = d2[k];
+    assert.ok(y, `${what}: ${k} still on a vehicle`);
+    if (x.at != null && x.eta <= x.at) assert.deepEqual([y.at, y.eta], [x.at, x.at], `${what}: ${k} at its minute`);
+    else if (x.at != null) assert.ok(y.eta <= x.eta, `${what}: ${k} (past its minute) not made later (${y.eta} ≤ ${x.eta})`);
+    else if (x.win[0] != null && x.eta >= x.win[0] && x.eta <= x.win[1]) {
+      assert.deepEqual(y.win, x.win, `${what}: ${k} its window`);
+      assert.ok(y.eta >= x.win[0] && y.eta <= x.win[1], `${what}: ${k} inside its window (${y.eta} in ${x.win})`);
+    }
+  }
+  for (const t of order) {
+    const was = Object.keys(d1).filter((k) => w.ids[k] && d1[k].truck === t).sort((a, b) => d1[a].order - d1[b].order);
+    const now = Object.keys(d2).filter((k) => was.includes(k) && d2[k].truck === t).sort((a, b) => d2[a].order - d2[b].order);
+    assert.deepEqual(now, was, `${what}: his order on that vehicle`);
+  }
+}
+const bookAt = async (h, w, job) => {
+  await h.as(null);
+  const near = await h.customer('Nouveau', P.C[0] + 0.004, P.C[1]);
+  await become(h, w.owner);
+  let r = null;
+  const e = await h.fails(async () => { r = await h.rpc('book_job', { p_op: uuid(), p_job: { customer_id: near, day: w.day, block: 'day', duration_min: 45, ...job }, p_items: [] }); });
+  return e ? { refused: e.hint } : r;
+};
+const try_ = async (h, fn) => { await h.c.query('savepoint z'); try { return await fn(); } finally { await h.c.query('rollback to savepoint z'); } };
+
+test('F1 tight today, saved (B after E): a plain booking at 16 h does not go on the Camion (its day as saved: every minute, window and his order), it goes on the Voiture', () => tx(async (h) => {
+  const { w, d1 } = await tightToday(h);
+  const r = await bookAt(h, w, { win_start: 960 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.truck_id, w.tk2, 'on the Voiture');
+  keeps(w, d1, await dayOf(h, w), 'booking 16 h');
+}));
+
+test('F1 tight today, saved: « Réserver quand même » on the Camion goes at the END of his order, nobody else moves; D shortened (75 → 45 min) and the Camion until 21 h keep every minute and his order', () => tx(async (h) => {
+  const { w, d1 } = await tightToday(h);
+  await try_(h, async () => {
+    const r = await bookAt(h, w, { win_start: 960, truck_id: w.tk, force: true });
+    assert.deepEqual([r.ok, r.forced, r.truck_id], [true, true, w.tk], JSON.stringify(r));
+    const d2 = await dayOf(h, w);
+    keeps(w, d1, d2, '« quand même »');
+    const last = Math.max(...Object.values(d2).filter((x) => x.truck === w.tk).map((x) => x.order));
+    assert.equal(d2[r.job_id].order, last, 'at the end of his order');
+  });
+  await try_(h, async () => {
+    assert.equal((await h.rpc('set_job_duration', { p_op: uuid(), p_job: w.ids.D, p_duration: 45 })).ok, true);
+    keeps(w, d1, await dayOf(h, w), 'D 75 → 45');
+  });
+  await try_(h, async () => {
+    const dow = String(new Date(w.day + 'T12:00:00').getDay());
+    assert.equal((await h.rpc('apply_hours', { p_op: uuid(), p_truck: w.tk, p_mode: 'day', p_week: { [dow]: [[480, 1260]] }, p_from: w.day, p_weeks: 1 })).ok, true);
+    keeps(w, d1, await dayOf(h, w), 'the Camion until 21 h', []);
+  });
+}));
+
+test('F1 a tight LATER day (the trucks from 10 h 20), saved: a booking, « Réserver quand même », a length changed, the hours — A (never dragged, 9 h 30 – 13 h 30) stays inside its window, every minute held', () => tx(async (h) => {
+  const { w, d1 } = await tightLater(h);
+  await try_(h, async () => { const r = await bookAt(h, w, { win_start: 960 }); if (r.ok) keeps(w, d1, await dayOf(h, w), 'booking 16 h'); else assert.match(r.refused, /block_full|window_full/); });
+  await try_(h, async () => {
+    const r = await bookAt(h, w, { win_start: 960, force: true });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    keeps(w, d1, await dayOf(h, w), '« quand même » 16 h');
+  });
+  await try_(h, async () => { assert.equal((await h.rpc('set_job_duration', { p_op: uuid(), p_job: w.ids.D, p_duration: 45 })).ok, true); keeps(w, d1, await dayOf(h, w), 'D 75 → 45'); });
+  await try_(h, async () => {
+    const dow = String(new Date(w.day + 'T12:00:00').getDay());
+    assert.equal((await h.rpc('apply_hours', { p_op: uuid(), p_truck: w.tk, p_mode: 'day', p_week: { [dow]: [[620, 1260]] }, p_from: w.day, p_weeks: 1 })).ok, true);
+    keeps(w, d1, await dayOf(h, w), 'the Camion until 21 h', []);
+  });
+}));
+
+test('F1 live as it is today (no Part 29 save: C and E pointed by exact moves, E 3 min past its minute): a plain booking at 16 h keeps C at 14 h 20 and his order (Part 27 sent C to 23 h 22)', () => tx(async (h) => {
+  const day = await h.val(`select public.local_today()::text`);
+  const w = await hassanDay(h, { day, today: { now: 620, enRoute: true } });
+  const d1 = await dayOf(h, w);
+  const r = await bookAt(h, w, { win_start: 960 });
+  if (r.ok) keeps(w, d1, await dayOf(h, w), 'booking 16 h'); else assert.match(r.refused, /block_full|window_full/);
+  // a move of the Voiture's G onto the Camion, the same day: refused, or it keeps the Camion's day
+  const e = await h.fails(() => h.rpc('move_job', { p_op: uuid(), p_job: w.ids.G, p_day: w.day, p_block: 'day', p_truck: w.tk }));
+  if (!e) keeps(w, d1, await dayOf(h, w), 'G onto the Camion', []);
+}));
+
+test('F1 a day with room: the planner as before (nothing frozen): the same answer with or without the fix, a booking placed as before', () => tx(async (h) => {
+  const w = await hassanDay(h, { pins: [] });
+  const plan = await sval(h, `select public.plan_block($1::date, 'day') v`, [w.day]);
+  assert.equal(plan.frozen, undefined, 'nothing frozen on a day with room');
+  const core = await sval(h, `select public.plan_route_core($1::date, 'day', null, null, null, null) v`, [w.day]);
+  assert.deepEqual(plan, core, 'plan_block = the planner of before');
+  assert.equal((await bookNearC(h, w)).ok, true);
+}));
+
+test('F7 today: the clock crosses a 5-minute step between the preview and « Enregistrer » → saved with the minute walked now (at most 5 later than shown); past that, « Regarde de nouveau »', () => tx(async (h) => {
+  const day = await h.val(`select public.local_today()::text`);
+  const w = await hassanDay(h, { day, today: { now: 621, enRoute: true }, pins: [] });
+  const b = await basis(h, w);
+  const lists = moveIn(b.lists, w.ids.F, w.tk, 0);
+  const moved = [w.ids.F];
+  const p = await preview(h, w.day, lists, { moved, was: b.was });
+  await clock(h, 626);
+  const p2 = await preview(h, w.day, lists, { moved, was: b.was });
+  assert.ok(p2.accept.at[w.ids.F] > p.accept.at[w.ids.F] && p2.accept.at[w.ids.F] <= p.accept.at[w.ids.F] + 5, `F's minute walked from the clock (${p.accept.at[w.ids.F]} → ${p2.accept.at[w.ids.F]})`);
+  assert.deepEqual([p2.accept.windows, p2.accept.flex, p2.accept.pins], [p.accept.windows, p.accept.flex, p.accept.pins], 'nothing else new');
+  await try_(h, async () => {
+    await clock(h, 640);
+    assert.equal((await h.fails(() => save(h, w.day, lists, { moved, was: b.was, accept: p.accept })))?.hint, 'outcome_changed', '15 minutes later: look again');
+  });
+  assert.equal((await save(h, w.day, lists, { moved, was: b.was, accept: p.accept })).saved, true);
+  assert.equal((await row(h, w.ids.F)).arrive_at, p2.accept.at[w.ids.F], 'the minute walked now');
+}));
+
+test('F8 « Vraies routes » on, trips not measured: a dragged stop whose guessed hour is inside its window is pointed; one outside it is NOT (no minute from a guess outside what it has), its row says « not measured »', () => tx(async (h) => {
+  const w = await hassanDay(h, { pins: [] });
+  await measureAll(h, () => 12);
+  await become(h, w.owner);
+  assert.equal((await h.rpc('roads_switch', { p_op: uuid(), p_on: true })).on, true);
+  await server(h, `delete from public.drive_times where a = public.drive_key($1, $2) or b = public.drive_key($1, $2)`, P.B);
+  const b = await basis(h, w);
+  // A after B (inside 8 h – 12 h): pointed
+  const la = moveIn(b.lists, w.ids.A, w.tk, 1);
+  const pa = await preview(h, w.day, la, { moved: [w.ids.A], was: b.was });
+  const sa = stopOf(pa, w.ids.A);
+  assert.ok(sa.eta >= sa.win[0] && sa.eta <= sa.win[1], 'inside its window');
+  assert.deepEqual([sa.measured, sa.pin, sa.pin_new], [false, sa.eta, true]);
+  // B to the end (outside 8 h 30 – 12 h 30): not pointed
+  const lists = moveIn(b.lists, w.ids.B, w.tk, 4);
+  const p = await preview(h, w.day, lists, { moved: [w.ids.B], was: b.was });
+  const sb = stopOf(p, w.ids.B);
+  assert.ok(sb.eta > sb.win[1], 'outside its window');
+  assert.deepEqual([sb.measured, sb.pin, sb.pin_new, sb.new_win, sb.late_min], [false, null, false, null, null]);
+  assert.equal(p.accept.at[w.ids.B], undefined);
+  assert.equal((await save(h, w.day, lists, { moved: [w.ids.B], was: b.was, accept: p.accept })).saved, true);
+  const rb = await row(h, w.ids.B);
+  assert.deepEqual([rb.arrive_at, rb.win_start, rb.win_end], [null, 510, 750], 'no minute; its window as it was');
+}));
+
+/* ------------------------------------------------------------------------------------------------------------------
    the file
    ------------------------------------------------------------------------------------------------------------------ */
 
-test('the migration: « Part 29 » first, only day_order_core, replan_block_safe and roads_replan made again (create or replace), no drop / delete / truncate / alter function, the rights the server’s own; applied twice the same functions and grants', () => tx(async (h) => {
+test('the migration: « Part 29 » first, only day_order_core, replan_block_safe, roads_replan, plan_route and plan_route_core made again and plan_breaks added (create or replace), no drop / delete / truncate / alter function, the rights the server’s own; applied twice the same functions and grants', () => tx(async (h) => {
   const sql = readFileSync(FILE, 'utf8');
   assert.match(sql.split('\n')[0], /^-- Part 29 — Réorganiser/);
   const code = sql.replace(/--[^\n]*/g, ' ').replace(/'(?:[^']|'')*'/g, "''");
@@ -594,13 +750,13 @@ test('the migration: « Part 29 » first, only day_order_core, replan_block_safe
   assert.doesNotMatch(code, /alter\s+(function|table)/i);
   assert.doesNotMatch(code, /\bcreate\s+function\b/i, 'only « create or replace »');
   const made = [...sql.matchAll(/^create or replace function public\.([a-z_0-9]+)\s*\(/gim)].map((m) => m[1]);
-  assert.deepEqual(made.sort(), ['day_order_core', 'replan_block_safe', 'roads_replan']);
+  assert.deepEqual(made.sort(), ['day_order_core', 'plan_breaks', 'plan_route', 'plan_route_core', 'replan_block_safe', 'roads_replan']);
   await h.as(null); await h.c.query('reset role');
   const state = () => h.q(`select coalesce(jsonb_agg(jsonb_build_array(p.oid::regprocedure::text, p.proacl::text, md5(p.prosrc)) order by p.oid::regprocedure::text), '[]') fns
-    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('day_order_core', 'replan_block_safe', 'roads_replan', 'day_order_preview', 'day_order_save')`);
+    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('day_order_core', 'replan_block_safe', 'roads_replan', 'plan_route', 'plan_route_core', 'plan_breaks', 'day_order_preview', 'day_order_save')`);
   const built = await state();
   for (const f of built[0].fns) {
-    if (/^(day_order_core|replan_block_safe|roads_replan)\(/.test(f[0])) {
+    if (/^(day_order_core|replan_block_safe|roads_replan|plan_route|plan_route_core|plan_breaks)\(/.test(f[0])) {
       assert.doesNotMatch(f[1], /authenticated=|anon=|(^|[{,])=X\//, `${f[0]}: the server's own (${f[1]})`);
       assert.match(f[1], /service_role=X\//, `${f[0]}: the server may call it`);
     }
@@ -626,7 +782,7 @@ test('the way back (retour-partie29.sql) puts back Part 28’s save and Part 27�
   assert.equal(await cOf(), 697, 'Part 29');
   await h.as(null); await h.c.query('reset role');
   await h.c.query(undo());
-  const left = await h.q(`select proname from pg_proc where pronamespace = 'public'::regnamespace and proname in ('day_order_core', 'replan_block_safe', 'roads_replan') and prosrc like '%Part 29%'`);
+  const left = await h.q(`select proname from pg_proc where pronamespace = 'public'::regnamespace and proname in ('day_order_core', 'replan_block_safe', 'roads_replan', 'plan_route', 'plan_route_core') and prosrc like '%Part 29%'`);
   assert.deepEqual(left, [], 'none says Part 29');
   await become(h, w.owner);
   assert.equal(await cOf(), 630, 'Part 28 again (its F1: pulled to its window’s start)');
@@ -654,18 +810,19 @@ test('the try (essai-partie29.sql) on this copy, Part 29 undone first and the do
   const local = tmpl.replace(/  select \* into r from extensions\.http_get[\s\S]*?raise exception 'sha différent : %', sha; end if;\n/, "  body := current_setting('essai.body');\n");
   assert.ok(local !== tmpl && !local.includes('http_get'), 'the download replaced');
   await h.c.query(`select set_config('essai.body', $1, true)`, [readFileSync(FILE, 'utf8')]);
-  const before = await h.q(`select md5(string_agg(prosrc, '' order by proname)) m from pg_proc where pronamespace = 'public'::regnamespace and proname in ('day_order_core', 'replan_block_safe', 'roads_replan')`);
+  const before = await h.q(`select md5(string_agg(prosrc, '' order by proname)) m from pg_proc where pronamespace = 'public'::regnamespace and proname in ('day_order_core', 'replan_block_safe', 'roads_replan', 'plan_route', 'plan_route_core')`);
   await h.c.query('savepoint e');
   let msg = null;
   try { await h.c.query(local); } catch (e) { msg = e.message; }
   await h.c.query('rollback to savepoint e');
-  assert.match(msg ?? '', /^ESSAI OK : garder_ordre \(rien n'est gardé\) ; (\d+) réponses du planificateur comparées, toutes les mêmes ; (\d+) blocs serrés/, msg);
+  assert.match(msg ?? '', /^ESSAI OK : garder_ordre \(rien n'est gardé\) ; (\d+) réponses du planificateur comparées, les mêmes hors des blocs serrés ; (\d+) blocs serrés où les véhicules gelés gardent leur ordre/, msg);
   t.diagnostic(msg);
   const [, n, tight] = /; (\d+) réponses .*; (\d+) blocs serrés/.exec(msg);
+  assert.ok(msg.includes(w.tk), `the tight day's frozen vehicle is named: ${msg}`);
   assert.ok(Number(n) >= 14, `${n} answers`);
   assert.ok(Number(tight) >= 1 && msg.includes(w.day), `the tight day is named: ${msg}`);
   assert.match(msg, /minutes pointées déjà dépassées/);
-  const after = await h.q(`select md5(string_agg(prosrc, '' order by proname)) m from pg_proc where pronamespace = 'public'::regnamespace and proname in ('day_order_core', 'replan_block_safe', 'roads_replan')`);
+  const after = await h.q(`select md5(string_agg(prosrc, '' order by proname)) m from pg_proc where pronamespace = 'public'::regnamespace and proname in ('day_order_core', 'replan_block_safe', 'roads_replan', 'plan_route', 'plan_route_core')`);
   assert.deepEqual(after, before, 'nothing kept');
   // and its two refusals: Part 29 already there, Part 28 missing
   await h.c.query(readFileSync(FILE, 'utf8'));
