@@ -519,7 +519,15 @@ end $do$;
   counts as told, « Renvoyer »; a text that failed: « Réessayer » / « Je l'ai averti » = `tell_mark` 'call'; texting not
   connected: each message to send by hand, « C'est envoyé » = `tell_mark` 'hand'). The single booking / window / moved
   texts take the same lease and write told (a client texted from « Texter … ? » is not counted again; `already` when
-  nothing new is owed); « Fixer les plages » no longer texts (it opens tomorrow's list); the customer's page shows the
+  nothing new is owed, with `why: 'told'`: the app then says « Pas de texto : l'heure qu'on a dite à … tient toujours »,
+  never « déjà envoyé »; a client never told anything asked « a changé » gets his full confirmation instead). The told
+  window wins over the planned one only when the planned window does not hold his sure arrival, or the arrival is a
+  minute pointed (the exact move inside what he was told): « Déplacer » to the next window (the truck there at its start =
+  his told end) is a new window to tell him (fixer, review R0). A stop not dragged waits for its told start only when it
+  is EARLIER than its planned one (review R1). The day's button never waits for a row another action holds: `held`,
+  asked again in the same call, then `left` — `busy` is only another send holding the lease (review S4). told_install
+  trusts a « window » text only if the job's day, block, window and customer and the customer's number did not change
+  after it (review S1); « Fixer les plages » no longer texts (it opens tomorrow's list); the customer's page shows the
   hours he was told while booked. Tests: unit (`src/domain/jobs/dayOrder.test.ts`, `told.test.ts`, `src/data/dayOrder.test.ts`,
   `tell.test.ts`, `src/shared/jobs/{DayOrderSheet,DayOrderHost,listDrag,TellSheet,TellHost,ToldBanner,ToldBits}.test.*`,
   `src/shared/moment/notify-told.test.tsx`, `src/dev/demo-{reorg,tell}.test.ts`, the paths of « Texter … ? »), database

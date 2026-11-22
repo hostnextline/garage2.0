@@ -240,8 +240,12 @@ export function TellSheet(p: { day: string; onClose: () => void }) {
         {sending && <p class="muted" style={{ margin: 0 }} role="status" aria-live="polite" data-testid="tell-progress">{t('tell.sending', { done: progress.done, n: progress.n })}</p>}
         {failure && <Banner kind="bad" data-testid="tell-failure">{failure}</Banner>}
         {phase === 'done'
-          ? <Result day={p.day} outcomes={outcomes} rows={server ?? phoneRows} left={fresh ? reach.filter((r) => !DONE.has(outcomes.get(r.id)?.what as What)) : []}
-              send={send} mark={mark} markOutcome={markOutcome} />
+          ? <>
+              <Result day={p.day} outcomes={outcomes} rows={server ?? phoneRows} left={fresh ? reach.filter((r) => !DONE.has(outcomes.get(r.id)?.what as What)) : []}
+                send={send} mark={mark} markOutcome={markOutcome} />
+              {/* the ones to tell himself are still there once the texts went: the moment he closes the sheet (review F4) */}
+              <ToCall day={p.day} rows={toCall.filter((r) => !outcomes.has(r.id))} sending={sending} mark={mark} callMark={callMark} />
+            </>
           : <>
               {unmeasured.length > 0 && (
                 <Banner kind="info" data-testid="tell-unmeasured"
@@ -251,24 +255,7 @@ export function TellSheet(p: { day: string; onClose: () => void }) {
               )}
               {!all.length && <p class="muted" style={{ margin: 0 }} data-testid="tell-all">{t(p.day === addDays(today(), 1) ? 'tell.allTomorrow' : 'tell.all')}</p>}
               {reach.length > 0 && <ReachList day={p.day} rows={reach} n={nReach} />}
-              {toCall.length > 0 && (
-                <section class="stack" data-testid="tell-tocall">
-                  <h3 class="field-label" style={{ margin: 0 }}>{t('tell.toCall', { n: customersOf(toCall) })}</h3>
-                  <Rows>
-                    {toCall.map((r) => {
-                      const tel = telOf(phoneOfRow(r));
-                      return (
-                        <RowItem key={r.id} data-testid="tell-tocall-row" title={nameOf(r)}
-                          sub={<span style={{ display: 'block', whiteSpace: 'normal' }}>{nowWords(r, p.day)}<br /><span class="muted">{reasonOf(r)}</span></span>}
-                          end={<span class="row-wrap">
-                            {tel && <Button size="sm" icon={<Phone size={16} />} href={tel}>{t('tell.call')}</Button>}
-                            <Button size="sm" disabled={sending} onClick={() => mark([callMark(r)])} data-testid={`tell-mark-${r.id}`}>{t('tell.told')}</Button>
-                          </span>} />
-                      );
-                    })}
-                  </Rows>
-                </section>
-              )}
+              <ToCall day={p.day} rows={toCall} sending={sending} mark={mark} callMark={callMark} />
               {drift.length > 0 && (
                 <section class="stack" data-testid="tell-drift">
                   <h3 class="field-label" style={{ margin: 0 }}>{t('tell.drift', { n: drift.length })}</h3>
@@ -289,6 +276,30 @@ export function TellSheet(p: { day: string; onClose: () => void }) {
             </>}
       </div>
     </Sheet>
+  );
+}
+
+/** « À avertir toi-même »: no cell, refuses texts, that text switched off — « Appeler », « Je l'ai averti ». The buttons go
+    under the words, so a long name is never cut by them on a 390 px phone (review F10) */
+function ToCall(p: { day: string; rows: TellRow[]; sending: boolean; mark: (m: TellMark[]) => void; callMark: (r: TellRow) => TellMark }) {
+  if (!p.rows.length) return null;
+  return (
+    <section class="stack" data-testid="tell-tocall">
+      <h3 class="field-label" style={{ margin: 0 }}>{t('tell.toCall', { n: customersOf(p.rows) })}</h3>
+      <Rows>
+        {p.rows.map((r) => {
+          const tel = telOf(phoneOfRow(r));
+          return (
+            <RowItem key={r.id} data-testid="tell-tocall-row" title={nameOf(r)}
+              sub={<span style={{ display: 'block', whiteSpace: 'normal' }}>{nowWords(r, p.day)}<br /><span class="muted">{reasonOf(r)}</span>
+                <span class="row-wrap" style={{ marginTop: 'var(--sp-2)' }}>
+                  {tel && <Button size="sm" icon={<Phone size={16} />} href={tel}>{t('tell.call')}</Button>}
+                  <Button size="sm" disabled={p.sending} onClick={() => p.mark([p.callMark(r)])} data-testid={`tell-mark-${r.id}`}>{t('tell.told')}</Button>
+                </span></span>} />
+          );
+        })}
+      </Rows>
+    </section>
   );
 }
 

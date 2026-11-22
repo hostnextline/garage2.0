@@ -19,6 +19,8 @@ import { rememberLink } from './links';
 /* ---------- a text that did not go: the message and the link, to send by hand ---------- */
 export interface TextOutcome {
   status: string; message?: string | null; link?: string | null; phone?: string | null; error?: string | null;
+  /** « already »: 'told' = what he was told still holds (nothing new to send), 'busy' = another send holds him */
+  why?: string | null;
   /** Part 28: the hours this text said, its kind and appointment (booking / window / moved that could not go): « C'est
       envoyé » marks him told by hand */
   told?: { day: string; start: number | null; end: number | null } | null; kind?: string | null; jobId?: string | null
@@ -30,7 +32,8 @@ export const trackingSent = signal<Set<string>>(new Set());
 /** what the server said about a text: a toast when it went (or did not have to), else the sheet to send it by hand */
 function textResult(r: TextOutcome, name: string, okText?: string) {
   if (r.status === 'sent') toast(okText || t('jobs.text.sentTo', { name }), { kind: 'ok' });
-  else if (r.status === 'already') toast(t('jobs.text.already'));
+  // nothing new to tell him (what he was told still holds: an exact move inside it) is not « already sent » (review R0)
+  else if (r.status === 'already') toast(r.why === 'told' ? t('jobs.text.nothingNew', { name }) : t('jobs.text.already'));
   else if (r.status === 'quiet') toast(t('jobs.text.quiet'));
   else outcome.value = r;
 }
@@ -51,7 +54,7 @@ export async function sendText(kind: 'booking' | 'moved' | 'extras' | 'arrived',
     rememberLink(j, r.link);
     // no status: the server refused (not booked any more, no template…)
     if (!r.status) { toast(errorMessage(r), { kind: 'bad' }); return false; }
-    textResult({ status: r.status, message: r.message, link: r.link, phone: r.phone, error: r.error,
+    textResult({ status: r.status, message: r.message, link: r.link, phone: r.phone, error: r.error, why: r.why ?? null,
       ...(r.told ? { told: r.told, kind: r.kind ?? kind, jobId: r.job_id ?? j.id } : {}) }, jobFirstName(j), opts.okText);
     void refetch('jobs', j.id);
     if (kind === 'arrived') { void pull('invoices'); void pull('payments'); }

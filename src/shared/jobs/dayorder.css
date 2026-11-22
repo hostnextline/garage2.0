@@ -2,20 +2,27 @@
    chips keep the other truck one thumb away; computer (≥ 760 px, the sheet is a 1040 px window): the trucks side by side,
    all inside the one scrolling body (no column scrolls by itself: one box to auto-scroll), no chips. */
 
-/* the status line and the chips stay at the top of the scrolling body */
+/* the status line and the chips stay at the top of the scrolling body: opaque (nothing shows through: review F2), as
+   short as it can be (the hint is under it, not in it) */
 .dayord-sticky { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--sp-5)); padding: 0 var(--sp-5);
-  background: color-mix(in srgb, var(--solid) 92%, transparent); }
+  background: var(--solid); box-shadow: 0 1px 0 var(--line); }
 .dayord-status { min-height: 48px; display: flex; align-items: center; gap: var(--sp-3); }
 .dayord-status .grow { color: var(--ink-2); font-size: var(--t-sm); }
-.dayord-chips { display: flex; gap: var(--sp-2); padding-bottom: var(--sp-2); overflow-x: auto; }
-.dayord-chip { flex: none; min-height: 40px; padding: 0 var(--sp-4); border-radius: var(--r-pill); border: 1px solid var(--line);
+.dayord-status .dayord-warn { color: var(--warn); font-weight: 520; }
+.dayord-hint { margin: var(--sp-2) 0 0; color: var(--ink-2); font-size: var(--t-sm); }
+/* 48 px chips that wrap (a third truck stays reachable during a drag: review F6) */
+.dayord-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-bottom: var(--sp-2); }
+.dayord-chip { flex: 0 1 auto; min-width: 0; max-width: 100%; min-height: 48px; padding: 0 var(--sp-4); border-radius: var(--r-pill); border: 1px solid var(--line);
   background: var(--sunken); color: var(--ink); font: inherit; font-weight: 520; display: inline-flex; align-items: center; gap: var(--sp-2); }
-.dayord-chip b { font-weight: 560; color: var(--ink-2); }
+.dayord-chip span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dayord-chip b { flex: none; font-weight: 560; color: var(--ink-2); }
 .dayord-chip.is-over { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+/* a place the stop may not go: the chip says so, its reason on the status line (review F3) */
+.dayord-chip.is-refused { border-color: var(--warn); box-shadow: inset 0 0 0 2px var(--warn); color: var(--warn); }
 
 .dayord-notes { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-2) 0; }
 .dayord-trucks { display: flex; flex-direction: column; gap: var(--sp-5); }
-.dayord-truck { display: flex; flex-direction: column; gap: var(--sp-2); scroll-margin-top: 112px; }
+.dayord-truck { display: flex; flex-direction: column; gap: var(--sp-2); scroll-margin-top: 120px; }
 .dayord-head { display: flex; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-2) 0; border-radius: var(--r-md); }
 .dayord-head h3 { margin: 0; font-size: var(--t-lg); font-weight: 560; }
 .dayord-head p { margin: 2px 0 0; font-size: var(--t-sm); color: var(--ink-2); }

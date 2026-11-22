@@ -204,6 +204,73 @@ test('T2 told_install marks what was texted (told = now), the flexible ones by t
   assert.equal((await ruleOf(h, owner, await row(h, never))).state, 'new');
 }));
 
+test('T2b told_install never marks a customer told a day or hours no text said: a « window » text counts only when the job’s day, block, window and customer and the customer’s number did not change after it; a confirmation only when the number did not change after it; a window text then a later confirmation is marked once (review S1, S5)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const tk = await h.truck('Camion', null, WEEK);
+  await h.q(`update public.trucks set start = $2::jsonb where id = $1`, [tk, JSON.stringify({ label: 'Ici', lat: near[0], lng: near[1] })]);
+  await h.q(`update public.trucks set active = false where id <> $1 and active`, [tk]);
+  await h.as(owner);
+  assert.equal((await h.rpc('windows_switch', { p_op: uuid(), p_on: true })).ok, true);
+  await clock(h, owner, 420);                           // 7 h: today is locked (win_lock_due), not started
+  const d0 = await dayOf(h, 0), d1 = await dayOf(h, 1), d3 = await dayOf(h, 3);
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const t0 = ago(3 * 1440), t1 = ago(1440), t2 = ago(60), t3 = ago(30);
+  await h.as(null);
+  const ana = await h.customer('Ana', ...near), bob = await h.customer('Bob', ...near, { phone: '4385550199' });
+  const carl = await h.customer('Carl', ...near, { phone: '4385550188' }), dan = await h.customer('Dan', ...near, { phone: '4385550177' });
+  const eve = await h.customer('Eve', ...near, { phone: '4385550166' }), fay = await h.customer('Fay', ...near, { phone: '4385550155' });
+  const v2 = uuid();
+  await h.q(`insert into public.vehicles (id, customer_id, make) values ($1, $2, 'Honda')`, [v2, bob]);
+  const J = (c, x) => ({ customer_id: c, block: 'day', status: 'booked', truck_id: tk, stop_order: 1, lat: near[0], lng: near[1], eta_min: 480, ...x });
+  // a flexible booking confirmed « dans la journée » at t0, its window fixed at t1 (the evening lock), its window text at t2
+  const fixedFlex = async (c, day) => {
+    const id = await put(h, owner, J(c, { day, win_start: 480, win_end: 720, win_flex: true, confirm_sent_at: t0 }));
+    await h.as(null);
+    await h.q(`insert into public.activity (entity, entity_id, action, data, at) values ('job', $1, 'window_fixed', '{}'::jsonb, $2)`, [id, t1]);
+    await h.q(`insert into public.messages (job_id, customer_id, kind, status, created_at) values ($1, $2, 'window', 'sent', $3)`, [id, c, t2]);
+    return id;
+  };
+  // 1. moved from tomorrow to TODAY « Flexible »: move_job cuts its window at once (a locked day), keeps win_flex, clears
+  //    confirm_sent_at; the window text said TOMORROW
+  const moved = await fixedFlex(ana, d1);
+  await h.as(owner);
+  const mv = await h.rpc('move_job', { p_op: uuid(), p_job: moved, p_day: d0, p_block: 'day', p_truck: null, p_win_start: null, p_win_flex: true });
+  assert.equal(mv.ok, true, JSON.stringify(mv));
+  const rm = await row(h, moved);
+  assert.deepEqual([rm.day, rm.win_flex, rm.win_start != null, rm.confirm_sent_at], [d0, true, true, null], 'today, flexible, a window cut, « À confirmer » on old live');
+  // 2. « Changer de client » after the window text (Ana texted, the job given to Bob)
+  const other = await fixedFlex(ana, d3);
+  await h.as(owner);
+  assert.equal((await h.rpc('job_customer', { p_op: uuid(), p_job: other, p_customer: bob, p_vehicle: v2 })).ok, true);
+  // 3. a new number after the window text
+  const phoned = await fixedFlex(carl, d3);
+  // 4. a confirmed block of hours, then a new number
+  const confirmed = await put(h, owner, J(dan, { day: d3, win_start: 600, win_end: 840, confirm_sent_at: t2 }));
+  await h.as(null);
+  await h.q(`update public.customers set phone = '438 555 0100' where id = any($1::uuid[])`, [[carl, dan]]);
+  // 5. only the truck or the arrival changed after the window text: still told that window
+  const kept = await fixedFlex(eve, d3);
+  await h.as(null);
+  await h.q(`insert into public.activity (entity, entity_id, action, data, at) values ('jobs', $1, 'update', $2::jsonb, now())`, [kept, JSON.stringify({ truck_id: [tk, null], forced: [false, true] })]);
+  // 6. the window text, then « Renvoyer le texto de confirmation » (old notify: confirm_sent_at after it)
+  const resent = await fixedFlex(fay, d3);
+  await h.as(null);
+  await h.q(`select set_config('garage.rpc', 'on', true)`);
+  await h.q(`update public.jobs set confirm_sent_at = $2 where id = $1`, [resent, t3]);
+  await h.q(`select set_config('garage.rpc', '', true)`);
+  await h.val(`select public.told_install()`);
+  const told = async (id) => { const r = await row(h, id); return [r.told_day, r.told_start, r.told_end, r.told_at && new Date(r.told_at).toISOString(), r.told_how]; };
+  assert.deepEqual(await told(moved), [null, null, null, null, null], 'his only text said tomorrow: never told today, due');
+  assert.equal((await ruleOf(h, owner, await row(h, moved))).state, 'new');
+  assert.deepEqual(await told(other), [null, null, null, null, null], 'Bob never got Ana’s text');
+  assert.deepEqual(await told(phoned), [null, null, null, null, null], 'a new number never got the window text');
+  assert.deepEqual(await told(confirmed), [null, null, null, null, null], 'a new number never got the confirmation');
+  assert.deepEqual(await told(kept), [d3, 480, 720, new Date(t2).toISOString(), 'install'], 'the truck changed, not his hours: told that window');
+  assert.deepEqual(await told(resent), [d3, 480, 720, new Date(t3).toISOString(), 'install'], 'told the window, at the later confirmation');
+  await h.as(null);
+  assert.equal(await h.val(`select public.told_install()`), 0, 'run again: nothing more (the confirmation after the window text settles)');
+}));
+
 /* ------------------------------------------------------------------------------------------------------------------
    T3 — what clears it
    ------------------------------------------------------------------------------------------------------------------ */
@@ -264,15 +331,15 @@ test('T4 tell_take: the second call is busy; a lease older than 2 minutes is tak
   assert.equal((await take(h, [never], null, 13))[0].take, true, 'an old lease (a text that never answered) is taken over');
   // the text went: told, the lease dropped
   await h.q(`select public.tell_done($1, 13, $2::jsonb, 'sms', null, 'booking')`, [never, JSON.stringify(t1[0].now)]);
-  assert.deepEqual(await take(h, [never], null, 14), [{ id: never, already: true }], 'told meanwhile: nothing to send');
+  assert.deepEqual(await take(h, [never], null, 14), [{ id: never, already: true, state: 'ok' }], 'told meanwhile: nothing to send (and why: his state)');
   // « peut-être parti » then « Renvoyer »
   const maybe = await put(h, w.owner, w.J({ ...w.told, told_how: 'maybe' }));
   await h.as(null);
-  assert.deepEqual(await take(h, [maybe]), [{ id: maybe, already: true }]);
+  assert.deepEqual(await take(h, [maybe]), [{ id: maybe, already: true, state: 'ok' }]);
   assert.equal((await take(h, [maybe], [maybe]))[0].take, true, '« Renvoyer » takes it');
   const sure = await put(h, w.owner, w.J({ ...w.told }));
   await h.as(null);
-  assert.deepEqual(await take(h, [sure], [sure]), [{ id: sure, already: true }], '« again » only for a « peut-être »');
+  assert.deepEqual(await take(h, [sure], [sure]), [{ id: sure, already: true, state: 'ok' }], '« again » only for a « peut-être »');
   const forced = (await take(h, [sure], null, 7, true))[0];
   assert.equal(forced.take, true, 'the single path’s resend');
   // today, told = planned, the arrival slipped: never taken (the « en route » text gives the time)
@@ -280,7 +347,7 @@ test('T4 tell_take: the second call is busy; a lease older than 2 minutes is tak
   const today = await dayOf(h, 0);
   const slip = await put(h, w.owner, w.J({ ...w.told, day: today, told_day: today, eta_min: 785 }));
   await h.as(null);
-  assert.deepEqual(await take(h, [slip]), [{ id: slip, already: true }], 'a slip of today: never texted by the button');
+  assert.deepEqual(await take(h, [slip]), [{ id: slip, already: true, state: 'drift' }], 'a slip of today: never texted by the button');
   // gone: cancelled, past, unknown
   const cancelled = await put(h, w.owner, w.J({ status: 'cancelled' }));
   await h.as(null);
@@ -373,6 +440,77 @@ test('T6 tell_mark: the hours shown = tell_now → told « call » / « hand »;
   assert.equal((await h.fails(() => h.rpc('tell_mark', { p_op: uuid(), p_marks: [{ id: a, how: 'sms', day: w.d3, start: 1, end: 2 }] })))?.hint, 'bad_list');
 }));
 
+test('T6b tell_mark: a « Réserver » account without « Agenda » may not mark (nor read back) an appointment it may not open: not_allowed, nothing written; the ones it may open are marked (review S2)', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const saleh = await h.person('Saleh', ['mechanic']);
+  const omar = await h.person('Omar', ['mechanic'], { rights: { book: true } });
+  const tk = await h.truck('Camion', saleh, WEEK), tk2 = await h.truck('Voiture', omar, WEEK);
+  await h.as(owner);
+  assert.equal((await h.rpc('windows_switch', { p_op: uuid(), p_on: true })).ok, true);
+  const d3 = await dayOf(h, 3);
+  await h.as(null);
+  const c = await h.customer('Ana', ...near, { address: '4521 rue Privée' });
+  const J = (truck) => ({ customer_id: c, day: d3, block: 'day', status: 'booked', truck_id: truck, stop_order: 1, win_start: 540, win_end: 780, eta_min: 600,
+    lat: near[0], lng: near[1], notes: 'code de porte 1234' });
+  const hidden = await put(h, owner, J(tk)), his = await put(h, owner, J(tk2));
+  await h.as(omar);
+  assert.equal((await h.q(`select id from public.jobs where id = $1`, [hidden])).length, 0, 'Omar may not open Saleh’s appointment');
+  const mark = (id, start, end) => ({ id, how: 'call', kind: 'booking', day: d3, start, end });
+  for (const m of [mark(hidden, 0, 1), mark(hidden, 540, 780)]) {
+    const e = await h.fails(() => h.rpc('tell_mark', { p_op: uuid(), p_marks: [m] }));
+    assert.equal(e?.hint, 'not_allowed', 'refused, its row never sent back');
+  }
+  await h.as(null);
+  assert.equal((await row(h, hidden)).told_at, null, 'nothing written');
+  await h.as(omar);
+  const r = await h.rpc('tell_mark', { p_op: uuid(), p_marks: [mark(his, 540, 780)] });
+  assert.deepEqual([r.marked, r.rows.jobs.map((x) => x.id)], [[his], [his]], 'his own truck’s: marked');
+}));
+
+/* ------------------------------------------------------------------------------------------------------------------
+   T9 — « Déplacer » to the next window (review R0)
+   ------------------------------------------------------------------------------------------------------------------ */
+
+test('T9 « Déplacer » a customer told 10 h à 14 h to the next window 14 h à 18 h (the truck there at 14 h, his told end): he is owed the new window (changed, on the day’s list, a single « moved » taken); an exact move to a minute inside what he was told is not', () => tx(async (h) => {
+  const owner = await h.person('Hassan', ['owner']);
+  const tk = await h.truck('Camion', null, WEEK);
+  await h.q(`update public.trucks set start = $2::jsonb where id = $1`, [tk, JSON.stringify({ label: 'Ici', lat: near[0], lng: near[1] })]);
+  await h.q(`update public.trucks set active = false where id <> $1 and active`, [tk]);
+  await h.as(owner);
+  assert.equal((await h.rpc('windows_switch', { p_op: uuid(), p_on: true })).ok, true);
+  const d = await dayOf(h, 37);
+  await h.as(null);
+  const ca = await h.customer('Ana', ...near), cb = await h.customer('Bob', ...near, { phone: '4385550199' });
+  const T = (ws) => ({ told_day: d, told_start: ws, told_end: ws + 240, told_at: '2026-11-20T15:00:00+00:00', told_how: 'sms' });
+  await put(h, owner, { customer_id: ca, day: d, block: 'day', status: 'booked', truck_id: tk, stop_order: 1, win_start: 480, win_end: 720, eta_min: 480, lat: near[0], lng: near[1], ...T(480) });
+  const b = await put(h, owner, { customer_id: cb, day: d, block: 'day', status: 'booked', truck_id: tk, stop_order: 2, win_start: 600, win_end: 840, eta_min: 600, lat: near[0], lng: near[1], ...T(600) });
+  await h.as(owner);
+  const mv = await h.rpc('move_job', { p_op: uuid(), p_job: b, p_day: d, p_block: 'day', p_truck: tk, p_win_start: 840, p_win_flex: false });
+  assert.equal(mv.ok, true, JSON.stringify(mv));
+  const rb = await row(h, b);
+  assert.deepEqual([rb.win_start, rb.win_end, rb.eta_min], [840, 1080, 840], 'planned 14 h à 18 h, the truck there at 14 h');
+  const got = await ruleOf(h, owner, rb);
+  assert.deepEqual([got.state, got.now.start, got.now.end], ['changed', 840, 1080], 'owed « a changé : entre 14 h et 18 h »');
+  const list = await h.rpc('tell_list', { p_day: d });
+  assert.deepEqual(list.filter((x) => x.id === b).map((x) => [x.state, x.kind]), [['changed', 'moved']], 'on the day’s list');
+  await h.as(null);
+  const t = (await take(h, [b], null, 41))[0];
+  assert.equal(t.take, true, '« Envoyer le texto » texts him');
+  await h.q(`select public.tell_release($1, 41)`, [b]);
+  // the exact move to 11 h 30 inside what he was told (10 h à 14 h): his planned window is cut from that minute, he is
+  // served inside what he was told: nothing to send
+  await h.q(`select set_config('garage.rpc', 'on', true)`);
+  await h.q(`update public.jobs set win_start = 600, win_end = 840, arrive_at = 690, eta_min = 690 where id = $1`, [b]);
+  await h.q(`select set_config('garage.rpc', '', true)`);
+  await h.as(owner);
+  assert.equal((await ruleOf(h, owner, await row(h, b))).state, 'ok');
+  await h.q(`select set_config('garage.rpc', 'on', true)`);
+  await h.as(null);
+  await h.q(`update public.jobs set win_start = 660, win_end = 900 where id = $1`, [b]);
+  const ok = (await take(h, [b], null, 42))[0];
+  assert.deepEqual([ok.already, ok.state], [true, 'ok'], 'not due: already, and why (its state)');
+}));
+
 /* ------------------------------------------------------------------------------------------------------------------
    T7 — the list, and who may read it
    ------------------------------------------------------------------------------------------------------------------ */
@@ -450,7 +588,7 @@ test('T8 the app may call day_order_preview, day_order_save, tell_list, tell_mar
    T4b — two connections: a row another transaction holds is skipped, never waited for (code F4)
    ------------------------------------------------------------------------------------------------------------------ */
 
-test('T4b a job held by another transaction: tell_take([it, another]) answers busy for it and takes the other at once; tell_take([it]) alone waits, then takes it; tell_mark skips it (busy)', async () => {
+test('T4b a job held by another transaction: tell_take([it, another]) answers held (not busy: nobody is sending) for it and takes the other at once; the day’s button with it alone (p_again an array) does not wait either; tell_take([it]) alone for a single text waits, then takes it; tell_mark skips it (busy)', async () => {
   const c = await pool.connect(), k = await pool.connect(), k2 = await pool.connect();
   const owner = randomUUID(), cust = randomUUID();
   const ids = [randomUUID(), randomUUID()];
@@ -473,8 +611,13 @@ test('T4b a job held by another transaction: tell_take([it, another]) answers bu
     const t0 = Date.now();
     const r = (await c.query(`select public.tell_take($1::uuid[], null, 5, false) v`, [[held, free]])).rows[0].v;
     assert.ok(Date.now() - t0 < 2000, 'without waiting');
-    assert.deepEqual(r.find((x) => x.id === held), { id: held, busy: true });
+    assert.deepEqual(r.find((x) => x.id === held), { id: held, held: true }, 'a row held: « held », the next round takes it (review S4)');
     assert.equal(r.find((x) => x.id === free).take, true);
+    // the day's button's last round may be ONE id: it never waits for a row either (only a single text does)
+    const t1 = Date.now();
+    const r1 = (await c.query(`select public.tell_take($1::uuid[], '{}'::uuid[], 8, false) v`, [[held]])).rows[0].v;
+    assert.ok(Date.now() - t1 < 2000, 'the day’s button: without waiting');
+    assert.deepEqual(r1, [{ id: held, held: true }]);
     // tell_mark skips it too
     await k2.query('begin');
     await k2.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [JSON.stringify({ sub: owner, role: 'authenticated' }), owner]);

@@ -129,3 +129,11 @@ bouton.
 3. La migration reste (jamais de DROP) : ses 7 colonnes (ignorées), ses fonctions inutilisées, ses deux
    déclencheurs (ils ne font qu'effacer « averti » quand le client d'un rendez-vous ou son numéro change), sa ligne de
    `schema_migrations`.
+4. **Pour réinstaller ensuite** (la Partie 28 de nouveau, après un retour) : pendant le retour, l'ancien notify n'écrit
+   que `confirm_sent_at`, jamais « averti » ; un client déplacé et texté pendant ce temps garde son ancien « averti »
+   (`told_how` 'sms', 'hand', 'call' ou 'maybe') et serait texté une 2e fois pour le même changement. AVANT l'étape 1
+   d'une réinstallation (ici même, une seule fois, puis `told_install()` comme d'habitude) :
+   `update public.jobs set told_how = 'install' where status = 'booked' and deleted_at is null and day >= public.local_today()
+   and told_at is not null and told_how <> 'install' and (confirm_sent_at > told_at or exists (select 1 from public.messages m
+   where m.job_id = jobs.id and m.kind = 'window' and m.status = 'sent' and m.created_at > jobs.told_at)));` — ces
+   rendez-vous-là sont alors relus par `told_install()` comme ceux de la première installation (revue S7).

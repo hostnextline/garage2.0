@@ -342,6 +342,7 @@ export const booking: typeof fr = {
   sms: {
     sent: { booking: 'Confirmation text sent', moved: 'Change text sent' },
     already: 'The text had already been sent',
+    nothingNew: 'No text: the time {name} was told still holds, nothing new to tell them',
     noPhone: 'No cell phone on file: no text sent',
     off: 'Automatic texts are not connected: send it yourself.',
     error: 'The text did not go out: send it yourself.',

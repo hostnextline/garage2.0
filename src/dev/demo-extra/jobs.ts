@@ -107,16 +107,18 @@ function fns() {
     if (['booking', 'moved', 'reminder', 'window'].includes(kind) && j.status !== 'booked') return { ok: false, code: 'not_booked', error: 'Ce rendez-vous n’est plus à venir.' };
     // Part 28: the single booking / window / moved texts go through the lease: nothing new to tell him → already
     const told = TOLD_KINDS.includes(kind);
-    if (told && !tellDue(j, { force: !!b.resend })) return { ok: true, status: 'already' };
+    if (told && !tellDue(j, { force: !!b.resend })) return { ok: true, status: 'already', why: 'told' };
     if (kind === 'arrived' && j.status !== 'on_site') return { ok: false, code: 'not_on_site', error: 'Le mécano n’est pas encore arrivé chez ce client.' };
-    const { message, link, phone } = textOf(j, kind);
+    // a customer never told anything asked « a changé » or a window gets his full confirmation (notify, review R2)
+    const sendKind = told && kind !== 'booking' && !j.told_at ? 'booking' : kind;
+    const { message, link, phone } = textOf(j, sendKind);
     const status = textsOff() ? 'off' : phone ? 'sent' : 'no_phone';
-    textRow(j, kind, message, status);
+    textRow(j, sendKind, message, status);
     const said = told ? hoursSaid(j) : null;
-    if (status === 'sent' && said) toldDone(j, said, 'sms', kind);
+    if (status === 'sent' && said) toldDone(j, said, 'sms', sendKind);
     if (status === 'sent' && kind === 'invoice') for (const v of table('invoices').filter((x) => x.job_id === j.id && x.status !== 'void')) put('invoices', { id: v.id, sent_at: nowIso() });
-    const hand = said && status === 'off' ? { told: said, kind, job_id: j.id } : {};
-    return { ok: status === 'sent', status, message, link, phone, ...hand };
+    const hand = said && status === 'off' ? { told: said, kind: sendKind, job_id: j.id } : {};
+    return { ok: status === 'sent', status, message, link, phone, ...(sendKind !== kind ? { sent_kind: sendKind } : {}), ...hand };
   });
 }
 

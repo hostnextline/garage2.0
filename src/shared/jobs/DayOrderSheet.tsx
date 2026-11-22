@@ -36,7 +36,7 @@ import {
   ordersAll, placeOf, putFirst, rebase, trucksOf, wasKey, wasOf, withLists, worksOn, END, type DayList, type Draft, type DropCtx
 } from '../../domain/jobs/dayOrder';
 import { clientsDue, tellCtx } from '../../domain/jobs/told';
-import { Sheet, Button, Banner, Pill, Help, toast, ask, whenHistorySettled } from '../../ui';
+import { Sheet, Button, Banner, Pill, Help, toast, dismissToast, ask, whenHistorySettled } from '../../ui';
 import { etaUnsure, jobFirstName, jobName } from './select';
 import { moveWaiting } from './moving';
 import { createListDrag, type DropAt } from './listDrag';
@@ -278,9 +278,16 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
   useEffect(() => () => drag.cancel(), []);
   const dragging = drag.dragging.value;
   const target = drag.target.value;
+  /** that truck's heading right under the sticky band (its real height: the band is taller with three trucks); during a
+      drag at once, so nothing can beat it (review F1, F2) */
   function showTruck(truck: string) {
     const el = document.querySelector(`[data-dayord-truck="${truck}"]`) as HTMLElement | null;
-    el?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    const b = body.current;
+    if (!el) return;
+    if (!b || typeof b.scrollTo !== 'function') { el.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); return; }
+    const band = b.querySelector('.dayord-sticky')?.getBoundingClientRect().height ?? 0;
+    const top = b.scrollTop + el.getBoundingClientRect().top - b.getBoundingClientRect().top - band - 8;
+    b.scrollTo({ top: Math.max(0, top), behavior: drag.active() ? 'auto' : 'smooth' });
   }
 
   /* ---------- a move shifts the rows in 120 ms, the app's whole order in 200 ms (none under « Réduire les animations »:
@@ -310,9 +317,13 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
   }, [draft]);
 
   /* ---------- the keyboard (the grip is a button: the HoursGrid model) ---------- */
+  /** a stop put back with Escape: its grip keeps the focus once redrawn in its own truck (review F9) */
+  const refocus = useRef<string | null>(null);
   useEffect(() => {
-    if (!picked) return;
-    (document.querySelector(`[data-dayord-grip="${picked.id}"]`) as HTMLElement | null)?.focus();
+    const id = picked?.id ?? refocus.current;
+    refocus.current = null;
+    if (!id) return;
+    (document.querySelector(`[data-dayord-grip="${id}"]`) as HTMLElement | null)?.focus();
   }, [picked, draft]);
   function onGripKey(e: KeyboardEvent, id: string) {
     const j = rowOf(id);
@@ -341,7 +352,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
       put(moveTo(d, id, to, pl.block, pl.index), id);
       return;
     }
-    if (e.key === 'Escape') { stop(); setDraft(picked.before); setPicked(null); setSaid(t('reorg.putBack', { name: jobName(j) })); return; }
+    if (e.key === 'Escape') { stop(); refocus.current = id; setDraft(picked.before); setPicked(null); setSaid(t('reorg.putBack', { name: jobName(j) })); return; }
     if (e.key === ' ' || e.key === 'Enter') {
       stop();
       const before = picked.before;
@@ -426,6 +437,13 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     setAsking('refused');
     return true;
   }
+  /** « Journée enregistrée. Aucun texto n'est parti. »: taken away once the send list opens (it would still be up above
+      « 4 textos partis »: review F7) */
+  const savedToast = useRef<number | null>(null);
+  const sendList = () => {
+    if (savedToast.current != null) { dismissToast(savedToast.current); savedToast.current = null; }
+    openTell(day);
+  };
   function saved() {
     dropDraft(staffId, day);
     memo.current.clear();
@@ -437,7 +455,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     // the answer's rows are on the phone already (every block of the day): the sheet stays on the saved day
     const now = jobsOn(day);
     setDraft(draftOf(now, trucksOf(day, now), day, blocksOf()));
-    toast(t('reorg.saved'), { kind: 'ok', ms: 6000 });
+    savedToast.current = toast(t('reorg.saved'), { kind: 'ok', ms: 6000 });
     p.onSaved?.();
   }
   function refusalWords(r: DayRefusal, e: unknown): string {
@@ -499,14 +517,15 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
   const blocksMode = !draft.lists.every((x) => x.block === 'day');
   const sum = dirty ? summaryOf() : null;
 
-  function summaryOf(): { tone: 'warn' | 'ok' | 'muted'; text: string; first: string | null; retry?: boolean } {
+  function summaryOf(): { tone: 'warn' | 'ok' | 'muted'; text: string; first: string | null; retry?: boolean } | null {
     if (saveState === 'lost') return { tone: 'warn', text: t('reorg.lost'), first: null };
     if (saveState === 'lostNot') return { tone: 'warn', text: t('reorg.lostNot'), first: null };
     if (saveState === 'busy') return { tone: 'warn', text: t('reorg.busy'), first: null };
     if (saveState === 'saving') return { tone: 'muted', text: t('reorg.saving'), first: null };
     if (saveState === 'checking') return { tone: 'muted', text: t('reorg.checking'), first: null };
     if (ref) return { tone: 'warn', text: ref.words, first: ref.r.jobs[0] ?? null };
-    if (!online) return { tone: 'warn', text: t('reorg.offline'), first: null };
+    // no network: the banner above the lists says it (never twice on one screen: review F7)
+    if (!online) return null;
     if (!cur) return asking === 'none' ? { tone: 'warn', text: t('reorg.sumNoAnswer'), first: null, retry: true } : { tone: 'muted', text: t('reorg.sumAsking'), first: null };
     const first = (m: Record<string, number>) => Object.keys(m);
     const fn = (xs: string[]) => names(xs.map((id) => { const j = rowOf(id); return j ? jobFirstName(j) : ''; }));
@@ -540,7 +559,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
         <>
           <Button onClick={p.onClose} data-testid="dayorder-close">{t('reorg.close')}</Button>
           {n > 0
-            ? <Button variant="primary" icon={<Send size={18} />} onClick={() => openTell(day)} data-testid="dayorder-send">{t('tell.button', { n })}</Button>
+            ? <Button variant="primary" icon={<Send size={18} />} onClick={sendList} data-testid="dayorder-send">{t('tell.button', { n })}</Button>
             : <Button variant="primary" disabled data-testid="dayorder-save">{t('reorg.save')}</Button>}
         </>
       ) : (
@@ -559,9 +578,11 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     <Sheet open wide onClose={() => void tryClose()} title={t('reorg.open')} sub={t('reorg.sub', { day: date.charAt(0).toUpperCase() + date.slice(1), n: count })}
       footer={footer} data-testid="dayorder-sheet">
       <div ref={(el) => { body.current = (el?.parentElement as HTMLElement | null) ?? null; }} class="dayord" data-day={day}>
-        <div class="dayord-sticky">
+        <div class="dayord-sticky" data-testid="dayorder-band">
           <div class="dayord-status" data-testid="dayorder-status">
-            {dirty ? <span class="grow"><Pill tone="warn" data-testid="dayorder-unsaved">{t('reorg.unsaved')}</Pill></span> : <span class="grow">{t('reorg.hint')}</span>}
+            {dragging && target?.refused
+              ? <span class="grow dayord-warn" role="status" data-testid="dayorder-band-refused">{whyWords(target.refused, target.truck)}</span>
+              : dirty ? <span class="grow"><Pill tone="warn" data-testid="dayorder-unsaved">{t('reorg.unsaved')}</Pill></span> : <span class="grow" />}
             {book && (draft.auto && preAuto
               ? <Button size="sm" variant="ghost" icon={<Undo2 size={16} />} onClick={autoBack} disabled={saving} data-testid="dayorder-auto-back">{t('reorg.autoBack')}</Button>
               : <Button size="sm" variant="ghost" icon={<Wand2 size={16} />} onClick={() => autoChoose()} disabled={saving || !online || !ready} data-testid="dayorder-auto">{t('reorg.auto')}</Button>)}
@@ -571,13 +592,14 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
               {dayTrucks.map((tr) => {
                 const c = draft.lists.filter((x) => x.truck === tr).reduce((k, x) => k + x.live.length + x.jobs.length, 0);
                 return (
-                  <button key={tr} type="button" class={`dayord-chip${dragging && target?.truck === tr ? ' is-over' : ''}`} data-dayord-chip data-truck={tr}
-                    onClick={() => showTruck(tr)} data-testid={`dayorder-chip-${tr}`}>{truckLabel(tr)} <b>{c}</b></button>
+                  <button key={tr} type="button" class={`dayord-chip${dragging && target?.truck === tr ? (target.refused ? ' is-refused' : ' is-over') : ''}`} data-dayord-chip data-truck={tr}
+                    onClick={() => showTruck(tr)} data-testid={`dayorder-chip-${tr}`}><span>{truckLabel(tr)}</span> <b>{c}</b></button>
                 );
               })}
             </div>
           )}
         </div>
+        {!dirty && <p class="dayord-hint" data-testid="dayorder-hint">{t('reorg.hint')}</p>}
         <div class="dayord-notes">
           {!online && <Banner kind="warn" data-testid="dayorder-offline">{t('reorg.offline')}</Banner>}
           {measuring && <Banner kind="info" data-testid="dayorder-measuring">{t('reorg.measuring')}</Banner>}
@@ -592,13 +614,13 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
         <div class="dayord-trucks">
           {dayTrucks.map((tr) => (
             <TruckPart key={tr} truck={tr} lists={draft.lists.filter((x) => x.truck === tr)} draft={draft} rows={rows} rowOf={rowOf} cur={cur} judge={dirty}
-              changedHere={trucksChanged.has(tr)} asking={asking} blocksMode={blocksMode} at={p.at} picked={picked?.id ?? null} refJobs={ref?.r.jobs ?? []}
+              changedHere={trucksChanged.has(tr)} asking={asking === 'none' || asking === 'refused' || !online ? asking : 'asking'} blocksMode={blocksMode} at={p.at} picked={picked?.id ?? null} refJobs={ref?.r.jobs ?? []}
               refTruck={ref?.r.truck ?? null} dragging={dragging} target={target} drag={drag} onGripKey={onGripKey}
               onTap={(id) => { if (!drag.justDragged()) setMenuFor(id); }} whyWords={whyWords} />
           ))}
         </div>
         {unplaced > 0 && <p class="dayord-note" data-testid="dayorder-unplaced">{t('reorg.unplaced', { n: unplaced })}</p>}
-        {!dirty && ready && <ToldBanner day={day} />}
+        {!dirty && ready && <ToldBanner day={day} onSend={sendList} />}
         <p id="dayord-keys" class="sr-only">{t('reorg.keys')}</p>
         <p class="sr-only" aria-live="polite" data-testid="dayorder-live">{said}</p>
       </div>
@@ -639,7 +661,8 @@ function TruckPart(p: TruckProps) {
   const drive = sum.length ? sum.reduce((k, x) => k + (x.driveMin ?? 0), 0) : jobs.reduce((k, j) => k + Math.max(0, (j.travel_min ?? 0)), 0);
   const unmeasured = sum.length ? sum.reduce((k, x) => k + x.unmeasured, 0) : roadsOn.value ? jobs.filter((j) => etaUnsure(j)).length : 0;
   const over = p.judge ? sum.find((x) => x.overMin > 0) : undefined;
-  const head = !jobs.length ? '' : p.changedHere && !p.cur ? t('reorg.asking')
+  // (« calcul… » only while the preview is waited for: refused or no answer, nothing is being worked out: review F8)
+  const head = !jobs.length ? '' : p.changedHere && !p.cur ? (p.asking === 'asking' ? t('reorg.asking') : '')
     : etas.length && finish != null
       ? t(unmeasured ? 'reorg.truckHeadUnmeasured' : 'reorg.truckHead', { n: jobs.length, from: clock(Math.min(...etas), l), to: clock(finish, l), drive: duration(drive, l) })
       : '';

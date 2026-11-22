@@ -85,7 +85,8 @@ export async function notifyCustomer(kind: NotifyKind, jobId: string, opts: { cu
     const open = () => openMessage({ name, phone: r?.phone ?? c?.phone ?? null, message: r?.message || '', link: r?.link || null, when: windowSaid(jobRow(jobId)) ?? opts.when ?? null,
       ...(r?.told ? { told: r.told, kind: r.kind ?? kind, jobId: r.job_id ?? jobId } : {}) });
     if (status === 'sent') toast(t(`booking.sms.sent.${kind}`), { kind: 'ok' });
-    else if (status === 'already') toast(t('booking.sms.already'));
+    // nothing new to tell him (what he was told still holds) is not « already sent » (review R0)
+    else if (status === 'already') toast(r?.why === 'told' ? t('booking.sms.nothingNew', { name }) : t('booking.sms.already'));
     else if (status === 'no_phone') toast(t('booking.sms.noPhone'));
     // the customer does not want texts, or this kind is switched off: nothing failed
     else if (status === 'quiet') toast(t('booking.momentPickers.smsQuiet'));

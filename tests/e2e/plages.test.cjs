@@ -340,8 +340,9 @@ step('« Déplacer »: Carla to another window the same day, then to another day
     assert.equal((await (await told).json()).status, 'sent');
     return ws;
   };
-  // the same day, another window — one whose time lies past the window she was told at her booking (Part 28, REARRANGE.md
-  // §1.3: a time still inside what she was told leaves her nothing new to hear, and « Envoyer le texto » answers `already`)
+  // the same day, another window — one whose time lies past the window she was told at her booking. The grid's pick is
+  // an EXACT move (a minute pointed: « Rendez-vous déplacé : … à 13 h 30 »); a minute still inside what she was told
+  // leaves her nothing new to hear (REARRANGE.md §1.3, §3.5: « Envoyer le texto » answers `already`, why « told »)
   const tS = before.told_start ?? before.win_start, tE = before.told_end ?? before.win_end;
   const ws1 = await move(D[2], (s) => s.find((w) => w > tE) ?? s.find((w) => w + 240 <= tS) ?? s.find((w) => w !== before.win_start && w >= 780) ?? s.find((w) => w !== before.win_start));
   let j = await until(() => jobOf(J.carla), (v) => v.win_start === ws1, 15000);

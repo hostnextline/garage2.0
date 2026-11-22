@@ -166,6 +166,25 @@ describe('a drag by the grip', () => {
     expect(body.scrollTop).toBe(at);
     up();
   });
+  it('over the sticky band (its chips, the status line) the body never scrolls by itself, so a chip held shows its truck (review F1); the zone that scrolls up is the 40 px right under the band (review F5)', () => {
+    const d = make();
+    down(d, 'b', grip('b'), { x: 10, y: 380 });
+    body.scrollTop = 120;
+    under = rows.chip;
+    move(10, 120);                                                                  // on the chip, inside the band (100–196)
+    vi.advanceTimersByTime(16 * 10);
+    expect(body.scrollTop).toBe(120);
+    vi.advanceTimersByTime(CHIP_HOLD_MS);
+    expect(calls.toTruck).toEqual(['B']);
+    under = main('a');
+    move(10, 196 + 45);                                                             // 45 px under the band: calm
+    vi.advanceTimersByTime(16 * 5);
+    expect(body.scrollTop).toBe(120);
+    move(10, 196 + 20);                                                             // 20 px under it: up
+    vi.advanceTimersByTime(16);
+    expect(body.scrollTop).toBeLessThan(120);
+    up();
+  });
   it('a chip held 400 ms: that truck is shown and the drag goes on; let go on it: the end of that truck', () => {
     const d = make();
     down(d, 'b', grip('b'), { x: 10, y: 380 });

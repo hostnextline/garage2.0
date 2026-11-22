@@ -176,6 +176,18 @@ describe('sending', () => {
     await click(q('tell-close'));
     expect(closed).toBe(1);
   });
+  it('after the texts went, « À avertir toi-même » stays under the result with « Appeler » and « Je l’ai averti » (review F4)', async () => {
+    srv.list = sameAsPhone;
+    await open();
+    expect(sp(q('tell-tocall')!.textContent)).toContain('Fanny Côté');
+    await click(q('tell-go'));
+    expect(q('tell-result')).toBeTruthy();
+    const left = q('tell-tocall')!;
+    expect(sp(left.textContent)).toContain('À avertir toi-même (1)');
+    expect(sp(left.textContent)).toContain('Fanny Côté');
+    await click(q('tell-mark-j5'));
+    expect(srv.marks).toEqual([[{ id: 'j5', how: 'call', kind: 'booking', day: D, start: 780, end: 1020 }]]);
+  });
   it('a list longer than notify takes (100 ids a call, else bad_list): sent in parts, what is left of each part asked again', async () => {
     const many = Array.from({ length: 130 }, (_, i) => job(`j${100 + i}`, { customer_id: 'c2', number: 100 + i, win_start: 480, win_end: 720, eta_min: 500 }));
     replaceLocal('jobs', many as never);

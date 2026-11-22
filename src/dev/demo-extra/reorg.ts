@@ -114,7 +114,8 @@ function core(a: Record<string, unknown>, save: boolean) {
       const travel = num(j.travel_min, 18);
       const ws = j.win_start == null ? null : Number(j.win_start), we = j.win_end == null ? null : Number(j.win_end);
       const told: Win | null = j.told_at && j.told_day === day && j.told_start != null && j.told_end != null ? [Number(j.told_start), Number(j.told_end)] : null;
-      const hold = moved.has(id) ? null : j.arrive_at != null ? Number(j.arrive_at) : told && rewin ? told[0] : ws;
+      // held to what he was told only when it starts earlier than his planned window (never a later start: review R1)
+      const hold = moved.has(id) ? null : j.arrive_at != null ? Number(j.arrive_at) : told && rewin && ws != null && told[0] < ws ? told[0] : ws;
       let eta = t + travel;
       if (hold != null && eta < hold) eta = hold;
       t = Math.max(t, eta + num(j.duration_min, 60));

@@ -249,6 +249,26 @@ test('D3 all or nothing: tire work put on the car → needs_truck, nothing writt
   assert.equal((await save(h, w.day, lists, { moved: [w.ids.C], was: b2.was, accept: p.accept })).saved, true);
 }));
 
+test('D3b tire work ALREADY on the Voiture that nobody moves (a « montage » line added while it stayed there): the day is previewed and saved; only a stop PUT on the Voiture is refused (review S3)', () => tx(async (h) => {
+  const w = await world(h, { jobs: { A: { t: 'tk', ws: 480 }, B: { t: 'tk2', ws: 540 }, C: { t: 'tk2', ws: 600 }, D: { t: 'tk', ws: 840 } } });
+  await set(h, w.ids.B, { needs_machine: true });
+  const b = await basis(h, w);
+  // nothing changed
+  const p0 = await preview(h, w.day, b.lists, { was: b.was });
+  assert.equal(p0.ok, true);
+  // C put before B on the same Voiture: B stays where it is
+  const lists = moveIn(b.lists, w.ids.C, w.tk2, 0);
+  const p = await preview(h, w.day, lists, { moved: [w.ids.C], was: b.was });
+  assert.equal(p.ok, true, 'previewed');
+  assert.equal((await save(h, w.day, lists, { moved: [w.ids.C], was: b.was, accept: p.accept })).saved, true, 'saved');
+  // tire work PUT on the Voiture: still refused
+  await set(h, w.ids.D, { needs_machine: true });
+  const b2 = await basis(h, w);
+  const e = await h.fails(() => preview(h, w.day, moveIn(b2.lists, w.ids.D, w.tk2, -1), { moved: [w.ids.D], was: b2.was }));
+  assert.equal(e?.hint, 'needs_truck');
+  assert.deepEqual(JSON.parse(e.detail).jobs, [w.ids.D], 'only the stop put there');
+}));
+
 /* ------------------------------------------------------------------------------------------------------------------
    D4 — coverage and the list itself
    ------------------------------------------------------------------------------------------------------------------ */
@@ -446,6 +466,30 @@ test('D8 TOLD: told 9 h à 13 h, planned 13 h à 17 h by an earlier save: a save
   assert.deepEqual([rc.new_win, rc.early_min], [[600, 780], 25]);
   assert.deepEqual([r.accept.windows[w.ids.C], r.accept.early[w.ids.C]], [600, 25]);
   rb = await row(h, w.ids.B); void rb;
+}));
+
+test('D8 TOLD, pulled EARLIER by a first save: a second save that does not drag it keeps it at its planned start (never held to a later told start: the truck would idle and the stops after it be re-cut); it stays owed its new window (review R1)', () => tx(async (h) => {
+  const w = await world(h);
+  for (const [k, ws] of [['A', 480], ['B', 600], ['C', 720], ['D', 840], ['E', 540], ['F', 720]]) {
+    await set(h, w.ids[k], { told_day: w.day, told_start: ws, told_end: ws + 240, told_at: '2026-11-20T15:00:00+00:00', told_how: 'sms' });
+  }
+  // save 1: D (told 14 h à 18 h) dragged first → 8 h à 12 h, not texted yet
+  let b = await basis(h, w);
+  let lists = moveIn(b.lists, w.ids.D, w.tk, 0);
+  const p1 = await preview(h, w.day, lists, { moved: [w.ids.D], was: b.was });
+  assert.deepEqual(p1.accept.windows, { [w.ids.D]: 480 });
+  assert.equal((await save(h, w.day, lists, { moved: [w.ids.D], was: b.was, accept: p1.accept })).saved, true);
+  // save 2: only B onto the Voiture
+  b = await basis(h, w);
+  lists = moveIn(b.lists, w.ids.B, w.tk2, -1);
+  const p2 = await preview(h, w.day, lists, { moved: [w.ids.B], was: b.was });
+  const sd = stopOf(p2, w.ids.D), sa = stopOf(p2, w.ids.A), sc = stopOf(p2, w.ids.C);
+  assert.deepEqual([sd.eta, sd.win, sd.new_win, sd.win_back], [480, [480, 720], null, false], 'D at 8 h, its planned window kept');
+  assert.deepEqual([sa.eta, sa.new_win, sc.eta, sc.new_win], [545, null, 720, null], 'A and C keep their windows');
+  assert.deepEqual(p2.accept.windows, {}, 'nobody re-cut');
+  assert.equal((await save(h, w.day, lists, { moved: [w.ids.B], was: b.was, accept: p2.accept })).saved, true);
+  assert.equal(await sval(h, `select public.tell_state(j) from public.jobs j where j.id = $1`, [w.ids.D]), 'changed', 'D still owed 8 h à 12 h');
+  for (const k of ['A', 'C']) assert.equal(await sval(h, `select public.tell_state(j) from public.jobs j where j.id = $1`, [w.ids[k]]), 'ok', `${k}: nothing to send`);
 }));
 
 /* ------------------------------------------------------------------------------------------------------------------

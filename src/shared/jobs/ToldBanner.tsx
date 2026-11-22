@@ -27,14 +27,14 @@ export function dayChipWord(day: string, l = lang.value): string {
 const UNDER = { marginTop: 'var(--sp-2)' };
 
 /** the day's line with its button (nothing when nobody is due that day, or for a mechanic) */
-export function ToldBanner(p: { day: string }) {
+export function ToldBanner(p: { day: string; /** in place of opening the send list itself (the sheet that saved takes its toast away first) */ onSend?: () => void }) {
   if (!can('book')) return null;
   const n = clientsDue(p.day, allJobs.value, tellCtx());
   if (!n) return null;
   return (
     <Banner kind="warn" title={t('tell.line', { n })} data-testid="told-banner">
       <div class="row-wrap" style={UNDER}>
-        <Button size="sm" icon={<Send size={16} />} onClick={() => openTell(p.day)} data-testid="told-banner-send">{t('tell.button', { n })}</Button>
+        <Button size="sm" icon={<Send size={16} />} onClick={() => (p.onSend ? p.onSend() : openTell(p.day))} data-testid="told-banner-send">{t('tell.button', { n })}</Button>
       </div>
     </Banner>
   );

@@ -52,9 +52,12 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- what the customer must be told now. Window mode, booked, a SURE arrival (switch « Vraies routes » off: always; on:
--- eta_measured): inside the window he was told that day → those hours (nothing to send, whatever the planned window); else,
--- the switch « rewin » on and outside the PLANNED window → the window of that arrival (win_for, the garage's one rule);
--- else the hours the job has. drift: today, due ONLY because the arrival slipped (told = planned, and no save by hand
+-- eta_measured): inside the window he was told that day → those hours (nothing to send) when the PLANNED window does not
+-- hold that arrival (a window an earlier save cut and nobody sent) or the arrival is a minute pointed (arrive_at: the exact
+-- move inside what he was told); a planned window that holds the arrival without a minute pointed is the one chosen by
+-- hand (« Déplacer » to the next window: his arrival at its start is also his told end; review R0) and is what he must
+-- hear. Else, the switch « rewin » on and outside the PLANNED window → the window of that arrival (win_for, the garage's
+-- one rule); else the hours the job has. drift: today, due ONLY because the arrival slipped (told = planned, and no save by hand
 -- pushed him out since he was told: hand_at) — « le texto en route lui donnera l'heure ».
 -- (The booleans are never null: a SQL null would read as « no » anyway.)
 create or replace function public.tell_now(j public.jobs) returns table (n_day date, n_start int, n_end int, rewin boolean, drift boolean)
@@ -70,7 +73,8 @@ language sql stable security definer set search_path = public as $$
   cross join lateral (select public.windows_on() and j.block = 'day' and j.status = 'booked' and j.eta_min is not null
                              and (not public.roads_on() or coalesce(j.eta_measured, false)) sure) a
   cross join lateral (select coalesce(a.sure and j.told_day = j.day and j.told_start is not null
-                             and j.eta_min between j.told_start and j.told_end, false) told_in) t
+                             and j.eta_min between j.told_start and j.told_end
+                             and (j.arrive_at is not null or not coalesce(j.eta_min between j.win_start and j.win_end, false)), false) told_in) t
   cross join lateral (select t.told_in, coalesce(not t.told_in and a.sure and public.day_rewin_on() and j.win_start is not null
                              and (j.eta_min < j.win_start or j.eta_min > j.win_end), false) go) s
   left join lateral public.win_for(case when s.go then j.eta_min end) w on true
@@ -301,7 +305,8 @@ begin
   end loop;
   select jsonb_agg(l->>'id' order by l->>'id') into v_x
   from jsonb_array_elements(v_l) l join public.jobs j on j.id = (l->>'id')::uuid join public.trucks tr on tr.id = (l->>'truck')::uuid
-  where j.needs_machine and not tr.tire_machine;
+  -- only a stop PUT there (§1.4 step 9): tire work the planner left on the Voiture, nobody moving it, never blocks the day
+  where j.needs_machine and not tr.tire_machine and j.truck_id is distinct from (l->>'truck')::uuid;
   if v_x is not null then
     raise exception using errcode = 'P0001', hint = 'needs_truck',
       message = 'Ce travail demande le camion (montage ou balancement des pneus) : la voiture ne peut pas le faire.',
@@ -369,13 +374,16 @@ begin
   end if;
 
   -- 13. the walk (the planner's walk, route_hold): a stop he moved waits for nothing; any other stop with a window waits
-  --     for its minute pointed, else the window he was TOLD that day, else its window — « quand même » ones too (else a
-  --     stop pulled earlier would get an earlier window); a flexible one: route_hold's own rule
+  --     for its minute pointed, else the window he was TOLD that day when it starts earlier than its planned one (an
+  --     earlier save pushed it later and nobody sent it: days F1), else its window — « quand même » ones too (else a
+  --     stop pulled earlier would get an earlier window). Never a later told start: a stop an earlier save pulled
+  --     earlier keeps its place (the truck would idle, the stops after it re-cut; review R1) and stays owed its window.
+  --     A flexible one: route_hold's own rule
   select coalesce(jsonb_object_agg(j.id::text,
            case when j.id = any(v_moved) then 0
                 else coalesce(j.arrive_at,
                               case when v_rewin and j.told_day = p_day and j.told_start is not null
-                                        and (j.told_start, j.told_end) is distinct from (j.win_start, j.win_end) then j.told_start end,
+                                        and j.told_start < j.win_start then j.told_start end,
                               j.win_start) end)
            filter (where j.id = any(v_moved) or (v_wm and j.win_start is not null)), '{}'::jsonb) into v_hold
   from public.jobs j where j.day = p_day and j.truck_id = any(v_trucks) and j.status = 'booked' and j.deleted_at is null;
@@ -648,24 +656,27 @@ end $$;
 
 -- tell_take(jobs, again, token, force): the server key (notify, book) takes the right to text these jobs NOW, under the
 -- job's row lock: still due + a lease (rate_limits 'tell:<id>', 2 minutes) in one decision, so two presses, or the day's
--- button and a single text at the same second, never text one customer twice. Several ids: a row another transaction
--- holds is skipped (« busy », the next round takes it): never a wait in a cycle with the planners. One id: it waits for
--- its row (holding nothing else, it cannot be in a cycle; a confirmation is never dropped because a plan held the row).
--- → [{ id, take: true, state, kind, now: { day, start, end, rewin, ws, we }, job } | { id, busy | gone | already: true }]
+-- button and a single text at the same second, never text one customer twice. The day's button (p_again an array, even
+-- empty): a row another transaction holds right now (a plan, a save, a booking) is skipped — « held », nobody is texting
+-- him: the next round takes it — never a wait in a cycle with the planners. A single text (p_again null, one id): it waits
+-- for its row (holding nothing else, it cannot be in a cycle; a confirmation is never dropped because a plan held the row).
+-- « busy » = another send holds his lease. « already » carries his state (ok: what he was told still holds).
+-- → [{ id, take: true, state, kind, now: { day, start, end, rewin, ws, we }, job } | { id, held | busy | gone: true }
+--    | { id, already: true, state }]
 create or replace function public.tell_take(p_jobs uuid[], p_again uuid[], p_token int, p_force boolean default false) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare v_ids uuid[]; v_id uuid; j public.jobs; n record; v_state text; v_kind text; v_out jsonb := '[]'::jsonb; v_got int;
 begin
   v_ids := array(select distinct x from unnest(coalesce(p_jobs, '{}'::uuid[])) x where x is not null order by 1);
   foreach v_id in array v_ids loop
-    if cardinality(v_ids) = 1 then
+    if cardinality(v_ids) = 1 and p_again is null then
       select * into j from public.jobs where id = v_id for update;
     else
       select * into j from public.jobs where id = v_id for update skip locked;
     end if;
     if not found then
       v_out := v_out || jsonb_build_array(jsonb_build_object('id', v_id,
-        case when cardinality(v_ids) > 1 and exists (select 1 from public.jobs x where x.id = v_id) then 'busy' else 'gone' end, true));
+        case when exists (select 1 from public.jobs x where x.id = v_id) then 'held' else 'gone' end, true));
       continue;
     end if;
     if j.status <> 'booked' or j.deleted_at is not null or j.day < public.local_today() then
@@ -676,7 +687,7 @@ begin
     if not coalesce(v_state in ('new', 'changed')
                     or (v_id = any(coalesce(p_again, '{}'::uuid[])) and j.told_how = 'maybe' and v_state = 'ok')
                     or coalesce(p_force, false), false) then
-      v_out := v_out || jsonb_build_array(jsonb_build_object('id', v_id, 'already', true));
+      v_out := v_out || jsonb_build_array(jsonb_build_object('id', v_id, 'already', true, 'state', v_state));
       continue;
     end if;
     -- the lease: a fresh one, or one older than 2 minutes (a text that never answered) taken over
@@ -731,9 +742,10 @@ $$;
 
 -- tell_mark(op, marks): « Je l'ai averti » (how 'call') and « C'est envoyé » (how 'hand': a text sent by hand from a phone).
 -- [{ id, how, kind, day, start, end }] = what the person told him. The owner and « Réserver »; « C'est envoyé » also the
--- mechanic of the job (job_actor: he booked on his own truck and sent the confirmation by hand). A job another action
--- holds right now is « busy » (never waited for); a job whose hours to tell are no longer the ones shown is « changed »
--- (still due); else written as tell_done.
+-- mechanic of the job (job_actor: he booked on his own truck and sent the confirmation by hand); always only an
+-- appointment the person may open (job_visible, as tell_list and the day's button: review S2), else refused and nothing
+-- sent back. A job another action holds right now is « busy » (never waited for); a job whose hours to tell are no longer
+-- the ones shown is « changed » (still due); else written as tell_done.
 create or replace function public.tell_mark(p_op uuid, p_marks jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare v_done jsonb; m jsonb; j public.jobs; n record; v_id uuid; v_how text;
@@ -759,7 +771,8 @@ begin
     select * into j from public.jobs where id = v_id;
     if not found then v_changed := v_changed || v_id; continue; end if;
     -- (a job « À placer », or booked by nobody, makes job_actor null: read as « no », as job_step does)
-    if not coalesce(public.is_owner() or public.can('book') or (v_how = 'hand' and public.job_actor(j)), false) then
+    if not coalesce((public.is_owner() or public.can('book') or (v_how = 'hand' and public.job_actor(j)))
+                    and public.job_visible(j.truck_id, j.created_by), false) then
       perform public.fail('not_allowed', 'Seuls le propriétaire et le bureau envoient les heures aux clients.');
     end if;
     select * into j from public.jobs where id = v_id for update skip locked;
@@ -787,26 +800,39 @@ end $$;
 --      job given its window since: told = its day and hours (a block job: its block's hours now), at confirm_sent_at;
 --   2. a flexible job given its window: its window when a sent « window » text came after its last window_fixed (or when
 --      its confirmation came after it, or when no evening lock ever fixed it: it was booked into a day already locked, its
---      confirmation said the window), at that moment; else, confirmation sent: « dans la journée » (day, null, null);
+--      confirmation said the window), at that moment (the later of the text and a confirmation after it: a second run
+--      finds nothing new); else, confirmation sent: « dans la journée » (day, null, null);
 --   3. no confirmation but such a « window » text: its window;
 --   4. else never told (exactly today's « À confirmer » rows): due for the button.
+--   A « window » text counts only when nothing it said changed after it: the job's day, block, window or customer (the
+--   jobs' « update » activity names the columns changed: move_job cuts a flexible job's window at once in a locked day,
+--   keeps win_flex and writes no window_fixed; « Changer de client »), nor the customer's phone digits (a new number never
+--   got it). A confirmation counts only when the phone digits did not change after it either (move_job, the exact move
+--   and « Changer de client » clear confirm_sent_at themselves). (Review S1.)
 create or replace function public.told_install() returns int
 language plpgsql security definer set search_path = public as $$
 declare v_trial text := coalesce(current_setting('garage.trial', true), ''); n int := 0;
 begin
   perform set_config('garage.trial', 'on', true);
   with c as (
-    select j.id, j.day, j.block, j.win_start, j.win_end, j.confirm_sent_at,
+    select j.id, j.day, j.block, j.win_start, j.win_end,
+           -- a confirmation sent to a number the customer no longer has is not one
+           case when j.confirm_sent_at > p.at then j.confirm_sent_at end confirm_sent_at, p.at ph,
            (j.block = 'day' and coalesce(j.win_flex, false) and j.win_start is not null) fw,
            (select max(a.at) from public.activity a where a.entity = 'job' and a.entity_id = j.id and a.action = 'window_fixed') fix
     from public.jobs j
+    cross join lateral (select coalesce(max(a.at), '-infinity'::timestamptz) at from public.activity a
+                        where a.entity = 'customers' and a.entity_id = j.customer_id and a.action = 'update' and a.data ? 'phone_digits') p
     where j.status = 'booked' and j.deleted_at is null and j.day >= public.local_today()
       and (j.told_at is null
            or (j.told_how = 'install' and (j.confirm_sent_at > j.told_at
                or exists (select 1 from public.messages m where m.job_id = j.id and m.kind = 'window' and m.status = 'sent' and m.created_at > j.told_at))))),
   d as (
     select c.*, (select max(m.created_at) from public.messages m where m.job_id = c.id and m.kind = 'window' and m.status = 'sent'
-                   and m.created_at >= coalesce(c.fix, '-infinity'::timestamptz)) msg
+                   and m.created_at >= coalesce(c.fix, '-infinity'::timestamptz) and m.created_at > c.ph
+                   and not exists (select 1 from public.activity a where a.entity = 'jobs' and a.entity_id = c.id and a.action = 'update'
+                                   and a.at > m.created_at
+                                   and (a.data ? 'day' or a.data ? 'block' or a.data ? 'win_start' or a.data ? 'win_end' or a.data ? 'customer_id'))) msg
     from c),
   t as (
     select d.id,
@@ -815,7 +841,7 @@ begin
                        when d.confirm_sent_at is not null and (d.fix is null or d.confirm_sent_at >= d.fix) then 'w'
                        when d.confirm_sent_at is not null then 'f' end
                 when d.confirm_sent_at is not null then 'h' end how,
-           case when d.fw and d.msg is not null then d.msg else d.confirm_sent_at end at,
+           case when d.fw and d.msg is not null then greatest(d.msg, d.confirm_sent_at) else d.confirm_sent_at end at,
            d.day, d.block, d.win_start, d.win_end
     from d)
   update public.jobs j

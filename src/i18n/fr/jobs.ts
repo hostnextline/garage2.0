@@ -340,7 +340,7 @@ export const jobs = {
     /* « Vraies routes » on: a trip up to that stop not measured yet (eta_measured false; day_order_preview measured false) */
     etaUnmeasured: 'heure : trajets pas encore mesurés',
     firstMenu: 'Mettre en premier',
-    firstMenuSub: 'Ce client passe avant les autres de ce bloc'
+    firstMenuSub: 'Ouvre « Réorganiser la journée » avec ce client en premier : rien ne change avant « Enregistrer »'
   },
   menu: {
     title: 'Plus d’actions',
@@ -400,7 +400,7 @@ export const jobs = {
       help: 'La durée sert au camion pour placer les arrêts dans sa journée. Si la job ne rentre plus, déplace-la.'
     },
     order: {
-      firstMenuSub: 'Ce client passe avant les autres de la journée'
+      firstMenuSub: 'Ouvre « Réorganiser la journée » avec ce client en premier : rien ne change avant « Enregistrer »'
     },
     menu: {
       resendBookingSub: 'Le jour, la plage d’arrivée et le total prévu',
@@ -550,6 +550,7 @@ export const jobs = {
     copyFail: 'Le téléphone n’a pas permis de copier. Garde le doigt sur le texte pour le copier.',
     sentTo: 'Texto envoyé à {name}.',
     already: 'Ce texto a déjà été envoyé.',
+    nothingNew: 'Pas de texto : l’heure qu’on a dite à {name} tient toujours, rien de nouveau à lui dire.',
     quiet: 'Pas de texto : ce client ou ce type de texto est désactivé.',
     offline: 'Pas de réseau : le texto ne peut pas partir. Réessaie quand le réseau revient.'
   }

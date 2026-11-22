@@ -343,6 +343,7 @@ export const booking = {
   sms: {
     sent: { booking: 'Texto de confirmation envoyé', moved: 'Texto de changement envoyé' },
     already: 'Le texto avait déjà été envoyé',
+    nothingNew: 'Pas de texto : l’heure qu’on a dite à {name} tient toujours, rien de nouveau à lui dire',
     noPhone: 'Pas de cellulaire au dossier : aucun texto envoyé',
     off: 'Les textos automatiques ne sont pas branchés : envoie-le toi-même.',
     error: 'Le texto n’est pas parti : envoie-le toi-même.',

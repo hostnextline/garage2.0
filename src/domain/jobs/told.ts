@@ -42,7 +42,7 @@ export interface TellCtx {
 }
 /** what the rule reads of a job (a Job, or a row of the cases' table) */
 export type TellJob = Pick<Job, 'day' | 'block' | 'status' | 'eta_min'>
-  & Partial<Pick<Job, 'deleted_at' | 'win_start' | 'win_end' | 'eta_measured' | 'told_day' | 'told_start' | 'told_end' | 'told_at' | 'hand_at'>>;
+  & Partial<Pick<Job, 'deleted_at' | 'win_start' | 'win_end' | 'eta_measured' | 'arrive_at' | 'told_day' | 'told_start' | 'told_end' | 'told_at' | 'hand_at'>>;
 /** what the lists also need: who (N counts customers) and the order (number) */
 export type TellListJob = TellJob & Pick<Job, 'id' | 'number' | 'customer_id'>;
 /** what he was told last, null: never told anything */
@@ -117,14 +117,19 @@ function earlier(a: string, b: string): boolean {
 }
 /** what the customer must be told now (tell_now). Window mode, booked, a SURE arrival (switch « Vraies routes » off:
     always; on: eta_measured true — NOT plannedTime, which takes a missing flag as sure): inside the window he was told
-    that day → those hours, whatever the planned window (days F1); else, rewin on and outside the PLANNED window → the window
-    of that arrival; else the hours the job has. */
+    that day → those hours (days F1), when the planned window does not hold that arrival (a window an earlier save cut
+    and nobody sent) or the arrival is a minute pointed (the exact move inside what he was told); a planned window that
+    holds the arrival and was not cut from a minute pointed is the one chosen by hand (« Déplacer » to the next window:
+    review R0) and is what he must hear. Else, rewin on and outside the PLANNED window → the window of that arrival; else
+    the hours the job has. */
 export function tellNow(j: TellJob, ctx: TellCtx): TellNow {
   // the plan's arrival (NaN when none: then nothing is sure and no comparison holds)
   const eta = j.eta_min ?? NaN;
   const sure = ctx.windowsOn && j.block === 'day' && j.status === 'booked' && j.eta_min != null && (!ctx.roadsOn || j.eta_measured === true);
-  const toldIn = sure && j.told_day === j.day && j.told_start != null && j.told_end != null && eta >= j.told_start && eta <= j.told_end;
   const ws = j.win_start ?? null, we = j.win_end ?? null;
+  const inPlanned = ws != null && we != null && eta >= ws && eta <= we;
+  const toldIn = sure && j.told_day === j.day && j.told_start != null && j.told_end != null && eta >= j.told_start && eta <= j.told_end
+    && (j.arrive_at != null || !inPlanned);
   const go = !toldIn && sure && ctx.rewin && ws != null && (eta < ws || (we != null && eta > we));
   const h = hoursOf(j, ctx);
   const w = go ? ctx.windowOf(eta) : null;

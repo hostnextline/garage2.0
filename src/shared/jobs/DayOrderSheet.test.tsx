@@ -125,7 +125,9 @@ describe('opened, nothing changed', () => {
     expect(text('dayorder-eta-11')).toBe('vers 10 h');
     expect(text('dayorder-hours-11')).toBe('plage 8 h à 12 h');
     expect(text('dayorder-live-10')).toContain('Sur place : Alice Roy');
-    expect(text('dayorder-status')).toContain('Glisse ≡ pour changer l’ordre ou le camion.');
+    // the hint under the sticky band, not in it (the band stays one short line and the chips: review F2)
+    expect(text('dayorder-hint')).toContain('Glisse ≡ pour changer l’ordre ou le camion.');
+    expect(text('dayorder-status')).not.toContain('Glisse');
     expect(text('dayorder-headline-A')).toBe('4 arrêts, de 10 h à 15 h, 1 h de route');
     expect(q('dayorder-save')!.hasAttribute('disabled')).toBe(true);
     expect(text('dayorder-close')).toBe('Fermer');
@@ -202,6 +204,32 @@ describe('moving a stop (keyboard, the row menu, a mouse)', () => {
     expect(document.body.textContent).toContain('Benoit ira avec la voiture : l’app ne le remettra plus sur le camion.');
     await answerAsk({ ok: true });
     expect([...document.querySelectorAll('[data-dayord-truck="B"] [data-dayord-row]')].map((r) => (r as HTMLElement).dataset.id)).toEqual(['d', 'a']);
+  });
+  it('dragged over the chip of a truck it may not go on (tire work, the car): the chip in warn, the reason on the band\'s status line — never the look of a valid place (review F3); Escape on a stop picked and moved to the other truck keeps its grip focused (review F9)', async () => {
+    seed([...world().slice(0, 3), J('c', 13, 'Denis', 4, { needs_machine: true } as Partial<Job>), world()[4]]);
+    await open();
+    const grip = q('dayorder-grip-13')!;
+    grip.setPointerCapture = () => undefined;
+    const chip = q('dayorder-chip-B')!;
+    (document as { elementFromPoint?: unknown }).elementFromPoint = () => chip;
+    const pe = (type: string, y: number) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.assign(e, { clientX: 10, clientY: y, pointerId: 9, pointerType: 'touch', button: 0 }); return e; };
+    await act(async () => { grip.dispatchEvent(pe('pointerdown', 400)); });
+    await act(async () => { window.dispatchEvent(pe('pointermove', 60)); });
+    expect(q('dayorder-chip-B')!.className).toContain('is-refused');
+    expect(q('dayorder-chip-B')!.className).not.toContain('is-over');
+    expect(text('dayorder-band-refused')).toContain('ce travail demande le camion');
+    await act(async () => { window.dispatchEvent(pe('pointerup', 60)); });
+    await settle();
+    expect(q('dayorder-band-refused')).toBeNull();
+    (document as { elementFromPoint?: unknown }).elementFromPoint = undefined;
+    // the keyboard: Benoit picked, → onto the Voiture, Escape: back on the Camion, his grip still focused
+    await key('dayorder-grip-11', ' ');
+    await key('dayorder-grip-11', 'ArrowRight');
+    expect(q('dayorder-grip-11')!.closest('[data-dayord-truck]')!.getAttribute('data-dayord-truck')).toBe('B');
+    await key('dayorder-grip-11', 'Escape');
+    await settle();
+    expect(q('dayorder-grip-11')!.closest('[data-dayord-truck]')!.getAttribute('data-dayord-truck')).toBe('A');
+    expect(document.activeElement).toBe(q('dayorder-grip-11'));
   });
   it('a mouse drags the whole row onto another place; a long press on a row opens NO appointment menu', async () => {
     await open();

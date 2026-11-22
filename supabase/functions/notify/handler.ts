@@ -152,7 +152,9 @@ export function toldOf(j: Row, s: Row): Told {
 }
 /** one answer of tell_take for one appointment */
 interface Take {
-  id: string; take?: boolean; busy?: boolean; gone?: boolean; already?: boolean;
+  /** held: his row is held by another transaction right now (a plan, a save, a booking): nobody is texting him, a later
+      round takes him. busy: another send holds his lease. already: nothing new to tell him (`state` says why) */
+  id: string; take?: boolean; held?: boolean; busy?: boolean; gone?: boolean; already?: boolean;
   state?: string; kind?: string; now?: { day: string; start: number | null; end: number | null; rewin?: boolean; ws?: number | null; we?: number | null };
   job?: Row;
 }
@@ -183,6 +185,9 @@ async function release(jobId: string, token: number) {
 /* ---------- the day's button: « Envoyer les heures aux clients » ---------- */
 
 const DAY_MAX = 100, ROUND = 3, ROUND_LEFT_MS = 12000;
+/** a row held by another transaction (review S4): asked again in a later round of the same call, at most this many
+    times in all, after a short pause; then `left` (the app calls again with a new op) — never « busy » */
+const HELD_TRIES = 3, HELD_WAIT_MS = 500;
 const NOT_TELL = 'Seuls le propriétaire et le bureau envoient les heures aux clients.';
 const BAD_LIST = 'La liste des clients à texter n’est pas bonne. Rouvre-la.';
 const SERVER = 'Le serveur a eu un problème. Réessaie dans un instant.';
@@ -241,9 +246,17 @@ async function sendDay(req: Request, b: Row, until: number): Promise<Row> {
     const cardOn = !!(await secret('stripe_key'));
     const base = baseOf(b.base);
     const token = leaseToken();
-    let rest = mine, did = false;
-    while (rest.length && until - Date.now() > ROUND_LEFT_MS) {
+    let rest = mine, later: string[] = [], did = false;
+    const heldN = new Map<string, number>();
+    for (;;) {
+      // the rows held a moment ago: once the others are done, a short pause, then asked again
+      if (!rest.length && later.length && until - Date.now() > ROUND_LEFT_MS + HELD_WAIT_MS) {
+        await new Promise((r) => setTimeout(r, HELD_WAIT_MS));
+        rest = later; later = [];
+      }
+      if (!rest.length || until - Date.now() <= ROUND_LEFT_MS) break;
       const batch = rest.slice(0, ROUND);
+      // p_again is always an array here (even empty): the day's button never waits for a row (tell_take)
       const { data, error } = await db.rpc('tell_take', { p_jobs: batch, p_again: again, p_token: token });
       if (error) {
         // nothing done yet: the server's problem is said; else what went is answered, the rest left for the next call
@@ -261,6 +274,11 @@ async function sendDay(req: Request, b: Row, until: number): Promise<Row> {
       for (const x of got) {
         if (x.take && x.job && x.now) continue;
         if (x.take) { await release(x.id, token); out.failed.push({ id: x.id, error: SERVER, phone: null, told: { day, start: null, end: null }, kind: String(x.kind || '') }); }
+        else if (x.held) {
+          const n = (heldN.get(x.id) ?? 0) + 1;
+          heldN.set(x.id, n);
+          (n < HELD_TRIES ? later : out.left).push(x.id);
+        }
         else if (x.busy) out.busy.push(x.id);
         else if (x.gone) out.gone.push(x.id);
         else out.already.push(x.id);
@@ -280,7 +298,7 @@ async function sendDay(req: Request, b: Row, until: number): Promise<Row> {
       const byId = new Map(((custs || []) as Row[]).map((r) => [String(r.id), r]));
       await Promise.all(taken.map((x) => sendOne(x, (byId.get(String(x.job!.customer_id)) || {}) as Row, { c, s, cardOn, base, token, until, out })));
     }
-    out.left.push(...rest);
+    out.left.push(...rest, ...later);
   } catch (e) {
     if (op) { try { await db.from('op_log').delete().eq('op', op).is('result', null); } catch { /* the error is what counts */ } }
     throw e;
@@ -421,6 +439,9 @@ export const handler = serve(async (req) => {
   const telling = TOLD_KINDS.includes(kind);
   const token = leaseToken();
   const told = telling ? toldOf(j, s) : null;
+  // the text that goes: the one asked, but a customer never told anything (texting off at his booking, a booking kept
+  // on the phone, a new number) asked « a changé » or a window gets his full confirmation with the estimate (review R2)
+  let sendKind = kind, words = when;
   if (telling) {
     let x: Take | undefined;
     try {
@@ -431,31 +452,41 @@ export const handler = serve(async (req) => {
     if (!x?.take) {
       await close({}, false);
       if (x?.gone) fail('not_booked', 'Ce rendez-vous n’est plus à venir.');
-      return json({ ok: true, status: 'already' });
+      // why: 'told' = what he was told still holds (nothing new to send); 'busy' = another send holds him right now
+      return json({ ok: true, status: 'already', why: x?.already && x.state === 'ok' ? 'told' : 'busy' });
+    }
+    if (kind !== 'booking' && x.kind === 'booking' && x.state === 'new') {
+      try {
+        const btpl = templateOf('booking', s, lang, cardOn);
+        if (!btpl) fail('template', 'Ce texto n’a pas de modèle dans les réglages.');
+        words = await textVars('booking', btpl, j, cu, s, lang, cardOn, { as: c.db, me: c.access });
+        sendKind = 'booking';
+      } catch (e) { await release(j.id, token); await close({}, false); throw e; }
     }
   }
   let out: Record<string, unknown> = {}, went = false;
   try {
-    const { message, link } = await withLink(when, j.id, c.id, baseOf(b.base), lang);
+    const { message, link } = await withLink(words, j.id, c.id, baseOf(b.base), lang);
 
-    const quiet = cu.sms_ok === false || s.messages?.on?.[kind] === false;
+    const quiet = cu.sms_ok === false || s.messages?.on?.[sendKind] === false;
     const res = quiet ? { status: 'quiet' as const } : await sendSms({ first: cu.first_name, last: cu.last_name, phone: cu.phone, email: cu.email }, message, undefined, { until });
     const maybe = res.status === 'error' && (res as { maybe?: boolean }).maybe === true;
     went = res.status === 'sent' || maybe;
-    await db.from('messages').insert({ job_id: j.id, customer_id: cu.id || null, staff_id: c.id, kind, channel: 'sms', to_addr: cu.phone || null, body: message,
+    await db.from('messages').insert({ job_id: j.id, customer_id: cu.id || null, staff_id: c.id, kind: sendKind, channel: 'sms', to_addr: cu.phone || null, body: message,
       status: res.status === 'sent' ? 'sent' : res.status === 'error' ? 'failed' : 'skipped', provider_ref: (res as { id?: string }).id || null, error: (res as { error?: string }).error || res.status, created_by: c.id });
     if (telling) {
       // what THAT text said is what he was told (it writes confirm_sent_at too, except for « window »); a text that did not
       // go drops the lease: he stays owed his hours
-      if (res.status === 'sent') await toldDone(j.id, token, { ...told, rewin: false }, 'sms', c.id, kind);
-      else if (maybe) await toldDone(j.id, token, { ...told, rewin: false }, 'maybe', c.id, kind);
+      if (res.status === 'sent') await toldDone(j.id, token, { ...told, rewin: false }, 'sms', c.id, sendKind);
+      else if (maybe) await toldDone(j.id, token, { ...told, rewin: false }, 'maybe', c.id, sendKind);
       else await release(j.id, token);
     } else if (res.status === 'sent' && kind === 'invoice') await db.from('invoices').update({ sent_at: new Date().toISOString() }).eq('job_id', j.id).neq('status', 'void').is('deleted_at', null);
     out = { ok: res.status === 'sent', status: res.status, error: (res as { error?: string }).error, message, link, phone: cu.phone || null,
       ...(maybe ? { maybe: true } : {}),
       // a text to send by hand (texting not set up), or one that did not go: the app's « send by hand » sheet offers
       // « C'est envoyé » with what this message says (tell_mark how 'hand')
-      ...(telling && (res.status === 'off' || res.status === 'error') ? { told, kind, job_id: j.id } : {}) };
+      ...(sendKind !== kind ? { sent_kind: sendKind } : {}),
+      ...(telling && (res.status === 'off' || res.status === 'error') ? { told, kind: sendKind, job_id: j.id } : {}) };
     await close(out, res.status === 'sent');
     return json(out);
   } catch (e) {

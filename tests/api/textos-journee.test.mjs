@@ -678,3 +678,73 @@ test('A15: today, a customer whose sure arrival slipped out of a window told = p
     assert.equal((await toldOf(jh)).told_start, 600);
   } finally { await q(def); }
 });
+
+/* ---------- A16–A18: the fixer's cases (reviews R0, R2, S4) ---------- */
+
+test('A16: « Déplacer » a customer told 10 h à 14 h to the next window 14 h à 18 h: « Envoyer le texto » texts « entre 14 h et 18 h » and writes it; asked again: « already » with why « told » (nothing new), never « déjà envoyé » for a text that never went (review R0)', async () => {
+  const day = await newDay();
+  const c = await customer('Bruno', { lat: 45.52, lng: -73.62 });
+  const b = await rpc('book_job', { p_op: randomUUID(), p_job: { customer_id: c.id, day, block: 'day', win_start: 600, duration_min: 60, truck_id: truck }, p_items: [{ description: 'Vidange d’huile', unit_cents: 7999 }] }, ownerJwt);
+  made.jobs.push(b.job_id);
+  assert.equal((await fn('notify', { kind: 'booking', job_id: b.job_id, base: BASE }, ownerJwt)).status, 'sent');
+  assert.deepEqual(Object.values(await toldOf(b.job_id)).slice(0, 3), [day, 600, 840], 'told 10 h à 14 h');
+  const mv = await rpc('move_job', { p_op: randomUUID(), p_job: b.job_id, p_day: day, p_block: 'day', p_truck: truck, p_win_start: 840, p_win_flex: false }, ownerJwt);
+  assert.equal(mv.ok, true, JSON.stringify(mv));
+  const [{ eta, ws }] = await q(`select eta_min eta, win_start ws from public.jobs where id = $1`, [b.job_id]);
+  assert.deepEqual([ws, eta], [840, 840], 'planned 14 h à 18 h, the truck there at 14 h (his told end)');
+  const list = await rpc('tell_list', { p_day: day }, ownerJwt);
+  assert.deepEqual(list.filter((x) => x.id === b.job_id).map((x) => [x.state, x.kind]), [['changed', 'moved']], 'owed his new window');
+  await clearLog();
+  const s = await fn('notify', { kind: 'moved', job_id: b.job_id, base: BASE }, ownerJwt);
+  assert.equal(s.status, 'sent', JSON.stringify(s));
+  assert.match(s.message, /^Bonjour Bruno, votre rendez-vous avec Mécanique Mobile H\.I\.S a changé : [^\n]+, entre 14 h et 18 h\. Détails : /, s.message);
+  const t1 = await toldOf(b.job_id);
+  assert.deepEqual([t1.told_start, t1.told_end, t1.told_how], [840, 1080, 'sms']);
+  const again = await fn('notify', { kind: 'moved', job_id: b.job_id, base: BASE }, ownerJwt);
+  assert.deepEqual([again.status, again.why], ['already', 'told'], JSON.stringify(again));
+  assert.equal((await texts(c.phone)).length, 1, 'one text');
+});
+
+test('A17: a customer never told anything (texting off at his booking) moved, then « Envoyer le texto »: he gets his full confirmation with the estimate, not « a changé »; told and confirmed (review R2)', async () => {
+  const day = await newDay();
+  const c = await customer('Nadia');
+  const j = await job(c, day, { ws: 840, we: 1080, eta: 900 });
+  assert.deepEqual((await rpc('tell_list', { p_day: day }, ownerJwt)).filter((x) => x.id === j).map((x) => [x.state, x.kind]), [['new', 'booking']]);
+  await clearLog();
+  const s = await fn('notify', { kind: 'moved', job_id: j, base: BASE }, ownerJwt);
+  assert.equal(s.status, 'sent', JSON.stringify(s));
+  assert.match(s.message, /^Bonjour Nadia, votre rendez-vous avec Mécanique Mobile H\.I\.S est confirmé : [^\n]+, entre 14 h et 18 h\.\n\nEstimation :\n• Vidange d’huile : 79,99 \$/, s.message);
+  assert.deepEqual((await msgs(j)).map((x) => [x.kind, x.status]), [['booking', 'sent']], 'kept as his booking text');
+  const t = await toldOf(j);
+  assert.deepEqual([t.told_start, t.told_end, t.told_how, t.confirmed], [840, 1080, 'sms', true]);
+  assert.deepEqual((await rpc('tell_list', { p_day: day }, ownerJwt)).filter((x) => x.id === j), [], 'not owed anything any more');
+});
+
+test('A18: the day’s button meets a customer whose row another transaction holds (a plan, a save): never « busy » (nobody else is sending); asked again in the same call once it is free, else in `left` for the next call (review S4, R3)', async () => {
+  const day = await newDay();
+  const a = await customer('Gilles'), b = await customer('Hugo');
+  const ja = await job(a, day, { ws: 600, we: 840, eta: 650 }), jb = await job(b, day, { ws: 720, we: 960, eta: 750 });
+  const hold = await db.connect();
+  try {
+    // held for the whole press: left, not busy
+    await hold.query('begin');
+    await hold.query(`update public.jobs set notes = notes where id = $1`, [ja]);
+    await clearLog();
+    const r1 = await press(day, [ja, jb]);
+    assert.deepEqual([r1.busy, r1.left, r1.sent], [[], [ja], [jb]], JSON.stringify(r1));
+    assert.equal((await toldOf(ja)).told, false);
+    await hold.query('commit');
+    assert.deepEqual((await press(day, r1.left)).sent, [ja], 'the next call sends him');
+    // held a moment only: the same call sends him once it is free
+    const c = await customer('Inès');
+    const jc = await job(c, day, { ws: 840, we: 1080, eta: 900 });
+    await hold.query('begin');
+    await hold.query(`update public.jobs set notes = notes where id = $1`, [jc]);
+    const p = press(day, [jc]);
+    await sleep(300);
+    await hold.query('commit');
+    const r2 = await p;
+    assert.deepEqual([r2.busy, r2.left, r2.sent], [[], [], [jc]], JSON.stringify(r2));
+    for (const x of [a, b, c]) assert.equal((await texts(x.phone)).length, 1, `${x.first} texted once`);
+  } finally { await hold.query('rollback').catch(() => {}); hold.release(); }
+});

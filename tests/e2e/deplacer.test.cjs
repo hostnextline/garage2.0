@@ -81,10 +81,14 @@ async function textAskIf(page, changed, first) {
   assert.equal(movedAsked(page, first), before, `the server not asked to text ${first} before the answer`);
   assert.deepEqual(await d.textsTo(first, /a changé/), [], `nothing texted to ${first} before the answer`);
   // Part 28 (REARRANGE.md §1.3, « Planned ≠ told while the state is 'ok' »): a sure arrival still inside the window he was
-  // TOLD that day leaves him nothing new to hear; « Envoyer le texto » then goes under the server's lease, which answers
-  // `already` and texts nothing (the world is written as told: stopOf)
+  // TOLD that day leaves him nothing new to hear when it is a minute pointed (the exact move) or his planned window does
+  // not hold it; « Envoyer le texto » then goes under the server's lease, which answers `already` (why « told ») and
+  // texts nothing (the world is written as told: stopOf). A window chosen by hand that holds the arrival is a new one to
+  // tell him, even when the arrival is also inside the told one (review R0)
   const row = jobRow(J[first]);
-  const insideTold = row.told_at != null && row.told_day === row.day && row.told_start != null && row.eta_min >= row.told_start && row.eta_min <= row.told_end;
+  const inPlanned = row.win_start != null && row.eta_min >= row.win_start && row.eta_min <= row.win_end;
+  const insideTold = row.told_at != null && row.told_day === row.day && row.told_start != null && row.eta_min >= row.told_start && row.eta_min <= row.told_end
+    && (row.arrive_at != null || !inPlanned);
   const ta = await h.textAsk(page);
   page.movedSent[first] = before + 1;
   assert.equal(ta.title, `Texter ${first} ?`);

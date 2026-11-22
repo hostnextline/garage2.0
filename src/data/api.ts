@@ -409,7 +409,9 @@ export async function rpcNow<T>(name: string, args: Record<string, unknown>, ms 
 export async function notify(kind: string, jobId: string, opts: { resend?: boolean; op?: string } = {}) {
   guard();
   return callFn<{ status: string; message?: string; link?: string; phone?: string | null;
-    told?: { day: string; start: number | null; end: number | null } | null; kind?: string; job_id?: string }>('notify', { kind, job_id: jobId, base: appBase(), ...opts });
+    told?: { day: string; start: number | null; end: number | null } | null; kind?: string; job_id?: string;
+    /** « already »: 'told' = what he was told still holds (nothing new), 'busy' = another send holds him right now */
+    why?: 'told' | 'busy' }>('notify', { kind, job_id: jobId, base: appBase(), ...opts });
 }
 /** the trip of a job (start, refresh, end), or the trip back to the start after the last job (return, return_end: no job) */
 export async function enroute(action: 'start' | 'refresh' | 'end' | 'return' | 'return_end', jobId: string | null, opts: { pos?: { lat: number; lng: number }; notify?: boolean; resend?: boolean; op?: string } = {}) {

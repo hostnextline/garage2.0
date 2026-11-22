@@ -92,3 +92,19 @@ describe('the job screens’ « text to send by hand » sheet (TextOutcome.tsx)'
     expect(outcome.value?.told).toBeUndefined();
   });
 });
+
+describe('« already »: nothing new to tell him is said as such, never « déjà envoyé » (review R0)', () => {
+  it('why « told » (what he was told still holds): « Pas de texto : l’heure qu’on a dite à Julie tient toujours… »; why « busy » or none: as before', async () => {
+    api.notify.mockResolvedValue({ ok: true, status: 'already', why: 'told' });
+    await notifyCustomer('moved', 'j1');
+    expect(toasts.value.map((x) => x.text)).toEqual(['Pas de texto : l’heure qu’on a dite à Julie tient toujours, rien de nouveau à lui dire']);
+    toasts.value = [];
+    await sendText('moved', getRow<Job>('jobs', 'j1')!);
+    await settle();
+    expect(toasts.value.map((x) => x.text)).toEqual(['Pas de texto : l’heure qu’on a dite à Julie tient toujours, rien de nouveau à lui dire.']);
+    toasts.value = [];
+    api.notify.mockResolvedValue({ ok: true, status: 'already', why: 'busy' });
+    await notifyCustomer('moved', 'j1');
+    expect(toasts.value.map((x) => x.text)).toEqual(['Le texto avait déjà été envoyé']);
+  });
+});

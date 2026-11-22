@@ -311,7 +311,7 @@ export const jobs: typeof fr = {
     /* « Vraies routes » on: a trip up to that stop not measured yet (eta_measured false; day_order_preview measured false) */
     etaUnmeasured: 'time: trips not measured yet',
     firstMenu: 'Put first',
-    firstMenuSub: 'This customer comes before the others of this block'
+    firstMenuSub: 'Opens « Rearrange the day » with this customer first: nothing changes until « Save »'
   },
   menu: {
     title: 'More actions',
@@ -371,7 +371,7 @@ export const jobs: typeof fr = {
       help: 'The length lets the truck fit the stops in its day. If the job no longer fits, move it.'
     },
     order: {
-      firstMenuSub: 'This customer goes before the others of the day'
+      firstMenuSub: 'Opens « Rearrange the day » with this customer first: nothing changes until « Save »'
     },
     menu: {
       resendBookingSub: 'The day, the arrival window and the planned total',
@@ -518,6 +518,7 @@ export const jobs: typeof fr = {
     copyFail: 'The phone did not allow copying. Hold your finger on the text to copy it.',
     sentTo: 'Text sent to {name}.',
     already: 'This text was already sent.',
+    nothingNew: 'No text: the time {name} was told still holds, nothing new to tell them.',
     quiet: 'No text: this customer or this kind of text is turned off.',
     offline: 'No signal: the text cannot go. Try again when the signal is back.'
   }

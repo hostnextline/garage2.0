@@ -82,7 +82,7 @@ export function lateWindow(s: ExactStop, day: Day): Range | null {
   const row = jobRow(s.id);
   const n = tellNow({
     day, block: 'day', status: 'booked', eta_min: s.etaAfter, eta_measured: s.measured !== false,
-    win_start: s.winStart ?? row?.win_start ?? null, win_end: s.winEnd ?? row?.win_end ?? null,
+    win_start: s.winStart ?? row?.win_start ?? null, win_end: s.winEnd ?? row?.win_end ?? null, arrive_at: row?.arrive_at ?? null,
     told_day: row?.told_day ?? null, told_start: row?.told_start ?? null, told_end: row?.told_end ?? null,
     told_at: row?.told_at ?? null, hand_at: row?.hand_at ?? null
   }, ctx);

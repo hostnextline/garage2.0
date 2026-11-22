@@ -293,7 +293,7 @@ Paths under `src/`. Owner: the package that owns the folder (`app-shell` is the 
 | `shared/guide/GuideCard` | comms-guide | `()` → the next first step, or null |
 | `shared/jobs/DayOrderHost` (Part 28) | jobs | `openDayOrder(day, { truck?, job?, first? })`, `DayOrderHost({ onSaved? })` (mounted by the agenda, Aujourd'hui, the Carte, Vue d'ensemble, the job screen); `mayOrderDay(day)` in `domain/jobs/dayOrder` |
 | `shared/jobs/TellHost` (Part 28) | jobs | `openTell(day)` — mounts its own root on first use (no screen mounts it): the send list « Envoyer les heures aux clients » |
-| `shared/jobs/ToldBanner` / `ToldBits` (Part 28) | jobs | `ToldBanner({ day })`, `ToldDays()` (nothing when N = 0 or not owner / « Réserver »); `ToldJobLine({ job })`, `ToldWarn({ job })`, `toldDayToast(before)`; the rule in `domain/jobs/told` (`tellState`, `toldWindow`, `clientsDue`, `dueOn`, `dueDays`, `tellCtx`) |
+| `shared/jobs/ToldBanner` / `ToldBits` (Part 28) | jobs | `ToldBanner({ day, onSend? })`, `ToldDays()` (nothing when N = 0 or not owner / « Réserver »); `ToldJobLine({ job })`, `ToldWarn({ job })`, `toldDayToast(before)`; the rule in `domain/jobs/told` (`tellState`, `toldWindow`, `clientsDue`, `dueOn`, `dueDays`, `tellCtx`) |
 
 Keep the exported names and props exactly; you may add optional props.
 
@@ -525,12 +525,14 @@ keeps all four « owner only » numbers for anybody else's save.
 Server functions (`callFn` / helpers in api.ts): `notify { kind: booking|window|moved|arrived|extras|invoice|payment_reminder, job_id, resend? }` →
 `{ status: sent|off|no_phone|error|already, message, link, phone }` (texts go through GoHighLevel; when it is not connected the
 answer gives the message and the link so the person can send it from their own phone; Part 28: booking / window / moved go
-under the lease `tell:<job>` and write what the client was told; `already` when nothing new is owed or another send holds
-him; their `off` / `error` answers carry `told: { day, start, end }`, `kind`, `job_id`, and `maybe: true` when the text may
+under the lease `tell:<job>` and write what the client was told; `already` when nothing new is owed (`why: 'told'`) or
+another send holds him (`why: 'busy'`); a client never told anything asked moved / window gets the booking text
+(`sent_kind: 'booking'`); their `off` / `error` answers carry `told: { day, start, end }`, `kind`, `job_id`, and `maybe: true` when the text may
 have gone) · `notify { action: 'day', day, base, op, only: [job ids ≤ 100], again?: [job ids] }` (owner / « Réserver »; Part
 28) → `{ ok, status: 'done', day, sent, maybe, already, busy, gone, quiet: [{ id, phone, why }], no_phone, failed: [{ id,
 error, phone, told, kind }], by_hand: [{ id, phone, message, link, told, kind }], left }` (call again with `left` and a NEW
-op) · `enroute { action: start|refresh|end, job_id, pos?, notify? }` ·
+op; `left` also holds a customer whose row another action held for the whole call — `busy` is only another send holding
+his lease) · `enroute { action: start|refresh|end, job_id, pos?, notify? }` ·
 `vin { vin }` · `team { action: list|invite|reset-link|invite-cancel|remove|secrets|secrets-set|sms-test|leave|forgot|invite-info|invite-accept }` ·
 `drive { action: warm, point: { lat, lng }, from?, days?: 1…14, only?: 'point' }` (any member; without `point`: owner / office)
 · `drive { action: sweep }` (owner / office, or the nightly job's GitHub ticket) → `{ ok, ready, left, left0, stored,

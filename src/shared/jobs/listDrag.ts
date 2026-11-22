@@ -10,8 +10,11 @@
      first free place after them), an end slot or a truck's head (the end of that truck), a truck chip held 400 ms (the
      list scrolls to that truck and the drag goes on; let go on it: its end). A place the stop may not go keeps the truck
      and the reason, and draws no line. Only the ghost and `target` change while dragging: no server call.
-   - Near the top (under the sticky lines) or the bottom of the scrolling body, one animation loop scrolls it by
-     ceil((72 − d) / 4) px a frame (18 at most), the place found again each frame; never the window (the page is locked).
+   - Near the top (the 40 px right under the sticky lines) or the bottom (72 px) of the scrolling body, one animation loop
+     scrolls it by ceil((zone − d) / 4) px a frame (18 at most), the place found again each frame; never the window (the
+     page is locked). Over the sticky lines themselves (the chips, the status line) it never scrolls: a chip held must
+     show its truck, not be beaten by the loop (review F1); the top zone is small so the first row under the band can be
+     aimed at (review F5).
    - Let go on a place → `drop`; on a refused place → `refused` (the row goes back). pointercancel, lostpointercapture,
      Escape → the row goes back, nothing changed.
    - A rebase that arrives during a drag waits for its end (`afterDrag`): re-keying the dragged row would fire
@@ -41,6 +44,8 @@ export interface ListDragOptions {
 export const FINGER_PX = 4;
 export const MOUSE_PX = 6;
 export const EDGE_PX = 72;
+/** the zone right under the sticky lines that scrolls the list up (smaller: the band already takes the top; review F5) */
+export const EDGE_TOP_PX = 40;
 export const EDGE_STEP_MAX = 18;
 export const CHIP_HOLD_MS = 400;
 /** « its end » (the sheet clamps it to the list's length) */
@@ -177,8 +182,9 @@ export function createListDrag(o: ListDragOptions): ListDrag {
     const sticky = b.querySelector('.dayord-sticky')?.getBoundingClientRect();
     const top = sticky && sticky.bottom > r.top ? Math.min(sticky.bottom, r.bottom) : r.top;
     const dTop = g.y - top, dBottom = r.bottom - g.y;
-    const step = (d: number) => Math.min(EDGE_STEP_MAX, Math.ceil((EDGE_PX - Math.max(0, d)) / 4));
-    speed = dTop < EDGE_PX ? -step(dTop) : dBottom < EDGE_PX ? step(dBottom) : 0;
+    const step = (zone: number, d: number) => Math.min(EDGE_STEP_MAX, Math.ceil((zone - Math.max(0, d)) / 4));
+    // on the band (a chip, the status line): never (its chip shows its truck)
+    speed = dTop < 0 ? 0 : dTop < EDGE_TOP_PX ? -step(EDGE_TOP_PX, dTop) : dBottom < EDGE_PX ? step(EDGE_PX, dBottom) : 0;
     if (speed && !raf) raf = raf$(tick);
   }
   function tick() {
