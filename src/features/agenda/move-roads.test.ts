@@ -2,7 +2,7 @@
    REAL move.ts on the REAL data layer (api.ts suggestBlocks → roads.ts warmRoads); the function « drive », the planner
    and move_job pretended. The address is measured before the planner answers (up to 3.5 s): the question must not
    vanish meanwhile, and a planner that never answers must not hold the move. Switch OFF: as before. */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 
 const fn = vi.hoisted(() => ({ ms: 3300, calls: [] as string[] }));
 vi.mock('../../data/auth', async (orig) => ({ ...(await orig<Record<string, unknown>>()),
@@ -28,6 +28,13 @@ import { resetRoads } from '../../data/roads';
 import { lang } from '../../lib/i18n';
 import type { Job } from '../../data/types';
 import { moveFlow, moveToTime, moveToWindow, farCheckDay } from './move';
+
+// the days of these moves are fixed (2026-11-20, 2026-11-21): the clock is put before them (only Date: the measure's and
+// the reading's seconds stay real), else a day gone by is never measured and the test turns red with the calendar (it
+// did at midnight, 2026-11-22: « expected [] to include 'drive' »)
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-11-19T17:00:00Z'));
+afterAll(() => { vi.useRealTimers(); });
 
 const julie = { id: 'j1', number: 7, day: '2026-11-20', block: 'am', status: 'booked', truck_id: 't1', duration_min: 60, lat: 45.5, lng: -73.6, customer_id: null, needs_machine: false, vehicle_kind: null } as unknown as Job;
 const roads = (on: boolean) => upsertLocal('settings', [{ id: '1', booking: { roads_on: on } } as never], { force: true });
