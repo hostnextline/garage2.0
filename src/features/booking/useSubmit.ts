@@ -120,35 +120,43 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
       // (the server refuses an estimate already booked: quote_done)
       card_on_file: !!d.card, quote_id: d.bookedIds.length ? null : b.quote?.id ?? null, source: b.quote ? 'quote' : a.walkIn ? 'walk_in' : 'phone', vehicle_kind: kindFor(b.need, cars.length, d.kind)
     };
-    const jobs = visitJobs(cars, base, { choice, taxes: settings.value.taxes, carOf });
-    /* « Réserver à l'heure choisie » (Part 30, K1–K3): a time of the calendar (or a best moment's « Vers … ») picked for
-       ONE car: booked AT that minute, the warning first when there is no room; then the new map of that day when somebody
-       else's hour changed. No signal or an older server: booked as before (the window of that minute) */
-    const minute = b.wm && choice && !a.walkIn && jobs.length === 1 ? exactAtOf(choice, daySpan.value, windowOf) : null;
-    if (minute != null) {
-      const v = jobs[0];
-      const name = customerRow(cid)?.first_name || d.caller.first || '';
-      const done = await bookAtTime({ job: v.job, lines: v.lines, at: minute, truck: b.effTruck || null, name, mayForce: b.mayForce }, {
-        preview: bookPreview, book: (job, lines) => bookJob(job, lines), ask, online: () => net.value.online,
-        nameOf: (id) => { const r = jobRow(id); return (r && jobPerson(r)) || t('booking.atTime.someone'); }, windowOf, lateWindow
-      });
-      if (done.kind !== 'fallback') { afterAtTime(done, v.job.day, cid, l); return; }
+    let jobs = visitJobs(cars, base, { choice, taxes: settings.value.taxes, carOf });
+    /* « Réserver à l'heure choisie » (Part 30, K1–K3, the lead's correction of 2026-11-22: Hassan, « hours can change »): a
+       time the server OFFERS books exactly as before (its window, no minute pinned: the planner stays free). Only a time it
+       does not offer (« complet », taken anyway by the owner or the office: choice.full) is a forcing: the server's preview
+       of that very minute, the warning when somebody would be late or the truck past its hours, « Réserver quand même à
+       14 h » books AT that minute (pinned), then the new map of that day. No signal, an older server, several cars: as
+       before Part 30 for a full time — the day alone, the app gives the window */
+    let sent = choice;
+    if (b.wm && choice?.full && !a.walkIn) {
+      const minute = jobs.length === 1 ? exactAtOf(choice, daySpan.value, windowOf) : null;
+      if (minute != null) {
+        const v = jobs[0];
+        const name = customerRow(cid)?.first_name || d.caller.first || '';
+        const done = await bookAtTime({ job: v.job, lines: v.lines, at: minute, truck: b.effTruck || null, name, mayForce: b.mayForce }, {
+          preview: bookPreview, book: (job, lines) => bookJob(job, lines), ask, online: () => net.value.online,
+          nameOf: (id) => { const r = jobRow(id); return (r && jobPerson(r)) || t('booking.atTime.someone'); }, windowOf, lateWindow
+        });
+        if (done.kind !== 'fallback') { afterAtTime(done, v.job.day, cid, l); return; }
+      }
+      sent = { day: choice.day, block: 'day' };
+      jobs = visitJobs(cars, base, { choice: sent, taxes: settings.value.taxes, carOf });
     }
-    const results = await sendVisit(jobs, { walkIn: a.walkIn, choice, mayForce: b.mayForce }, {
+    const results = await sendVisit(jobs, { walkIn: a.walkIn, choice: sent, mayForce: b.mayForce }, {
       book: bookJob, walkIn, message: errorMessage,
       askForce: (msg) => ask({ title: bt('force.title'), text: `${msg} ${t('booking.force.text')}`, ok: t('booking.force.ok'), cancel: bt('force.cancel'), danger: true })
     });
     // « Réserver quand même »: the server gives the window from where the stop ends up, so the words say the day
     const forced = results.some((r) => r.status === 'booked' && r.sentForced);
-    const when = choice ? whenSaid(choice, forced, l) : '';
-    const o = outcome(results, { total: jobs.length, walkIn: a.walkIn, day: choice?.day ?? null, when }, { t, bt });
+    const when = sent ? whenSaid(sent, forced, l) : '';
+    const o = outcome(results, { total: jobs.length, walkIn: a.walkIn, day: sent?.day ?? null, when }, { t, bt });
     for (const x of o.toasts) toast(x.text, { kind: x.kind, ms: x.ms });
     // the screen's state first (what was booked leaves it), then where the eyes go
     if (!o.go && o.done.length) b.act({ t: 'booked', keys: o.done, ids: jobs.filter((j) => o.done.includes(j.key)).map((j) => j.job.id!) });
     if (o.banner || o.windowGone) { b.act({ t: 'refused', banner: o.banner, windowGone: o.windowGone, again: o.again }); calmScroll(at.moment.current); }
     if (o.go) navigate(o.go, { replace: true });
     // the customer's confirmation, for each appointment the server answered (a window: said above the text to send by hand)
-    const sms = choice && choice.block === 'day' ? whenSaid(choice, forced, l) : null;
+    const sms = sent && sent.block === 'day' ? whenSaid(sent, forced, l) : null;
     for (const id of o.texts) if (wantsText('booking', id)) void notifyCustomer('booking', id, { customerId: cid, when: sms });
     // the texts are on, but this customer has no cell number: the office can ask for one
     const who = customerRow(cid);
@@ -173,11 +181,10 @@ export function useSubmit(b: Booking, at: Anchors): () => Promise<void> {
     }
     const s = atTimeSaid(done, day, l, lateWindow);
     toast(s.text, { kind: s.kind, ms: s.ms });
-    if (s.map) {
-      // the new map of that day, over its agenda (« Voir le rendez-vous » opens the appointment)
-      openBookedMapOn(`/agenda/${day}`, { day, jobId: done.id, at: done.at,
-        marks: (done.answer?.stops ?? []).map((x) => ({ id: x.id, late: x.late, lateMin: x.lateMin, delay: x.delay, etaAfter: x.etaAfter })) });
-    } else navigate(`/job/${done.id}`, { replace: true });
+    // a time the server did not offer, booked anyway at that minute: the new map of that day, over its agenda (« Voir le
+    // rendez-vous » opens the appointment)
+    openBookedMapOn(`/agenda/${day}`, { day, jobId: done.id, at: done.at,
+      marks: (done.answer?.stops ?? []).map((x) => ({ id: x.id, late: x.late, lateMin: x.lateMin, delay: x.delay, etaAfter: x.etaAfter })) });
     // the customer's confirmation at once, as every booking (its window: the one of the minute it went to)
     if (wantsText('booking', done.id)) void notifyCustomer('booking', done.id, { customerId: cid, when: s.when });
   };

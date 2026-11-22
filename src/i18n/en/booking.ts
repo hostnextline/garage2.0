@@ -370,7 +370,6 @@ export const booking: typeof fr = {
     told: '{name}’s window: between {from} and {to}.',
     pushed: { one: 'This stop arrives a little later, still inside its window:', other: 'These stops arrive a little later, still inside their window:' },
     pushedLine: '{name}: around {eta} instead of {was}.',
-    ok: 'Book',
     other: 'Pick another time',
     lateTitle: { one: 'Booking {who} at {time} makes {name} late', other: 'Booking {who} at {time} makes {n} customers late' },
     overTitle: 'Booking {who} at {time}: the truck ends after its hours',

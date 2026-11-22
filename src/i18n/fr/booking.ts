@@ -365,15 +365,14 @@ export const booking = {
   }
   // fin refonte:moment-pickers
   ,
-  /* Part 30 « Réserver à l'heure choisie » (src/features/booking/atTime.ts, BookedMap.tsx): a time of the calendar books the
-     appointment AT that minute; no room → the warning first; then the new map of that day */
+  /* Part 30 « Réserver à l'heure choisie » (src/features/booking/atTime.ts, BookedMap.tsx): a time the server does not offer,
+     taken anyway (owner, office): the warning first, then booked AT that minute (pinned), then the new map of that day */
   atTime: {
     someone: 'un client',
     question: 'Réserver {name} : {when} à {time} ?',
     told: 'Plage de {name} : entre {from} et {to}.',
     pushed: { one: 'Cet arrêt arrive un peu plus tard, toujours dans sa plage :', other: 'Ces arrêts arrivent un peu plus tard, toujours dans leur plage :' },
     pushedLine: '{name} : vers {eta} au lieu de {was}.',
-    ok: 'Réserver',
     other: 'Choisir une autre heure',
     lateTitle: { one: 'Réserver {who} à {time} met {name} en retard', other: 'Réserver {who} à {time} met {n} clients en retard' },
     overTitle: 'Réserver {who} à {time} : le camion finit après ses heures',

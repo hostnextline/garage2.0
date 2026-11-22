@@ -1,6 +1,6 @@
-/* « Réserver à l'heure choisie » (Part 30, K1, K2): the flow of « Réserver » for a time of the calendar, against a pretended
-   server (book_preview / book_job with arrive_at): room → booked at that minute without a question; someone pushed →
-   said; no room → the warning (who, how late, the truck's end), « Réserver quand même à 14 h » for the owner, why not for a
+/* « Réserver à l'heure choisie » (Part 30, K1, K2, the lead's correction): the flow of « Réserver » for a time the server
+   does not offer, taken anyway (« complet »), against a pretended server (book_preview / book_job with arrive_at): room at
+   that minute → booked there without a question (someone pushed inside their window is not asked); no room → the warning (who, how late, the truck's end), « Réserver quand même à 14 h » for the owner, why not for a
    mechanic; the truck cannot be there → « Mettre à … »; no answer → said plainly; no signal or an older server → booked
    as before; the day changed since → asked again once; a lost answer is never « réessaie ». */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -66,23 +66,15 @@ describe('room at that minute', () => {
     expect(booked[0].force).toBeUndefined();
     if (r.kind === 'booked') { expect(r.at).toBe(840); expect(r.late).toEqual([]); expect(r.pushed).toEqual([]); expect(r.forced).toBe(false); }
   });
-  it('someone pushed later inside their window: said first (« Denis : vers 15 h 10 au lieu de 14 h 40 »); « Choisir une autre heure » books nothing', async () => {
+  it('someone pushed later inside their window: no question (as a booking with room never asked), booked at that minute; the answer says who moved', async () => {
     const pv = answer([stop('D', { before: 880, after: 910, ws: 840, we: 1080 })]);
-    answers = [false];
-    const r = await bookAtTime(ask(), deps({ previews: [pv] }));
-    expect(asked).toHaveLength(1);
-    expect(asked[0].title).toBe('Réserver Julie : jeudi 26 novembre à 14 h ?');
-    expect(asked[0].text).toContain('Denis : vers 15 h 10 au lieu de 14 h 40.');
-    expect(asked[0].text).toContain('Plage de Julie : entre 13 h et 17 h.');
-    expect(asked[0].cancel).toBe('Choisir une autre heure');
-    expect(r).toEqual({ kind: 'stopped' });
-    expect(booked).toEqual([]);
-    answers = [true];
     // the booking's own answer says who moved (the server's, not the preview's)
-    const r2 = await bookAtTime(ask(), deps({ previews: [pv], books: [{ ok: true, exact: true, at: 840, job_id: 'NEW', truck_id: 'T1', forced: false,
+    const r = await bookAtTime(ask(), deps({ previews: [pv], books: [{ ok: true, exact: true, at: 840, job_id: 'NEW', truck_id: 'T1', forced: false,
       stops: [stop('D', { before: 880, after: 910, ws: 840, we: 1080 })], over_hours: 0 }] }));
-    expect(r2.kind).toBe('booked');
-    if (r2.kind === 'booked') expect(r2.pushed).toEqual(['D']);
+    expect(asked).toEqual([]);
+    expect(r.kind).toBe('booked');
+    if (r.kind === 'booked') { expect(r.pushed).toEqual(['D']); expect(r.forced).toBe(false); }
+    expect(booked[0]).toMatchObject({ arrive_at: 840, late_ok: [] });
   });
 });
 

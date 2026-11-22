@@ -19,21 +19,24 @@ Les règles de toujours (CLAUDE.md, « The live database ») : jamais `DELETE`, 
 essayé dans un bloc qui finit par `raise exception` ; une sauvegarde d'abord ; jamais entre 07:30 et 09:00 UTC (2 h 30 à
 4 h à Montréal l'hiver) ; quelqu'un qui regarde ; on s'arrête au premier écart.
 
-**Ce que ça change** (à dire à Hassan, en ses mots) :
-- Dans le calendrier des heures de la réservation (« Plages d'arrivée »), l'heure qu'il touche est l'heure où le camion
-  arrive : le rendez-vous est **fixé à cette minute** (comme un « Déplacer à l'heure choisie »), sa plage est celle de
-  cette heure (13 h 30 → 13 h à 17 h). Les autres arrêts gardent leur ordre et leur heure ; repoussés seulement quand le
-  nouveau prend vraiment leur temps (c'est dit).
-- Pas de place à cette heure (un client mis en retard, le camion après ses heures, une heure que l'app n'offre pas) :
-  **un avertissement d'abord** (qui, de combien, la fin du camion), puis « Réserver quand même à 14 h » (le propriétaire
-  et le bureau seulement, comme « Réserver quand même » aujourd'hui ; un mécano voit pourquoi non) ou « Choisir une autre
-  heure ». Le camion ne peut pas être là à cette minute : « Mettre à 14 h 20 ». Une journée serrée (Partie 29) aussi :
-  le rendez-vous va À sa minute, pas à la fin.
-- Après : **la nouvelle carte** de la journée (chaque véhicule dans son nouvel ordre, le nouvel arrêt marqué, ceux
-  repoussés ou en retard marqués, les routes par les rues seulement).
+**Ce que ça change** (à dire à Hassan, en ses mots ; la règle corrigée par le chef le 2026-11-22 : « hours can change ») :
+- Une heure **que l'app offre** dans le calendrier de la réservation se réserve **comme avant** : sa plage (13 h 30 →
+  13 h à 17 h), **aucune minute fixée**, aucune question ; l'app reste libre de replacer les arrêts dans leurs plages.
+- Une heure **que l'app n'offre pas** (« complet », hachurée sur l'ordinateur, « complet » sur le téléphone) : le
+  propriétaire et le bureau peuvent la prendre quand même. Avant de réserver, **un avertissement** (qui serait en retard
+  et de combien, le camion après ses heures), puis « Réserver quand même à 14 h » ou « Choisir une autre heure » (un
+  mécano lit « pas possible », comme avant). « Réserver quand même » met le rendez-vous **à cette minute, fixée** (comme
+  un « Déplacer à l'heure choisie ») : les autres arrêts gardent leur ordre et leur heure, repoussés seulement quand il
+  prend vraiment leur temps. Le camion ne peut pas être là à cette minute : « Mettre à 14 h 20 » (fixé aussi). Une
+  journée serrée (Partie 29) aussi : le rendez-vous va À sa minute, pas à la fin.
+- Après une réservation forcée : **la nouvelle carte** de la journée (chaque véhicule dans son nouvel ordre, le nouvel
+  arrêt marqué, ceux repoussés ou en retard marqués, les routes par les rues seulement).
 - Le texto de réservation part tout de suite, comme aujourd'hui ; les clients repoussés ne reçoivent rien tout seuls
   (l'app les nomme : à appeler, ou leur nouvelle heure part avec « Envoyer les heures aux clients »).
-- Rien ne change en mode blocs, ni pour « Dans la journée » (flexible), ni pour une réservation de plusieurs autos.
+- « Réorganiser la journée » a sa carte, qui suit les changements en direct (à côté des listes sur l'ordinateur, au-dessus
+  sur le téléphone ; l'app seulement, rien sur le serveur).
+- Rien ne change en mode blocs, ni pour « Dans la journée » (flexible), ni sans réseau, ni pour une réservation de
+  plusieurs autos (une heure « complet » y donne la journée, l'app donne la plage, comme avant).
 
 ## 0. Avant (rien ne change)
 
@@ -102,18 +105,19 @@ réservation est celui de `notify` à `0b15944d` (il lit la plage du rendez-vous
 
 ## 3. L'app (main)
 
-- APRÈS la migration seulement (l'app nouvelle demande `book_preview` ; sans la migration, elle dirait « pas pu vérifier »
-  à chaque heure touchée). Fusionner C30 dans `main` (avec `[important]` dans la première ligne : les téléphones voient la
+- APRÈS la migration seulement (l'app nouvelle demande `book_preview` pour une heure « complet » prise quand même ; sans la
+  migration, elle dirait « Je n'ai pas pu vérifier l'heure des autres clients » à chaque fois). Fusionner C30 dans `main` (avec `[important]` dans la première ligne : les téléphones voient la
   mise à jour), pousser `main` puis `main:construction-v2`. L'id du déploiement d'avant est noté (0.4).
-- Dès qu'elle est publiée : une heure touchée dans le calendrier de la réservation est vérifiée par le serveur ; pas de
-  place → l'avertissement ; après une réservation qui a changé l'heure de quelqu'un, la nouvelle carte.
+- Dès qu'elle est publiée : une heure offerte se réserve comme avant (sa plage, rien de fixé) ; une heure « complet » prise
+  quand même est vérifiée par le serveur → l'avertissement → « Réserver quand même » (fixée à cette minute) → la nouvelle
+  carte ; la carte de « Réorganiser la journée » suit les changements.
 - Contrôle : un vrai chargement de l'app (Chromium) propre ; le calendrier des heures de « Réserver » s'ouvre.
 
 ## 4. Après, avec Hassan (lecture seule pour nous)
 
 - Rien à refaire pour lui : la migration n'écrit aucune ligne, les rendez-vous déjà pris gardent leur heure.
-- Lui dire : chaque heure qu'il touche dans le calendrier fixe le rendez-vous à cette minute ; « Dans la journée » et le
-  jour seul ne fixent rien (comme avant). Les clients mis en retard par un « Réserver quand même » sont gardés dans
+- Lui dire : une heure offerte se réserve comme avant (rien de fixé, les heures peuvent bouger) ; seule une heure
+  « complet » qu'il force avec « Réserver quand même » fixe le rendez-vous à cette minute. Les clients mis en retard par un « Réserver quand même » sont gardés dans
   l'historique (`activity` « booked_at ») et nommés à l'écran : à appeler.
 
 ## 5. Le retour, dans l'ordre (chaque pièce seule ; jamais de DROP)

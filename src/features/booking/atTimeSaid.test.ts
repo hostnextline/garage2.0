@@ -1,4 +1,4 @@
-/* « Réserver à l'heure choisie » (Part 30): what is said once booked at a minute, and when the new map is shown (K3). */
+/* « Réserver à l'heure choisie » (Part 30): what is said once a full time was booked anyway at that minute. */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { lang } from '../../lib/i18n';
 import { upsertLocal, clearAll } from '../../data/store';
@@ -21,19 +21,16 @@ beforeEach(() => {
 });
 
 describe('the words once booked at a minute', () => {
-  it('room, nobody moved: « Réservé : jeudi 26 novembre à 14 h. », no map; the text’s window is the one of 14 h', () => {
-    const s = atTimeSaid(booked({}), DAY, 'fr');
+  it('room at that minute, nobody late: « Réservé : jeudi 26 novembre à 14 h. »; the text’s window is the one of 14 h', () => {
+    const s = atTimeSaid(booked({ pushed: ['E'] }), DAY, 'fr');
     expect(s.text).toBe('Réservé : jeudi 26 novembre à 14 h.');
-    expect([s.kind, s.map]).toEqual(['ok', false]);
+    expect(s.kind).toBe('ok');
     expect(s.when).toContain('entre 13 h et 17 h');
   });
-  it('someone pushed inside their window: the map', () => {
-    expect(atTimeSaid(booked({ pushed: ['E'] }), DAY, 'fr').map).toBe(true);
-  });
-  it('forced: « Réservé quand même », the late ones named to tell (the app texts them nothing), the map', () => {
+  it('forced: « Réservé quand même », the late ones named to tell (the app texts them nothing)', () => {
     const s = atTimeSaid(booked({ forced: true, late: ['D'], stops: [stop('D', true, 130)] }), DAY, 'fr');
     expect(s.text).toBe('Réservé quand même : jeudi 26 novembre à 14 h. Avertis Denis : servi après sa plage.');
-    expect([s.kind, s.map]).toEqual(['info', true]);
+    expect(s.kind).toBe('info');
     // his new window leaves with the day's button (Part 28)
     const g = atTimeSaid(booked({ forced: true, late: ['D'], stops: [stop('D', true, 130)] }), DAY, 'fr', () => [780, 1020]);
     expect(g.text).toContain('Denis aura une nouvelle plage : elle part avec « Envoyer les heures aux clients ».');

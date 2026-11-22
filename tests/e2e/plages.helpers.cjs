@@ -177,36 +177,6 @@ async function pickWindow(page, day, ws, layout) {
   return t;
 }
 
-/** Part 30 « Réserver à l'heure choisie »: « Réserver » with a time of the calendar books AT that minute, so the truck
-    may not be there at that very minute (« Pas possible à 8 h … », « Mettre à … ») or somebody's hour moves (said
-    first); each question is answered yes (« Mettre à … », « Réserver », « Réserver quand même »). Then the appointment
-    opens, or the new map of that day over its agenda (when somebody else's hour changed), left by « Voir le
-    rendez-vous »: either way the appointment's screen is open after it. Answers the questions' titles */
-async function reserveDone(page, { timeout = 20000 } = {}) {
-  const asked = [];
-  for (let i = 0; i < 4; i++) {
-    const seen = (id, tag) => page.getByTestId(id).first().waitFor({ timeout }).then(() => tag, () => null);
-    const hit = await Promise.race([seen('ask-ok', 'q'), seen('job-screen', 'job'), seen('booked-map', 'map')]);
-    if (hit === 'q') {
-      const ok = page.getByTestId('ask-ok');
-      const sheet = page.locator('[role=dialog]', { has: ok });
-      await page.waitForTimeout(450);
-      asked.push((await sheet.locator('h2, h3, [id$="-t"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim());
-      await ok.click();
-      await ok.waitFor({ state: 'detached', timeout: 10000 }).catch(() => undefined);
-      continue;
-    }
-    if (hit === 'map') {
-      await page.waitForTimeout(300);
-      await page.getByTestId('booked-map-see').click();
-      await page.getByTestId('job-screen').waitFor({ timeout });
-    }
-    break;
-  }
-  await page.getByTestId('job-screen').waitFor({ timeout });
-  return asked;
-}
-
 /* ---------- screens ---------- */
 /** the booking screen with the customer and the work chosen, the moment picker in windows mode on screen */
 async function bookStart(page, name, services) {
@@ -249,5 +219,5 @@ async function mapSays(page, day, truck) {
 module.exports = {
   PW, h, randomUUID, watch, onFail, appOnPhone, dismissSheets, openVin, noErrors, draw, until, until2, jwtOf, rpcAs, openW,
   minOf, clock, between, longDay, median, jobOf, stopsOf, sentTo, textsTo,
-  windowOfLabel, gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays, reserveDone
+  windowOfLabel, gridAnswered, listAnswered, offeredTimes, offeredStarts, serverWindows, pickWindow, bookStart, agendaSays, mapSays
 };

@@ -37,7 +37,8 @@ and `docs/DESIGN.md` (the look and the writing rules) before changing anything. 
 | Server functions on a Mac | `bash tests/stack/mac/api-tests.sh [file or pattern]` (« Vraies routes »: `drive`; the nightly job and the way back of CUTOVER.md: `bash tests/stack/mac/api-tests.sh ops/tests/sauvegardes.test.mjs`) | the Mac stack; fake TomTom (key `tt-test`) and OSRM on 8021 |
 | « Vraies routes » end to end (9 steps) | `bash tests/stack/mac/e2e-file.sh routes` (Mac) or `node --test tests/e2e/routes.test.cjs` (Linux) | its own production build WITH a fake browser TomTom key (`tt-browser-test`); every request to a host it does not fake fails the step; about 1 min |
 | « Déplacer à l'heure choisie » end to end (9 steps; the last: « Texter … ? » answered « Pas maintenant », then the day's button texts her once) | `bash tests/stack/mac/e2e-file.sh deplacer` (Mac) or `node --test tests/e2e/deplacer.test.cjs` (Linux) | window mode, the real server's `move_preview` / `move_job` with `p_exact`; « Vraies routes » on in its two last steps (the fake TomTom and OSRM); every request to a host it does not fake fails the step; about 30 s; then `FRESH=1` for the database tests |
-| « Réorganiser la journée » and « Envoyer les heures aux clients » end to end (Part 28, 9 steps) | `bash tests/stack/mac/e2e-file.sh reorganiser` (Mac) or `node --test tests/e2e/reorganiser.test.cjs` (Linux); NOT in `all.sh` nor CI | window mode, switch off; a real drag with the mouse (computer) and with a finger (a phone 390 × 844: the browser's own touch events through the DevTools protocol), the oracle = the server's `day_order_preview` asked as the same person, the proof = the rows and the fake GoHighLevel's log; about 2 min; then `FRESH=1` for the database tests |
+| « Réorganiser la journée » and « Envoyer les heures aux clients » end to end (Parts 28–30, 13 steps; B18 / B19: the map that follows the draft, mouse and finger) | `bash tests/stack/mac/e2e-file.sh reorganiser` (Mac) or `node --test tests/e2e/reorganiser.test.cjs` (Linux); NOT in `all.sh` nor CI | window mode, switch off; a real drag with the mouse (computer) and with a finger (a phone 390 × 844: the browser's own touch events through the DevTools protocol), the oracle = the server's `day_order_preview` asked as the same person, the proof = the rows and the fake GoHighLevel's log; about 2 min; then `FRESH=1` for the database tests |
+| « Réserver à l'heure choisie » end to end (Part 30, 4 steps: a time offered books as before; a full time → the warning → « Choisir une autre heure » writes nothing → « Réserver quand même » → pinned at that minute → the new map; a phone; a mechanic) | `bash tests/stack/mac/e2e-file.sh reserver-heure` (Mac) or `node --test tests/e2e/reserver-heure.test.cjs` (Linux); NOT in `all.sh` nor CI | window mode, switch off; the oracle = the server's `book_preview` asked as the same person, the proof = the rows and the fake GoHighLevel's log; about 1 min with its build; then `FRESH=1` for the database tests |
 | The other browser files | `bash tests/stack/mac/e2e-file.sh plages` (window mode, switch off), `… argent`, `… mise-a-jour` (yesterday's app with its data updated to this build) | the Mac stack; `tests/stack/mac/all.sh` runs these three, `routes` and `deplacer` after `app.test.cjs`; GitHub's `tests-complets.yml` runs `app`, `plages` and `argent` (not `mise-a-jour`, `routes`, `deplacer`) |
 
 On a Mac, the rows with `tests/stack/mac/…` run the database, API and end-to-end suites (`bash tests/stack/mac/e2e.sh`
@@ -111,12 +112,13 @@ end $do$;
   at `0b15944d`; the app `a34413e9` (`main`, published 10:17). Its runbook, the read-only checks before it
   (`ops/live/partie28/avant.sql`), its trial (`essai-partie28.sql`, always undone) and the way back (`a-avertir.sql`
   first): `ops/live/PARTIE28.md`, beside `ops/live/PARTIE27.md`; CUTOVER.md's top note points to it.
-- Part 29 « the stop dragged keeps the hour of its place » is NOT on live (branch `reorganiser`; Hassan's « yes » of
-  10:45: live as soon as it is green and the lead's gate is green): the migration `20261122000200_garder_ordre.sql` (needs
-  Part 28), NO server function to deploy, then the app with `[important]` right after (an app of before saves a push
-  inside its window in one tap). Its runbook, the read-only checks (`ops/live/partie29/avant.sql`), the trial
-  (`essai-partie29.sql`, always undone) and the way back (`retour-partie29.sql`: the five functions of before, byte for
-  byte; `plan_breaks` stays): `ops/live/PARTIE29.md`; CUTOVER.md's top note points to it.
+- Part 29 « the stop dragged keeps the hour of its place » IS LIVE since 2026-11-22 (Hassan's « yes » of 10:45): the
+  migration `20261122000200_garder_ordre.sql` applied at 12:39 from commit `6e3c00ce` with the sha256 check, after its
+  trial (14 answers of the planner compared, the same outside the tight blocks); no server function changed; the app
+  `532b47c9` (`main`, `[important]`, published 12:46; the Vercel build before it: `7fef8258`). Its runbook, the read-only
+  checks (`ops/live/partie29/avant.sql`), the trial (`essai-partie29.sql`, always undone) and the way back
+  (`retour-partie29.sql`: the five functions of before, byte for byte; `plan_breaks` stays): `ops/live/PARTIE29.md`;
+  CUTOVER.md's top note points to it.
 - Part 30 « Réserver à l'heure choisie » is NOT on live (branch `reorganiser`; live only with Hassan's yes at that time,
   K5): the migration `20261122000300_reserver_heure.sql` (needs Part 29), NO server function to deploy, then the app with
   `[important]` (the new app calls `book_preview`: the migration first). Its runbook, the read-only checks
@@ -551,7 +553,7 @@ end $do$;
   key `booking.rewin` only), no move across days or blocks from this screen, no per-row switch in the send list, no text
   on a cancel. Never proven: a real iPhone's finger in the home-screen app (one check by hand before « fini »), the real
   GoHighLevel's late answers.
-- « Réorganiser » keeps the order and the hours (Part 29, `20261122000200_garder_ordre.sql`, NOT on live:
+- « Réorganiser » keeps the order and the hours (Part 29, `20261122000200_garder_ordre.sql`, LIVE since 2026-11-22 12:39:
   `ops/live/PARTIE29.md`; Hassan, 2026-11-22, on the live Part 28: « when re-arranging the day, if i move an appointement
   down, i need it to change its hour, and accept the appointement where i put it without moving all the others
   arround »; the lead's rule G1–G7, STATE.md 10:35). A stop he DRAGS (up, down, onto the other truck) takes the hour of
@@ -583,49 +585,57 @@ end $do$;
 - « Réserver à l'heure choisie » (Part 30, `20261122000300_reserver_heure.sql`, NOT on live: `ops/live/PARTIE30.md`;
   Hassan, 2026-11-22: « hours can change, but i want to be able to decide so if i forcefully book someone at a specific
   time, i want the system to show a warning if there is no place but still let me book it, then show me the new map »;
-  the lead's rules K1–K3, K5, STATE.md 13:00). Window mode only (blocks: unchanged, the minute is never read). In the
-  booking's time calendar (`BlockPicker exactBook`, set by `MomentPanel`: PickGrid on a computer, PickList on a phone; a
-  best moment's « Vers … » too, `exactAtOf`) a time picked books the appointment AT that minute, as the exact move moves
-  one: `book_job`'s `p_job.arrive_at` (+ `truck_id`, `late_ok`) → the server's `book_at` tries every vehicle that may take
-  it (the one asked, else each working that day that fits the work; best: the fewest made late — past the hours counts
-  as one —, then nobody's hour moved, then the car first, then the least delay) with the exact move's own placing
-  (`exact_place`: AT that minute, pinned `arrive_at` + `truck_pinned`, its window `win_for(minute)`, the other stops of
-  that vehicle in their order and held not before their arrival, pushed later only when the new stop truly takes their
-  time; the other vehicles untouched; a TIGHT day of Part 29 too: at its minute, never « at the end »). `jobs.forced`
-  stays false (Part 19's forced = at the end, not held to its window); the answer says `forced: true` and the activity
-  `booked_at` keeps who was made late. Refusals as the exact move: `arrive_late` { earliest, earliest_keep, truck_id },
-  `late_changed` { late, over_hours } (the late ones, and for the hours the new id itself, must be in `late_ok`);
-  forcing is the owner's and the office's only (`not_allowed`, the right of « Réserver quand même »). Before booking the
-  app asks `book_preview(p_job, p_items)` (book_job itself in a block always undone; a trial row takes a number below
-  zero, so a preview or a refusal spends NO job number; window mode + a minute only, else `{ ok, exact: false }`):
-  `truck_id`, `forced`, `may_force`, `late`, `stops`, `over_hours`, `earliest`. The flow (`src/features/booking/atTime.ts`,
-  the exact move's words and protocol: `src/data/bookAt.ts` holds the server's names): room, nobody moves → no question;
-  someone pushed inside their window → said; no room → the warning (« Réserver Julie à 14 h met Denis en retard », each
-  late one and by how much, « Le camion finirait sa journée … après ses heures », the pushed ones) with « Choisir une autre
-  heure » / « Réserver quand même à 14 h » (owner, office; anyone else reads « Seuls le propriétaire et le bureau peuvent
-  réserver quand même. » and gets only « Choisir une autre heure »); the truck cannot be there → « Pas possible à 8 h …
-  au plus tôt 8 h 06 », « Mettre à 8 h 06 »; no answer (6 s) → « Réserver quand même » / « Annuler »; `late_changed` at
-  the booking → asked again once; a lost answer is never « réessaie ». A time the server does not offer is pickable by
-  the owner and the office (`choice.full`: hatched on the grid, « complet » on the phone's list, « Complet à cette heure :
-  avant de réserver, l'app te dit qui serait en retard. »; never « gone »); a mechanic and « Déplacer » keep the rules
-  of before. The booking text goes at once as every booking (its window: the one of the final minute); the late ones
-  are texted nothing (named in the message: « Avertis Denis… », or his new window with « Envoyer les heures aux
-  clients »). Then (`atTimeSaid.ts`), when forced or somebody else's hour changed: the NEW MAP of that day over its
-  agenda (`src/shared/moment/BookedMap.tsx`, `openBookedMapOn('/agenda/<day>')`, its own root, opened once that screen
-  is in place): every vehicle in its new order from the phone's rows (book_job's rows just applied), numbered stops, the
-  new one in black « Nouveau 14 h », the late ones red « en retard de … », the pushed ones « plus tard : … », the roads
-  by the streets only when they come (`useRoads` / `roadOf`: never a straight line), « Voir le rendez-vous » / « Fermer »;
-  else the appointment opens as before. Booked as before (the window of that minute, kept on the phone): no signal, a
-  server without the preview, a visit of several cars. Demo: `?demo=owner&fenetres=1` fakes `book_preview` and
-  `book_job` with `arrive_at` (`src/dev/demo-windows.ts`). Tests: database `tests/db/reserver-heure.test.mjs` (11:
+  the lead's rules K1–K5, STATE.md 13:00, and the lead's CORRECTION of the same day). Window mode only (blocks:
+  unchanged, the minute is never read). THE RULE: in the booking's time calendar (`BlockPicker exactBook`, set by
+  `MomentPanel`: PickGrid on a computer, PickList on a phone) a time the server OFFERS (open) books exactly as before
+  Part 30 — its window (`win_start`), NO minute pinned, no question, the planner stays free (« hours can change »);
+  nobody pushed inside their window is asked about. The minute is pinned ONLY when he forces: a time the server does
+  NOT offer (`choice.full`: hatched on the grid, « complet » on the phone's list, pickable by the owner and the office
+  only; « Complet à cette heure : avant de réserver, l'app te dit qui serait en retard. », never « gone »; a mechanic
+  reads « pas possible » and « Le mécano ne peut pas arriver vers … », as before). Then the app asks the server's
+  `book_preview(p_job, p_items)` (book_job itself in a block always undone; a trial row takes a number below zero: a
+  preview or a refusal spends NO job number; window mode + a minute only, else `{ ok, exact: false }`; it answers
+  `truck_id`, `forced`, `may_force`, `late` [{ id, late_min }], `stops` (the exact move's), `over_hours`, `earliest`,
+  `earliest_keep`, `win_start`, `win_end`): room at that very minute → booked there without a question; no room → the
+  warning (« Réserver Julie à 14 h met Denis en retard », each late one and by how much, « Le camion finirait sa journée
+  … après ses heures », the ones pushed) with « Choisir une autre heure » (nothing written) / « Réserver quand même à
+  14 h »; the truck cannot be there → « Pas possible à 8 h … au plus tôt 8 h 06 », « Mettre à 8 h 06 »; no answer (6 s)
+  → « Réserver quand même » / « Annuler »; `late_changed` at the booking → asked again once; a lost answer is never
+  « réessaie » (`src/features/booking/atTime.ts`, the exact move's words and protocol; the server's names in
+  `src/data/bookAt.ts`). The booking: `book_job`'s `p_job.arrive_at` (+ `truck_id`, `late_ok`) → the server's `book_at`
+  tries every vehicle that may take it (the one asked, else each working that day that fits the work; best: the fewest
+  made late — past the hours counts as one —, then nobody's hour moved, then the car first, then the least delay) with
+  the exact move's own placing (`exact_place`: AT that minute, pinned `arrive_at` + `truck_pinned`, its window
+  `win_for(minute)`, the other stops of that vehicle in their order and held not before their arrival, pushed later only
+  when the new stop truly takes their time; the other vehicles untouched; a TIGHT day of Part 29 too: at its minute,
+  never « at the end »). Refusals as the exact move: `arrive_late` { earliest, earliest_keep, truck_id }, `late_changed`
+  { late, over_hours, truck_id } (the late ones, and for the hours the new id itself, must be in `late_ok`); forcing is
+  the owner's and the office's only (`not_allowed`, the right of « Réserver quand même »). `jobs.forced` stays false
+  (Part 19's forced = at the end, not held to its window): the answer says `forced: true` and the activity `booked_at`
+  keeps who was made late (JobSheet's « Réservé quand même » banner, which reads `jobs.forced`, does not show for these).
+  The booking text goes at once as every booking (its window: the one of the final minute; it writes told); the late
+  ones are texted nothing (named in the message: « Avertis Denis… », or his new window with « Envoyer les heures aux
+  clients »). After such a forced booking: the NEW MAP of that day over its agenda (`src/shared/moment/BookedMap.tsx`,
+  `openBookedMapOn('/agenda/<day>')`, its own root, opened once that screen is in place): every vehicle in its new order
+  from the phone's rows (book_job's rows just applied), numbered stops, the new one in black « Nouveau 14 h », the late
+  ones red « en retard de … », the pushed ones « plus tard : … », the roads by the streets only when they come
+  (`useRoads` / `roadOf`: never a straight line), « Voir le rendez-vous » / « Fermer ». A full time with no signal, a
+  server without the preview, or a visit of several cars: as before Part 30 (the day, the app gives the window).
+  The same Part (K4, its other half): « Réorganiser la journée » has a MAP that follows the draft (`src/shared/jobs/
+  DayOrderMap.tsx`, the pure part `draftMap.ts`): beside the lists on a computer, above them on a phone (« Carte » /
+  « Masquer la carte », the choice kept on the device); each truck's stops numbered in the DRAFT order the moment a stop
+  is put down, the Carte's colour per truck, the stop just put down marked, the arrival its row prints (the server's for
+  this draft); the roads asked 600 ms after the last change (never during a drag, the last drawing kept meanwhile), a
+  leg not known yet drawn as NOTHING until its road comes (never a straight line). Demo: `?demo=owner&fenetres=1` fakes
+  `book_preview` and `book_job` with `arrive_at` (`src/dev/demo-windows.ts`). Tests: database `tests/db/reserver-heure.test.mjs` (11:
   room, between two stops, no room refused until accepted then booked as previewed, past the hours, arrive_late, a tight
   day of Part 29, rights, two vehicles, blocks mode, the same op twice, the file) and `reserver-heure-essai.test.mjs`
   (the trial and the way back on this copy); unit `src/data/bookAt.test.ts`, `src/features/booking/{atTime,atTimeSaid,
-  BookScreen-atTime}.test.*`, `src/shared/moment/{WindowPicker-full,BookedMap}.test.tsx`, `src/dev/demo-reserver.test.ts`;
-  end to end `tests/e2e/reserver-heure.test.cjs` (`bash tests/stack/mac/e2e-file.sh reserver-heure`: room; no room →
-  warning → « Choisir une autre heure » writes nothing → « Réserver quand même » → booked as previewed → the new map;
-  a phone's full time at 8 h → « Mettre à … »; a mechanic). Not done: several cars at a minute; a hover map on a full
-  time of the grid; the « Vraies routes » ON path in a browser.
+  BookScreen-atTime}.test.*`, `src/shared/moment/{WindowPicker-full,BookedMap}.test.tsx`, `src/dev/demo-reserver.test.ts`,
+  `src/shared/jobs/{DayOrderMap,draftMap}.test.*`; end to end `tests/e2e/reserver-heure.test.cjs` (« Tests » above) and
+  `tests/e2e/reorganiser.test.cjs` B18 (mouse) / B19 (finger). Not done: several cars at a minute; a hover map on a full
+  time of the grid; the « Vraies routes » ON path in a browser; in the browser the warning was proven with the truck
+  past its hours (somebody late: database and unit tests).
 - The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
   the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
   {soustotal} » = « 159,98 $ + tx » (`subtotalWords`; work by the hour: « …, plus le travail à l’heure »; nothing priced: « selon le

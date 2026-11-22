@@ -431,9 +431,7 @@ step('5. After an exact move, a NEW booking that day through the app: the pinned
   await p.pickWindow(page, D, ws, 'grid');
   await h.shot(page, 'deplacer-5-booking');
   await page.getByTestId('book-confirm').click();
-  // Part 30: a time of the calendar books AT that minute (« Pas possible à 8 h … Mettre à … », someone pushed: said first)
-  const asked = await p.reserveDone(page);
-  if (asked.length) t.diagnostic(`the booking asked: ${asked.join(' / ')}`);
+  await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
   const emma = await until(() => h.sql(`select id from public.jobs where customer_id = '${C.Emma.id}' and status = 'booked' and deleted_at is null`), Boolean, 20000);
   const after5 = d.dayOf(T.complet, D);
   const c = after5.find((s) => s.id === J.Chloe);

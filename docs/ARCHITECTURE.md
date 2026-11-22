@@ -382,6 +382,36 @@ customer on a day other than today gets his new window when he is told (`lateWin
   l'app choisir », « Vraies routes » on measured and not measured, « Texter … ? » answered « Pas maintenant » then the
 day's button).
 
+## « Réserver à l'heure choisie » (Part 30: a full time forced at its minute, then the new map)
+
+Hassan, 2026-11-22: « if i forcefully book someone at a specific time, i want the system to show a warning if there is no
+place but still let me book it, then show me the new map » (STATE.md 13:00 K1–K5 and the lead's correction: « hours can
+change »). Window mode only. A time the server OFFERS books exactly as before (its window, no minute pinned, no question).
+Only a time it does not offer (« complet », `BlockChoice.full`, pickable by the owner and the office) is forced AT that
+minute after the warning; the same Part's map of « Réorganiser la journée » is in that section below (DayOrderMap).
+- Data (`src/data/bookAt.ts`, the ONE place that names the server's keys): `bookAtJob(job, at, truck, lateOk)` → book_job's
+  `p_job` with `arrive_at`, `truck_id`, `late_ok` (never `force`, never `win_flex`); `bookPreview(job, items)` →
+  `book_preview(p_job, p_items)` (`callRpc(…, { noOp: true, apply: false })`); `bookAtAnswer` reads the exact move's answer
+  (`exactAnswer`) + `truck_id`, `forced`, `may_force`, `win_start`, `win_end`, `at`. `api.ts` `bookJob`: a job with
+  `arrive_at` is sent now or not at all (`queue: false`), then `warmJob`.
+- The flow (`src/features/booking/atTime.ts` `bookAtTime`, the exact move's protocol and words; `atQuestion`,
+  `earlyQuestion`): no signal or no preview → `fallback`; room at that minute → booked, no question; somebody late or the
+  truck past its hours → the warning (`booking.atTime.lateTitle` / `overTitle`, « Réserver quand même à {heure} » for
+  owner / office, `notYou` for anyone else); `arrive_late` → « Mettre à {earliest} »; no answer (6 s) → « Réserver quand
+  même » / « Annuler »; `late_changed` → asked again once; a lost answer → `stopped` `lost`. `useSubmit.ts`: only
+  `choice.full` with one car goes there; `fallback`, several cars → the day alone (the app gives the window), as before.
+  `atTimeSaid.ts`: the words once booked (the late ones named, their new window with « Envoyer les heures aux clients »).
+- The new map (`src/shared/moment/BookedMap.tsx`): `openBookedMapOn('/agenda/<day>', { day, jobId, at, marks })` opens it in
+  its own root once that screen is in place; `markOf` / `markWords` (new, late, pushed). Test ids `booked-map`,
+  `booked-map-map`, `booked-map-truck-<truck id>`, `booked-map-stop-<job id>` (`data-n`, `data-mark` = new | late |
+  pushed | ''), `booked-map-see` (« Voir le rendez-vous »), `booked-map-close`, `booked-map-road`.
+- The calendar (`WindowPicker` with `exactBook`, set by `MomentPanel`): a 'no' unit (PickGrid) or a full time of the phone's
+  list (`PickList` `force`: `pick-time-<minute>` with `data-state="no"`, « complet ») picks `{ …, full: true }` for the
+  owner and the office; `windowDays.ts` gives each day its `no` minutes; a full choice is never « gone ».
+- Tests: unit `src/data/bookAt.test.ts`, `src/features/booking/{atTime,atTimeSaid,BookScreen-atTime}.test.*`,
+  `src/shared/moment/{WindowPicker-full,BookedMap}.test.tsx`, `src/dev/demo-reserver.test.ts`; database
+  `tests/db/reserver-heure.test.mjs`, `reserver-heure-essai.test.mjs`; end to end `tests/e2e/reserver-heure.test.cjs`.
+
 ## « Texter … ? » (ask first: no « moved » text goes by itself)
 
 Hassan, 2026-11-22: « i do not want them to receive a text automatically when i change their appointement. the system
@@ -493,6 +523,17 @@ stops) · the column `jobs.arrive_at` (0..1439 or null, the server's only): ever
 minute (placed late and said late — activity `window_late` `why: 'pin'` — rather than moved), the others are planned as
 always; cleared by a move without `p_exact` (« Laisser l'app choisir », the old app), an « Ordre des arrêts » that lists
 it, the windows switched off ·
+« Réserver à l'heure choisie » (Part 30, `20261122000300_reserver_heure.sql`): `book_job`'s `p_job.arrive_at` (a whole minute
+0..1439, window mode, not `win_flex`; blocks mode never reads it) + `truck_id` (null: every vehicle that works that day and
+fits the work is tried) + `late_ok: [job ids]` (the new job's own id accepts the truck past its hours) → booked AT that
+minute with the exact move's placing (`arrive_at`, `truck_pinned`, window `win_for(at)`; `jobs.forced` stays false;
+activity `booked_at` when somebody is late) → `{ ok, job_id, truck_id, forced, exact: true, at, win_start, win_end,
+win_flex, eta, late: [{ id, late_min }], stops, over_hours, earliest, earliest_keep, rows: { jobs, job_items } }`;
+refusals `arrive_late` (details `{ earliest, earliest_keep, truck_id }`), `late_changed` (details `{ late, over_hours,
+truck_id }`), `not_allowed` (forcing: owner and office only), `pick_truck`, `bad_window`, `block_closed` ·
+`book_preview(p_job, p_items default '[]')` → the same keys without `rows` + `preview: true`, `may_force` (nothing written,
+no job number spent: book_job in a block always undone; window mode and a minute only, else `{ ok, exact: false, stops:
+[] }`; never `late_changed` nor the forcing `not_allowed`: it SAYS them in `late`, `over_hours`, `forced`, `may_force`) ·
 `stop_order_preview(p_truck, p_day, p_block, p_jobs)` → `[{ id, eta, late, measured (null off) }]` (both run `move_job` /
 `set_stop_order` and undo them: the action's own rights, nothing written; call them with POST; since Part 28 the app no
 longer calls `stop_order_preview` nor `set_stop_order`: they stay for older phones).

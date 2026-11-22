@@ -1,16 +1,18 @@
 // « Réserver à l'heure choisie » (Part 30; Hassan, 2026-11-22: « hours can change, but i want to be able to decide so if i
 // forcefully book someone at a specific time, i want the system to show a warning if there is no place but still let me
-// book it, then show me the new map »; STATE.md 13:00, K1–K3) end to end: the real app in a real browser against the
+// book it, then show me the new map »; STATE.md 13:00, K1–K3, and the lead's correction: a time the server OFFERS books
+// exactly as before — its window, no minute pinned —; only a time it does not offer, « complet », taken anyway by the
+// owner or the office, is forced AT that minute after the warning) end to end: the real app in a real browser against the
 // real local server, « Plages d'arrivée » on (as live), « Vraies routes » off.
 // The world is deplacer.test.cjs': Camion Complet works 8 h – 20 h on the days used, Voiture does not (one truck, one
 // route). Its day D holds four stops written as a planner would have left them: Alice 8 h 30 (8 h – 12 h), Benoit 10 h
-// (9 h – 13 h), Chloe 11 h 30 (10 h – 14 h), Denis 15 h 30 (12 h – 16 h: half an hour left in his window, so a stop put
-// just before him makes him late). Each step starts from that world and leaves it as it found it (a snapshot put back
-// after every step); the database is saved before the file and put back exactly as it was after (harness.cjs).
-// Every request of a browser to a host that is not 127.0.0.1 and not faked fails the step (routes.helpers.cjs fakeWorld).
-// The server's own preview (book_preview, asked by the test as the same person) is the oracle of what the screen says;
-// the database (jobs.eta_min, arrive_at, the windows, the stop order) is the proof of what was done; the fake
-// GoHighLevel's log is the proof of the texts.
+// (9 h – 13 h), Chloe 11 h 30 (10 h – 14 h), Denis 15 h 30 (12 h – 16 h). A long visit (4 h 15: the promotions and a
+// diagnostic) no longer fits the afternoon windows: those times are « complet ». Each step starts from that world and
+// leaves it as it found it (a snapshot put back after every step); the database is saved before the file and put back
+// exactly as it was after (harness.cjs). Every request of a browser to a host that is not 127.0.0.1 and not faked fails
+// the step (routes.helpers.cjs fakeWorld). The server's own preview (book_preview, asked by the test as the same person)
+// is the oracle of what the warning says; the database is the proof of what was done; the fake GoHighLevel's log is the
+// proof of the texts.
 //   bash tests/stack/mac/e2e-file.sh reserver-heure   (a Mac)   ·   node --test tests/e2e/reserver-heure.test.cjs   (Linux stack)
 const { test, before, after } = require('node:test');
 const d = require('./deplacer.helpers.cjs');
@@ -20,6 +22,8 @@ const { PW, randomUUID, clock, duration, flat, until } = x;
 
 const T = { complet: '7c1a0000-0000-4000-8000-000000000001', voiture: '7c1a0000-0000-4000-8000-000000000002' };
 const SVC_OIL = '5e7a0000-0000-4000-8000-000000000001';   // 45 min
+// 120 + 75 + 60 = 255 min: such a visit no longer fits the afternoon windows of D (« complet »)
+const LONG = ['5e7a0000-0000-4000-8000-000000000010', '5e7a0000-0000-4000-8000-000000000011', '5e7a0000-0000-4000-8000-000000000007'];
 const who = {};
 const C = {};          // customers: first name → { id, lat, lng }
 const J = {};          // the world's appointments: first name → job id
@@ -46,10 +50,10 @@ const stopOf = (first, order, eta, ws) => h.sql(`insert into public.jobs (custom
 const nameOf = (id) => Object.keys(J).find((k) => J[k] === id) || id;
 const WORLD = ['Alice #1 510', 'Benoit #2 600', 'Chloe #3 690', 'Denis #4 930'];
 /** the server's preview of that booking (asked as `jwt`, as the screen asks it): its answer, or its refusal */
-async function oracle(jwt, first, at, truck = null) {
+async function oracle(jwt, first, at, truck = null, dur = 45) {
   const c = C[first];
   try {
-    return { ok: true, a: await x.rpcAs(jwt, 'book_preview', { p_job: { id: randomUUID(), customer_id: c.id, day: D, block: 'day', duration_min: 45, truck_id: truck,
+    return { ok: true, a: await x.rpcAs(jwt, 'book_preview', { p_job: { id: randomUUID(), customer_id: c.id, day: D, block: 'day', duration_min: dur, truck_id: truck,
       address: `${first} e2e, Montréal, QC`, lat: c.lat, lng: c.lng, arrive_at: at, late_ok: [] }, p_items: [] }) };
   } catch (e) {
     return { ok: false, hint: e.hint, details: typeof e.details === 'string' && e.details.startsWith('{') ? JSON.parse(e.details) : e.details, message: e.message };
@@ -61,6 +65,15 @@ const bookedFor = (first) => x.json(`select coalesce((select row_to_json(j) from
 const unitOf = (page, m, layout) => page.getByTestId(layout === 'grid' ? `pick-unit-${D}-${m}` : `pick-time-${m}`);
 /** the new map's list of one truck: [n, mark, words] in its order */
 const mapList = (page, truck) => page.locator(`[data-testid="booked-map-truck-${truck}"] li`).evaluateAll((ls) => ls.map((li) => ({ n: Number(li.dataset.n), mark: li.dataset.mark || '', text: li.innerText.replace(/\s+/g, ' ').trim(), id: li.dataset.testid.replace('booked-map-stop-', '') })));
+/** a full time of D for a long visit (« complet » on screen: its window is not one suggest_windows answers), as near 15 h 15
+    as there is one in the afternoon */
+async function fullTime(first) {
+  const offered = await p.serverWindows(who.nadia.jwt, C[first], D, 255);
+  const cands = [915, 900, 930, 945, 885, 960, 870, 975, 990];
+  const at = cands.find((m) => !offered.includes(d.winFor(m)[0]));
+  assert.ok(at != null, `a full afternoon time for 4 h 15 of work on D: the windows offered are ${offered.map(clock).join(', ')}`);
+  return at;
+}
 /** the roads drawn on the new map: the number of points of each line (a straight line has 2) */
 const mapRoads = (page) => page.evaluate(() => [...document.querySelectorAll('[data-testid="booked-map-map"] path.mv-line')].map((el) => (el.getAttribute('d') || '').split(/[ML]/).filter((v) => v.trim()).length));
 
@@ -100,6 +113,7 @@ before(async () => {
   customer('Fanny', '514 555-0916', near(-0.022, -0.004));
   customer('Gaby', '514 555-0917', near(0.012, 0.004));
   customer('Hugo', '514 555-0918', near(-0.006, 0.018));
+  customer('Ines', '514 555-0919', near(0.016, -0.010));
   J.Alice = stopOf('Alice', 1, 510, 480);
   J.Benoit = stopOf('Benoit', 2, 600, 540);
   J.Chloe = stopOf('Chloe', 3, 690, 600);
@@ -120,14 +134,10 @@ after(async () => {
   assert.deepEqual(diff, [], 'the database is back exactly as it was');
 });
 
-step('1. The office, on a computer, books Emma at 17 h 30 (room there): no question, booked AT 17 h 30 (pinned, the window of 17 h 30), the four others keep their order and their hours; her booking text at once with that window; no new map', async (t) => {
+step('1. The office, on a computer, books Emma at 17 h 30 (a time the server offers): exactly as before Part 30 — no preview, no question, booked with the window of 17 h 30 and NO minute pinned (the planner stays free); her booking text at once with that window; no new map', async (t) => {
   assert.deepEqual(d.orderAndTimes(d.dayOf(T.complet, D)), WORLD, 'the world');
   const AT = 1050;
   const win = d.winFor(AT);
-  const pv = await oracle(who.nadia.jwt, 'Emma', AT);
-  assert.ok(pv.ok && pv.a.exact === true, JSON.stringify(pv));
-  assert.equal(pv.a.forced, false);
-  for (const s of pv.a.stops.filter((s0) => J[nameOf(s0.id)])) assert.equal(s.delay_min, 0, `${nameOf(s.id)} keeps its hour: ${JSON.stringify(s)}`);
   const r = await d.openD({ kind: 'desktop' });
   const { page } = r;
   const previews = x.answersOf(page, 'book_preview');
@@ -136,20 +146,23 @@ step('1. The office, on a computer, books Emma at 17 h 30 (room there): no quest
   await page.setViewportSize({ width: 1366, height: 1100 });
   await p.bookStart(page, 'Emma', [SVC_OIL]);
   await p.gridAnswered(page, D);
-  t.diagnostic(`17 h 30 on the grid: ${await unitOf(page, AT, 'grid').getAttribute('data-state')}`);
+  assert.equal(await unitOf(page, AT, 'grid').getAttribute('data-state'), 'open', '17 h 30 is offered');
   await unitOf(page, AT, 'grid').click();
   await h.clearMock();
   await page.getByTestId('book-confirm').click();
-  assert.equal(await d.noQuestion(page, 2500), true, 'no question: there is room');
+  assert.equal(await d.noQuestion(page, 2500), true, 'no question');
   await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
-  assert.ok(previews.some((a) => a.args?.p_job?.arrive_at === AT), `the screen asked the server's preview at 17 h 30: ${JSON.stringify(previews.map((a) => a.args?.p_job?.arrive_at))}`);
+  assert.equal(previews.length, 0, 'no preview: a time offered books as before');
   const sent = books.filter((a) => a.args?.p_job?.customer_id === C.Emma.id).pop();
   assert.equal(sent?.status, 200, JSON.stringify(sent?.body));
-  assert.deepEqual([sent.args.p_job.arrive_at, sent.args.p_job.late_ok], [AT, []], 'booked at the minute, nobody accepted late');
+  assert.equal(sent.args.p_job.win_start, win[0], 'its window');
+  assert.equal(sent.args.p_job.arrive_at, undefined, 'no minute sent');
   const e = bookedFor('Emma');
-  assert.deepEqual([e.eta_min, e.arrive_at, e.win_start, e.win_end, e.truck_id, e.truck_pinned, e.forced], [AT, AT, win[0], win[1], T.complet, true, false], JSON.stringify(e));
-  assert.deepEqual(d.orderAndTimes(d.dayOf(T.complet, D)), [...WORLD, `Emma #5 ${AT}`], 'the others keep their order and their hours');
-  assert.equal(await page.getByTestId('booked-map').count(), 0, 'nobody else changed: no new map');
+  t.diagnostic(`Emma: the planner put her at ${clock(e.eta_min)} in ${clock(e.win_start)} – ${clock(e.win_end)}`);
+  assert.deepEqual([e.win_start, e.win_end, e.arrive_at, e.forced], [win[0], win[1], null, false], JSON.stringify(e));
+  assert.ok(e.eta_min >= e.win_start && e.eta_min <= e.win_end, 'planned inside her window');
+  for (const s0 of d.dayOf(T.complet, D)) assert.ok(s0.eta >= s0.ws && s0.eta <= s0.we, `${s0.first} inside the window told: ${JSON.stringify(s0)}`);
+  assert.equal(await page.getByTestId('booked-map').count(), 0, 'no new map');
   const sms = await until(() => d.textsTo('Emma'), (v) => v.length > 0, 15000);
   assert.equal(sms.length, 1, 'her booking text, once, at once');
   assert.ok(sms[0].includes(`entre ${clock(win[0])} et ${clock(win[1])}`), `the window of 17 h 30 in the text: ${sms[0]}`);
@@ -161,30 +174,34 @@ step('1. The office, on a computer, books Emma at 17 h 30 (room there): no quest
   x.noErrors(page);
 });
 
-step('2. The office books Fanny at 15 h 15 (no room: Denis would be late): the warning names Denis and by how much; « Choisir une autre heure » writes nothing; again, « Réserver quand même à 15 h 15 »: booked AT 15 h 15, Denis pushed exactly as previewed; then the NEW MAP of that day: the new order, Fanny « Nouveau », Denis late, the roads by the streets (never a straight line); « Voir le rendez-vous »', async (t) => {
-  const AT = 915;
-  const pv = await oracle(who.nadia.jwt, 'Fanny', AT);
+step('2. The office books Fanny (4 h 15 of work) at a full time of the afternoon (« complet »): the warning names who would be late and by how much (and the truck past its hours); « Choisir une autre heure » writes nothing; again, « Réserver quand même »: booked AT that minute, pinned, the others pushed exactly as previewed; then the NEW MAP of that day: the new order, Fanny « Nouveau », the late ones marked, the roads by the streets (never a straight line); « Voir le rendez-vous »', async (t) => {
+  const AT = await fullTime('Fanny');
+  const pv = await oracle(who.nadia.jwt, 'Fanny', AT, null, 255);
   assert.ok(pv.ok && pv.a.exact === true, JSON.stringify(pv));
+  assert.equal(pv.a.forced, true, `no room at ${clock(AT)}: ${JSON.stringify(pv.a)}`);
   const late = pv.a.stops.filter((s) => s.late);
-  assert.deepEqual(late.map((s) => nameOf(s.id)), ['Denis'], `the server: Denis, only, would be late: ${JSON.stringify(pv.a.stops)}`);
-  const L = late[0];
-  t.diagnostic(`the server's preview: Denis ${clock(L.eta_before)} → ${clock(L.eta_after)}, ${L.late_min} min after his window (${clock(L.win_start)} – ${clock(L.win_end)})`);
+  t.diagnostic(`the server's preview at ${clock(AT)}: ${late.map((s) => `${nameOf(s.id)} ${clock(s.eta_before)} → ${clock(s.eta_after)}, ${s.late_min} min late`).join('; ') || 'nobody late'}; past the hours: ${pv.a.over_hours} min`);
   const r = await d.openD({ kind: 'desktop' });
   const { page } = r;
   const books = x.answersOf(page, 'book_job');
   await h.signIn(page, who.nadia.email, PW);
   await page.setViewportSize({ width: 1366, height: 1100 });
-  await p.bookStart(page, 'Fanny', [SVC_OIL]);
+  await p.bookStart(page, 'Fanny', LONG);
   await p.gridAnswered(page, D);
+  assert.equal(await unitOf(page, AT, 'grid').getAttribute('data-state'), 'no', `${clock(AT)} is full (hatched)`);
   await unitOf(page, AT, 'grid').click();
+  assert.match(flat(await page.getByTestId('bp-chosen').innerText()), /Complet à cette heure/);
   const rows0 = d.dayOf(T.complet, D);
   await h.clearMock();
   await page.getByTestId('book-confirm').click();
   const q = await d.question(page);
   await h.shot(page, 'reserver-2-warning');
   t.diagnostic(`the warning: « ${q.title} » — « ${q.text} » [${q.buttons.join(' | ')}]`);
-  assert.equal(q.title, `Réserver Fanny à ${clock(AT)} met Denis en retard`);
-  assert.ok(q.text.includes(`Denis : vers ${clock(L.eta_after)}, ${duration(L.late_min)} après sa plage (${clock(L.win_start)} à ${clock(L.win_end)}).`), q.text);
+  if (late.length === 1) assert.equal(q.title, `Réserver Fanny à ${clock(AT)} met ${nameOf(late[0].id)} en retard`);
+  else if (late.length > 1) assert.equal(q.title, `Réserver Fanny à ${clock(AT)} met ${late.length} clients en retard`);
+  else assert.equal(q.title, `Réserver Fanny à ${clock(AT)} : le camion finit après ses heures`);
+  for (const L of late) assert.ok(q.text.includes(`${nameOf(L.id)} : vers ${clock(L.eta_after)}, ${duration(L.late_min)} après sa plage (${clock(L.win_start)} à ${clock(L.win_end)}).`), q.text);
+  if (pv.a.over_hours > 0) assert.ok(q.text.includes(`Le camion finirait sa journée ${duration(pv.a.over_hours)} après ses heures.`), q.text);
   assert.ok(q.buttons.includes(`Réserver quand même à ${clock(AT)}`) && q.buttons.includes('Choisir une autre heure'), q.buttons.join(' | '));
   // « Choisir une autre heure »: nothing written
   await q.no('Choisir une autre heure');
@@ -192,7 +209,7 @@ step('2. The office books Fanny at 15 h 15 (no room: Denis would be late): the w
   assert.equal(books.filter((a) => a.args?.p_job?.customer_id === C.Fanny.id).length, 0, 'no booking sent');
   assert.deepEqual(d.dayOf(T.complet, D), rows0, 'the database is as it was (every stop, its time, its updated_at)');
   assert.equal(bookedFor('Fanny'), null);
-  // again: « Réserver quand même à 15 h 15 »
+  // again: « Réserver quand même »
   await page.getByTestId('book-confirm').click();
   const q2 = await d.question(page);
   assert.equal(q2.title, q.title, 'the same warning');
@@ -200,35 +217,32 @@ step('2. The office books Fanny at 15 h 15 (no room: Denis would be late): the w
   await until(() => books.filter((a) => a.args?.p_job?.customer_id === C.Fanny.id).length, (v) => v > 0, 20000);
   const sent = books.filter((a) => a.args?.p_job?.customer_id === C.Fanny.id).pop();
   assert.equal(sent.status, 200, JSON.stringify(sent.body));
-  assert.deepEqual([sent.args.p_job.arrive_at, sent.args.p_job.late_ok], [AT, [J.Denis]], 'Denis accepted late, by name');
   const f = bookedFor('Fanny');
+  assert.deepEqual([sent.args.p_job.arrive_at, [...sent.args.p_job.late_ok].sort()], [AT, [...late.map((s) => s.id), ...(pv.a.over_hours > 0 ? [f.id] : [])].sort()], 'the late ones accepted, by name');
   assert.deepEqual([f.eta_min, f.arrive_at, f.truck_pinned, f.forced], [AT, AT, true, false], JSON.stringify(f));
+  assert.deepEqual([f.win_start, f.win_end], d.winFor(AT), 'its window: the one of that minute');
   const after2 = d.dayOf(T.complet, D);
-  const dn = after2.find((s) => s.id === J.Denis);
-  assert.equal(dn.eta, L.eta_after, 'Denis arrives when the warning said');
-  assert.equal(dn.eta - dn.we, L.late_min, `Denis is late by what was said (${L.late_min} min)`);
-  assert.deepEqual(after2.map((s) => s.first), ['Alice', 'Benoit', 'Chloe', 'Fanny', 'Denis'], 'Fanny at her minute; the others in their order');
-  assert.deepEqual(d.orderAndTimes(after2).slice(0, 3), WORLD.slice(0, 3), 'Alice, Benoit, Chloe keep their hours');
+  for (const s of pv.a.stops) if (s.id !== f.id && J[nameOf(s.id)]) assert.equal(after2.find((x0) => x0.id === s.id).eta, s.eta_after, `${nameOf(s.id)} exactly as previewed`);
+  assert.deepEqual(after2.filter((s) => s.id !== f.id).map((s) => s.first), ['Alice', 'Benoit', 'Chloe', 'Denis'], 'the others keep their order');
   // the new map of that day, over its agenda
   await page.getByTestId('booked-map').waitFor({ timeout: 20000 });
   assert.match(page.url(), new RegExp(`#/agenda/${D}`), 'the agenda of that day behind it');
   const list = await mapList(page, T.complet);
   t.diagnostic(`the new map: ${list.map((s) => `${s.n}. ${s.text}`).join(' · ')}`);
-  assert.deepEqual(list.map((s) => [s.n, nameOf(s.id) === s.id ? 'Fanny' : nameOf(s.id), s.mark]),
-    [[1, 'Alice', ''], [2, 'Benoit', ''], [3, 'Chloe', ''], [4, 'Fanny', 'new'], [5, 'Denis', 'late']]);
-  assert.ok(list[3].text.includes(`Nouveau ${clock(AT)}`), list[3].text);
-  assert.ok(list[4].text.includes(`en retard de ${duration(L.late_min)}`), list[4].text);
-  // the roads: nothing until a real one comes, then by the streets (the fake OSRM's road bends: more than 2 points)
+  assert.deepEqual(list.map((s) => s.id), after2.map((s) => s.id), 'the new order, numbered');
+  assert.deepEqual(list.map((s) => s.n), after2.map((_s, i) => i + 1));
+  const mine = list.find((s) => s.id === f.id);
+  assert.equal(mine.mark, 'new');
+  assert.ok(mine.text.includes(`Nouveau ${clock(AT)}`), mine.text);
+  for (const L of late) assert.equal(list.find((s) => s.id === L.id).mark, 'late', `${nameOf(L.id)} marked late`);
   const roads = await until(() => mapRoads(page), (v) => v.length > 0, 20000);
   t.diagnostic(`the roads drawn: ${JSON.stringify(roads)}`);
   assert.ok(roads.length > 0 && roads.every((n) => n > 2), `never a straight line: ${JSON.stringify(roads)}`);
   await h.shot(page, 'reserver-2-new-map');
-  // the message names Denis (his new window leaves with the day's button); Fanny's text at once; nothing to Denis
-  await page.getByTestId('toast-info').filter({ hasText: `Réservé quand même : ` }).filter({ hasText: 'Denis aura une nouvelle plage' }).first().waitFor({ timeout: 10000 });
+  await page.getByTestId('toast-info').filter({ hasText: 'Réservé quand même : ' }).first().waitFor({ timeout: 10000 });
   const sms = await until(() => d.textsTo('Fanny'), (v) => v.length > 0, 15000);
   assert.equal(sms.length, 1, 'Fanny’s booking text, once');
-  assert.deepEqual(await d.textsTo('Denis'), [], 'no text to Denis');
-  // « Voir le rendez-vous »
+  for (const L of late) assert.deepEqual(await d.textsTo(nameOf(L.id)), [], `no text to ${nameOf(L.id)}`);
   await page.getByTestId('booked-map-see').click();
   await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
   assert.match(page.url(), new RegExp(`#/job/${f.id}`));
@@ -237,85 +251,79 @@ step('2. The office books Fanny at 15 h 15 (no room: Denis would be late): the w
   x.noErrors(page);
 });
 
-step('3. The owner, on a phone, takes 8 h for Gaby from the list (the truck leaves the garage at 8 h): « Pas possible à 8 h … au plus tôt … », « Mettre à … »: booked at that minute, the ones pushed later said on the new map', async (t) => {
-  const AT = 480;
-  const pv = await oracle(who.owner.jwt, 'Gaby', AT);
-  assert.deepEqual([pv.ok, pv.hint], [false, 'arrive_late'], JSON.stringify(pv));
-  const E = pv.details.earliest;
-  assert.ok(E > AT, JSON.stringify(pv.details));
-  const pe = await oracle(who.owner.jwt, 'Gaby', E);
-  assert.ok(pe.ok, JSON.stringify(pe));
-  t.diagnostic(`the server: arrive_late, earliest ${clock(E)}; at ${clock(E)}: ${pe.a.stops.filter((s) => s.delay_min > 0).map((s) => `${nameOf(s.id)} +${s.delay_min}`).join(', ') || 'nobody moves'}${pe.a.forced ? ' (forced)' : ''}`);
+step('3. The owner, on a phone: 8 h for Gaby (offered) books as before — no « Pas possible à 8 h », no minute pinned; then Hugo (4 h 15) at a time marked « complet » in the list: the warning, « Réserver quand même », pinned, the new map', async (t) => {
   const r = await d.openD({ kind: 'phone' });
   const { page } = r;
   const books = x.answersOf(page, 'book_job');
+  const previews = x.answersOf(page, 'book_preview');
   await h.signIn(page, who.owner.email, PW);
   await p.bookStart(page, 'Gaby', [SVC_OIL]);
   await p.listAnswered(page, D);
+  const u8 = unitOf(page, 480, 'list');
+  await u8.waitFor({ timeout: 10000 });
+  assert.equal(await u8.getAttribute('data-state'), 'open', '8 h is offered');
+  await u8.click();
+  await page.getByTestId('book-confirm').click();
+  assert.equal(await d.noQuestion(page, 2500), true, 'no question (the truck leaves at 8 h: the planner places her in her window)');
+  await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
+  const g = bookedFor('Gaby');
+  t.diagnostic(`Gaby: ${clock(g.eta_min)} in ${clock(g.win_start)} – ${clock(g.win_end)}`);
+  assert.deepEqual([g.arrive_at, g.win_start, g.win_end], [null, ...d.winFor(480)], JSON.stringify(g));
+  assert.equal(previews.length, 0, 'no preview');
+  // Hugo, a long visit, at a full time
+  const AT = await fullTime('Hugo');
+  const pv = await oracle(who.owner.jwt, 'Hugo', AT, null, 255);
+  assert.ok(pv.ok && pv.a.forced === true, JSON.stringify(pv));
+  await p.bookStart(page, 'Hugo', LONG);
+  await p.listAnswered(page, D);
   const u = unitOf(page, AT, 'list');
   await u.waitFor({ timeout: 10000 });
-  t.diagnostic(`8 h on the phone's list: ${await u.getAttribute('data-state')} « ${flat(await u.innerText())} »`);
+  assert.equal(await u.getAttribute('data-state'), 'no');
+  assert.match(flat(await u.innerText()), /complet/, 'marked « complet »');
   await u.click();
   await page.getByTestId('book-confirm').click();
   const q = await d.question(page);
-  await h.shot(page, 'reserver-3-earliest');
-  t.diagnostic(`the question: « ${q.title} » — « ${q.text} » [${q.buttons.join(' | ')}]`);
-  assert.equal(q.title, `Pas possible à ${clock(AT)}`);
-  assert.ok(q.text.includes(`Le camion ne peut pas être chez Gaby à ${clock(AT)} : au plus tôt ${clock(E)}.`), q.text);
-  assert.ok(q.buttons.includes(`Mettre à ${clock(E)}`), q.buttons.join(' | '));
+  await h.shot(page, 'reserver-3-phone-warning');
+  t.diagnostic(`the warning: « ${q.title} » [${q.buttons.join(' | ')}]`);
+  assert.ok(q.buttons.includes(`Réserver quand même à ${clock(AT)}`), q.buttons.join(' | '));
   const answers = await d.answersOnScreen(page);
   assert.ok(answers.ok, `the answers fit on the phone: ${JSON.stringify(answers)}`);
   await q.yes();
-  // at that minute somebody late would be a new warning (said, never in silence)
-  if (pe.a.forced) { const q2 = await d.question(page); t.diagnostic(`then: « ${q2.title} »`); await q2.yes(); }
-  await until(() => books.filter((a) => a.args?.p_job?.customer_id === C.Gaby.id && a.status === 200).length, (v) => v > 0, 20000);
-  const g = bookedFor('Gaby');
-  assert.deepEqual([g.eta_min, g.arrive_at], [E, E], JSON.stringify(g));
-  for (const s of pe.a.stops) assert.equal(d.dayOf(T.complet, D).find((x0) => x0.id === s.id)?.eta ?? g.eta_min, s.eta_after, `${nameOf(s.id)} as previewed`);
-  const moved = pe.a.stops.some((s) => J[nameOf(s.id)] && s.delay_min > 0);
-  if (moved) {
-    await page.getByTestId('booked-map').waitFor({ timeout: 20000 });
-    const list = await mapList(page, T.complet);
-    t.diagnostic(`the new map: ${list.map((s) => `${s.n}. ${s.text}`).join(' · ')}`);
-    assert.equal(list[0].mark, 'new', 'Gaby first, « Nouveau »');
-    assert.ok(list.some((s) => s.mark === 'pushed' || s.mark === 'late'), 'the ones pushed are marked');
-    await h.shot(page, 'reserver-3-new-map');
-    await page.getByTestId('booked-map-close').click();
-    await page.getByTestId('booked-map').waitFor({ state: 'detached', timeout: 10000 });
-  } else {
-    await page.getByTestId('job-screen').waitFor({ timeout: 20000 });
-  }
+  await until(() => books.filter((a) => a.args?.p_job?.customer_id === C.Hugo.id && a.status === 200).length, (v) => v > 0, 20000);
+  const hu = bookedFor('Hugo');
+  assert.deepEqual([hu.eta_min, hu.arrive_at], [AT, AT], JSON.stringify(hu));
+  await page.getByTestId('booked-map').waitFor({ timeout: 20000 });
+  const list = await mapList(page, T.complet);
+  t.diagnostic(`the new map: ${list.map((s) => `${s.n}. ${s.text}`).join(' · ')}`);
+  assert.equal(list.find((s) => s.id === hu.id)?.mark, 'new');
+  await h.shot(page, 'reserver-3-new-map');
+  await page.getByTestId('booked-map-close').click();
+  await page.getByTestId('booked-map').waitFor({ state: 'detached', timeout: 10000 });
   x.nothingLeft(r);
   x.noErrors(page);
 });
 
-step('4. A mechanic books Hugo at 15 h 15 on his truck (no room): the same warning says only the owner and the office may book anyway; his only answer is another time; nothing written', async (t) => {
-  const AT = 915;
-  const pv = await oracle(who.saleh.jwt, 'Hugo', AT, T.complet);
-  assert.ok(pv.ok, JSON.stringify(pv));
-  assert.deepEqual([pv.a.forced, pv.a.may_force], [true, false], 'the server says it is a forcing he may not do');
+step('4. A mechanic: a full time is not his to take (« pas possible », said why, nothing chosen, nothing sent)', async (t) => {
+  const AT = await fullTime('Ines');
   const r = await d.openD({ kind: 'desktop' });
   const { page } = r;
   const books = x.answersOf(page, 'book_job');
   await h.signIn(page, who.saleh.email, PW);
   await page.setViewportSize({ width: 1366, height: 1100 });
-  await p.bookStart(page, 'Hugo', [SVC_OIL]);
+  await p.bookStart(page, 'Ines', LONG);
   await p.gridAnswered(page, D);
-  await unitOf(page, AT, 'grid').click();
-  const rows0 = d.dayOf(T.complet, D);
-  await page.getByTestId('book-confirm').click();
-  const q = await d.question(page);
+  assert.equal(await unitOf(page, AT, 'grid').getAttribute('data-state'), 'no');
+  assert.match(await unitOf(page, AT, 'grid').getAttribute('aria-label'), /pas possible$/, 'said « pas possible » to him (not « complet, tu peux réserver quand même »)');
+  // (marked aria-disabled for him: a click still says why)
+  await unitOf(page, AT, 'grid').click({ force: true });
+  const said = page.locator('[data-testid^="toast-"]').filter({ hasText: `Le mécano ne peut pas arriver vers ${clock(AT)}` }).first();
+  await said.waitFor({ timeout: 10000 });
+  t.diagnostic(`he reads: « ${flat(await said.innerText())} »`);
+  assert.equal(await page.getByTestId('booked-map').count(), 0);
+  assert.doesNotMatch(flat(await page.getByTestId('bp-chosen').innerText()), /Complet à cette heure/, 'nothing chosen');
+  assert.equal(books.length, 0, 'no booking sent');
+  assert.equal(bookedFor('Ines'), null);
   await h.shot(page, 'reserver-4-mechanic');
-  t.diagnostic(`the warning: « ${q.title} » — « ${q.text} » [${q.buttons.join(' | ')}]`);
-  assert.match(q.title, /met Denis en retard/);
-  assert.ok(q.text.includes('Seuls le propriétaire et le bureau peuvent réserver quand même. Choisis une autre heure.'), q.text);
-  assert.ok(!q.buttons.some((b) => /quand même/.test(b)), `no « quand même » for him: ${q.buttons.join(' | ')}`);
-  await q.yes();
-  await page.waitForTimeout(2000);
-  assert.equal(books.filter((a) => a.args?.p_job?.customer_id === C.Hugo.id).length, 0, 'no booking sent');
-  assert.deepEqual(d.dayOf(T.complet, D), rows0, 'nothing written');
-  assert.equal(bookedFor('Hugo'), null);
-  assert.equal(await page.getByTestId('book-screen').count(), 1, 'the booking screen stays, to pick another time');
   x.nothingLeft(r);
   x.noErrors(page);
 });

@@ -1,8 +1,9 @@
-/* « Réserver à l'heure choisie » (Part 30, K1–K3) through the booking screen drawn for real (the rows on the device, the
-   server pretended; the calendar replaced by a button that picks a time, as BookScreen.test.tsx does): a time of the
-   calendar is booked AT that minute through the preview; no room → the warning, « Réserver quand même à 14 h », then the
-   new map of that day over its agenda; the booking text at once, its window the one of the minute; no signal and two
-   cars: booked as before (the window). */
+/* « Réserver à l'heure choisie » (Part 30, K1–K3, the lead's correction) through the booking screen drawn for real (the
+   rows on the device, the server pretended; the calendar replaced by buttons that pick a time, as BookScreen.test.tsx
+   does): a time the server OFFERS books exactly as before (its window, no minute, no preview); a FULL time (« complet »,
+   the owner) goes through the preview: no room → the warning, « Réserver quand même à 14 h », booked AT that minute,
+   then the new map of that day over its agenda; the booking text at once, its window the one of the minute; no signal
+   and two cars with a full time: as before Part 30 (the day, the app gives the window). */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -30,8 +31,10 @@ vi.mock('../../shared/jobs/CarFirst', () => ({ OilHint: () => null }));
 vi.mock('../../shared/moment/BlockPicker', () => ({
   BlockPicker: (p: BlockPickerProps) => (
     <>
-      {/* a quarter hour of the calendar: 14 h, told 13 h – 17 h */}
-      <button type="button" data-testid="stub-time" data-exact={String(!!p.exactBook)} onClick={() => p.onPick({ day: DAY, block: 'day', win_start: 780, win_end: 1020, eta: 840, truck: 'T1' })}>t</button>
+      {/* a quarter hour of the calendar the server offers: 14 h, told 13 h – 17 h */}
+      <button type="button" data-testid="stub-open" data-exact={String(!!p.exactBook)} onClick={() => p.onPick({ day: DAY, block: 'day', win_start: 780, win_end: 1020, eta: 840, truck: 'T1' })}>o</button>
+      {/* the same time, not offered (« complet »), taken anyway by the owner */}
+      <button type="button" data-testid="stub-time" onClick={() => p.onPick({ day: DAY, block: 'day', win_start: 780, win_end: 1020, eta: 840, truck: null, full: true })}>t</button>
       <button type="button" data-testid="stub-seen" onClick={() => p.onFar?.(null, { day: DAY, block: 'day', at: Date.now() })}>seen</button>
     </>
   )
@@ -87,10 +90,27 @@ beforeEach(() => {
 afterEach(() => { act(() => render(null, box)); clearAll(); access.value = null; net.value = wasOnline; });
 
 describe('« Réserver » with a time of the calendar', () => {
-  it('the picker is the booking one (exactBook); room: no question, booked AT 14 h, the appointment opens, the booking text at once with the window of 14 h', async () => {
+  it('a time the server offers: exactly as before Part 30 — no preview, no question, its window (win_start), no minute pinned; the appointment opens; the text at once', async () => {
+    await draw('customer=c-1');
+    expect(q('stub-open')?.dataset.exact).toBe('true');
+    await click(q('stub-add'));
+    await click(q('stub-open'));
+    await click(q('book-confirm'));
+    expect(pv.bookPreview).not.toHaveBeenCalled();
+    expect(ui.ask).not.toHaveBeenCalled();
+    expect(api.bookJob).toHaveBeenCalledTimes(1);
+    const [job] = api.bookJob.mock.calls[0];
+    expect(job).toMatchObject({ day: DAY, block: 'day', win_start: 780 });
+    expect(job.arrive_at).toBeUndefined();
+    expect(job.late_ok).toBeUndefined();
+    expect(nav.navigate).toHaveBeenCalledWith(`/job/${job.id}`, { replace: true });
+    expect(map.openBookedMapOn).not.toHaveBeenCalled();
+    expect(texts.notifyCustomer).toHaveBeenCalledWith('booking', job.id, expect.objectContaining({ customerId: 'c-1', when: expect.stringContaining('entre 13 h et 17 h') }));
+  });
+
+  it('a full time with room at that very minute: no question, booked AT 14 h (pinned), the new map, the text at once with the window of 14 h', async () => {
     pv.bookPreview.mockImplementation(async (job: { id: string }) => preview([stop('D', 700, 700)])(job));
     await draw('customer=c-1');
-    expect(q('stub-time')?.dataset.exact).toBe('true');
     await click(q('stub-add'));
     await click(q('stub-time'));
     await click(q('book-confirm'));
@@ -100,8 +120,7 @@ describe('« Réserver » with a time of the calendar', () => {
     expect(api.bookJob).toHaveBeenCalledTimes(1);
     const [job] = api.bookJob.mock.calls[0];
     expect(job).toMatchObject({ arrive_at: 840, truck_id: 'T1', late_ok: [] });
-    expect(nav.navigate).toHaveBeenCalledWith(`/job/${job.id}`, { replace: true });
-    expect(map.openBookedMapOn).not.toHaveBeenCalled();
+    expect(map.openBookedMapOn).toHaveBeenCalledWith(`/agenda/${DAY}`, expect.objectContaining({ jobId: job.id, at: 840 }));
     expect(texts.notifyCustomer).toHaveBeenCalledWith('booking', job.id, expect.objectContaining({ customerId: 'c-1', when: expect.stringContaining('entre 13 h et 17 h') }));
     expect(ui.toast.mock.calls.at(-1)?.[0]).toContain('Réservé');
   });
@@ -136,7 +155,7 @@ describe('« Réserver » with a time of the calendar', () => {
     expect(texts.notifyCustomer).not.toHaveBeenCalled();
   });
 
-  it('no signal: booked as before (the window of that time, kept on the phone), no preview', async () => {
+  it('no signal, a full time: as before Part 30 (the day, the app gives the window; kept on the phone), no preview', async () => {
     net.value = { ...wasOnline, online: false };
     await draw('customer=c-1');
     await click(q('stub-add'));
@@ -144,11 +163,12 @@ describe('« Réserver » with a time of the calendar', () => {
     await click(q('book-confirm'));
     expect(pv.bookPreview).not.toHaveBeenCalled();
     expect(api.bookJob).toHaveBeenCalledTimes(1);
-    expect(api.bookJob.mock.calls[0][0]).toMatchObject({ day: DAY, block: 'day', win_start: 780 });
+    expect(api.bookJob.mock.calls[0][0]).toMatchObject({ day: DAY, block: 'day' });
+    expect(api.bookJob.mock.calls[0][0].win_start).toBeUndefined();
     expect(api.bookJob.mock.calls[0][0].arrive_at).toBeUndefined();
   });
 
-  it('two cars: one appointment per car in that window, as before (no minute)', async () => {
+  it('two cars, a full time: one appointment per car, the day (as before Part 30), no minute', async () => {
     await draw('customer=c-2');
     const chip = (name: string) => [...box.querySelectorAll('[data-testid="vehicle-chips"] button')].find((b) => b.textContent?.includes(name)) ?? null;
     await click(chip('Corolla'));
@@ -159,6 +179,6 @@ describe('« Réserver » with a time of the calendar', () => {
     await click(q('book-confirm'));
     expect(pv.bookPreview).not.toHaveBeenCalled();
     expect(api.bookJob).toHaveBeenCalledTimes(2);
-    for (const [job] of api.bookJob.mock.calls) expect(job.arrive_at).toBeUndefined();
+    for (const [job] of api.bookJob.mock.calls) { expect(job.arrive_at).toBeUndefined(); expect(job.win_start).toBeUndefined(); }
   });
 });

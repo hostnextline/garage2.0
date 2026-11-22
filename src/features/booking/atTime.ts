@@ -1,13 +1,13 @@
 /* « Réserver à l'heure choisie » (Part 30; Hassan, 2026-11-22: « hours can change, but i want to be able to decide so if i
    forcefully book someone at a specific time, i want the system to show a warning if there is no place but still let me
-   book it, then show me the new map »; STATE.md K1, K2). The ONE flow of « Réserver » when a time of the calendar was
-   picked (a quarter hour of PickGrid / PickList, a best moment's « Vers … »): the appointment goes AT that minute, as the
-   exact move does (src/shared/jobs/exactMove.ts, the words and the protocol Hassan already knows):
-   1. No signal, or a server without the preview: given back (`fallback`): « Réserver » books as before (the window of
-      that minute, kept on the phone when there is no signal).
+   book it, then show me the new map »; STATE.md K1, K2, and the lead's correction: « hours can change »). The ONE flow of
+   « Réserver » when the owner or the office took a time the server does NOT offer (« complet » in the calendar:
+   choice.full; a time it offers books as before, its window and no minute pinned: useSubmit). The appointment goes AT
+   that minute, pinned, as the exact move does (src/shared/jobs/exactMove.ts, the words and the protocol Hassan knows):
+   1. No signal, or a server without the preview: given back (`fallback`): « Réserver » books as before (the day, the
+      app gives the window).
    2. The server's preview of that very booking (book_preview; nothing written). Then ONE question, by what it says:
-      - room, nobody's hour changes: no question (the tap on « Réserver » is the yes);
-      - room, someone pushed later inside their window: said (« Réserver … ? »);
+      - room at that very minute (nobody late, someone maybe pushed inside their window): no question;
       - no room (someone late, the truck past its hours): the warning — who and by how much, the truck's end —,
         « Choisir une autre heure » / « Réserver quand même à 14 h » (owner, office); anyone else sees why not;
       - the truck cannot be there at that minute: « Pas possible à 8 h … au plus tôt 8 h 06 », « Mettre à 8 h 06 »
@@ -83,7 +83,8 @@ async function previewCase(a: AtTimeAsk, d: AtTimeDeps, at: number): Promise<Cas
 
 function lines(...xs: (string | false | null | undefined)[]): string { return xs.filter(Boolean).join('\n'); }
 
-/** the question for one case (null: nothing to ask); `may`: the person may force it */
+/** the question for one case (null: nothing to ask: room at that minute, someone pushed inside their window is not
+    asked, as a booking with room never was); `may`: the person may force it */
 export function atQuestion(c: Case, a: { name: string; day: Day; at: number; may: boolean }, d: Pick<AtTimeDeps, 'nameOf' | 'windowOf' | 'lateWindow'>): Question | null {
   const l = lang.value;
   const time = clock(a.at, l);
@@ -92,10 +93,7 @@ export function atQuestion(c: Case, a: { name: string; day: Day; at: number; may
   const told = t('booking.atTime.told', { name: who, from: clock(win[0], l), to: clock(win[1], l) });
   const pushed = (ps: readonly ExactStop[]) => ps.length
     ? [t('booking.atTime.pushed', { n: ps.length }), ...ps.map((s) => t('booking.atTime.pushedLine', { name: d.nameOf(s.id), eta: clock(s.etaAfter ?? 0, l), was: clock(s.etaBefore ?? 0, l) }))].join('\n') : '';
-  if (c.kind === 'ok') {
-    if (!c.pushed.length) return null;
-    return { title: t('booking.atTime.question', { name: who, when: dayInSentence(a.day, l), time }), text: lines(pushed(c.pushed), told), ok: t('booking.atTime.ok'), cancel: t('booking.atTime.other') };
-  }
+  if (c.kind === 'ok') return null;
   if (c.kind === 'late') {
     const n = c.late.length;
     const title = n ? t('booking.atTime.lateTitle', { n, name: d.nameOf(c.late[0].id), who, time }) : t('booking.atTime.overTitle', { who, time });

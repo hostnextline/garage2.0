@@ -1,10 +1,10 @@
-/* « Réserver à l'heure choisie » (Part 30): what is said once booked at a minute, and whether the new map of that day is
-   shown (K3). Pure (atTimeSaid.test.ts): the words come from i18n, the late customers' new windows from `lateWindow`.
+/* « Réserver à l'heure choisie » (Part 30): what is said once a time the server did not offer was booked anyway at that
+   minute (the new map of that day follows it: useSubmit). Pure (atTimeSaid.test.ts): the words come from i18n, the late
+   customers' new windows from `lateWindow`.
    - « Réservé : demain à 14 h. » (« Réservé quand même : … » when somebody was made late or the truck ends after its
      hours), then the late customers NAMED, so they can be called (the app texts them nothing): on a day other than today
      their new window leaves with « Envoyer les heures aux clients » (Part 28), else « Avertis Denis : servi après sa
      plage. » (the exact move's words);
-   - the map: forced, or somebody else's hour changed (pushed later, or late);
    - `when`: the window of that minute in the booking text's words (for the text to send by hand). */
 import { t } from '../../lib/i18n';
 import { clock, type Day } from '../../lib/dates';
@@ -15,7 +15,7 @@ import { dayInSentence } from '../../domain/jobs/when';
 import { jobPerson } from '../../domain/jobs/words';
 import type { AtTimeDone } from './atTime';
 
-export interface AtTimeSaid { text: string; kind: 'ok' | 'info'; ms?: number; when: string; map: boolean }
+export interface AtTimeSaid { text: string; kind: 'ok' | 'info'; ms?: number; when: string }
 
 const nameOf = (id: string) => { const r = jobRow(id); return (r && jobPerson(r)) || t('booking.atTime.someone'); };
 
@@ -32,6 +32,5 @@ export function atTimeSaid(done: Extract<AtTimeDone, { kind: 'booked' }>, day: D
   const text = [first,
     gets.length ? t('jobs.exact.doneLate', { n: gets.length, names: names(gets) }) : '',
     tell.length ? t('jobs.exact.doneLateToday', { n: tell.length, names: names(tell) }) : ''].filter(Boolean).join(' ');
-  return { text, kind: done.forced ? 'info' : 'ok', ms: done.late.length || done.forced ? 10000 : undefined, when,
-    map: done.forced || done.late.length > 0 || done.pushed.length > 0 };
+  return { text, kind: done.forced ? 'info' : 'ok', ms: done.late.length || done.forced ? 10000 : undefined, when };
 }
