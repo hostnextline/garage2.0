@@ -37,10 +37,11 @@ and `docs/DESIGN.md` (the look and the writing rules) before changing anything. 
 | Server functions on a Mac | `bash tests/stack/mac/api-tests.sh [file or pattern]` (« Vraies routes »: `drive`; the nightly job and the way back of CUTOVER.md: `bash tests/stack/mac/api-tests.sh ops/tests/sauvegardes.test.mjs`) | the Mac stack; fake TomTom (key `tt-test`) and OSRM on 8021 |
 | « Vraies routes » end to end (9 steps) | `bash tests/stack/mac/e2e-file.sh routes` (Mac) or `node --test tests/e2e/routes.test.cjs` (Linux) | its own production build WITH a fake browser TomTom key (`tt-browser-test`); every request to a host it does not fake fails the step; about 1 min |
 | « Déplacer à l'heure choisie » end to end (8 steps) | `bash tests/stack/mac/e2e-file.sh deplacer` (Mac) or `node --test tests/e2e/deplacer.test.cjs` (Linux) | window mode, the real server's `move_preview` / `move_job` with `p_exact`; « Vraies routes » on in its two last steps (the fake TomTom and OSRM); every request to a host it does not fake fails the step; about 30 s; then `FRESH=1` for the database tests |
-| The other browser files | `bash tests/stack/mac/e2e-file.sh plages` (window mode, switch off), `… argent`, `… mise-a-jour` (yesterday's app with its data updated to this build) | the Mac stack; not in `all.sh` nor in `tests-complets.yml` (which run `app.test.cjs` only) |
+| The other browser files | `bash tests/stack/mac/e2e-file.sh plages` (window mode, switch off), `… argent`, `… mise-a-jour` (yesterday's app with its data updated to this build) | the Mac stack; `tests/stack/mac/all.sh` runs these three, `routes` and `deplacer` after `app.test.cjs`; GitHub's `tests-complets.yml` runs `app`, `plages` and `argent` (not `mise-a-jour`, `routes`, `deplacer`) |
 
 On a Mac, the rows with `tests/stack/mac/…` run the database, API and end-to-end suites (`bash tests/stack/mac/e2e.sh`
-for the steps of `app.test.cjs`, `bash tests/stack/mac/e2e-file.sh <name>` for the other files); the
+for the steps of `app.test.cjs`, `bash tests/stack/mac/e2e.sh <name>` or `bash tests/stack/mac/e2e-file.sh <name>`, the
+same, for the other files); the
 `bash tests/stack/start.sh` and `node --test …` rows are for Linux (a Claude Code cloud session, or GitHub's
 `tests-complets.yml`). Photon (addresses) is mocked in the end-to-end tests with `ctx.route`; `routes.test.cjs` also
 fakes TomTom's tiles, routing and geocoding for the browser.
@@ -68,7 +69,8 @@ begin
 end $do$;
 ```
 
-- Applied on live: every migration up to `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
+- Applied on live: every migration up to `20261119000100_heures.sql` (« Heures travaillées », Part 26 of live, applied 2026-11-19 from commit `5e77db6` of the
+  live branch with the sha256 check; this file is the same byte for byte); before it: `20261115000100_fenetres.sql` (« Plages d'arrivée », applied 2026-11-15 from commit `6b978bd` with the sha256
   check; INERT while `settings.booking.windows_on` is not true: the owner flips it in Réglages → Réservations, `windows_switch`, and back the
   same way, nothing lost; functions `notify`, `book`, `client` deployed pinned to `6b978bd` the same day);
   before it: `20261114000100_garde_route.sql` (Part 25, applied 2026-11-15 from commit `aabe852`;
@@ -194,8 +196,10 @@ end $do$;
   appointment, without cancelling it. `invoice_reopen(op, invoice)`: a finished invoice not paid, its job booked / en route / on
   site, for whoever may finish it (`invoice_editable`) → back to a draft with its number; its payments wait on the job
   (`invoice_id` null, « Le client a déjà payé … ») and the customer's open card page is forgotten (`public_links.last_session*`);
-  activity `invoice_reopened`. `invoice_finish` keeps a reopened invoice's number (`again: true`, no number spent) and refuses a
-  total under what was paid (`below_paid`). `payment_add`: a card payment (no person) landing on a reopened draft waits on the
+  activity `invoice_reopened`. `invoice_finish` keeps a reopened invoice's number (`again: true`, no number spent). On live
+  until the refonte it refuses a total under what was paid (`below_paid`); in the refonte (owner's decision of 2026-11-20: « easy for
+  the mechanic, prevent mistakes, don't restrict them too much ») it finishes « paid » with `over_cents` and the activity `overpaid`:
+  the phone asks first (« {over} à remettre au client », « Oui, terminer ») and the office gives the difference back (« Trop-perçu »). `payment_add`: a card payment (no person) landing on a reopened draft waits on the
   job instead of being refused. Trigger `job_items_invoice_follow`: a job line taken off (removed, declined, deleted) leaves the
   draft invoice; a new price / quantity / words go on its line (only what changed: a price typed on the invoice stays when the work
   is only marked done); a person may not take off or reprice work billed on a FINISHED invoice (`invoice_done`: « Modifier la
@@ -490,9 +494,15 @@ end $do$;
   « Choisir sur la carte » (`moment-map`, above the suggestions, in booking and in « Déplacer »): the days of the page in a strip
   (appointments that day, the driving added, « Meilleur choix », « loin »), then the day's three blocks. On a phone the map is in
   the page (overview « Tous les jours »: every coming appointment as a dot with its date; a day: its routes with the new stop). On a
-  computer (`(hover: hover) and (pointer: fine)`) there is no map in the page: the mouse over a day, a block, a suggestion or a
-  calendar cell opens a small window beside it (`route-hover`, `MapHover`; armed by `mousemove`, closed by a scroll; it never takes
-  the mouse) with every vehicle's route that day, small points without labels, the new stop in black.
+  computer (`(hover: hover) and (pointer: fine)`) there is no map in the page: the mouse resting on a day, a block, a suggestion, a
+  calendar cell, a best moment or a time of « Plages d’arrivée » opens the real map of that day in a window (`route-hover`,
+  `MapHover` / `RouteHover` in `src/shared/moment/RoutePreview.tsx`; asked by Hassan on 2026-11-19: « i want the actual map to open,
+  we are visual »): up to 640 × 460, every vehicle's route by the streets with its numbered stops at full size (nothing drawn
+  between two stops before a real road comes: « Vraies routes » below), the new stop in black with its name, under it the
+  stops of the route it joins in order and what it adds (never a straight-line distance: « Route ajoutée : pas encore
+  calculée » until measured). It goes beside the whole picker (`popPlace` in `place.ts`, the picker marked `data-pop-group`),
+  so it does not move, stays open and follows while the mouse goes from a moment to the next (`useHover`: opens after 250 ms,
+  follows after 110 ms, closes 220 ms after the mouse left, at once at a scroll or when a menu opens); it never takes the mouse.
   Known limits: with « Vraies routes » off (live today) the driving is still the straight-line estimate (Tuesday's real driving
   was well over it) and the pickers print it as minutes and km, as live does (decided 2026-11-21: off is the way back); on,
   it is measured (Part 27, below: `far` is never decided by a guess, a moment not measured is never offered online nor
@@ -639,8 +649,8 @@ end $do$;
   offered), and `booking.roads_web_tx` (1 000 a month, counted in the month's ceiling too), then OSRM. When it offers nothing
   because moments were left out as not measured (`web_unmeasured`), it answers `unmeasured: true` and the page says « On ne
   peut pas proposer de moment en ligne pour cette adresse en ce moment : appelez-nous. », never « Aucun moment libre ».
-  `enroute` (« Je pars »): TomTom's road with the traffic of now (server key), else OSRM + 20 %, else no time (the text
-  without a time); « Je pars » and « Je pars vers la Centrale » ask a road at most 30 times an hour a person
+  `enroute` (« Je pars »): TomTom's road with the traffic of now (server key), else OSRM + 20 % (its own server, then its
+  FOSSGIS copy: main's second planner), else no time (the text without a time); « Je pars » and « Je pars vers la Centrale » ask a road at most 30 times an hour a person
   (`enroute:road:<person>`: past it the trip and the text still go, without a time); a `refresh` of an ended trip is refused
   `not_en_route` (409) before any road and makes no trip and no text; never by another member (403); at most one every 4
   minutes and 8 a trip (429).
@@ -716,14 +726,15 @@ end $do$;
   measured at once for 14 days only (later days: the sweep, the nightly job); the map legend's road total is TomTom's route
   at 11 h 30 of that day, today « now », and the first answer is kept all day; « Ma journée »'s « … de route » counts 0 for a
   stop with no travel time (it adds « trajets pas encore tous mesurés » when an arrival is not measured); a real road of two
-  points is not drawn (taken for the old straight line); in blocks mode a moment's vehicle and `day_min` may differ from what
+  points is not drawn (taken for the old straight line; enroute keeps 3 points of any road the planner gave with more:
+  `roadLine`); in blocks mode a moment's vehicle and `day_min` may differ from what
   the booking then does (as before Part 27); `left` still counts idle minutes before a break; an empty day's « Voir sur la
   carte » (switch on, blocks) shows only the new pin; the demo has no `move_preview` / `stop_order_preview` (« pas encore
   calculé » there); `his.tripRefresh` is not cleared at sign-out; the way back to the Centrale is never refreshed; Photon's
   whole postal code is sent by the online booking when the customer typed none; switch off, the planner is a little slower
   than before Part 27 (×1.1–1.8: `drive_min` reads the switch at every leg); a phone still on yesterday's app (acf46c3)
-  knows nothing of the switch (CUTOVER 5 bis.4: every phone on the new app first); CI (`tests-complets.yml`) runs only
-  `app.test.cjs` of the browser files, and the stack folder's own `lib/common.sh` has no TomTom key (use the copy's
+  knows nothing of the switch (CUTOVER 5 bis.4: every phone on the new app first); CI (`tests-complets.yml`) runs `app`,
+  `plages` and `argent` of the browser files (not `routes` nor `deplacer`), and the stack folder's own `lib/common.sh` has no TomTom key (use the copy's
   `tests/stack/mac/e2e-file.sh`).
   Never proven: the real TomTom (the tests fake it, following the documented shapes: the Matrix request, its `detailedError`
   codes, whether a square is billed by cell or 5 × max, a 403 for a quota, the prices); the public OSRM server's limits;
@@ -734,6 +745,53 @@ end $do$;
   and drop, « Déplacer » or « Changer de camion » with the switch on; what the background sweep does (unit tests only; the
   browser step 3b measures with the owner's own `drive sweep` call); no API test runs the functions without the server key
   (the state live starts in); the round-5 API and ops tests were not run on the code of before.
+- « Heures travaillées » (`#/timesheet`, Part 26 of live, `20261119000100_heures.sql`, applied on live 2026-11-19 from commit `5e77db6` with the sha256 check; `src/features/timesheet/`): the
+  hours worked from « Commencer / Terminer ma journée » (`shifts`), a week at a time from Monday to Sunday (Hassan's choice for the
+  hours; the schedule's week stays Sunday–Saturday), a day counted on the day it began, totals in h min and in decimals (pay), the
+  month's total. A mechanic sees only his own (« Mes heures », also « Voir mes heures » on the day card, `src/features/today/ShiftCard.tsx`); the owners and the
+  treasurer (`may.timesheetAll` in `src/domain/rights.ts`, server `hours_all()`) see the team and each person (`#/timesheet/STAFF?week=`), and correct:
+  `shift_save(op, shift, staff, start, end)` (fix a day, or add one with shift null; an open day keeps no end; refused: end not
+  after start, more than 24 h, not yet passed, overlap with the person's other days) and `shift_remove(op, shift)` (closed days
+  only, `deleted_at`). Each correction: `shifts.fixed_by` / `fixed_at` and an `activity` row (`hours_fix` / `hours_add` /
+  `hours_remove`, before / after). « À vérifier » = a closed day of 16 h or more not corrected (`toCheck`): the night's
+  housekeeping closes a forgotten day 16 h after it began (3 h 17), so it always shows that way; the 3 h 17 is not offered as the
+  end in the sheet. The read rule of `shifts` adds `hours_all()` (the treasurer even without « Carte »). Dry run on live
+  2026-11-19 (rolled back): applied clean, mechanic refused, treasurer's fix kept with its history. Tests: `logic.test.ts`,
+  `TimesheetScreen.test.tsx`, `tests/db/heures.test.mjs` (green on live's « Tests complets », run 44578750496). Live had 4 days « à vérifier »
+  that day (closed by the night: 33.8 h, 22.6 h, 16.5 h, 19.2 h).
+  In the refonte: the moments are read and written on the garage's clock (`dayOf`, `minuteOf`, `instantOf` of `lib/dates`), like
+  the rest of the app; `too_long` of a day has its words under `errors.at.shift_save` (`errors.too_long` is a message too long);
+  `shift_save`, `shift_remove` (APP) and `hours_all` (AS_PERSON) are named in `tests/db/refonte-droits.test.mjs`; the demo is
+  `src/dev/demo-extra/timesheet.ts`. On a fresh database the file runs after the six forward migrations (`20261116000050` …
+  `000500`); the end state is the same as on live, where it ran before them (the D1 grant loop of `000300` only goes over its
+  own list of names, which does not hold `hours_all`, `shift_save`, `shift_remove`; the migration grants them itself).
+- The customer's tracking page, live (`client.html#suivi=…`, `src/client/track/`; asked by Hassan on 2026-11-20: « see the mechanic
+  moving in real time, smoothly, as if there was no refresh »; no server change for that part): `useTrack` asks `public_track` every
+  5 s (15 / 30 / 60 s after failures, nothing while the page is hidden), the truck glides from one position to the next along the
+  road's bends (`glide.ts`, requestAnimationFrame), the map does not refit, and the arrival is live (`liveEta`: what is left of the
+  road over its length × the planned minutes, kept calm; the server's `eta_at` when the position is over 2 min old or over 400 m
+  from the road).
+  The road itself is the REAL one (2026-11-21, Hassan on the first picture: « it's a straight line, it doesn't show the actual
+  route »): « Je pars » (`enroute`, `route()`) asks for the road in FULL (TomTom's polyline first when the server has its key,
+  « Vraies routes »; OSRM's `overview=full`) and keeps the points that shape it
+  (`supabase/functions/_shared/road.ts`, `thinRoad`: a point is dropped only when the line passes within 3 m of it, 400 points at
+  most, the smallest bends first on a very long road; 5 km of city = about 35 points, 47 km = about 140). Before, the « simplified »
+  road was asked: about 15 points for 9 km on live (39 trips looked at), up to 15 m off the streets on a short trip and over 100 m
+  on a long one; a road thinned to its two ends (one straight street) keeps one point of its middle (`roadLine`), since
+  the app never draws a line of two points (the old server's straight line: `isRoadLine`). The team's « Carte » draws the
+  same line. Without a road the page draws no line at all (never a straight one, not even dotted: « Vraies routes »), the
+  truck and the house still show; the streets are TomTom's tiles when the app has its key (OpenStreetMap's once refused). The demo's pretend trip (`src/client/demo.ts`, `WAY`) is a real road
+  thinned the same way. Tests: `src/client/track/server-road.test.ts`, and `tests/api/functions.test.mjs` (the stand-in planner
+  answers a road with a corner when asked in full: the trip keeps the corner). Only on the test copies until the functions are
+  deployed; live's `enroute` (pinned at `a4f2da6`) still asks the simplified road.
+  Two road planners (Hassan, same day: « yes add it just in case »; on live 3 trips of 39 had no road at all, the planner had not
+  answered): `route()` asks TomTom first (server key, 8 s), then OSRM's own server, then its FOSSGIS copy
+  (`routing.openstreetmap.de/routed-car`, the same two and the same order as the app's maps), each OSRM waited 6 s at most,
+  then NO road and NO time (the text without a time; Hassan's rule of 2026-11-19, « Vraies routes »: main's version, live
+  today, still ends with the straight-line estimate « as before », `route_source` `line`: merged 2026-11-21, the merge keeps
+  no straight line); `route_source` says `tomtom`, `osrm`, `osrm-backup` or null. A copy of the server with `OSRM_BASE` set
+  (the tests) asks `<OSRM_BASE>-backup` as its second planner, never the real one (`OSRM_BACKUP_BASE` names another); the
+  stand-in fails on demand (`/control?tomtom=fail`, `?osrm=fail`, `?osrm_backup=fail`).
 
 ## Ideas not done yet
 

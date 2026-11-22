@@ -24,9 +24,9 @@ describe('« Voir mon rendez-vous » on the tracking page (client-page-11)', () 
   });
   it('forgets a link the server refused (x-deadcode-25), and only that one', () => {
     rememberAppointment('APPT-today-token', TODAY, NOW);
-    forgetAppointment('another-token');
+    forgetAppointment('another-token', NOW);
     expect(appointmentOfTrip('TRIP-token', NOW)).toBe('APPT-today-token');
-    forgetAppointment('APPT-today-token');
+    forgetAppointment('APPT-today-token', NOW);
     expect(appointmentOfTrip('TRIP-token', NOW)).toBeNull();
   });
   it('opening last month’s invoice again keeps today’s appointment (client-r6), and the old link is not kept (client-page-29)', () => {

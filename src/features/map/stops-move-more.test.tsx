@@ -114,7 +114,7 @@ describe('a move kept on the phone (no signal), from the card', () => {
     await click('fake-pick');
     await click('move-ok');
     expect(said()).toContain('Gardé sur le téléphone');
-    expect(said()).toContain('Le texto au client partira quand le déplacement sera envoyé.');
+    expect(said()).toContain('Le texto au client partira quand le déplacement sera envoyé, si l’app reste ouverte.');
     expect(q('move-wait-j1')?.textContent).toBe('En attente d’envoi');
     expect(q('stop-j1')!.textContent).toContain('En attente d’envoi');
     expect(q('map-card')!.textContent).toContain('En attente d’envoi');

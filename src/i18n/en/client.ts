@@ -141,7 +141,8 @@ export const client: typeof fr = {
     late: 'The payment does not show yet. If it was accepted, it will show here within a few minutes.',
     checkAgain: 'Check again',
     fail: 'The payment page could not open. Try again in a moment or call us.',
-    down: 'Card payment is not answering right now. Try again in a moment, pay on site or call us.'
+    down: 'Card payment is not answering right now. Try again in a moment, pay on site or call us.',
+    processing: 'A payment for this file is already being processed (a bank debit takes a few days). It will show here as soon as the bank confirms it. If you have a question, call us.'
   },
 
   quote: {

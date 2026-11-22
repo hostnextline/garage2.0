@@ -348,6 +348,10 @@ export function load() {
   try {
     registerFn('drive', (b) => drive(b || {}));
     registerRpc('roads_switch', (a) => roadsSwitch(a || {}));
+    /* « Ordre des arrêts » with the real roads: the demo has no preview of an order. It answers « no preview » (null), the
+       answer of a server that gives none: the sheet says « pas encore calculé » as before (CLAUDE.md, Known limits), and
+       the demo still knows every operation the app calls (demo-server.test.ts « demo-01 », from main) */
+    registerRpc('stop_order_preview', () => null, { weak: true });
   } catch (e) { console.warn('demo-extra/roads', e); }
 }
 

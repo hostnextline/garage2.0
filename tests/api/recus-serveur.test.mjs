@@ -2,16 +2,16 @@
 // very calls of receipts.ts (imported from receiptCall.ts, not copied): the insert with its own id and an abort signal, the retry of a try whose answer was lost
 // (23505), the read back, the expense given its receipt_id afterwards (the app's update), a person without
 // « Trésorerie » refused, and what the phone gets when there is no signal or the try is cut off. Not a unit test (vitest
-// does not run it): run on the local stack, from a copy of the app, with
-//   SRC=<copy> bash <lane>/api-tests.sh src/features/treasury/receipts.server-check.mjs
-// The answers' shapes it prints are the ones pinned in receipts.test.ts (« the real server's answers »).
+// does not run it): an API test, run with the other files of tests/api on the local stack (as tests-complets.yml does;
+// on a Mac `bash tests/stack/mac/api-tests.sh recus-serveur`). Was src/features/treasury/receipts.server-check.mjs (S106).
+// The answers' shapes it prints are the ones pinned in src/features/treasury/receipts.test.ts (« the real server's answers »).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 // Node (22.18 and later) strips the types of this one file, which has no import at run time
-import { insertReceipt, selectReceipt } from './receiptCall.ts';
+import { insertReceipt, selectReceipt } from '../../src/features/treasury/receiptCall.ts';
 
 // the lane's front door: the harness gives the lane's database port (lane A 54352, lane B 54452)
 const GW = process.env.GARAGE_DB_PORT === '54452' ? 54431 : 54331;

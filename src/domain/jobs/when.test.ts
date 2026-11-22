@@ -46,6 +46,13 @@ describe('a job is shown by what it is: its block, or the window told to the cus
     expect(keepWindow(flex)).toEqual({ start: null, flex: true });
     expect(keepWindow(win)).toEqual({ start: 840, flex: false });
   });
+  it('a flexible job whose window the evening lock fixed stays flexible when only its vehicle changes (plages-03)', () => {
+    // before: { start: 480, flex: false } → move_job wrote win_flex false, the job left the windows to text, the customer
+    // only ever heard « on vous confirme la veille »; with flex, move_job keeps its fixed window AND « flexible »
+    const locked = J({ block: 'day', win_start: 480, win_end: 720, win_flex: true });
+    expect(keepWindow(locked)).toEqual({ start: null, flex: true });
+    expect(keepWindow({ ...win, win_flex: false })).toEqual({ start: 840, flex: false });
+  });
   it('« Hors plage »: a coming stop whose planned arrival misses its window', () => {
     expect(outsideWindow({ ...win, eta_min: 900 })).toBe(false);
     expect(outsideWindow({ ...win, eta_min: 840 })).toBe(false);

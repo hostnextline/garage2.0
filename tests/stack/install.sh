@@ -52,6 +52,7 @@ GOTRUE_MAILER_AUTOCONFIRM=true
 GOTRUE_LOG_LEVEL=warn
 GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED=true
 EOT
+# db-max-rows: the hosted project's cap (1000 rows a read), so a read that needs more is cut here as it is on live (S68)
 cat > "$RUN/postgrest.conf" <<EOT
 db-uri = "postgres://authenticator:authpw@127.0.0.1:$PGPORT/postgres"
 db-schemas = "public"
@@ -59,7 +60,7 @@ db-anon-role = "anon"
 jwt-secret = "$SECRET"
 server-host = "127.0.0.1"
 server-port = 3011
-db-max-rows = 2000
+db-max-rows = 1000
 log-level = "warn"
 EOT
 

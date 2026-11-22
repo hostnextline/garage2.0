@@ -13,7 +13,7 @@ import { updateItem, removeItem, setItemPrice } from '../../../data/api';
 import { isBilled, isFinished, isOpen, lineCents } from '../../../domain/jobs/billing';
 import { mayReprice } from '../../../domain/jobs/work';
 import type { JobRights } from '../../../domain/jobs/rights';
-import { ReopenButton } from '../../../shared/invoices/InvoicePanel';
+import { ReopenButton, mayReopen } from '../../../shared/invoices/InvoicePanel';
 import { itemStatusText, qtyText } from './words';
 
 export function ItemSheet(p: { job: Job; item: JobItem | undefined; rights: JobRights; onClose: () => void; onAnswer: (id: string) => void }) {
@@ -36,7 +36,8 @@ export function ItemSheet(p: { job: Job; item: JobItem | undefined; rights: JobR
         ]} />
         {billed && open ? (
           <div class="stack" data-testid="item-locked">
-            <p class="small muted" style={{ margin: 0 }}>{t(inv!.status === 'paid' ? 'invoices.reopen.itemPaid' : 'invoices.reopen.item')}</p>
+            {/* « rouvre-la : » only when the button follows; else (no right on its invoice, its « Terminer » still waiting here) the office */}
+            <p class="small muted" style={{ margin: 0 }}>{t(!mayReopen(inv, p.job) ? 'invoices.reopen.itemLocked' : inv!.status === 'paid' ? 'invoices.reopen.itemPaid' : 'invoices.reopen.item')}</p>
             <ReopenButton inv={inv!} job={p.job} block />
           </div>
         ) : <PriceEdit job={p.job} item={i} locked={isFinished(inv)} />}

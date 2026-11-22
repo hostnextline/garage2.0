@@ -1,9 +1,12 @@
-// The update on a real phone: yesterday's app (the LIVE one, commit acf46c3) with its data and its waiting changes, then the
+// The update on a real phone: yesterday's app (the LIVE one, commit aa1b4e6) with its data and its waiting changes, then the
 // rebuilt app on the same phone; the way back (a rollback); and two phones at once on the rebuilt app.
 // Both apps are built for the local copy of the server and served one after the other at the SAME address, to browsers that
 // keep their profile on disk (IndexedDB « his-garage-<uid> », localStorage, the installed service worker): mise-a-jour.helpers.cjs.
 // The database is saved before and put back exactly as it was after.
-//   bash <lane>/e2e-file.sh tests/e2e/mise-a-jour.test.cjs ["part of a step's name"]
+//   on a Mac: bash tests/stack/mac/e2e.sh mise-a-jour ["part of a step's name"]   on Linux: node --test tests/e2e/mise-a-jour.test.cjs
+// Yesterday's app comes from git history (MAJ_OLD_COMMIT, MAJ_OLD_REPO: mise-a-jour.helpers.cjs); the switch in front of the
+// server listens on the app's port + 3. MAC ONLY for now: .github/workflows/tests-complets.yml does not run this file (it
+// was never tried on a GitHub machine, which would need the checkout's whole history); tests/stack/mac/all.sh runs it.
 const { before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -472,10 +475,10 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   // Saleh has Lina's appointment open
   await s.page.goto(h.APP + `#/job/${X}`);
   await s.page.getByTestId('job-moment').getByText(/Today|Aujourd/).first().waitFor({ timeout: 15000 });
-  // the day of the move, as the job screen writes it (« Saturday, November 21 » / « Samedi 21 novembre »); tomorrow it
-  // writes « Demain » / « Tomorrow » and no number (STATE 2026-11-21 00:50: the step failed every day that was so)
-  const isTomorrow = target === h.sql(`select (public.local_today() + 1)::text`);
-  const dayNum = isTomorrow ? '' : String(Number(target.slice(8)));
+  // the day of the move, as the job screen writes it (« Saturday, November 21 » / « Samedi 21 novembre »; tomorrow is
+  // « Tomorrow » / « Demain », with no number: red on Friday 2026-11-20, whose next day of Camion Complet alone is Saturday)
+  const tomorrow = target === h.sql(`select (public.local_today() + 1)::text`);
+  const dayWords = tomorrow ? 'Tomorrow|Demain' : `\\b${Number(target.slice(8))}\\b`;
   // the office moves it to another day (same truck)
   await o.page.goto(h.APP + `#/job/${X}`);
   await o.page.getByTestId('job-move').click({ timeout: 15000 });
@@ -501,7 +504,7 @@ step('two phones at once on the rebuilt app: the office moves an appointment Sal
   assert.equal(await until(() => h.sql(`select status from public.invoices where job_id = '${Y}' and status <> 'void'`), (v) => v === 'paid', 15000), 'paid');
   // Saleh's screen follows, without a reload (no realtime on the test server: the app asks every 45 s)
   const t0 = Date.now();
-  await s.page.waitForFunction((n) => { const x = document.querySelector('[data-testid="job-moment"]')?.innerText || ''; return !/Today|Aujourd/.test(x) && (n ? new RegExp(`\\b${n}\\b`).test(x) : /Demain|Tomorrow/.test(x)); }, dayNum, { timeout: 70000 });
+  await s.page.waitForFunction((w) => { const x = document.querySelector('[data-testid="job-moment"]')?.innerText || ''; return !/Today|Aujourd/.test(x) && new RegExp(w).test(x); }, dayWords, { timeout: 70000 });
   console.log(`# Saleh’s screen followed the move after ${Math.round((Date.now() - t0) / 1000)} s`);
   await h.shot(s.page, 'maj-5-moved');
   await s.page.goto(h.APP + `#/job/${Y}`);

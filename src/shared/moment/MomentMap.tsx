@@ -24,6 +24,7 @@ import { placeNewStop, placeOn, fmtKm, NEW_STOP, NEW_STOP_COLOR, type PlacedOn }
 import { dayOf } from './deviceDay';
 import { MapHover } from './RoutePreview';
 import { roadNote } from './roadNote';
+import { groupBox } from './hooks';
 import { bothKinds, kindOf as kindOfTruck } from './vehicles';
 import { KindTag } from './parts';
 import { isFar, momentsByKey, roadWords, type CellState, type Moment } from '../../domain/moment/logic';
@@ -41,7 +42,7 @@ export interface MomentMapProps {
   /** moving a job: it is not drawn at its old place */
   excludeJob?: string | null;
   truckId?: string | null;
-  /** computers: no map in the page; it opens in a small window beside the day or the moment under the mouse.
+  /** computers: no map in the page; it opens in a window beside the picker for the day or the moment under the mouse.
       `hoverProps` are the mouse handlers of a moment (BlockPicker owns that window) */
   pop?: boolean;
   hoverProps?: (day: string, block: BlockKey) => Record<string, unknown>;
@@ -136,8 +137,8 @@ export function MomentMap(p: MomentMapProps) {
     out.push(newPin(null));
     return out;
   };
-  /* computers: « Tous les jours » under the mouse opens the overview in a small window */
-  const [allAt, setAllAt] = useState<DOMRect | null>(null);
+  /* computers: « Tous les jours » under the mouse opens the overview in the map window */
+  const [allAt, setAllAt] = useState<{ at: DOMRect; group: DOMRect | null } | null>(null);
   if (p.pop) {
     // no map in the page: nothing to draw here
   } else if (!day || !after) {
@@ -193,7 +194,7 @@ export function MomentMap(p: MomentMapProps) {
       {/* the days of the calendar page */}
       <div class="mm-days" ref={strip} role="group" aria-label={t('booking.mm.days')} data-testid="mm-days">
         <button type="button" class={`mm-day mm-day-all${day ? '' : ' is-on'}`} aria-pressed={!day} onClick={() => setSel(null)} data-testid="mm-day-all"
-          {...(p.pop ? { onMouseMove: (e: MouseEvent) => { if (!allAt) setAllAt((e.currentTarget as HTMLElement).getBoundingClientRect()); }, onMouseLeave: () => setAllAt(null) } : {})}>
+          {...(p.pop ? { onMouseMove: (e: MouseEvent) => { const el = e.currentTarget as HTMLElement; if (!allAt) setAllAt({ at: el.getBoundingClientRect(), group: groupBox(el) }); }, onMouseLeave: () => setAllAt(null) } : {})}>
           <span class="mm-day-name">{t('booking.mm.all')}</span>
           <span class="mm-day-sub">{t('booking.mm.allSub')}</span>
         </button>
@@ -214,7 +215,7 @@ export function MomentMap(p: MomentMapProps) {
       {p.pop ? (
         <>
           <p class="faint small mm-hint" data-testid="mm-hint">{t('booking.mm.hintHover')}</p>
-          {allAt && <MapHover at={allAt} title={t('booking.mm.mapAll')} markers={overview()} data-testid="mm-hover-all" />}
+          {allAt && <MapHover at={allAt.at} group={allAt.group} title={t('booking.mm.mapAll')} markers={overview()} data-testid="mm-hover-all" />}
         </>
       ) : (
         <>

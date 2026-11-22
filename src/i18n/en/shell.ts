@@ -2,7 +2,7 @@ import type { shell as fr } from '../fr/shell';
 export const shell: typeof fr = {
   nav: {
     today: 'Today', agenda: 'Schedule', customers: 'Customers', invoices: 'Invoices', quotes: 'Estimates', map: 'Map', overview: 'Overview',
-    hours: 'Hours', treasury: 'Treasury', inventory: 'Inventory', dashboard: 'Numbers', team: 'Team', settings: 'Settings',
+    hours: 'Hours', timesheet: 'Hours worked', treasury: 'Treasury', inventory: 'Inventory', dashboard: 'Numbers', team: 'Team', settings: 'Settings',
     oil: 'Oil reminders', guide: 'Where to start', info: 'Info', account: 'My account', more: 'More'
   },
   groups: { day: 'The day', office: 'The office', garage: 'The garage' },
@@ -47,7 +47,9 @@ export const shell: typeof fr = {
     dismiss: 'Remove',
     show: 'Show',
     line: '{label}: {error}',
-    chip: { one: '1 refused', other: '{n} refused' }
+    chip: { one: '1 refused', other: '{n} refused' },
+    paymentAsk: 'Remove this payment?',
+    paymentConfirm: 'This payment was not recorded. The customer may have paid: check before removing it.'
   },
   session: {
     lost: { one: 'Sign in again: 1 change is waiting', other: 'Sign in again: {n} changes are waiting' },

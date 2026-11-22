@@ -8,11 +8,43 @@ import { stamp } from '../lib/dates';
 import { browserOnline } from '../platform/media';
 import { net, flush, pullAll, dismissFailed, outboxList } from '../data/sync';
 import type { OutboxEntry } from '../data/local';
-import { Button, Sheet, Banner, Rows, RowItem } from '../ui';
+import { Button, Sheet, Banner, Rows, RowItem, ask } from '../ui';
 import { readNet, refusalText, type NetView } from './netView';
 
 /** the frame's view of the connection (old and new shapes of `net`) */
 export const netView = (): NetView => readNet(net.value, browserOnline.value);
+
+/** a payment taken on the phone and refused by the server: its entry is the only trace of money the customer may have
+    handed over (argent-app-03, S01) */
+export const isPaymentEntry = (e: Pick<OutboxEntry, 'kind' | 'rpc'>): boolean => e.kind === 'rpc' && e.rpc === 'payment_add';
+/** « Retirer » on a refused change: a payment asks first (the customer may have paid), anything else goes in one tap.
+    true = the entry was taken off the phone */
+export async function removeFailed(e: OutboxEntry): Promise<boolean> {
+  if (isPaymentEntry(e) && !(await ask({ title: t('shell.failed.paymentAsk'), text: t('shell.failed.paymentConfirm'), ok: t('shell.failed.dismiss'), danger: true }))) return false;
+  await dismissFailed(e.seq!);
+  return true;
+}
+
+/** a refused change, read whole (S30, S37): its label in full (whose booking or payment, which day: written by the data
+    layer) and the server's reason as a paragraph under it, both wrapping over as many lines as they need. Never the
+    one-line row of the kit, which cuts with « … » the end of the sentence that says what to do. On a narrow phone the two
+    buttons go under the words (shell.css, .sync-refused). */
+function RefusedRow({ e, refresh }: { e: OutboxEntry; refresh: () => void }) {
+  return (
+    <div class="row-item sync-refused" role="listitem">
+      <div class="row-main">
+        <span class="row-title">{e.label || t('log.change')}</span>
+        <p class="sync-why">{refusalText({ ...e, label: null })}</p>
+      </div>
+      <span class="row-end">
+        <span class="row">
+          <Button size="sm" onClick={async () => { await dismissFailed(e.seq!, true); refresh(); }}>{t('shell.failed.retry')}</Button>
+          <Button size="sm" variant="ghost" onClick={async () => { if (await removeFailed(e)) refresh(); }}>{t('shell.failed.dismiss')}</Button>
+        </span>
+      </span>
+    </div>
+  );
+}
 
 export const syncOpen = signal(false);
 const openSync = () => { syncOpen.value = true; };
@@ -64,15 +96,7 @@ export function SyncSheet() {
           <>
             <h3>{t('shell.failed.title', { n: failed.length })}</h3>
             <p class="muted small" style={{ margin: 0 }}>{t('shell.failed.lead')}</p>
-            <Rows>
-              {failed.map((e) => (
-                <RowItem key={e.seq} title={e.label || t('log.change')} sub={refusalText({ ...e, label: null })}
-                  end={<span class="row">
-                    <Button size="sm" onClick={async () => { await dismissFailed(e.seq!, true); refresh(); }}>{t('shell.failed.retry')}</Button>
-                    <Button size="sm" variant="ghost" onClick={async () => { await dismissFailed(e.seq!); refresh(); }}>{t('shell.failed.dismiss')}</Button>
-                  </span>} />
-              ))}
-            </Rows>
+            <Rows>{failed.map((e) => <RefusedRow key={e.seq} e={e} refresh={refresh} />)}</Rows>
           </>
         )}
         {pending.length > 0 && (

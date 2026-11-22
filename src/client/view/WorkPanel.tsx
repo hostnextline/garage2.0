@@ -4,14 +4,14 @@ import { Check } from 'lucide-preact';
 import type { JobView } from '../api';
 import { cad, lineCents, qtyText } from '../format';
 import { ct, type CLang } from '../i18n';
-import { Sums } from '../ui';
+import { Note, Sums } from '../ui';
 import { EstimateSign } from './EstimateSign';
 import { Line } from './Line';
 import { PayBox } from './PayBox';
 import type { ActResult, Drawn } from './useAppointment';
 import { chargesTaxes, isOnSiteBill, sections, workLines } from './view-state';
 
-export function WorkPanel(p: { v: JobView; l: CLang; payFailed: string; pendingNote: boolean; onPay: () => Promise<void>; onSign: (d: Drawn | null) => Promise<ActResult> }) {
+export function WorkPanel(p: { v: JobView; l: CLang; payFailed: string; pendingNote: boolean; /** a bank debit on its way: no « Payer » */ processing?: boolean; onPay: () => Promise<void>; onSign: (d: Drawn | null) => Promise<ActResult> }) {
   const { v, l } = p;
   const declined = sections(v).declined;
   const taxed = chargesTaxes(v);
@@ -19,10 +19,11 @@ export function WorkPanel(p: { v: JobView; l: CLang; payFailed: string; pendingN
   // the mechanic is there: the invoice being made is what is due, with taxes, and can be paid now
   const onSite = isOnSiteBill(v);
   const work = workLines(v);
+  const payable = v.pay.available && !p.processing;
   return (
     <section class="cl-panel glass" aria-labelledby="cl-work" data-testid="client-work">
       <h2 id="cl-work">{ct(l, onSite ? 'work.billTitle' : 'work.title')}</h2>
-      {onSite && <p class="cl-sub" data-testid="client-bill-lead">{ct(l, v.pay.available ? 'work.billLead' : 'work.billLeadNoPay')}</p>}
+      {onSite && <p class="cl-sub" data-testid="client-bill-lead">{ct(l, payable ? 'work.billLead' : 'work.billLeadNoPay')}</p>}
       {work.kind === 'bill' ? (
         <ul class="cl-lines" data-testid="client-bill">
           {work.lines.map((x, i) => {
@@ -65,7 +66,8 @@ export function WorkPanel(p: { v: JobView; l: CLang; payFailed: string; pendingN
       )}
       <EstimateSign v={v} l={l} onSign={p.onSign} />
       {/* no payment before the work: only once the mechanic is there */}
-      {onSite && v.pay.available && v.pay.kind === 'prepay' && <PayBox v={v} l={l} now failed={p.payFailed} pendingNote={p.pendingNote} onPay={p.onPay} />}
+      {onSite && payable && v.pay.kind === 'prepay' && <PayBox v={v} l={l} now failed={p.payFailed} pendingNote={p.pendingNote} onPay={p.onPay} />}
+      {onSite && p.processing && <div class="cl-pay cl-noprint"><Note data-testid="client-pay-processing">{ct(l, 'pay.processing')}</Note></div>}
     </section>
   );
 }

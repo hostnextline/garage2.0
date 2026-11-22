@@ -23,7 +23,8 @@ Les règles de toujours (CLAUDE.md, « The live database ») :
   mesurés » vaut une fois l'interrupteur allumé.
 
 Dans ce fichier : **C** = le commit de la refonte, poussé sur GitHub (une branche, pas `main` : `main` ne bouge qu'à
-l'étape 5) ; **AVANT** = `acf46c3`, la version en ligne aujourd'hui (tag `avant-refonte`) ; **le projet** = Supabase
+l'étape 5) ; **AVANT** = `aa1b4e6`, la version en ligne depuis le 2026-11-19 (tag `avant-refonte`) : `acf46c3`, où la refonte a
+été coupée, plus « Heures travaillées » (Part 26), que la refonte porte aussi ; **le projet** = Supabase
 `garage2` (`wyxvizxabqgvsiiemvfw`).
 
 Quand : hors des heures de l'équipe (après 20 h, avant 7 h), et **jamais entre 07:30 et 09:00 UTC** (2 h 30 à 4 h
@@ -57,13 +58,23 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
    | 4 | `20261116000300_refonte_acces.sql` | les droits : des règles d'accès (policies) refaites, `attachments` écrites une fois et sans SVG, `settings.booking.web.on` par `web_switch` seulement |
    | 5 | `20261116000400_refonte_rapprochement.sql` | **ajout seulement** : 3 tables `ops_recon_*`, les fonctions `recon_*`, la tâche pg_cron `garage-recon` (si pg_cron existe) |
    | 6 | `20261116000500_refonte_sauvegarde.sql` | **ajout seulement** : la table `ops_backup_runs` (et le déclencheur `ops_recon_runs_backup_age` sur la table du rapprochement) |
+   | — | `20261119000100_heures.sql` | **déjà en ligne, à NE PAS appliquer** (« Heures travaillées », ci-dessous) ; par son nom elle vient entre la 6 et la 7, et c'est là qu'elle passe sur une base neuve |
    | 7 | `20261119000200_vraies_routes.sql` | Partie 27, « Vraies routes », **INERTE** tant que `settings.booking.roads_on` n'est pas vrai : 2 tables neuves (`drive_times` les temps de route mesurés, `drive_spend` ce que TomTom a compté ce mois-ci ; ni l'une ni l'autre n'est sauvegardée), 3 colonnes neuves, vides (`jobs.eta_measured` : l'heure d'arrivée compte-t-elle seulement des trajets mesurés ? ; `drive_times.tt_none_at` ; `jobs.arrive_at` : la minute pointée par un « Déplacer à l'heure choisie », écrite par le serveur seulement), le planificateur refait (une seule horloge quand l'interrupteur est allumé ; éteint, les mêmes réponses et les mêmes lignes qu'avant ; un rendez-vous qui a un `arrive_at` est tenu à cette minute par chaque plan, tant qu'aucun n'en a, rien ne change), `book_job`, `move_job`, `lock_windows_core` et `log_activity` refaites (un seul changement chacune, qui ne joue qu'allumé), `roads_switch`, les deux aperçus `move_preview` et `stop_order_preview` ; « Déplacer à l'heure choisie » (fragment `exact.sql` du générateur) : une forme NEUVE de `move_job` à 8 arguments (`p_exact`, sans valeur par défaut : l'app d'hier appelle les formes à 5 et 7, inchangées) et une forme neuve de `move_preview(p_job, p_day, p_truck, p_at)`, leurs pièces internes (`exact_works`, `exact_try`, `exact_view`, `exact_run`, `exact_hm`, `exact_place`, `exact_move`, `route_hold`, `plan_late_new`, fermées à l'app) ; la nouvelle app appelle `move_job` à 8 arguments : la migration avant l'app, toujours (sans elle, un déplacement à une heure est refusé, rien n'est gardé sur le téléphone) ; un déclencheur neuf `settings_roads_guard` (l'interrupteur et les quatre nombres qui décident de ce que TomTom coûte ne changent que par le propriétaire). Pas de tâche pg_cron, rien qui ne tourne pas dans un bloc |
 
    ```
-   git diff --name-only --diff-filter=A acf46c3 C -- supabase/migrations | sort     # les sept ci-dessus, rien d'autre
-   git diff --name-only --diff-filter=M acf46c3 C -- supabase/migrations            # VIDE (une migration déjà en ligne ne change jamais)
-   shasum -a 256 supabase/migrations/20261116*.sql supabase/migrations/20261119*.sql # au commit C : les sept empreintes
+   git diff --name-only --diff-filter=A aa1b4e6 C -- supabase/migrations | sort     # les sept ci-dessus, rien d'autre
+   git diff --name-only --diff-filter=M aa1b4e6 C -- supabase/migrations            # VIDE (une migration déjà en ligne ne change jamais)
+   shasum -a 256 supabase/migrations/20261116*.sql supabase/migrations/20261119000200_vraies_routes.sql  # au commit C : les sept empreintes
    ```
+   **Déjà en ligne, à NE PAS appliquer** : `20261119000100_heures.sql` (« Heures travaillées », Part 26, appliquée le
+   2026-11-19 depuis le commit `5e77db6`). Elle est dans l'arbre de C parce que la refonte porte la page ; son fichier y
+   est le même, octet pour octet (`shasum -a 256` = `92f228bd5ba8fa2a369d219724f72133ed0283a32cdbd15d66169e890befaa8c`),
+   et sa ligne existe déjà dans `schema_migrations` (contrôle 1.2). Sur la base en ligne elle est donc passée AVANT les
+   six, sur une base neuve elle passe après : les deux ordres finissent au même état (aucune des six ne nomme
+   `shifts.fixed_by`, `fixed_at`, `hours_all`, `shifts_read`, `shift_save` ni `shift_remove` ; la boucle des droits de la
+   migration 4 ne visite pas ces fonctions). Vérifié par la lecture des fichiers le 2026-11-20, et par
+   `tests/db/heures.test.mjs` sur une base neuve ; PAS encore essayé dans l'ordre de la base en ligne (la répétition sur
+   une copie de la base en ligne le fera).
    Aucune de ces migrations ne réécrit de lignes de données au moment où elle s'applique (que des fonctions, des
    déclencheurs, des règles, des tables neuves, des colonnes neuves sans valeur) : les nombres du contrôle 2c ne doivent
    pas bouger.
@@ -74,6 +85,11 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
 
 ### 1.1 Les scripts de sauvegarde, puis une sauvegarde à la main
 
+0. **Ce dépôt n'existait pas le 2026-11-20** (vérifié : `gh repo view hostnextline/garage2.0-sauvegardes` → introuvable ; aucun
+   appel à la fonction `backup` dans les journaux en ligne des dernières 24 h ; le dépôt `hostnextline/garage-sauvegardes`, lui,
+   tourne chaque nuit mais lit le projet Supabase de l'ANCIENNE app). La base en ligne n'avait donc aucune sauvegarde. Le créer
+   d'abord, **privé**, avec le go du propriétaire (toutes les données des clients y seront copiées chaque nuit) ; sans lui, la
+   bascule ne commence pas.
 1. Copier dans le dépôt privé `hostnextline/garage2.0-sauvegardes` les fichiers de `ops/sauvegardes/` au commit C
    (liste exacte : section 8). Les nouveaux scripts marchent avec la fonction `backup` d'aujourd'hui (essayé par
    `ops/tests/sauvegardes.test.mjs`).
@@ -92,11 +108,11 @@ la section 2 attend au plus 5 secondes un verrou (`lock_timeout`), sinon il s'ar
 
 Lancer `ops/live/2026-11-16_verifications.sql` sur la base en ligne, une requête à la fois, et garder chaque réponse
 (`ops/live/live.avant.json`). Puis lancer la requête **F** (l'empreinte) sur une base locale construite à AVANT
-(`bash tests/stack/mac/up.sh <dossier à acf46c3>`, puis `bash tests/stack/mac/psql.sh -At -f ops/live/2026-11-16_verifications.sql`) et comparer.
+(`bash tests/stack/mac/up.sh <dossier à aa1b4e6>`, puis `bash tests/stack/mac/psql.sh -At -f ops/live/2026-11-16_verifications.sql`) et comparer.
 
 | Question | On continue si… | Sinon |
 |---|---|---|
-| Q1 migrations enregistrées | `fenetres_20261115000100` = `true` et la dernière version est `20261115000100` ; aucune `20261116…` ni `20261119…` | arrêt : la base en ligne n'est pas où les migrations la croient |
+| Q1 migrations enregistrées | `fenetres_20261115000100` = `true` et la dernière version est `20261119000100` (« Heures travaillées », en ligne depuis le 2026-11-19 ; 44 versions en tout) ; aucune `20261116…` ni `20261119000200` | arrêt : la base en ligne n'est pas où les migrations la croient |
 | Q2 mode de réservation | (une information : `windows_on` dit si l'équipe réserve par plages ; `web_on` doit être `false`, la réservation en ligne fermée depuis le 2026-11-09) | `web_on` = `true` : le dire au propriétaire avant de continuer |
 | Q3 version de Postgres | 15, 16 ou 17 | (le texte reconstruit par Postgres peut différer d'une version majeure à l'autre : comparer F à l'œil) |
 | Q4 pg_cron | (une information : `garage-housekeeping`, `garage-lock-windows` existent-elles ; la migration 5 ajoute `garage-recon` seulement si pg_cron est là) | — |
@@ -119,7 +135,7 @@ compte après la perte du projet (l'ajouter dans Réglages → Équipe).
 ### 1.3 Noter ce qui tourne (la base du retour en arrière)
 
 1. **L'app** : Vercel → projet « mecanique-mobile-his » → Deployments : noter le déploiement de production en service
-   (son adresse et son id). Créer le tag `avant-refonte` sur `acf46c3` (`git tag avant-refonte acf46c3`, poussé avec le go).
+   (son adresse et son id). Créer le tag `avant-refonte` sur `aa1b4e6` (`git tag avant-refonte aa1b4e6`, poussé avec le go).
 2. **Les fonctions du serveur** : la liste en lecture seule des fonctions (version, date, adresse d'origine : elle
    contient le commit) → `ops/live/deployed.avant.json`. (CLAUDE.md en donne une liste écrite à la main ; la liste réelle
    fait foi.)
@@ -253,7 +269,7 @@ Pendant ce temps l'app et les fonctions d'hier tournent sur la base qui change :
    `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` sont données par Supabase. Facultatives, comme hier :
    `APP_BASE_URLS` (défaut : l'adresse Vercel), `BACKUP_REPOS` (défaut : `hostnextline/garage2.0-sauvegardes`),
    `HERMES_URL` / `HERMES_KEY` (la table `secrets` passe d'abord), `CODE_COMMIT` (nouvelle, facultative : le commit se
-   lit dans l'adresse). **Jamais en ligne** : `GHL_API_BASE`, `STRIPE_API_BASE`, `OSRM_BASE`, `TOMTOM_BASE`,
+   lit dans l'adresse). **Jamais en ligne** : `GHL_API_BASE`, `STRIPE_API_BASE`, `OSRM_BASE`, `OSRM_BACKUP_BASE`, `TOMTOM_BASE`,
    `VPIC_BASE`, `GITHUB_OIDC_JWKS` (elles servent aux tests, elles enverraient les appels ailleurs ; seule exception
    possible : `OSRM_BASE` vers un serveur OSRM du garage lui-même, si le propriétaire en décide ainsi, 5 bis), ni les
    lignes `drive_limits` et `stripe_test_ok` de la table `secrets` (copies de test seulement).
@@ -509,6 +525,8 @@ alter table public.customers disable trigger customers_delete_guard;
 alter table public.customers disable trigger customers_phone_links;
 alter table public.push_subs disable trigger push_subs_takeover;
 alter table public.settings disable trigger settings_web_guard;
+-- le septième, ajouté au tour 2 par la migration 6 (sauvegarde) sur une table neuve : il manquait ici, et le test
+-- « the way back » était rouge sur GitHub le 2026-11-20 (un déclencheur de plus qu'AVANT restait allumé)
 alter table public.ops_recon_runs disable trigger ops_recon_runs_backup_age;
 -- les vraies routes (migration 7) : seulement l'interrupteur déjà éteint (roads_switch, section 7, première ligne)
 alter table public.settings disable trigger settings_roads_guard;

@@ -7,7 +7,7 @@ import { lineCents } from '../format';
 import type { CLang } from '../i18n';
 import { forgetAppointment, forgetPaying, linkHash, recallPaying, rememberAppointment, rememberGarage, rememberPaying, replaceHash } from '../link';
 import { exportSignature, type Stroke } from '../../shared/sign/signature';
-import { afterCheck, cardPaid, estimateSigned, extraStatus, moneyIn, refusalKey, type PayCheck } from './view-state';
+import { afterCheck, cardPaid, estimateSigned, extraStatus, moneyIn, refusalKey, slowPayOnItsWay, type PayCheck } from './view-state';
 
 export type Phase = { k: 'loading' } | { k: 'error'; code: string; garage: Garage | null } | { k: 'ready'; v: View };
 /** what the extra work panel says after an answer: thanks, or the answer another phone gave first */
@@ -33,6 +33,8 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
   // the words when the card page did not open ('' = it did not fail): Stripe not answering (« pay_unavailable ») has its own
   const [payFailed, setPayFailed] = useState<'' | 'pay.fail' | 'pay.down'>('');
   const [pendingChecked, setPendingChecked] = useState(false);
+  // « Payer » refused because a bank debit is on its way (409 « pay_processing »): the money the file had received then
+  const [slowFrom, setSlowFrom] = useState<number | null>(null);
   const alive = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tries = useRef(0);
@@ -202,6 +204,8 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
       return;
     }
     if (r.error.code === 'nothing') { await load(); return; }
+    // a payment by a slow means is already on its way: the page says so (its own words) and offers « Payer » no more
+    if (r.error.code === 'pay_processing') { setSlowFrom(v?.kind === 'job' ? moneyIn(v) : 0); await load(); return; }
     setPayFailed(r.error.code === 'pay_unavailable' ? 'pay.down' : 'pay.fail');
   };
 
@@ -212,6 +216,8 @@ export function useAppointment(token: string, retour: string | null, linkLang: C
     phase, view, check, justPaid, reply, payFailed,
     /** « Un paiement par carte a été commencé… »: only until the page asked Stripe */
     pendingNote: view?.kind === 'job' && view.pay.pending && !pendingChecked,
+    /** a bank debit is on its way: no « Payer », the sentence that says why */
+    payProcessing: view?.kind === 'job' && slowPayOnItsWay(view, slowFrom),
     retry, answer, sign, pay, checkAgain
   };
 }

@@ -55,7 +55,7 @@ function ghToken({ repository = 'hostnextline/garage2.0-sauvegardes', aud = 'gar
   return `${head}.${body}.${sig}`;
 }
 const state = { ghl: 'ok', ghlMs: 0, stripe: 'ok', sessions: new Map(), refunds: [], idem: new Map(), hook: null, n: 0, chats: new Map(),
-  tomtom: 'ok', tomtomMs: 0, osrm: 'ok', noroad: [], ttIn: 0 };
+  tomtom: 'ok', tomtomMs: 0, osrm: 'ok', osrmBackup: 'ok', noroad: [], ttIn: 0 };
 // ---- the made-up road of the map services ----
 /** km of road between two points (the straight line × 1.25, about Montréal's latitude) */
 const roadKm = (a, b) => Math.hypot((b.lng - a.lng) * 78, (b.lat - a.lat) * 111) * 1.25;
@@ -65,6 +65,12 @@ const ttSeconds = (a, b, at = '') => Math.round((240 + roadKm(a, b) * 110 + (b.l
 const osrmSeconds = (a, b) => (roadKm(a, b) / 32) * 3600;
 const near = (p, q) => Math.abs(p.lat - q.lat) < 0.001 && Math.abs(p.lng - q.lng) < 0.001;
 const island = (a, b) => state.noroad.some((x) => near(x, a) || near(x, b));
+/** a road by the streets from (x1, y1) to (x2, y2) ([lng, lat]), without its first point: along the first street (east or
+    west) to the corner, then along the second (north or south), a point every 1/40 of each street */
+const streets = (x1, y1, x2, y2) => {
+  const along = (ax, ay, bx, by) => Array.from({ length: 40 }, (_, i) => [ax + ((bx - ax) * (i + 1)) / 40, ay + ((by - ay) * (i + 1)) / 40]);
+  return [...along(x1, y1, x2, y1), ...along(x2, y1, x2, y2)];
+};
 const chat = (cid) => { if (!state.chats.has(cid)) state.chats.set(cid, []); return state.chats.get(cid); };
 const send = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
@@ -114,9 +120,10 @@ http.createServer(async (req, res) => {
     if (u.searchParams.has('ghl_ms')) state.ghlMs = Math.max(0, Number(u.searchParams.get('ghl_ms')) || 0);
     if (u.searchParams.get('tomtom')) state.tomtom = u.searchParams.get('tomtom');
     if (u.searchParams.get('osrm')) state.osrm = u.searchParams.get('osrm');
+    if (u.searchParams.get('osrm_backup')) state.osrmBackup = u.searchParams.get('osrm_backup');
     if (u.searchParams.has('tomtom_ms')) state.tomtomMs = Math.max(0, Number(u.searchParams.get('tomtom_ms')) || 0);
     if (u.searchParams.has('noroad')) state.noroad = (u.searchParams.get('noroad') || '').split(';').filter(Boolean).map((x) => { const [lat, lng] = x.split(',').map(Number); return { lat, lng }; });
-    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe, tomtom: state.tomtom, tomtom_ms: state.tomtomMs, osrm: state.osrm, noroad: state.noroad });
+    return send(res, 200, { ghl: state.ghl, ghl_ms: state.ghlMs, stripe: state.stripe, tomtom: state.tomtom, tomtom_ms: state.tomtomMs, osrm: state.osrm, osrm_backup: state.osrmBackup, noroad: state.noroad });
   }
 
   // ---- a phone maker's notification service (Web Push): 201 = taken; /push/gone = that device no longer wants them ----
@@ -297,14 +304,16 @@ http.createServer(async (req, res) => {
     const rm = /^\/tomtom\/routing\/1\/calculateRoute\/([^/]+)\/json$/.exec(p);
     if (rm) {
       const [a, b] = rm[1].split(':').map((x) => { const [lat, lng] = x.split(',').map(Number); return { lat, lng }; });
-      log.push({ svc: 'tomtom', kind: 'route', pts: [[a.lat, a.lng], [b.lat, b.lng]], departAt: u.searchParams.get('departAt') });
+      log.push({ svc: 'tomtom', kind: 'route', pts: [[a.lat, a.lng], [b.lat, b.lng]], departAt: u.searchParams.get('departAt'), representation: u.searchParams.get('routeRepresentation') });
       if (refuse) return send(res, 403, { detailedError: { code: 'Forbidden', message: 'You are not allowed to access this endpoint' } });
       if (state.tomtom === 'fail') return send(res, 503, { detailedError: { code: 'ServiceUnavailable' } });
       if (state.tomtom === 'busy') return send(res, 429, { detailedError: { code: 'TooManyRequests' } });
       if (state.tomtom === 'noroad' || island(a, b)) return send(res, 400, { detailedError: { code: 'NO_ROUTE_FOUND', message: 'No route found.' } });
       const km = roadKm(a, b);
-      return send(res, 200, { routes: [{ summary: { lengthInMeters: Math.round(km * 1000), travelTimeInSeconds: ttSeconds(a, b) },
-        legs: [{ points: [{ latitude: a.lat, longitude: a.lng }, { latitude: (a.lat + b.lat) / 2, longitude: (a.lng + b.lng) / 2 }, { latitude: b.lat, longitude: b.lng }] }] }] });
+      // the road in full, as TomTom's polyline gives it: by the streets, like OSRM's full road below (east or west
+      // first, a corner, then north or south), a point every 1/40 of each street
+      const points = [[a.lat, a.lng], ...streets(a.lng, a.lat, b.lng, b.lat).map(([x, y]) => [y, x])].map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
+      return send(res, 200, { routes: [{ summary: { lengthInMeters: Math.round(km * 1000), travelTimeInSeconds: ttSeconds(a, b) }, legs: [{ points }] }] });
     }
     // Matrix v2, synchronous: POST /tomtom/routing/matrix/2 { origins, destinations, options }
     if (p === '/tomtom/routing/matrix/2' && req.method === 'POST') {
@@ -336,15 +345,23 @@ http.createServer(async (req, res) => {
     }
     return send(res, 404, { detailedError: { code: 'NOT_FOUND' } });
   }
-  // ---- OSRM ----
-  if (p.startsWith('/osrm/route/v1/driving/')) {
+  // ---- OSRM, and its second server (« <OSRM_BASE>-backup »: the FOSSGIS copy on live) ----
+  // GET /control?osrm=fail makes the first planner answer 503 (a page that is not JSON; its table too, for « drive »),
+  // ?osrm_backup=fail the second; =ok puts each back. An address of ?noroad=: no road (code NoRoute).
+  for (const [prefix, svc, key] of [['/osrm/route/v1/driving/', 'osrm', 'osrm'], ['/osrm-backup/route/v1/driving/', 'osrm-backup', 'osrmBackup']]) {
+    if (!p.startsWith(prefix)) continue;
     const pts = p.split('/').pop().split(';').map((x) => x.split(',').map(Number));
     const [[x1, y1], [x2, y2]] = pts;
     const km = Math.hypot((x2 - x1) * 78, (y2 - y1) * 111) * 1.25;
-    log.push({ svc: 'osrm', kind: 'route', pts });
-    if (state.osrm === 'fail') return send(res, 503, { code: 'Error', message: 'down' });
+    const overview = u.searchParams.get('overview') || 'simplified';
+    const failed = state[key] === 'fail';
+    log.push({ svc, kind: 'route', pts, overview, ...(failed ? { failed: true } : {}) });
+    if (failed) { res.writeHead(503, { 'content-type': 'text/html' }); return res.end('<html><body>503 Service Unavailable</body></html>'); }
     if (island({ lat: y1, lng: x1 }, { lat: y2, lng: x2 })) return send(res, 200, { code: 'NoRoute', routes: [] });
-    return send(res, 200, { code: 'Ok', routes: [{ distance: km * 1000, duration: (km / 32) * 3600, geometry: { coordinates: [[x1, y1], [(x1 + x2) / 2, (y1 + y2) / 2], [x2, y2]] } }] });
+    // the road in full, as the real planner gives it: by the streets (east or west first, a corner, then north or
+    // south), a point every 1/40 of each street. « simplified »: the planner's rough line, which cuts the corner.
+    const coordinates = overview === 'full' ? [[x1, y1], ...streets(x1, y1, x2, y2)] : [[x1, y1], [(x1 + x2) / 2, (y1 + y2) / 2], [x2, y2]];
+    return send(res, 200, { code: 'Ok', routes: [{ distance: km * 1000, duration: (km / 32) * 3600, geometry: { coordinates } }] });
   }
   // the table: GET /osrm/table/v1/driving/<lng,lat;…>?sources=i;j&destinations=k;l&annotations=duration,distance
   if (p.startsWith('/osrm/table/v1/driving/')) {

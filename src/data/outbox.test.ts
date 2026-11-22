@@ -117,6 +117,27 @@ describe('the rescue copy keeps the head of the queue, never a queue with a hole
   });
 });
 
+describe('an edit merged into a change whose first write has not answered yet (hors-ligne-01)', () => {
+  it('the merged copy gets its key: IndexedDB holds the merged values, a reload keeps them, the send removes it', async () => {
+    const uid = nextUid();
+    const ob = queue(uid);
+    const it = ob.add(entry('j', { kind: 'update', table: 'jobs', id: 'j1', values: { notes: 'Code 45' } }), true);
+    expect(ob.merge('jobs', 'j1', { notes: 'Code 4521' }, undefined, () => { throw new Error('never added apart'); })).toBe(true);
+    await ob.items[0].ready;
+    expect(ob.items[0]).toBe(it);
+    expect(it.e.seq).toBeGreaterThan(0);
+    expect((await ob.db!.listEntries()).map((e) => e.values)).toEqual([{ notes: 'Code 4521' }]);
+    // another tab changed the queue: this tab reads it again
+    await ob.load(await ob.db!.listEntries(), [], ob.mark());
+    expect(ob.items.map((i) => i.e.values)).toEqual([{ notes: 'Code 4521' }]);
+    const sent = await ob.attempt(ob.items[0]);
+    expect(sent?.values).toEqual({ notes: 'Code 4521' });
+    await ob.done(ob.items[0]);
+    expect(await ob.db!.listEntries()).toEqual([]);
+    ob.db!.close();
+  });
+});
+
 describe('an edit asked while the queue\'s head is being marked (merge-fallback-order)', () => {
   it('is its own change, at its place: never merged into an entry that is leaving', async () => {
     const uid = nextUid();

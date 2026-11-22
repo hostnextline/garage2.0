@@ -3,18 +3,19 @@
    it is about), « Vu » for whoever may note it, and « Vérifier maintenant ».
    The panel never breaks the screen: a server without the reconciliation yet keeps it hidden, and with no signal it
    shows the last answer kept on the phone, or nothing. */
+import { useRef } from 'preact/hooks';
 import { t, lang } from '../../lib/i18n';
 import { money } from '../../lib/money';
-import { clock, longDay, stamp, today } from '../../lib/dates';
+import { clock, longDay, minuteOf, stamp, today } from '../../lib/dates';
 import { Refused } from '../../lib/errors';
 import { rpcNow } from '../../data/api';
 import { me, preview } from '../../data/auth';
 import { getRow } from '../../data/store';
 import { expensesList } from '../../data/select';
 import type { Payment } from '../../data/types';
-import { Panel, Rows, RowItem, Button, Banner, Pill, attempt } from '../../ui';
+import { Panel, Rows, RowItem, Button, Banner, Pill, attempt, run as runAction, toast } from '../../ui';
 import { useReport } from '../../shared/charts/useReport';
-import { normalizeRecon, isMissingFunction, shownFindings, allBalanced, findingText, findingTarget, runWhen, sheetCaption, type ReconAnswer, type ReconFinding, type ReconSheet } from '../../domain/recon/recon';
+import { normalizeRecon, isMissingFunction, shownFindings, allBalanced, findingText, findingTarget, runWhen, sheetCaption, checkOutcome, newerFinish, type ReconAnswer, type ReconFinding, type ReconSheet } from '../../domain/recon/recon';
 import { methodLabel } from './select';
 
 async function loadRecon(): Promise<ReconAnswer> {
@@ -31,6 +32,8 @@ function change(name: string, args: Record<string, unknown>, ms?: number) {
   if (preview.value) throw new Refused('preview', t('errors.preview'));
   return rpcNow(name, args, ms);
 }
+/** the finish time of the last run in recon_now's answer (the same summary as recon_summary) */
+const normalizeLast = (raw: unknown) => { const a = normalizeRecon(raw); return a.available ? a.summary.last_run?.finished_at ?? null : null; };
 const paymentOf = (id: string) => getRow<Payment>('payments', id);
 /** the same rows « Dépenses » opens from (an expense deleted or not yet on the phone has nothing to open) */
 const hasExpense = (id: string) => expensesList.value.some((e) => e.id === id);
@@ -39,6 +42,10 @@ export function ReconPanel(p: { onOpenExpense: (id: string) => void }) {
   const l = lang.value;
   const r = useReport<ReconAnswer>(`his.report.${me.value?.id || 'x'}.recon`, loadRecon);
   const answer = r.data;
+  // the newest finish time this panel has seen (its summary, or the answer of its own « Vérifier maintenant »):
+  // a check that comes back without a newer one did not run (an older server braked without saying so)
+  const known = useRef<string | null>(null);
+  if (answer && answer.available) known.current = newerFinish(known.current, answer.summary.last_run?.finished_at);
   if (!answer || !answer.available) return null;
   const s = answer.summary;
   const run = s.last_run;
@@ -54,8 +61,20 @@ export function ReconPanel(p: { onOpenExpense: (id: string) => void }) {
     : cap.kind === 'until' ? t('treasury.recon.dayUntil', { day: longDay(cap.day, l), time: clock(cap.minute, l) })
     : t('treasury.recon.day', { day: longDay(cap.day, l) });
   const ack = (f: ReconFinding) => attempt(() => change('recon_ack', { p_finding: f.id, p_note: null }), { ok: t('treasury.recon.seenDone') }).then((ok) => { if (ok) r.reload(); });
-  // the whole check can take a while on the server
-  const checkNow = () => attempt(() => change('recon_now', {}, 60000), { ok: t('treasury.recon.checkDone') }).then((ok) => { if (ok) r.reload(); });
+  // the whole check can take a while on the server. At most once a minute for the whole garage: braked, it says when
+  // to try again, never « Vérification faite » over the old result (review argent-recon-brake); the panel asks again
+  // either way (somebody else's check of a moment ago may be newer than what it shows)
+  const checkNow = async () => {
+    const tap = Date.now();
+    const before = known.current;
+    const res = await runAction(() => change('recon_now', {}, 60000));
+    if (res === undefined) return;
+    const out = checkOutcome(res, before, tap);
+    known.current = newerFinish(known.current, normalizeLast(res));
+    if (out.braked) toast(t('treasury.recon.braked', { time: clock(minuteOf(out.nextAt), l) }));
+    else toast(t('treasury.recon.checkDone'), { kind: 'ok' });
+    r.reload();
+  };
   return (
     <Panel title={title} help={t('treasury.recon.help')} class="tre-o1" data-testid="treasury-recon"
       sub={run ? (run.finished_at ? t('treasury.recon.checked', { when: stamp(run.finished_at, l) }) : t('treasury.recon.day', { day: longDay(run.day, l) })) : undefined}>

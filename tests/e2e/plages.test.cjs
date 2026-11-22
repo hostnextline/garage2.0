@@ -3,7 +3,7 @@
 // its window, moves tell the customer only what changed, the mechanic's day, no signal, a truck that starts late, the
 // way back to the blocks and on again. One garage, one truck working the days used (so a day is one route), the real
 // server, GoHighLevel faked (it keeps every text). The database is saved before and put back exactly as it was after.
-//   bash tests/stack/start.sh && node --test tests/e2e/plages.test.cjs
+//   bash tests/stack/start.sh && node --test tests/e2e/plages.test.cjs      on a Mac: bash tests/stack/mac/e2e.sh plages
 // Steps waiting for a fix are kept (step.skip, « BUG … » / « WAITS … »): PLAGES_RUN_SKIPPED=1 runs them too.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -341,8 +341,8 @@ step('« Déplacer »: Carla to another window the same day, then to another day
 
 // R84: « Déplacer » texts the customer only when move_job answers tell === true. Dina was told her window the evening
 // before (step 4); the office opens « Déplacer » and takes that same window (she is no longer « flexible »): nothing
-// changed for her (the server answers changed: false, tell: false), no text. Today the sheet texts on « not unchanged ».
-step.skip('« Déplacer » to the window the customer was already told: nothing new for her, no text', 'WAITS R84: MoveSheet texts on !unchanged instead of tell === true', async () => {
+// changed for her (the server answers changed: false, tell: false), no text (MoveSheet → domain/jobs/move.ts).
+step('« Déplacer » to the window the customer was already told: nothing new for her, no text', async () => {
   const { page, ctx } = await openW({ kind: 'desktop' });
   await h.signIn(page, who.nadia.email, PW);
   const [ws] = J.dinaWin;
@@ -537,11 +537,11 @@ step('no signal, the window taken meanwhile by another phone: refused in words, 
 
 // e2e-plages-03: on a phone whose page the app's service worker does not hold yet (the app opened for the first time in
 // a browser tab, or not reloaded since it was installed), a screen never opened before cannot load without signal.
-// The screen then says « Cette page ne s’ouvre pas. L’app a peut-être été mise à jour. » with « Recharger »: wrong reason,
-// and a reload without signal loses the app. Seen first as the old file's step « no signal: the office books anyway »
-// failing now and then (the agenda opened after the booking kept on the phone). The steps above open the app as the
-// team's phones have it (appOnPhone).
-step.skip('no signal on a phone where the app was never opened before: a screen not loaded yet says it is the signal, and opens once it is back', 'BUG e2e-plages-03: ScreenHost says « L’app a peut-être été mise à jour » and offers « Recharger » without signal', async () => {
+// The screen must say it is the signal (« Pas de réseau … », ScreenHost), never « L’app a peut-être été mise à jour »
+// with « Recharger » (a reload without signal loses the app), and open once the signal is back. Seen first as the old
+// file's step « no signal: the office books anyway » failing now and then (the agenda opened after the booking kept on
+// the phone). The steps above open the app as the team's phones have it (appOnPhone).
+step('no signal on a phone where the app was never opened before: a screen not loaded yet says it is the signal, and opens once it is back', async () => {
   const { page, ctx } = await openW({ kind: 'phone' });
   await h.signIn(page, who.nadia.email, PW);
   assert.equal(await page.evaluate(() => !!navigator.serviceWorker.controller), false, 'a first visit: the worker does not hold the page');
@@ -604,11 +604,11 @@ step('the window chosen is taken by another phone while the office is still on t
   await p1.ctx.close();
 });
 
-// e2e-plages-01: a booking kept on the phone and refused once the signal is back is listed as « Réservation : Cette
-// plage n’est plus libre : choisis-en une autre. », without the customer nor the moment, with only « Réessayer » (the
-// same window, refused again) and « Retirer ». With two bookings made in a basement, the office cannot tell which one
-// to call back. The words of the step before (J.refusal) are checked here.
-step.skip('no signal, the window taken: the refusal says whose booking it was and when, so the office knows whom to call back', 'BUG e2e-plages-01: the refused booking says neither the customer nor the moment', async () => {
+// e2e-plages-01 (S37): a booking kept on the phone and refused once the signal is back must say whose booking it was
+// and when (« Réservation · Ines Moreau · samedi 21 novembre, entre … »), not only « Réservation : Cette plage n’est plus
+// libre » with « Réessayer » and « Retirer »: with two bookings made in a basement, the office must know which one to
+// call back. The words of the step before (J.refusal) are checked here.
+step('no signal, the window taken: the refusal says whose booking it was and when, so the office knows whom to call back', async () => {
   assert.ok(J.refusal, 'the step before saw the refusal');
   const words = `${J.refusal.banner}\n${J.refusal.sheet}`;
   assert.match(words, /Ines/, `the customer is named: ${words}`);
@@ -669,12 +669,12 @@ step('« Départ et heure »: Camion Complet starts at 13 h on one day; the wind
   await b.ctx.close();
 });
 
-// e2e-plages-02: on a day whose truck starts late (13 h), suggest_windows also lists 10 h – 14 h and 11 h – 15 h (an
-// arrival at 13 h 05 is inside them), but no time of the calendar can offer them: a time is an arrival, its window is
-// windowOf(arrival), and the arrivals before 13 h are « fermé ». What the screen offers is no longer what the server
-// answers (the rule of step 2). Either the server lists only the windows of the arrivals a vehicle can make (the
-// quarter hours it works), or the calendar offers those windows too. Checked on the numbers the step before read.
-step.skip('a day that starts late: the windows on screen are exactly the ones suggest_windows answers', 'BUG e2e-plages-02: suggest_windows lists windows the calendar cannot offer on a day that starts late', async () => {
+// e2e-plages-02 (S38): on a day whose truck starts late (13 h), suggest_windows used to list 10 h – 14 h and 11 h – 15 h
+// too (an arrival at 13 h 05 is inside them), which no time of the calendar can offer (a time is an arrival, its window
+// is windowOf(arrival), and the arrivals before 13 h are « fermé »). The server now tries only the quarter hours an able
+// vehicle works: what the screen offers is what the server answers (the rule of step 2). Checked on the numbers the
+// step before read.
+step('a day that starts late: the windows on screen are exactly the ones suggest_windows answers', async () => {
   assert.ok(J.late, 'the step before read the windows');
   assert.deepEqual(J.late.screen.map(clock), J.late.server.map(clock), `${J.late.day}: the windows on screen are the ones suggest_windows answers`);
 });

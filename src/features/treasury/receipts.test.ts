@@ -223,7 +223,7 @@ describe('showing a receipt (x-security-01, bug 13)', () => {
   });
 });
 
-describe('receipt photos: the real server’s answers (recorded on the local test stack by receipts.server-check.mjs)', () => {
+describe('receipt photos: the real server’s answers (recorded on the local test stack by tests/api/recus-serveur.test.mjs)', () => {
   /** what supabase-js gave on the real stack, for the insert of receipts.ts */
   const REAL = {
     landed: { error: null, status: 201 },
@@ -278,12 +278,12 @@ describe('receipt photos: the real server’s answers (recorded on the local tes
 });
 
 describe('review treasury-recon-r2-3: the check on a real server runs the app’s own call, not a copy', () => {
-  // the sources as text (vite's ?raw): the server check is plain Node, not run by vitest
-  const SRC = import.meta.glob(['./receipts.server-check.mjs', './receipts.ts', './receiptCall.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+  // the sources as text (vite's ?raw): the server check is plain Node, not run by vitest (an API test since S106)
+  const SRC = import.meta.glob(['../../../tests/api/recus-serveur.test.mjs', './receipts.ts', './receiptCall.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
   const code = (f: string) => SRC[f].replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   it('the server check imports the insert and the read from receiptCall.ts and writes no attachments call of its own', () => {
-    const check = code('./receipts.server-check.mjs');
-    expect(check).toMatch(/import \{[^}]*\binsertReceipt\b[^}]*\bselectReceipt\b[^}]*\} from '\.\/receiptCall\.ts'/);
+    const check = code('../../../tests/api/recus-serveur.test.mjs');
+    expect(check).toMatch(/import \{[^}]*\binsertReceipt\b[^}]*\bselectReceipt\b[^}]*\} from '\.\.\/\.\.\/src\/features\/treasury\/receiptCall\.ts'/);
     // (the service account still counts the rows stored: that is the check's own look at the server, not the app's call)
     expect(check).not.toMatch(/from\('attachments'\)\s*\.insert|select\('mime, data'\)|\.abortSignal\(/);
   });

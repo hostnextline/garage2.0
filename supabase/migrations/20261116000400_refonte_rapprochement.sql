@@ -18,6 +18,7 @@
 --   recon_summary(days)         owner: everything; « Trésorerie »: the money (M…) and stock (S…) checks; others: refused
 --   recon_ack(finding, note)    owner or « Trésorerie »: « vu »
 --   recon_now()                 owner or « Trésorerie »: yesterday and today so far, at most once a minute, then the summary
+--                               (+ braked: true / next_at when the minute's check was already made; braked: false otherwise)
 --   pg_cron « garage-recon »    07:40 UTC every day when the extension exists (the nightly backup job is the second trigger)
 --
 -- Every check reads the books AS THEY ARE NOW (the day only chooses the sheet and the dates written on the findings), so
@@ -246,8 +247,13 @@ $$;
 -- enable_nestloop off: the checks join whole tables; with statistics gone stale (autovacuum analysed a table while it was
 -- nearly empty) the planner believed one row and looped (29 s instead of 0.4 s on a busy machine). Hash joins keep each
 -- check linear whatever the statistics say; a lateral (its only possible plan) still loops, on one row's own data.
+-- jit off: a nested loop the setting above cannot remove (M1's and M8's laterals, M3's one-row cross joins, the sheet's
+-- « from invoices, b ») is costed 10^10 more each, far over jit_above_cost (and the inline / optimise thresholds), so a
+-- server built with JIT compiles exactly those four queries at every run, for 1 to 3 ms of real work each (GitHub's Linux
+-- Postgres, round 3: M8 619 ms, M1 322 ms, M3 297 ms, recon_run 1.7 s; the Mac's Postgres, without JIT: 16 to 23 ms in
+-- all). JIT changes no result, only the time.
 create or replace function public.recon_collect(p_day date) returns jsonb
-language plpgsql stable security definer set search_path = public set enable_nestloop = off as $$
+language plpgsql stable security definer set search_path = public set enable_nestloop = off set jit = off as $$
 declare
   v_all jsonb := '[]'::jsonb;
   v_part jsonb;
@@ -1278,7 +1284,9 @@ begin
 end $$;
 
 -- ───────────────────────────── recon_now: « Vérifier maintenant » ─────────────────────────────
--- Yesterday and today so far, at most once a minute for the whole garage (rate_hit); braked, it answers the summary as it is.
+-- Yesterday and today so far, at most once a minute for the whole garage (rate_hit); braked, it answers the summary as it is
+-- PLUS « braked: true » and « next_at » (the start of the next minute of rate_hit's window: from then a new check runs), so the
+-- app never says « Vérification faite » over the old result. Not braked: « braked: false », no « next_at ». Fields only added.
 create or replace function public.recon_now() returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
@@ -1288,8 +1296,11 @@ begin
   if public.rate_hit('recon_now', 60, 1) then
     perform public.recon_run(public.local_today() - 1, 'button');
     perform public.recon_run(public.local_today(), 'button');
+    return public.recon_summary(14) || jsonb_build_object('braked', false);
   end if;
-  return public.recon_summary(14);
+  -- the same window as rate_hit('recon_now', 60, 1): bucket = floor(epoch / 60); the next bucket starts at (bucket + 1) * 60
+  return public.recon_summary(14) || jsonb_build_object('braked', true,
+    'next_at', to_char(to_timestamp((floor(extract(epoch from now()) / 60) + 1) * 60) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'));
 end $$;
 
 -- ───────────────────────────── rights ─────────────────────────────

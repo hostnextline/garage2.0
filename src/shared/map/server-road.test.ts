@@ -79,6 +79,22 @@ describe('« Je pars »: the road and the time are real ones, or none (enroute r
     expect(await route(A, B)).toMatchObject({ source: 'osrm' });
     expect(asked(f)).toEqual(['osrm']);
   });
+  it('a road along one straight street keeps a point of its middle: three points, never taken for the old straight line (merge with main’s thinRoad)', async () => {
+    // OSRM's full road along one street: 41 points in a row, all on the line (thinRoad alone keeps its two ends)
+    const street = Array.from({ length: 41 }, (_, i) => [-73.6577 + i * 0.0005, 45.5005]);
+    vi.stubGlobal('fetch', vi.fn(async () => json({ code: 'Ok', routes: [{ distance: 1600, duration: 200, geometry: { coordinates: street } }] })));
+    const r = await route(A, B);
+    expect(r?.source).toBe('osrm');
+    expect(r?.line).toHaveLength(3);
+    expect(r?.line[0]).toEqual([45.5005, -73.6577]);
+    expect(r?.line[2]).toEqual([45.5005, -73.6377]);
+    expect(r?.line[1][0]).toBe(45.5005);
+    // TomTom's polyline the same way
+    env.TOMTOM_KEY = 'SERVER KEY';
+    const tt = { routes: [{ summary: { lengthInMeters: 1600, travelTimeInSeconds: 240 }, legs: [{ points: street.map(([lng, lat]) => ({ latitude: lat, longitude: lng })) }] }] };
+    vi.stubGlobal('fetch', vi.fn(async () => json(tt)));
+    expect((await route(A, B))?.line).toHaveLength(3);
+  });
   it('nobody answers: NO road and NO time (the text without a time goes), never a straight-line estimate', async () => {
     env.TOMTOM_KEY = 'SERVER KEY';
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));

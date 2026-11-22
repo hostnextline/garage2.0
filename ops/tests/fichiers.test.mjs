@@ -108,7 +108,8 @@ test('publishing: the unit tests run on the garage\'s clock, the build takes APP
 
 test('the cutover runbook is exact for this tree: the six migrations in order, the twelve functions at one commit, what the owner does by hand, the way back (mise-a-niveau)', () => {
   const rb = lire('ops/live/CUTOVER.md');
-  // every migration added since the live version (acf46c3 has up to 20261115000100), in the order of their names
+  // every migration added since the rebuild was cut (acf46c3 has up to 20261115000100), in the order of their names; one of
+  // them, 20261119000100_heures, is already on live (aa1b4e6): the runbook names it as « not to apply »
   const neuves = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql') && f > '20261115000100_zzz').sort();
   assert.ok(neuves.length >= 6);
   let avant = -1;

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Job } from '../../data/types';
+import { lang } from '../../lib/i18n';
 
 const api = vi.hoisted(() => ({ moveJob: vi.fn(), suggestBlocks: vi.fn(), suggestWindows: vi.fn() }));
 const sync = vi.hoisted(() => ({ outboxList: vi.fn(), whenDone: vi.fn() }));
@@ -108,6 +109,20 @@ describe('a move kept on the phone (agenda-02, agenda-14)', () => {
     await flush(); await flush();
     expect(notify.notifyCustomer).toHaveBeenCalledWith('moved', 'j1');
     expect(movesWaiting.value.has('j1')).toBe(false);
+  });
+  it('promises the text only while the app stays open: the wait lives in memory (hors-ligne-03)', async () => {
+    api.moveJob.mockResolvedValue({ queued: true });
+    sync.outboxList.mockResolvedValue([{ op: 'op1', kind: 'rpc', rpc: 'move_job', state: 'pending', args: { p_job: 'j1' } }]);
+    sync.whenDone.mockReturnValue(new Promise(() => {}));
+    const was = lang.value;
+    try {
+      lang.value = 'fr';
+      await moveToWindow(julie(), '2026-11-22', { start: 540 });
+      expect(ui.toast.mock.calls[ui.toast.mock.calls.length - 1][0]).toContain('Le texto au client partira quand le déplacement sera envoyé, si l’app reste ouverte.');
+      lang.value = 'en';
+      await moveToWindow(julie(), '2026-11-22', { start: 540 });
+      expect(ui.toast.mock.calls[ui.toast.mock.calls.length - 1][0]).toContain('The text to the customer goes once the move is sent, if the app stays open.');
+    } finally { lang.value = was; }
   });
   it('sends no text when it is refused later', async () => {
     api.moveJob.mockResolvedValue({ queued: true });

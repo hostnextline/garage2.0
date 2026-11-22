@@ -17,9 +17,11 @@ export function thin(line: [number, number][], max = 250): [number, number][] {
   return line.filter((_, i) => i % step === 0 || i === line.length - 1);
 }
 
-/** TomTom's answer → the road: km, minutes (the traffic is already in TomTom's time: no margin added), the line;
-    null when it is not a route */
-export function readTomtomRoad(d: unknown): Road | null {
+/** TomTom's answer → the road: km, minutes (the traffic is already in TomTom's time: no margin added), the line made
+    by `shape` from TomTom's full polyline (enroute gives its roadLine, thinRoad of _shared/road.ts: the points that shape
+    the streets, the same rule as OSRM's road; the default, `thin`, keeps one point in N past 250); null when it is not a
+    route */
+export function readTomtomRoad(d: unknown, shape: (line: [number, number][]) => [number, number][] = thin): Road | null {
   const rt = (d as { routes?: { summary?: { lengthInMeters?: number; travelTimeInSeconds?: number }; legs?: { points?: { latitude?: number; longitude?: number }[] }[] }[] } | null)?.routes?.[0];
   const metres = Number(rt?.summary?.lengthInMeters), seconds = Number(rt?.summary?.travelTimeInSeconds);
   if (!rt || !Number.isFinite(metres) || !Number.isFinite(seconds)) return null;
@@ -30,7 +32,7 @@ export function readTomtomRoad(d: unknown): Road | null {
       if (Number.isFinite(lat) && Number.isFinite(lng)) line.push([Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5]);
     }
   }
-  return { km: Math.round(metres / 100) / 10, minutes: Math.max(1, Math.round(seconds / 60)), line: thin(line), source: 'tomtom' };
+  return { km: Math.round(metres / 100) / 10, minutes: Math.max(1, Math.round(seconds / 60)), line: shape(line), source: 'tomtom' };
 }
 
 // ---------- TomTom's Matrix service (the function « drive »: the planner's road times) ----------

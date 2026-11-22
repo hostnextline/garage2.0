@@ -115,7 +115,7 @@ src/
     guide/ (8)          GuideCard, TourOverlay, tour, tour-steps, checklist, guide-data, words, guide.css
   features/<section>/   the screens of a section and their private parts: account, agenda, auth, booking, coffre,
                         conversation, customers, dashboard, guide, hermes, hours, info, inventory, invoices, jobs, map, oil,
-                        overview, quotes, settings, team, today, treasury
+                        overview, quotes, settings, team, timesheet, today, treasury
   app/                  the frame: App, Shell (bars, menu, banners), routes (every address), nav (the menu), « Plus » (more,
                         MoreScreen)
   client/               the customer's public page (client.html: #t= appointment/invoice, #suivi= tracking, #reserver online booking)
@@ -220,7 +220,7 @@ otherwise CSS.
 
 Query conventions used across sections: `#/book?customer=ID`, `#/book?walkin=1`, `#/book?quote=ID`,
 `#/book?day=YYYY-MM-DD&block=am`, `#/customer/new`, `#/quote/new`, `#/treasury?add=1`, `#/agenda/YYYY-MM-DD?view=week`,
-`#/hours/TRUCK_ID`, `#/settings/<section>`, `#/book?customer=ID&vehicle=ID` (the car already chosen), `#/oil?show=soon|all` (« Rappels d’huile »).
+`#/hours/TRUCK_ID`, `#/settings/<section>`, `#/book?customer=ID&vehicle=ID` (the car already chosen), `#/oil?show=soon|all` (« Rappels d’huile »), `#/timesheet/STAFF?week=DAY` (« Heures travaillées »).
 
 ## The design kit (`src/ui`)
 

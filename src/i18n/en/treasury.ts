@@ -148,6 +148,7 @@ export const treasury: typeof fr = {
     since: 'Since {day}',
     check: 'Check now',
     checkDone: 'Check done',
+    braked: 'Checked less than a minute ago: try again at {time}',
     severity: { bad: 'Important', warn: 'To look at', info: 'For information' },
     sheet: {
       invoiced: 'Invoiced', received: 'Received: {what}', refunded: 'Refunded', expenses: 'Expenses: {what}', coffreIn: 'Into the Coffre', coffreOut: 'Out of the Coffre', toReceive: 'Still to receive',

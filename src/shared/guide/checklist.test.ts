@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeChecklist, nextStep, progress, rolesOf, mainRole, type GuideInput, type Role } from './checklist';
+import { computeChecklist, stepAnchors, nextStep, progress, rolesOf, mainRole, type GuideInput, type Role } from './checklist';
 import { guide as fr } from '../../i18n/fr/guide';
 import { guide as en } from '../../i18n/en/guide';
 import { TOURS } from './tour-steps';
@@ -67,8 +67,11 @@ describe('the owner’s first steps', () => {
     expect(byId(computeChecklist(input({ trucks, trucksWithHours: ['t1', 't2'], sharedRoutes: true }))).trucks.done).toBe(true);
     expect(byId(computeChecklist(input({ trucks, trucksWithHours: ['t1'], sharedRoutes: true }))).trucks.detail).toEqual({ key: 'noHours', vars: { name: 'Voiture' } });
   });
-  it('the office’s « L’agenda » shows an element the agenda really draws (« agenda-day » existed nowhere) (comms-guide-18)', () => {
-    expect(byId(computeChecklist(input({ roles: ['office'] }))).agenda.anchor).toBe('agenda-week');
+  it('the office’s « L’agenda » shows the day on a phone (as live) and the week on a computer (comms-guide-18, continuite-01)', () => {
+    const agenda = byId(computeChecklist(input({ roles: ['office'] }))).agenda;
+    expect(agenda.anchor).toBe('agenda-day');
+    expect(stepAnchors(agenda)).toEqual(['agenda-day', 'agenda-week']);
+    expect(stepAnchors({ ...agenda, anchor: undefined, alsoAnchors: undefined })).toEqual([]);
   });
   it('counts the team as invited with another person or an invitation waiting', () => {
     expect(byId(computeChecklist(input({ staff: [{ id: 'me', active: true }, { id: 'x', active: false }] }))).team.done).toBe(false);

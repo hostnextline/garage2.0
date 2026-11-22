@@ -28,7 +28,9 @@ export interface JobView {
   conditions?: string | null;
   /** the invoice being made while the mechanic is there (to pay during the work) */
   bill?: { lines: InvoiceLineV[]; subtotal_cents: number; tps_cents: number; tvq_cents: number; total_cents: number } | null;
-  pay: { available: boolean; amount_cents: number; kind: 'invoice' | 'prepay'; pending: boolean };
+  /** `processing`: a payment by a slow means (a bank debit) is on its way, « Payer » is not offered meanwhile (absent on
+      an older server) */
+  pay: { available: boolean; amount_cents: number; kind: 'invoice' | 'prepay'; pending: boolean; processing?: boolean };
   /** the answer of « check »: what became of the card page this link opened, as Stripe says it now (none: no page;
       processing: a slow means of payment, Stripe's notice will say; unknown: Stripe did not answer). Absent on « view ». */
   session?: CardSession | null;
@@ -82,7 +84,7 @@ async function post(url: string, body: unknown): Promise<{ status: number; data:
 }
 
 const KNOWN = new Set(['bad_link', 'expired', 'gone', 'network', 'confirm', 'nothing', 'no_stripe', 'action', 'timeout', 'signed', 'signer', 'signature',
-  'amount_changed', 'closed', 'pay_unavailable']);
+  'amount_changed', 'closed', 'pay_unavailable', 'pay_processing']);
 /** the « client » server function: view | sign | answer | pay | check.
     sign and answer carry `shown_cents` (the amount the page showed): the server answers 409 « amount_changed » with
     `current_cents` when the amount moved meanwhile, and writes nothing */

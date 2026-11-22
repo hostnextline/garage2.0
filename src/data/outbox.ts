@@ -82,7 +82,8 @@ export class Outbox {
     this.changed();
     if (inMemory) this.toMemory(it);
     else {
-      it.ready = this.db!.addEntry(e).then((seq) => { e.seq = seq; this.storageOk(true); }, () => { this.toMemory(it); }).then(() => this.changed());
+      // the key goes on the item's copy too: an edit merged meanwhile replaced `it.e` (hors-ligne-01)
+      it.ready = this.db!.addEntry(e).then((seq) => { e.seq = seq; it.e.seq = seq; this.storageOk(true); }, () => { this.toMemory(it); }).then(() => this.changed());
     }
     return it;
   }

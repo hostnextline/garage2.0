@@ -21,6 +21,11 @@ document.body.appendChild(box);
 const q = (id: string) => document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
 const wait = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
 const settled = () => act(() => new Promise<void>((r) => whenHistorySettled(() => setTimeout(r, 0))));
+/** the phone's back: history.back() and its popstate, which jsdom delivers a moment later (awaited, never a fixed
+    sleep: under load a fixed wait went red at random, and a green run proved nothing — S08 / tests-04) */
+const back = () => act(() => new Promise<void>((r) => { window.addEventListener('popstate', () => r(), { once: true }); history.back(); }));
+/** what the sheet does after that popstate is awaited until it is true (any timer or step back of its own included) */
+const until = (check: () => void) => act(() => vi.waitFor(check, { timeout: 4000, interval: 10 }));
 let closed = 0;
 
 beforeEach(async () => {
@@ -68,21 +73,23 @@ describe('Réglages → Services: the sheet', () => {
   it('the phone\'s back with changes asks; « no » puts the sheet\'s history step back, so the next back asks again (settings-team-st-3)', async () => {
     const steps = () => ((history.state as { sheets?: string[] } | null)?.sheets || []).length;
     const before = steps();
+    expect(before).toBeGreaterThan(0);
     const name = q('service-name') as HTMLInputElement;
     await act(async () => { name.value = 'Huile 2'; name.dispatchEvent(new Event('input', { bubbles: true })); });
-    await act(async () => { history.back(); });
-    await act(() => new Promise<void>((r) => setTimeout(r, 700)));
+    await back();
+    // asked once, and the sheet's step is in the history again (R57), the sheet open with what was typed
+    await until(() => { expect(asked.length).toBe(1); expect(steps()).toBe(before); });
     await wait();
-    expect(asked.length).toBe(1);
     expect(closed).toBe(0);
     expect(steps()).toBe(before);
     expect(q('service-sheet')).toBeTruthy();
     expect((q('service-name') as HTMLInputElement).value).toBe('Huile 2');
     // the next back asks again instead of leaving Services
-    await act(async () => { history.back(); });
-    await act(() => new Promise<void>((r) => setTimeout(r, 700)));
+    await back();
+    await until(() => { expect(asked.length).toBe(2); expect(steps()).toBe(before); });
     await wait();
     expect(asked.length).toBe(2);
     expect(closed).toBe(0);
-  });
+    expect(q('service-sheet')).toBeTruthy();
+  }, 20000);
 });

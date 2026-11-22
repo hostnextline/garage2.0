@@ -973,8 +973,9 @@ end $$;
 -- 7. The moments offered
 -- ---------------------------------------------------------------------------------------------------------------------
 
--- suggest_windows_core (live text): the windows tried are exactly the ones win_for cuts for the day's quarter hours (the
--- booking calendar opens a quarter hour T when the server lists windowOf(T)): with « avant » 30 or 45, or a day that
+-- suggest_windows_core (live text): the windows tried are exactly the ones win_for cuts for the day's quarter hours that
+-- a vehicle able to take the job works, and not behind us today (round 3, S38: the booking calendar opens a quarter
+-- hour T only then, and when the server lists windowOf(T)): with « avant » 30 or 45, or a day that
 -- starts at 7 h 30, the calendar was nearly empty. « Peu importe » plans again for the truck (plan_extra). Each window
 -- also says what it adds to the driving of the day (`add_min`, `add_km`, `day_min`, `hop_min`, `stops`, `far`: the
 -- « garde-route » of suggest_core, for the window mode: x-dualmode-01, server side).
@@ -1007,9 +1008,24 @@ begin
       and (p_exclude is null or j.id <> p_exclude)
       and public.km_between(p_lat, p_lng, coalesce(j.lat, c.lat), coalesce(j.lng, c.lng)) <= v_near;
   -- Part 26: the windows offered are exactly the ones win_for cuts for an arrival on the day's quarter hours (the app asks
-  -- for windowOf(T) of each quarter hour T), whatever « avant », the rounding and the day's first hour: one lattice
-  v_starts := array(select distinct w.win_start from generate_series(sp.start_min, sp.end_min, 15) t(m) cross join lateral public.win_for(t.m) w
-                    where w.win_start is not null order by 1);
+  -- for windowOf(T) of each quarter hour T), whatever « avant », the rounding and the day's first hour: one lattice.
+  -- Round 3 (S38, e2e-plages-02): only the quarter hours the calendar can offer, i.e. those a vehicle able to take the
+  -- job works (its hours of that day, else its usual week: the rule of the screen's « fermé ») and, today, those not
+  -- already behind us. A truck that starts at 13 h no longer gets 10 h – 14 h (an arrival at 13 h 05 is inside it, but
+  -- no time of the calendar gives it: the screen and the online page offered what the other one could not). The quarter
+  -- hours are the calendar's units (unitMinutes: from the day's first hour, each one starting before its last hour).
+  -- The vehicles are the planner's for this job: the machine or « Camion » → with the machine, « Voiture » → without.
+  -- Only which windows are listed changes, not what a row says: yesterday's app reads the answer as before.
+  v_starts := array(
+    with rg as (select (hr.r->>0)::int a, (hr.r->>1)::int z
+                from public.trucks tr cross join lateral jsonb_array_elements(public.truck_ranges(tr.id, p_day)) hr(r)
+                where tr.active and tr.deleted_at is null
+                  and case when v_need or v_kind = 'truck' then tr.tire_machine when v_kind = 'car' then not tr.tire_machine else true end)
+    select distinct w.win_start from generate_series(sp.start_min, sp.end_min - 1, 15) t(m) cross join lateral public.win_for(t.m) w
+    where w.win_start is not null
+      and exists (select 1 from rg where rg.a < t.m + 15 and rg.z > t.m)
+      and not (p_day = public.local_today() and t.m + 15 <= public.now_min())
+    order by 1);
   foreach v_ws in array v_starts loop
     exit when k >= 100;
     k := k + 1;

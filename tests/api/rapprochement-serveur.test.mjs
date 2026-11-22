@@ -1,7 +1,8 @@
 // « Rapprochement d'hier » against a REAL server (the local test stack): the calls of ReconPanel.tsx (recon_summary 14,
 // recon_now, recon_ack) as a treasurer, and the answer has every field normalizeRecon (src/domain/recon/recon.ts) reads.
 // After « Vérifier maintenant » the newest run is TODAY (Montréal): the panel's title follows it (runWhen). Not a unit
-// test (vitest does not run it):  SRC=<copy> bash <lane>/api-tests.sh src/features/treasury/recon.server-check.mjs
+// test (vitest does not run it): an API test, run with the other files of tests/api on the local stack (as tests-complets.yml
+// does; on a Mac `bash tests/stack/mac/api-tests.sh rapprochement-serveur`). Was src/features/treasury/recon.server-check.mjs (S106).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -27,8 +28,22 @@ async function member(name, rights) {
 const montrealToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 let tre, meca;
-before(async () => { tre = await member('Louis', { treasury: true }); meca = await member('Saleh', {}); });
+/* « Vérifier maintenant » writes for real (a run, its differences, the baseline of the first run, the minute's brake):
+   what was there before is noted, and what this file added is taken out at the end, so the database is left as found
+   (the files of tests/db that run after it on GitHub expect a garage as they make it). */
+const kept = { runs: [], findings: [], baseline: [] };
+const idsOf = async (table, col = 'id') => { const { data, error } = await svc.from(table).select(col); assert.ifError(error); return (data || []).map((r) => String(r[col])); };
+const baselineKeys = async () => { const { data, error } = await svc.from('ops_recon_baseline').select('check_id, entity_id'); assert.ifError(error); return (data || []).map((r) => `${r.check_id}|${r.entity_id}`); };
+before(async () => {
+  kept.runs = await idsOf('ops_recon_runs'); kept.findings = await idsOf('ops_recon_findings'); kept.baseline = await baselineKeys();
+  tre = await member('Louis', { treasury: true }); meca = await member('Saleh', {});
+});
 after(async () => {
+  const gone = async (table, was) => { const now = (await idsOf(table)).filter((id) => !was.includes(id)); if (now.length) assert.ifError((await svc.from(table).delete().in('id', now)).error); };
+  await gone('ops_recon_findings', kept.findings);
+  await gone('ops_recon_runs', kept.runs);
+  for (const k of (await baselineKeys()).filter((x) => !kept.baseline.includes(x))) { const [check_id, entity_id] = k.split('|'); assert.ifError((await svc.from('ops_recon_baseline').delete().eq('check_id', check_id).eq('entity_id', entity_id)).error); }
+  assert.ifError((await svc.from('rate_limits').delete().eq('key', 'recon_now')).error);
   await svc.from('staff').delete().in('id', made);
   for (const id of made) await svc.auth.admin.deleteUser(id);
 });

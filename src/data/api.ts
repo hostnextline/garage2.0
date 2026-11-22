@@ -12,7 +12,7 @@ import { exactArgs } from './exact';
 import { t, tMaybe, lang } from '../lib/i18n';
 import { money } from '../lib/money';
 import type { Customer, CustomerNote, Vehicle, EngineSpec, Job, JobItem, Quote, Truck, TruckStart, Expense, InventoryItem, Invoice, Service, ServicePart, Settings, Staff, PayMethod, InvoiceLine } from './types';
-import type { BlockKey, Range } from '../lib/dates';
+import { clock, isValidDay, longDay, type BlockKey, type Range } from '../lib/dates';
 import { appBase } from '../lib/config';
 import { Refused, fromSource, classify } from '../lib/errors';
 export { Refused, errorMessage } from '../lib/errors';
@@ -57,10 +57,26 @@ export interface BookInput {
   win_start?: number | null; win_flex?: boolean;
 }
 export type ItemInput = Partial<JobItem> & { description: string };
+/** what the outbox says of a booking (the « en attente » and « refusé » lists, the stuck banner): whose and when, so a
+    booking kept in a basement and refused later still says whom to call back (e2e-plages-01), like `paymentLabel`.
+    « Réservation · Ines Tremblay · samedi 21 novembre, entre 9 h et 13 h » / « …, matin » / « …, dans la journée » */
+export function bookingLabel(job: Pick<BookInput, 'customer_id' | 'day' | 'block' | 'win_start' | 'win_flex'>): string {
+  const l = lang.value;
+  const who = customerName(getRow<Customer>('customers', job.customer_id));
+  let when: string;
+  if (job.block === 'day' && job.win_start != null && !job.win_flex) {
+    // the window's length as the server cuts it (public.win_len)
+    const b = settings.value.booking;
+    const len = Math.max(30, (b.win_before_min ?? 60) + (b.win_after_min ?? 180));
+    when = t('common.window.between', { from: clock(job.win_start, l), to: clock(job.win_start + len, l) });
+  } else when = (tMaybe(`common.blocks.${job.block}`) ?? '').toLocaleLowerCase(l === 'en' ? 'en-CA' : 'fr-CA');
+  const moment = [isValidDay(job.day) ? longDay(job.day, l) : '', when].filter(Boolean).join(', ');
+  return [t('log.booking'), who, moment].filter(Boolean).join(' · ');
+}
 export async function bookJob(job: BookInput, items: ItemInput[]) {
   guard();
   const id = job.id || uuid();
-  return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: t('log.booking') }).then((r) => ({ ...r, id }));
+  return callRpc<{ ok: boolean; job_id: string; truck_id: string | null; forced?: boolean }>('book_job', { p_job: { ...job, id }, p_items: items }, { label: bookingLabel(job) }).then((r) => ({ ...r, id }));
 }
 /** `opts.queue: false`: a move that must happen now or not at all (never kept on the phone for later: R188).
     `win.at` (« exact move », STATE.md S2): the minute pointed; the appointment is planned to arrive at that very minute,
@@ -333,6 +349,16 @@ export async function moveStock(itemId: string, delta: number, reason: 'restock'
 
 /* ---------- the day ---------- */
 export async function shiftStart() { guard(); return callRpc('shift_start', {}, { noOp: true }); }
+/** « Heures travaillées » (owners and the treasurer): correct a day of work (shift given) or add one; the server checks the
+    rules again (no overlap, not in the future, 24 hours at most) and keeps the before / after in `activity` */
+export async function shiftSave(shiftId: string | null, staffId: string, startIso: string, endIso: string | null) {
+  guard();
+  return callRpc('shift_save', { p_shift: shiftId, p_staff: staffId, p_start: startIso, p_end: endIso }, { queue: false, label: t('log.shiftSave') });
+}
+export async function shiftRemove(shiftId: string) {
+  guard();
+  return callRpc('shift_remove', { p_shift: shiftId }, { queue: false, label: t('log.shiftRemove') });
+}
 export async function shiftEnd() { guard(); return callRpc('shift_end', {}, { noOp: true }); }
 export async function reportPosition(lat: number, lng: number, accuracy: number | null, heading: number | null, speed: number | null, jobId: string | null) {
   if (preview.value) return { ok: false };

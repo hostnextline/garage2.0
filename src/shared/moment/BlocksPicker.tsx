@@ -22,7 +22,7 @@ import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { MomentMap } from './MomentMap';
 import { stopRank } from './preview';
 import { dayOf } from './deviceDay';
-import { useSuggestions, useLaterAnswers, useClock, useHover, useFinePointer, hasAnswer, answers } from './hooks';
+import { useSuggestions, useLaterAnswers, useClock, useHover, useFinePointer, hasAnswer, answers, HOVER_MS } from './hooks';
 import { askedKind, bothKinds, kindOf } from './vehicles';
 import { anyFar, betterThan } from './moments';
 import { blockCell, keyOf } from './blockCells';
@@ -116,14 +116,14 @@ export function BlocksPicker(p: BlockPickerProps) {
   const askOf = (day: string, block: BlockKey): PreviewAsk => ({ day, block, truckId: truckOf(day, block), lat: p.lat!, lng: p.lng!, name: '', address: p.address || '',
     when: phrase(day, block), exclude: p.excludeJob ?? null, row: moments.get(keyOf(day, block)) ?? null });
   const see = (day: string, block: BlockKey) => setPreview(askOf(day, block));
-  /* on a computer, the mouse over a moment opens a small map of that day beside it (no scrolling to the big map) */
+  /* on a computer, the mouse resting on a moment opens the real map of that day in a window beside the picker */
   const canHover = useFinePointer();
-  const hov = useHover<{ day: string; block: BlockKey }>(250, canHover && hasPos);
+  const hov = useHover<{ day: string; block: BlockKey }>(HOVER_MS, canHover && hasPos);
   const hoverProps = (day: string, block: BlockKey) => hov.props(keyOf(day, block), { day, block });
   const hoverMoment = hov.hover ? moments.get(hov.hover.key) : undefined;
   const menuProps = (day: string, block: BlockKey) => {
     const actions = () => momentActions(() => pick(day, block), hasPos ? () => see(day, block) : null);
-    // the small map of the moment closes as the menu opens (booking-b-31: it could stay over the menu)
+    // the map window of the moment closes as the menu opens (booking-b-31: it could stay over the menu)
     return { onContextMenu: (e: MouseEvent) => { hov.off(); openMenu(e, actions(), phrase(day, block)); }, ...pressProps((x, y) => { hov.off(); openMenuAt(x, y, actions(), phrase(day, block)); }) };
   };
 
@@ -137,11 +137,11 @@ export function BlocksPicker(p: BlockPickerProps) {
   const roadsAgain = () => { void retryRoads({ lat: p.lat!, lng: p.lng! }); setRetry((n) => n + 1); };
 
   return (
-    <div class="bp" data-testid="block-picker">
+    <div class="bp" data-pop-group data-testid="block-picker">
       <p class="sr-only" aria-live="polite">{said}</p>
       <ChosenBar on={!!p.value} text={p.value ? t('booking.picker.chosen', { when: phrase(p.value.day, p.value.block) }) : t('booking.picker.nothing')}
         sub={t('booking.picker.duration', { d: duration(dur, l) })} onSee={p.value && hasPos ? () => see(p.value!.day, p.value!.block) : null} />
-      {hov.hover && !preview && <RouteHover ask={askOf(hov.hover.item.day, hov.hover.item.block)} at={hov.hover.at} road={hoverMoment ? roadWords(hoverMoment, l) : undefined} far={isFar(hoverMoment)} />}
+      {hov.hover && !preview && <RouteHover ask={askOf(hov.hover.item.day, hov.hover.item.block)} at={hov.hover.at} group={hov.hover.group} road={hoverMoment ? roadWords(hoverMoment, l) : undefined} far={isFar(hoverMoment)} />}
       {preview && <RoutePreview ask={preview} onClose={() => setPreview(null)} onPick={() => pick(preview.day, preview.block as BlockKey)} />}
       {p.value && pickedCell?.state === 'full' && <Banner kind="warn">{t('booking.picker.fullWarn')}</Banner>}
       {p.value && pickedCell?.state === 'tight' && <Banner kind="info">{t('booking.picker.tightWarn')}</Banner>}

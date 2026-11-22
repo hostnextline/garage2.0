@@ -11,6 +11,8 @@ export const log = {
   payment: 'Paiement',
   hours: 'Horaire d’un camion',
   truckStart: 'Départ d’un camion',
+  shiftSave: 'Correction des heures',
+  shiftRemove: 'Journée retirée des heures',
   stopOrder: 'Ordre des arrêts',
   coffre: 'Coffre (famille et amis)',
   settings: 'Réglages',

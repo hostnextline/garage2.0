@@ -32,17 +32,16 @@ import type { Suggestion } from '../../data/api';
 import { spanEnds } from '../../domain/moment/words';
 import { choiceWords, winLen, type BlockChoice, type BlockPickerProps } from '../../domain/moment/choice';
 import { rowsByStart, unitOfWindow, pageDays, pageOf, lastPage, type Win } from '../../domain/moment/units';
-import { RoutePreview, type PreviewAsk } from './RoutePreview';
+import { RoutePreview, RouteHover, type PreviewAsk } from './RoutePreview';
 import { DayRoute } from './DayRoute';
 import { stopRank } from './preview';
 import { dayOf } from './deviceDay';
 import { useDayWindows } from './useDayWindows';
 import { dayStamp, useWindowModels } from './useWindowModels';
 import { listDay, openingMinute, windowGone, type GridDay } from './windowDays';
-import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer, answers } from './hooks';
+import { useSuggestions, useLaterScores, useClock, useHover, useFinePointer, hasAnswer, answers, HOVER_MS } from './hooks';
 import { askedKind, bothKinds, fitsJob, kindOf } from './vehicles';
 import { bestWindows, betterThan, betterWindowText, dayRows, dayScores, rowChoice, windowFar, type DayRow } from './moments';
-import { besideRow } from './place';
 import { ChosenBar, FarBanner, RoadsBanner, momentActions } from './parts';
 import { WindowSuggestions } from './WindowSuggestions';
 import { WindowDayPanel } from './WindowDayPanel';
@@ -125,10 +124,10 @@ export function WindowPicker(p: BlockPickerProps) {
   });
   const modelOf = (d: string | null) => models.find((x) => x.day === d) || null;
 
-  /* the same map in a small window while the mouse rests on one of the best moments (a computer) */
+  /* the day's real map in a window beside the picker while the mouse rests on a moment (a computer): a best moment, or
+     a time of the list (the time grid opens the same window itself). `when`: the words above the map */
   const canHover = useFinePointer();
-  const hov = useHover<BlockChoice>(350, canHover && hasPos);
-  const hoverAt = hov.hover ? besideRow(hov.hover.at, window.innerWidth, window.innerHeight) : null;
+  const hov = useHover<{ c: BlockChoice; when?: string }>(HOVER_MS, canHover && hasPos);
 
   /* ---------- choosing ---------- */
   const [said, setSaid] = useState('');
@@ -230,7 +229,7 @@ export function WindowPicker(p: BlockPickerProps) {
   };
   const menuProps = (c: BlockChoice) => {
     const actions = () => momentActions(() => pick(c), hasPos ? () => see(c) : null);
-    // the small map of the moment closes as the menu opens (booking-b-31: it could stay over the menu)
+    // the map window of the moment closes as the menu opens (booking-b-31: it could stay over the menu)
     return { onContextMenu: (e: MouseEvent) => { hov.off(); openMenu(e, actions(), choiceWords(c, l)); }, ...pressProps((x, y) => { hov.off(); openMenuAt(x, y, actions(), choiceWords(c, l)); }) };
   };
 
@@ -256,13 +255,13 @@ export function WindowPicker(p: BlockPickerProps) {
   const chosenSub = [picked?.eta != null ? cap(t('booking.win.grid.around', { time: clock(unitOfWindow(span, picked.win_start!, picked.eta, windowOf) ?? picked.eta, l) })) : '', t('booking.picker.duration', { d: duration(dur, l) })];
 
   return (
-    <div class={`bp${list ? '' : ' bp-wide'}`} ref={root} data-testid="block-picker" data-mode="windows" data-layout={list ? 'list' : 'grid'}>
+    <div class={`bp${list ? '' : ' bp-wide'}`} ref={root} data-pop-group data-testid="block-picker" data-mode="windows" data-layout={list ? 'list' : 'grid'}>
       <p class="sr-only" aria-live="polite">{said}</p>
       <ChosenBar on={!!p.value} text={p.value ? t('booking.picker.chosen', { when: choiceWords(p.value, l) }) : t('booking.win.picker.nothing')}
         sub={chosenSub.filter(Boolean).join(' · ')} onSee={p.value && hasPos ? () => see(p.value!) : null} />
       {preview && <RoutePreview ask={preview.ask} onClose={() => setPreview(null)} onPick={preview.choice ? () => pick(preview.choice!) : undefined} />}
       {dayMap && <DayRoute day={dayMap} exclude={p.excludeJob ?? null} onClose={() => setDayMap(null)} />}
-      {hov.hover && hoverAt && !preview && <RoutePreview ask={askOf(hov.hover.item)} float={hoverAt} />}
+      {hov.hover && !preview && <RouteHover ask={askOf(hov.hover.item.c)} at={hov.hover.at} group={hov.hover.group} title={hov.hover.item.when} />}
       {(gone || (lost && !p.value)) && <Banner kind="warn" data-testid="win-gone">{t('booking.win.grid.gone')}</Banner>}
       {auto && modelOf(p.value!.day)?.kind === 'full' && <Banner kind="warn">{t('booking.win.picker.fullWarn')}</Banner>}
       {auto && modelOf(p.value!.day)?.kind !== 'full' && <Banner kind="info" data-testid="win-auto">{t('booking.win.autoNote')}</Banner>}
@@ -271,7 +270,9 @@ export function WindowPicker(p: BlockPickerProps) {
 
       <WindowSuggestions sugg={sugg} rows={best} dur={dur} hasPos={hasPos} online={online} kinds={kinds} kindOf={(id) => kindOf(trucks, id)}
         need={p.need} kind={p.kind} onKind={p.onKind} isPicked={isPicked} isCurrent={isCurrent} ranks={ranks} onPick={pickSugg} onRetry={again}
-        rowProps={(c) => ({ ...menuProps(c), ...hov.props(`${c.day}|${c.win_start}`, c) })} />
+        rowProps={(c) => ({ ...menuProps(c), ...hov.props(`${c.day}|${c.win_start}`, { c }) })} />
+      {/* said once, in plain words: nobody finds a map that only opens under a mouse at rest */}
+      {canHover && hasPos && <p class="faint small bp-note" data-testid="win-hint-hover">{t('booking.win.picker.hintHover')}</p>}
 
       {/* the calendar */}
       <section class="bp-cal" aria-labelledby="bp-cal-title">
@@ -282,7 +283,7 @@ export function WindowPicker(p: BlockPickerProps) {
         {list && <p class="faint small bp-note">{t('booking.win.grid.hintPhone')}</p>}
         {list
           ? <PickList days={models} today={today} selDay={shown} onDay={setDay} onTime={(d, m) => pick(unitChoice(d, m))} unitLabel={unitLabel} dayLabel={dayLabel}
-              menuOf={(d, m) => menuProps(unitChoice(d, m))} currentM={sel?.currentM ?? null} {...nav} />
+              menuOf={(d, m) => ({ ...menuProps(unitChoice(d, m)), ...hov.props(`${d}|t${m}`, { c: unitChoice(d, m), when: `${cap(longDay(d, l))} · ${labelOf(m)}` }) })} currentM={sel?.currentM ?? null} {...nav} />
           : <PickGrid span={span} days={models} today={today} selDay={shown} onDay={setDay} labelOf={labelOf} unitLabel={unitLabel} dayLabel={dayLabel} winOf={(m) => windowOf(m) as Win}
               onDayMenu={dayMenu}
               onUnit={(d, m, st) => { if (st === 'open') pick(unitChoice(d, m)); else if (st === 'no') void refused(d, m); }}

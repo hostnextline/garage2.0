@@ -22,34 +22,72 @@ import { newToken, sha256hex } from '../_shared/tokens.ts';
 import { baseOf, trackLink } from '../_shared/links.ts';
 import { sendSms } from '../_shared/ghl.ts';
 import { clock, fill, first, localMinute, type Lang } from '../_shared/texts.ts';
-import { tomtomRouteUrl, readTomtomRoad, thin, type Road } from '../_shared/tomtom.ts';
+import { tomtomRouteUrl, readTomtomRoad, type Road } from '../_shared/tomtom.ts';
+import { thinRoad } from '../_shared/road.ts';
 
 interface Pt { lat: number; lng: number }
 const okPt = (p: unknown): p is Pt => !!p && typeof (p as Pt).lat === 'number' && typeof (p as Pt).lng === 'number' && Math.abs((p as Pt).lat) <= 90 && Math.abs((p as Pt).lng) <= 180;
+/** how long one OSRM road planner is waited for (the app waits 40 s for « Je pars »: TomTom's 8 s and the two OSRM
+    planners' 6 s each fit well inside) */
+const ROAD_WAIT_MS = 6000;
+/** the OSRM road planners, asked in this order after TomTom: OSRM's own server, then its FOSSGIS copy when the first does
+    not answer (the same two, in the same order, as the app's own maps: src/shared/map/roads.ts). Hassan, 2026-11-21:
+    « yes add it just in case »: 3 of the last 39 trips on live had no road at all, the first planner had not answered.
+    A copy of the server whose first planner is sent elsewhere (OSRM_BASE: the tests) never reaches the real second
+    one: its second planner is then « <OSRM_BASE>-backup », unless OSRM_BACKUP_BASE names it. */
+function planners(): { base: string; source: string }[] {
+  const first = env('OSRM_BASE');
+  const second = env('OSRM_BACKUP_BASE') || (first ? `${first}-backup` : 'https://routing.openstreetmap.de/routed-car');
+  return [{ base: first || 'https://router.project-osrm.org', source: 'osrm' }, { base: second, source: 'osrm-backup' }];
+}
+
+/** the line of a real road for the maps: the points that shape it (thinRoad). A road thinned to its two ends (one
+    straight street) keeps one point of its middle: the app never draws a line of two points, the old server's straight
+    line (src/lib/tomtom.ts isRoadLine; the customer's map, the team's map, the phone's refresh of the time) */
+export function roadLine(full: [number, number][]): [number, number][] {
+  const line = thinRoad(full);
+  if (line.length !== 2) return line;
+  const [a, b] = line;
+  const inner = full.filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
+    && !(p[0] === a[0] && p[1] === a[1]) && !(p[0] === b[0] && p[1] === b[1]));
+  return inner.length ? [a, inner[Math.floor(inner.length / 2)], b] : line;
+}
+
 /** the road route with the traffic of now (TomTom, when the function has the secret TOMTOM_KEY); else, or when TomTom does
-    not answer, OSRM (its time + 20 % for the traffic it does not know). null when neither answers: the trip then has no
-    arrival time and no road, and the text is the one without a time (`en_route_no_eta`), exactly as when the phone has no
-    position. Never a straight-line estimate (Hassan's rule, 2026-11-19: a real road time, or none). */
+    not answer, OSRM (its time + 20 % for the traffic it does not know), then OSRM's copy. null when none answers: the
+    trip then has no arrival time and no road, and the text is the one without a time (`en_route_no_eta`), exactly as
+    when the phone has no position. Never a straight-line estimate (Hassan's rule, 2026-11-19: a real road time, or
+    none). The line is the road in FULL (every bend of every street: TomTom's polyline, OSRM's overview=full) thinned to
+    the points that shape it (roadLine: thinRoad of _shared/road.ts): the customer's map shows the streets the truck takes, not a
+    line across the blocks (Hassan, 2026-11-21: « it's a straight line, it doesn't show the actual route »). */
 export async function route(a: Pt, b: Pt): Promise<Road | null> {
   const key = env('TOMTOM_KEY');
   if (key) {
     try {
       const r = await withTimeout(fetch(tomtomRouteUrl(env('TOMTOM_BASE', 'https://api.tomtom.com'), a, b, key)), 8000, 'calcul de trajet');
-      const road = r.ok ? readTomtomRoad(await r.json()) : null;
-      if (road) return road;
-    } catch { /* OSRM below */ }
+      const road = r.ok ? readTomtomRoad(await r.json(), roadLine) : null;
+      if (road && road.line.length >= 2) return road;
+    } catch (e) {
+      console.error('enroute route', 'tomtom', (e as Error)?.message || String(e));
+    }
   }
-  try {
-    const u = `${env('OSRM_BASE', 'https://router.project-osrm.org')}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=simplified&geometries=geojson`;
-    const r = await withTimeout(fetch(u, { headers: { 'User-Agent': 'his-garage-app' } }), 8000, 'calcul de trajet');
-    const d = await r.json();
-    const rt = d?.routes?.[0];
-    if (!rt) throw new Error('no route');
-    const line = thin((rt.geometry?.coordinates || []).map(([x, y]: [number, number]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5] as [number, number]));
-    return { km: Math.round(rt.distance / 100) / 10, minutes: Math.max(1, Math.round((rt.duration / 60) * 1.2)), line, source: 'osrm' };
-  } catch {
-    return null;
+  for (const p of planners()) {
+    try {
+      const u = `${p.base}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
+      const r = await withTimeout(fetch(u, { headers: { 'User-Agent': 'his-garage-app' } }), ROAD_WAIT_MS, 'calcul de trajet');
+      // a planner that is down or too busy answers 5xx or 429, often with a page that is not JSON: the next one
+      if (!r.ok) { await r.body?.cancel().catch(() => undefined); throw new Error(`planner ${r.status}`); }
+      const d = await r.json();
+      const rt = d?.routes?.[0];
+      if (!rt || !Number.isFinite(Number(rt.distance)) || !Number.isFinite(Number(rt.duration))) throw new Error('no route');
+      const line = roadLine((rt.geometry?.coordinates || []).map(([x, y]: [number, number]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5] as [number, number]));
+      if (line.length < 2) throw new Error('no road');
+      return { km: Math.round(rt.distance / 100) / 10, minutes: Math.max(1, Math.round((rt.duration / 60) * 1.2)), line, source: p.source };
+    } catch (e) {
+      console.error('enroute route', p.source, (e as Error)?.message || String(e));
+    }
   }
+  return null;
 }
 
 /** the garage's texts without an arrival time fall back to these (the owner may have erased the template) */
