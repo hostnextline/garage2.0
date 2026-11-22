@@ -97,11 +97,16 @@ end $do$;
   mechanic of the job's truck may also put jobs in the Coffre (`coffre_may_add`). Part 24 bis (`20261108000150_coffre_pour_tous.sql`):
   « Payé par le Coffre » is for every member of the team (`coffre_may_add` = `is_staff()`; the app's `mayCoffre`, the Coffre sheet
   and the job menu follow).
-- NOT on live: Part 27 « Vraies routes » (`20261119000200_vraies_routes.sql`, the function `drive`, the TomTom keys):
-  its runbook from today's live is `ops/live/PARTIE27.md` (the keys, the measure and the switch: `ops/live/CUTOVER.md`
-  section 5 bis; the way back: section 7), nothing without Hassan's go.
+- Part 27 « Vraies routes » IS LIVE since 2026-11-22 (Hassan's « go live »): the migration `20261119000200_vraies_routes.sql`
+  applied at 01:46 from commit `5e23639e` with the sha256 check (`3e7b8f79…5ede`), after a trial on live's data (87 answers
+  of the planner compared, all the same); its switch is OFF (`roads_on` false); the app `9eb996e9` (01:53: « Déplacer » from
+  the trucks' stops, the move to an exact time) then `55b15877` (03:13: « Texter … ? », no moved text by itself). Its runbook,
+  the read-only checks it ran and the way back: `ops/live/PARTIE27.md`. NOT done: the TomTom keys, and the nightly script of
+  the backups repository (`ops/sauvegardes` at `5e23639e`): it would send the coming stops' positions to OSRM's public demo
+  server every night while there is no server key (CUTOVER 5 bis point 6: Hassan's call).
 - Server functions (`supabase/functions/`) are deployed from raw GitHub files pinned to a commit (`verify_jwt` off):
-  since 2026-11-21 the twelve functions of the rebuild all at `837c89d8` (`drive`, Part 27's, not deployed). Before the
+  since 2026-11-21 the twelve functions of the rebuild at `837c89d8`, except, since 2026-11-22 (Part 27), `drive` (new), `book`,
+  `enroute` and `backup` at `5e23639e`. Before the
   rebuild: `notify`, `book` at `408de6c`; `conversation`, `ring` at `5f6640b` (2026-11-13, pictures and documents; before: `4142fac`); `client` at `d8f87f6`; `enroute` at `a4f2da6`; `team` at `8f15959`; `backup` at `b87b956`; `hermes` at `8db1695`;
   the others (`conversation`, `stripe`, `vin`) at `2610bc8`.
   Shared code is in `supabase/functions/_shared/` (a pinned function also reads `_shared` at its own commit).
@@ -565,7 +570,7 @@ end $do$;
   a day already locked (« Vraies routes » on: only from an arrival measured, `jobs.eta_measured`; a window asked to be cut from
   an arrival not measured leaves the appointment « flexible » instead). Not done here: the texts to customers, `team_map` (it does not answer the windows), the app's screens.
   The database tests run on a Mac too against any Postgres with the migrations (`GARAGE_DB_PORT`, see `tests/db/helpers.mjs`).
-- « Vraies routes » (Part 27, `20261119000200_vraies_routes.sql`, the server function `drive`, NOT on live; its cutover and way
+- « Vraies routes » (Part 27, `20261119000200_vraies_routes.sql`, the server function `drive`, LIVE since 2026-11-22 with the switch OFF; its cutover and way
   back: `ops/live/CUTOVER.md` sections 5 bis and 7): the planner counts the driving with real road times measured by TomTom
   (its usual traffic of that weekday and hour; OSRM + 20 % when TomTom cannot answer), never a straight line. Hassan's rule
   (2026-11-19): « i don't want straight line guesses please » — a road drawn is a real road; with the switch on, a km or a
@@ -575,7 +580,8 @@ end $do$;
   2026-11-21, to tell Hassan). The migration is made by a generator, `ops/generateurs/vraies-routes/build.py`
   (with `measure.sql` and `previews.sql`; `python3 ops/generateurs/vraies-routes/build.py` rewrites the very same file): it
   copies each planner function from its latest earlier definition and changes it by exact replacements, which is what
-  proves « nothing else changed ». While the migration is not applied on live, change the generator, not the file.
+  proves « nothing else changed ». The migration is APPLIED on live (2026-11-22): never change the file nor the generator's
+  output again; a change of these functions is a NEW migration that copies their latest text.
   The switch is `settings.booking.roads_on`, flipped only by `roads_switch(op, on)` (owner; Réglages → Réservations → « Vraies
   routes » → « Compter les vraies routes »; trigger `settings_roads_guard`: a plain settings save never flips it, and only the
   owner changes the four numbers that decide what TomTom costs, `roads_month_tx`, `roads_web_tx`, `roads_keep_days`,

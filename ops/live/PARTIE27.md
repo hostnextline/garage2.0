@@ -1,5 +1,14 @@
 # La Partie 27 seule (« Vraies routes », « Déplacer » depuis les arrêts, le déplacement à l'heure choisie), sur la version en ligne d'aujourd'hui
 
+> **FAIT le 2026-11-22** (le go de Hassan, « go live », 01:27), C = `5e23639e` : 0.2 sauvegarde à la main verte à 01:44
+> (37 tables, 3191 lignes) ; 0.3 / 0.4 lecture seule (les 22 lignes de l'empreinte égales ; `windows_on()` vrai) ; 0.5 le
+> texte d'avant gardé hors du dépôt ; 1a l'essai : « ESSAI OK … 87 réponses du planificateur comparées, toutes les mêmes » ;
+> 1b la migration à 01:46 ; 1c les contrôles (roads_on faux, 0 ligne de arrive_at / eta_measured / drive_times, 60 clients,
+> 72 rendez-vous, 39 factures, 9 paiements) ; 2 drive, book, enroute, backup à C (01:47, `?version` et les réponses
+> attendues) ; 4 l'app : `main` = `9eb996e9` (01:53), puis `55b15877` (03:13, « Texter … ? »). PAS fait : le script de nuit
+> (section 4, son second point : le choix de Hassan) ni les clés TomTom. Le retour pour l'app : la branche `vercel` d'avant
+> était `685f2a24` (l'app `d7b6c0d2`).
+
 La refonte est **en ligne depuis le 2026-11-21** : ses six migrations et les douze fonctions à `837c89d8` depuis 20 h 06,
 l'app `d7b6c0d2` publiée vers 23 h 10. `CUTOVER.md` (sections 1 à 5) raconte cette nuit-là : elle est faite, ne pas la
 refaire (sa question Q1 s'arrêterait tout de suite). Ce cahier-ci est celui de la **Partie 27 seule**, en partant de ce
