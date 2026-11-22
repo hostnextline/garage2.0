@@ -130,6 +130,19 @@ describe('demo: ?fenetres=1', () => {
     call('move_job', { p_job: 'e3', p_day: day, p_block: 'day', p_truck: null, p_win_start: 660, p_win_flex: false });
     expect(find('jobs', 'e3')!.arrive_at).toBe(null);
   });
+  it('« exact move » and the window move follow the database’s right (main’s demo rules; merge-main L-2): no « book », not his truck → not_allowed', () => {
+    const day = freeDay();
+    call('book_job', { p_job: { id: 'r1', customer_id: 'c-julie', day, block: 'day', win_start: 600 }, p_items: [] });
+    const truck = String(find('jobs', 'r1')!.truck_id);
+    const snap = JSON.stringify(table('jobs'));
+    (globalThis as { __demoUser?: string }).__demoUser = 'u-treso';   // the treasurer: no « book », drives no truck
+    expect(code(() => call('move_preview', { p_job: 'r1', p_day: day, p_truck: null, p_at: 735 }))).toBe('not_allowed');
+    expect(code(() => call('move_job', { p_op: 'y', p_job: 'r1', p_day: day, p_block: 'day', p_truck: null, p_win_start: 660, p_win_flex: false, p_exact: { at: 735, late_ok: [] } }))).toBe('not_allowed');
+    expect(code(() => call('move_job', { p_op: 'z', p_job: 'r1', p_day: day, p_block: 'day', p_truck: null, p_win_start: 660, p_win_flex: false }))).toBe('not_allowed');
+    expect(JSON.stringify(table('jobs'))).toBe(snap);
+    (globalThis as { __demoUser?: string }).__demoUser = 'u-hassan';
+    expect(call('move_job', { p_op: 'w', p_job: 'r1', p_day: day, p_block: 'day', p_truck: truck, p_win_start: 660, p_win_flex: false, p_exact: { at: 735, late_ok: [] } })).toMatchObject({ ok: true, exact: true });
+  });
   it('« exact move » (A6): somebody late is said first and refused without late_ok; the truck cannot be there: the earliest', () => {
     const day = freeDay();
     call('book_job', { p_job: { id: 'l1', customer_id: 'c-julie', day, block: 'day', win_start: 480 }, p_items: [] });

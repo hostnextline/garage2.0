@@ -10,18 +10,12 @@ export function tomtomRouteUrl(base: string, a: RoadPt, b: RoadPt, key: string):
     + '&traffic=true&travelMode=car&routeType=fastest&departAt=now&routeRepresentation=polyline&computeTravelTimeFor=none';
 }
 
-/** at most `max` points of the line (the customer's map draws it), the first and the last always kept */
-export function thin(line: [number, number][], max = 250): [number, number][] {
-  if (line.length <= max) return line;
-  const step = Math.ceil(line.length / max);
-  return line.filter((_, i) => i % step === 0 || i === line.length - 1);
-}
-
 /** TomTom's answer → the road: km, minutes (the traffic is already in TomTom's time: no margin added), the line made
     by `shape` from TomTom's full polyline (enroute gives its roadLine, thinRoad of _shared/road.ts: the points that shape
-    the streets, the same rule as OSRM's road; the default, `thin`, keeps one point in N past 250); null when it is not a
-    route */
-export function readTomtomRoad(d: unknown, shape: (line: [number, number][]) => [number, number][] = thin): Road | null {
+    the streets, the same rule as OSRM's road). `shape` is required: the « one point in N » thinning of before is gone,
+    it cut across the blocks (main db5add03, 7d5c378b; one helper only, the note of 2026-11-21 22:50); null when it is not
+    a route */
+export function readTomtomRoad(d: unknown, shape: (line: [number, number][]) => [number, number][]): Road | null {
   const rt = (d as { routes?: { summary?: { lengthInMeters?: number; travelTimeInSeconds?: number }; legs?: { points?: { latitude?: number; longitude?: number }[] }[] }[] } | null)?.routes?.[0];
   const metres = Number(rt?.summary?.lengthInMeters), seconds = Number(rt?.summary?.travelTimeInSeconds);
   if (!rt || !Number.isFinite(metres) || !Number.isFinite(seconds)) return null;

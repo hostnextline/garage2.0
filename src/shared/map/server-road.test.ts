@@ -3,7 +3,9 @@
    (never a straight-line estimate). route() is run for real here, its network answered by a pretend fetch; the modules
    that need the Deno server's packages (database, texts, once) are replaced, they are not used by route(). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { tomtomRouteUrl, readTomtomRoad, thin } from '../../../supabase/functions/_shared/tomtom';
+import { tomtomRouteUrl, readTomtomRoad } from '../../../supabase/functions/_shared/tomtom';
+import { thinRoad } from '../../../supabase/functions/_shared/road';
+import tomtomSource from '../../../supabase/functions/_shared/tomtom.ts?raw';
 
 vi.mock('../../../supabase/functions/_shared/db.ts', () => ({ adminDb: () => null, caller: async () => null, settings: async () => ({}), secret: async () => null }));
 vi.mock('../../../supabase/functions/_shared/once.ts', () => ({ claimMessage: async () => null, finishMessage: async () => null, dropMessage: async () => null }));
@@ -25,19 +27,24 @@ describe('the server’s road from TomTom', () => {
   it('reads the km, the minutes as TomTom says them (no margin), and the line for the customer’s map', () => {
     const d = { routes: [{ summary: { lengthInMeters: 21465, travelTimeInSeconds: 1887, trafficDelayInSeconds: 533 },
       legs: [{ points: [{ latitude: 45.500538, longitude: -73.657554 }, { latitude: 45.47, longitude: -73.6 }, { latitude: 45.4474109, longitude: -73.4362695 }] }] }] };
-    expect(readTomtomRoad(d)).toEqual({ km: 21.5, minutes: 31, line: [[45.50054, -73.65755], [45.47, -73.6], [45.44741, -73.43627]], source: 'tomtom' });
-    expect(readTomtomRoad({ routes: [] })).toBeNull();
-    expect(readTomtomRoad({ error: { description: 'Invalid API key' } })).toBeNull();
-    expect(readTomtomRoad({ routes: [{ legs: [] }] })).toBeNull();   // no time: not a road
-    expect(readTomtomRoad(null)).toBeNull();
+    const all = (l: [number, number][]) => l;
+    expect(readTomtomRoad(d, all)).toEqual({ km: 21.5, minutes: 31, line: [[45.50054, -73.65755], [45.47, -73.6], [45.44741, -73.43627]], source: 'tomtom' });
+    expect(readTomtomRoad({ routes: [] }, all)).toBeNull();
+    expect(readTomtomRoad({ error: { description: 'Invalid API key' } }, all)).toBeNull();
+    expect(readTomtomRoad({ routes: [{ legs: [] }] }, all)).toBeNull();   // no time: not a road
+    expect(readTomtomRoad(null, all)).toBeNull();
   });
-  it('keeps at most 250 points of a long road, its two ends always', () => {
-    const long: [number, number][] = Array.from({ length: 1001 }, (_, i) => [45 + i / 1e4, -73]);
-    const t = thin(long);
-    expect(t.length).toBeLessThanOrEqual(251);
-    expect(t[0]).toEqual(long[0]);
-    expect(t[t.length - 1]).toEqual(long[1000]);
-    expect(thin(long.slice(0, 10))).toHaveLength(10);
+  it('the line is shaped by the rule it is given (enroute: thinRoad, the streets kept); no « one point in N » thinning left (merge-main F7 / L-1)', () => {
+    // a long road with a bend every 250 points: thinRoad keeps the bends, never a point across the blocks
+    const long: [number, number][] = Array.from({ length: 1001 }, (_, i) => [45 + i / 1e4, -73 + (Math.floor(i / 250) % 2) * 0.001 * (i % 250) / 250]);
+    const d = { routes: [{ summary: { lengthInMeters: 10000, travelTimeInSeconds: 900 }, legs: [{ points: long.map(([la, ln]) => ({ latitude: la, longitude: ln })) }] }] };
+    const r = readTomtomRoad(d, thinRoad)!;
+    expect(r.line.length).toBeLessThanOrEqual(400);
+    expect(r.line[0]).toEqual(long[0]);
+    expect(r.line[r.line.length - 1]).toEqual([Math.round(long[1000][0] * 1e5) / 1e5, Math.round(long[1000][1] * 1e5) / 1e5]);
+    // one helper only: the « one point in N » rule is gone from the server's TomTom reading, and the shape is required
+    expect(tomtomSource).not.toMatch(/i % step === 0|export function thin\b/);
+    expect(tomtomSource).toMatch(/shape: \(line: \[number, number\]\[\]\) => \[number, number\]\[\]\): Road \| null/);
   });
 });
 
@@ -72,6 +79,14 @@ describe('« Je pars »: the road and the time are real ones, or none (enroute r
       expect(await route(A, B)).toMatchObject({ km: 23.5, minutes: 36, source: 'osrm' });
       expect(asked(f)).toEqual(['tomtom', 'osrm']);
     }
+  });
+  it('the truck already at the door (TomTom’s line of one point): TomTom’s time all the same, OSRM not asked; nothing to draw (merge-main L-3)', async () => {
+    env.TOMTOM_KEY = 'SERVER KEY';
+    const door = { routes: [{ summary: { lengthInMeters: 40, travelTimeInSeconds: 20 }, legs: [{ points: [{ latitude: 45.4474, longitude: -73.4363 }] }] }] };
+    const f = vi.fn(async (u: string) => (u.includes('tomtom') ? json(door) : json(osrm)));
+    vi.stubGlobal('fetch', f);
+    expect(await route(B, B)).toMatchObject({ km: 0, minutes: 1, source: 'tomtom' });
+    expect(asked(f)).toEqual(['tomtom']);
   });
   it('no key on the server: OSRM only, as before (TomTom never asked)', async () => {
     const f = vi.fn(async () => json(osrm));

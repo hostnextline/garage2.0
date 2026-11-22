@@ -14,6 +14,7 @@
 import { registerRpc, rpcOf, put, find, table, rows, refuse, nowIso, type DemoRow } from './fake-server';
 import { addDays, today, nowMinute, windowFor } from '../lib/dates';
 import { rangesOf, renumber, km, pointOf, HOME } from './demo-extra/agenda';
+import { can, myTruckIds, need } from './demo-rules';
 import { order, walk, choices, fits, type Stop, type Choice } from './demo-plan';
 
 type Win = [number, number];
@@ -232,10 +233,17 @@ function exactPlan(j: DemoRow, day: string, truck: string, at: number): ExactPla
   return { truck, at, order: best?.seq ?? [], eta: best?.eta ?? new Map(), late: best?.late ?? [], overHours: best ? Math.max(0, best.end - td.end) : 0,
     earliest: best ? null : earliest, earliestKeep: best ? null : earliestKeep, placed: !!best, stops, left };
 }
+/** the right of move_job and of the exact move on the server (« book », or a truck of mine for a job of my truck): the
+    demo follows the database's rules (main's demo-rules; merge-main L-2) */
+function mayMove(j: DemoRow, wanted: unknown) {
+  const mine = myTruckIds();
+  need(can('book') || (!!wanted && mine.includes(String(wanted)) && mine.includes(String(j.truck_id))), 'Tu ne peux pas déplacer ce rendez-vous.');
+}
 /** the checks every exact move and preview share: the job, the day, the truck it goes on (picked, else its own) */
 function exactAsk(a: Record<string, unknown>, at: number): { j: DemoRow; day: string; truck: string } {
   const j = find('jobs', a.p_job);
   if (!j) refuse('not_found', 'Ce rendez-vous n’existe plus.');
+  mayMove(j, a.p_truck);
   if (j.status !== 'booked') refuse('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.');
   const day = String(a.p_day);
   if (day < today()) refuse('block_started', 'Cette journée est passée : choisis une autre journée.');
@@ -329,6 +337,7 @@ export function installWindows() {
     if (a.p_exact != null) return exactMove(a);
     const j = find('jobs', a.p_job);
     if (!j) refuse('not_found', 'Ce rendez-vous n’existe plus.');
+    mayMove(j, a.p_truck);
     if (j.status !== 'booked') refuse('not_booked', 'Seul un rendez-vous pas encore commencé se déplace.');
     if (a.p_block !== 'day') refuse('bad_block', 'Choisis la journée et la plage d’arrivée.');
     const day = String(a.p_day), wanted = (a.p_truck as string) || null;

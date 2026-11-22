@@ -66,7 +66,9 @@ export async function route(a: Pt, b: Pt): Promise<Road | null> {
     try {
       const r = await withTimeout(fetch(tomtomRouteUrl(env('TOMTOM_BASE', 'https://api.tomtom.com'), a, b, key)), 8000, 'calcul de trajet');
       const road = r.ok ? readTomtomRoad(await r.json(), roadLine) : null;
-      if (road && road.line.length >= 2) return road;
+      // TomTom's time stands even when its line is too short to draw (the truck already at the door: one point): the app
+      // draws no line under 3 points (isRoadLine), and OSRM would refuse that road anyway (merge-main L-3)
+      if (road) return road;
     } catch (e) {
       console.error('enroute route', 'tomtom', (e as Error)?.message || String(e));
     }
