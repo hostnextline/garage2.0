@@ -516,6 +516,7 @@ test('the conversation with a customer: the texts both ways from GoHighLevel, an
 });
 
 test('« Réserver en ligne »: the services, the best moments near a truck, booked at once with the text; a new customer, then the same phone again', async () => {
+  const slice0 = Math.floor(Date.now() / 600_000); // the 10-minute slice of the clock this test starts in (the brake's count)
   const dow = (await q(`select extract(dow from $1::date)::int d`, [day]))[0].d;
   const truck = randomUUID(); made.trucks.push(truck);
   await q(`insert into public.trucks (id, name, active) values ($1, 'Camion web', true)`, [truck]);
@@ -585,11 +586,14 @@ test('« Réserver en ligne »: the services, the best moments near a truck, boo
     assert.equal((await fn('book', { action: 'info' })).on, false);
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code, 'web_off');
     await q(`update public.settings set booking = jsonb_set(booking, '{web,on}', 'true') where id = 1`);
-    // the brake on the public « slots » (Part 24): 20 asks per 10 minutes for one visitor, then « busy »
+    // the brake on the public « slots » (Part 24): 20 asks per 10 minutes for one visitor, then « busy ». The server counts
+    // per 10-minute slice of the clock (rate_hit: floor(epoch / 600)): a run that crosses xx:x0:00 starts a new count in the
+    // middle (seen on 2026-11-22 at 00:40:00: 30 asks, never « busy »), so up to 21 more asks are given, and « the earlier
+    // asks count too » is only checked when the whole test stayed in one slice
     let code = null, asks = 0;
-    for (; asks < 30 && code !== 'busy'; asks++) code = (await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code;
+    for (; asks < 45 && code !== 'busy'; asks++) code = (await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).code;
     assert.equal(code, 'busy', 'too many asks → busy (after ' + asks + ')');
-    assert.ok(asks <= 20, 'the earlier asks of this test count too');
+    if (Math.floor(Date.now() / 600_000) === slice0) assert.ok(asks <= 20, 'the earlier asks of this test count too');
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).status, 429);
     await q(`delete from public.rate_limits`);
     assert.equal((await fn('book', { action: 'slots', lat: 45.53, lng: -73.62, services: [oil] })).ok, true, 'a new window: allowed again');
