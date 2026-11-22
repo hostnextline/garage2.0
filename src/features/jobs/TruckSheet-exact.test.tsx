@@ -92,6 +92,14 @@ describe('the other truck at the very time it has (A1)', () => {
     expect(h.exact).not.toHaveBeenCalled();
     expect(h.move.mock.calls[0]).toEqual(['j1', DAY, 'day', 't2']);
   });
+  it('a flexible appointment whose window the evening lock fixed: the move of live, it stays « flexible » (main 7118fb07, review F4)', async () => {
+    // the exact move would write win_flex = false with no text (the window unchanged): out of the windows to text, never told
+    seed(false);
+    await show(J({ win_flex: true, eta_min: 790 }));
+    await tap('truck-pick-t2');
+    expect(h.exact).not.toHaveBeenCalled();
+    expect(h.move.mock.calls[0]).toEqual(['j1', DAY, 'day', 't2']);
+  });
 });
 
 describe('switch « Vraies routes » ON: each truck said from the exact preview of that minute', () => {

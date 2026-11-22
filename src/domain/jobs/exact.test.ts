@@ -70,4 +70,12 @@ describe('« Changer de camion » keeps the appointment’s time (A1)', () => {
     expect(keptTimeOf({ block: 'day', win_start: null, win_flex: true, eta_min: 790 }, windowOf)).toBe(null);
     expect(keptTimeOf({ block: 'am', eta_min: 600 }, windowOf)).toBe(null);
   });
+  it('a flexible appointment whose window the evening lock fixed keeps « flexible »: no time kept, the 5-argument move of live (main 7118fb07, review F4)', () => {
+    // the exact move writes win_flex = false, so keeping its time would take it out of the windows to text (« Fixer les
+    // plages »: flexibleWithWindow) with no text: the customer would never hear the window. Its arrival fits its window here.
+    expect(keptTimeOf({ block: 'day', win_start: 720, win_end: 960, win_flex: true, eta_min: 790 }, windowOf)).toBe(null);
+    expect(keptTimeOf({ block: 'day', win_start: 720, win_end: 960, win_flex: true, eta_min: 790, arrive_at: 780 }, windowOf)).toBe(null);
+    // the same window, not flexible: its time is kept as before
+    expect(keptTimeOf({ block: 'day', win_start: 720, win_end: 960, win_flex: false, eta_min: 790 }, windowOf)).toBe(790);
+  });
 });

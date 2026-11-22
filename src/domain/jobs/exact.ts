@@ -48,6 +48,9 @@ type Kept = Pick<Job, 'block' | 'eta_min'> & { win_start?: number | null; win_en
     in 12 h – 16 h would say 13 h – 17 h): the move then goes as before (the planner's time inside the window told). */
 export function keptTimeOf(j: Kept, windowOf: (eta: number) => readonly [number, number]): number | null {
   if (j.block !== 'day' || j.win_start == null) return null;
+  // still « flexible » (its window maybe fixed by the evening lock, the customer not told yet): the 5-argument move of live
+  // keeps the window AND « flexible »; the exact move would make it a fixed window nobody texts (main 7118fb07, review F4)
+  if (j.win_flex) return null;
   if (j.arrive_at != null) return j.arrive_at;
   if (j.eta_min == null) return null;
   const w = windowOf(j.eta_min);
