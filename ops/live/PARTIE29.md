@@ -25,8 +25,8 @@ essayé dans un bloc qui finit par `raise exception` ; une sauvegarde d'abord ; 
 - Les arrêts qu'il ne touche pas **gardent leur heure** : jamais avancés (sauf un arrêt déjà EN RETARD : la place libérée
   le ramène, jamais avant sa plage) ; repoussés seulement quand l'arrêt glissé prend
   vraiment leur temps, et alors dit avant d'enregistrer (le nom dans le résumé, « avant : vers … » sur sa ligne) :
-  « Enregistrer quand même » — aussi quand il reste dans sa plage. Un arrêt déjà en retard qu'il ne glisse pas n'est
-  pas avancé non plus (il le glisse lui-même).
+  « Enregistrer quand même » — aussi quand il reste dans sa plage. Un arrêt déjà en retard qu'il ne glisse pas revient
+  dans sa plage quand la place se libère (jamais avant le début de sa plage).
 - Jamais refusé pour un retard : l'ordre après « Enregistrer » est le sien.
 - La plage de l'arrêt glissé : la sienne si elle contient la nouvelle heure, sinon celle de la nouvelle heure (montrée
   avant, partira avec « Envoyer les heures aux clients » ; aucun texto tout seul). Un arrêt « dans la journée » qu'il

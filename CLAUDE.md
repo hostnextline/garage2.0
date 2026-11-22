@@ -492,7 +492,7 @@ end $do$;
   `exact-move.test.tsx`, `MoveSheet-exact.test.tsx`, the three `stops-move-more.test.tsx`, `TruckSheet-exact.test.tsx`,
   `JobScreen.test.tsx`), `SettingsScreen.test.tsx`; end to end `deplacer` (step 8 and every move step: nothing asked of
   `notify` while the question is up), `app`, `plages`, `mise-a-jour`.
-- « Réorganiser la journée » and « Envoyer les heures aux clients » (Part 28, `20261122000100_reorganiser.sql`, NOT on live:
+- « Réorganiser la journée » and « Envoyer les heures aux clients » (Part 28, `20261122000100_reorganiser.sql`, LIVE since 2026-11-22 10:10:
   `ops/live/PARTIE28.md`; the contract REARRANGE.md of the work folder; Hassan, 2026-11-22: « i want to be able to easely
   rearange a day » — he chose « Drag in a list » — and « dont send any text, put a button that will send for all
   clients, ill press it when day is filled and im done re organizing »). ONE screen (`src/shared/jobs/DayOrderSheet.tsx`,
@@ -572,8 +572,7 @@ end $do$;
   'late'`). « Laisser l'app choisir » clears the day's pins (G6). Tests: database `tests/db/reorganiser-garde.test.mjs`
   (G1–G6, F1 the tight day's booking / « quand même » / length / hours, F7, F8, the file, the way back, the trial), unit
   `src/data/dayOrder.test.ts`, `src/shared/jobs/DayOrderSheet.test.tsx`, `src/dev/demo-reorg.test.ts`, end to end
-  `tests/e2e/reorganiser.test.cjs` (B1's G2 checks, B16 mouse, B17 finger). Not done: the lead's rulings D1, D2, D5, F2 (a
-  late stop not dragged stays late), F4 (the evening lock and a cancel on the other truck may still reorder the stops he
+  `tests/e2e/reorganiser.test.cjs` (B1's G2 checks, B16 mouse, B17 finger). Not done: the lead's rulings D1, D2, D5 (built as the reproducer advised), F4 (the evening lock and a cancel on the other truck may still reorder the stops he
   did not drag on a day with room: G4 as ruled).
 - The booking text and the estimate page (Part 24 sexies, `20261109000100_texte_reservation.sql`; functions `notify`, `book`, `client`):
   the text lists each service with its price (`{services}`, one line each, `servicesList` in `_shared/texts.ts`) and « Total :
