@@ -236,7 +236,6 @@ export const settings: typeof fr = {
       lock: 'Fix tomorrow’s windows',
       locked: { one: '{n} window fixed for tomorrow.', other: '{n} windows fixed for tomorrow.' },
       lockedNone: 'No flexible appointment to fix for tomorrow.',
-      untoldTitle: { one: '{n} customer did not get their window: tell them yourself.', other: '{n} customers did not get their window: tell them yourself.' },
       untoldText: 'Text',
       untoldNoPhone: 'No number',
       backTitle: { one: '{n} customer was told a window that is no longer inside their block: call or text them.', other: '{n} customers were told a window that is no longer inside their block: call or text them.' },

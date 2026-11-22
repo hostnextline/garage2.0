@@ -176,6 +176,18 @@ describe('sending', () => {
     await click(q('tell-close'));
     expect(closed).toBe(1);
   });
+  it('a list longer than notify takes (100 ids a call, else bad_list): sent in parts, what is left of each part asked again', async () => {
+    const many = Array.from({ length: 130 }, (_, i) => job(`j${100 + i}`, { customer_id: 'c2', number: 100 + i, win_start: 480, win_end: 720, eta_min: 500 }));
+    replaceLocal('jobs', many as never);
+    srv.answers.push({ sent: many.slice(0, 98).map((j) => j.id), left: [many[98].id, many[99].id] });
+    await open();
+    await click(q('tell-go'));
+    // (one window for all: the list's order is the numbers' order)
+    expect(srv.sends.map((x) => x.only.length)).toEqual([100, 32]);
+    expect(new Set([...srv.sends[0].only, ...srv.sends[1].only]).size).toBe(130);
+    // the second call: what the first part left, then the rest of the list
+    expect(srv.sends[1].only.slice(0, 2)).toEqual(srv.sends[0].only.slice(98, 100));
+  });
   it('the result’s sections: not sent (Réessayer, « Je l’ai averti »), busy, already, to tell yourself', async () => {
     srv.answers.push({
       sent: [], busy: ['j3'], already: ['j4'], quiet: [{ id: 'j2', phone: '5145550102', why: 'sms_ok' }],

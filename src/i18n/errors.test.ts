@@ -103,7 +103,10 @@ const COMING = [
   'amount_changed', 'event', 'pay_unavailable',
   'bad_day', 'bad_op', 'bad_run', 'no_email', 'not_ready', 'op_reused', 'stripe_down', 'stripe_refused', 'test_number',
   // « exact move » (STATE.md S4, 2026-11-21): move_job's 8th argument and the new move_preview, built beside this app
-  'arrive_late', 'late_changed', 'pick_truck'
+  'arrive_late', 'late_changed', 'pick_truck',
+  // Part 28 « Réorganiser la journée » (20261122000100_reorganiser.sql): raised with « hint = '…' » and a detail, which
+  // the scan above does not read (the exact move's codes the same)
+  'day_changed', 'outcome_changed', 'truck_off', 'truck_ends'
 ];
 
 describe('server refusals: every code has words in French and in English', () => {

@@ -337,31 +337,10 @@ export const jobs = {
   },
   /* the « … » sheet */
   order: {
-    open: 'Ordre des arrêts',
-    openSub: 'Choisir qui passe avant qui dans la route de ce camion',
-    title: 'Ordre des arrêts',
-    lead: 'Mets les clients dans l’ordre voulu. Ceux en route ou sur place restent en premier. Les heures d’arrivée sont recalculées pour tout le monde.',
-    first: 'Mettre {name} en premier',
-    up: 'Monter {name}',
-    down: 'Descendre {name}',
-    eta: 'vers {time}',
-    /* « Vraies routes » on: a trip up to that stop not measured yet (stop_order_preview measured false) */
+    /* « Vraies routes » on: a trip up to that stop not measured yet (eta_measured false; day_order_preview measured false) */
     etaUnmeasured: 'heure : trajets pas encore mesurés',
-    save: 'Enregistrer l’ordre',
-    saved: 'Ordre enregistré. Les heures d’arrivée sont à jour.',
-    auto: 'Laisser l’app choisir',
-    autoDone: 'L’app choisit de nouveau l’ordre (le moins de route).',
-    timesAfter: 'Les nouvelles heures d’arrivée s’affichent après l’enregistrement.',
-    none: 'Aucun rendez-vous réservé dans cette route.',
     firstMenu: 'Mettre en premier',
-    firstMenuSub: 'Ce client passe avant les autres de ce bloc',
-    firstDone: '{name} passe en premier. Les heures d’arrivée sont à jour.',
-    live: { en_route: 'En route', on_site: 'Sur place' },
-    /* « Vraies routes » on: the arrival times of the order built come from the server (stop_order_preview) */
-    pending: 'Heures d’arrivée : pas encore calculées.',
-    serverTimes: 'Les heures montrées sont celles de ce nouvel ordre, calculées par le serveur.',
-    late: 'En retard',
-    lateServer: { one: 'Avec cet ordre, {names} serait servi après l’heure dite au client. Avertis ce client si tu enregistres.', other: 'Avec cet ordre, ces clients seraient servis après l’heure qui leur a été dite : {names}. Avertis-les si tu enregistres.' }
+    firstMenuSub: 'Ce client passe avant les autres de ce bloc'
   },
   menu: {
     title: 'Plus d’actions',
@@ -421,13 +400,7 @@ export const jobs = {
       help: 'La durée sert au camion pour placer les arrêts dans sa journée. Si la job ne rentre plus, déplace-la.'
     },
     order: {
-      firstMenuSub: 'Ce client passe avant les autres de la journée',
-      wholeDay: 'toute la journée',
-      told: 'client : {window}',
-      note: 'Un ordre choisi à la main peut faire arriver le camion en dehors de la plage dite à un client. L’app l’indique alors « Hors plage ».',
-      breaks: { one: 'Avec cet ordre, {names} serait probablement servi en dehors de sa plage d’arrivée. Avertis ce client si tu enregistres.', other: 'Avec cet ordre, ces clients seraient probablement servis en dehors de leur plage d’arrivée : {names}. Avertis-les si tu enregistres.' },
-      about: 'environ {time}',
-      saveAnyway: 'Enregistrer quand même'
+      firstMenuSub: 'Ce client passe avant les autres de la journée'
     },
     menu: {
       resendBookingSub: 'Le jour, la plage d’arrivée et le total prévu',

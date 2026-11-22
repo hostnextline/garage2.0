@@ -47,6 +47,8 @@ const sig = (rows: readonly TellRow[]) => rows.map((r) => [r.id, r.state, r.kind
 const DONE: ReadonlySet<What> = new Set<What>(['sent', 'maybe', 'already', 'busy', 'marked']);
 /** the most rounds of one press (each round = one call with what is left) */
 const MAX_ROUNDS = 25;
+/** the most ids notify { action: 'day' } takes in one call (§1.6-1: more → bad_list) */
+const DAY_MAX_IDS = 100;
 
 /** the phone number of a row's customer */
 const phoneOfRow = (r: TellRow) => customerRow(r.customer_id)?.phone ?? null;
@@ -148,10 +150,12 @@ export function TellSheet(p: { day: string; onClose: () => void }) {
     let todo = [...only];
     try {
       for (let round = 0; todo.length && round < MAX_ROUNDS; round++) {
-        const r = await sendDay(p.day, todo, again.filter((id) => todo.includes(id)));
+        // notify takes 100 ids at most a call (bad_list past it): a longer list goes in parts
+        const part = todo.slice(0, DAY_MAX_IDS);
+        const r = await sendDay(p.day, part, again.filter((id) => part.includes(id)));
         if (!r.ok) { setFailure(errorMessage(r)); break; }
         absorb(out, r);
-        todo = r.left.filter((id) => todo.includes(id));
+        todo = [...r.left.filter((id) => part.includes(id)), ...todo.slice(DAY_MAX_IDS)];
         if (alive.current) { setProgress({ done: only.length - todo.length, n: only.length }); setOutcomes(new Map(out)); }
       }
     } catch (e) {

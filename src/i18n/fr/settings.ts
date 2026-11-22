@@ -236,7 +236,6 @@ export const settings = {
       lock: 'Fixer les plages de demain',
       locked: { one: '{n} plage fixée pour demain.', other: '{n} plages fixées pour demain.' },
       lockedNone: 'Aucun rendez-vous flexible à fixer pour demain.',
-      untoldTitle: { one: '{n} client n’a pas reçu sa plage : dis-la-lui toi-même.', other: '{n} clients n’ont pas reçu leur plage : dis-la-leur toi-même.' },
       untoldText: 'Texter',
       untoldNoPhone: 'Pas de numéro',
       backTitle: { one: '{n} client a reçu une plage qui n’est plus dans son bloc : appelle-le ou texte-lui.', other: '{n} clients ont reçu une plage qui n’est plus dans leur bloc : appelle-les ou texte-leur.' },

@@ -283,8 +283,10 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
     el?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
   }
 
-  /* ---------- a move shifts the rows in 120 ms (none under « Réduire les animations »: base.css; never the dragged one) ---- */
+  /* ---------- a move shifts the rows in 120 ms, the app's whole order in 200 ms (none under « Réduire les animations »:
+     base.css; never the dragged one) ---- */
   const tops = useRef(new Map<string, number>());
+  const shiftMs = useRef(120);
   useLayoutEffect(() => {
     const b = body.current;
     if (!b) return;
@@ -300,10 +302,11 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
       el.style.transition = 'none';
       el.style.transform = `translateY(${Math.round(was - y)}px)`;
       void el.offsetHeight;                                                          // the start, drawn once
-      el.style.transition = '';
+      el.style.transition = shiftMs.current === 120 ? '' : `transform ${shiftMs.current}ms var(--ease)`;
       el.style.transform = '';
     });
     tops.current = next;
+    shiftMs.current = 120;
   }, [draft]);
 
   /* ---------- the keyboard (the grip is a button: the HoursGrid model) ---------- */
@@ -458,6 +461,7 @@ export function DayOrderSheet(p: { at: DayOrderAt; onClose: () => void; onSaved?
       if (!a) { toast(t('reorg.sumNoAnswer'), { kind: 'bad' }); return; }
       const next = withLists(d, a.lists);
       setPreAuto(d);
+      shiftMs.current = 200;
       setDraft(next);
       take(keyOf(next, roadsTick.value), a);
       setNotice({ kind: 'info', text: t('reorg.autoShown'), testid: 'dayorder-auto-shown' });

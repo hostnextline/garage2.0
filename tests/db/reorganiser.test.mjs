@@ -701,6 +701,8 @@ test('D16 « Laisser l’app choisir »: a stop the planner cannot place stays a
   assert.deepEqual(camion.jobs.slice(-over.length).sort(), [...over].sort(), 'at the end of its own truck (in their stored order)');
   assert.deepEqual(p.lists.flatMap((l) => l.jobs).sort(), Object.values(w.ids).sort(), 'every one still listed (nobody to « À placer »)');
   assert.ok(p.trucks.find((t) => t.id === w.tk).over_min > 0, 'the Camion said past its hours');
+  // each of them is flagged for the screen (« L'app ne trouve pas de place pour … »), nobody else
+  assert.deepEqual(p.stops.filter((s) => s.over).map((s) => s.id).sort(), [...over].sort(), 'the stops the planner left out say `over`');
   // switch on, real trips far longer than the day holds: the vehicle is frozen, its stops in their stored order
   await h.c.query('rollback to savepoint plan');
   const v = await world(h, { far: true, hours2: [], jobs: { A: { t: 'tk', ws: 480 }, B: { t: 'tk', ws: 600 }, C: { t: 'tk', ws: 720 } } });

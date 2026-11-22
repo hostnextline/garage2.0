@@ -116,7 +116,7 @@ declare
   a_windows jsonb := '{}'::jsonb; a_flex jsonb := '{}'::jsonb; a_late jsonb := '{}'::jsonb; a_early jsonb := '{}'::jsonb;
   a_pins jsonb := '{}'::jsonb; a_over jsonb := '{}'::jsonb; v_accept jsonb;
   v_wins jsonb := '{}'::jsonb; v_back uuid[] := '{}'; v_lost uuid[] := '{}'; v_hand uuid[] := '{}'; v_late_ids uuid[] := '{}';
-  v_early_ids uuid[] := '{}'; v_over_ids uuid[] := '{}'; v_due int;
+  v_early_ids uuid[] := '{}'; v_over_ids uuid[] := '{}'; v_due int; v_unplaced uuid[] := '{}';
   v_ends jsonb := '{}'::jsonb; v_tk uuid; v_name text; v_nm text; v_x jsonb; v_k text; v_v jsonb; v_n int;
   b record; r record; t record; w record;
   v_sure boolean; v_hend int; v_ts int; v_te int; v_mv boolean; v_bf jsonb; v_nws int; v_nwe int; v_wback boolean;
@@ -254,6 +254,8 @@ begin
               from public.jobs j0
               where j0.day = p_day and j0.block = b.key and j0.truck_id = any(v_trucks) and j0.status = 'booked' and j0.deleted_at is null
                 and not exists (select 1 from jsonb_array_elements(v_l) l where l->>'id' = j0.id::text)) j;
+        -- (the screen names them: « L'app ne trouve pas de place pour … », the stop's `over`)
+        v_unplaced := v_unplaced || array(select (l->>'id')::uuid from jsonb_array_elements(v_l) l where l->>'block' = b.key and (l->>'pos')::int > 1000);
         select v_entries || coalesce(jsonb_agg(jsonb_build_object('truck', x::text, 'block', b.key) order by o), '[]'::jsonb) into v_entries
         from unnest(v_trucks) with ordinality u(x, o);
       end loop;
@@ -463,7 +465,8 @@ begin
       'win', case when r.win_start is not null then jsonb_build_array(r.win_start, r.win_end) end,
       'new_win', case when v_nws is not null then jsonb_build_array(v_nws, v_nwe) end,
       'win_back', v_wback, 'flex_fixed', v_ffix, 'flex_later', v_flater, 'late_min', v_late, 'early_min', v_early,
-      'pin', case when v_plost is null then r.arrive_at end, 'pin_lost', v_plost, 'pin_moved', v_pmoved));
+      'pin', case when v_plost is null then r.arrive_at end, 'pin_lost', v_plost, 'pin_moved', v_pmoved,
+      'over', r.id = any(v_unplaced)));
   end loop;
   if v_ends <> '{}'::jsonb then
     select e.key, e.value into v_k, v_v from jsonb_each(v_ends) e order by e.key limit 1;

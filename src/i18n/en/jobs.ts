@@ -308,31 +308,10 @@ export const jobs: typeof fr = {
     later: 'Not now: nothing goes, their new time goes with “Send the times to customers”.'
   },
   order: {
-    open: 'Order of the stops',
-    openSub: 'Choose who comes before whom in this truck’s route',
-    title: 'Order of the stops',
-    lead: 'Put the customers in the order you want. Those on the way or on site stay first. Arrival times are worked out again for everyone.',
-    first: 'Put {name} first',
-    up: 'Move {name} up',
-    down: 'Move {name} down',
-    eta: 'around {time}',
-    /* « Vraies routes » on: a trip up to that stop not measured yet (stop_order_preview measured false) */
+    /* « Vraies routes » on: a trip up to that stop not measured yet (eta_measured false; day_order_preview measured false) */
     etaUnmeasured: 'time: trips not measured yet',
-    save: 'Save the order',
-    saved: 'Order saved. Arrival times are up to date.',
-    auto: 'Let the app choose',
-    autoDone: 'The app chooses the order again (the least driving).',
-    timesAfter: 'The new arrival times show once saved.',
-    none: 'No booked appointment in this route.',
     firstMenu: 'Put first',
-    firstMenuSub: 'This customer comes before the others of this block',
-    firstDone: '{name} comes first. Arrival times are up to date.',
-    live: { en_route: 'On the way', on_site: 'On site' },
-    /* « Vraies routes » on: the arrival times of the order built come from the server (stop_order_preview) */
-    pending: 'Arrival times: not worked out yet.',
-    serverTimes: 'The times shown are those of this new order, worked out by the server.',
-    late: 'Late',
-    lateServer: { one: 'With this order, {names} would be reached after the time the customer was told. Tell this customer if you save.', other: 'With this order, these customers would be reached after the time they were told: {names}. Tell them if you save.' }
+    firstMenuSub: 'This customer comes before the others of this block'
   },
   menu: {
     title: 'More actions',
@@ -392,13 +371,7 @@ export const jobs: typeof fr = {
       help: 'The length lets the truck fit the stops in its day. If the job no longer fits, move it.'
     },
     order: {
-      firstMenuSub: 'This customer goes before the others of the day',
-      wholeDay: 'the whole day',
-      told: 'customer: {window}',
-      note: 'An order chosen by hand can make the truck arrive outside the window a customer was told. The app then shows « Outside the window ».',
-      breaks: { one: 'With this order, {names} would probably be reached outside their arrival window. Tell this customer if you save.', other: 'With this order, these customers would probably be reached outside their arrival window: {names}. Tell them if you save.' },
-      about: 'about {time}',
-      saveAnyway: 'Save anyway'
+      firstMenuSub: 'This customer goes before the others of the day'
     },
     menu: {
       resendBookingSub: 'The day, the arrival window and the planned total',
