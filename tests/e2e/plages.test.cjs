@@ -283,7 +283,7 @@ step('« Flexible »: Dina is booked for tomorrow without a window; « Fixer les
   await o.ctx.close();
 });
 
-step('« Déplacer »: Carla to another window the same day, then to another day: each time she is told once, the new moment in words', async () => {
+step('« Déplacer »: Carla to another window the same day, then to another day: each time the app asks « Texter Carla ? » with the new moment, « Envoyer le texto »: she is told once, the new moment in words', async () => {
   const { page, ctx } = await openW({ kind: 'desktop' });
   await h.signIn(page, who.nadia.email, PW);
   const before = jobOf(J.carla);
@@ -300,7 +300,8 @@ step('« Déplacer »: Carla to another window the same day, then to another day
     assert.deepEqual(screen.map(clock), (await serverWindows(who.nadia.jwt, C.Carla, day, 45, J.carla)).map(clock), `${day}: the windows offered to move her are the server’s`);
     const ws = choose(screen);
     await pickWindow(page, day, ws, 'grid');
-    // the « moved » text leaves by itself once the sheet is closed: its answer says it went
+    // the « moved » text leaves once the sheet is closed and « Texter Carla ? » is answered « Envoyer le texto » (Hassan,
+    // 2026-11-22: never by itself): its answer says it went
     const told = page.waitForResponse((r) => /\/functions\/v1\/notify/.test(r.url()) && /"moved"/.test(r.request().postData() || ''), { timeout: 20000 });
     await page.getByTestId('move-ok').click();
     // « exact move » (2026-11-21): the time picked is where she lands; the window's first quarter hour may be one the truck
@@ -315,6 +316,9 @@ step('« Déplacer »: Carla to another window the same day, then to another day
       await page.getByTestId('ask-ok').click();
     }
     await sheet.waitFor({ state: 'detached', timeout: 20000 });
+    const q = await h.textAsk(page);
+    assert.equal(q.title, 'Texter Carla ?');
+    assert.ok(q.when.endsWith(`, ${between(ws, ws + 240)}`), `the question says the new window: ${q.when}`);
     assert.equal((await (await told).json()).status, 'sent');
     return ws;
   };
@@ -369,6 +373,7 @@ step('« Déplacer » to the window the customer was already told: nothing new f
   assert.deepEqual([j.day, j.win_start, j.win_end, j.win_flex], [D[1], ws, ws + 240, false], 'her window, now fixed');
   await until2(moved, (l) => l.length > 0, 6000);
   assert.equal((await moved()).length, 0, 'no « moved » text: she already knows her window');
+  assert.equal(await page.getByTestId('text-ask').count(), 0, 'and no question « Texter Dina ? » either');
   noErrors(page);
   await ctx.close();
 });

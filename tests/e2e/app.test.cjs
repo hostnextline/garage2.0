@@ -1320,6 +1320,9 @@ step('« Changer de camion »: an appointment booked on the wrong truck goes to 
   await page.getByTestId('truck-sheet').waitFor({ state: 'detached', timeout: 15000 });
   const after = await until(() => h.sql(`select day || '|' || block || '|' || truck_id || '|' || truck_pinned from public.jobs where id = '${jobLaval}'`), (v) => v.includes(other), 15000);
   assert.deepEqual(after.split('|'), [before[0], before[1], other, 'true'], 'same day and block, the other truck, kept there');
+  // the same day and block: nothing to tell the customer, so no « Texter … ? » either
+  await page.waitForTimeout(1500);
+  assert.equal(await page.getByTestId('text-ask').count(), 0, 'no question « Texter … ? »');
   // « Laisser l’app choisir »: the truck is no longer forced
   await page.getByTestId('job-menu').click();
   await page.getByTestId('menu-truck').click();
@@ -1546,8 +1549,12 @@ step('« Déplacer » from the map: the office taps a stop, « Déplacer », ano
   // the stop leaves that day's list by itself; still on the map
   await stop.waitFor({ state: 'detached', timeout: 15000 });
   assert.match(page.url(), /#\/map\?day=/);
-  // the « moved » text: texts not connected here, so the message to send by hand rises ON THE MAP (MoveHost has its host;
-  // the map had none before)
+  // the « moved » text: never by itself (Hassan, 2026-11-22: « the system should ask me first »): « Texter Julie ? » with
+  // the new moment, « Envoyer le texto »; texts not connected here, so the message to send by hand rises ON THE MAP
+  // (MoveHost has its host; the map had none before)
+  const ta = await h.textAsk(page);
+  assert.equal(ta.title, 'Texter Julie ?');
+  assert.match(ta.when, new RegExp(`(matin|après-midi|soir) \\(`), `the day and the block, with its hours: ${ta.when}`);
   await page.getByTestId('text-outcome').waitFor({ timeout: 15000 });
   assert.match(await page.getByTestId('text-outcome-message').innerText(), /Julie/);
   assert.match(page.url(), /#\/map\?day=/, 'the hand-text sheet is on the map');
