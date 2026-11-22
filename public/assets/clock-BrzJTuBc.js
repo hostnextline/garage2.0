@@ -1,0 +1,1 @@
+import{y as d}from"./index-DnBXvJUI.js";import{t as o}from"./preload-helper-Nq9T8Itq.js";const t=d(o()),n=()=>{const e=o();e!==t.value&&(t.value=e)};typeof window<"u"&&typeof document<"u"&&(setInterval(n,6e4),document.addEventListener("visibilitychange",()=>{document.hidden||n()}));export{t as c};

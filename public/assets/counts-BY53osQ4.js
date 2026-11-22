@@ -1,0 +1,1 @@
+function s(t){const o={booked:0,live:0,done:0};for(const e of t)e.status==="booked"?o.booked++:e.status==="en_route"||e.status==="on_site"?o.live++:e.status==="done"&&o.done++;return o}export{s as d};
